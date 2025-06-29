@@ -19,11 +19,11 @@ from flask import (
     request,
     redirect,
     url_for,
-    session,
     flash,
     current_app,
     jsonify,
     Response,
+    g,
 )
 from werkzeug.security import check_password_hash
 from flask_wtf import FlaskForm
@@ -109,9 +109,6 @@ def _validate_credentials(username_attempt: str, password_attempt: str) -> AuthR
 @auth_bp.route("/login", methods=["GET"])
 def login() -> Response:
     """Serves the login page. Authentication is handled via JS calling /api/login."""
-    if session.get("logged_in"):
-        logger.debug("User already has an active session, redirecting to dashboard.")
-        return redirect(url_for("main_routes.index"))
     form = LoginForm()
     return render_template("login.html", form=form)
 
@@ -171,7 +168,7 @@ def logout() -> Response:
     Logs the user out by clearing the Flask session and advising client to clear JWT.
     Client-side JavaScript should handle clearing localStorage/sessionStorage for 'jwt_token'.
     """
-    username = session.get("username", "Unknown user")
+    username = g.user_identity if hasattr(g, 'user_identity') and g.user_identity else "Unknown user (no JWT identity)"
     logger.info(f"User '{username}' logging out. Clearing JWT cookies.")
     response = redirect(url_for("auth.login"))
     unset_jwt_cookies(response)

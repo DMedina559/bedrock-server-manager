@@ -12,7 +12,6 @@ from typing import Callable, Optional
 
 # Third-party imports
 from flask import (
-    session,
     request,
     redirect,
     url_for,

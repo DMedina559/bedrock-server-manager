@@ -17,10 +17,8 @@ import secrets
 from typing import Optional, Dict, List, Union
 
 # Third-party imports
-from flask import (
-    Flask,
-    session,
-)
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+from flask import Flask
 
 try:
     from waitress import serve
@@ -204,10 +202,20 @@ def create_app() -> Flask:
     logger.debug("Registered context processor: inject_global_variables.")
 
     @app.context_processor
-    def inject_user() -> Dict[str, bool]:
-        is_logged_in = session.get("logged_in", False)
-        return dict(is_logged_in=is_logged_in)
-
+    def inject_user() -> Dict[str, Union[bool, str, None]]:
+        is_logged_in = False
+        current_username = None
+        try:
+            # Check for JWT presence without enforcing authentication if optional=True
+            verify_jwt_in_request(optional=True)
+            identity = get_jwt_identity()
+            if identity:
+                is_logged_in = True
+                current_username = identity
+        except Exception:
+            # If any JWT related error (even optional check), assume not logged in via JWT
+            pass
+        return dict(is_logged_in=is_logged_in, current_username=current_username)
     logger.debug("Registered context processor: inject_user (login status).")
 
     # --- Register Request Validators ---
