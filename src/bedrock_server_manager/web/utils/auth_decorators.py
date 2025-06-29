@@ -51,43 +51,74 @@ def auth_required(view: Callable) -> Callable:
 
         # --- 1. Attempt JWT Authentication ---
         try:
-            verify_jwt_in_request(optional=True)
-            identity = get_jwt_identity()
+            # verify_jwt_in_request(optional=True) # Changed to non-optional for debugging
+            verify_jwt_in_request()  # Non-optional: will raise error if no valid JWT in configured locations
+            identity = (
+                get_jwt_identity()
+            )  # Should retrieve identity if verify_jwt_in_request passed
 
             if identity:
-                auth_method = "jwt"
-                g.user_identity = identity  # Store JWT identity
+                g.user_identity = identity
                 logger.debug(
                     f"Auth successful via JWT for identity '{identity}'. Stored in g."
                 )
-                return view(*args, **kwargs)  # Proceed to view
+                return view(*args, **kwargs)
             else:
-                logger.debug("No valid JWT found. Proceeding to session check.")
 
-        except Exception as e:  # Catch JWT-related errors broadly here
-            # Treat invalid/expired tokens, decode errors etc., as immediate failure for APIs
-            # NoAuthorizationError/InvalidHeaderError will be skipped by optional=True logic anyway
-            auth_error = e
-            logger.warning(f"JWT validation failed for path '{request.path}': {e}.")
-            # Prefer JSON for API errors regardless of Accept header if JWT was attempted
-            return jsonify(error="Unauthorized", message=f"Invalid token: {e}"), 401
+                logger.warning(
+                    f"JWT verified but no identity obtained for path {request.path}. This is unexpected."
+                )
+                auth_error = Exception(
+                    "JWT verified but no identity found."
+                )  # Create a generic error for logging below
 
-        # --- 2. Attempt Session Authentication ---
-        if "logged_in" in session and session.get("logged_in"):
-            auth_method = "session"
-            session_username = session.get("username", "unknown_session_user")
-            g.user_identity = session_username  # Store Session identity
-            logger.debug(
-                f"Auth successful via session for user '{session_username}'. Stored in g."
+        except (
+            Exception
+        ) as e_jwt_verify:  # Catch specific JWT errors if possible, or broad Exception
+            logger.error(
+                f"JWT Verification explicit error for path {request.path}: {e_jwt_verify}",
+                exc_info=True,
+            )
+            auth_error = (
+                e_jwt_verify  # Store the error for logging in the failure message
+            )
+            identity = None  # Ensure identity is None if verification fails
+
+        # If identity (now g.user_identity) is not set after JWT check, then authentication has failed.
+        if not g.user_identity:
+            log_message = f"Authentication failed for path '{request.path}'."
+            if auth_error:  # This auth_error would be from the exception block above
+                log_message += f" Reason: JWT Error - {type(auth_error).__name__}: {str(auth_error)}"
+            else:
+                log_message += " No valid JWT found."
+            logger.warning(log_message)
+
+            best_match = request.accept_mimetypes.best_match(
+                ["application/json", "text/html"]
+            )
+            prefers_html = (
+                best_match == "text/html"
+                and request.accept_mimetypes[best_match]
+                > request.accept_mimetypes["application/json"]
             )
 
-            logger.debug(
-                f"CSRF check skipped as CSRF protection has been removed. Proceeding for method '{request.method}'."
-            )
-            return view(*args, **kwargs)  # Proceed to view
+            if prefers_html:  # Typically for UI page GET requests
+                flash("Please log in to access this page.", "warning")
+                login_url = url_for("auth.login", next=request.url)
+                logger.debug(f"Redirecting browser-like client to login: {login_url}")
+                return redirect(login_url)
+            else:  # Typically for API calls
+                logger.debug(
+                    "Returning 401 JSON response for API-like client due to missing/invalid JWT."
+                )
+                return (
+                    jsonify(
+                        error="Unauthorized",
+                        message="Authentication token is required and was not found or is invalid.",
+                    ),
+                    401,
+                )
 
-        # --- 3. Authentication Failed ---
-        log_message = f"Authentication failed for path '{request.path}'."
         if auth_error:
             log_message += f" Reason: {type(auth_error).__name__}"
         else:

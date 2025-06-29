@@ -29,13 +29,16 @@ from werkzeug.security import check_password_hash
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, Length
-from flask_jwt_extended import create_access_token, JWTManager
+from flask_jwt_extended import (
+    create_access_token,
+    JWTManager,
+    set_access_cookies,
+    unset_jwt_cookies,
+)
 
 # Local imports
 from bedrock_server_manager.config.const import env_name
-from bedrock_server_manager.web.utils.auth_decorators import (
-    auth_required,
-)
+from bedrock_server_manager.web.utils.auth_decorators import auth_required
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +105,7 @@ def _validate_credentials(username_attempt: str, password_attempt: str) -> AuthR
     return AuthResult.INVALID_CREDENTIALS
 
 
-# --- Web UI Login Page Route (GET only) ---
+# --- Web UI Login Page Route ---
 @auth_bp.route("/login", methods=["GET"])
 def login() -> Response:
     """Serves the login page. Authentication is handled via JS calling /api/login."""
@@ -113,7 +116,7 @@ def login() -> Response:
     return render_template("login.html", form=form)
 
 
-# --- API Login Route (POST) ---
+# --- API Login Route ---
 @auth_bp.route("/api/login", methods=["POST"])
 def api_login() -> Response:
     """Handles API user login (JWT-based)."""
@@ -133,19 +136,19 @@ def api_login() -> Response:
 
     if auth_result == AuthResult.SUCCESS:
         access_token = create_access_token(identity=username)
-        session["logged_in"] = True
-        session["username"] = username
+
+        response = jsonify(
+            status="success",
+            access_token=access_token,
+            message="Login successful! Redirecting...",
+        )
+        set_access_cookies(response, access_token)
+
         logger.info(
-            f"API login successful for '{username}'. JWT issued and Flask session set."
+            f"API login successful for '{username}'. JWT created and cookie set."
         )
-        return (
-            jsonify(
-                status="success",
-                access_token=access_token,
-                message="Login successful! Redirecting...",
-            ),
-            200,
-        )
+        return response, 200  # Return the modified response object and status code
+
     elif auth_result == AuthResult.SERVER_CONFIG_ERROR:
         return (
             jsonify(
@@ -153,7 +156,7 @@ def api_login() -> Response:
             ),
             500,
         )
-    else:
+    else:  # AuthResult.INVALID_CREDENTIALS
         logger.warning(
             f"Invalid API login attempt for '{username}' from {request.remote_addr}."
         )
@@ -162,17 +165,15 @@ def api_login() -> Response:
 
 # --- Logout Route ---
 @auth_bp.route("/logout")
-@auth_required
+@auth_required  # Use the consolidated decorator
 def logout() -> Response:
     """
     Logs the user out by clearing the Flask session and advising client to clear JWT.
     Client-side JavaScript should handle clearing localStorage/sessionStorage for 'jwt_token'.
     """
     username = session.get("username", "Unknown user")
-    session.pop("logged_in", None)
-    session.pop("username", None)
-    logger.info(f"User '{username}' Flask session cleared from {request.remote_addr}.")
-
+    logger.info(f"User '{username}' logging out. Clearing JWT cookies.")
+    response = redirect(url_for("auth.login"))
+    unset_jwt_cookies(response)
     flash("You have been successfully logged out.", "info")
-
-    return redirect(url_for("auth.login"))
+    return response

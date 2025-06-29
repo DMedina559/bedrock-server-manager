@@ -94,7 +94,7 @@ def create_app() -> Flask:
         )
         raise ConfigurationError("Essential setting 'paths.servers' is not configured.")
 
-    # --- Configure Secret Key (CSRF, Session) ---
+    # --- Configure Secret Key ( Session) ---
     secret_key_env = f"{env_name}_SECRET"
     secret_key_value = os.environ.get(secret_key_env)
     if secret_key_value:
@@ -153,9 +153,23 @@ def create_app() -> Flask:
         )
         app.config["JWT_ACCESS_TOKEN_EXPIRES"] = datetime.timedelta(weeks=4)
 
+    # Configure JWT to look for tokens in cookies and headers
+    app.config["JWT_TOKEN_LOCATION"] = ["cookies", "headers"]
+
+    app.config["JWT_COOKIE_SECURE"] = settings.get("web.jwt_cookie_secure", False)
+    app.config["JWT_COOKIE_SAMESITE"] = settings.get("web.jwt_cookie_samesite", "Lax")
+    app.config["JWT_COOKIE_HTTPONLY"] = True  # JavaScript cannot access the cookie
+    app.config["JWT_COOKIE_CSRF_PROTECT"] = False
+    app.config["JWT_SESSION_COOKIE"] = (
+        False  # Make it a persistent cookie based on token expiration, not browser session
+    )
+
     # Initialize JWT Manager
     jwt.init_app(app)
-    logger.debug("Initialized Flask-JWT-Extended.")
+    logger.info("Initialized Flask-JWT-Extended with cookie and header support.")
+    logger.debug(f"JWT_TOKEN_LOCATION: {app.config['JWT_TOKEN_LOCATION']}")
+    logger.debug(f"JWT_COOKIE_SECURE: {app.config['JWT_COOKIE_SECURE']}")
+    logger.debug(f"JWT_COOKIE_SAMESITE: {app.config['JWT_COOKIE_SAMESITE']}")
 
     # --- Load Web UI Authentication Credentials ---
     username_env = f"{env_name}_USERNAME"

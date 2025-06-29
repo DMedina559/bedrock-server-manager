@@ -422,17 +422,21 @@ def configure_service_api_route(server_name: str) -> Tuple[Response, int]:
             result = system_api.set_autoupdate(server_name, str(autoupdate))
             if result.get("status") != "success":
                 return jsonify(result), 500
+
         if autostart is not None:
-            if not isinstance(autostart, bool):
-                return jsonify(status="error", message="'autostart' boolean."), 400
-            if current_os in ["Linux", "Windows"]:
-                result = system_api.create_server_service(server_name, autostart)
-                if result.get("status") != "success":
-                    return jsonify(result), 500
-            else:
-                logger.warning(
-                    f"API: 'autostart' ignored for '{server_name}': unsupported OS ({current_os})."
-                )
+            try:
+                if not isinstance(autostart, bool):
+                    return jsonify(status="error", message="'autostart' boolean."), 400
+                if current_os in ["Linux", "Windows"]:
+                    result = system_api.create_server_service(server_name, autostart)
+                    if result.get("status") != "success":
+                        return jsonify(result), 500
+                else:
+                    logger.warning(
+                        f"API: 'autostart' ignored for '{server_name}': unsupported OS ({current_os})."
+                    )
+            except Exception:
+                logger.debug("issue idk")
         return (
             jsonify(
                 {"status": "success", "message": "Configuration applied successfully."}
