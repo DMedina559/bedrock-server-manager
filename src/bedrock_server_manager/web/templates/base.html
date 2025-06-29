@@ -102,6 +102,11 @@ content and scripts using Jinja2 blocks.
             {% endwith %}
             {# --- End Flash Messages --- #}
 
+            {# Div for JavaScript-driven status messages (showStatusMessage in utils.js) #}
+            <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out; margin-top: 15px; margin-bottom: 15px;">
+                <!-- JavaScript status messages will appear here -->
+            </div>
+
             {# Main Content Block - Child templates inject their content here #}
             {% block content %}{% endblock %}
         </main>

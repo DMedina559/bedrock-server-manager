@@ -7,7 +7,7 @@ server content management (Worlds, Addons).
 import os
 import logging
 import threading
-from typing import Tuple, List
+from typing import Tuple, Dict, Any, List
 
 # Third-party imports
 from flask import (
@@ -28,9 +28,9 @@ from bedrock_server_manager.web.utils.auth_decorators import (
     auth_required,
     get_current_identity,
 )
-from bedrock_server_manager.web.routes.auth_routes import login_required
 from bedrock_server_manager.error import (
     BSMError,
+    InvalidServerNameError,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ content_bp = Blueprint(
 
 
 @content_bp.route("/server/<string:server_name>/install_world")
-@login_required
+@auth_required
 def install_world_route(server_name: str) -> Response:
     """Renders the page allowing users to select a world for installation."""
     identity = get_current_identity()
@@ -73,7 +73,7 @@ def install_world_route(server_name: str) -> Response:
 
 
 @content_bp.route("/server/<string:server_name>/install_addon")
-@login_required
+@auth_required
 def install_addon_route(server_name: str) -> Response:
     """Renders the page for selecting an addon to install."""
     identity = get_current_identity()
@@ -180,7 +180,6 @@ def install_world_api_route(server_name: str) -> Tuple[Response, int]:
 
     selected_filename = data["filename"]
 
-    # Perform initial file existence and security checks before threading
     try:
         content_base_dir = os.path.join(settings.get("paths.content"), "worlds")
         full_world_file_path = os.path.normpath(
@@ -205,7 +204,7 @@ def install_world_api_route(server_name: str) -> Tuple[Response, int]:
                 ),
                 404,
             )
-    except Exception as e_pre_check:  # Catch broad exceptions during pre-check
+    except Exception as e_pre_check:
         logger.error(
             f"API Install World '{server_name}': Pre-check error: {e_pre_check}",
             exc_info=True,
@@ -222,7 +221,6 @@ def install_world_api_route(server_name: str) -> Tuple[Response, int]:
             f"Thread started for installing world '{os.path.basename(world_f_path)}' to server '{s_name}'."
         )
         try:
-            # The actual import_world call can be long (stopping server, copying files, starting server)
             thread_result = world_api.import_world(s_name, world_f_path)
             if thread_result.get("status") == "success":
                 logger.info(
@@ -243,7 +241,6 @@ def install_world_api_route(server_name: str) -> Tuple[Response, int]:
                 exc_info=True,
             )
 
-    # Pass the validated full_world_file_path to the thread
     thread = threading.Thread(
         target=install_world_thread_target, args=(server_name, full_world_file_path)
     )
@@ -263,7 +260,6 @@ def install_world_api_route(server_name: str) -> Tuple[Response, int]:
 @content_bp.route("/api/server/<string:server_name>/world/export", methods=["POST"])
 @auth_required
 def export_world_api_route(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to export the current world to the content directory."""
     identity = get_current_identity() or "Unknown"
     logger.info(
         f"API: World export requested for '{server_name}' by user '{identity}'."
@@ -272,7 +268,6 @@ def export_world_api_route(server_name: str) -> Tuple[Response, int]:
     def export_world_thread_target(s_name: str):
         logger.info(f"Thread started for exporting world from server '{s_name}'.")
         try:
-            # The export_world call can be long (stopping server, copying/zipping files, starting server)
             thread_result = world_api.export_world(s_name)
             if thread_result.get("status") == "success":
                 logger.info(
@@ -295,7 +290,6 @@ def export_world_api_route(server_name: str) -> Tuple[Response, int]:
 
     thread = threading.Thread(target=export_world_thread_target, args=(server_name,))
     thread.start()
-
     return (
         jsonify(
             {
@@ -310,14 +304,12 @@ def export_world_api_route(server_name: str) -> Tuple[Response, int]:
 @content_bp.route("/api/server/<string:server_name>/world/reset", methods=["DELETE"])
 @auth_required
 def reset_world_api_route(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to delete the current world of a specified server."""
     identity = get_current_identity() or "Unknown"
     logger.info(f"API: World reset requested for '{server_name}' by user '{identity}'.")
 
     def reset_world_thread_target(s_name: str):
         logger.info(f"Thread started for resetting world for server '{s_name}'.")
         try:
-            # Resetting world can involve stopping the server, deleting files, potentially starting.
             thread_result = world_api.reset_world(s_name)
             if thread_result.get("status") == "success":
                 logger.info(
@@ -340,7 +332,6 @@ def reset_world_api_route(server_name: str) -> Tuple[Response, int]:
 
     thread = threading.Thread(target=reset_world_thread_target, args=(server_name,))
     thread.start()
-
     return (
         jsonify(
             {
@@ -355,12 +346,10 @@ def reset_world_api_route(server_name: str) -> Tuple[Response, int]:
 @content_bp.route("/api/server/<string:server_name>/addon/install", methods=["POST"])
 @auth_required
 def install_addon_api_route(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to install a user-selected addon to a server."""
     identity = get_current_identity() or "Unknown"
     logger.info(
         f"API: Addon install requested for '{server_name}' by user '{identity}'."
     )
-
     data = request.get_json()
     if not data or "filename" not in data:
         return (
@@ -370,16 +359,12 @@ def install_addon_api_route(server_name: str) -> Tuple[Response, int]:
             ),
             400,
         )
-
     selected_filename = data["filename"]
-
-    # Perform initial file existence and security checks before threading
     try:
         content_base_dir = os.path.join(settings.get("paths.content"), "addons")
         full_addon_file_path = os.path.normpath(
             os.path.join(content_base_dir, selected_filename)
         )
-
         if not os.path.abspath(full_addon_file_path).startswith(
             os.path.abspath(content_base_dir)
         ):
@@ -389,7 +374,6 @@ def install_addon_api_route(server_name: str) -> Tuple[Response, int]:
                 ),
                 400,
             )
-
         if not os.path.isfile(full_addon_file_path):
             return (
                 jsonify(
@@ -415,7 +399,6 @@ def install_addon_api_route(server_name: str) -> Tuple[Response, int]:
             f"Thread started for installing addon '{os.path.basename(addon_f_path)}' to server '{s_name}'."
         )
         try:
-            # Importing an addon can involve file I/O and potentially server restart.
             thread_result = addon_api.import_addon(s_name, addon_f_path)
             if thread_result.get("status") == "success":
                 logger.info(
@@ -440,7 +423,6 @@ def install_addon_api_route(server_name: str) -> Tuple[Response, int]:
         target=install_addon_thread_target, args=(server_name, full_addon_file_path)
     )
     thread.start()
-
     return (
         jsonify(
             {

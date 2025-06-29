@@ -1,4 +1,4 @@
-# bedrock_server_manager/web/routes/server_action_routes.py
+# bedrock_server_manager/web/routes/action_routes.py
 """
 Flask Blueprint defining API endpoints for controlling Bedrock server instances.
 """
@@ -124,7 +124,7 @@ def stop_server_route(server_name: str) -> Tuple[Response, int]:
             }
         ),
         202,
-    )  # 202 Accepted: The request has been accepted for processing, but the processing has not been completed.
+    )
 
 
 # --- API Route: Restart Server ---

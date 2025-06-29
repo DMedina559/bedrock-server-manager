@@ -26,7 +26,7 @@ from bedrock_server_manager.error import (
 )
 from bedrock_server_manager.config.settings import settings
 from bedrock_server_manager.config.const import EXPATH
-from bedrock_server_manager.web.routes.auth_routes import login_required
+
 from bedrock_server_manager.web.utils.auth_decorators import (
     auth_required,
     get_current_identity,
@@ -46,7 +46,7 @@ schedule_tasks_bp = Blueprint(
 
 # --- HTML Routes ---
 @schedule_tasks_bp.route("/server/<string:server_name>/cron_scheduler", methods=["GET"])
-@login_required
+@auth_required
 def schedule_tasks_route(server_name: str) -> Response:
     """Displays the Linux cron job scheduling management page for a specific server."""
     identity = get_current_identity() or "Unknown"
@@ -54,7 +54,6 @@ def schedule_tasks_route(server_name: str) -> Response:
         f"User '{identity}' accessed Linux cron schedule page for server '{server_name}'."
     )
 
-    # Check if the initialized scheduler is the Linux one
     if not isinstance(
         api_task_scheduler.scheduler, api_task_scheduler.core_task.LinuxTaskScheduler
     ):
@@ -97,7 +96,7 @@ def schedule_tasks_route(server_name: str) -> Response:
 
 
 @schedule_tasks_bp.route("/server/<string:server_name>/task_scheduler", methods=["GET"])
-@login_required
+@auth_required
 def schedule_tasks_windows_route(server_name: str) -> Response:
     """Displays the Windows Task Scheduler management page for a specific server."""
     identity = get_current_identity() or "Unknown"
@@ -150,20 +149,17 @@ def schedule_tasks_windows_route(server_name: str) -> Response:
 
 # ------
 
+
 # --- API Endpoints ---
-
-
 @schedule_tasks_bp.route(
     "/api/server/<string:server_name>/cron_scheduler/add", methods=["POST"]
 )
 @auth_required
 def add_cron_job_route(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to add a new Linux cron job."""
     identity = get_current_identity() or "Unknown"
     logger.info(
         f"API: Add cron job request by '{identity}' (context: '{server_name}')."
     )
-
     if not isinstance(
         api_task_scheduler.scheduler, api_task_scheduler.core_task.LinuxTaskScheduler
     ):
@@ -171,7 +167,6 @@ def add_cron_job_route(server_name: str) -> Tuple[Response, int]:
             jsonify(status="error", message="Cron jobs are only supported on Linux."),
             403,
         )
-
     data = request.get_json(silent=True)
     if not data or not (cron_string := data.get("new_cron_job")):
         return (
@@ -180,11 +175,10 @@ def add_cron_job_route(server_name: str) -> Tuple[Response, int]:
             ),
             400,
         )
-
     try:
         result = api_task_scheduler.add_cron_job(cron_string)
         if result.get("status") == "success":
-            return jsonify(result), 201  # Created
+            return jsonify(result), 201
         return jsonify(result), 500
     except BSMError as e:
         return jsonify(status="error", message=str(e)), 400
@@ -198,12 +192,10 @@ def add_cron_job_route(server_name: str) -> Tuple[Response, int]:
 )
 @auth_required
 def modify_cron_job_route(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to modify an existing Linux cron job."""
     identity = get_current_identity() or "Unknown"
     logger.info(
         f"API: Modify cron job request by '{identity}' (context: '{server_name}')."
     )
-
     if not isinstance(
         api_task_scheduler.scheduler, api_task_scheduler.core_task.LinuxTaskScheduler
     ):
@@ -211,7 +203,6 @@ def modify_cron_job_route(server_name: str) -> Tuple[Response, int]:
             jsonify(status="error", message="Cron jobs are only supported on Linux."),
             403,
         )
-
     data = request.get_json(silent=True)
     if (
         not data
@@ -225,12 +216,10 @@ def modify_cron_job_route(server_name: str) -> Tuple[Response, int]:
             ),
             400,
         )
-
     try:
         result = api_task_scheduler.modify_cron_job(old_cron, new_cron)
         if result.get("status") == "success":
             return jsonify(result), 200
-        # Check for "not found" which is a client error (404)
         if "not found" in (result.get("message") or "").lower():
             return jsonify(result), 404
         return jsonify(result), 500
@@ -247,12 +236,10 @@ def modify_cron_job_route(server_name: str) -> Tuple[Response, int]:
 )
 @auth_required
 def delete_cron_job_route(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to delete a specific Linux cron job."""
     identity = get_current_identity() or "Unknown"
     logger.info(
         f"API: Delete cron job request by '{identity}' (context: '{server_name}')."
     )
-
     if not isinstance(
         api_task_scheduler.scheduler, api_task_scheduler.core_task.LinuxTaskScheduler
     ):
@@ -260,7 +247,6 @@ def delete_cron_job_route(server_name: str) -> Tuple[Response, int]:
             jsonify(status="error", message="Cron jobs are only supported on Linux."),
             403,
         )
-
     cron_string = request.args.get("cron_string")
     if not cron_string:
         return (
@@ -269,7 +255,6 @@ def delete_cron_job_route(server_name: str) -> Tuple[Response, int]:
             ),
             400,
         )
-
     try:
         result = api_task_scheduler.delete_cron_job(cron_string)
         if result.get("status") == "success":
@@ -287,12 +272,10 @@ def delete_cron_job_route(server_name: str) -> Tuple[Response, int]:
 )
 @auth_required
 def add_windows_task_api(server_name: str) -> Tuple[Response, int]:
-    """API endpoint to add a new Windows scheduled task."""
     identity = get_current_identity() or "Unknown"
     logger.info(
         f"API: Add Windows task request by '{identity}' for server '{server_name}'."
     )
-
     if not isinstance(
         api_task_scheduler.scheduler, api_task_scheduler.core_task.WindowsTaskScheduler
     ):
@@ -302,7 +285,6 @@ def add_windows_task_api(server_name: str) -> Tuple[Response, int]:
             ),
             403,
         )
-
     data = request.get_json(silent=True)
     if (
         not data
@@ -313,7 +295,6 @@ def add_windows_task_api(server_name: str) -> Tuple[Response, int]:
             jsonify(status="error", message="'command' and 'triggers' are required."),
             400,
         )
-
     valid_commands = [
         "update-server",
         "backup-all",
@@ -330,15 +311,12 @@ def add_windows_task_api(server_name: str) -> Tuple[Response, int]:
             ),
             400,
         )
-
     try:
         config_dir = getattr(settings, "config_dir", None)
         if not config_dir:
             raise BSMError("Base configuration directory not set.")
-
         command_args = f"--server {server_name}" if command != "scan-players" else ""
         task_name = api_task_scheduler.create_task_name(server_name, command)
-
         result = api_task_scheduler.create_windows_task(
             server_name, command, command_args, task_name, triggers, config_dir
         )
@@ -359,9 +337,7 @@ def add_windows_task_api(server_name: str) -> Tuple[Response, int]:
 )
 @auth_required
 def manage_windows_task_api(server_name: str, task_name: str) -> Tuple[Response, int]:
-    """API endpoint to modify or delete an existing Windows scheduled task."""
     identity = get_current_identity() or "Unknown"
-
     if not isinstance(
         api_task_scheduler.scheduler, api_task_scheduler.core_task.WindowsTaskScheduler
     ):
@@ -371,13 +347,10 @@ def manage_windows_task_api(server_name: str, task_name: str) -> Tuple[Response,
             ),
             403,
         )
-
     try:
         config_dir = getattr(settings, "config_dir", None)
         if not config_dir:
             raise BSMError("Base configuration directory not set.")
-
-        # Find the task's XML file path
         task_list = api_task_scheduler.get_server_task_names(
             server_name, config_dir
         ).get("task_names", [])
@@ -401,12 +374,10 @@ def manage_windows_task_api(server_name: str, task_name: str) -> Tuple[Response,
                     ),
                     400,
                 )
-
             command_args = (
                 f"--server {server_name}" if command != "scan-players" else ""
             )
             new_task_name = api_task_scheduler.create_task_name(server_name, command)
-
             result = api_task_scheduler.modify_windows_task(
                 task_name,
                 server_name,
@@ -420,7 +391,6 @@ def manage_windows_task_api(server_name: str, task_name: str) -> Tuple[Response,
                 result["new_task_name"] = new_task_name
                 return jsonify(result), 200
             return jsonify(result), 500
-
         elif request.method == "DELETE":
             logger.info(
                 f"API: Delete Windows task '{task_name}' request by '{identity}'."
@@ -433,12 +403,10 @@ def manage_windows_task_api(server_name: str, task_name: str) -> Tuple[Response,
                     ),
                     404,
                 )
-
             result = api_task_scheduler.delete_windows_task(task_name, task_file_path)
             if result.get("status") == "success":
                 return jsonify(result), 200
             return jsonify(result), 500
-
     except BSMError as e:
         return jsonify(status="error", message=str(e)), 500
     except Exception as e:
@@ -447,5 +415,4 @@ def manage_windows_task_api(server_name: str, task_name: str) -> Tuple[Response,
             exc_info=True,
         )
         return jsonify(status="error", message="An unexpected error occurred."), 500
-
     return jsonify(status="error", message="Invalid request method."), 405

@@ -11,8 +11,10 @@ import logging
 from flask import Blueprint, render_template, redirect, url_for, flash, Response
 
 # Local imports
-from bedrock_server_manager.web.routes.auth_routes import login_required
-from bedrock_server_manager.web.utils.auth_decorators import get_current_identity
+from bedrock_server_manager.web.utils.auth_decorators import (
+    auth_required,
+    get_current_identity,
+)
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -25,7 +27,7 @@ main_bp = Blueprint(
 
 # --- Route: Main Dashboard ---
 @main_bp.route("/")
-@login_required  # Requires web session
+@auth_required
 def index() -> Response:
     """
     Renders the main dashboard page.
@@ -39,7 +41,7 @@ def index() -> Response:
 
 # --- Route: Redirect to OS-Specific Scheduler Page ---
 @main_bp.route("/server/<string:server_name>/scheduler")
-@login_required  # Requires web session
+@auth_required
 def task_scheduler_route(server_name: str) -> Response:
     """
     Redirects the user to the appropriate task scheduling page based on the host OS.
@@ -72,7 +74,7 @@ def task_scheduler_route(server_name: str) -> Response:
 
 
 @main_bp.route("/server/<string:server_name>/monitor")
-@login_required
+@auth_required
 def monitor_server_route(server_name: str) -> Response:
     """Renders the server monitoring page for a specific server."""
     identity = get_current_identity()

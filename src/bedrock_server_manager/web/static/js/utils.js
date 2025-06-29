@@ -133,9 +133,19 @@ async function sendServerActionRequest(serverName, actionPath, method = 'POST', 
     const fetchOptions = {
         method: method.toUpperCase(), // Ensure method is uppercase
         headers: {
-            'Accept': 'application/json',
+            'Accept': 'application/json', // We always want JSON back
         }
     };
+
+    // Add JWT to headers if available
+    const jwtToken = localStorage.getItem('jwt_token');
+    if (jwtToken) {
+        fetchOptions.headers['Authorization'] = `Bearer ${jwtToken}`;
+        console.debug(`${functionName}: Added JWT to Authorization header.`);
+    } else {
+        console.debug(`${functionName}: No JWT found in localStorage.`);
+    }
+    // CSRF header removed earlier
 
     // Add body and Content-Type header if applicable
     const methodAllowsBody = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchOptions.method);

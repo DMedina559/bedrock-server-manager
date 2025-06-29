@@ -6,8 +6,11 @@
 {% block title %}{{ super() }} - Login{% endblock %}
 
 {# --- Head Scripts Block --- #}
-{# No specific JS usually needed for a simple login form, but block exists if needed #}
 {% block head_scripts %}
+    {# Standard utils for showStatusMessage and sendServerActionRequest #}
+<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+    {# New auth.js for handleLoginAttempt #}
+<script src="{{ url_for('static', filename='js/auth.js') }}" defer></script>
 {% endblock %}
 
 
@@ -25,8 +28,8 @@
     {# Login Form #}
     {# Assumes 'form' object (instance of LoginForm) is passed from the Flask route #}
     {# Uses POST method, targets the login route URL #}
-    <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}" class="login-form" novalidate>
-        {# novalidate disables browser validation #}
+    {# Modified for JS handling: removed method and action, added id and onsubmit #}
+    <form id="login-form" class="login-form" novalidate onsubmit="return false;">
 
         {# --- Username Field --- #}
         <div class="form-group">
@@ -34,7 +37,7 @@
             {{ form.username.label(class="form-label") }}
             {# Render the username input field #}
             {# Add 'is-invalid' class dynamically if validation errors exist for this field #}
-            {{ form.username(class="form-input" + (" is-invalid" if form.username.errors else ""), placeholder="Enter your username", required=True, autofocus=True) }}
+            {{ form.username(class="form-input" + (" is-invalid" if form.username.errors else ""), placeholder="Enter your username", required=True, autofocus=True, autocomplete="username") }}
             {# Display validation errors for the username field #}
             {% if form.username.errors %}
             <ul class="form-error">
@@ -52,7 +55,7 @@
             {{ form.password.label(class="form-label") }}
             {# Render the password input field #}
             {# Add 'is-invalid' class dynamically if errors exist #}
-            {{ form.password(class="form-input" + (" is-invalid" if form.password.errors else ""), placeholder="Enter your password", required=True) }}
+            {{ form.password(class="form-input" + (" is-invalid" if form.password.errors else ""), placeholder="Enter your password", required=True, autocomplete="current-password") }}
             {# Display validation errors for the password field #}
             {% if form.password.errors %}
             <ul class="form-error">
@@ -66,9 +69,10 @@
         {# --- Submit Button --- #}
         {# Use form-actions and login-actions classes for layout/styling #}
         <div class="form-actions login-actions">
-            {# Render the submit button using WTForms field #}
-            {# Apply standard button styles #}
-            {{ form.submit(class="action-button start-button") }} {# Use standard green button style #}
+            {# Changed from WTForms submit to a regular button with onclick #}
+            <button type="button" onclick="handleLoginAttempt(this)" class="action-button start-button">
+                Log In
+            </button>
         </div>
 
     </form> {# --- End Login Form --- #}
