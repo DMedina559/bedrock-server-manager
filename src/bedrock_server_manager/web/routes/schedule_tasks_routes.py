@@ -296,12 +296,11 @@ def add_windows_task_api(server_name: str) -> Tuple[Response, int]:
             400,
         )
     valid_commands = [
-        "update-server",
-        "backup-all",
-        "start-server",
-        "stop-server",
-        "restart-server",
-        "scan-players",
+        "server update",
+        "backup create all",
+        "server start",
+        "server stop",
+        "server restart",
     ]
     if command not in valid_commands:
         return (
