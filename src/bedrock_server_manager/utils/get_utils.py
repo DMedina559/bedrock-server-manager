@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
 
+
 def _get_splash_text() -> str:
     """
     Selects and returns a random splash text message.
@@ -82,6 +83,7 @@ def _get_splash_text() -> str:
 
     logger.debug(f"Context Helper: Selected splash text: '{chosen_splash}'")
     return chosen_splash
+
 
 def get_operating_system_type() -> str:
     """

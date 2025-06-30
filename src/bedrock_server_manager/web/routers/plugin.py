@@ -1,7 +1,14 @@
 import logging
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status, Request as FastAPIRequest
+from fastapi import (
+    APIRouter,
+    Request,
+    Depends,
+    HTTPException,
+    status,
+    Request as FastAPIRequest,
+)
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -168,9 +175,7 @@ async def set_plugin_status_api_route(
         )
 
 
-@router.put(
-    "/api/reload", response_model=GeneralPluginApiResponse, tags=["Plugin API"]
-)
+@router.put("/api/reload", response_model=GeneralPluginApiResponse, tags=["Plugin API"])
 async def reload_plugins_api_route(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
