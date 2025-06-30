@@ -61,7 +61,8 @@
     {# Navigation Link Back #}
     <div class="navigation-link">
         {# Consistent class for back link #}
-        <a href="{{ url_for('main_routes.index') }}" class="action-link">
+        <a href="{{ request.url_for('index') }}" class="action-link">
+            {# Assuming 'index' is the name of the main dashboard route #}
             « Back to Dashboard
         </a>
     </div>

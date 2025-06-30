@@ -7,18 +7,20 @@
 {% block title %}{{ super() }} - Backup Config File: {{ server_name }}{% endblock %}
 
 {# --- Head Scripts Block --- #}
-{# Includes JavaScript files needed specifically for this page in the <head> #}
-{% block head_scripts %}
+{# Includes JavaScript files needed specifically for this page in the
+<head>
+    #}
+    {% block head_scripts %}
     {# Utility functions (showStatusMessage, sendServerActionRequest) #}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# Backup/Restore specific frontend functions #}
-    <script src="{{ url_for('static', filename='js/backup_restore.js') }}" defer></script>
-{% endblock %}
+    <script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
+    {% endblock %}
 
 
-{# --- Main Content Block --- #}
-{# Overrides the content block in base.html #}
-{% block content %}
+    {# --- Main Content Block --- #}
+    {# Overrides the content block in base.html #}
+    {% block content %}
 
     {# Main heading for the page #}
     <h2>Select Configuration File to Backup</h2>
@@ -38,12 +40,14 @@
         <p>Click a button below to create a timestamped backup of the corresponding configuration file.</p>
 
         {# Group for the action buttons #}
-        <div class="button-group action-buttons-group"> {# Grouping for layout/spacing #}
+        <div class="button-group action-buttons-group">
+            {# Grouping for layout/spacing #}
             {# Buttons triggering specific config backups via JavaScript #}
             {# 'this' refers to the button element itself, passed for disabling during API call #}
             {# server_name is passed from Jinja context #}
             {# The third argument is the specific filename relative to the server directory #}
-            <button type="button" onclick="triggerSpecificConfigBackup(this, '{{ server_name | e }}', 'allowlist.json')" class="action-button"> {# Use action-button style #}
+            <button type="button" onclick="triggerSpecificConfigBackup(this, '{{ server_name | e }}', 'allowlist.json')" class="action-button">
+                {# Use action-button style #}
                 Backup allowlist.json
             </button>
             <button type="button" onclick="triggerSpecificConfigBackup(this, '{{ server_name | e }}', 'permissions.json')" class="action-button">
@@ -57,24 +61,26 @@
 
         {# Navigation Link Back #}
         {# Separated from action buttons for clarity #}
-        <div class="navigation-link" style="margin-top: 30px;"> {# Extra top margin #}
+        <div class="navigation-link" style="margin-top: 30px;">
+            {# Extra top margin #}
             {# Link back to the main backup menu for this server #}
             {# Use main-button style for prominent navigation? Or action-link? Using action-link. #}
-            <a href="{{ url_for('backup_restore_routes.backup_menu_route', server_name=server_name) }}" class="action-link">
+            <a href="{{ request.url_for('backup_menu_page', server_name=server_name) if request else '#' }}" class="action-link">
                 « Back to Backup Menu {# Use HTML entity for left arrow #}
             </a>
         </div>
     </section> {# End of .backup-config-section #}
 
-{% endblock %}
+    {% endblock %}
 
-{# --- Optional Body Scripts Block --- #}
-{# Add page-specific JS initialization if needed here #}
-{% block body_scripts %}
-{# <script>
-    // Example: Initialize something specific to this page after DOM loads
-    // document.addEventListener('DOMContentLoaded', () => {
-    //     console.log("Backup Config Options page fully loaded and scripts ready.");
-    // });
-</script> #}
-{% endblock %}
+    {# --- Optional Body Scripts Block --- #}
+    {# Add page-specific JS initialization if needed here #}
+    {% block body_scripts %}
+    {#
+    <script>
+        // Example: Initialize something specific to this page after DOM loads
+        // document.addEventListener('DOMContentLoaded', () => {
+        //     console.log("Backup Config Options page fully loaded and scripts ready.");
+        // });
+    </script> #}
+    {% endblock %}

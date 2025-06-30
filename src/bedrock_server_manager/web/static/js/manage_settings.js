@@ -27,8 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Refactored to use sendServerActionRequest
             const result = await sendServerActionRequest(null, '/api/settings', 'GET', null, null);
 
-            if (result && result.status === 'success' && result.data) {
-                renderSettings(result.data);
+            if (result && result.status === 'success' && result.settings) { // Changed result.data to result.settings
+                renderSettings(result.settings); // Changed result.data to result.settings
             } else {
                 // Error message should be handled by sendServerActionRequest, 
                 // but showError provides a fallback and specific UI handling.

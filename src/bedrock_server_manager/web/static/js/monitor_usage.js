@@ -47,8 +47,8 @@ async function updateStatus() {
         // Pass `true` for suppressSuccessPopup for silent polling
         const data = await sendServerActionRequest(serverName, actionPath, 'GET', null, null, true);
 
-        if (data && data.status === 'success') {
-            const info = data.process_info;
+        if (data && data.status === 'success' && data.data) { // Check data.data
+            const info = data.data.process_info; // Access process_info from data.data
             if (info) {
                 const statusText = `
 PID          : ${info.pid ?? 'N/A'}

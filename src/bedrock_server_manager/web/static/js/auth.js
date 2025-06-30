@@ -51,38 +51,60 @@ async function handleLoginAttempt(buttonElement) {
 
     console.debug(`${functionName}: Attempting login for user '${username}'.`);
 
-    // Call sendServerActionRequest to POST to /api/login
-    // serverName is null because /api/login is an absolute path
-    const responseData = await sendServerActionRequest(null, '/api/login', 'POST', requestBody, buttonElement);
+    // Disable button during request
+    if (buttonElement) buttonElement.disabled = true;
+    showStatusMessage("Attempting login...", "info"); // Provide immediate feedback
 
-    if (responseData && responseData.access_token) {
-        console.log(`${functionName}: Login successful. Token received.`);
-        // For simplicity in this step, storing JWT in localStorage.
-        // For production, HttpOnly cookies set by the server are generally preferred for web apps.
-        localStorage.setItem('jwt_token', responseData.access_token);
+    const formData = new FormData();
+    formData.append('username', username);
+    formData.append('password', password);
 
-        // Redirect to dashboard or 'next' URL
-        // Check if 'next' query parameter exists in the current URL
-        const currentUrlParams = new URLSearchParams(window.location.search);
-        const nextUrl = currentUrlParams.get('next');
+    try {
+        const response = await fetch('/auth/token', { // Updated URL
+            method: 'POST',
+            body: formData, // Send as form data
+            headers: {
+                'Accept': 'application/json', // We still want JSON response from this endpoint
+            }
+        });
 
-        // showStatusMessage is now handled by sendServerActionRequest based on API response
-        // showStatusMessage("Login successful! Redirecting...", "success"); 
+        const responseData = await response.json();
 
-        if (nextUrl) {
-            console.log(`${functionName}: Redirecting to 'next' URL: ${nextUrl}`);
-            // Small delay to allow user to see the success message from sendServerActionRequest
-            setTimeout(() => { window.location.href = nextUrl; }, 500);
+        if (response.ok && responseData.access_token) { // FastAPI route returns access_token in body too
+            console.log(`${functionName}: Login successful. Token received (server also sets HttpOnly cookie).`);
+
+            // Store JWT in localStorage for other API calls that might use Bearer token via utils.js
+            // The HttpOnly cookie will be used automatically by the browser for navigation.
+            if (responseData.access_token) {
+                localStorage.setItem('jwt_token', responseData.access_token);
+            }
+
+            showStatusMessage(responseData.message || "Login successful! Redirecting...", "success");
+
+            const currentUrlParams = new URLSearchParams(window.location.search);
+            const nextUrl = currentUrlParams.get('next');
+
+            if (nextUrl) {
+                console.log(`${functionName}: Redirecting to 'next' URL: ${nextUrl}`);
+                setTimeout(() => { window.location.href = nextUrl; }, 500);
+            } else {
+                console.log(`${functionName}: Redirecting to dashboard ('/').`);
+                setTimeout(() => { window.location.href = '/'; }, 500);
+            }
         } else {
-            console.log(`${functionName}: Redirecting to dashboard ('/').`);
-            // Small delay to allow user to see the success message from sendServerActionRequest
-            setTimeout(() => { window.location.href = '/'; }, 500);
+            // Handle errors (e.g., 401 Unauthorized, or other errors from the server)
+            const errorMessage = responseData.detail || responseData.message || "Login failed. Please check your credentials.";
+            console.error(`${functionName}: Login failed. Status: ${response.status}, Message: "${errorMessage}"`, responseData);
+            showStatusMessage(errorMessage, "error");
+            if (passwordInput) passwordInput.value = ''; // Clear password on failed attempt
+            if (buttonElement) buttonElement.disabled = false; // Re-enable button
         }
-    } else {
-        // Error message should have been shown by sendServerActionRequest
-        // based on the API's JSON error response.
-        console.error(`${functionName}: Login failed. Response:`, responseData);
-        // Ensure password field is cleared on failed attempt for security/UX
-        passwordInput.value = '';
+    } catch (error) {
+        // Network errors or other issues with fetch itself
+        const errorMsg = `Network or processing error during login: ${error.message}`;
+        console.error(`${functionName}: ${errorMsg}`, error);
+        showStatusMessage(errorMsg, "error");
+        if (passwordInput) passwordInput.value = '';
+        if (buttonElement) buttonElement.disabled = false;
     }
 }

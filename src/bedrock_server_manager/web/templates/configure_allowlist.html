@@ -6,8 +6,8 @@
 
 {# --- Head Scripts Block --- #}
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/allowlist.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/allowlist.js') }}" defer></script>
 {% endblock %}
 
 {# --- Main Content Block --- #}
@@ -52,18 +52,11 @@
     {# --- Section to Display Current Allowlist --- #}
 <section class="current-allowlist-section list-section">
     <h2>Current Allowlist</h2>
-
-    {# This list is populated by the JavaScript in body_scripts #}
     <ul id="current-allowlist-display" class="item-list">
-        {# Loading indicator will be placed here by JS and then replaced #}
     </ul>
-
-    {# Template for the empty list message - JS will manage its visibility #}
     <template id="no-players-template">
         <li class="list-item-empty">No players currently in allowlist.</li>
     </template>
-
-    {# Template for a single player item - JS will clone and populate this #}
     <template id="player-item-template">
         <li class="list-item">
             <div class="item-details">
@@ -73,24 +66,24 @@
             <button type="button" class="action-button danger-button remove-button">Remove</button>
         </li>
     </template>
-
 </section>
 
-    {# --- Navigation Actions (Unchanged) --- #}
 <div class="form-actions navigation-link">
     {% if new_install %}
-    <a href="{{ url_for('install_config_routes.configure_permissions_route', server_name=server_name, new_install='True') }}" class="action-link">
+    <a href="{{ request.url_for('configure_permissions_page', server_name=server_name, new_install=True) if request else '#' }}" class="action-link">
         Skip & Go to Permissions »
     </a>
+    <a href="{{ request.url_for('configure_properties_page', server_name=server_name, new_install=True) if request else '#' }}" class="action-link">
+        « Back to Server Properties
+    </a>
     {% else %}
-    <a href="{{ url_for('main_routes.index') }}" class="action-link">
+    <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
         « Back to Dashboard
     </a>
     {% endif %}
 </div>
 {% endblock %}
 
-{# --- Page-Specific JavaScript Block --- #}
 {% block body_scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -99,20 +92,16 @@
         const playerItemTemplate = document.getElementById('player-item-template');
         const noPlayersTemplate = document.getElementById('no-players-template');
 
-        // This function can be called to refresh the list at any time
         window.fetchAndUpdateAllowlistDisplay = async () => {
             console.log('Fetching and updating allowlist display...');
-            // 1. Show loader
             allowlistDisplay.innerHTML = `<div class="loader-container-small"><div class="spinner"></div><p>Loading...</p></div>`;
 
             try {
-                // Refactored to use sendServerActionRequest
                 const data = await window.sendServerActionRequest(serverName, 'allowlist/get', 'GET', null, null);
+                allowlistDisplay.innerHTML = '';
 
-                allowlistDisplay.innerHTML = ''; // Clear loader/previous content
-
-                if (data && data.status === 'success' && Array.isArray(data.existing_players)) {
-                    const players = data.existing_players;
+                if (data && data.status === 'success' && Array.isArray(data.players)) { // Changed existing_players to players
+                    const players = data.players; // Changed existing_players to players
                     if (players.length > 0) {
                         players.forEach(player => {
                             const playerClone = playerItemTemplate.content.cloneNode(true);
@@ -125,11 +114,10 @@
                                 tagSpan.style.display = 'inline-block';
                             }
 
-                            if (window.removeAllowlistPlayer) { // removeAllowlistPlayer is in allowlist.js
+                            if (window.removeAllowlistPlayer) {
                                 removeButton.onclick = () => removeAllowlistPlayer(removeButton, serverName, player.name);
                             } else {
                                 removeButton.style.display = 'none';
-                                console.warn('removeAllowlistPlayer function not found in allowlist.js');
                             }
                             allowlistDisplay.appendChild(playerClone);
                         });
@@ -138,28 +126,21 @@
                         allowlistDisplay.appendChild(noPlayersClone);
                     }
                 } else {
-                    // Error message should have been shown by sendServerActionRequest
-                    // If data is false, it was a fetch/network error.
-                    // If data.status is 'error', it was an API error.
                     const errorMsg = (data && data.message) ? data.message : 'Failed to load allowlist data.';
                     console.error('Failed to load allowlist:', errorMsg);
-                    // showStatusMessage is called by sendServerActionRequest, but if we want to clear the list:
-                    // allowlistDisplay.innerHTML = ''; // Clear if preferred, or let showStatusMessage handle it
                     if (typeof showStatusMessage === 'function' && !(data && data.status === 'error')) {
-                        // If sendServerActionRequest returned false (network error) and didn't show a detailed message
                         showStatusMessage(`Error loading allowlist: ${errorMsg}`, 'error');
                     }
                 }
-            } catch (error) { // Catch errors from this script's logic, not from sendServerActionRequest's fetch
+            } catch (error) {
                 console.error('Client-side error in fetchAndUpdateAllowlistDisplay:', error);
-                allowlistDisplay.innerHTML = ''; // Clear loader
+                allowlistDisplay.innerHTML = '';
                 if (typeof showStatusMessage === 'function') {
                     showStatusMessage(`Client-side error loading allowlist: ${error.message}`, 'error');
                 }
             }
         };
 
-        // --- Toggle Switch Logic (for the "add" section) ---
         const toggleInput = document.getElementById('ignore-limit-add');
         if (toggleInput) {
             const hiddenFalseInput = document.querySelector('input[name="ignore_limit_add"]');
@@ -167,10 +148,8 @@
                 if (hiddenFalseInput) hiddenFalseInput.disabled = toggleInput.checked;
             };
             toggleInput.addEventListener('change', syncHiddenFalse);
-            syncHiddenFalse(); // Initial sync
+            syncHiddenFalse();
         }
-
-        // Initial load of the allowlist
         fetchAndUpdateAllowlistDisplay();
     });
 </script>

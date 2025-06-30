@@ -8,13 +8,13 @@
 {# --- Head Scripts Block --- #}
 {% block head_scripts %}
     {# Core JS Utilities #}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# JS for handling global server actions (start, stop, etc.) #}
-<script src="{{ url_for('static', filename='js/server_actions.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/server_actions.js') }}" defer></script>
     {# JS for handling sidebar navigation clicks #}
-<script src="{{ url_for('static', filename='js/sidebar_nav.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/sidebar_nav.js') }}" defer></script>
     {# JS for dashboard interactivity #}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/dashboard.js') }}" defer></script>
 {% endblock %}
 
 {# --- Main Content Block --- #}
@@ -25,7 +25,7 @@
     <!-- Status messages appear here -->
 </div>
 
-    {# Server-side flash messages (handled by base.html) #}
+    {# Server-side flash messages (handled by base.html via query params) #}
 
     {# --- Main Page Layout (Sidebar + Content) --- #}
 <div class="page-layout">
@@ -39,15 +39,15 @@
         <a href="#content-section" class="nav-link" data-target="content-section">Content</a>
         <a href="#backup-restore-section" class="nav-link" data-target="backup-restore-section">Backup/Restore</a>
         <a href="#tasks-section" class="nav-link" data-target="tasks-section">Scheduled Tasks</a>
-        <a href="{{ url_for('plugin_routes.manage_plugins_page') }}" class="nav-link">Manage Plugins</a>
-        <a href="{{ url_for('settings_routes.manage_settings_page') }}" class="nav-link">Settings</a>
+        <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
+        <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
 
         {# Separator #}
         <hr class="nav-separator">
 
         {# Actions #}
-        <a href="{{ url_for('install_config_routes.install_server_route') }}" class="nav-link nav-action-button install-server-button">Install New Server</a>
-        <a href="{{ url_for('auth.logout') }}" class="nav-link nav-action-button danger-button">Logout</a>
+        <a href="{{ request.url_for('install_server_page') if request else '/install' }}" class="nav-link nav-action-button install-server-button">Install New Server</a>
+        <a href="{{ request.url_for('logout') if request else '/auth/logout' }}" class="nav-link nav-action-button danger-button">Logout</a>
     </aside> {# --- End Sidebar Navigation --- #}
 
 

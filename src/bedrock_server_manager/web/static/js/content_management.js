@@ -42,7 +42,7 @@ function triggerWorldInstall(buttonElement, serverName, worldFilePath) {
     // --- Confirmation ---
     console.debug(`${functionName}: Prompting user for world install confirmation.`);
     const confirmationMessage = `Install world '${filenameForDisplay}' for server '${serverName}'?\n\n` +
-                                `WARNING: This will permanently REPLACE the current world data for this server! Continue?`;
+        `WARNING: This will permanently REPLACE the current world data for this server! Continue?`;
     if (!confirm(confirmationMessage)) {
         console.log(`${functionName}: World installation cancelled by user.`);
         showStatusMessage('World installation cancelled.', 'info');
@@ -57,7 +57,7 @@ function triggerWorldInstall(buttonElement, serverName, worldFilePath) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/api/server/${serverName}/world/install`;
+    const apiUrl = `/content/api/server/${serverName}/world/install`; // Updated for FastAPI prefix
     console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl}...`);
     // sendServerActionRequest handles button disabling, status messages, and response processing
     sendServerActionRequest(null, apiUrl, 'POST', requestBody, buttonElement);
@@ -87,9 +87,10 @@ async function triggerWorldExport(buttonElement, serverName) {
     console.log(`${functionName}: Sending API request to export world.`);
     // Call the generic request handler
     // Export endpoint doesn't require a request body (body = null)
+    const absoluteActionPath = `/content/api/server/${serverName}/world/export`; // Updated for FastAPI prefix
     const result = await sendServerActionRequest(
-        serverName,
-        'world/export', // Relative API path for world export
+        null, // serverName is now part of absolute path
+        absoluteActionPath,
         'POST',
         null,           // No request body needed
         buttonElement
@@ -119,18 +120,19 @@ async function triggerWorldReset(buttonElement, serverName) {
     console.log(`${functionName}: Triggered for server '${serverName}'`);
 
     // Confirm reset if desired, though it's not destructive like import
-     if (!confirm(`WARNING: Reset the current world for server '${serverName}'?`)) {
-         console.log(`${functionName}: User cancelled reset.`);
-         showStatusMessage("World export cancelled.", "info");
-         return;
-     }
+    if (!confirm(`WARNING: Reset the current world for server '${serverName}'?`)) {
+        console.log(`${functionName}: User cancelled reset.`);
+        showStatusMessage("World export cancelled.", "info");
+        return;
+    }
 
     console.log(`${functionName}: Sending API request to reset world.`);
     // Call the generic request handler
     // Export endpoint doesn't require a request body (body = null)
+    const absoluteActionPath = `/content/api/server/${serverName}/world/reset`; // Updated for FastAPI prefix
     const result = await sendServerActionRequest(
-        serverName,
-        'world/reset', // Relative API path for world export
+        null, // serverName is now part of absolute path
+        absoluteActionPath,
         'DELETE',
         null,           // No request body needed
         buttonElement
@@ -193,7 +195,7 @@ function triggerAddonInstall(buttonElement, serverName, addonFilePath) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/api/server/${serverName}/addon/install`;
+    const apiUrl = `/content/api/server/${serverName}/addon/install`; // Updated for FastAPI prefix
     console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl}...`);
     sendServerActionRequest(null, apiUrl, 'POST', requestBody, buttonElement);
 

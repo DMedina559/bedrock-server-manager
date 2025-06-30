@@ -8,9 +8,9 @@ plaintext passwords are not stored, improving security.
 """
 
 import click
-from werkzeug.security import generate_password_hash
 
 from bedrock_server_manager.config.const import env_name
+from bedrock_server_manager.web.auth_utils import pwd_context
 
 
 @click.command("generate-password")
@@ -19,7 +19,7 @@ def generate_password_hash_command():
 
     This interactive command prompts for a password, confirms it, and then
     prints the resulting hash. The hash should be used to set the
-    BSM_PASSWORD environment variable for securing the web interface.
+    BEDROCK_SERVER_MANAGER_PASSWORD environment variable for securing the web interface.
     """
     click.secho(
         "--- Bedrock Server Manager Password Hash Generator ---", fg="cyan", bold=True
@@ -34,22 +34,17 @@ def generate_password_hash_command():
             prompt_suffix=": ",
         )
 
-        # click.prompt with confirmation will not return an empty string,
-        # but this check remains as a safeguard.
         if not plaintext_password:
             click.secho("Error: Password cannot be empty.", fg="red")
             raise click.Abort()
 
-        click.echo("\nGenerating password hash...")
+        click.echo("\nGenerating password hash using...")
 
-        hashed_password = generate_password_hash(
-            plaintext_password, method="pbkdf2:sha256", salt_length=16
-        )
+        hashed_password = pwd_context.hash(plaintext_password)
 
         click.secho("Hash generated successfully.", fg="green")
 
         click.echo("\n" + "=" * 60)
-        click.secho("      PASSWORD HASH GENERATED SUCCESSFULLY", fg="green", bold=True)
         click.echo("=" * 60)
         click.echo("\nSet the following environment variable to secure your web UI:")
         click.echo(

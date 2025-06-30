@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Using sendServerActionRequest which handles status messages and button disabling
         try {
             // serverName is null for global actions, actionPath is absolute
-            const result = await sendServerActionRequest(null, '/api/plugins/reload', 'POST', {}, reloadPluginsBtn);
+            const result = await sendServerActionRequest(null, '/plugins/api/reload', 'POST', {}, reloadPluginsBtn); // Updated path
 
             // sendServerActionRequest shows its own success/error messages based on result.status
             // It also re-enables the button in its finally block unless result.status is 'confirm_needed'
@@ -81,12 +81,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Use sendServerActionRequest for the GET request.
             // serverName is null for global actions, actionPath is absolute.
             // No body for GET. Button element can be the loader itself or null.
-            const data = await sendServerActionRequest(null, '/api/plugins', 'GET', null, null); // Pass null for button if loader handles its own state
+            const data = await sendServerActionRequest(null, '/plugins/api', 'GET', null, null); // Updated path, Pass null for button if loader handles its own state
 
             pluginLoader.style.display = 'none'; // Hide loader
 
             if (data && data.status === 'success') {
-                const plugins = data.plugins;
+                const plugins = data.data; // Changed from data.plugins to data.data based on GeneralPluginApiResponse
                 if (plugins && Object.keys(plugins).length > 0) {
                     const sortedPluginNames = Object.keys(plugins).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // serverName is null for global actions, actionPath is absolute and constructed with pluginName
-            const result = await sendServerActionRequest(null, `/api/plugins/${pluginName}`, 'POST', { enabled: isEnabled }, toggleSwitch);
+            const result = await sendServerActionRequest(null, `/plugins/api/${pluginName}`, 'POST', { enabled: isEnabled }, toggleSwitch); // Updated path
 
             // sendServerActionRequest shows status messages and handles button state.
             // We only need to revert the toggle if the API call was not successful.

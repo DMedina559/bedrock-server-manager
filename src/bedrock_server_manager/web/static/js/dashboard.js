@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!serverSelect || !serverCardList || !noServersMessage) {
         console.error(`${functionName}: A critical element for the dashboard is missing. Functionality may be impaired.`);
-        if(typeof showStatusMessage === 'function') {
+        if (typeof showStatusMessage === 'function') {
             showStatusMessage("Dashboard Error: Critical page elements missing.", "error");
         } else {
             const body = document.querySelector('body');
@@ -39,17 +39,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (action.tagName === 'A' && action.id && hasSelection) {
                     let targetUrl = '#';
                     switch (action.id) {
+                        // Routes without router prefix (or handled by main_router)
                         case 'config-link-properties': targetUrl = `/server/${serverNameEncoded}/configure_properties`; break;
                         case 'config-link-allowlist': targetUrl = `/server/${serverNameEncoded}/configure_allowlist`; break;
                         case 'config-link-permissions': targetUrl = `/server/${serverNameEncoded}/configure_permissions`; break;
                         case 'config-link-monitor': targetUrl = `/server/${serverNameEncoded}/monitor`; break;
                         case 'config-link-service': targetUrl = `/server/${serverNameEncoded}/configure_service`; break;
-                        case 'content-link-world': targetUrl = `/server/${serverNameEncoded}/install_world`; break;
-                        case 'content-link-addon': targetUrl = `/server/${serverNameEncoded}/install_addon`; break;
-                        case 'backup-link-menu': targetUrl = `/server/${serverNameEncoded}/backup`; break;
-                        case 'restore-link-menu': targetUrl = `/server/${serverNameEncoded}/restore`; break;
-                        case 'task-scheduler-menu': targetUrl = `/server/${serverNameEncoded}/scheduler`; break;
-                        default: console.warn(`${functionName}: No URL map for link ID '${action.id}'.`);
+                        case 'task-scheduler-menu': targetUrl = `/server/${serverNameEncoded}/scheduler`; break; // This redirects via main_router
+
+                        // Routes with /content prefix
+                        case 'content-link-world': targetUrl = `/content/server/${serverNameEncoded}/install_world`; break;
+                        case 'content-link-addon': targetUrl = `/content/server/${serverNameEncoded}/install_addon`; break;
+
+                        // Routes with /backup-restore prefix
+                        case 'backup-link-menu': targetUrl = `/backup-restore/server/${serverNameEncoded}/backup`; break;
+                        case 'restore-link-menu': targetUrl = `/backup-restore/server/${serverNameEncoded}/restore`; break;
+
+                        default:
+                            console.warn(`${functionName}: No URL map for link ID '${action.id}'.`);
+                            targetUrl = '#'; // Ensure it's a safe default
+                            break;
                     }
                     action.href = targetUrl;
                 } else if (action.tagName === 'A' && !hasSelection) {
@@ -81,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateServerDropdown(servers) {
         const previouslySelected = serverSelect.value;
-        serverSelect.innerHTML = ''; 
+        serverSelect.innerHTML = '';
         if (servers.length === 0) {
             const noServerOption = new Option('-- No Servers Installed --', '');
             noServerOption.disabled = true;
@@ -108,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!data || data.status !== 'success' || !Array.isArray(data.servers)) {
                 console.warn(`${functionName}: API call to /api/servers did not return success or valid server data. Message:`, data?.message);
                 if (typeof showStatusMessage === 'function' && !(data && data.message && data.status === 'error')) {
-                     showStatusMessage("Failed to update dashboard: Could not retrieve server list.", "warning");
+                    showStatusMessage("Failed to update dashboard: Could not retrieve server list.", "warning");
                 }
                 return;
             }
@@ -142,10 +151,10 @@ document.addEventListener('DOMContentLoaded', () => {
             updateServerDropdown(newServers);
             noServersMessage.style.display = newServers.length === 0 ? 'block' : 'none';
 
-        } catch (error) { 
+        } catch (error) {
             console.error(`${functionName}: Client-side error during dashboard update:`, error);
             if (typeof showStatusMessage === 'function') {
-                 showStatusMessage(`Dashboard update error: ${error.message}`, "error");
+                showStatusMessage(`Dashboard update error: ${error.message}`, "error");
             }
         }
     }

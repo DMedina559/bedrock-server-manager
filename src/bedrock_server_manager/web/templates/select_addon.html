@@ -8,86 +8,89 @@
 {# --- Head Scripts Block --- #}
 {# Include JavaScript files needed for addon installation actions #}
 {% block head_scripts %}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# content_management.js contains the triggerAddonInstall function #}
-    <script src="{{ url_for('static', filename='js/content_management.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/content_management.js') }}" defer></script>
 {% endblock %}
 
 
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
-    <h2>Select Addon to Install</h2>
+<h2>Select Addon to Install</h2>
 
     {# Display server context #}
-    <p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
+<p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
 
     {# --- Status Message Area --- #}
     {# Targeted by JavaScript (showStatusMessage) #}
-    <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
-        <!-- Status messages from install actions will appear here -->
-    </div>
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
+    <!-- Status messages from install actions will appear here -->
+</div>
 
     {# Server-side flash messages (handled by base.html) #}
 
     {# Section containing the addon selection list #}
-    <section class="select-addon-section list-section"> {# Use list-section class #}
+<section class="select-addon-section list-section">
+    {# Use list-section class #}
 
-        {# Check if addon_files list (passed from route) is not empty #}
-        {% if addon_files %}
-            <p>Select an addon file (.mcaddon or .mcpack) to install to server '{{ server_name }}':</p>
+    {# Check if addon_files list (passed from route) is not empty #}
+    {% if addon_files %}
+    <p>Select an addon file (.mcaddon or .mcpack) to install to server '{{ server_name }}':</p>
 
-            {# Responsive wrapper for the table #}
-            <div class="table-responsive-wrapper">
-                <table class="server-table"> {# Use standard table styling #}
-                    <thead>
-                        <tr>
-                            <th scope="col">Available Addon File</th> {# Header for the filename #}
-                            <th scope="col" style="width: 150px; text-align: center;">Action</th> {# Header for the button #}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {# Loop through the list of full addon file paths #}
-                        {% for addon_file_path in addon_files %}
-                        <tr>
-                            {# Display only the filename part #}
-                            {# IMPORTANT: Assumes 'basename' filter is registered #}
-                            <td data-label="Addon File">{{ addon_file_path | basename }}</td>
-                            {# Cell containing the install button #}
-                            <td data-label="Action" style="text-align: center;">
-                                {# Button calls triggerAddonInstall JS function #}
-                                <button type="button"
-                                        class="action-button install-button" {# Add specific class if needed #}
-                                        {# Pass button element, server name, and FULL addon path #}
-                                        {# Escape path correctly for JS, handling backslashes #}
-                                        onclick="triggerAddonInstall(this, '{{ server_name | e }}', '{{ addon_file_path | e | replace('\\', '\\\\') }}')">
-                                    Install
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div> {# --- End .table-responsive-wrapper --- #}
+    {# Responsive wrapper for the table #}
+    <div class="table-responsive-wrapper">
+        <table class="server-table">
+            {# Use standard table styling #}
+            <thead>
+                <tr>
+                    <th scope="col">Available Addon File</th> {# Header for the filename #}
+                    <th scope="col" style="width: 150px; text-align: center;">Action</th> {# Header for the button #}
+                </tr>
+            </thead>
+            <tbody>
+                {# Loop through the list of full addon file paths #}
+                {% for addon_file_path in addon_files %}
+                <tr>
+                    {# Display only the filename part #}
+                    {# IMPORTANT: Assumes 'basename' filter is registered #}
+                    <td data-label="Addon File">{{ addon_file_path | basename }}</td>
+                    {# Cell containing the install button #}
+                    <td data-label="Action" style="text-align: center;">
+                        {# Button calls triggerAddonInstall JS function #}
+                        <button type="button"
+                                class="action-button install-button" {# Add specific class if needed #}
+                                {# Pass button element, server name, and FULL addon path #}
+                                {# Escape path correctly for JS, handling backslashes #}
+                                onclick="triggerAddonInstall(this, '{{ server_name | e }}', '{{ addon_file_path | e | replace('\\', '\\\\') }}')">
+                            Install
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div> {# --- End .table-responsive-wrapper --- #}
 
-        {% else %}
-             {# Message displayed if no addon files are found #}
-             {# Use consistent styling class #}
-             <p class="no-servers-message">
-                 No addon files (.mcaddon, .mcpack) found in the configured content/addons directory.
-             </p>
-        {% endif %}
+    {% else %}
+    {# Message displayed if no addon files are found #}
+    {# Use consistent styling class #}
+    <p class="no-servers-message">
+        No addon files (.mcaddon, .mcpack) found in the configured content/addons directory.
+    </p>
+    {% endif %}
 
-        {# --- Navigation Link Back --- #}
-        {# Always show the back button #}
-        <div class="navigation-link" style="margin-top: 25px;">
-             {# Link back to the main dashboard #}
-             <a href="{{ url_for('main_routes.index') }}" class="action-link">
-                 « Back to Dashboard
-             </a>
-        </div>
+    {# --- Navigation Link Back --- #}
+    {# Always show the back button #}
+    <div class="navigation-link" style="margin-top: 25px;">
+        {# Link back to the main dashboard #}
+        <a href="{{ request.url_for('index') }}" class="action-link">
+            {# Assuming 'index' is the name of the main dashboard route #}
+            « Back to Dashboard
+        </a>
+    </div>
 
-    </section> {# --- End .select-addon-section --- #}
+</section> {# --- End .select-addon-section --- #}
 
 {% endblock %}
 

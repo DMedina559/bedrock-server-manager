@@ -130,7 +130,7 @@ async function fetchAndUpdateAllowlistDisplay(serverName) {
     try {
         const apiResponseData = await sendServerActionRequest(
             serverName,
-            'allowlist',
+            'allowlist/get', // Corrected actionPath
             'GET',
             null,
             null
@@ -147,8 +147,8 @@ async function fetchAndUpdateAllowlistDisplay(serverName) {
             return;
         }
 
-        if (apiResponseData.status === 'success' && Array.isArray(apiResponseData.existing_players)) {
-            const players = apiResponseData.existing_players;
+        if (apiResponseData.status === 'success' && Array.isArray(apiResponseData.players)) { // Corrected to apiResponseData.players
+            const players = apiResponseData.players; // Corrected to apiResponseData.players
             console.log(`${functionName}: API success status. Processing ${players.length} player entries.`);
 
             if (players.length > 0) {

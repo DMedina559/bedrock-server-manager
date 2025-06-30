@@ -6,30 +6,31 @@
 
 {# Add page-specific JS to the head #}
 {% block head_scripts %}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='js/install_config.js') }}" defer></script> {# Keep if triggerInstallServer is here #}
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script> {# Contains triggerInstallServer #}
 {% endblock %}
 
 
 {# Main content for this page #}
 {% block content %}
     {# Page Heading #}
-    <h2>Install New Bedrock Server</h2>
+<h2>Install New Bedrock Server</h2>
 
     {# Area for JavaScript-driven status messages #}
-    <div id="status-message-area" style="min-height: 1.5em; margin-bottom: 15px;">
-        <!-- Status messages from install actions will appear here -->
-    </div>
+<div id="status-message-area" style="min-height: 1.5em; margin-bottom: 15px;">
+    <!-- Status messages from install actions will appear here -->
+</div>
 
     {# Area for JavaScript-driven validation errors #}
-    <div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;">
-        <!-- Overall validation errors will appear here -->
-    </div>
+<div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;">
+    <!-- Overall validation errors will appear here -->
+</div>
 
     {# Server-side flash messages handled by base.html #}
 
-    <section class="install-config-section">
-        {# No <form> tag needed if using JS onclick, otherwise wrap form groups #}
+<section class="install-config-section">
+    {# No <form>
+        tag needed if using JS onclick, otherwise wrap form groups #}
 
         <div class="form-group">
             <label for="install-server-name" class="form-label">Server Name:</label>
@@ -48,9 +49,9 @@
         {# Form Actions / Navigation #}
         <div class="form-actions">
             <button type="button" onclick="triggerInstallServer(this)" class="action-button">Install Server</button>
-             {# Use main-button style for primary navigation back #}
-            <a href="{{ url_for('main_routes.index') }}" class="action-button">Cancel</a>
+            {# Use main-button style for primary navigation back #}
+            <a href="{{ request.url_for('index') if request else '/' }}" class="action-button">Cancel</a>
         </div>
-    </section> {# End .install-config-section #}
+</section> {# End .install-config-section #}
 
 {% endblock %}
