@@ -50,7 +50,7 @@ async def get_all_settings_api_route(
     try:
         result = settings_api.get_all_global_settings()
         if result.get("status") == "success":
-            return SettingsResponse(status="success", settings=result.get("settings"))
+            return SettingsResponse(status="success", settings=result.get("data"))
         else:
             # This case might indicate an internal issue with settings loading
             raise HTTPException(

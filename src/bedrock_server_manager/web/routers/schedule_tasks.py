@@ -413,14 +413,16 @@ async def add_windows_task_api_route(
         command_args = f"--server {server_name}"
         if payload.command == "players scan":
             command_args = ""
-        task_name = task_scheduler_api.create_task_name(server_name, payload.command)
+        task_name = task_scheduler_api.create_task_name(
+            server_name, command_args=payload.command
+        )
 
         result = task_scheduler_api.create_windows_task(
             server_name=server_name,
-            command_name=payload.command,
+            command=payload.command,
             command_args=command_args,
             task_name=task_name,
-            triggers_data=payload.triggers,
+            triggers=payload.triggers,
             config_dir=config_dir,
         )
 
@@ -526,17 +528,17 @@ async def modify_windows_task_api_route(
 
         # Create a new task name based on server and command
         new_task_name_str = task_scheduler_api.create_task_name(
-            server_name, payload.command
+            server_name, command_args=payload.command
         )
 
         # Call the core API to modify the Windows task
         result = task_scheduler_api.modify_windows_task(
             old_task_name=task_name,
             server_name=server_name,
-            command_name=payload.command,
+            command=payload.command,
             command_args=command_args,
             new_task_name=new_task_name_str,
-            triggers_data=payload.triggers,
+            triggers=payload.triggers,
             config_dir=config_dir,
         )
 

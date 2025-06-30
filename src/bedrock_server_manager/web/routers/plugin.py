@@ -1,8 +1,8 @@
 import logging
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status, Body, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Request, Depends, HTTPException, status, Request as FastAPIRequest
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from bedrock_server_manager.web.templating import templates
@@ -172,10 +172,25 @@ async def set_plugin_status_api_route(
     "/api/reload", response_model=GeneralPluginApiResponse, tags=["Plugin API"]
 )
 async def reload_plugins_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    fastapi_req: FastAPIRequest, current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     identity = current_user.get("username", "Unknown")
     logger.info(f"API: Reload plugins request by '{identity}'.")
+
+    # --- ADD THESE LOGGING LINES --- 
+    logger.info(f"PLUGIN_RELOAD_DEBUG: Incoming request method: {fastapi_req.method}")
+    logger.info(f"PLUGIN_RELOAD_DEBUG: Incoming request URL: {fastapi_req.url}")
+    logger.info(f"PLUGIN_RELOAD_DEBUG: Incoming request headers: {fastapi_req.headers}")
+    try:
+        body_bytes = await fastapi_req.body()
+        if body_bytes:
+            logger.info(f"PLUGIN_RELOAD_DEBUG: Incoming request body: {body_bytes.decode()}")
+        else:
+            logger.info("PLUGIN_RELOAD_DEBUG: Incoming request body is empty.")
+    except Exception as e:
+        logger.info(f"PLUGIN_RELOAD_DEBUG: Error reading request body: {e}")
+    # --- END OF ADDED LOGGING LINES ---
+
     try:
         result = plugins_api.reload_plugins()
         if result.get("status") == "success":

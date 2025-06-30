@@ -28,7 +28,7 @@
     {# Login Form #}
     {# Form submission is handled by js/auth.js -> handleLoginAttempt #}
     {# The action attribute can be set to the FastAPI token endpoint as a fallback or for clarity #}
-    <form id="login-form" class="login-form" novalidate onsubmit="return false;" action="{{ request.url_for('api_login_for_access_token') if request else '/auth/token' }}" method="POST">
+    <form id="login-form" class="login-form" novalidate onsubmit="return false;" action="/auth/token" method="POST">
 
         {# --- Username Field --- #}
         <div class="form-group">

@@ -441,7 +441,7 @@ async def add_players_api_route(
 
     try:
 
-        result = player_api.add_players_manually_api(players=payload.players)
+        result = player_api.add_players_manually_api(player_strings=payload.players)
 
         if result.get("status") == "success":
             return GeneralApiResponse(status="success", message=result.get("message"))

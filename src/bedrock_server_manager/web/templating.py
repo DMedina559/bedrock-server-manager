@@ -3,8 +3,8 @@ import os
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.config.const import get_installed_version
+from bedrock_server_manager.utils import get_utils
+from bedrock_server_manager.config.const import get_installed_version, app_name_title
 
 templates: Optional[Jinja2Templates] = None
 
@@ -24,14 +24,10 @@ def configure_templates(templates_instance: Jinja2Templates):
 
     templates.env.filters["basename"] = os.path.basename
 
-    templates.env.globals["app_name"] = settings.get(
-        "app.name", "Bedrock Server Manager"
-    )
+    templates.env.globals["app_name"] = app_name_title
     templates.env.globals["app_version"] = get_installed_version()
-    templates.env.globals["splash_text"] = settings.get(
-        "web.splash_text", "It's Web Based!"
-    )
-    templates.env.globals["panorama_url"] = settings.get("web.panorama_url", "")
+    templates.env.globals["splash_text"] = get_utils._get_splash_text()
+    templates.env.globals["panorama_url"] = "/api/panorama"
 
 
 def get_templates() -> Jinja2Templates:

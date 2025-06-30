@@ -8,9 +8,9 @@
 {# --- Head Scripts Block --- #}
 {# Include JavaScript files needed for this page's actions (utils, backup_restore) #}
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# backup_restore.js contains triggerRestoreAll and potentially other handlers #}
-<script src="{{ url_for('static', filename='js/backup_restore.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
 {% endblock %}
 
 

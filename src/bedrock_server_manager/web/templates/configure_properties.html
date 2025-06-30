@@ -307,8 +307,8 @@
                 // Refactored to use sendServerActionRequest
                 const data = await window.sendServerActionRequest(serverName, 'properties/get', 'GET', null, null);
 
-                if (data && data.status === 'success' && data.data && data.data.properties) { // Corrected path to properties
-                    populateForm(data.data.properties); // Corrected path to properties
+                if (data && data.status === 'success' && data.properties) {
+                    populateForm(data.properties);
                 } else {
                     const errorMsg = (data && data.message) ? data.message : 'Failed to load server properties.';
                     console.error('Failed to load server properties:', errorMsg);

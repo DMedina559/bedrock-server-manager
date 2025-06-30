@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Using sendServerActionRequest which handles status messages and button disabling
         try {
             // serverName is null for global actions, actionPath is absolute
-            const result = await sendServerActionRequest(null, '/plugins/api/reload', 'POST', {}, reloadPluginsBtn); // Updated path
+            const result = await sendServerActionRequest(null, '/plugins/api/reload', 'POST', null, reloadPluginsBtn); // Updated path
 
             // sendServerActionRequest shows its own success/error messages based on result.status
             // It also re-enables the button in its finally block unless result.status is 'confirm_needed'

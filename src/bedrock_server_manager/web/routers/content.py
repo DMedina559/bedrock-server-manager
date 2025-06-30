@@ -25,6 +25,7 @@ from bedrock_server_manager.api import (
     world as world_api,
     addon as addon_api,
     application as app_api,
+    utils as utils_api,
 )
 from bedrock_server_manager.config.settings import settings
 from bedrock_server_manager.error import BSMError, UserInputError
@@ -265,7 +266,7 @@ async def install_world_api_route(
 
     try:
 
-        if not app_api.validate_server_exist(server_name):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -363,7 +364,7 @@ async def export_world_api_route(
 
     try:
 
-        if not app_api.validate_server_exist(server_name):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -429,7 +430,7 @@ async def reset_world_api_route(
 
     try:
         # Validate server existence before queueing task
-        if not app_api.validate_server_exist(server_name):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -499,7 +500,7 @@ async def install_addon_api_route(
 
     try:
 
-        if not app_api.validate_server_exist(server_name):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",

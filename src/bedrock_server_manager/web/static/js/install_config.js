@@ -313,7 +313,8 @@ async function saveProperties(buttonElement, serverName, isNewInstall) {
     const apiUrl = `/api/server/${serverName}/properties/set`;
     console.log(`${functionName}: Calling sendServerActionRequest to save properties at ${apiUrl}...`);
 
-    const apiResponseData = await sendServerActionRequest(null, apiUrl, 'POST', propertiesData, buttonElement);
+    const payload = { properties: propertiesData };
+    const apiResponseData = await sendServerActionRequest(null, apiUrl, 'POST', payload, buttonElement);
     console.log(`${functionName}: Save properties API call finished. Response data:`, apiResponseData);
 
     // --- Handle API Response ---
