@@ -135,6 +135,23 @@ async def serve_world_icon_api(
         )
 
 
+@router.get("/favicon.ico", include_in_schema=False)
+async def get_root_favicon():
+    """
+    Handles the implicit browser request for /favicon.ico at the root.
+    Serves the actual favicon.ico from the static directory.
+    """
+    favicon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
+    if not os.path.exists(favicon_path):
+        # If the file genuinely doesn't exist, return a 404
+        logger.warning(f"Favicon not found at expected path: {favicon_path}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Favicon not found"
+        )
+    # Return the file directly with the correct media type
+    return FileResponse(favicon_path, media_type="image/x-icon")
+
+
 # --- Catch-all Route ---
 @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
 async def catch_all_api_route(
