@@ -198,7 +198,9 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_command_send(self, server_name: str, command: str, result: Dict[str, Any]):
+    def after_command_send(
+        self, server_name: str, command: str, result: Dict[str, Any]
+    ):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a command has been sent to a server's console.
 
@@ -289,7 +291,10 @@ class PluginBase(ABC):
     # --- Server Configuration Event Hooks (Allowlist, Permissions, Properties) ---
 
     def before_allowlist_change(
-        self, server_name: str, players_to_add: List[Dict[str, Any]], players_to_remove: List[str]
+        self,
+        server_name: str,
+        players_to_add: List[Dict[str, Any]],
+        players_to_remove: List[str],
     ):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a server's allowlist (``allowlist.json``) is modified.
@@ -324,7 +329,9 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_permission_change(self, server_name: str, xuid: str, result: Dict[str, Any]):
+    def after_permission_change(
+        self, server_name: str, xuid: str, result: Dict[str, Any]
+    ):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to change a player's permission level completes.
 
@@ -540,7 +547,9 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_service_change(self, server_name: str, action: str, result: Dict[str, Any], **kwargs: Any):
+    def after_service_change(
+        self, server_name: str, action: str, result: Dict[str, Any], **kwargs: Any
+    ):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to change a system service related to a server or Web UI completes.
 
