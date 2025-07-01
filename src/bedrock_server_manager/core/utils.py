@@ -9,8 +9,6 @@ or API endpoints.
 
 Key functions include:
 - :func:`core_validate_server_name_format`: Validates server names against a regex.
-- :func:`core_execute_screen_attach`: A Linux-specific utility to attach to a
-  ``screen`` session.
 
 .. warning::
     The functions :func:`check_server_status` and :func:`update_server_status_in_config`
@@ -301,80 +299,3 @@ def update_server_status_in_config(
         raise FileOperationError(
             f"Unexpected error updating server status config for '{server_name}': {e}"
         ) from e
-
-
-# --- Screen Attach ---
-def core_execute_screen_attach(screen_session_name: str) -> Tuple[bool, str]:
-    """
-    Executes the command to attach to a Linux ``screen`` session (Linux-specific).
-
-    This function is a wrapper around the ``screen -r <session_name>`` command.
-    It checks if the ``screen`` utility is installed and handles common outcomes,
-    such as the session not being found.
-
-    Args:
-        screen_session_name (str): The name of the screen session to attach to
-            (e.g., "bedrock-servername").
-
-    Returns:
-        Tuple[bool, str]: A tuple where the first element is a boolean
-        indicating success, and the second is a string containing a descriptive
-        message or error details.
-
-    Raises:
-        :class:`~.error.SystemError`: If the function is called on an operating
-            system other than Linux.
-        :class:`~.error.CommandNotFoundError`: If the ``screen`` command is not
-            found in the system's PATH.
-    """
-    if platform.system() != "Linux":
-        raise SystemError("Screen session attachment is only supported on Linux.")
-
-    screen_cmd = shutil.which("screen")
-    if not screen_cmd:
-        raise CommandNotFoundError(
-            "screen", "'screen' command not found. Is the 'screen' package installed?"
-        )
-
-    command = [screen_cmd, "-r", screen_session_name]
-    logger.debug(f"Executing screen attach command: {' '.join(command)}")
-    try:
-        # This function only triggers the command; actual interaction happens
-        # in the user's terminal, not through this process's I/O.
-        process = subprocess.run(
-            command, check=True, capture_output=True, text=True, timeout=10
-        )
-        output = process.stdout.strip() + (
-            ("\n" + process.stderr.strip()) if process.stderr.strip() else ""
-        )
-        logger.info(
-            f"Screen attach command executed for '{screen_session_name}'. Output: {output}"
-        )
-        return (
-            True,
-            f"Attach command executed for session '{screen_session_name}'.",
-        )
-    except subprocess.CalledProcessError as e:
-        stderr_lower = (e.stderr or "").lower()
-        if (
-            "no screen session found" in stderr_lower
-            or "there is no screen to be resumed" in stderr_lower
-        ):
-            msg = f"Screen session '{screen_session_name}' not found."
-            logger.warning(msg)
-            return False, msg
-        else:
-            msg = f"Failed to attach to screen '{screen_session_name}'. Error: {e.stderr or 'Unknown error'}"
-            logger.error(msg, exc_info=True)
-            return False, msg
-    except subprocess.TimeoutExpired:
-        msg = (
-            f"Timeout while trying to attach to screen session '{screen_session_name}'."
-        )
-        logger.error(msg)
-        return False, msg
-    except FileNotFoundError:  # Safeguard; should be caught by shutil.which
-        raise CommandNotFoundError(
-            "screen",
-            message="'screen' command not found unexpectedly during execution.",
-        )
