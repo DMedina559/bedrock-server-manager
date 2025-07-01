@@ -1,4 +1,16 @@
 # bedrock_server_manager/web/templating.py
+"""Manages the Jinja2 templating environment for the FastAPI web application.
+
+This module provides functions to configure and access a global
+:class:`fastapi.templating.Jinja2Templates` instance. This instance is
+used throughout the web application for rendering HTML templates.
+
+It allows setting global variables (e.g., application name, version) and
+custom filters (e.g., ``basename``) that are available to all templates.
+The :func:`~.configure_templates` function should be called once during
+application startup, and :func:`~.get_templates` is used by route handlers
+to obtain the configured templates object.
+"""
 import os
 from fastapi.templating import Jinja2Templates
 from typing import Optional
@@ -11,12 +23,19 @@ templates: Optional[Jinja2Templates] = None
 
 def configure_templates(templates_instance: Jinja2Templates):
     """
-    Configures the Jinja2Templates instance with global variables and filters.
-    This function should be called exactly once from the main application entry point (e.g., main.py)
-    to set up the single, shared templates instance for the entire application.
+    Configures the global Jinja2Templates instance with global variables and filters.
+
+    This function should be called exactly once from the main application startup
+    sequence (e.g., in ``main.py`` or ``app.py``) to initialize and prepare the
+    shared :class:`~fastapi.templating.Jinja2Templates` instance for the entire web application.
+
+    It sets global variables like application name, version, splash text, and
+    adds custom filters like ``os.path.basename`` (as "basename").
 
     Args:
-        templates_instance (Jinja2Templates): The Jinja2Templates instance created in the main app.
+        templates_instance (:class:`~fastapi.templating.Jinja2Templates`): The
+            :class:`~fastapi.templating.Jinja2Templates` instance that was
+            created in the main application setup.
     """
     global templates
 
@@ -33,14 +52,18 @@ def configure_templates(templates_instance: Jinja2Templates):
 def get_templates() -> Jinja2Templates:
     """
     Provides access to the globally configured Jinja2Templates instance.
-    This function should be used by routers and other modules that need to render templates.
+
+    This function should be used by FastAPI route handlers and other parts of
+    the web application that need to render HTML templates.
 
     Returns:
-        Jinja2Templates: The configured Jinja2Templates instance.
+        :class:`~fastapi.templating.Jinja2Templates`: The configured global
+        Jinja2Templates instance.
 
     Raises:
-        RuntimeError: If the templates instance has not been configured yet (i.e.,
-                      configure_templates() was not called from the main app).
+        RuntimeError: If the templates instance has not been configured yet
+            (i.e., :func:`~.configure_templates` was not called during
+            application startup).
     """
     if templates is None:
 

@@ -1,3 +1,18 @@
+# bedrock_server_manager/web/routers/server_actions.py
+"""
+FastAPI router for server lifecycle actions and command execution.
+
+This module defines API endpoints for managing the operational state of
+Bedrock server instances, including starting, stopping, restarting, updating,
+and deleting servers. It also provides an endpoint for sending commands to
+a running server.
+
+Most long-running operations (start, stop, restart, update, delete) are
+executed as background tasks to provide immediate API responses.
+User authentication and server existence are typically verified using
+FastAPI dependencies.
+"""
+
 import logging
 from typing import Dict, Any, Optional
 
@@ -29,12 +44,16 @@ router = APIRouter(tags=["Server Actions API"])
 
 # --- Pydantic Models ---
 class CommandPayload(BaseModel):
+    """Request model for sending a command to a server."""
+
     command: str = Field(
         ..., min_length=1, description="The command to send to the server."
     )
 
 
 class ActionResponse(BaseModel):
+    """Generic response model for actions, indicating status and message."""
+
     status: str = "success"
     message: str
     details: Optional[Any] = None
@@ -44,6 +63,14 @@ class ActionResponse(BaseModel):
 def log_background_task_result(
     task_name: str, server_name: str, result: Dict[str, Any]
 ):
+    """Logs the outcome of a background server operation.
+
+    Args:
+        task_name (str): The name of the background task (e.g., "start_server").
+        server_name (str): The name of the server the task was performed on.
+        result (Dict[str, Any]): The result dictionary returned by the API function
+            called by the background task. Expected to have a "status" key.
+    """
     if result.get("status") == "success":
         logger.info(
             f"Background task '{task_name}' for server '{server_name}': Succeeded. {result.get('message')}"
@@ -55,6 +82,15 @@ def log_background_task_result(
 
 
 def server_start_task(server_name: str):
+    """Background task to start a server.
+
+    Calls :func:`bedrock_server_manager.api.server.start_server` in detached mode
+    and logs the result using :func:`.log_background_task_result`.
+    Catches and logs exceptions during the task execution.
+
+    Args:
+        server_name (str): The name of the server to start.
+    """
     logger.info(f"Background task initiated: Starting server '{server_name}'.")
     try:
         result = server_api.start_server(server_name, mode="detached")
@@ -88,6 +124,13 @@ async def start_server_route(
 ):
     """
     Initiates starting a specific Bedrock server instance in the background.
+
+    The server start operation is performed as a background task.
+    This endpoint immediately returns a 202 Accepted response indicating
+    the task has been queued.
+
+    - **server_name**: Path parameter, validated by `validate_server_exists` dependency.
+    - Requires authentication.
     """
     identity = current_user.get("username", "Unknown")
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
@@ -100,6 +143,15 @@ async def start_server_route(
 
 
 def server_stop_task(server_name: str):
+    """Background task to stop a server.
+
+    Calls :func:`bedrock_server_manager.api.server.stop_server`
+    and logs the result using :func:`.log_background_task_result`.
+    Catches and logs exceptions during the task execution.
+
+    Args:
+        server_name (str): The name of the server to stop.
+    """
     logger.info(f"Background task initiated: Stopping server '{server_name}'.")
     try:
         result = server_api.stop_server(server_name)
@@ -144,6 +196,15 @@ async def stop_server_route(
 
 
 def server_restart_task(server_name: str):
+    """Background task to restart a server.
+
+    Calls :func:`bedrock_server_manager.api.server.restart_server`
+    and logs the result using :func:`.log_background_task_result`.
+    Catches and logs exceptions during the task execution.
+
+    Args:
+        server_name (str): The name of the server to restart.
+    """
     logger.info(f"Background task initiated: Restarting server '{server_name}'.")
     try:
         result = server_api.restart_server(server_name)
@@ -176,6 +237,12 @@ async def restart_server_route(
 ):
     """
     Initiates restarting a specific Bedrock server instance in the background.
+
+    The server restart operation (stop followed by start) is performed as a
+    background task. This endpoint immediately returns a 202 Accepted response.
+
+    - **server_name**: Path parameter, validated by `validate_server_exists` dependency.
+    - Requires authentication.
     """
     identity = current_user.get("username", "Unknown")
     logger.info(
@@ -271,6 +338,15 @@ async def send_command_route(
 
 
 def server_update_task(server_name: str):
+    """Background task to update a server.
+
+    Calls :func:`bedrock_server_manager.api.server_install_config.update_server`
+    and logs the result using :func:`.log_background_task_result`.
+    Catches and logs exceptions during the task execution.
+
+    Args:
+        server_name (str): The name of the server to update.
+    """
     logger.info(f"Background task initiated: Updating server '{server_name}'.")
     try:
         result = server_install_config.update_server(server_name)
@@ -315,6 +391,15 @@ async def update_server_route(
 
 
 def server_delete_task(server_name: str):
+    """Background task to delete a server's data.
+
+    Calls :func:`bedrock_server_manager.api.server.delete_server_data`
+    and logs the result using :func:`.log_background_task_result`.
+    Catches and logs exceptions during the task execution.
+
+    Args:
+        server_name (str): The name of the server whose data is to be deleted.
+    """
     logger.info(f"Background task initiated: Deleting server data for '{server_name}'.")
     try:
         result = server_api.delete_server_data(server_name)
