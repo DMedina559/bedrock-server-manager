@@ -2,18 +2,19 @@
 """Manages plugin discovery, loading, configuration, lifecycle, and event dispatch.
 
 This module is central to the plugin architecture of the Bedrock Server Manager.
-The `PluginManager` class handles all aspects of plugin interaction, including:
-  - Locating plugin files in designated directories.
-  - Reading and writing plugin configurations (e.g., enabled status, metadata)
-    from/to a JSON file (`plugins.json`).
-  - Validating plugins (e.g., ensuring they subclass `PluginBase` and have a
-    `version` attribute).
-  - Dynamically loading valid and enabled plugins.
-  - Managing the lifecycle of plugins (e.g., calling `on_load`, `on_unload`).
-  - Dispatching application-wide events to all loaded plugins.
-  - Facilitating custom inter-plugin event communication. Custom event names
-    must follow a 'namespace:event_name' format (e.g., 'myplugin:data_updated').
-  - Providing a mechanism to reload all plugins.
+The :class:`.PluginManager` class handles all aspects of plugin interaction, including:
+
+- Locating plugin files in designated directories.
+- Reading and writing plugin configurations (e.g., enabled status, metadata)
+  from/to a JSON file (typically ``plugins.json``).
+- Validating plugins (e.g., ensuring they subclass
+  :class:`~.plugin_base.PluginBase` and have a ``version`` attribute).
+- Dynamically loading valid and enabled plugins.
+- Managing the lifecycle of plugins (e.g., calling ``on_load``, ``on_unload`` event hooks).
+- Dispatching application-wide events to all loaded plugins.
+- Facilitating custom inter-plugin event communication. Custom event names
+  must follow a 'namespace:event_name' format (e.g., ``myplugin:data_updated``).
+- Providing a mechanism to reload all plugins.
 """
 import os
 import importlib.util
@@ -53,14 +54,17 @@ class PluginManager:
     """Manages the discovery, loading, configuration, and lifecycle of all plugins.
 
     This class is the core of the plugin system. It scans for plugins,
-    manages their configuration in `plugins.json`, loads enabled plugins,
+    manages their configuration in ``plugins.json``, loads enabled plugins,
     and dispatches various events to them.
     """
 
     def __init__(self):
         """Initializes the PluginManager.
 
-        Sets up plugin directories, configuration paths, and ensures directories exist.
+        Sets up plugin directories (user and default), determines the path for
+        ``plugins.json``, initializes internal state for plugin configurations,
+        loaded plugin instances, and custom event listeners. It also ensures
+        that the configured plugin directories exist on the filesystem.
         """
         self.settings = settings
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
@@ -88,14 +92,16 @@ class PluginManager:
         logger.info("PluginManager initialized.")
 
     def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations from the `plugins.json` file.
+        """Loads plugin configurations from the ``plugins.json`` file.
 
         If the file doesn't exist or is malformed, it returns an empty dictionary,
-        prompting a rebuild of the configuration.
+        prompting a rebuild of the configuration by methods like
+        :meth:`._synchronize_config_with_disk`.
 
         Returns:
-            Dict[str, Dict[str, Any]]: The loaded plugin configuration data.
-            Returns an empty dict if loading fails or file not found.
+            Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
+            mapping plugin names to their configuration dictionaries.
+            Returns an empty dict if loading fails or the file is not found.
         """
         if not self.config_path.exists():
             logger.debug(
@@ -124,9 +130,10 @@ class PluginManager:
             return {}
 
     def _save_config(self):
-        """Saves the current in-memory plugin configuration to `plugins.json`.
+        """Saves the current in-memory plugin configuration to ``plugins.json``.
 
-        The configuration is saved in a human-readable JSON format.
+        The configuration (``self.plugin_config``) is saved in a human-readable
+        JSON format, pretty-printed with indentation and sorted keys.
         """
         logger.debug(
             f"Attempting to save plugin configuration to '{self.config_path}'."
@@ -146,16 +153,17 @@ class PluginManager:
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches all configured plugin directories for a specific plugin file.
 
-        It looks for a Python file named `{plugin_name}.py`. The search order
-        is determined by the order of directories in `self.plugin_dirs`.
+        It looks for a Python file named ``{plugin_name}.py``. The search order
+        is determined by the order of directories in ``self.plugin_dirs``
+        (user plugins typically take precedence over default plugins).
         The first match found is returned.
 
         Args:
-            plugin_name (str): The name of the plugin (module name without .py).
+            plugin_name (str): The name of the plugin (module name without ``.py``).
 
         Returns:
-            Optional[Path]: The `Path` object to the plugin file if found,
-            otherwise `None`.
+            Optional[Path]: The :class:`pathlib.Path` object to the plugin file
+            if found, otherwise ``None``.
         """
         logger.debug(
             f"Searching for plugin file for '{plugin_name}' in {self.plugin_dirs}."
@@ -171,19 +179,20 @@ class PluginManager:
         return None
 
     def _get_plugin_class_from_path(self, path: Path) -> Optional[Type[PluginBase]]:
-        """Dynamically loads a Python module from the given path and finds the `PluginBase` subclass.
+        """Dynamically loads a Python module and finds the :class:`.PluginBase` subclass.
 
-        It imports the module specified by `path`, then inspects its members to
-        find a class that is a subclass of `PluginBase` but is not `PluginBase`
-        itself.
+        It imports the Python module specified by `path` using :mod:`importlib.util`.
+        It then inspects the module's members to find a class that is a subclass
+        of :class:`.PluginBase` but is not :class:`.PluginBase` itself.
 
         Args:
-            path (Path): The `Path` object pointing to the plugin's Python file.
+            path (Path): The :class:`pathlib.Path` object pointing to the plugin's
+                Python file.
 
         Returns:
-            Optional[Type[PluginBase]]: The `PluginBase` subclass found in the
-            module, or `None` if no such class is found or if an error occurs
-            during loading/inspection.
+            Optional[Type[:class:`.PluginBase`]]: The :class:`.PluginBase` subclass
+            found in the module, or ``None`` if no such class is found or if an
+            error occurs during module loading or class inspection.
         """
         plugin_name = path.stem
         logger.debug(f"Attempting to load module '{plugin_name}' from path: {path}")
@@ -220,32 +229,43 @@ class PluginManager:
         return None
 
     def _synchronize_config_with_disk(self):
-        """Scans plugin directories, validates plugins, extracts metadata, and updates `plugins.json`.
+        """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
 
-        This crucial method ensures the `plugins.json` configuration file is
-        consistent with the actual plugin files found on disk. It performs:
-        1.  Loading of the existing `plugins.json`.
-        2.  Scanning all `self.plugin_dirs` for potential plugin files (`*.py`
-            not starting with `_`).
-        3.  For each potential plugin:
-            a.  Attempts to load its class using `_get_plugin_class_from_path`.
-            b.  Validates the plugin class:
-                i.  Must be a `PluginBase` subclass.
-                ii. Must have a non-empty `version` class attribute.
-            c.  If valid, extracts metadata (description from docstring, version).
-            d.  Updates `self.plugin_config`:
-                i.  Adds new valid plugins (defaulting to enabled if in
-                    `DEFAULT_ENABLED_PLUGINS`).
-                ii. Updates metadata (description, version) for existing plugins if changed.
-                iii.Migrates old boolean config entries to the new dictionary format.
-                iv. Ensures essential keys like 'enabled', 'description', 'version' exist.
-        4.  Removes entries from `self.plugin_config` for plugins that are no
-            longer found on disk or have become invalid (e.g., missing version).
-        5.  If any changes were made to `self.plugin_config`, it saves the updated
-            configuration back to `plugins.json` using `_save_config()`.
+        This crucial method ensures the ``plugins.json`` configuration file is
+        consistent with the actual plugin files found on disk. It performs the
+        following steps:
+
+        1.  Loads the existing ``plugins.json`` (via :meth:`._load_config`).
+        2.  Scans all directories in ``self.plugin_dirs`` for potential plugin
+            files (``.py`` files not starting with an underscore).
+        3.  For each potential plugin file:
+            a.  Attempts to load its main plugin class using :meth:`._get_plugin_class_from_path`.
+            b.  Validates the loaded plugin class:
+                i.  It must be a subclass of :class:`.PluginBase`.
+                ii. It must have a non-empty ``version`` class attribute.
+            c.  If valid, extracts metadata: description (from the class's docstring)
+                and the ``version`` attribute.
+            d.  Updates the in-memory ``self.plugin_config``:
+                i.  New valid plugins are added. Their initial "enabled" state
+                    is determined by whether their name is in
+                    :const:`~bedrock_server_manager.config.const.DEFAULT_ENABLED_PLUGINS`.
+                ii. Metadata (description, version) for existing plugin entries
+                    in the config is updated if the on-disk plugin has changed.
+                iii. Handles migration of older boolean-based config entries for a
+                     plugin to the newer dictionary format (containing "enabled",
+                     "description", "version").
+                iv. Ensures essential keys ("enabled", "description", "version")
+                     are present in each plugin's configuration entry.
+        4.  Removes entries from ``self.plugin_config`` for any plugins that were
+            previously in the configuration but are no longer found on disk or
+            have become invalid (e.g., missing the ``version`` attribute).
+        5.  If any changes were made to ``self.plugin_config`` during this process,
+            the updated configuration is saved back to ``plugins.json`` using
+            :meth:`._save_config`.
 
         This method is vital for maintaining an accurate and up-to-date registry
-        of discoverable plugins and their states.
+        of discoverable plugins and their configured states. It's typically called
+        before loading plugins.
         """
         logger.info("Starting synchronization of plugin configuration with disk.")
         self.plugin_config = self._load_config()
@@ -395,19 +415,28 @@ class PluginManager:
         """Discovers, validates, and loads all enabled plugins.
 
         This method orchestrates the entire plugin loading process:
-        1.  Calls `_synchronize_config_with_disk()` to ensure the plugin
-            configuration (`self.plugin_config`) is up-to-date with files
-            on disk and that all entries are valid.
-        2.  Clears any previously loaded plugin instances from `self.plugins`.
-            This is important for supporting the `reload()` functionality.
-        3.  Iterates through the synchronized `self.plugin_config`:
-            a.  If a plugin is marked as `enabled` and has a valid `version`:
-                i.  Finds the plugin's file path using `_find_plugin_path()`.
-                ii. Loads the plugin class from the file using `_get_plugin_class_from_path()`.
-                iii.If successful, instantiates the plugin class, providing it with
-                    its name, a `PluginAPI` instance, and a dedicated logger.
-                iv. Appends the new plugin instance to `self.plugins`.
-                v.  Dispatches the `on_load` event to the newly loaded plugin instance.
+
+        1.  Calls :meth:`._synchronize_config_with_disk` to ensure the plugin
+            configuration (``self.plugin_config``) is up-to-date with files
+            on disk and that all plugin entries are valid.
+        2.  Clears any previously loaded plugin instances from ``self.plugins``.
+            This is important for supporting the :meth:`.reload` functionality.
+        3.  Iterates through the synchronized ``self.plugin_config``:
+            a.  If a plugin is marked as ``enabled`` in its configuration and has
+                a valid ``version``:
+                i.  Finds the plugin's file path using :meth:`._find_plugin_path`.
+                ii. Loads the plugin class from the file using
+                    :meth:`._get_plugin_class_from_path`.
+                iii.If class loading is successful, instantiates the plugin class.
+                    The instance is provided with its name, a
+                    :class:`.api_bridge.PluginAPI` instance (for core interaction),
+                    and a dedicated :class:`logging.Logger` instance.
+                iv. Appends the new plugin instance to the ``self.plugins`` list.
+                v.  Dispatches the ``on_load`` event to the newly loaded plugin
+                    instance via :meth:`.dispatch_event`.
+
+        Errors during the loading or instantiation of individual plugins are logged,
+        and the process continues with other plugins.
         """
         logger.info("Starting plugin loading process...")
         self._synchronize_config_with_disk()
@@ -488,7 +517,16 @@ class PluginManager:
         )
 
     def _is_valid_custom_event_name(self, event_name: str) -> bool:
-        """Checks if the custom event name follows the 'namespace:event_name' format."""
+        """Checks if a custom event name follows the 'namespace:event_name' format.
+
+        Args:
+            event_name (str): The custom event name to validate.
+
+        Returns:
+            bool: ``True`` if the `event_name` is a string and matches the
+            "namespace:event_name" pattern (where both parts are non-empty),
+            ``False`` otherwise.
+        """
         if not isinstance(event_name, str):
             return False
         parts = event_name.split(":", 1)
@@ -505,9 +543,10 @@ class PluginManager:
 
         Args:
             event_name (str): The name of the custom event to listen for.
-                Must be in the format 'namespace:event_name'.
+                Must be in the format 'namespace:event_name' (e.g., ``myplugin:custom_signal``).
+                Validation is performed by :meth:`._is_valid_custom_event_name`.
             callback (Callable): The function/method in the listening plugin
-                that will be called when the event is triggered.
+                that will be called when the specified event is triggered.
             listening_plugin_name (str): The name of the plugin registering
                 the listener. Used for logging and context.
         """
@@ -543,17 +582,23 @@ class PluginManager:
     ):
         """Triggers a custom event, invoking all registered listener callbacks.
 
-        This method manages the dispatch of custom events sent by plugins.
-        It includes re-entrancy protection using `_custom_event_context` to
-        prevent infinite loops if a listener, in turn, triggers the same event.
+        This method manages the dispatch of custom events sent by plugins (or via
+        the external API trigger). It includes re-entrancy protection using
+        ``_custom_event_context`` (a :class:`threading.local` stack) to prevent
+        infinite loops if a listener, in turn, triggers the same event.
+
+        The ``_triggering_plugin`` keyword argument, containing the name of the
+        plugin (or "external_api_trigger") that initiated the event, is automatically
+        added to the `kwargs` passed to listener callbacks.
 
         Args:
             event_name (str): The name of the custom event being triggered.
-                Must be in the format 'namespace:event_name'.
+                Must be in the format 'namespace:event_name' (e.g., ``myplugin:data_updated``).
+                Validated by :meth:`._is_valid_custom_event_name`.
             triggering_plugin_name (str): The name of the plugin that initiated
-                this event. This is passed to listeners as `_triggering_plugin`.
-            *args: Positional arguments to pass to the listener callbacks.
-            **kwargs: Keyword arguments to pass to the listener callbacks.
+                this event.
+            *args (Any): Positional arguments to pass to the listener callbacks.
+            **kwargs (Any): Keyword arguments to pass to the listener callbacks.
         """
         if not self._is_valid_custom_event_name(event_name):
             logger.error(
@@ -610,12 +655,15 @@ class PluginManager:
 
         This method provides a way to refresh the plugin system without restarting
         the entire application. It involves:
-        1.  Dispatching the `on_unload` event to all currently loaded plugins.
-        2.  Clearing all registered custom event listeners (as the plugins that
-            registered them are being unloaded).
-        3.  Calling `load_plugins()` to re-run the discovery, synchronization,
+
+        1.  Dispatching the ``on_unload`` event to all currently loaded plugins
+            (via :meth:`.dispatch_event`).
+        2.  Clearing all registered custom event listeners from
+            ``self.custom_event_listeners`` (as the plugins that registered
+            them are being unloaded).
+        3.  Calling :meth:`.load_plugins` to re-run the discovery, synchronization,
             and loading process for all plugins based on the current disk state
-            and configuration.
+            and ``plugins.json`` configuration.
         """
         logger.info("--- Starting Full Plugin Reload Process ---")
 
@@ -651,15 +699,18 @@ class PluginManager:
         """Dispatches a single standard application event to a specific plugin instance.
 
         This method attempts to call the method corresponding to `event` on the
-        `target_plugin` instance, passing `*args` and `**kwargs`.
+        `target_plugin` instance, passing ``*args`` and ``**kwargs``.
+        If the `target_plugin` does not have a method for the specified `event`,
+        it is logged at DEBUG level and skipped. Any exceptions raised by the
+        plugin's event handler are caught and logged as errors.
 
         Args:
-            target_plugin (PluginBase): The plugin instance to which the event
+            target_plugin (:class:`.PluginBase`): The plugin instance to which the event
                 should be dispatched.
             event (str): The name of the event method to call on the plugin
                 (e.g., "on_load", "before_server_start").
-            *args: Positional arguments to pass to the event handler method.
-            **kwargs: Keyword arguments to pass to the event handler method.
+            *args (Any): Positional arguments to pass to the event handler method.
+            **kwargs (Any): Keyword arguments to pass to the event handler method.
         """
         if hasattr(target_plugin, event):
             handler_method = getattr(target_plugin, event)
@@ -681,9 +732,21 @@ class PluginManager:
             )
 
     def _generate_event_key(self, event_name: str, **kwargs) -> str:
-        """
-        Generates a unique key for an event instance based on its name and
-        identifying keyword arguments specified in EVENT_IDENTITY_KEYS.
+        """Generates a unique key for an event instance for re-entrancy checking.
+
+        The key is based on the event's name and specific identifying keyword
+        arguments defined in the
+        :const:`~bedrock_server_manager.config.const.EVENT_IDENTITY_KEYS`
+        mapping. If an event is not in this mapping or has no identity keys
+        defined, the event name itself is used as the key.
+
+        Args:
+            event_name (str): The base name of the event.
+            **kwargs (Any): Keyword arguments passed with the event, some of which
+                might be used for forming the unique key.
+
+        Returns:
+            str: A string key representing this specific event instance.
         """
         identity_key_names = EVENT_IDENTITY_KEYS.get(event_name)
 
@@ -701,20 +764,25 @@ class PluginManager:
 
         return "|".join(key_parts)
 
-    def trigger_event(self, event: str, *args, **kwargs):
+    def trigger_event(self, event: str, *args: Any, **kwargs: Any):
         """Triggers a standard application event on all loaded plugins.
 
         This method iterates through all currently loaded and active plugins
-        and calls `dispatch_event()` for each one. It includes a granular
-        re-entrancy protection using `_event_context` and `EVENT_IDENTITY_KEYS`
-        to prevent infinite loops if an event handler triggers an action that
-        causes the same event instance to be dispatched again.
+        (in ``self.plugins``) and calls :meth:`.dispatch_event` for each one.
+        It includes a granular re-entrancy protection mechanism using
+        ``_event_context`` (a :class:`threading.local` stack) and event instance keys
+        generated by :meth:`._generate_event_key` (based on
+        :const:`~bedrock_server_manager.config.const.EVENT_IDENTITY_KEYS`).
+        This prevents infinite loops if an event handler triggers an action that
+        causes the same specific event instance to be dispatched again within the
+        same call stack.
 
         Args:
             event (str): The name of the event to trigger (e.g., "before_server_start").
-            *args: Positional arguments to pass to each plugin's event handler.
-            **kwargs: Keyword arguments to pass to each plugin's event handler.
-                       Some of these may be used to identify the event instance.
+            *args (Any): Positional arguments to pass to each plugin's event handler.
+            **kwargs (Any): Keyword arguments to pass to each plugin's event handler.
+                       Some of these may be used by :meth:`._generate_event_key`
+                       to identify the event instance.
         """
         if not hasattr(_event_context, "stack"):
             _event_context.stack = []
@@ -770,15 +838,18 @@ class PluginManager:
     def trigger_guarded_event(self, event: str, *args, **kwargs):
         """Triggers a standard application event only if not in a guarded child process.
 
-        This method checks for the presence of the `GUARD_VARIABLE` environment
-        variable. If this variable is set (indicating the current process might
-        be a specially managed child process where certain events should not occur),
-        the event dispatch is skipped. Otherwise, it calls `trigger_event()`.
+        This method checks for the presence of the
+        :const:`~bedrock_server_manager.config.const.GUARD_VARIABLE` environment
+        variable (using ``os.environ.get``). If this variable is set (indicating
+        the current process might be a specially managed child process, like one
+        launched for detached server operation, where certain global events should
+        not be re-triggered), the event dispatch is skipped. Otherwise, it calls
+        :meth:`.trigger_event`.
 
         Args:
             event (str): The name of the event to trigger.
-            *args: Positional arguments for the event handler.
-            **kwargs: Keyword arguments for the event handler.
+            *args (Any): Positional arguments for the event handler.
+            **kwargs (Any): Keyword arguments for the event handler.
         """
         if os.environ.get(GUARD_VARIABLE):
             logger.debug(
