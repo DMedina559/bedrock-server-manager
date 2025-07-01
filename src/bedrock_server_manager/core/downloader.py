@@ -38,6 +38,7 @@ from typing import Tuple, Optional, Set
 
 # Local application imports.
 from bedrock_server_manager.core.system import base as system_base
+from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.error import (
     DownloadError,
     ExtractError,
@@ -212,7 +213,7 @@ class BedrockDownloader:
     to the server root and use forward slashes (e.g., "worlds/")."""
 
     def __init__(
-        self, settings_obj: "Settings", server_dir: str, target_version: str = "LATEST"  # type: ignore
+        self, settings_obj: Optional[Settings], server_dir: str, target_version: str = "LATEST"  # type: ignore
     ):
         """Initializes the BedrockDownloader.
 
