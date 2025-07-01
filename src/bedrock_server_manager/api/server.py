@@ -1,11 +1,19 @@
 # bedrock_server_manager/api/server.py
 """Provides API functions for managing Bedrock server instances.
 
-This module acts as the primary interface layer for server operations. It uses
-the `BedrockServer` core class to perform actions like starting, stopping, and
-configuring servers. It returns structured dictionary responses suitable for
-use by web routes, CLI commands, or other application logic. It also initializes
-and manages the plugin system.
+This module serves as a key interface layer for server-specific operations within
+the Bedrock Server Manager. It leverages the
+:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` core class
+to perform a variety of actions such as server lifecycle management (starting,
+stopping, restarting), configuration (getting/setting server-specific properties),
+and command execution.
+
+The functions within this module are designed to return structured dictionary
+responses, making them suitable for consumption by web API routes, command-line
+interface (CLI) commands, or other parts of the application. This module also
+integrates with the plugin system by exposing many of its functions as callable
+APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`)
+and by triggering various plugin events during server operations.
 """
 
 import os
@@ -53,14 +61,24 @@ logger = logging.getLogger(__name__)
 @plugin_method("get_server_setting")
 def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
     """
-    Reads any value from a server's configuration file using dot-notation.
+    Reads any value from a server's specific JSON configuration file
+    (e.g., ``<server_name>_config.json``) using dot-notation for keys.
 
     Args:
-        server_name: The name of the server.
-        key: The dot-notation key (e.g., "server_info.status", "settings.autoupdate").
+        server_name (str): The name of the server.
+        key (str): The dot-notation key to read from the server's JSON
+            configuration (e.g., "server_info.status", "settings.autoupdate",
+            "custom.my_value").
 
     Returns:
-        A dictionary with the operation status and the retrieved value.
+        Dict[str, Any]: A dictionary containing the operation result.
+        On success: ``{"status": "success", "value": <retrieved_value>}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+        The ``<retrieved_value>`` will be ``None`` if the key is not found.
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        MissingArgumentError: If `key` is empty.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -88,15 +106,27 @@ def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
 
 def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]:
     """
-    Writes any value to a server's configuration file using dot-notation.
+    Writes any value to a server's specific JSON configuration file
+    (e.g., ``<server_name>_config.json``) using dot-notation for keys.
+    Intermediate dictionaries will be created if they don't exist along the key path.
 
     Args:
-        server_name: The name of the server.
-        key: The dot-notation key to set (e.g., "server_info.status").
-        value: The new value to write.
+        server_name (str): The name of the server.
+        key (str): The dot-notation key to write to in the server's JSON
+            configuration (e.g., "server_info.status", "custom.new_setting").
+        value (Any): The new value to write. Must be JSON serializable.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, Any]: A dictionary containing the operation result.
+        On success: ``{"status": "success", "message": "Setting '<key>' updated..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        MissingArgumentError: If `key` is empty.
+        ConfigParseError: If `value` is not JSON serializable or if an
+            intermediate part of the `key` path conflicts with an existing
+            non-dictionary item.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -128,15 +158,26 @@ def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]
 @plugin_method("set_server_custom_value")
 def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str, Any]:
     """
-    Writes a value to the 'custom' section of a server's config.
+    Writes a key-value pair to the 'custom' section of a server's specific
+    JSON configuration file (e.g., ``<server_name>_config.json``).
+    This is a sandboxed way for plugins or users to store arbitrary data
+    associated with a server. The key will be stored as ``custom.<key>``.
 
     Args:
-        server_name: The name of the server.
-        key: The key within the 'custom' section to set.
-        value: The new value to write.
+        server_name (str): The name of the server.
+        key (str): The key (string) for the custom value within the 'custom' section.
+            Cannot be empty.
+        value (Any): The value to write. Must be JSON serializable.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, Any]: A dictionary containing the operation result.
+        On success: ``{"status": "success", "message": "Custom value '<key>' updated..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        MissingArgumentError: If `key` is empty.
+        ConfigParseError: If `value` is not JSON serializable.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -168,13 +209,22 @@ def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str,
 @plugin_method("get_all_server_settings")
 def get_all_server_settings(server_name: str) -> Dict[str, Any]:
     """
-    Reads the entire configuration for a specific server.
+    Reads the entire JSON configuration for a specific server from its
+    dedicated configuration file (e.g., ``<server_name>_config.json``).
+    If the file doesn't exist, it will be created with default values.
+    Handles schema migration if an older config format is detected.
 
     Args:
-        server_name: The name of the server.
+        server_name (str): The name of the server.
 
     Returns:
-        A dictionary containing the operation status and all settings data for the server.
+        Dict[str, Any]: A dictionary containing the operation result.
+        On success: ``{"status": "success", "data": <all_settings_dict>}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        FileOperationError: If creating/reading the config directory/file fails.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -203,24 +253,38 @@ def start_server(
 ) -> Dict[str, Any]:
     """Starts the specified Bedrock server.
 
-    Autoupdating (if enabled by a plugin) is handled via the 'before_server_start'
-    plugin event. This function manages platform-specific start methods.
-    - 'direct': Runs the server in the current process (blocks until server stops).
-    - 'detached': Starts the server in the background using the OS-native
-      service manager (systemd on Linux, Windows Services on Windows) if a
-      service is configured. Otherwise, it launches a new, independent
-      background process as a fallback.
+    Triggers the ``before_server_start`` and ``after_server_start`` plugin events.
+    Manages platform-specific start methods:
+
+    -   **direct**: Runs the server directly in the current process via
+        :meth:`~.core.bedrock_server.BedrockServer.start`. This is a blocking
+        call until the server stops.
+    -   **detached**: Attempts to start the server in the background. It prioritizes
+        using the OS-native service manager (systemd on Linux, Windows Services on
+        Windows) if a service for this server is configured and active. If a
+        service is not used or fails, it falls back to launching a new,
+        independent background process via
+        :func:`~.core.system.process.launch_detached_process`.
 
     Args:
-        server_name: The name of the server to start.
-        mode: The start mode, either 'direct' or 'detached'. Defaults to 'direct'.
+        server_name (str): The name of the server to start.
+        mode (str, optional): The start mode. Can be 'direct' or 'detached'.
+            Defaults to 'direct'.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, Any]: A dictionary containing the operation result.
+        - If direct mode: ``{"status": "success", "message": "Server... (direct mode) process finished."}``
+        - If detached via service: ``{"status": "success", "message": "Server... started via <service_manager>."}``
+        - If detached via fallback: ``{"status": "success", "message": "Server... start initiated... (Launcher PID: <pid>).", "pid": <pid>}``
+        - On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
-        UserInputError: If `mode` is invalid.
+        UserInputError: If `mode` is invalid (not 'direct' or 'detached').
+        ServerStartError: If the server is not installed, already running, or if
+            :meth:`~.core.bedrock_server.BedrockServer.start` (in direct mode)
+            encounters an issue.
+        BSMError: For other application-specific errors during startup.
     """
     mode = mode.lower()
 
@@ -377,18 +441,27 @@ def start_server(
 def stop_server(server_name: str) -> Dict[str, str]:
     """Stops the specified Bedrock server.
 
-    It will attempt to use the OS-native service manager (systemd or Windows
-    Services) to stop the service if it is active. Otherwise, it performs a
-    direct stop by sending commands and terminating the process.
+    Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
+    The method prioritizes stopping via the OS-native service manager (systemd on
+    Linux, Windows Services on Windows) if the server's service is active.
+    If not managed by a service or if service stop fails, it falls back to a
+    direct stop attempt using
+    :meth:`~.core.bedrock_server.BedrockServer.stop`, which involves sending
+    a "stop" command and then potentially forcefully terminating the process.
 
     Args:
-        server_name: The name of the server to stop.
+        server_name (str): The name of the server to stop.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary containing the operation result.
+        On success: ``{"status": "success", "message": "Server... stopped successfully."}`` or
+                    ``{"status": "success", "message": "Server... stop initiated via <service_manager>."}``
+        On error (e.g., already stopped): ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        ServerStopError: If the server fails to stop after all attempts.
+        BSMError: For other application-specific errors during shutdown.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -499,20 +572,33 @@ def stop_server(server_name: str) -> Dict[str, str]:
 def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str]:
     """Restarts the specified Bedrock server by orchestrating stop and start.
 
-    If the server is already stopped, this function will simply start it.
-    If running, it will stop it, wait briefly, and then start it again in
-    detached mode.
+    This function internally calls :func:`~.stop_server` and then
+    :func:`~.start_server` (with ``mode="detached"``).
+
+    - If the server is already stopped, this function will attempt to start it
+      in 'detached' mode.
+    - If running, it will attempt to stop it (optionally sending a restart
+      message to the server if ``send_message=True``), wait briefly for the
+      stop to complete, and then start it again in 'detached' mode.
 
     Args:
-        server_name: The name of the server to restart.
-        send_message: If True, attempts to send a "restarting" message to the
-            server before stopping. Defaults to True.
+        server_name (str): The name of the server to restart.
+        send_message (bool, optional): If ``True``, attempts to send a "say Restarting server..."
+            message to the server console via
+            :meth:`~.core.bedrock_server.BedrockServer.send_command`
+            before stopping. Defaults to ``True``.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation status and a message,
+        reflecting the outcome of the start/stop operations.
+        On success: ``{"status": "success", "message": "Server... restarted successfully."}``
+        On error: ``{"status": "error", "message": "Restart failed: <reason>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        ServerStartError: If the start phase fails (from :func:`~.start_server`).
+        ServerStopError: If the stop phase fails (from :func:`~.stop_server`).
+        BSMError: For other application-specific errors.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -585,21 +671,29 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
 def send_command(server_name: str, command: str) -> Dict[str, str]:
     """Sends a command to a running Bedrock server.
 
-    The command is checked against a blacklist defined in the configuration
-    before being sent.
+    The command is checked against a blacklist (defined by
+    :const:`~bedrock_server_manager.config.blocked_commands.API_COMMAND_BLACKLIST`)
+    before being sent via
+    :meth:`~.core.bedrock_server.BedrockServer.send_command`.
+    Triggers ``before_command_send`` and ``after_command_send`` plugin events.
 
     Args:
-        server_name: The name of the server to send the command to.
-        command: The command string to send.
+        server_name (str): The name of the server to send the command to.
+        command (str): The command string to send (e.g., "list", "say Hello").
+            Cannot be empty.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: On successful command submission, returns a dictionary:
+        ``{"status": "success", "message": "Command '<command>' sent successfully."}``.
+        If an error occurs, an exception is raised instead of returning an error dictionary.
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
         MissingArgumentError: If `command` is empty.
         BlockedCommandError: If the command is in the API blacklist.
-        ServerError: For underlying server communication issues.
+        ServerNotRunningError: If the target server is not running.
+        SendCommandError: For underlying issues during command transmission (e.g., pipe errors).
+        ServerError: For other unexpected errors during the operation.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -671,21 +765,36 @@ def delete_server_data(
 ) -> Dict[str, str]:
     """Deletes all data associated with a Bedrock server.
 
-    This is a destructive operation. It will stop the server, remove its
-    system service, and delete its installation directory, configuration file,
-    and backup directory.
+    .. danger::
+        This is a **HIGHLY DESTRUCTIVE** and irreversible operation.
+
+    It calls :meth:`~.core.bedrock_server.BedrockServer.delete_all_data`, which
+    removes:
+    - The server's main installation directory.
+    - The server's JSON configuration subdirectory.
+    - The server's entire backup directory.
+    - The server's systemd user service file (Linux) or Windows Service entry.
+    - The server's PID file.
+
+    Triggers ``before_delete_server_data`` and ``after_delete_server_data`` plugin events.
 
     Args:
-        server_name: The name of the server to delete.
-        stop_if_running: If True, the server will be stopped before its data
-            is deleted. If False and the server is running, the operation
-            will likely fail due to file locks. Defaults to True.
+        server_name (str): The name of the server to delete.
+        stop_if_running (bool, optional): If ``True`` (default), the server will be
+            stopped using :func:`~.stop_server` before its data is deleted.
+            If ``False`` and the server is running, the operation will likely
+            fail due to file locks or other conflicts.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation status and a message.
+        On success: ``{"status": "success", "message": "All data for server... deleted successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        ServerStopError: If `stop_if_running` is ``True`` and the server fails to stop.
+        FileOperationError: If deleting one or more essential directories or files fails.
+        BSMError: For other application-specific errors.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")

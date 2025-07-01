@@ -1,10 +1,19 @@
 # bedrock_server_manager/api/info.py
 """Provides API functions for retrieving server-specific information.
 
-This module contains functions that wrap methods of the `BedrockServer` class
-to expose server status and details through a consistent API layer. Each
-function returns a dictionary suitable for JSON serialization, indicating the
-outcome of the request.
+This module offers read-only functions to query details about individual
+Bedrock server instances. It wraps methods of the
+:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class
+to expose information such as:
+
+- Current runtime status (:func:`~.get_server_running_status`).
+- Last known status from configuration (:func:`~.get_server_config_status`).
+- Installed server version (:func:`~.get_server_installed_version`).
+
+Each function returns a dictionary suitable for JSON serialization, indicating
+the outcome of the request and the retrieved data. These are exposed to the
+plugin system via
+:func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`.
 """
 
 import logging
@@ -28,18 +37,23 @@ def get_server_running_status(server_name: str) -> Dict[str, Any]:
     """Checks if the server process is currently running.
 
     This function queries the operating system to determine if the Bedrock
-    server process associated with the given server name is active.
+    server process associated with the given server name is active by calling
+    :meth:`~.core.bedrock_server.BedrockServer.is_running`.
 
     Args:
-        server_name: The name of the server to check.
+        server_name (str): The name of the server to check.
 
     Returns:
-        A dictionary with the result.
-        On success: `{"status": "success", "is_running": bool}`.
-        On error: `{"status": "error", "message": str}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "is_running": bool}``
+        (``is_running`` is ``True`` if the process is active, ``False`` otherwise).
+        On error: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation or
+            if `is_running` encounters a critical issue (e.g., misconfiguration).
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -74,20 +88,27 @@ def get_server_config_status(server_name: str) -> Dict[str, Any]:
     """Gets the status from the server's configuration file.
 
     This function reads the 'status' field (e.g., 'RUNNING', 'STOPPED')
-    from the server's configuration file. Note that this reflects the last
-    known state and may not match the actual process status if the server
-    crashed.
+    from the server's JSON configuration file via
+    :meth:`~.core.bedrock_server.BedrockServer.get_status_from_config`.
+    Note that this reflects the last known state written to the configuration
+    and may not match the actual live process status if the server crashed or
+    was managed externally.
 
     Args:
-        server_name: The name of the server.
+        server_name (str): The name of the server.
 
     Returns:
-        A dictionary with the result.
-        On success: `{"status": "success", "config_status": str}`.
-        On error: `{"status": "error", "message": str}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "config_status": "<status_string>"}``
+        (e.g., "RUNNING", "STOPPED", "UNKNOWN").
+        On error: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation or by
+            the underlying configuration access methods (e.g., for file I/O
+            or parsing errors).
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -122,18 +143,25 @@ def get_server_installed_version(server_name: str) -> Dict[str, Any]:
     """Gets the installed version from the server's configuration file.
 
     This function reads the 'installed_version' field from the server's
-    configuration file. If the version is not found, it returns 'UNKNOWN'.
+    JSON configuration file via
+    :meth:`~.core.bedrock_server.BedrockServer.get_version`.
+    If the version is not found or an error occurs during retrieval,
+    it typically returns 'UNKNOWN'.
 
     Args:
-        server_name: The name of the server.
+        server_name (str): The name of the server.
 
     Returns:
-        A dictionary with the result.
-        On success: `{"status": "success", "installed_version": str}`.
-        On error: `{"status": "error", "message": str}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "installed_version": "<version_string>"}``
+        (e.g., "1.20.10.01", "UNKNOWN").
+        On error: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation or by
+            the underlying configuration access methods.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")

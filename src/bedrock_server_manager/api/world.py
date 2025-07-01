@@ -1,11 +1,26 @@
 # bedrock_server_manager/api/world.py
 """Provides API functions for managing Bedrock server worlds.
 
-This module wraps methods of the `BedrockServer` class to provide high-level,
-thread-safe operations for getting world information, exporting worlds to
-`.mcworld` files, importing worlds, and resetting them. It uses a unified
-lock to prevent concurrent file operations and a lifecycle manager to
-safely stop and restart the server when required.
+This module offers a high-level interface for world-related operations on
+Bedrock server instances. It wraps methods of the
+:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class
+to facilitate tasks such as:
+
+- Retrieving the active world name (:func:`~.get_world_name`).
+- Exporting the active server world to a ``.mcworld`` archive file
+  (:func:`~.export_world`).
+- Importing a world from a ``.mcworld`` file, replacing the active world
+  (:func:`~.import_world`).
+- Resetting the active server world, prompting regeneration on next start
+  (:func:`~.reset_world`).
+
+Operations involving world file modifications (export, import, reset) are
+thread-safe using a unified lock (``_world_lock``) to prevent data corruption.
+For actions that require the server to be offline (like import or reset),
+this module utilizes the
+:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+to safely stop and restart the server. All functions are exposed to the
+plugin system.
 """
 
 import os
@@ -41,18 +56,24 @@ def get_world_name(server_name: str) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
     This function reads the `server.properties` file to get the name of the
-    directory where the world data is stored.
+    directory where the world data is stored, by calling
+    :meth:`~.core.bedrock_server.BedrockServer.get_world_name`.
 
     Args:
-        server_name: The name of the server to query.
+        server_name (str): The name of the server to query.
 
     Returns:
-        A dictionary with the operation status and the world name.
-        On success: `{"status": "success", "world_name": "..."}`.
-        On error: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "world_name": "<world_name_str>"}``.
+        On error: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation or by
+            the underlying `get_world_name` method (e.g.,
+            :class:`~.error.AppFileNotFoundError` if ``server.properties`` is missing,
+            or :class:`~.error.ConfigParseError` if ``level-name`` is missing or malformed).
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -89,19 +110,37 @@ def export_world(
 ) -> Dict[str, Any]:
     """Exports the server's currently active world to a .mcworld archive.
 
-    This operation is thread-safe. It can optionally stop the server before
-    the export and restart it afterward to ensure file consistency.
+    This operation is thread-safe due to ``_world_lock``. If `stop_start_server`
+    is ``True``, it uses the
+    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    the server is stopped during the export for file consistency, and then
+    restarted. The core world export is performed by
+    :meth:`~.core.bedrock_server.BedrockServer.export_world_directory_to_mcworld`.
+    Triggers ``before_world_export`` and ``after_world_export`` plugin events.
 
     Args:
-        server_name: The name of the server whose world will be exported.
-        export_dir: The directory to save the exported file in. If None, it
-            defaults to the application's content directory.
-        stop_start_server: If True, the server will be stopped before the
-            export and restarted after. Defaults to True.
+        server_name (str): The name of the server whose world is to be exported.
+        export_dir (Optional[str], optional): The directory to save the exported
+            ``.mcworld`` file. If ``None``, it defaults to a "worlds" subdirectory
+            within the application's global content directory (defined by
+            ``paths.content`` setting). Defaults to ``None``.
+        stop_start_server (bool, optional): If ``True``, the server will be
+            stopped before the export and restarted afterwards. Defaults to ``True``.
 
     Returns:
-        A dictionary with the operation status, the path to the exported
-        file, and a message.
+        Dict[str, Any]: A dictionary with the operation result.
+        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
+        On success: ``{"status": "success", "export_file": "<path_to_mcworld>", "message": "World '<name>' exported..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        FileOperationError: If the content directory setting (``paths.content``)
+            is missing when `export_dir` is ``None``, or for other file I/O errors
+            during export or lifecycle management.
+        BSMError: Propagates errors from underlying operations, including
+            :class:`~.error.AppFileNotFoundError` if world directory is missing,
+            :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
     """
     if not _world_lock.acquire(blocking=False):
         logger.warning(
@@ -200,14 +239,35 @@ def import_world(
     This is a destructive operation that replaces the current world. It is
     thread-safe and manages the server lifecycle to ensure data integrity.
 
+    .. warning::
+        This is a **DESTRUCTIVE** operation. The existing active world directory
+        will be deleted before the new world is imported.
+
+    If `stop_start_server` is ``True``, this function uses the
+    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    the server is stopped during the import. The core world import is performed by
+    :meth:`~.core.bedrock_server.BedrockServer.import_active_world_from_mcworld`.
+    Triggers ``before_world_import`` and ``after_world_import`` plugin events.
+
     Args:
-        server_name: The name of the server to import the world into.
-        selected_file_path: The absolute path to the .mcworld file.
-        stop_start_server: If True, the server will be stopped before the
-            import and restarted after. Defaults to True.
+        server_name (str): The name of the server to import the world into.
+        selected_file_path (str): The absolute path to the ``.mcworld`` file to import.
+        stop_start_server (bool, optional): If ``True``, the server will be
+            stopped before the import and restarted afterwards. Defaults to ``True``.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
+        On success: ``{"status": "success", "message": "World '<name>' imported..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        MissingArgumentError: If `selected_file_path` is empty.
+        FileNotFoundError: If `selected_file_path` does not exist (from implementation).
+        BSMError: Propagates errors from underlying operations, including
+            :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
+            or errors from server stop/start.
     """
     if not _world_lock.acquire(blocking=False):
         logger.warning(
@@ -291,11 +351,31 @@ def reset_world(server_name: str) -> Dict[str, str]:
     a new world based on its `server.properties` configuration. This function
     is thread-safe and manages the server lifecycle.
 
+    .. warning::
+        This is a **DESTRUCTIVE** operation. The existing active world directory
+        will be permanently removed.
+
+    This function uses the
+    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    the server is stopped before deleting the world and restarted afterwards (which
+    will trigger new world generation). The active world directory is deleted using
+    :meth:`~.core.bedrock_server.BedrockServer.delete_active_world_directory`.
+    Triggers ``before_world_reset`` and ``after_world_reset`` plugin events.
+
     Args:
-        server_name: The name of the server whose world will be reset.
+        server_name (str): The name of the server whose world is to be reset.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
+        On success: ``{"status": "success", "message": "World '<name>' reset successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        BSMError: Propagates errors from underlying operations, including
+            :class:`~.error.FileOperationError` from deletion, errors determining
+            the world name, or errors from server stop/start.
     """
     if not _world_lock.acquire(blocking=False):
         logger.warning(

@@ -1,9 +1,27 @@
 # bedrock_server_manager/api/server_install_config.py
-"""Provides API functions for server installation, updates, and configuration.
+"""Provides API functions for server installation, updates, and detailed configuration.
 
-This module orchestrates calls to the `BedrockServer` class to manage server
-files and settings. It handles operations related to installation, updates,
-`server.properties`, `allowlist.json`, and `permissions.json`.
+This module serves as an interface for managing the setup and fine-grained
+configuration of Bedrock server instances. It primarily orchestrates calls to the
+:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class to
+handle operations related to:
+
+- Server software lifecycle:
+    - :func:`~.install_new_server`: Installation of new server instances.
+    - :func:`~.update_server`: Updating existing servers to target versions.
+- Configuration file management:
+    - ``server.properties``: Reading and modifying server game settings via
+      :func:`~.get_server_properties_api` and :func:`~.modify_server_properties`.
+    - ``allowlist.json``: Managing the player allowlist through functions like
+      :func:`~.add_players_to_allowlist_api`, :func:`~.get_server_allowlist_api`,
+      and :func:`~.remove_players_from_allowlist`.
+    - ``permissions.json``: Configuring player operator levels via
+      :func:`~.configure_player_permission` and :func:`~.get_server_permissions_api`.
+- Validation:
+    - :func:`~.validate_server_property_value`: A helper to check server property values.
+
+Functions in this module typically return structured dictionary responses suitable for
+use by web routes or CLI commands and integrate with the plugin system for extensibility.
 """
 import os
 import logging
@@ -41,17 +59,30 @@ def add_players_to_allowlist_api(
 ) -> Dict[str, Any]:
     """Adds new players to the allowlist for a specific server.
 
-    This function updates the `allowlist.json` file. If the server is
-    running, it will attempt to reload the allowlist via a server command.
+    This function updates the server's ``allowlist.json`` file by calling
+    :meth:`~.core.bedrock_server.BedrockServer.add_to_allowlist`.
+    If the server is running, the underlying BedrockServer method typically
+    attempts to reload the allowlist via a server command.
+    Triggers ``before_allowlist_change`` and ``after_allowlist_change`` plugin events.
 
     Args:
-        server_name: The name of the server to modify.
-        new_players_data: A list of player dictionaries to add. Each dictionary
-            should contain at least a 'name' and 'xuid'.
+        server_name (str): The name of the server to modify.
+        new_players_data (List[Dict[str, Any]]): A list of player dictionaries
+            to add. Each dictionary **must** contain a "name" key (str).
+            It can optionally include "xuid" (str) and "ignoresPlayerLimit" (bool,
+            defaults to ``False`` if not provided).
 
     Returns:
-        A dictionary with the operation status, a message, and the count of
-        players added.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Successfully added <n> new players...", "added_count": <n>}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `server_name` is empty.
+        TypeError: If `new_players_data` is not a list.
+        AppFileNotFoundError: If the server's installation directory does not exist.
+        ConfigParseError: If the existing ``allowlist.json`` is malformed.
+        FileOperationError: If reading/writing ``allowlist.json`` fails.
     """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
@@ -108,12 +139,24 @@ def add_players_to_allowlist_api(
 def get_server_allowlist_api(server_name: str) -> Dict[str, Any]:
     """Retrieves the allowlist for a specific server.
 
+    Calls :meth:`~.core.bedrock_server.BedrockServer.get_allowlist`
+    to read and parse the server's ``allowlist.json`` file.
+
     Args:
-        server_name: The name of the server.
+        server_name (str): The name of the server.
 
     Returns:
-        A dictionary containing the status and a list of players on the
-        allowlist. On success: `{"status": "success", "players": [...]}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "players": List[Dict[str, Any]]}``
+        where `players` is the list of entries from ``allowlist.json``.
+        Returns an empty list for `players` if the file doesn't exist or is empty.
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `server_name` is empty.
+        AppFileNotFoundError: If the server's installation directory does not exist.
+        ConfigParseError: If ``allowlist.json`` is malformed.
+        FileOperationError: If reading ``allowlist.json`` fails.
     """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
@@ -144,13 +187,26 @@ def remove_players_from_allowlist(
 ) -> Dict[str, Any]:
     """Removes one or more players from the server's allowlist by name.
 
+    This function iterates through the provided `player_names` and calls
+    :meth:`~.core.bedrock_server.BedrockServer.remove_from_allowlist` for each.
+    Triggers ``before_allowlist_change`` and ``after_allowlist_change`` plugin events.
+
     Args:
-        server_name: The name of the server to modify.
-        player_names: A list of player gamertags to remove.
+        server_name (str): The name of the server to modify.
+        player_names (List[str]): A list of player gamertags to remove.
+            Case-insensitive matching is performed for removal.
 
     Returns:
-        A dictionary with the operation status and details about which
-        players were removed and which were not found.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Allowlist update process completed.", "details": {"removed": List[str], "not_found": List[str]}}``
+        If `player_names` is empty: ``{"status": "success", "message": "No players specified...", "details": {"removed": [], "not_found": []}}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `server_name` is empty.
+        AppFileNotFoundError: If the server's installation directory does not exist.
+        ConfigParseError: If the existing ``allowlist.json`` is malformed.
+        FileOperationError: If reading/writing ``allowlist.json`` fails during the process.
     """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
@@ -217,14 +273,32 @@ def configure_player_permission(
 ) -> Dict[str, str]:
     """Sets a player's permission level in permissions.json.
 
+    This function calls
+    :meth:`~.core.bedrock_server.BedrockServer.set_player_permission`
+    to update the server's ``permissions.json`` file.
+    Valid permission levels are "operator", "member", and "visitor".
+    Triggers ``before_permission_change`` and ``after_permission_change`` plugin events.
+
     Args:
-        server_name: The name of the server.
-        xuid: The player's XUID.
-        player_name: The player's gamertag (optional, for reference).
-        permission: The permission level to set (e.g., 'member', 'operator').
+        server_name (str): The name of the server.
+        xuid (str): The player's XUID. Cannot be empty.
+        player_name (Optional[str]): The player's gamertag. Included in the
+            ``permissions.json`` entry for reference if provided.
+        permission (str): The permission level to set (e.g., 'member', 'operator',
+            'visitor'). Case-insensitive. Cannot be empty.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Permission for XUID '<xuid>' set to '<perm>'."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        MissingArgumentError: If `xuid` or `permission` are empty.
+        UserInputError: If `permission` is not a valid level.
+        AppFileNotFoundError: If server directory or ``permissions.json`` (if expected) are missing.
+        FileOperationError: If reading/writing ``permissions.json`` fails.
+        ConfigParseError: If existing ``permissions.json`` is malformed.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -270,14 +344,27 @@ def configure_player_permission(
 def get_server_permissions_api(server_name: str) -> Dict[str, Any]:
     """Retrieves processed permissions data for a server.
 
-    This function reads `permissions.json` and enriches the data by mapping
-    XUIDs to player names using the central player database.
+    This function reads the server's ``permissions.json`` file via
+    :meth:`~.core.bedrock_server.BedrockServer.get_formatted_permissions`.
+    To enrich the data, it first fetches a global XUID-to-name mapping using
+    :func:`~bedrock_server_manager.api.player.get_all_known_players_api`.
+    The resulting list of permissions is sorted by player name.
 
     Args:
-        server_name: The name of the server.
+        server_name (str): The name of the server.
 
     Returns:
-        A dictionary containing the status and the formatted permissions data.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "data": {"permissions": List[Dict[str, Any]]}}``
+        where each dict in `permissions` contains "xuid", "name", and "permission_level".
+        If ``permissions.json`` doesn't exist, `permissions` will be an empty list.
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `server_name` is empty.
+        AppFileNotFoundError: If server directory is missing (but not if only ``permissions.json`` is missing).
+        ConfigParseError: If ``permissions.json`` is malformed.
+        FileOperationError: If reading ``permissions.json`` fails.
     """
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
@@ -320,12 +407,22 @@ def get_server_permissions_api(server_name: str) -> Dict[str, Any]:
 def get_server_properties_api(server_name: str) -> Dict[str, Any]:
     """Reads and returns the `server.properties` file for a server.
 
+    Delegates to
+    :meth:`~.core.bedrock_server.BedrockServer.get_server_properties`
+    to parse the file into a dictionary.
+
     Args:
-        server_name: The name of the server.
+        server_name (str): The name of the server.
 
     Returns:
-        A dictionary containing the status and the server properties as a
-        key-value mapping.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "properties": Dict[str, str]}``
+        On error (e.g., file not found): ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `server_name` is empty (though caught before core call).
+        AppFileNotFoundError: If ``server.properties`` does not exist.
+        ConfigParseError: If reading ``server.properties`` fails due to OS or parsing issues.
     """
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
@@ -352,15 +449,24 @@ def get_server_properties_api(server_name: str) -> Dict[str, Any]:
 def validate_server_property_value(property_name: str, value: str) -> Dict[str, str]:
     """Validates a single server property value based on known rules.
 
-    This is a stateless helper function used before modifying properties.
+    This is a stateless helper function used before modifying properties. It checks
+    specific rules for properties like ``server-name`` (MOTD length, no semicolons),
+    ``level-name`` (character set, length), network ports (numeric range),
+    and certain numeric game settings (``max-players``, ``view-distance``,
+    ``tick-distance``).
+
+    Properties not explicitly checked by this function are considered valid by default
+    by this validator (though the server itself might have further constraints).
 
     Args:
-        property_name: The name of the property (e.g., 'level-name').
-        value: The string value to validate.
+        property_name (str): The name of the server property (e.g., 'level-name',
+            'server-port').
+        value (str): The string value of the property to validate.
 
     Returns:
-        A dictionary with a 'status' of 'success' or 'error', and a 'message'
-        if validation fails.
+        Dict[str, str]: A dictionary with validation result.
+        If valid: ``{"status": "success"}``
+        If invalid: ``{"status": "error", "message": "<validation_error_detail>"}``
     """
     logger.debug(
         f"API: Validating server property: '{property_name}', Value: '{value}'"
@@ -432,18 +538,37 @@ def modify_server_properties(
 ) -> Dict[str, str]:
     """Modifies one or more properties in `server.properties`.
 
-    This function first validates all provided properties. If validation
-    passes, it uses a lifecycle manager to stop the server (if requested),
-    apply the changes, and restart it.
+    This function first validates all provided properties using
+    :func:`~.validate_server_property_value`. If all validations pass, it
+    then uses the :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    to manage the server's state (stopping it if `restart_after_modify` is ``True``).
+    Within the managed context, it applies each change by calling
+    :meth:`~.core.bedrock_server.BedrockServer.set_server_property`.
+    If `restart_after_modify` is ``True``, the server is restarted only if all
+    properties are successfully set and the lifecycle manager completes without error.
+    Triggers ``before_properties_change`` and ``after_properties_change`` plugin events.
 
     Args:
-        server_name: The name of the server to modify.
-        properties_to_update: A dictionary of key-value pairs to update.
-        restart_after_modify: If True, the server will be stopped before the
-            change and restarted if the change is successful. Defaults to True.
+        server_name (str): The name of the server to modify.
+        properties_to_update (Dict[str, str]): A dictionary of property keys
+            and their new string values.
+        restart_after_modify (bool, optional): If ``True``, the server will be
+            stopped before applying changes and restarted afterwards if successful.
+            Defaults to ``True``.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Server properties updated successfully."}``
+        On error (validation, file op, etc.): ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        TypeError: If `properties_to_update` is not a dictionary.
+        UserInputError: If any property value fails validation via
+            :func:`~.validate_server_property_value` or contains invalid characters.
+        AppFileNotFoundError: If ``server.properties`` does not exist.
+        FileOperationError: If reading/writing ``server.properties`` fails.
+        ServerStopError/ServerStartError: If server stop/start fails during lifecycle management.
     """
     if not server_name:
         raise InvalidServerNameError("Server name required.")
@@ -507,18 +632,34 @@ def install_new_server(
 ) -> Dict[str, Any]:
     """Installs a new Bedrock server.
 
-    This involves creating the server directory, downloading the specified
-    version of the server software, and setting up initial configuration.
+    This involves validating the server name, ensuring the target directory
+    doesn't already exist, then creating the server directory, downloading
+    the specified version of the server software (via
+    :meth:`~.core.bedrock_server.BedrockServer.install_or_update`),
+    extracting files, setting permissions, and setting up initial configuration.
+    Triggers ``before_server_install`` and ``after_server_install`` plugin events.
 
     Args:
-        server_name: The name for the new server. Must be unique and follow
-            filesystem naming conventions.
-        target_version: The server version to install (e.g., '1.20.10.01').
-            Defaults to 'LATEST'.
+        server_name (str): The name for the new server. Must be unique and
+            follow valid naming conventions (checked by
+            :func:`~bedrock_server_manager.api.utils.validate_server_name_format`).
+        target_version (str, optional): The server version to install
+            (e.g., '1.20.10.01', 'LATEST', 'PREVIEW'). Defaults to 'LATEST'.
 
     Returns:
-        A dictionary with the operation status, final installed version,
-        and a message.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "version": "<installed_version>", "message": "Server '<name>' installed..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `server_name` is empty.
+        UserInputError: If `server_name` format is invalid or directory already exists.
+        FileOperationError: If base server directory (``paths.servers``) isn't configured,
+            or for other file I/O issues during installation.
+        DownloadError: If server software download fails.
+        ExtractError: If downloaded archive cannot be extracted.
+        PermissionsError: If filesystem permissions cannot be set.
+        BSMError: For other application-specific errors.
     """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
@@ -575,17 +716,43 @@ def install_new_server(
 def update_server(server_name: str, send_message: bool = True) -> Dict[str, Any]:
     """Updates an existing server to its configured target version.
 
-    This function checks if an update is needed. If so, it backs up all
-    server data, stops the server, performs the update, and restarts it.
+    The process is as follows:
+    1. Retrieves the server's target version using
+       :meth:`~.core.bedrock_server.BedrockServer.get_target_version`.
+    2. Checks if an update is necessary via
+       :meth:`~.core.bedrock_server.BedrockServer.is_update_needed`.
+    3. If an update is needed:
+        - Uses :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+          to stop the server (if running and `send_message` is True, a notification
+          may be sent before stopping).
+        - Backs up all server data using
+          :meth:`~.core.bedrock_server.BedrockServer.backup_all_data`.
+        - Performs the update using
+          :meth:`~.core.bedrock_server.BedrockServer.install_or_update`.
+        - The lifecycle manager attempts to restart the server.
+    Triggers ``before_server_update`` and ``after_server_update`` plugin events.
 
     Args:
-        server_name: The name of the server to update.
-        send_message: If True, attempts to send a notification to the running
-            server before shutting down for the update. Defaults to True.
+        server_name (str): The name of the server to update.
+        send_message (bool, optional): If ``True`` and the server is running,
+            attempts to send a notification message to the server console before
+            it's stopped for the update. Defaults to ``True``.
 
     Returns:
-        A dictionary with the operation status, whether an update was
-        performed, the new version, and a message.
+        Dict[str, Any]: A dictionary with the operation result.
+        If no update needed: ``{"status": "success", "updated": False, "message": "Server is already up-to-date."}``
+        On successful update: ``{"status": "success", "updated": True, "new_version": "<version>", "message": "Server '<name>' updated..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        InvalidServerNameError: If `server_name` is empty.
+        ServerStopError: If stopping the server fails.
+        BackupRestoreError: If the pre-update backup fails.
+        DownloadError: If server software download fails during update.
+        ExtractError: If downloaded archive cannot be extracted.
+        PermissionsError: If filesystem permissions cannot be set.
+        FileOperationError: For other file I/O issues.
+        BSMError: For other application-specific errors.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")

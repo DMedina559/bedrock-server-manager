@@ -1,9 +1,20 @@
 # bedrock_server_manager/api/player.py
-"""Provides API-level functions for managing the central player database.
+"""Provides API functions for managing the central player database.
 
-This module interfaces with the `BedrockServerManager` to add, retrieve,
-and discover player information (gamertags and XUIDs), which is stored in a
-central `players.json` file.
+This module offers an interface to interact with the application's central
+player database, typically stored in ``players.json``. It leverages the
+:class:`~bedrock_server_manager.core.manager.BedrockServerManager`
+to perform operations such as:
+
+- Manually adding or updating player entries (gamertag and XUID) via
+  :func:`~.add_players_manually_api`.
+- Retrieving all known player entries from the database using
+  :func:`~.get_all_known_players_api`.
+- Discovering players by scanning server logs and updating the database via
+  :func:`~.scan_and_update_player_db_api`.
+
+These functions are exposed to the plugin system and provide a structured way
+to manage player data globally across all server instances.
 """
 
 import logging
@@ -30,17 +41,28 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
 
     This function takes a list of strings, each containing a player's
     gamertag and XUID, parses them, and saves the data to the central
-    player database.
+    player database. It uses
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.parse_player_cli_argument`
+    (after joining the list into a single comma-separated string) and then
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.save_player_data`.
+    Triggers ``before_players_add`` and ``after_players_add`` plugin events.
 
     Args:
-        player_strings: A list of strings, where each string is expected
-            to be in the format "gamertag,xuid". For example:
-            `["PlayerOne,1234567890123456", "PlayerTwo,6543210987654321"]`.
+        player_strings (List[str]): A list of strings. Each string should
+            represent a single player in the format "gamertag:xuid"
+            (e.g., ``"PlayerOne:1234567890123456"``).
+            Example list: ``["PlayerOne:123...", "PlayerTwo:654..."]``.
 
     Returns:
-        A dictionary containing the status of the operation, a descriptive
-        message, and the count of players processed. On error, it returns
-        a status and an error message.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "<n> player entries processed...", "count": <n>}``
+        On error (parsing or saving): ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        UserInputError: If any player string in `player_strings` is malformed
+            (propagated from ``parse_player_cli_argument``).
+        BSMError: Potentially :class:`~.error.FileOperationError` if saving
+            ``players.json`` fails (propagated from ``save_player_data``).
     """
     logger.info(f"API: Adding players manually: {player_strings}")
     # --- Input Validation ---
@@ -102,10 +124,15 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
 def get_all_known_players_api() -> Dict[str, Any]:
     """Retrieves all player data from the central players.json file.
 
+    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_known_players`
+    to read the ``players.json`` file.
+
     Returns:
-        A dictionary containing the operation status and a list of all known
-        player objects. On success: `{"status": "success", "players": [...]}`.
-        On error: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "players": List[PlayerDict]}``
+        where each ``PlayerDict`` typically contains "name" and "xuid".
+        Returns an empty list for `players` if the database is empty or file issues occur.
+        On unexpected error: ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.info("API: Request to get all known players.")
     try:
@@ -125,12 +152,26 @@ def scan_and_update_player_db_api() -> Dict[str, Any]:
 
     This function iterates through the log files of all managed servers,
     extracts player connection information (gamertag and XUID), and updates
-    the central player database with any new findings.
+    the central player database with any new findings. It calls
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.discover_and_store_players_from_all_server_logs`.
+    Triggers ``before_player_db_scan`` and ``after_player_db_scan`` plugin events.
 
     Returns:
-        A dictionary containing the status, a summary message, and detailed
-        results of the scan, including counts of players found, saved, and
-        any errors encountered.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "<summary_message>", "details": ScanResultDict}``
+        where ``ScanResultDict`` contains keys like:
+        ``"total_entries_in_logs"`` (int),
+        ``"unique_players_submitted_for_saving"`` (int),
+        ``"actually_saved_or_updated_in_db"`` (int),
+        ``"scan_errors"`` (List[Dict[str, str]]).
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        BSMError: Can be raised by the underlying manager method, e.g.,
+            :class:`~.error.AppFileNotFoundError` if the main server base directory
+            is misconfigured, or :class:`~.error.FileOperationError` if the
+            final save to ``players.json`` fails. Individual server scan errors
+            are reported within the "details" part of a successful response.
     """
     logger.info("API: Request to scan all server logs and update player DB.")
 

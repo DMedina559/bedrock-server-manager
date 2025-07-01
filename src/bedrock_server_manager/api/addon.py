@@ -1,11 +1,21 @@
 # bedrock_server_manager/api/addon.py
 """API functions for managing addons on Bedrock servers.
 
-This module provides high-level functions to install and manage addons
-(e.g., .mcpack, .mcaddon files) for a given Bedrock server instance. It
-acts as an interface layer, orchestrating calls to the BedrockServer's
-addon processing methods and handling the server lifecycle (stop/start)
-during the installation process.
+This module provides a high-level interface for installing and managing addons
+(e.g., ``.mcpack``, ``.mcaddon`` files) for specific Bedrock server instances.
+It primarily orchestrates calls to the addon processing methods of the
+:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class.
+
+Currently, the main functionality offered is:
+- Importing and installing addon files into a server's behavior packs and
+  resource packs directories via :func:`~.import_addon`.
+
+Operations that modify server files, like addon installation, are designed to be
+thread-safe using a lock (``_addon_lock``). The module also utilizes the
+:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to
+optionally manage the server's state (stopping and restarting) during these
+operations to ensure data integrity. All primary functions are exposed to the
+plugin system.
 """
 import os
 import logging
@@ -48,28 +58,39 @@ def import_addon(
     This function handles the import and installation of an addon file
     (.mcaddon or .mcpack) into the server's addon directories. It is
     thread-safe, using a lock to prevent concurrent addon operations which
-    could lead to corrupted files.
+    could lead to corrupted files. It calls
+    :meth:`~.core.bedrock_server.BedrockServer.process_addon_file` for the
+    core processing logic.
 
     The function can optionally manage the server's lifecycle by stopping it
-    before the installation and restarting it after.
+    before the installation and restarting it after, using the
+    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`.
+    Triggers ``before_addon_import`` and ``after_addon_import`` plugin events.
 
     Args:
-        server_name: The name of the server to install the addon on.
-        addon_file_path: The absolute path to the addon file (.mcaddon, .mcpack).
-        stop_start_server: If True, the server will be stopped before the
-            installation and started afterward. Defaults to True.
-        restart_only_on_success: If True and `stop_start_server` is True,
-            the server will only be restarted if the addon installation
-            succeeds. Defaults to True.
+        server_name (str): The name of the server to install the addon on.
+        addon_file_path (str): The absolute path to the addon file
+            (``.mcaddon`` or ``.mcpack``).
+        stop_start_server (bool, optional): If ``True``, the server will be stopped
+            before installation and started afterward. Defaults to ``True``.
+        restart_only_on_success (bool, optional): If ``True`` and `stop_start_server`
+            is ``True``, the server will only be restarted if the addon installation
+            succeeds. Defaults to ``True``.
 
     Returns:
-        A dictionary containing the status of the operation ('success', 'error',
-        or 'skipped') and a descriptive message.
+        Dict[str, str]: A dictionary with the operation result.
+        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
+        On success: ``{"status": "success", "message": "Addon '<filename>' installed..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         MissingArgumentError: If `server_name` or `addon_file_path` is not provided.
         AppFileNotFoundError: If the file at `addon_file_path` does not exist.
         InvalidServerNameError: If the server name is not valid (raised from BedrockServer).
+        BSMError: Propagates errors from underlying operations, including
+            :class:`~.error.UserInputError` (unsupported addon type),
+            :class:`~.error.ExtractError`, :class:`~.error.FileOperationError`,
+            or errors from server stop/start.
     """
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
