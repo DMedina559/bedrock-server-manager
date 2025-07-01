@@ -20,7 +20,9 @@ import logging
 from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse # JSONResponse not used in this snippet directly
+from fastapi.responses import (
+    HTMLResponse,
+)  # JSONResponse not used in this snippet directly
 from pydantic import BaseModel, Field
 
 from bedrock_server_manager.web.templating import templates
@@ -36,16 +38,28 @@ router = APIRouter(tags=["Global Settings"])
 # --- Pydantic Models ---
 class SettingItem(BaseModel):
     """Request model for a single setting key-value pair."""
-    key: str = Field(..., description="The dot-notation key of the setting (e.g., 'web.port').")
+
+    key: str = Field(
+        ..., description="The dot-notation key of the setting (e.g., 'web.port')."
+    )
     value: Any = Field(..., description="The new value for the setting.")
 
 
 class SettingsResponse(BaseModel):
     """Response model for settings operations."""
-    status: str = Field(..., description="Status of the operation (e.g., 'success', 'error').")
-    message: Optional[str] = Field(default=None, description="Optional descriptive message.")
-    settings: Optional[Dict[str, Any]] = Field(default=None, description="Dictionary of all settings (for get_all).")
-    setting: Optional[SettingItem] = Field(default=None, description="The specific setting that was acted upon (for set).")
+
+    status: str = Field(
+        ..., description="Status of the operation (e.g., 'success', 'error')."
+    )
+    message: Optional[str] = Field(
+        default=None, description="Optional descriptive message."
+    )
+    settings: Optional[Dict[str, Any]] = Field(
+        default=None, description="Dictionary of all settings (for get_all)."
+    )
+    setting: Optional[SettingItem] = Field(
+        default=None, description="The specific setting that was acted upon (for set)."
+    )
 
 
 # --- HTML Route: /settings ---
@@ -126,7 +140,7 @@ async def set_setting_api_route(
         f"API: Set global setting request for key '{payload.key}' by '{identity}'."
     )
 
-    if not payload.key: # Redundant due to Pydantic Field(...) validation
+    if not payload.key:  # Redundant due to Pydantic Field(...) validation
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Setting 'key' cannot be empty.",
@@ -140,18 +154,23 @@ async def set_setting_api_route(
             return SettingsResponse(
                 status="success",
                 message=result.get("message", "Setting updated successfully."),
-                setting=SettingItem(key=payload.key, value=payload.value), # Return the set item
+                setting=SettingItem(
+                    key=payload.key, value=payload.value
+                ),  # Return the set item
             )
         else:
             # Errors from settings_api.set_global_setting should ideally raise specific BSMError types
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, # Or 500 if it's a save error
+                status_code=status.HTTP_400_BAD_REQUEST,  # Or 500 if it's a save error
                 detail=result.get("message", "Failed to set setting."),
             )
-    except (UserInputError, MissingArgumentError) as e: # These might be raised by settings_api or earlier checks
+    except (
+        UserInputError,
+        MissingArgumentError,
+    ) as e:  # These might be raised by settings_api or earlier checks
         logger.warning(f"API Set Setting '{payload.key}': Input error. {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e: # Catch other BSM specific errors (e.g., ConfigWriteError)
+    except BSMError as e:  # Catch other BSM specific errors (e.g., ConfigWriteError)
         logger.error(f"API Set Setting '{payload.key}': BSMError. {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -198,7 +217,7 @@ async def reload_settings_api_route(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to reload settings."),
             )
-    except BSMError as e: # E.g. ConfigLoadError
+    except BSMError as e:  # E.g. ConfigLoadError
         logger.error(f"API Reload Settings: BSMError. {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -209,5 +228,3 @@ async def reload_settings_api_route(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while reloading settings.",
         )
-```
-*(Self-correction: Removed unused `JSONResponse` from imports. Added `Field` descriptions for Pydantic models. Clarified error handling in `set_setting_api_route` and `reload_settings_api_route` to better reflect how underlying API errors might translate to HTTPExceptions.)*

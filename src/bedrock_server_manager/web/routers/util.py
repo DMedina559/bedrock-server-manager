@@ -1,7 +1,13 @@
-import os
-import logging
-from typing import Dict, Any
+# bedrock_server_manager/web/routers/settings.py
+"""
+Utility and miscellaneous web server routes for the Bedrock Server Manager.
 
+This module provides FastAPI router endpoints for common utility functions,
+such as serving static assets (custom panorama, world icons, favicon) and
+handling catch-all routes for undefined paths. These endpoints often involve
+file system interactions and fallbacks to default assets if custom ones are
+not found.
+"""
 import os
 import logging
 from typing import Dict, Any
@@ -35,7 +41,22 @@ router = APIRouter(tags=["Utilities"])
 # --- Route: Serve Custom Panorama ---
 @router.get("/api/panorama", response_class=FileResponse)
 async def serve_custom_panorama_api():
-    """Serves a custom `panorama.jpeg` background image if it exists, else default."""
+    """Serves a custom `panorama.jpeg` background image if available, otherwise a default.
+
+    This endpoint attempts to locate a `panorama.jpeg` file in the application's
+    configuration directory. If found, it's served. If not, or if the config
+    directory isn't set, it falls back to serving a default panorama image
+    from the static assets.
+
+    Returns:
+        FileResponse: An image/jpeg response containing the panorama.
+
+    Raises:
+        HTTPException:
+            - 404 (Not Found): If the default panorama image is also not found.
+            - 500 (Internal Server Error): For unexpected errors during file access
+              or if the configuration directory is not set.
+    """
     logger.debug("Request received to serve custom panorama background.")
     try:
         config_dir = settings.config_dir
@@ -77,7 +98,28 @@ async def serve_world_icon_api(
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Serves the `world_icon.jpeg` file for a specific server's world, with fallback."""
+    """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
+
+    Retrieves the `world_icon.jpeg` associated with the specified server's world.
+    If the server-specific icon doesn't exist or an error occurs (e.g., invalid
+    server name), it falls back to serving a default icon (favicon.ico).
+
+    Args:
+        server_name (str): The name of the server, validated by `validate_server_exists`.
+                           Injected by FastAPI's dependency system.
+        current_user (Dict[str, Any]): The authenticated user object, injected by
+                                       `get_current_user`. Used for logging.
+
+    Returns:
+        FileResponse: An image response, either the world icon (jpeg) or the
+                      default icon.
+
+    Raises:
+        HTTPException:
+            - 404 (Not Found): If the default icon (fallback) is also not found.
+            - 500 (Internal Server Error): For unexpected errors during file access or
+              processing.
+    """
     logger.debug(
         f"Request to serve world icon for server '{server_name}' by user '{current_user.get('username', 'Unknown')}'."
     )
@@ -137,9 +179,17 @@ async def serve_world_icon_api(
 
 @router.get("/favicon.ico", include_in_schema=False)
 async def get_root_favicon():
-    """
-    Handles the implicit browser request for /favicon.ico at the root.
-    Serves the actual favicon.ico from the static directory.
+    """Serves the `favicon.ico` file from the static directory.
+
+    This endpoint directly provides the `favicon.ico` located in the application's
+    static image assets. It's typically requested by browsers automatically.
+
+    Returns:
+        FileResponse: An image/x-icon response containing the favicon.
+
+    Raises:
+        HTTPException: 404 (Not Found) if the `favicon.ico` file does not exist
+                       at the expected static path.
     """
     favicon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
     if not os.path.exists(favicon_path):
@@ -159,7 +209,21 @@ async def catch_all_api_route(
     full_path: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Redirects any unmatched authenticated route to the main dashboard page."""
+    """Redirects any unmatched authenticated API path to the main dashboard ('/').
+
+    This route acts as a catch-all for any GET requests under the API namespace
+    that haven't been matched by other more specific routes. It logs the attempt
+    and redirects the authenticated user to the root of the web application.
+
+    Args:
+        request (Request): The incoming request object, provided by FastAPI.
+        full_path (str): The unmatched path segment captured by the route.
+        current_user (Dict[str, Any]): The authenticated user object, injected by
+                                       `get_current_user`. Used for logging.
+
+    Returns:
+        RedirectResponse: A redirect to the main dashboard page ("/").
+    """
     logger.warning(
         f"User '{current_user.get('username', 'Unknown')}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
     )

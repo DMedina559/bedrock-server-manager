@@ -1,3 +1,15 @@
+# bedrock_server_manager/web/routers/main.py
+"""
+FastAPI router for the main web application pages and core navigation.
+
+This module defines routes for essential parts of the user interface, including:
+- The main dashboard (index page) which typically lists servers.
+- A route to redirect users to the OS-specific task scheduler page.
+- The server-specific monitoring page.
+
+Authentication is required for most routes, handled via FastAPI dependencies.
+Templates are rendered using Jinja2.
+"""
 import platform
 import logging
 from typing import Dict, Any, Optional
@@ -26,10 +38,22 @@ async def index(
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
 ):
     """
-    Renders the main dashboard page.
-    If user is not authenticated, they will be redirected by get_current_user_optional logic
-    or the template can handle the None user.
-    For this migration, we'll make it behave like auth_required by using get_current_user.
+    Renders the main dashboard page (index).
+
+    This page typically displays a list of manageable Bedrock servers.
+    Authentication is required; if the user is not authenticated, they are
+    redirected to the login page.
+
+    Args:
+        request (Request): The incoming FastAPI request object.
+        current_user (Optional[Dict[str, Any]]): The authenticated user object,
+                                                 injected by `get_current_user_optional`.
+                                                 If None, user is redirected.
+
+    Returns:
+        HTMLResponse: Renders the `index.html` template with the current user's
+                      information.
+        RedirectResponse: If the user is not authenticated, redirects to `/auth/login`.
     """
 
     if not current_user:
@@ -51,6 +75,26 @@ async def task_scheduler_route(
     request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
+    """
+    Redirects to the OS-specific task scheduler page for a given server.
+
+    Detects the current operating system and redirects the user to either the
+    Linux cron job page or the Windows Scheduled Tasks page. If the OS is not
+    supported, it redirects back to the main dashboard with an error message.
+
+    Args:
+        server_name (str): The name of the server for which to access the scheduler.
+                           This is a path parameter.
+        request (Request): The incoming FastAPI request object.
+        current_user (Dict[str, Any]): The authenticated user object, injected by
+                                       `get_current_user`.
+
+    Returns:
+        RedirectResponse: Redirects to the appropriate scheduler page
+                          (`/schedule-tasks/{server_name}/linux` or
+                          `/schedule-tasks/{server_name}/windows`) or to the
+                          index page with an error message if the OS is unsupported.
+    """
     current_os = platform.system()
     username = current_user.get("username", "Unknown")
     logger.info(
@@ -78,7 +122,23 @@ async def monitor_server_route(
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
+    """
+    Renders the server-specific monitoring page.
 
+    This page is intended to display real-time information or logs for the
+    specified Bedrock server. Authentication is required.
+
+    Args:
+        request (Request): The incoming FastAPI request object.
+        server_name (str): The name of the server to monitor, validated by
+                           `validate_server_exists`. Injected by FastAPI.
+        current_user (Dict[str, Any]): The authenticated user object, injected by
+                                       `get_current_user`.
+
+    Returns:
+        HTMLResponse: Renders the `monitor.html` template, passing the server name
+                      and current user information to the template.
+    """
     username = current_user.get("username")
     logger.info(f"User '{username}' accessed monitor page for server '{server_name}'.")
     return templates.TemplateResponse(
