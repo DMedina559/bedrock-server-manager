@@ -113,7 +113,7 @@ def main_menu(ctx: click.Context):
             click.secho(_get_splash_text(), fg="yellow")
 
             # Display server list for context before showing the menu
-            ctx.invoke(list_servers, loop=False, server_name_filter=None)
+            ctx.invoke(list_servers, loop=False, server_name=None)
 
             # --- Dynamically build menu choices ---
             # Fetch server data once to build the menu and reuse the list
@@ -265,7 +265,7 @@ def manage_server_menu(ctx: click.Context, server_name: str):
     while True:
         click.clear()
         click.secho(f"--- Managing Server: {server_name} ---", fg="magenta", bold=True)
-        ctx.invoke(list_servers, server_name_filter=server_name)
+        ctx.invoke(list_servers, server_name=server_name)
 
         choice = questionary.select(
             f"\nSelect an action for '{server_name}':",

@@ -1,10 +1,19 @@
 # bedrock_server_manager/cli/player.py
 """
-Defines the `bsm player` command group for managing the player database.
+Defines the `bsm player` command group for managing the global player database.
 
-This module provides commands to automatically discover players by scanning
-server logs and to manually add or update player information, centralizing
-player data for use across the application.
+This module provides CLI tools to interact with the central player database
+(typically ``players.json``), which stores mappings between player gamertags
+and their Xbox User IDs (XUIDs). This information is essential for features
+like allowlists and permissions that rely on XUIDs.
+
+Commands allow for:
+-   Scanning all server logs to automatically discover players and their XUIDs.
+-   Manually adding or updating player entries in the database.
+-   (Future potential: Listing all known players).
+
+These commands primarily call functions from the
+:mod:`~bedrock_server_manager.api.player` module.
 """
 
 import logging
@@ -21,26 +30,30 @@ logger = logging.getLogger(__name__)
 
 @click.group()
 def player():
-    """Manages the central player database.
+    """
+    Manages the central player database (linking gamertags to XUIDs).
 
-    This command group contains utilities for populating the player database,
-    which links player names (gamertags) to their unique Xbox User IDs (XUIDs).
+    This database is used by other features like permissions and allowlisting
+    to identify players by their unique Xbox User ID (XUID) even if only
+    a gamertag is initially known.
     """
     pass
 
 
 @player.command("scan")
 def scan_for_players():
-    """Scans server logs to discover and update players.
+    """
+    Scans all server logs to discover player gamertags and XUIDs.
 
-    This command iterates through the log files of all configured servers,
-    searching for player connection events. It automatically extracts player
+    This command iterates through the log files of all configured and valid
+    Bedrock server instances. It looks for player connection messages to
+    extract gamertag-XUID pairs. Discovered information is then used to
+    update the central player database (`players.json`).
 
-    names and their XUIDs, adding new players to the database and
-    updating existing ones.
+    This is useful for automatically populating the player database without
+    manual entry.
 
-    Raises:
-        click.Abort: If a BSMError or an unexpected error occurs during the scan.
+    Calls API: :func:`~bedrock_server_manager.api.player.scan_and_update_player_db_api`.
     """
     try:
         click.echo("Scanning all server logs for player data...")
@@ -68,18 +81,25 @@ def scan_for_players():
     help="Player to add in 'Gamertag:XUID' format. Use multiple times for multiple players.",
 )
 def add_players(players: Tuple[str]):
-    """Manually adds or updates players in the database.
+    """
+    Manually adds or updates player entries in the central player database.
 
-    Allows for the manual addition of one or more players using the
-    'Gamertag:XUID' format. If a player with the same name or XUID already
-    exists, their information will be updated. Use the --player option
-    multiple times to add several players at once.
+    Each player must be specified in the "Gamertag:XUID" format.
+    If a player with the given XUID already exists, their entry (including
+    gamertag) will be updated. If the XUID is new, a new player entry is created.
 
-    Args:
-        players: A tuple of player strings, each in 'Gamertag:XUID' format.
+    This command is useful for adding known players without needing to wait
+    for them to connect to a server or for correcting existing entries.
 
-    Raises:
-        click.Abort: If a BSMError or an unexpected error occurs.
+    Options:
+        -p, --player PLAYER_STRING  Player to add, formatted as "Gamertag:XUID".
+                                    This option is required and can be used
+                                    multiple times to add several players.
+
+    Example:
+        `bsm player add -p "Steve:1234567890123456" -p "Alex:0987654321098765"`
+
+    Calls API: :func:`~bedrock_server_manager.api.player.add_players_manually_api`.
     """
     try:
         # The API expects a list, so we convert the tuple from `multiple=True`.

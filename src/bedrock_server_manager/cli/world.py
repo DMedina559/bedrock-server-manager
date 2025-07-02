@@ -1,10 +1,19 @@
 # bedrock_server_manager/cli/world.py
 """
-Defines the `bsm world` command group for managing server worlds.
+Defines the `bsm world` command group for managing Bedrock server worlds.
 
-This module contains subcommands to install worlds from `.mcworld` files,
-export existing worlds, and reset them to their original state, allowing
-for easy world management.
+This module provides CLI tools for various world-related operations, including:
+-   Installing a new world onto a server from a ``.mcworld`` file, which
+    replaces the server's current active world.
+-   Exporting a server's current active world into a ``.mcworld`` file,
+    suitable for backup or transfer.
+-   Resetting a server's world, which involves deleting the current world
+    data to allow the server to generate a new one upon its next start.
+
+Commands typically interact with the API functions in
+:mod:`~bedrock_server_manager.api.world` and may involve user confirmation
+for destructive operations. Some commands also list available world templates
+from the application's content directory.
 """
 
 import logging
@@ -24,12 +33,14 @@ logger = logging.getLogger(__name__)
 
 @click.group()
 def world():
-    """Manages server worlds (install, export, reset).
+    """
+    Manages server worlds, including installation, export, and reset operations.
 
     This command group provides utilities to manipulate the world data for a
-    given server. You can install a world from a `.mcworld` file, export
-    the current world for backup or transfer, or reset it to allow the
-    server to generate a new one.
+    specific Bedrock server instance. You can install a world from a ``.mcworld``
+    file (replacing the current world), export the server's current active world
+    to a ``.mcworld`` file for backup or transfer, or reset the world to allow
+    the server to generate a new one on its next start.
     """
     pass
 
@@ -51,21 +62,35 @@ def world():
     help="Attempt to install without stopping the server (risks data corruption).",
 )
 def install_world(server_name: str, world_file_path: Optional[str], no_stop: bool):
-    """Installs a world from a .mcworld file, replacing the current world.
+    """
+    Installs a world from a .mcworld file, replacing the server's current world.
 
-    If the --file option is not provided, this command enters an interactive
-    mode, listing all available .mcworld files in the designated content
-    directory for you to choose from.
+    .. warning::
+        This is a destructive operation that will overwrite the existing
+        active world data for the specified server.
 
-    This is a destructive action that will overwrite the existing world.
+    If the ``--file`` option is provided with a path to a ``.mcworld`` file,
+    that file will be used for installation.
+    If ``--file`` is not provided, the command enters an interactive mode,
+    listing all available ``.mcworld`` files from the application's global
+    content directory (typically ``content/worlds``) for the user to select.
 
-    Args:
-        server_name: The name of the server to install the world on.
-        world_file_path: The direct path to the .mcworld file.
-        no_stop: If True, skips the safe server stop/start procedure.
+    The server is typically stopped before installation and restarted afterwards
+    to ensure data integrity, unless ``--no-stop`` is specified (not recommended).
+    A confirmation prompt is shown before proceeding with the installation.
 
-    Raises:
-        click.Abort: If the operation is cancelled by the user.
+    Options:
+        -s, --server SERVER_NAME  Name of the target server (required).
+        -f, --file FILE_PATH      Path to the .mcworld file to install.
+                                  If omitted, interactive selection is triggered.
+                                  Type: Path (must exist, not a directory).
+        --no-stop                 If set, attempts to install the world without
+                                  stopping the server. This is risky and may
+                                  lead to data corruption.
+
+    Calls APIs:
+        - :func:`~bedrock_server_manager.api.application.list_available_worlds_api` (for interactive mode)
+        - :func:`~bedrock_server_manager.api.world.import_world`
     """
     try:
         selected_file = world_file_path
@@ -129,17 +154,23 @@ def install_world(server_name: str, world_file_path: Optional[str], no_stop: boo
     help="Name of the server whose world to export.",
 )
 def export_world(server_name: str):
-    """Exports the server's current world to a .mcworld file.
+    """
+    Exports the server's current active world to a .mcworld file.
 
-    This command packages the current world directory into a .mcworld
-    archive. The resulting file is saved in the `content/worlds`
-    directory and can be used for backups or transferred to other servers.
+    This command packages the server's active world directory into a ``.mcworld``
+    archive. The resulting file is typically saved in the application's global
+    content directory (e.g., ``content/worlds``) and is named using the
+    world's name and a timestamp (e.g., ``MyWorldName_export_YYYYMMDD_HHMMSS.mcworld``).
 
-    Args:
-        server_name: The name of the server with the world to export.
+    This exported file can be used for backups, transferring the world to
+    another server, or sharing. The server is usually stopped during this
+    process to ensure data integrity.
 
-    Raises:
-        click.Abort: If the export fails due to a BSMError.
+    Options:
+        -s, --server SERVER_NAME: Name of the server whose world is to be
+                                  exported (required).
+
+    Calls API: :func:`~bedrock_server_manager.api.world.export_world`.
     """
     click.echo(f"Attempting to export world for server '{server_name}'...")
     try:
@@ -160,19 +191,28 @@ def export_world(server_name: str):
 )
 @click.option("-y", "--yes", is_flag=True, help="Bypass the confirmation prompt.")
 def reset_world(server_name: str, yes: bool):
-    """Deletes the current world to allow a new one to be generated.
+    """
+    Deletes the current active world data for a server.
 
-    This is a destructive operation that permanently removes the server's
-    world data. It is useful when you want to start over with a fresh,
-    randomly generated world. A confirmation prompt is required unless the
-    --yes flag is provided.
+    .. danger::
+        This is a **HIGHLY DESTRUCTIVE** operation that permanently removes
+        the server's active world directory.
 
-    Args:
-        server_name: The name of the server whose world will be reset.
-        yes: If True, bypasses the interactive confirmation prompt.
+    This is useful when you want the server to generate a completely new world
+    the next time it starts (based on its `level-name` and `level-seed` in
+    `server.properties`).
 
-    Raises:
-        click.Abort: If the reset fails or the user cancels the confirmation.
+    A confirmation prompt is required before proceeding, unless the ``--yes``
+    flag is provided. The server is typically stopped before deletion and
+    restarted afterwards.
+
+    Options:
+        -s, --server SERVER_NAME  Name of the server whose world is to be reset
+                                  (required).
+        -y, --yes                 Bypass the interactive confirmation prompt.
+                                  Use with extreme caution.
+
+    Calls API: :func:`~bedrock_server_manager.api.world.reset_world`.
     """
     if not yes:
         click.secho(
