@@ -305,22 +305,13 @@ def configure_service(
     respects system capabilities (e.g., it won't attempt service setup if
     a service manager isn't available).
 
-    Options:
-        -s, --server SERVER_NAME  Name of the server to configure (required).
-        --autoupdate / --no-autoupdate
-                                  Enable or disable checking for updates when
-                                  the server process starts.
-        --setup-service           If set, this flag triggers the creation or
-                                  update of the system service file/entry for
-                                  the server. Requires a supported service manager.
-        --enable-autostart / --no-enable-autostart
-                                  Enable or disable the system service to start
-                                  automatically on system boot or user login.
-                                  Typically used in conjunction with `--setup-service`
-                                  or if a service already exists.
+    The command can be used with flags like ``--autoupdate`` / ``--no-autoupdate``,
+    ``--setup-service``, and ``--enable-autostart`` / ``--no-enable-autostart``
+    for direct configuration. The ``--setup-service`` flag requires a supported
+    service manager on the system.
 
-    Calls API functions from :mod:`~bedrock_server_manager.api.system` indirectly
-    via :func:`~._perform_service_configuration`.
+    It calls API functions from :mod:`~bedrock_server_manager.api.system`
+    indirectly via :func:`~._perform_service_configuration`.
     """
     bsm: BedrockServerManager = ctx.obj["bsm"]
 
@@ -380,10 +371,6 @@ def enable_service(server_name: str):
     It requires a supported service manager to be available on the system,
     checked by the `@requires_service_manager` decorator.
 
-    Options:
-        -s, --server SERVER_NAME: Name of the server whose service is to be
-                                  enabled (required).
-
     Calls API: :func:`~bedrock_server_manager.api.system.enable_server_service`.
     """
     click.echo(f"Attempting to enable system service for '{server_name}'...")
@@ -415,10 +402,6 @@ def disable_service(server_name: str):
     It requires a supported service manager, checked by the
     `@requires_service_manager` decorator.
 
-    Options:
-        -s, --server SERVER_NAME: Name of the server whose service is to be
-                                  disabled (required).
-
     Calls API: :func:`~bedrock_server_manager.api.system.disable_server_service`.
     """
     click.echo(f"Attempting to disable system service for '{server_name}'...")
@@ -448,9 +431,6 @@ def monitor_usage(server_name: str):
 
     Press CTRL+C to stop monitoring. This feature relies on the `psutil`
     library being available for detailed process information.
-
-    Options:
-        -s, --server SERVER_NAME: Name of the server to monitor (required).
 
     Calls API: :func:`~bedrock_server_manager.api.system.get_bedrock_process_info`
     in a loop.

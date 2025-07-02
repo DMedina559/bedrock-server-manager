@@ -988,18 +988,22 @@ class BedrockServerManager:
         On Windows, this deletes the service using :func:`~.core.system.windows.delete_windows_service`.
 
         Returns:
-            bool: ``True`` if the service was successfully removed or if it was
-            already not found (considered idempotent for removal).
+            bool
+                ``True`` if the service was successfully removed or if it was
+                already not found (considered idempotent for removal).
 
         Raises:
-            SystemError: If the OS is not supported.
-            FileOperationError: On Linux, if removing the service file fails.
-            CommandNotFoundError: If system utilities are not found.
-            PermissionsError: On Windows, if not run with Administrator privileges.
-            Various (from :func:`~.core.system.windows.delete_windows_service`):
+            SystemError
+                If the OS is not supported.
+            FileOperationError
+                On Linux, if removing the service file fails.
+            CommandNotFoundError
+                If system utilities are not found.
+            PermissionsError
+                On Windows, if not run with Administrator privileges.
 
-            - Can include :class:`~.error.SubprocessError` if ``sc.exe delete`` fails.
-
+                Details of what "Various" includes, for example, it can include
+                    :class:`~.error.SubprocessError` if ``sc.exe delete`` fails.
         """
         os_type = self.get_os_type()
         if os_type == "Linux":

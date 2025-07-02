@@ -249,19 +249,14 @@ def create_backup(
     (not recommended for world/all). After a successful backup, old backups
     are automatically pruned based on retention settings.
 
-    Options:
-        -s, --server SERVER_NAME  Name of the target server (required).
-        -t, --type [world|config|all]
-                                  Type of backup to create. If omitted,
-                                  interactive mode is launched.
-        -f, --file FILE_NAME      Specific configuration file to back up
-                                  (e.g., "server.properties"). Required if
-                                  ``--type=config`` is used non-interactively.
-        --no-stop                 If set, performs the backup without stopping
-                                  the server. This is risky for world/all
-                                  backups and may lead to data corruption.
+    When ``--type`` is "config", the ``--file`` option is also required to specify
+    which configuration file to back up (e.g., "server.properties").
+    The ``--no-stop`` flag can be used to perform the backup without stopping the
+    server, but this is risky for 'world' or 'all' backups and may lead to data
+    corruption.
 
-    Calls APIs:
+    This command calls the following API functions:
+
         - :func:`~bedrock_server_manager.api.backup_restore.backup_world`
         - :func:`~bedrock_server_manager.api.backup_restore.backup_config_file`
         - :func:`~bedrock_server_manager.api.backup_restore.backup_all`
@@ -345,16 +340,14 @@ def restore_backup(server_name: str, backup_file_path: Optional[str], no_stop: b
     afterwards to ensure data integrity, unless ``--no-stop`` is specified
     (highly discouraged for world restores).
 
-    Options:
-        -s, --server SERVER_NAME  Name of the target server (required).
-        -f, --file FILE_PATH      Path to the backup file to restore. If
-                                  omitted, interactive selection is triggered.
-                                  Type: Path (must exist, not a directory).
-        --no-stop                 If set, performs the restore without stopping
-                                  the server. This is very risky and may lead
-                                  to data corruption or an inconsistent state.
+    If the ``--file`` option is provided, it should be a path to an existing
+    backup file (not a directory). The command will attempt to infer the restore
+    type (world or config) from the filename.
+    The ``--no-stop`` flag can be used to perform the restore without stopping
+    the server, but this is highly risky and may lead to data corruption.
 
-    Calls APIs:
+    This command interacts with the following API functions:
+
         - :func:`~bedrock_server_manager.api.backup_restore.list_backup_files` (for interactive mode)
         - :func:`~bedrock_server_manager.api.backup_restore.restore_world`
         - :func:`~bedrock_server_manager.api.backup_restore.restore_config_file`
@@ -420,10 +413,6 @@ def prune_backups(server_name: str):
     any backup files (for world and standard configs) for the specified server
     that are older than the configured limit, ensuring only the most recent
     backups are retained.
-
-    Options:
-        -s, --server SERVER_NAME: Name of the server whose backups are to be
-                                  pruned (required).
 
     Calls API: :func:`~bedrock_server_manager.api.backup_restore.prune_old_backups`.
     """

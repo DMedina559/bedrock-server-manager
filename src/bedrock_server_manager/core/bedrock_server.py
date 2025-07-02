@@ -86,10 +86,6 @@ class BedrockServer(
         os_type (str): The current operating system, e.g., "Linux", "Windows".
         logger (:class:`logging.Logger`): A logger instance specific to this
             server instance.
-        bedrock_executable_path (str): Full path to the server's main executable
-            (e.g., ``bedrock_server`` within ``server_dir``).
-        server_log_path (str): Full path to the server's primary output log file
-            (typically ``server_output.log`` within ``server_dir``).
 
     Note:
         Many other attributes related to specific functionalities (e.g., server state,
@@ -481,7 +477,6 @@ class BedrockServer(
             "systemd_service_active": None,
         }
 
-        # Add Linux-specific systemd information if applicable.
         if self.os_type == "Linux":
             try:
                 summary["systemd_service_file_exists"] = (

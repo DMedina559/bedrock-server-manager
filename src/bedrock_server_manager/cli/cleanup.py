@@ -127,7 +127,7 @@ def _cleanup_log_files(log_dir_path: Path) -> int:
     help="Clean up Python bytecode cache files (__pycache__).",
 )
 @click.option(
-    "-l", "--logs", is_flag=True, help="Clean up application log files (*.log)."
+    "-l", "--logs", is_flag=True, help="Clean up application log files (``*.log``)."
 )
 @click.option(
     "--log-dir",

@@ -185,9 +185,6 @@ class BedrockDownloader:
     installed or an existing one updated.
 
     Attributes:
-        PRESERVED_ITEMS_ON_UPDATE (Set[str]): A set of file and directory names
-            (relative to the server root) that are preserved during an update
-            extraction (e.g., "worlds/", "server.properties").
         settings (Settings): The application settings object.
         server_dir (str): The absolute path to the target server directory.
         input_target_version (str): The user-provided version string.
