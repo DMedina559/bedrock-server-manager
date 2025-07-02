@@ -13,6 +13,7 @@ and functions requiring ``psutil`` will typically raise a :class:`SystemError`
 if it's not installed.
 
 Key Functionality Groups:
+
     - **PID File Management**:
         - :func:`get_pid_file_path`,
         - :func:`get_bedrock_server_pid_file_path`,
@@ -405,8 +406,10 @@ def launch_detached_process(command: List[str], launcher_pid_file_path: str) -> 
     Platform-specific ``subprocess.Popen`` flags are used to ensure the new
     process is fully detached from the parent and runs independently in the
     background:
+
         - On Windows: ``subprocess.CREATE_NO_WINDOW`` is used.
         - On POSIX systems (Linux, macOS): ``start_new_session=True`` is used.
+
     Standard input, output, and error streams of the new process are redirected
     to ``subprocess.DEVNULL``.
 
@@ -587,14 +590,15 @@ def get_verified_bedrock_process(
     This high-level function combines several steps to reliably identify if a
     Bedrock server, identified by `server_name`, is currently running and is indeed
     the correct process. It performs:
-    1. Path construction for the server's PID file using
-       :func:`get_bedrock_server_pid_file_path`.
-    2. Reading the PID from this file via :func:`read_pid_from_file`.
-    3. Checking if the process with the read PID is running using :func:`is_process_running`.
-    4. If running, verifying the process's identity using :func:`verify_process_identity`.
-       The verification checks if the process executable path matches the expected
-       ``bedrock_server`` or ``bedrock_server.exe`` in the `server_dir`, and if
-       its current working directory is `server_dir`.
+
+        1. Path construction for the server's PID file using
+           :func:`get_bedrock_server_pid_file_path`.
+        2. Reading the PID from this file via :func:`read_pid_from_file`.
+        3. Checking if the process with the read PID is running using :func:`is_process_running`.
+        4. If running, verifying the process's identity using :func:`verify_process_identity`.
+           The verification checks if the process executable path matches the expected
+           ``bedrock_server`` or ``bedrock_server.exe`` in the `server_dir`, and if
+           its current working directory is `server_dir`.
 
     If ``psutil`` is unavailable, this function logs an error and returns ``None``.
     Most other exceptions encountered during the process (e.g., PID file not
@@ -712,12 +716,13 @@ def terminate_process_by_pid(
     """Attempts to gracefully terminate, then forcefully kill, a process by PID.
 
     This function implements a two-stage termination strategy:
-    1. **Graceful Termination (SIGTERM)**: It first sends a SIGTERM signal
-       (``process.terminate()``) to the process with the given `pid`. It then
-       waits for `terminate_timeout` seconds for the process to exit cleanly.
-    2. **Forceful Kill (SIGKILL)**: If the process does not terminate within
-       the `terminate_timeout`, a SIGKILL signal (``process.kill()``) is sent
-       to forcibly stop it. It then waits for `kill_timeout` seconds.
+
+        1. **Graceful Termination (SIGTERM)**: It first sends a SIGTERM signal
+           (``process.terminate()``) to the process with the given `pid`. It then
+           waits for `terminate_timeout` seconds for the process to exit cleanly.
+        2. **Forceful Kill (SIGKILL)**: If the process does not terminate within
+           the `terminate_timeout`, a SIGKILL signal (``process.kill()``) is sent
+           to forcibly stop it. It then waits for `kill_timeout` seconds.
 
     This approach gives the target process a chance to shut down gracefully
     (e.g., save data, release resources) before resorting to a forceful kill.

@@ -3,12 +3,13 @@
 Defines the `bsm world` command group for managing Bedrock server worlds.
 
 This module provides CLI tools for various world-related operations, including:
--   Installing a new world onto a server from a ``.mcworld`` file, which
-    replaces the server's current active world.
--   Exporting a server's current active world into a ``.mcworld`` file,
-    suitable for backup or transfer.
--   Resetting a server's world, which involves deleting the current world
-    data to allow the server to generate a new one upon its next start.
+
+    -   Installing a new world onto a server from a ``.mcworld`` file, which
+        replaces the server's current active world.
+    -   Exporting a server's current active world into a ``.mcworld`` file,
+        suitable for backup or transfer.
+    -   Resetting a server's world, which involves deleting the current world
+        data to allow the server to generate a new one upon its next start.
 
 Commands typically interact with the API functions in
 :mod:`~bedrock_server_manager.api.world` and may involve user confirmation
@@ -79,18 +80,11 @@ def install_world(server_name: str, world_file_path: Optional[str], no_stop: boo
     to ensure data integrity, unless ``--no-stop`` is specified (not recommended).
     A confirmation prompt is shown before proceeding with the installation.
 
-    Options:
-        -s, --server SERVER_NAME  Name of the target server (required).
-        -f, --file FILE_PATH      Path to the .mcworld file to install.
-                                  If omitted, interactive selection is triggered.
-                                  Type: Path (must exist, not a directory).
-        --no-stop                 If set, attempts to install the world without
-                                  stopping the server. This is risky and may
-                                  lead to data corruption.
-
     Calls APIs:
+
         - :func:`~bedrock_server_manager.api.application.list_available_worlds_api` (for interactive mode)
         - :func:`~bedrock_server_manager.api.world.import_world`
+
     """
     try:
         selected_file = world_file_path
@@ -166,10 +160,6 @@ def export_world(server_name: str):
     another server, or sharing. The server is usually stopped during this
     process to ensure data integrity.
 
-    Options:
-        -s, --server SERVER_NAME: Name of the server whose world is to be
-                                  exported (required).
-
     Calls API: :func:`~bedrock_server_manager.api.world.export_world`.
     """
     click.echo(f"Attempting to export world for server '{server_name}'...")
@@ -205,12 +195,6 @@ def reset_world(server_name: str, yes: bool):
     A confirmation prompt is required before proceeding, unless the ``--yes``
     flag is provided. The server is typically stopped before deletion and
     restarted afterwards.
-
-    Options:
-        -s, --server SERVER_NAME  Name of the server whose world is to be reset
-                                  (required).
-        -y, --yes                 Bypass the interactive confirmation prompt.
-                                  Use with extreme caution.
 
     Calls API: :func:`~bedrock_server_manager.api.world.reset_world`.
     """

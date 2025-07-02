@@ -1,6 +1,5 @@
 # bedrock_server_manager/cli/addon.py
-"""
-Defines CLI commands for managing Bedrock server addons.
+"""Defines CLI commands for managing Bedrock server addons.
 
 This module provides tools to install addons (behavior packs, resource packs)
 onto a specified server. Addons are typically ``.mcpack`` or ``.mcaddon`` files.
@@ -8,8 +7,9 @@ Functionality may be expanded in the future to include listing, removing, or
 exporting addons.
 
 Commands currently include:
--   ``bsm install-addon``: Installs an addon from a local file or by selecting
-    from available addons in the content directory.
+
+    -   ``bsm install-addon``: Installs an addon from a local file or by selecting
+        from available addons in the content directory.
 
 These commands interact with the API functions in
 :mod:`~bedrock_server_manager.api.addon` and
@@ -56,13 +56,6 @@ def install_addon(server_name: str, addon_file_path: Optional[str]):
     If ``--file`` is not provided, the command enters an interactive mode,
     listing all available addon files from the application's global content
     directory (typically ``content/addons``) for the user to select.
-
-    Options:
-        -s, --server SERVER_NAME  Name of the target server (required).
-        -f, --file FILE_PATH      Path to the addon file (``.mcpack``,
-                                  ``.mcaddon``) to install. If omitted,
-                                  interactive selection is triggered.
-                                  Type: Path (must exist, not a directory).
 
     Calls APIs:
         - :func:`~bedrock_server_manager.api.application.list_available_addons_api` (for interactive mode)

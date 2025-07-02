@@ -4,6 +4,7 @@
 This mixin is focused on aspects of a server's lifecycle that involve its
 presence and integrity on the filesystem, as well as its complete removal.
 Key responsibilities include:
+
     - Validating if a server installation appears correct (e.g., server directory
       and executable exist).
     - Setting appropriate filesystem permissions for the server's installation
@@ -44,6 +45,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
     the complete removal of all server-related data.
 
     Key methods include:
+
         - :meth:`.validate_installation`: Checks if the server directory and executable exist.
         - :meth:`.is_installed`: A non-raising check for installation validity.
         - :meth:`.set_filesystem_permissions`: Applies appropriate permissions to server files.
@@ -79,9 +81,10 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         """Validates that the server installation directory and executable exist.
 
         This method checks for the presence of:
-        1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
-        2. The Bedrock server executable within that directory
-           (path from :attr:`.BedrockServerBaseMixin.bedrock_executable_path`).
+
+            1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
+            2. The Bedrock server executable within that directory
+               (path from :attr:`.BedrockServerBaseMixin.bedrock_executable_path`).
 
         Returns:
             bool: ``True`` if both the server directory and executable file exist.
@@ -217,7 +220,9 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
 
         .. danger::
             This is a **HIGHLY DESTRUCTIVE** operation and is irreversible.
+
             It removes:
+
                 1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
                 2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
                 3. The server's entire backup directory (derived from ``paths.backups`` setting).

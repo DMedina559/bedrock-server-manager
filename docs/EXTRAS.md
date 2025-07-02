@@ -1,12 +1,18 @@
 # Extra Configuration & Customization
 
-### Installation: Stable, Beta, and Development
+```{image} https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/src/bedrock_server_manager/web/static/image/icon/favicon.svg
+:alt: Bedrock Server Manager Icon
+:width: 200px
+:align: center
+```
+
+## Installation: Stable, Beta, and Development
 
 There are three ways to install Bedrock Server Manager, depending on your needs. For most users, the stable version is recommended.
 
 ---
 
-#### 1. Stable Version (Recommended)
+### 1. Stable Version (Recommended)
 
 This is the latest official, stable release. It has been tested and is suitable for most use cases.
 
@@ -33,9 +39,9 @@ You can find a list of all available versions in the [**Release History on PyPI*
 
 ---
 
-#### 2. Beta / Pre-Release Versions (For Testers)
+### 2. Beta / Pre-Release Versions (For Testers)
 
-Occasionally pre-release versions will be published to PyPI for testing. These versions contain new features and are generally stable but may contain minor bugs.
+Occasionally, pre-release versions will be published to PyPI for testing. These versions contain new features and are generally stable but may contain minor bugs.
 
 To install the latest pre-release version, use the `--pre` flag with pip:
 
@@ -52,7 +58,7 @@ The `dev` branch is where all beta developments are merged before being bundled 
 
 ---
 
-#### 3. Development Versions (For Advanced Users & Contributors)
+### 3. Development Versions (For Advanced Users & Contributors)
 
 These versions are at the cutting edge and reflect the latest code, but they are not guaranteed to be stable. Use them if you want to test a specific new feature that isn't in a beta yet, or if you are contributing to the project.
 
@@ -85,8 +91,7 @@ Every time code is pushed to a branch, our Continuous Integration (CI) server bu
     ```
     *(Note: The exact filename will be different. Just use the `.whl` file you downloaded.)*
 
- 1. 
-## Web Server Extras:
+## Web Server Extras
 
 ### Custom Web Server Panorama
 
@@ -128,5 +133,6 @@ The server manager looks for a file named `world_icon.jpeg` inside each world's 
 
 If a `world_icon.jpeg` file is not found within a specific world's directory, the default Bedrock Server Manager icon will be displayed for that world in the server list.
 
-### Home Assistant Integration:
-If you use home assistant check out the [bedrock-server-manager integration](https://github.com/DMedina559/bsm-home-assistant-integration)
+## Home Assistant Integration
+
+If you use Home Assistant, check out the [**Bedrock Server Manager integration**](https://github.com/DMedina559/bsm-home-assistant-integration).

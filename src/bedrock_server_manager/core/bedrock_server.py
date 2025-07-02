@@ -1,6 +1,5 @@
 # bedrock_server_manager/core/bedrock_server.py
-"""
-Defines the main :class:`~.BedrockServer` class, which consolidates all server management functionalities.
+"""Defines the main :class:`~.BedrockServer` class, which consolidates all server management functionalities.
 
 This module provides the :class:`~.BedrockServer` class, serving as the central
 entry point for managing and interacting with a single Minecraft Bedrock Server instance.
@@ -72,7 +71,7 @@ class BedrockServer(
     The :class:`~.core.server.base_server_mixin.BedrockServerBaseMixin` provides
     core attributes and foundational initialization logic.
 
-    Key Attributes (primarily from :class:`~.core.server.base_server_mixin.BedrockServerBaseMixin`):
+    Attributes:
         server_name (str): The unique name identifying this server instance.
         settings (:class:`~bedrock_server_manager.config.settings.Settings`):
             The application's global settings object.
@@ -98,11 +97,13 @@ class BedrockServer(
         Refer to the documentation of individual mixins for more details.
 
     Key Methods (Illustrative list, grouped by typical functionality):
+
         Installation & Validation (from :class:`~.core.server.installation_mixin.ServerInstallationMixin`):
             - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.is_installed`
             - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.validate_installation`
             - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.set_filesystem_permissions`
             - :meth:`~.core.server.installation_mixin.ServerInstallationMixin.delete_all_data`
+
         State Management (from :class:`~.core.server.state_mixin.ServerStateMixin`):
             - :meth:`~.core.server.state_mixin.ServerStateMixin.get_status`
             - :meth:`~.core.server.state_mixin.ServerStateMixin.get_version`
@@ -110,41 +111,49 @@ class BedrockServer(
             - :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
             - :meth:`~.core.server.state_mixin.ServerStateMixin.get_custom_config_value`
             - :meth:`~.core.server.state_mixin.ServerStateMixin.set_custom_config_value`
+
         Process Management (from :class:`~.core.server.process_mixin.ServerProcessMixin`):
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.is_running`
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.get_process_info`
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.start`
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.stop`
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.send_command`
+
         World Management (from :class:`~.core.server.world_mixin.ServerWorldMixin`):
             - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world_directory_to_mcworld`
             - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
             - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_active_world_directory`
+
         Addon Management (from :class:`~.core.server.addon_mixin.ServerAddonMixin`):
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.process_addon_file`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_world_addons`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.export_addon`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.remove_addon`
+
         Backup & Restore (from :class:`~.core.server.backup_restore_mixin.ServerBackupMixin`):
             - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.backup_all_data`
             - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.restore_all_data_from_latest`
             - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.prune_server_backups`
             - :meth:`~.core.server.backup_restore_mixin.ServerBackupMixin.list_backups`
+
         Systemd Management (Linux-only, from :class:`~.core.server.systemd_mixin.ServerSystemdMixin`):
             - :meth:`~.core.server.systemd_mixin.ServerSystemdMixin.create_systemd_service_file`
             - :meth:`~.core.server.systemd_mixin.ServerSystemdMixin.enable_systemd_service`
             - :meth:`~.core.server.systemd_mixin.ServerSystemdMixin.is_systemd_service_active`
+
         Windows Service Management (Windows-only, from :class:`~.core.server.windows_service_mixin.ServerWindowsServiceMixin`):
             - :meth:`~.core.server.windows_service_mixin.ServerWindowsServiceMixin.create_windows_service`
-            # Add more key methods for Windows service management if applicable
+
         Player Log Scanning (from :class:`~.core.server.player_mixin.ServerPlayerMixin`):
             - :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
+
         Config File Management (from :class:`~.core.server.config_management_mixin.ServerConfigManagementMixin`):
             - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_allowlist`
             - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.add_to_allowlist`
             - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_player_permission`
             - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_server_properties`
             - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_server_property`
+
         Installation & Updates (from :class:`~.core.server.install_update_mixin.ServerInstallUpdateMixin`):
             - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.is_update_needed`
             - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.install_or_update`
@@ -393,7 +402,9 @@ class BedrockServer(
 
         Returns:
             Dict[str, Any]: A dictionary containing a summary of the server.
+
             Key keys include:
+
                 - ``"name"`` (str): The unique name of the server.
                 - ``"server_directory"`` (str): Absolute path to the server's
                   installation directory.
@@ -424,7 +435,7 @@ class BedrockServer(
                 - ``"systemd_service_active"`` (Optional[bool]): (Linux-only)
                   ``True`` if systemd service is active, ``False`` if not,
                   ``None`` if not applicable.
-                # Potentially add Windows service status keys here too if they are part of the implementation
+
         """
         self.logger.debug(f"Gathering summary info for server '{self.server_name}'.")
 

@@ -7,10 +7,11 @@ server's ``server.properties`` file. This file controls core gameplay aspects
 like gamemode, difficulty, world name, player limits, etc.
 
 Key functionalities:
--   An interactive workflow (:func:`~.interactive_properties_workflow`) to
-    guide users through editing common server properties with validation.
--   Direct commands to get (``bsm properties get``) and set
-    (``bsm properties set``) specific properties, suitable for scripting.
+
+    -   An interactive workflow (:func:`~.interactive_properties_workflow`) to
+        guide users through editing common server properties with validation.
+    -   Direct commands to get (``bsm properties get``) and set
+        (``bsm properties set``) specific properties, suitable for scripting.
 
 The commands interact with the API layer, primarily functions in
 :mod:`~bedrock_server_manager.api.server_install_config`, to read,
@@ -37,11 +38,12 @@ def interactive_properties_workflow(server_name: str):
     prompts the user to edit common settings like server name, gamemode,
     difficulty, max players, etc., using `questionary`.
     For each property, it:
-    - Displays the current value as the default.
-    - Uses :class:`~.PropertyValidator` (which calls
-      :func:`~bedrock_server_manager.api.server_install_config.validate_server_property_value`)
-      for input validation where applicable.
-    - Tracks only the properties that are actually changed by the user.
+
+        - Displays the current value as the default.
+        - Uses :class:`~.PropertyValidator` (which calls
+          :func:`~bedrock_server_manager.api.server_install_config.validate_server_property_value`)
+          for input validation where applicable.
+        - Tracks only the properties that are actually changed by the user.
 
     After all prompts, it shows a summary of changes and asks for confirmation
     before applying them via a single call to
@@ -186,11 +188,6 @@ def get_props(server_name: str, property_name: Optional[str]):
     value will be shown. Otherwise, all properties and their current values
     are listed in a sorted key-value format.
 
-    Options:
-        -s, --server SERVER_NAME  The name of the target server (required).
-        -p, --prop PROPERTY_NAME  Optional. If provided, displays only the
-                                  value of this specific property.
-
     Calls API: :func:`~bedrock_server_manager.api.server_install_config.get_server_properties_api`.
     """
     response = config_api.get_server_properties_api(server_name)
@@ -249,17 +246,6 @@ def set_props(server_name: str, no_restart: bool, properties: tuple[str, ...]):
 
     By default, the server is restarted after properties are modified to apply
     changes, unless `--no-restart` is specified.
-
-    Options:
-        -s, --server SERVER_NAME  The name of the target server (required).
-        -p, --prop KEY=VALUE      A 'key=value' pair to set. Can be used
-                                  multiple times. If omitted, interactive
-                                  mode is triggered.
-        --no-restart              If set, the server will not be automatically
-                                  restarted after properties are changed.
-
-    Example:
-        `bsm properties set -s MySrv --prop max-players=15 --prop gamemode=creative`
 
     Calls API: :func:`~bedrock_server_manager.api.server_install_config.modify_server_properties`.
     """

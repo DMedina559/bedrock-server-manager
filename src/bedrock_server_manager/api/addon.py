@@ -7,8 +7,8 @@ It primarily orchestrates calls to the addon processing methods of the
 :class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class.
 
 Currently, the main functionality offered is:
-- Importing and installing addon files into a server's behavior packs and
-  resource packs directories via :func:`~.import_addon`.
+    - Importing and installing addon files into a server's behavior packs and
+      resource packs directories via :func:`~.import_addon`.
 
 Operations that modify server files, like addon installation, are designed to be
 thread-safe using a lock (``_addon_lock``). The module also utilizes the

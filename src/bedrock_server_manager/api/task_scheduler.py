@@ -13,19 +13,19 @@ for cron jobs on Linux, and
 for Scheduled Tasks on Windows.
 
 Key functionalities include:
-- **Linux (Cron Jobs):**
-    - Retrieving server-specific cron jobs (:func:`~.get_server_cron_jobs`).
-    - Formatting cron jobs for display (:func:`~.get_cron_jobs_table`).
-    - Adding (:func:`~.add_cron_job`), modifying (:func:`~.modify_cron_job`),
-      and deleting (:func:`~.delete_cron_job`) cron entries.
-- **Windows (Scheduled Tasks):**
-    - Retrieving server-specific task names (:func:`~.get_server_task_names`)
-      and detailed information (:func:`~.get_windows_task_info`).
-    - Creating (:func:`~.create_windows_task`), modifying
-      (:func:`~.modify_windows_task`), and deleting
-      (:func:`~.delete_windows_task`) scheduled tasks via XML definitions.
-- **Utility:**
-    - Generating standardized task names (:func:`~.create_task_name`).
+    - **Linux (Cron Jobs):**
+        - Retrieving server-specific cron jobs (:func:`~.get_server_cron_jobs`).
+        - Formatting cron jobs for display (:func:`~.get_cron_jobs_table`).
+        - Adding (:func:`~.add_cron_job`), modifying (:func:`~.modify_cron_job`),
+          and deleting (:func:`~.delete_cron_job`) cron entries.
+    - **Windows (Scheduled Tasks):**
+        - Retrieving server-specific task names (:func:`~.get_server_task_names`)
+          and detailed information (:func:`~.get_windows_task_info`).
+        - Creating (:func:`~.create_windows_task`), modifying
+          (:func:`~.modify_windows_task`), and deleting
+          (:func:`~.delete_windows_task`) scheduled tasks via XML definitions.
+    - **Utility:**
+        - Generating standardized task names (:func:`~.create_task_name`).
 
 The functions in this module are intended for internal use by higher-level
 application components (e.g., web UI, CLI) and are not directly exposed

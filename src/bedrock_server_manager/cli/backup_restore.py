@@ -8,16 +8,19 @@ world (as ``.mcworld`` files) and key configuration files (``server.properties``
 ``allowlist.json``, ``permissions.json``).
 
 Key functionalities:
--   Creating backups:
-    -   Full backup (world + all standard configs).
-    -   World-only backup.
-    -   Specific configuration file backup.
--   Restoring from backups:
-    -   Restore world from a chosen ``.mcworld`` backup.
-    -   Restore a specific configuration file from its backup.
-    (Note: A full "restore all" from latest is handled by API, but CLI might expose it differently or via world/config restore).
--   Listing available backup files for different components.
--   Pruning old backups based on retention policies defined in application settings.
+
+    -   Creating backups:
+        -   Full backup (world + all standard configs).
+        -   World-only backup.
+        -   Specific configuration file backup.
+
+    -   Restoring from backups:
+        -   Restore world from a chosen ``.mcworld`` backup.
+        -   Restore a specific configuration file from its backup.
+        (Note: A full "restore all" from latest is handled by API, but CLI might expose it differently or via world/config restore).
+
+    -   Listing available backup files for different components.
+    -   Pruning old backups based on retention policies defined in application settings.
 
 The module includes interactive workflows for guided backup and restore processes,
 as well as direct command-line options for scripting and automation. Commands
@@ -49,9 +52,10 @@ def _interactive_backup_menu(
     Guides the user through an interactive menu to select backup options.
 
     Presents choices for backing up:
-    - World only
-    - Everything (world + standard configs)
-    - A specific configuration file (server.properties, allowlist.json, permissions.json)
+
+        - World only
+        - Everything (world + standard configs)
+        - A specific configuration file (server.properties, allowlist.json, permissions.json)
 
     Args:
         server_name (str): The name of the server for which to create a backup.
@@ -59,6 +63,7 @@ def _interactive_backup_menu(
 
     Returns:
         Tuple[str, Optional[str], bool]: A tuple containing:
+
             - ``backup_type`` (str): The type of backup selected (e.g., "world",
               "all", "config").
             - ``file_to_backup`` (Optional[str]): The name of the specific
@@ -123,6 +128,7 @@ def _interactive_restore_menu(
 
     Returns:
         Tuple[str, str, bool]: A tuple containing:
+
             - ``restore_type`` (str): The type of item being restored (e.g., "world",
               "allowlist", "properties", "permissions").
             - ``backup_file_path`` (str): The absolute path to the selected backup file.

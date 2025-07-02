@@ -64,8 +64,10 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
         Returns:
             List[Dict[str, str]]: A list of unique player data dictionaries found
             in the log. Each dictionary has two keys:
+
                 - "name" (str): The player's gamertag.
                 - "xuid" (str): The player's Xbox User ID (XUID).
+
             Returns an empty list if the log file doesn't exist, is empty, or if
             no player connection entries are found.
 

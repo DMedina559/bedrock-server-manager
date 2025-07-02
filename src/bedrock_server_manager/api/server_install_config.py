@@ -717,11 +717,13 @@ def update_server(server_name: str, send_message: bool = True) -> Dict[str, Any]
     """Updates an existing server to its configured target version.
 
     The process is as follows:
+
     1. Retrieves the server's target version using
        :meth:`~.core.bedrock_server.BedrockServer.get_target_version`.
     2. Checks if an update is necessary via
        :meth:`~.core.bedrock_server.BedrockServer.is_update_needed`.
     3. If an update is needed:
+
         - Uses :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
           to stop the server (if running and `send_message` is True, a notification
           may be sent before stopping).
@@ -730,6 +732,7 @@ def update_server(server_name: str, send_message: bool = True) -> Dict[str, Any]
         - Performs the update using
           :meth:`~.core.bedrock_server.BedrockServer.install_or_update`.
         - The lifecycle manager attempts to restart the server.
+
     Triggers ``before_server_update`` and ``after_server_update`` plugin events.
 
     Args:
@@ -740,6 +743,7 @@ def update_server(server_name: str, send_message: bool = True) -> Dict[str, Any]
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
+
         If no update needed: ``{"status": "success", "updated": False, "message": "Server is already up-to-date."}``
         On successful update: ``{"status": "success", "updated": True, "new_version": "<version>", "message": "Server '<name>' updated..."}``
         On error: ``{"status": "error", "message": "<error_message>"}``

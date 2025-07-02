@@ -11,6 +11,7 @@ are checked via :const:`PYWIN32_HAS_OPTIONAL_MODULES`.
 Key functionalities include:
 
 Foreground Process Management:
+
     - Starting a Bedrock server directly in the foreground with IPC capabilities
       (:func:`_windows_start_server`).
     - Sending commands to this foreground server via a named pipe
@@ -21,6 +22,7 @@ Foreground Process Management:
       OS signal management for graceful shutdowns.
 
 Windows Service Management (Requires Administrator Privileges):
+
     - Checking if a service exists (:func:`check_service_exists`).
     - Creating or updating a Windows Service to run the Bedrock server
       (:func:`create_windows_service`).
@@ -811,22 +813,23 @@ def _windows_start_server(server_name: str, server_dir: str, config_dir: str) ->
 
     This function is intended to be run as the main blocking process when
     starting a server directly (not as a service). It performs the following:
-    1. Checks if `pywin32` is available (required for named pipe IPC).
-    2. Verifies that another instance of the same server isn't already running
-       by checking PID files and process status. Cleans up stale PID files.
-    3. Sets up an OS signal handler for `SIGINT` (Ctrl+C) to trigger graceful shutdown.
-    4. Launches the Bedrock server executable (`bedrock_server.exe`) as a subprocess,
-       redirecting its stdout/stderr to `server_output.txt` in the server directory.
-    5. Writes the new server process's PID to a ``<server_name>.pid`` file.
-    6. Starts a named pipe server listener thread (`_main_pipe_server_listener_thread`)
-       to accept commands for the Bedrock server. The pipe name is derived from
-       `server_name`.
-    7. Enters a blocking loop, waiting for the `_foreground_server_shutdown_event`
-       to be set (e.g., by Ctrl+C or if the server process dies).
-    8. Upon shutdown, attempts to gracefully stop the Bedrock server by sending
-       the "stop" command via its stdin, then waits for it to terminate. If it
-       doesn't stop in time, it's forcibly terminated.
-    9. Cleans up the PID file, closes handles, and restores the original SIGINT handler.
+
+        1. Checks if `pywin32` is available (required for named pipe IPC).
+        2. Verifies that another instance of the same server isn't already running
+           by checking PID files and process status. Cleans up stale PID files.
+        3. Sets up an OS signal handler for `SIGINT` (Ctrl+C) to trigger graceful shutdown.
+        4. Launches the Bedrock server executable (`bedrock_server.exe`) as a subprocess,
+           redirecting its stdout/stderr to `server_output.txt` in the server directory.
+        5. Writes the new server process's PID to a ``<server_name>.pid`` file.
+        6. Starts a named pipe server listener thread (`_main_pipe_server_listener_thread`)
+           to accept commands for the Bedrock server. The pipe name is derived from
+           `server_name`.
+        7. Enters a blocking loop, waiting for the `_foreground_server_shutdown_event`
+           to be set (e.g., by Ctrl+C or if the server process dies).
+        8. Upon shutdown, attempts to gracefully stop the Bedrock server by sending
+           the "stop" command via its stdin, then waits for it to terminate. If it
+           doesn't stop in time, it's forcibly terminated.
+        9. Cleans up the PID file, closes handles, and restores the original SIGINT handler.
 
     Args:
         server_name (str): The unique name identifier for the server.
@@ -1085,17 +1088,18 @@ def _windows_stop_server_by_pid(server_name: str, config_dir: str) -> None:
     This function attempts to stop a Bedrock server that was presumably started
     in the foreground (e.g., via :func:`_windows_start_server`). It performs
     the following steps:
-    1. Constructs the path to the server's PID file (e.g., ``<server_name>.pid``)
-       within the specified `config_dir`.
-    2. Reads the PID from this file using :func:`core_process.read_pid_from_file`.
-    3. If no PID file is found or no PID is read, it assumes the server is not
-       running and returns.
-    4. Checks if the process with the read PID is actually running using
-       :func:`core_process.is_process_running`. If not, it cleans up the stale
-       PID file and returns.
-    5. If the process is running, it terminates the process using
-       :func:`core_process.terminate_process_by_pid`.
-    6. Cleans up the PID file after successful termination.
+
+        1. Constructs the path to the server's PID file (e.g., ``<server_name>.pid``)
+           within the specified `config_dir`.
+        2. Reads the PID from this file using :func:`core_process.read_pid_from_file`.
+        3. If no PID file is found or no PID is read, it assumes the server is not
+           running and returns.
+        4. Checks if the process with the read PID is actually running using
+           :func:`core_process.is_process_running`. If not, it cleans up the stale
+           PID file and returns.
+        5. If the process is running, it terminates the process using
+           :func:`core_process.terminate_process_by_pid`.
+        6. Cleans up the PID file after successful termination.
 
     Args:
         server_name (str): The name of the server to stop. This is used to

@@ -5,12 +5,12 @@ This module contains the logic for controlling the lifecycle and querying the
 status of the built-in web UI, which is powered by FastAPI. It interfaces with the
 :class:`~bedrock_server_manager.core.manager.BedrockServerManager` to handle:
 
-- Starting the web server in 'direct' (blocking) or 'detached' (background) modes
-  (:func:`~.start_web_server_api`).
-- Stopping the detached web server process (:func:`~.stop_web_server_api`).
-- Checking the runtime status of the web server (:func:`~.get_web_server_status_api`).
-- Managing the system service for the Web UI (create, enable, disable, remove, get status)
-  via functions like :func:`~.create_web_ui_service` and :func:`~.get_web_ui_service_status`.
+    - Starting the web server in 'direct' (blocking) or 'detached' (background) modes
+      (:func:`~.start_web_server_api`).
+    - Stopping the detached web server process (:func:`~.stop_web_server_api`).
+    - Checking the runtime status of the web server (:func:`~.get_web_server_status_api`).
+    - Managing the system service for the Web UI (create, enable, disable, remove, get status)
+      via functions like :func:`~.create_web_ui_service` and :func:`~.get_web_ui_service_status`.
 
 These functions are intended for programmatic control of the application's web server,
 often used by CLI commands or service management scripts.
@@ -56,12 +56,13 @@ def start_web_server_api(
     """Starts the application's web server.
 
     This function can start the web server in two modes:
-    - 'direct': A blocking call that runs the server in the current process
-      Useful for development or when managed by an external process manager.
-    - 'detached': Launches the server as a new background process and creates
-      a PID file to track it. Requires the `psutil` library. Uses various
-      methods from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`
-      and :mod:`~bedrock_server_manager.core.system.process` for process management.
+        - 'direct': A blocking call that runs the server in the current process
+          Useful for development or when managed by an external process manager.
+        - 'detached': Launches the server as a new background process and creates
+          a PID file to track it. Requires the `psutil` library. Uses various
+          methods from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`
+          and :mod:`~bedrock_server_manager.core.system.process` for process management.
+
     Triggers ``before_web_server_start`` and ``after_web_server_start`` plugin events.
 
     Args:

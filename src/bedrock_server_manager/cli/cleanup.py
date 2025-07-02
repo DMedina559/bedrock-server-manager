@@ -78,15 +78,17 @@ def _cleanup_log_files(log_dir_path: Path) -> int:
     deleted_count = 0
     try:
         log_files = sorted(log_dir_path.glob("*.log.*"), key=os.path.getmtime)
-        
+
         if not log_files:
             logger.info(f"No log files found in '{log_dir_path}'.")
             return 0
 
         if len(log_files) == 1:
-            logger.info(f"Only one log file found ('{log_files[0].name}'); it will be kept.")
+            logger.info(
+                f"Only one log file found ('{log_files[0].name}'); it will be kept."
+            )
             return 0
-            
+
         newest_log = log_files[-1]
         logger.info(f"Keeping newest log file: {newest_log.name}")
 
@@ -97,8 +99,13 @@ def _cleanup_log_files(log_dir_path: Path) -> int:
                 log_file.unlink()
                 deleted_count += 1
             except Exception as e_unlink:
-                logger.error(f"Failed to remove log file '{log_file.name}': {e_unlink}", exc_info=True)
-                click.secho(f"Error removing log file '{log_file.name}': {e_unlink}", fg="red")
+                logger.error(
+                    f"Failed to remove log file '{log_file.name}': {e_unlink}",
+                    exc_info=True,
+                )
+                click.secho(
+                    f"Error removing log file '{log_file.name}': {e_unlink}", fg="red"
+                )
 
         return deleted_count
     except Exception as e:
@@ -142,16 +149,6 @@ def cleanup(cache: bool, logs: bool, log_dir_override: Optional[Path]):
         the configured log directory. **Crucially, it preserves the single
         most recent log file**, ensuring that the latest operational logs are
         not accidentally deleted.
-
-    Options:
-        -c, --cache               Clean up Python bytecode cache files
-                                  (removes ``__pycache__`` directories
-                                  recursively from the project root).
-        -l, --logs                Clean up application log files (``.log`` files).
-                                  The newest log file in the target directory
-                                  will be preserved.
-        --log-dir DIRECTORY       Override the default log directory specified
-                                  in application settings. Path type.
 
     Raises:
         click.Abort: If log cleaning (`--logs`) is requested but no valid log

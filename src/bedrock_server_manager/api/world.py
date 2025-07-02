@@ -6,13 +6,13 @@ Bedrock server instances. It wraps methods of the
 :class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class
 to facilitate tasks such as:
 
-- Retrieving the active world name (:func:`~.get_world_name`).
-- Exporting the active server world to a ``.mcworld`` archive file
-  (:func:`~.export_world`).
-- Importing a world from a ``.mcworld`` file, replacing the active world
-  (:func:`~.import_world`).
-- Resetting the active server world, prompting regeneration on next start
-  (:func:`~.reset_world`).
+    - Retrieving the active world name (:func:`~.get_world_name`).
+    - Exporting the active server world to a ``.mcworld`` archive file
+      (:func:`~.export_world`).
+    - Importing a world from a ``.mcworld`` file, replacing the active world
+      (:func:`~.import_world`).
+    - Resetting the active server world, prompting regeneration on next start
+      (:func:`~.reset_world`).
 
 Operations involving world file modifications (export, import, reset) are
 thread-safe using a unified lock (``_world_lock``) to prevent data corruption.

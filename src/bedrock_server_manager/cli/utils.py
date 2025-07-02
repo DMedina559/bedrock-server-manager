@@ -5,22 +5,25 @@ Command-Line Interface (CLI) Utilities.
 This module provides shared helper functions and standalone utility commands
 for the Bedrock Server Manager CLI. It includes:
 
-- Decorators:
-    - :func:`~.linux_only`: Restricts a Click command to run only on Linux.
-- Shared Helper Functions:
-    - :func:`~.handle_api_response`: Standardized way to process and display
-      success/error messages from API calls.
-    - :func:`~.get_server_name_interactively`: Prompts user to select an existing server.
-- Custom `questionary.Validator` Classes:
-    - :class:`~.ServerNameValidator`: Validates server name format.
-    - :class:`~.ServerExistsValidator`: Checks if a server name corresponds to an
-      existing server.
-    - :class:`~.PropertyValidator`: Validates values for specific server properties.
-- Standalone Click Commands:
-    - ``bsm list-servers`` (from :func:`~.list_servers`): Lists all configured
-      servers and their current status, with an optional live refresh loop.
-    - ``bsm attach-console`` (from :func:`~.attach_console`): Attaches the
-      terminal to a running server's console (Linux-only, uses screen).
+    - Decorators:
+        - :func:`~.linux_only`: Restricts a Click command to run only on Linux.
+
+    - Shared Helper Functions:
+        - :func:`~.handle_api_response`: Standardized way to process and display
+          success/error messages from API calls.
+        - :func:`~.get_server_name_interactively`: Prompts user to select an existing server.
+
+    - Custom `questionary.Validator` Classes:
+        - :class:`~.ServerNameValidator`: Validates server name format.
+        - :class:`~.ServerExistsValidator`: Checks if a server name corresponds to an
+          existing server.
+        - :class:`~.PropertyValidator`: Validates values for specific server properties.
+
+    - Standalone Click Commands:
+        - ``bsm list-servers`` (from :func:`~.list_servers`): Lists all configured
+          servers and their current status, with an optional live refresh loop.
+        - ``bsm attach-console`` (from :func:`~.attach_console`): Attaches the
+          terminal to a running server's console (Linux-only, uses screen).
 
 These utilities aim to promote code reuse and provide a consistent user
 experience across different parts of the CLI.
@@ -309,12 +312,6 @@ def list_servers(loop: bool, server_name: Optional[str]):
 
     The status of each server (e.g., "RUNNING", "STOPPED") is color-coded for
     better readability.
-
-    Options:
-        --loop: If set, the command will clear the screen and refresh the
-                server status list every 5 seconds until interrupted (Ctrl+C).
-        --server-name: If provided, only the status for the server
-                              matching this name will be displayed.
     """
 
     def _display_status():

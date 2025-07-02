@@ -8,7 +8,8 @@ used by higher-level components like the :class:`~.core.bedrock_server.BedrockSe
 or API endpoints.
 
 Key functions include:
-- :func:`core_validate_server_name_format`: Validates server names against a regex.
+
+    - :func:`core_validate_server_name_format`: Validates server names against a regex.
 
 .. warning::
     The functions :func:`check_server_status` and :func:`update_server_status_in_config`

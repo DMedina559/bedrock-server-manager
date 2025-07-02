@@ -4,16 +4,17 @@
 This module is central to acquiring the necessary files for running a Minecraft
 Bedrock server. It provides functionalities to:
 
-- Fetch the latest or specific versions of the Bedrock Server software for
-  Linux and Windows.
-- Download the server software from official sources, using the Minecraft
-  download API as the primary method.
-- Extract the downloaded server files into a designated server directory, with
-  options for preserving existing configuration, worlds, and data during updates.
-- Manage a local cache of downloaded server ZIP files, including pruning old
-  versions to save disk space.
+    - Fetch the latest or specific versions of the Bedrock Server software for
+      Linux and Windows.
+    - Download the server software from official sources, using the Minecraft
+      download API as the primary method.
+    - Extract the downloaded server files into a designated server directory, with
+      options for preserving existing configuration, worlds, and data during updates.
+    - Manage a local cache of downloaded server ZIP files, including pruning old
+      versions to save disk space.
 
 Key Components:
+
     - :class:`BedrockDownloader`: A class that orchestrates the download and setup
       process for a single server instance. It handles version resolution,
       downloading, extraction, and local cache pruning related to its operation.
@@ -62,7 +63,7 @@ def prune_old_downloads(download_dir: str, download_keep: int):
 
     Args:
         download_dir: The directory containing the downloaded
-            'bedrock-server-*.zip' files.
+            ``bedrock-server-*.zip`` files.
         download_keep: The number of most recent ZIP files to retain.
 
     Raises:
@@ -167,25 +168,23 @@ class BedrockDownloader:
     This class orchestrates the process of obtaining and preparing Minecraft
     Bedrock server files for a specific server instance. It handles:
 
-    - **Version Targeting**: Allows specifying "LATEST" (stable), "PREVIEW", or a
-      concrete version number (e.g., "1.20.10.01", "1.20.10.01-PREVIEW").
-    - **URL Resolution**: Primarily uses the official Minecraft download API to find
-      the correct download URL for the target version and operating system (Linux/Windows).
-    - **Downloading**: Downloads the server ZIP archive from the resolved URL,
-      saving it to a version-specific (stable/preview) subdirectory within the
-      configured global downloads path. It skips downloading if the file already exists.
-    - **Extraction**: Extracts the contents of the downloaded ZIP archive into the
-      specified server directory. It supports "fresh install" and "update" modes,
-      where the latter preserves user data like worlds, properties, and allowlists.
-    - **Cache Pruning**: After a download, it can trigger pruning of older ZIP files
-      within its specific download subdirectory (stable or preview) based on retention settings.
+        - **Version Targeting**: Allows specifying "LATEST" (stable), "PREVIEW", or a
+          concrete version number (e.g., "1.20.10.01", "1.20.10.01-PREVIEW").
+        - **URL Resolution**: Primarily uses the official Minecraft download API to find
+          the correct download URL for the target version and operating system (Linux/Windows).
+        - **Downloading**: Downloads the server ZIP archive from the resolved URL,
+          saving it to a version-specific (stable/preview) subdirectory within the
+          configured global downloads path. It skips downloading if the file already exists.
+        - **Extraction**: Extracts the contents of the downloaded ZIP archive into the
+          specified server directory. It supports "fresh install" and "update" modes,
+          where the latter preserves user data like worlds, properties, and allowlists.
+        - **Cache Pruning**: After a download, it can trigger pruning of older ZIP files
+          within its specific download subdirectory (stable or preview) based on retention settings.
 
     An instance of this class is typically created when a new server needs to be
     installed or an existing one updated.
 
     Attributes:
-        DOWNLOAD_PAGE_URL (str): The base URL for the Minecraft Bedrock Server
-            download page. (Primarily for reference, API is preferred).
         PRESERVED_ITEMS_ON_UPDATE (Set[str]): A set of file and directory names
             (relative to the server root) that are preserved during an update
             extraction (e.g., "worlds/", "server.properties").
@@ -201,16 +200,12 @@ class BedrockDownloader:
             `base_download_dir` used for this instance's downloads (e.g., ".../downloads/stable").
     """
 
-    DOWNLOAD_PAGE_URL: str = "https://www.minecraft.net/en-us/download/server/bedrock"
-    """The URL of the Minecraft Bedrock Server download page (fallback/reference)."""
     PRESERVED_ITEMS_ON_UPDATE: Set[str] = {
         "worlds/",
         "allowlist.json",
         "permissions.json",
         "server.properties",
     }
-    """Set of items to preserve during server updates. Paths should be relative
-    to the server root and use forward slashes (e.g., "worlds/")."""
 
     def __init__(
         self, settings_obj: Optional[Settings], server_dir: str, target_version: str = "LATEST"  # type: ignore
@@ -281,9 +276,11 @@ class BedrockDownloader:
         version number (e.g., "1.20.10.01-PREVIEW").
 
         It populates the following internal attributes:
-        - ``self._version_type``: Set to "LATEST" or "PREVIEW".
-        - ``self._custom_version_number``: Set to the version number string
-          (e.g., "1.20.10.01") if a specific version is targeted, otherwise empty.
+
+            - ``self._version_type``: Set to "LATEST" or "PREVIEW".
+            - ``self._custom_version_number``: Set to the version number string
+              (e.g., "1.20.10.01") if a specific version is targeted, otherwise empty.
+
         """
         target_upper = self.input_target_version.upper()
         if target_upper == "PREVIEW":
@@ -614,21 +611,21 @@ class BedrockDownloader:
         This comprehensive method coordinates all steps required to make the server
         ZIP file available locally, prior to extraction. The steps include:
 
-        1.  Checking for internet connectivity using :func:`system_base.check_internet_connectivity`.
-        2.  Ensuring the main server directory (``self.server_dir``) and the base
-            download directory (``self.base_download_dir``) exist, creating them
-            if necessary.
-        3.  Resolving the actual version and download URL by calling
-            :meth:`.get_version_for_target_spec()`. This populates
-            ``self.actual_version`` and ``self.resolved_download_url``.
-        4.  Determining the specific download subdirectory (e.g., ``.../downloads/stable``
-            or ``.../downloads/preview``) and ensuring it exists. This sets
-            ``self.specific_download_dir``.
-        5.  Constructing the full path to the target ZIP file (``self.zip_file_path``).
-        6.  If the ZIP file does not already exist at ``self.zip_file_path``, it
-            downloads the file using :meth:`._download_server_zip_file()`.
-        7.  Finally, it triggers cache pruning for the specific download directory
-            using :meth:`._execute_instance_pruning()`.
+            1.  Checking for internet connectivity using :func:`system_base.check_internet_connectivity`.
+            2.  Ensuring the main server directory (``self.server_dir``) and the base
+                download directory (``self.base_download_dir``) exist, creating them
+                if necessary.
+            3.  Resolving the actual version and download URL by calling
+                :meth:`.get_version_for_target_spec()`. This populates
+                ``self.actual_version`` and ``self.resolved_download_url``.
+            4.  Determining the specific download subdirectory (e.g., ``.../downloads/stable``
+                or ``.../downloads/preview``) and ensuring it exists. This sets
+                ``self.specific_download_dir``.
+            5.  Constructing the full path to the target ZIP file (``self.zip_file_path``).
+            6.  If the ZIP file does not already exist at ``self.zip_file_path``, it
+                downloads the file using :meth:`._download_server_zip_file()`.
+            7.  Finally, it triggers cache pruning for the specific download directory
+                using :meth:`._execute_instance_pruning()`.
 
         Returns:
             Tuple[str, str, str]: A tuple containing:
@@ -723,13 +720,14 @@ class BedrockDownloader:
         local ZIP file and ``self.server_dir`` is the target extraction directory.
 
         The behavior changes based on the `is_update` flag:
-        - If `is_update` is ``True``, extraction preserves specific files and
-          directories listed in :attr:`.PRESERVED_ITEMS_ON_UPDATE` (e.g., worlds,
-          server.properties, allowlist.json, permissions.json). Other files
-          from the ZIP archive will overwrite existing files.
-        - If `is_update` is ``False`` (fresh install), all files from the ZIP
-          archive are extracted, potentially overwriting anything in the
-          ``self.server_dir``.
+
+            - If `is_update` is ``True``, extraction preserves specific files and
+              directories listed in :attr:`.PRESERVED_ITEMS_ON_UPDATE` (e.g., worlds,
+              server.properties, allowlist.json, permissions.json). Other files
+              from the ZIP archive will overwrite existing files.
+            - If `is_update` is ``False`` (fresh install), all files from the ZIP
+              archive are extracted, potentially overwriting anything in the
+              ``self.server_dir``.
 
         Args:
             is_update (bool): If ``True``, performs an update extraction, preserving

@@ -13,6 +13,7 @@ This module is tailored for Linux environments and focuses on two main areas:
         allows sending commands to the running foreground server.
 
 Key Functionality Groups:
+
     - **Systemd User Service Utilities** (Linux-specific):
         - :func:`.get_systemd_user_service_file_path`
         - :func:`.check_service_exists`
@@ -594,28 +595,29 @@ def _linux_start_server(server_name: str, server_dir: str, config_dir: str) -> N
     This function is the Linux equivalent of `_windows_start_server` and is
     intended to be run as the main blocking process when starting a server
     directly (not as a systemd service). It performs the following:
-    1. Verifies that another instance of the same server isn't already running
-       by checking PID files and process status (using :func:`core_process.get_verified_bedrock_process`).
-       Cleans up stale PID files.
-    2. Checks that the server executable (`bedrock_server`) exists and is executable.
-    3. Creates a Unix named pipe (FIFO) for Inter-Process Communication (IPC) using
-       the path from :const:`.PIPE_NAME_TEMPLATE`. Removes any pre-existing FIFO.
-    4. Sets up OS signal handlers for `SIGINT` (Ctrl+C) and `SIGTERM` to trigger
-       graceful shutdown via :func:`._handle_os_signals`.
-    5. Launches the Bedrock server executable as a subprocess.
-       - `LD_LIBRARY_PATH` is set to `.` in the subprocess environment to ensure
-         it finds its libraries in the server directory.
-       - Its stdout/stderr are redirected to `server_output.txt` in the server directory.
-    6. Writes the new server process's PID to a ``bedrock_<server_name>.pid`` file
-       using :func:`core_process.write_pid_to_file`.
-    7. Starts a named pipe server listener thread (:func:`._main_pipe_server_listener_thread`)
-       to accept commands for the Bedrock server via the created FIFO.
-    8. Enters a blocking loop, waiting for the `_foreground_server_shutdown_event`
-       to be set (e.g., by OS signals or if the server process dies).
-    9. Upon shutdown, attempts to gracefully stop the Bedrock server by sending
-       the "stop" command via its stdin, then waits for it to terminate. If it
-       doesn't stop in time, it's forcibly terminated using :func:`core_process.terminate_process_by_pid`.
-    10. Cleans up the PID file, FIFO, closes handles, and restores default signal handlers.
+
+        1. Verifies that another instance of the same server isn't already running
+           by checking PID files and process status (using :func:`core_process.get_verified_bedrock_process`).
+           Cleans up stale PID files.
+        2. Checks that the server executable (`bedrock_server`) exists and is executable.
+        3. Creates a Unix named pipe (FIFO) for Inter-Process Communication (IPC) using
+           the path from :const:`.PIPE_NAME_TEMPLATE`. Removes any pre-existing FIFO.
+        4. Sets up OS signal handlers for `SIGINT` (Ctrl+C) and `SIGTERM` to trigger
+           graceful shutdown via :func:`._handle_os_signals`.
+        5. Launches the Bedrock server executable as a subprocess.
+           - `LD_LIBRARY_PATH` is set to `.` in the subprocess environment to ensure
+             it finds its libraries in the server directory.
+           - Its stdout/stderr are redirected to `server_output.txt` in the server directory.
+        6. Writes the new server process's PID to a ``bedrock_<server_name>.pid`` file
+           using :func:`core_process.write_pid_to_file`.
+        7. Starts a named pipe server listener thread (:func:`._main_pipe_server_listener_thread`)
+           to accept commands for the Bedrock server via the created FIFO.
+        8. Enters a blocking loop, waiting for the `_foreground_server_shutdown_event`
+           to be set (e.g., by OS signals or if the server process dies).
+        9. Upon shutdown, attempts to gracefully stop the Bedrock server by sending
+           the "stop" command via its stdin, then waits for it to terminate. If it
+           doesn't stop in time, it's forcibly terminated using :func:`core_process.terminate_process_by_pid`.
+        10. Cleans up the PID file, FIFO, closes handles, and restores default signal handlers.
 
     Args:
         server_name (str): The unique name identifier for the server.
@@ -856,19 +858,19 @@ def _linux_stop_server(server_name: str, config_dir: str) -> None:
     """Stops a Bedrock server on Linux, trying graceful shutdown then PID termination.
 
     This function attempts to stop a Bedrock server using a two-pronged approach:
-    1. **Graceful Shutdown via Pipe**: It first tries to send the "stop" command
-       to the server using :func:`._linux_send_command`. If this is successful,
-       it assumes the server will shut down cleanly.
-    2. **PID Termination**: If sending the "stop" command fails (e.g., because
-       the server or its pipe listener is not running, indicated by
-       :class:`~bedrock_server_manager.error.ServerNotRunningError` or
-       :class:`~bedrock_server_manager.error.SendCommandError`), this function
-       falls back to stopping the server by its Process ID (PID). It uses
-       :func:`core_process.get_bedrock_server_pid_file_path` and
-       :func:`core_process.read_pid_from_file` to find the PID, then
-       :func:`core_process.is_process_running` to check if it's active, and
-       finally :func:`core_process.terminate_process_by_pid` to stop it.
-       Stale PID files are cleaned up.
+        1. **Graceful Shutdown via Pipe**: It first tries to send the "stop" command
+           to the server using :func:`._linux_send_command`. If this is successful,
+           it assumes the server will shut down cleanly.
+        2. **PID Termination**: If sending the "stop" command fails (e.g., because
+           the server or its pipe listener is not running, indicated by
+           :class:`~bedrock_server_manager.error.ServerNotRunningError` or
+           :class:`~bedrock_server_manager.error.SendCommandError`), this function
+           falls back to stopping the server by its Process ID (PID). It uses
+           :func:`core_process.get_bedrock_server_pid_file_path` and
+           :func:`core_process.read_pid_from_file` to find the PID, then
+           :func:`core_process.is_process_running` to check if it's active, and
+           finally :func:`core_process.terminate_process_by_pid` to stop it.
+           Stale PID files are cleaned up.
 
     Args:
         server_name (str): The name of the server to stop.

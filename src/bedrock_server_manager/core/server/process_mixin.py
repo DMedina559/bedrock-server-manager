@@ -3,6 +3,7 @@
 
 This mixin centralizes the logic for managing the Bedrock server's underlying
 system process. Its responsibilities include:
+
     - Starting the server process directly in the foreground (blocking call).
     - Stopping the server process, attempting graceful shutdown before force-killing.
     - Checking the current running status of the server process.
@@ -159,8 +160,9 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         """Sends a command string to the running Bedrock server process.
 
         This method delegates to platform-specific functions for sending commands:
-        - On Linux: :func:`~.core.system.linux._linux_send_command` (uses FIFO).
-        - On Windows: :func:`~.core.system.windows._windows_send_command` (uses named pipes).
+
+            - On Linux: :func:`~.core.system.linux._linux_send_command` (uses FIFO).
+            - On Windows: :func:`~.core.system.windows._windows_send_command` (uses named pipes).
 
         Args:
             command (str): The command string to send to the server's console
@@ -226,8 +228,9 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         gracefully or due to a crash). It handles pre-start checks, updates the
         server's status in its configuration, and delegates to platform-specific
         start functions:
-        - On Linux: :func:`~.core.system.linux._linux_start_server`.
-        - On Windows: :func:`~.core.system.windows._windows_start_server`.
+
+            - On Linux: :func:`~.core.system.linux._linux_start_server`.
+            - On Windows: :func:`~.core.system.windows._windows_start_server`.
 
         The server's status is set to "STARTING" before launch and should be
         updated to "RUNNING" by the platform-specific function upon successful
@@ -339,18 +342,19 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         """Stops the Bedrock server process gracefully, with a forceful fallback.
 
         This method orchestrates the server shutdown sequence:
-        1. Checks if the server is running using :meth:`.is_running`. If not,
-           ensures the stored status is "STOPPED" and returns.
-        2. Sets the server's stored status to "STOPPING".
-        3. Attempts a graceful shutdown by sending the "stop" command via
-           :meth:`.send_command`.
-        4. Waits for the process to terminate, checking its status periodically
-           up to a configured timeout (`SERVER_STOP_TIMEOUT_SEC` from settings).
-        5. If the server is still running after the timeout, it attempts a
-           forceful PID-based termination using utilities from
-           :mod:`~.core.system.process`.
-        6. Updates the stored status to "STOPPED" upon successful termination,
-           or "ERROR" if issues persist.
+
+            1. Checks if the server is running using :meth:`.is_running`. If not,
+               ensures the stored status is "STOPPED" and returns.
+            2. Sets the server's stored status to "STOPPING".
+            3. Attempts a graceful shutdown by sending the "stop" command via
+               :meth:`.send_command`.
+            4. Waits for the process to terminate, checking its status periodically
+               up to a configured timeout (`SERVER_STOP_TIMEOUT_SEC` from settings).
+            5. If the server is still running after the timeout, it attempts a
+               forceful PID-based termination using utilities from
+               :mod:`~.core.system.process`.
+            6. Updates the stored status to "STOPPED" upon successful termination,
+               or "ERROR" if issues persist.
 
         Raises:
             ServerStopError: If the server fails to stop after all attempts and

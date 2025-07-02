@@ -2,14 +2,15 @@
 """Provides Windows-specific implementations for system interactions.
 
 This module includes functions for:
-- Starting the Bedrock server process directly in the foreground.
-- Managing a named pipe server for inter-process communication (IPC) to send
-  commands to the running Bedrock server.
-- Handling OS signals for graceful shutdown of the foreground server.
-- Sending commands to the server via the named pipe.
-- Stopping the server process by PID.
-- Creating, managing, and deleting Windows Services to run the server in the
-  background, which requires Administrator privileges.
+
+    - Starting the Bedrock server process directly in the foreground.
+    - Managing a named pipe server for inter-process communication (IPC) to send
+      commands to the running Bedrock server.
+    - Handling OS signals for graceful shutdown of the foreground server.
+    - Sending commands to the server via the named pipe.
+    - Stopping the server process by PID.
+    - Creating, managing, and deleting Windows Services to run the server in the
+      background, which requires Administrator privileges.
 
 It relies on the pywin32 package for named pipe and service
 functionality.

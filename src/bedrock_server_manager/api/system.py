@@ -7,14 +7,14 @@ service management capabilities. It primarily orchestrates calls to the
 :class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class.
 
 Key functionalities include:
-- Querying server process resource usage (e.g., PID, CPU, memory) via
-  :func:`~.get_bedrock_process_info`.
-- Managing OS-level services (systemd on Linux, Windows Services on Windows)
-  for servers, including creation (:func:`~.create_server_service`),
-  enabling (:func:`~.enable_server_service`), and disabling
-  (:func:`~.disable_server_service`) auto-start.
-- Configuring server-specific settings like autoupdate behavior via
-  :func:`~.set_autoupdate`.
+    - Querying server process resource usage (e.g., PID, CPU, memory) via
+      :func:`~.get_bedrock_process_info`.
+    - Managing OS-level services (systemd on Linux, Windows Services on Windows)
+      for servers, including creation (:func:`~.create_server_service`),
+      enabling (:func:`~.enable_server_service`), and disabling
+      (:func:`~.disable_server_service`) auto-start.
+    - Configuring server-specific settings like autoupdate behavior via
+      :func:`~.set_autoupdate`.
 
 These functions are designed for use by higher-level application components,
 such as the web UI or CLI, to provide system-level control and monitoring.

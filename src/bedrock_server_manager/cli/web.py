@@ -1,4 +1,4 @@
-﻿# bedrock_server_manager/cli/web.py
+# bedrock_server_manager/cli/web.py
 """
 Defines the `bsm web` command group for managing the Bedrock Server Manager Web UI.
 
@@ -7,16 +7,17 @@ application (FastAPI/Uvicorn based) and to manage its integration as an
 OS-level system service (e.g., systemd on Linux, Windows Services on Windows).
 
 Key command groups and commands include:
--   ``bsm web start``: Starts the web server, with options for host, port,
-    debug mode, and detached/direct execution.
--   ``bsm web stop``: Stops a detached web server process.
--   ``bsm web service ...``: A subgroup for managing the Web UI's system service:
-    -   ``bsm web service configure``: Interactively or directly configures the
-        Web UI system service (creation, autostart).
-    -   ``bsm web service enable``: Enables the Web UI service for autostart.
-    -   ``bsm web service disable``: Disables autostart for the Web UI service.
-    -   ``bsm web service remove``: Removes the Web UI system service definition.
-    -   ``bsm web service status``: Checks the status of the Web UI system service.
+
+    -   ``bsm web start``: Starts the web server, with options for host, port,
+        debug mode, and detached/direct execution.
+    -   ``bsm web stop``: Stops a detached web server process.
+    -   ``bsm web service ...``: A subgroup for managing the Web UI's system service:
+        -   ``bsm web service configure``: Interactively or directly configures the
+            Web UI system service (creation, autostart).
+        -   ``bsm web service enable``: Enables the Web UI service for autostart.
+        -   ``bsm web service disable``: Disables autostart for the Web UI service.
+        -   ``bsm web service remove``: Removes the Web UI system service definition.
+        -   ``bsm web service status``: Checks the status of the Web UI system service.
 
 Interactions with system services are contingent on the availability of
 appropriate service management tools on the host OS (e.g., `systemctl` for
@@ -147,8 +148,9 @@ def interactive_web_service_workflow(bsm: BedrockServerManager):
     Guides the user through an interactive session to configure the Web UI system service.
 
     Uses `questionary` to prompt for:
-    - Creating/updating the system service.
-    - Enabling/disabling autostart for the service.
+
+        - Creating/updating the system service.
+        - Enabling/disabling autostart for the service.
 
     Args:
         bsm (BedrockServerManager): The BedrockServerManager instance.
@@ -250,19 +252,6 @@ def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
     the background as a new process).
 
     The web server's listening host(s) and debug mode can be configured via options.
-
-    Options:
-        -H, --host HOST         Host address to bind to. Can be specified
-                                multiple times for multiple hosts (e.g.,
-                                `-H 127.0.0.1 -H 0.0.0.0`). If not provided,
-                                defaults are taken from application settings
-                                (typically "127.0.0.1").
-        -d, --debug             Run the web server in debug mode. This usually
-                                enables features like auto-reload on code changes.
-                                **NOT recommended for production.**
-        -m, --mode [direct|detached]
-                                Run mode: 'direct' (default) blocks the terminal;
-                                'detached' runs in the background.
 
     Calls API: :func:`~bedrock_server_manager.api.web.start_web_server_api`.
     """
@@ -373,18 +362,11 @@ def configure_web_service(
     respects system capabilities (e.g., won't attempt service setup if a
     service manager isn't available or `pywin32` is missing on Windows).
 
-    Options:
-        --setup-service           If set, triggers the creation or update of
-                                  the system service file/entry for the Web UI.
-                                  Requires a supported service manager.
-        --enable-autostart / --no-enable-autostart
-                                  Enable or disable the Web UI service to start
-                                  automatically. Typically used with
-                                  `--setup-service` or if a service exists.
-
     Calls internal helpers:
+
         - :func:`~.interactive_web_service_workflow` (if no flags)
         - :func:`~._perform_web_service_configuration` (if flags are present)
+
     """
     bsm: BedrockServerManager = ctx.obj["bsm"]
     if setup_service and not bsm.can_manage_services:

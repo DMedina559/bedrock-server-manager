@@ -8,9 +8,9 @@ and their Xbox User IDs (XUIDs). This information is essential for features
 like allowlists and permissions that rely on XUIDs.
 
 Commands allow for:
--   Scanning all server logs to automatically discover players and their XUIDs.
--   Manually adding or updating player entries in the database.
--   (Future potential: Listing all known players).
+    -   Scanning all server logs to automatically discover players and their XUIDs.
+    -   Manually adding or updating player entries in the database.
+    -   (Future potential: Listing all known players).
 
 These commands primarily call functions from the
 :mod:`~bedrock_server_manager.api.player` module.
@@ -90,14 +90,6 @@ def add_players(players: Tuple[str]):
 
     This command is useful for adding known players without needing to wait
     for them to connect to a server or for correcting existing entries.
-
-    Options:
-        -p, --player PLAYER_STRING  Player to add, formatted as "Gamertag:XUID".
-                                    This option is required and can be used
-                                    multiple times to add several players.
-
-    Example:
-        `bsm player add -p "Steve:1234567890123456" -p "Alex:0987654321098765"`
 
     Calls API: :func:`~bedrock_server_manager.api.player.add_players_manually_api`.
     """

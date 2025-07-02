@@ -8,10 +8,11 @@ are permitted to join the server. These commands interact with the server's
 ``allowlist.json`` file via API calls.
 
 Key functionalities:
--   An interactive workflow (:func:`~.interactive_allowlist_workflow`) to
-    guide users through viewing the current allowlist and adding new players.
--   Direct commands (``bsm allowlist add``, ``bsm allowlist remove``,
-    ``bsm allowlist list``) for scripting or quick, non-interactive changes.
+
+    -   An interactive workflow (:func:`~.interactive_allowlist_workflow`) to
+        guide users through viewing the current allowlist and adding new players.
+    -   Direct commands (``bsm allowlist add``, ``bsm allowlist remove``,
+        ``bsm allowlist list``) for scripting or quick, non-interactive changes.
 
 The commands call functions from
 :mod:`~bedrock_server_manager.api.server_install_config` to perform
@@ -35,15 +36,16 @@ def interactive_allowlist_workflow(server_name: str):
     Guides the user through an interactive session to view and add players to the allowlist.
 
     This workflow performs the following steps:
-    1.  Fetches and displays the current allowlist for the specified server using
-        :func:`~bedrock_server_manager.api.server_install_config.get_server_allowlist_api`.
-    2.  Enters a loop prompting the user to enter gamertags of new players to add.
-    3.  For each new player, it asks if they should ignore the player limit.
-    4.  Checks for duplicate entries before queuing a player for addition.
-    5.  If new players are added, it calls
-        :func:`~bedrock_server_manager.api.server_install_config.add_players_to_allowlist_api`
-        to save the changes.
-    6.  Uses :func:`~.handle_api_response` to display the outcome of the save operation.
+
+        1.  Fetches and displays the current allowlist for the specified server using
+            :func:`~bedrock_server_manager.api.server_install_config.get_server_allowlist_api`.
+        2.  Enters a loop prompting the user to enter gamertags of new players to add.
+        3.  For each new player, it asks if they should ignore the player limit.
+        4.  Checks for duplicate entries before queuing a player for addition.
+        5.  If new players are added, it calls
+            :func:`~bedrock_server_manager.api.server_install_config.add_players_to_allowlist_api`
+            to save the changes.
+        6.  Uses :func:`~.handle_api_response` to display the outcome of the save operation.
 
     Note:
         This interactive workflow currently only supports adding players. For
@@ -145,16 +147,6 @@ def add(server_name: str, players: Tuple[str], ignore_limit: bool):
     the user through viewing the current allowlist and adding new players
     with individual 'ignoresPlayerLimit' settings.
 
-    Options:
-        -s, --server SERVER_NAME  The name of the server (required).
-        -p, --player PLAYER_NAME  Gamertag of the player to add. Can be used
-                                  multiple times for multiple players. If omitted,
-                                  interactive mode is triggered.
-        --ignore-limit            If set, all players added via the `--player`
-                                  option will be able to join even if the
-                                  server is full. In interactive mode, this is
-                                  asked per player.
-
     Calls API: :func:`~bedrock_server_manager.api.server_install_config.add_players_to_allowlist_api`.
     """
     try:
@@ -209,11 +201,6 @@ def remove(server_name: str, players: Tuple[str]):
     The command will report which players were successfully removed and which
     were not found in the allowlist.
 
-    Options:
-        -s, --server SERVER_NAME  The name of the server (required).
-        -p, --player PLAYER_NAME  Gamertag of the player to remove. This option
-                                  is required and can be used multiple times.
-
     Calls API: :func:`~bedrock_server_manager.api.server_install_config.remove_players_from_allowlist_api`.
     """
     player_list = list(players)
@@ -262,10 +249,6 @@ def list_players(server_name: str):
 
     Displays each player's gamertag and indicates if they are configured
     to ignore the server's player limit.
-
-    Options:
-        -s, --server SERVER_NAME: The name of the server whose allowlist
-                                  is to be displayed (required).
 
     Calls API: :func:`~bedrock_server_manager.api.server_install_config.get_server_allowlist_api`.
     """

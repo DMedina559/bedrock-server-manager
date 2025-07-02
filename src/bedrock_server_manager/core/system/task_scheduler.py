@@ -6,6 +6,7 @@ scheduled tasks (e.g., cron jobs on Linux, Scheduled Tasks on Windows) that
 are used to automate Bedrock server operations like backups or restarts.
 
 Key Components:
+
     - :func:`.get_task_scheduler`: A factory function that returns an instance of
       the appropriate OS-specific scheduler class.
     - :class:`.LinuxTaskScheduler`: Manages cron jobs on Linux systems. Requires
@@ -50,9 +51,10 @@ def get_task_scheduler() -> Optional[Any]:
     """A factory function to get the appropriate task scheduler for the current OS.
 
     This function checks the current operating system using `platform.system()`.
-    - If "Linux", it attempts to instantiate and return :class:`.LinuxTaskScheduler`.
-    - If "Windows", it attempts to instantiate and return :class:`.WindowsTaskScheduler`.
-    - For other operating systems, it logs a warning and returns ``None``.
+
+        - If "Linux", it attempts to instantiate and return :class:`.LinuxTaskScheduler`.
+        - If "Windows", it attempts to instantiate and return :class:`.WindowsTaskScheduler`.
+        - For other operating systems, it logs a warning and returns ``None``.
 
     If the instantiation of an OS-specific scheduler fails (e.g., due to a
     :class:`~.error.CommandNotFoundError` if `crontab` or `schtasks` is
@@ -501,12 +503,12 @@ class LinuxTaskScheduler:
         validation and name conversion.
 
         Args:
-            minute (str): The minute field (0-59, *).
-            hour (str): The hour field (0-23, *).
-            day_of_month (str): The day of the month field (1-31, *).
-            month (str): The month field (1-12, *, Jan-Dec).
-            day_of_week (str): The day of the week field (0-7, *, Sun-Sat,
-                where 0 and 7 are Sunday).
+            minute (str): The minute field (``0-59``, ``*``).
+            hour (str): The hour field (``0-23, ``*``).
+            day_of_month (str): The day of the month field (``1-31``, ``*``).
+            month (str): The month field (``1-12``, ``*``, Jan-Dec).
+            day_of_week (str): The day of the week field (``0-7``, ``*``, ``Sun-Sat``,
+                where ``0`` and ``7`` are Sunday).
 
         Returns:
             str: A human-readable description of the schedule (e.g.,
@@ -864,9 +866,11 @@ class WindowsTaskScheduler:
         Returns:
             List[Dict[str, str]]: A list of dictionaries. Each dictionary represents
             a successfully queried task and contains:
+
                 - "task_name" (str): The name of the task.
                 - "command" (str): A simplified command string (e.g., "backup").
                 - "schedule" (str): A human-readable description of the task's schedule.
+
             Returns an empty list if `task_names` is empty. Tasks not found or
             those that cause parsing errors are omitted from the results and logged.
         """
@@ -1069,8 +1073,10 @@ class WindowsTaskScheduler:
 
         Returns:
             List[Tuple[str, str]]: A list of tuples. Each tuple contains:
+
                 - ``task_name`` (str): The official task name (URI) from the XML.
                 - ``xml_file_path`` (str): The absolute path to the XML definition file.
+
             Returns an empty list if the server's task directory doesn't exist
             or contains no valid task XML files.
 
@@ -1538,6 +1544,7 @@ class WindowsTaskScheduler:
         the XML for various trigger types based on a dictionary `trigger_data`.
 
         Supported `trigger_data["type"]` values:
+
             - "TimeTrigger": A one-time trigger. Requires `start` (ISO 8601 datetime).
             - "Daily": A daily calendar trigger. Requires `start`. Optional `interval` (days).
             - "Weekly": A weekly calendar trigger. Requires `start`, `days` (list of day names/numbers). Optional `interval` (weeks).

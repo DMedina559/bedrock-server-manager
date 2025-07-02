@@ -7,6 +7,7 @@ might have platform-specific nuances handled elsewhere. It serves as a core
 part of the system interaction layer.
 
 Key functionalities include:
+
     - **Internet Connectivity**:
         - :func:`.check_internet_connectivity`: Verifies basic internet access.
     - **Filesystem Operations**:
@@ -122,19 +123,24 @@ def set_server_folder_permissions(server_dir: str) -> None:
     This function adjusts permissions recursively for the specified `server_dir`
     based on the operating system:
 
-    -   **On Linux**:
-        -   Ownership of all files and directories is set to the current effective
-            user (UID) and group (GID) using ``os.chown``.
-        -   Directories are set to ``0o775`` (rwxrwxr-x).
-        -   The main server executable (assumed to be named "bedrock_server") is
-            set to ``0o775`` (rwxrwxr-x).
-        -   Other files are set to ``0o664`` (rw-rw-r--).
-    -   **On Windows**:
-        -   Ensures that the "write" permission (``stat.S_IWRITE`` or ``stat.S_IWUSR``)
-            is set for all files and directories. It preserves other existing
-            permissions by ORing with the current mode.
-    -   **Other OS**:
-        -   Logs a warning that permission setting is not implemented.
+        -   **On Linux**:
+
+            -   Ownership of all files and directories is set to the current effective
+                user (UID) and group (GID) using ``os.chown``.
+            -   Directories are set to ``0o775`` (rwxrwxr-x).
+            -   The main server executable (assumed to be named "bedrock_server") is
+                set to ``0o775`` (rwxrwxr-x).
+            -   Other files are set to ``0o664`` (rw-rw-r--).
+
+        -   **On Windows**:
+
+            -   Ensures that the "write" permission (``stat.S_IWRITE`` or ``stat.S_IWUSR``)
+                is set for all files and directories. It preserves other existing
+                permissions by ORing with the current mode.
+
+        -   **Other OS**:
+
+            -   Logs a warning that permission setting is not implemented.
 
     Args:
         server_dir (str): The absolute path to the server's installation directory.
@@ -299,13 +305,14 @@ def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
     """Deletes a file or directory robustly, attempting to handle read-only attributes.
 
     This function attempts to delete the specified `path_to_delete`.
-    - If it's a directory, it uses `shutil.rmtree` with a custom error
-      handler (:func:`._handle_remove_readonly_onerror`) that tries to make
-      read-only files writable before retrying deletion.
-    - If it's a file, it first checks if it's writable. If not, it attempts
-      to make it writable (``stat.S_IWRITE | stat.S_IWUSR``) before calling `os.remove`.
-    - If the path does not exist, it logs this and returns ``True``.
-    - If the path is neither a file nor a directory, it logs a warning and returns ``False``.
+
+        - If it's a directory, it uses `shutil.rmtree` with a custom error
+          handler (:func:`._handle_remove_readonly_onerror`) that tries to make
+          read-only files writable before retrying deletion.
+        - If it's a file, it first checks if it's writable. If not, it attempts
+          to make it writable (``stat.S_IWRITE | stat.S_IWUSR``) before calling `os.remove`.
+        - If the path does not exist, it logs this and returns ``True``.
+        - If the path is neither a file nor a directory, it logs a warning and returns ``False``.
 
     Deletion failures are logged, and the function returns ``False`` in such cases.
 

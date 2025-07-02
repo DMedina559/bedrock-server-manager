@@ -422,10 +422,13 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
 
         Returns:
             List[Dict[str, Any]]: A sorted list of player permission dictionaries.
+
             Each dictionary in the list will contain:
+
                 - "xuid" (str): The player's XUID.
                 - "name" (str): The player's gamertag (from the map or a default).
                 - "permission_level" (str): The player's permission level (e.g., "operator").
+
             Returns an empty list if ``permissions.json`` does not exist, is empty,
             or contains no valid entries.
 

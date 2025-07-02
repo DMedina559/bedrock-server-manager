@@ -23,6 +23,7 @@ Key functionalities:
       installed version, target version, status, and custom key-value pairs.
     - Reading the world name from ``server.properties``.
     - Reconciling actual server runtime status with stored status.
+
 """
 import os
 import json
@@ -197,16 +198,16 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Loads the server-specific JSON configuration.
 
         This method handles:
-        -   Ensuring the server's configuration directory exists.
-        -   Creating a default configuration file (using :meth:`._get_default_server_config`)
-            if one does not exist.
-        -   Reading the JSON content if the file exists.
-        -   Handling empty or malformed JSON files by initializing with defaults
-            and attempting migration if necessary.
-        -   Checking the ``config_schema_version`` and triggering migration
-            (via :meth:`._migrate_server_config_v1_to_v2`) if an older schema
-            (specifically v1, identified by lack of version key) is detected.
-            The migrated configuration is then saved.
+            -   Ensuring the server's configuration directory exists.
+            -   Creating a default configuration file (using :meth:`._get_default_server_config`)
+                if one does not exist.
+            -   Reading the JSON content if the file exists.
+            -   Handling empty or malformed JSON files by initializing with defaults
+                and attempting migration if necessary.
+            -   Checking the ``config_schema_version`` and triggering migration
+                (via :meth:`._migrate_server_config_v1_to_v2`) if an older schema
+                (specifically v1, identified by lack of version key) is detected.
+                The migrated configuration is then saved.
 
         Returns:
             Dict[str, Any]: The loaded (and potentially migrated) server configuration

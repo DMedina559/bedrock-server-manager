@@ -5,8 +5,9 @@ Defines the `bsm schedule` command group for managing OS-level scheduled tasks.
 This module provides CLI tools to create, list, and delete scheduled tasks
 that automate Bedrock server operations (e.g., backups, restarts, updates).
 It offers a platform-aware interface, utilizing:
--   Cron jobs on Linux systems.
--   Windows Task Scheduler on Windows systems.
+
+    -   Cron jobs on Linux systems.
+    -   Windows Task Scheduler on Windows systems.
 
 The main `bsm schedule` command, when invoked without subcommands, launches
 an interactive menu-driven workflow for guided task management for a specified
@@ -279,11 +280,12 @@ def _add_cron_job(server_name: str):
     Interactive workflow to add a new cron job for a server on Linux.
 
     This helper function:
-    1. Prompts the user to select a command to schedule using :func:`~._get_command_to_schedule`.
-    2. Prompts for each cron time field (minute, hour, day of month, month, day of week)
-       using `questionary.text` with :class:`~.CronTimeValidator`.
-    3. Asks for confirmation before adding the constructed cron job string.
-    4. Calls :func:`~bedrock_server_manager.api.task_scheduler.add_cron_job` to add the job.
+
+        1. Prompts the user to select a command to schedule using :func:`~._get_command_to_schedule`.
+        2. Prompts for each cron time field (minute, hour, day of month, month, day of week)
+           using `questionary.text` with :class:`~.CronTimeValidator`.
+        3. Asks for confirmation before adding the constructed cron job string.
+        4. Calls :func:`~bedrock_server_manager.api.task_scheduler.add_cron_job` to add the job.
 
     Args:
         server_name (str): The name of the server for which the cron job is being added.
@@ -334,12 +336,13 @@ def _add_windows_task(server_name: str):
     Interactive workflow to add a new Windows Scheduled Task for a server.
 
     This helper function:
-    1. Prompts the user to select a command to schedule using :func:`~._get_command_to_schedule`.
-    2. Guides the user to define triggers using :func:`~._get_windows_triggers_interactively`.
-    3. If no triggers are defined, asks if a disabled task should be created.
-    4. Generates a task name using :func:`~bedrock_server_manager.api.task_scheduler.create_task_name`.
-    5. Displays a summary of the task to be created and asks for confirmation.
-    6. Calls :func:`~bedrock_server_manager.api.task_scheduler.create_windows_task` to create the task.
+
+        1. Prompts the user to select a command to schedule using :func:`~._get_command_to_schedule`.
+        2. Guides the user to define triggers using :func:`~._get_windows_triggers_interactively`.
+        3. If no triggers are defined, asks if a disabled task should be created.
+        4. Generates a task name using :func:`~bedrock_server_manager.api.task_scheduler.create_task_name`.
+        5. Displays a summary of the task to be created and asks for confirmation.
+        6. Calls :func:`~bedrock_server_manager.api.task_scheduler.create_windows_task` to create the task.
 
     Args:
         server_name (str): The name of the server for which the task is being added.
@@ -465,8 +468,9 @@ def list_tasks(ctx: click.Context):
     Lists all scheduled tasks associated with the specified server.
 
     The output format is platform-specific:
-    -   On Linux, it displays cron jobs relevant to the server.
-    -   On Windows, it displays tasks from the Windows Task Scheduler.
+
+        -   On Linux, it displays cron jobs relevant to the server.
+        -   On Windows, it displays tasks from the Windows Task Scheduler.
 
     This command is typically invoked via the main `schedule` group's context.
     """
@@ -489,8 +493,9 @@ def add_task(ctx: click.Context):
     Interactively adds a new scheduled task for the specified server.
 
     This command launches a platform-specific interactive workflow:
-    -   :func:`~._add_cron_job` on Linux.
-    -   :func:`~._add_windows_task` on Windows.
+
+        -   :func:`~._add_cron_job` on Linux.
+        -   :func:`~._add_windows_task` on Windows.
 
     These workflows guide the user through selecting a command to schedule
     and defining the schedule parameters (cron expression or task triggers).

@@ -9,6 +9,7 @@ version number). It then manages the process of extracting these files into the
 server's designated directory and applying necessary filesystem permissions.
 
 Key functionalities include:
+
     - Checking if an update is needed by comparing the current installed version
       against a target version or dynamic specifier.
     - Performing the complete installation or update workflow, which involves:
@@ -17,6 +18,7 @@ Key functionalities include:
         - Extracting the archive (preserving user data on updates).
         - Setting filesystem permissions.
         - Updating the server's persisted version and status information.
+
 """
 import os
 import logging
@@ -55,6 +57,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         - Determining if an update is necessary by comparing the currently installed
           server version with a specified target version (which can be "LATEST",
           "PREVIEW", or a concrete version string).
+
         - Orchestrating the full install/update process:
             - Stopping the server if it's running (relies on :meth:`~.ServerProcessMixin.stop`).
             - Updating the server's persistent status (e.g., to "INSTALLING" or "UPDATING")
@@ -188,6 +191,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         This method compares the server's currently installed version (obtained via
         ``self.get_version()``, expected from :class:`.ServerStateMixin`) against the
         `target_version_specification`. The target can be:
+
             - A specific version string (e.g., "1.20.10.01").
             - "LATEST" (for the latest stable release).
             - "PREVIEW" (for the latest preview release).
@@ -331,22 +335,23 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         This is the primary method for managing server software versions. It
         orchestrates the entire workflow:
-        1. Checks if an update is needed using :meth:`.is_update_needed` (unless
-           `force_reinstall` is ``True`` or the server isn't installed).
-        2. If the server is running, stops it using ``self.stop()`` (expected from
-           :class:`~.ServerProcessMixin`).
-        3. Updates the server's persisted status to "INSTALLING" or "UPDATING"
-           (via ``self.set_status_in_config()`` from :class:`.ServerStateMixin`).
-        4. If it's a new installation, sets the target version in the config.
-        5. Initializes a :class:`~.core.downloader.BedrockDownloader` for the
-           `target_version_specification`.
-        6. Calls :meth:`BedrockDownloader.prepare_download_assets` to download/verify files.
-        7. Calls the internal helper :meth:`._perform_server_files_setup` to extract
-           the archive and set permissions. This helper, in turn, relies on
-           ``self.set_filesystem_permissions()`` (expected from another mixin).
-        8. Updates the server's persisted installed version (via ``self.set_version()``
-           from :class:`.ServerStateMixin`) and final status ("INSTALLED" or "UPDATED").
-        9. Cleans up the downloaded ZIP archive.
+
+            1. Checks if an update is needed using :meth:`.is_update_needed` (unless
+               `force_reinstall` is ``True`` or the server isn't installed).
+            2. If the server is running, stops it using ``self.stop()`` (expected from
+               :class:`~.ServerProcessMixin`).
+            3. Updates the server's persisted status to "INSTALLING" or "UPDATING"
+               (via ``self.set_status_in_config()`` from :class:`.ServerStateMixin`).
+            4. If it's a new installation, sets the target version in the config.
+            5. Initializes a :class:`~.core.downloader.BedrockDownloader` for the
+               `target_version_specification`.
+            6. Calls :meth:`BedrockDownloader.prepare_download_assets` to download/verify files.
+            7. Calls the internal helper :meth:`._perform_server_files_setup` to extract
+               the archive and set permissions. This helper, in turn, relies on
+               ``self.set_filesystem_permissions()`` (expected from another mixin).
+            8. Updates the server's persisted installed version (via ``self.set_version()``
+               from :class:`.ServerStateMixin`) and final status ("INSTALLED" or "UPDATED").
+            9. Cleans up the downloaded ZIP archive.
 
         Args:
             target_version_specification (str): The target version to install or

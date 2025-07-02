@@ -60,8 +60,7 @@ logger = logging.getLogger(__name__)
 
 @plugin_method("get_server_setting")
 def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
-    """
-    Reads any value from a server's specific JSON configuration file
+    """Reads any value from a server's specific JSON configuration file
     (e.g., ``<server_name>_config.json``) using dot-notation for keys.
 
     Args:
@@ -105,8 +104,7 @@ def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
 
 
 def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]:
-    """
-    Writes any value to a server's specific JSON configuration file
+    """Writes any value to a server's specific JSON configuration file
     (e.g., ``<server_name>_config.json``) using dot-notation for keys.
     Intermediate dictionaries will be created if they don't exist along the key path.
 
@@ -157,8 +155,7 @@ def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]
 
 @plugin_method("set_server_custom_value")
 def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str, Any]:
-    """
-    Writes a key-value pair to the 'custom' section of a server's specific
+    """Writes a key-value pair to the 'custom' section of a server's specific
     JSON configuration file (e.g., ``<server_name>_config.json``).
     This is a sandboxed way for plugins or users to store arbitrary data
     associated with a server. The key will be stored as ``custom.<key>``.
@@ -208,8 +205,7 @@ def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str,
 
 @plugin_method("get_all_server_settings")
 def get_all_server_settings(server_name: str) -> Dict[str, Any]:
-    """
-    Reads the entire JSON configuration for a specific server from its
+    """Reads the entire JSON configuration for a specific server from its
     dedicated configuration file (e.g., ``<server_name>_config.json``).
     If the file doesn't exist, it will be created with default values.
     Handles schema migration if an older config format is detected.
@@ -454,8 +450,10 @@ def stop_server(server_name: str) -> Dict[str, str]:
 
     Returns:
         Dict[str, str]: A dictionary containing the operation result.
+
         On success: ``{"status": "success", "message": "Server... stopped successfully."}`` or
                     ``{"status": "success", "message": "Server... stop initiated via <service_manager>."}``
+
         On error (e.g., already stopped): ``{"status": "error", "message": "<error_message>"}``
 
     Raises:

@@ -7,13 +7,13 @@ multiple server instances. It primarily interfaces with the
 :class:`~bedrock_server_manager.core.manager.BedrockServerManager` core class.
 
 Key functionalities include:
-- Retrieving application metadata (name, version, OS, key directories) via
-  :func:`~.get_application_info_api`.
-- Listing globally available content like world templates
-  (:func:`~.list_available_worlds_api`) and addons
-  (:func:`~.list_available_addons_api`).
-- Aggregating status and version information for all detected server instances
-  using :func:`~.get_all_servers_data`.
+    - Retrieving application metadata (name, version, OS, key directories) via
+      :func:`~.get_application_info_api`.
+    - Listing globally available content like world templates
+      (:func:`~.list_available_worlds_api`) and addons
+      (:func:`~.list_available_addons_api`).
+    - Aggregating status and version information for all detected server instances
+      using :func:`~.get_all_servers_data`.
 
 These functions are exposed to the plugin system via
 :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method` and are
@@ -137,13 +137,15 @@ def get_all_servers_data() -> Dict[str, Any]:
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
-        - On full success (all servers processed without error):
+
+        On full success (all servers processed without error):
           ``{"status": "success", "servers": List[ServerDataDict]}``
-        - On partial success (some individual server errors occurred during scan):
+        On partial success (some individual server errors occurred during scan):
           ``{"status": "success", "servers": List[ServerDataDict], "message": "Completed with errors: <details>"}``
           The ``servers`` list contains data for successfully processed servers.
-        - On total failure (e.g., cannot access base server directory):
+        On total failure (e.g., cannot access base server directory):
           ``{"status": "error", "message": "<error_message>"}``
+
         Each ``ServerDataDict`` contains keys like "name", "status", "version".
 
     Raises:

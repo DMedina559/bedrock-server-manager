@@ -10,14 +10,16 @@ handles operations that span across multiple servers or pertain to the applicati
 as a whole.
 
 Key responsibilities include:
-- Accessing and managing global application settings via the :class:`~.config.settings.Settings` object.
-- Discovering and validating existing Bedrock server installations.
-- Managing a central player database (``players.json``) by aggregating player
-  information from individual server logs.
-- Controlling the lifecycle of the Web UI application, including its system service
-  (Systemd on Linux, Windows Service on Windows).
-- Listing globally available content, such as ``.mcworld`` and addon files.
-- Checking and reporting system capabilities relevant to the application's features.
+
+    - Accessing and managing global application settings via the :class:`~.config.settings.Settings` object.
+    - Discovering and validating existing Bedrock server installations.
+    - Managing a central player database (``players.json``) by aggregating player
+      information from individual server logs.
+    - Controlling the lifecycle of the Web UI application, including its system service
+      (Systemd on Linux, Windows Service on Windows).
+    - Listing globally available content, such as ``.mcworld`` and addon files.
+    - Checking and reporting system capabilities relevant to the application's features.
+
 """
 import os
 import json
@@ -63,6 +65,7 @@ class BedrockServerManager:
     of individual server instances.
 
     Key Responsibilities:
+
         - Providing access to and management of global application settings through
           an aggregated :class:`~.config.settings.Settings` object.
         - Discovering server instances within the configured base directory and
@@ -106,19 +109,20 @@ class BedrockServerManager:
         Initializes the BedrockServerManager instance.
 
         This constructor sets up the manager by:
-        1. Initializing or accepting an instance of the :class:`~.config.settings.Settings`
-           class, which provides access to all application configurations.
-        2. Performing a check for system capabilities (e.g., availability of
-           ``crontab``, ``systemctl``) via :meth:`._check_system_capabilities`
-           and logging warnings for missing dependencies via :meth:`._log_capability_warnings`.
-        3. Caching essential paths (configuration directory, application data directory,
-           servers base directory, content directory) and constants from the settings
-           and application constants.
-        4. Defining constants for Web UI process/service management (PID filename,
-           service names for Systemd and Windows).
-        5. Validating that critical directory paths (servers base directory, content
-           directory) are configured in settings, raising a
-           :class:`~.error.ConfigurationError` if not.
+
+            1. Initializing or accepting an instance of the :class:`~.config.settings.Settings`
+               class, which provides access to all application configurations.
+            2. Performing a check for system capabilities (e.g., availability of
+               ``crontab``, ``systemctl``) via :meth:`._check_system_capabilities`
+               and logging warnings for missing dependencies via :meth:`._log_capability_warnings`.
+            3. Caching essential paths (configuration directory, application data directory,
+               servers base directory, content directory) and constants from the settings
+               and application constants.
+            4. Defining constants for Web UI process/service management (PID filename,
+               service names for Systemd and Windows).
+            5. Validating that critical directory paths (servers base directory, content
+               directory) are configured in settings, raising a
+               :class:`~.error.ConfigurationError` if not.
 
         Args:
             settings_instance (Optional[:class:`~.config.settings.Settings`]):
@@ -259,8 +263,10 @@ class BedrockServerManager:
         Returns:
             List[Dict[str, str]]: A list of dictionaries. Each dictionary
             represents a player and contains two keys:
+
                 - ``"name"`` (str): The player's name.
                 - ``"xuid"`` (str): The player's XUID.
+
             Returns an empty list if the input ``player_string`` is empty or invalid.
 
         Raises:
@@ -294,9 +300,11 @@ class BedrockServerManager:
         directory (see :meth:`._get_player_db_path`).
 
         The merging logic is as follows:
-        - If a player's XUID from ``players_data`` already exists in the database,
-          their entry (name and XUID) is updated if different.
-        - If a player's XUID is new, their entry is added to the database.
+
+            - If a player's XUID from ``players_data`` already exists in the database,
+              their entry (name and XUID) is updated if different.
+            - If a player's XUID is new, their entry is added to the database.
+
         The final list of players is sorted alphabetically by name before being
         written to the file. The configuration directory is created if it doesn't exist.
 
@@ -435,16 +443,17 @@ class BedrockServerManager:
         """Scans all server logs for player data and updates the central player database.
 
         This comprehensive method performs the following actions:
-        1. Iterates through all subdirectories within the application's base server
-           directory (defined by ``settings['paths.servers']``).
-        2. For each subdirectory, it attempts to instantiate a
-           :class:`~.core.bedrock_server.BedrockServer` object.
-        3. If the server instance is valid and installed, it calls the server's
-           :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
-           method to extract player names and XUIDs from its logs.
-        4. All player data discovered from all server logs is aggregated.
-        5. Unique player entries (based on XUID) are then saved to the central
-           ``players.json`` file using :meth:`.save_player_data`.
+
+            1. Iterates through all subdirectories within the application's base server
+               directory (defined by ``settings['paths.servers']``).
+            2. For each subdirectory, it attempts to instantiate a
+               :class:`~.core.bedrock_server.BedrockServer` object.
+            3. If the server instance is valid and installed, it calls the server's
+               :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
+               method to extract player names and XUIDs from its logs.
+            4. All player data discovered from all server logs is aggregated.
+            5. Unique player entries (based on XUID) are then saved to the central
+               ``players.json`` file using :meth:`.save_player_data`.
 
         Args:
             None
@@ -452,6 +461,7 @@ class BedrockServerManager:
         Returns:
             Dict[str, Any]: A dictionary summarizing the discovery and saving operation,
             containing the following keys:
+
                 - ``"total_entries_in_logs"`` (int): The total number of player entries
                   (possibly non-unique) found across all server logs.
                 - ``"unique_players_submitted_for_saving"`` (int): The number of unique
@@ -715,13 +725,14 @@ class BedrockServerManager:
 
         This method handles the OS-specific logic for creating a system service
         that will run the Bedrock Server Manager Web UI.
-        - On Linux, it creates a systemd user service file using
-          :func:`~.core.system.linux.create_systemd_service_file`.
-          The service will be named based on :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
-        - On Windows, it creates a new Windows Service using
-          :func:`~.core.system.windows.create_windows_service`.
-          The service will be named based on :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL`
-          and :attr:`._WEB_SERVICE_WINDOWS_DISPLAY_NAME`.
+
+            - On Linux, it creates a systemd user service file using
+              :func:`~.core.system.linux.create_systemd_service_file`.
+              The service will be named based on :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
+            - On Windows, it creates a new Windows Service using
+              :func:`~.core.system.windows.create_windows_service`.
+              The service will be named based on :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL`
+              and :attr:`._WEB_SERVICE_WINDOWS_DISPLAY_NAME`.
 
         The start command for the service is constructed by :meth:`._build_web_service_start_command`.
         The application data directory (:attr:`._app_data_dir`) is typically used as the
@@ -971,7 +982,9 @@ class BedrockServerManager:
             :meth:`.create_web_service_file` if needed again.
 
         On Linux, this removes the systemd user service file and reloads the systemd daemon.
+
         Uses :func:`os.remove` and ``systemctl --user daemon-reload``.
+
         On Windows, this deletes the service using :func:`~.core.system.windows.delete_windows_service`.
 
         Returns:
@@ -984,7 +997,9 @@ class BedrockServerManager:
             CommandNotFoundError: If system utilities are not found.
             PermissionsError: On Windows, if not run with Administrator privileges.
             Various (from :func:`~.core.system.windows.delete_windows_service`):
-                Can include :class:`~.error.SubprocessError` if ``sc.exe delete`` fails.
+
+            - Can include :class:`~.error.SubprocessError` if ``sc.exe delete`` fails.
+
         """
         os_type = self.get_os_type()
         if os_type == "Linux":
@@ -1039,10 +1054,11 @@ class BedrockServerManager:
         """Checks if the Web UI system service is currently active (running).
 
         Delegates to OS-specific checks:
-        - On Linux, uses ``systemctl --user is-active`` for the service named
-          by :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
-        - On Windows, uses ``sc query`` for the service named by
-          :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL`.
+
+            - On Linux, uses ``systemctl --user is-active`` for the service named
+              by :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
+            - On Windows, uses ``sc query`` for the service named by
+              :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL`.
 
         Returns ``False`` if the OS is not supported, if system utilities
         (``systemctl``, ``sc.exe``) are not found, or if the service is not active.
@@ -1134,11 +1150,12 @@ class BedrockServerManager:
         """Checks if the Web UI system service is enabled for automatic startup.
 
         Delegates to OS-specific checks:
-        - On Linux, uses ``systemctl --user is-enabled`` for the service named
-          by :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
-        - On Windows, uses ``sc qc`` (query config) for the service named by
-          :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL` to check if its start type
-          is "AUTO_START".
+
+            - On Linux, uses ``systemctl --user is-enabled`` for the service named
+              by :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
+            - On Windows, uses ``sc qc`` (query config) for the service named by
+              :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL` to check if its start type
+              is "AUTO_START".
 
         Returns ``False`` if the OS is not supported, if system utilities
         (``systemctl``, ``sc.exe``) are not found, or if the service is not enabled.
@@ -1358,8 +1375,9 @@ class BedrockServerManager:
         This method is called during :meth:`.__init__` to determine if optional
         system utilities, required for certain features, are present.
         Currently, it checks for:
-        - 'scheduler': ``crontab`` (Linux) or ``schtasks`` (Windows).
-        - 'service_manager': ``systemctl`` (Linux) or ``sc.exe`` (Windows).
+
+            - 'scheduler': ``crontab`` (Linux) or ``schtasks`` (Windows).
+            - 'service_manager': ``systemctl`` (Linux) or ``sc.exe`` (Windows).
 
         The results are stored in the :attr:`.capabilities` dictionary.
 
@@ -1495,11 +1513,12 @@ class BedrockServerManager:
         This method scans the main server base directory (defined by
         ``settings['paths.servers']``) for subdirectories that represent server
         installations. For each potential server, it:
-        1. Instantiates a :class:`~.core.bedrock_server.BedrockServer` object.
-        2. Validates the installation using the server's :meth:`~.core.bedrock_server.BedrockServer.is_installed` method.
-        3. If valid, it queries the server's status and version using
-           :meth:`~.core.bedrock_server.BedrockServer.get_status` and
-           :meth:`~.core.bedrock_server.BedrockServer.get_version`.
+
+            1. Instantiates a :class:`~.core.bedrock_server.BedrockServer` object.
+            2. Validates the installation using the server's :meth:`~.core.bedrock_server.BedrockServer.is_installed` method.
+            3. If valid, it queries the server's status and version using
+               :meth:`~.core.bedrock_server.BedrockServer.get_status` and
+               :meth:`~.core.bedrock_server.BedrockServer.get_version`.
 
         Errors encountered while processing individual servers are collected and
         returned separately, allowing the method to succeed even if some server
@@ -1508,13 +1527,16 @@ class BedrockServerManager:
 
         Returns:
             Tuple[List[Dict[str, Any]], List[str]]: A tuple containing two lists:
-            - The first list contains dictionaries, one for each successfully
-              processed server. Each dictionary has the keys:
-                - ``"name"`` (str): The name of the server.
-                - ``"status"`` (str): The server's current status (e.g., "RUNNING", "STOPPED").
-                - ``"version"`` (str): The detected version of the server.
-            - The second list contains string messages describing any errors that
-              occurred while processing specific server candidates.
+
+                - The first list contains dictionaries, one for each successfully
+                  processed server. Each dictionary has the keys:
+
+                    - ``"name"`` (str): The name of the server.
+                    - ``"status"`` (str): The server's current status (e.g., "RUNNING", "STOPPED").
+                    - ``"version"`` (str): The detected version of the server.
+
+                - The second list contains string messages describing any errors that
+                  occurred while processing specific server candidates.
 
         Raises:
             AppFileNotFoundError: If the main server base directory

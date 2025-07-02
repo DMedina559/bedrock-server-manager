@@ -48,14 +48,14 @@ class ServerAddonMixin(BedrockServerBaseMixin):
     Minecraft Bedrock Edition addons, typically distributed as ``.mcaddon`` or
     ``.mcpack`` files. Its primary responsibilities include:
 
-    - Processing addon archives (``.mcaddon``, ``.mcpack``) by extracting their contents.
-    - Parsing ``manifest.json`` files to retrieve addon metadata (type, UUID, version, name).
-    - Installing behavior packs and resource packs into the active server world.
-    - Listing all installed addons within a world, detailing their activation status
-      (e.g., 'ACTIVE', 'INACTIVE', 'ORPHANED').
-    - Exporting an installed addon back into a ``.mcpack`` file.
-    - Removing an addon from a world, which involves deleting its files and
-      deactivating it in the world's configuration.
+        - Processing addon archives (``.mcaddon``, ``.mcpack``) by extracting their contents.
+        - Parsing ``manifest.json`` files to retrieve addon metadata (type, UUID, version, name).
+        - Installing behavior packs and resource packs into the active server world.
+        - Listing all installed addons within a world, detailing their activation status
+          (e.g., 'ACTIVE', 'INACTIVE', 'ORPHANED').
+        - Exporting an installed addon back into a ``.mcpack`` file.
+        - Removing an addon from a world, which involves deleting its files and
+          deactivating it in the world's configuration.
 
     It inherits from :class:`.BedrockServerBaseMixin` to access common server
     attributes like ``server_name``, ``server_dir``, and ``logger``. It also
@@ -209,13 +209,14 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         This method iterates through the files within the provided temporary directory
         (which contains the extracted contents of an ``.mcaddon`` file).
         It identifies and processes:
-        - ``.mcworld`` files: These are processed by calling
-          :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`,
-          effectively importing the world template into the server's active world.
-          Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
-          to determine the active world.
-        - ``.mcpack`` files: These are processed by recursively calling
-          :meth:`._process_mcpack_archive` for each pack.
+
+            - ``.mcworld`` files: These are processed by calling
+              :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`,
+              effectively importing the world template into the server's active world.
+              Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+              to determine the active world.
+            - ``.mcpack`` files: These are processed by recursively calling
+              :meth:`._process_mcpack_archive` for each pack.
 
         Args:
             temp_dir_with_extracted_files (str): The absolute path to the
@@ -296,9 +297,10 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         An ``.mcpack`` file is typically a ZIP archive containing a single
         behavior or resource pack. This method performs the following steps:
-        1. Extracts the contents of the ``.mcpack`` file into a temporary directory.
-        2. Delegates the installation of the extracted pack data to
-           :meth:`._install_pack_from_extracted_data`.
+
+            1. Extracts the contents of the ``.mcpack`` file into a temporary directory.
+            2. Delegates the installation of the extracted pack data to
+               :meth:`._install_pack_from_extracted_data`.
 
         The temporary directory is automatically cleaned up after processing.
 
@@ -310,6 +312,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             FileOperationError: If an OS-level error occurs during temporary
                 directory creation or archive extraction (e.g., permission issues,
                 disk full).
+
             # Note: Further errors can be raised by _install_pack_from_extracted_data
         """
         mcpack_filename = os.path.basename(mcpack_file_path)
@@ -357,19 +360,20 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         """Installs a behavior or resource pack from its extracted files into the active world.
 
         This core installation logic performs these actions:
-        1. Reads and validates the ``manifest.json`` from the ``extracted_pack_dir``
-           using :meth:`._extract_manifest_info` to get pack metadata (type, UUID,
-           version, name).
-        2. Determines the target installation path within the active world's
-           ``behavior_packs`` or ``resource_packs`` directory. The folder name
-           includes the pack name and version for uniqueness (e.g., ``MyPack_1.0.0``).
-           Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
-        3. Copies the contents from ``extracted_pack_dir`` to this target path.
-           If a directory for this pack version already exists, it's removed first
-           to ensure a clean installation.
-        4. Updates the corresponding world activation JSON file
-           (``world_behavior_packs.json`` or ``world_resource_packs.json``)
-           using :meth:`._update_world_pack_json_file` to activate the pack.
+
+            1. Reads and validates the ``manifest.json`` from the ``extracted_pack_dir``
+               using :meth:`._extract_manifest_info` to get pack metadata (type, UUID,
+               version, name).
+            2. Determines the target installation path within the active world's
+               ``behavior_packs`` or ``resource_packs`` directory. The folder name
+               includes the pack name and version for uniqueness (e.g., ``MyPack_1.0.0``).
+               Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
+            3. Copies the contents from ``extracted_pack_dir`` to this target path.
+               If a directory for this pack version already exists, it's removed first
+               to ensure a clean installation.
+            4. Updates the corresponding world activation JSON file
+               (``world_behavior_packs.json`` or ``world_resource_packs.json``)
+               using :meth:`._update_world_pack_json_file` to activate the pack.
 
         Args:
             extracted_pack_dir (str): The absolute path to the temporary
@@ -617,17 +621,18 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         ``world_behavior_packs.json`` or ``world_resource_packs.json``).
 
         The logic is as follows:
-        1. Reads the existing list of activated packs from ``world_json_file_path``.
-           If the file doesn't exist or is invalid, it starts with an empty list.
-        2. Searches for an existing entry with the given ``pack_uuid``.
-           - If found, it compares the ``pack_version_list`` with the existing
-             version. If the new version is greater than or equal to the existing
-             one, the entry is updated with the new version.
-           - If an existing entry has an invalid version format, it's overwritten.
-        3. If no entry with ``pack_uuid`` is found, a new entry for the pack
-           (with its UUID and version) is appended to the list.
-        4. Writes the updated list of packs back to the ``world_json_file_path``,
-           pretty-printed with an indent of 2.
+
+            1. Reads the existing list of activated packs from ``world_json_file_path``.
+               If the file doesn't exist or is invalid, it starts with an empty list.
+            2. Searches for an existing entry with the given ``pack_uuid``.
+               - If found, it compares the ``pack_version_list`` with the existing
+                 version. If the new version is greater than or equal to the existing
+                 one, the entry is updated with the new version.
+               - If an existing entry has an invalid version format, it's overwritten.
+            3. If no entry with ``pack_uuid`` is found, a new entry for the pack
+               (with its UUID and version) is appended to the list.
+            4. Writes the updated list of packs back to the ``world_json_file_path``,
+               pretty-printed with an indent of 2.
 
         The directory for ``world_json_file_path`` is created if it doesn't exist.
 
@@ -731,12 +736,13 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         """Lists all behavior and resource packs for a specified world.
 
         This method provides a detailed inventory of addons by:
-        1. Scanning the physical pack folders (``behavior_packs`` and ``resource_packs``)
-           within the specified world's directory to find all installed packs by
-           reading their ``manifest.json`` files.
-        2. Reading the world's activation JSON files (``world_behavior_packs.json``
-           and ``world_resource_packs.json``) to determine which packs are active.
-        3. Comparing these two sets of information to determine the status of each pack.
+
+            1. Scanning the physical pack folders (``behavior_packs`` and ``resource_packs``)
+               within the specified world's directory to find all installed packs by
+               reading their ``manifest.json`` files.
+            2. Reading the world's activation JSON files (``world_behavior_packs.json``
+               and ``world_resource_packs.json``) to determine which packs are active.
+            3. Comparing these two sets of information to determine the status of each pack.
 
         The status can be:
             - ``ACTIVE``: The pack is physically present and listed in the activation file.
@@ -753,10 +759,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             ``"behavior_packs"`` and ``"resource_packs"``. Each key maps to a list
             of dictionaries, where each dictionary represents an addon with the
             following string keys:
+
                 - ``"name"`` (str): The display name of the pack from its manifest.
                 - ``"uuid"`` (str): The UUID of the pack from its manifest.
                 - ``"version"`` (List[int]): The version of the pack (e.g., ``[1, 0, 0]``).
                 - ``"status"`` (str): The activation status: 'ACTIVE', 'INACTIVE', or 'ORPHANED'.
+
             The lists of pack dictionaries are sorted by pack name.
 
         Raises:
@@ -824,10 +832,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         Returns:
             List[Dict[str, Any]]: A list of dictionaries. Each dictionary
             represents a physically installed pack and contains the following keys:
+
                 - ``"name"`` (str): The pack's display name.
                 - ``"uuid"`` (str): The pack's UUID.
                 - ``"version"`` (List[int]): The pack's version (e.g., ``[1, 0, 0]``).
                 - ``"path"`` (str): The absolute path to the pack's directory.
+
             Returns an empty list if the ``pack_folder_name`` does not exist or
             contains no valid packs.
         """
@@ -905,19 +915,21 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         """Compares lists of physical and activated packs to determine addon statuses.
 
         This utility method reconciles two lists:
-        1. ``physical``: Packs found by scanning the filesystem (e.g., from
-           :meth:`._scan_physical_packs`). Each dict should contain 'name', 'uuid', 'version'.
-        2. ``activated``: Packs listed in a world's activation JSON file (e.g., from
-           :meth:`._read_world_activation_json`). Each dict should contain 'pack_id' (UUID)
-           and 'version'.
+
+            1. ``physical``: Packs found by scanning the filesystem (e.g., from
+               :meth:`._scan_physical_packs`). Each dict should contain 'name', 'uuid', 'version'.
+            2. ``activated``: Packs listed in a world's activation JSON file (e.g., from
+               :meth:`._read_world_activation_json`). Each dict should contain 'pack_id' (UUID)
+               and 'version'.
 
         It determines the status for each pack based on this comparison:
-        - ``ACTIVE``: The pack is present in both ``physical`` and ``activated`` lists
-          (matched by UUID).
-        - ``INACTIVE``: The pack is present in the ``physical`` list but not in the
-          ``activated`` list.
-        - ``ORPHANED``: The pack is present in the ``activated`` list but not in the
-          ``physical`` list.
+
+            - ``ACTIVE``: The pack is present in both ``physical`` and ``activated`` lists
+              (matched by UUID).
+            - ``INACTIVE``: The pack is present in the ``physical`` list but not in the
+              ``activated`` list.
+            - ``ORPHANED``: The pack is present in the ``activated`` list but not in the
+              ``physical`` list.
 
         Args:
             physical (List[Dict[str, Any]]): A list of dictionaries representing

@@ -1,6 +1,5 @@
 # bedrock_server_manager/cli/generate_password.py
-"""
-Provides a CLI utility to generate secure password hashes for Web UI authentication.
+"""Provides a CLI utility to generate secure password hashes for Web UI authentication.
 
 This module contains a single Click command, ``bsm generate-password``,
 which interactively prompts the user for a password, confirms it, and then
@@ -21,8 +20,7 @@ from bedrock_server_manager.web.auth_utils import pwd_context
 
 @click.command("generate-password")
 def generate_password_hash_command():
-    """
-    Generates a bcrypt hash for a given password, for Web UI authentication.
+    """Generates a bcrypt hash for a given password, for Web UI authentication.
 
     This interactive command securely prompts the user to enter a new password
     and then confirm it. Upon successful confirmation, it generates a bcrypt

@@ -1,10 +1,10 @@
 # bedrock_server_manager/core/server/backup_restore_mixin.py
-"""
-Provides the :class:`.ServerBackupMixin` for the
+"""Provides the :class:`.ServerBackupMixin` for the
 :class:`~.core.bedrock_server.BedrockServer` class.
 
 This mixin encapsulates all backup and restore operations for a Bedrock server
 instance. Its responsibilities include:
+
     - Backing up the server's active world (as a ``.mcworld`` file) and key
       configuration files (``server.properties``, ``allowlist.json``,
       ``permissions.json``).
@@ -54,6 +54,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
     in the application settings (``retention.backups``).
 
     The mixin relies on:
+
         - Attributes from :class:`.BedrockServerBaseMixin` (e.g., `server_name`,
           `server_dir`, `settings`, `logger`).
         - Methods from :class:`~.core.server.state_mixin.ServerStateMixin` (e.g.,
@@ -141,6 +142,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         with the most recent backup appearing first.
 
         Valid ``backup_type`` options (case-insensitive):
+
             - ``"world"``: Lists ``*.mcworld`` files (world backups).
             - ``"properties"``: Lists ``server_backup_*.properties`` files.
             - ``"allowlist"``: Lists ``allowlist_backup_*.json`` files.
@@ -153,15 +155,16 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         Returns:
             Union[List[str], Dict[str, List[str]]]:
-            - If ``backup_type`` is specific (e.g., "world"), returns a list of
-              absolute backup file paths, sorted by modification time (newest first).
-              An empty list is returned if no matching backups are found or if the
-              server's backup directory doesn't exist.
-            - If ``backup_type`` is "all", returns a dictionary where keys are backup
-              categories (e.g., "world_backups", "properties_backups") and values
-              are the corresponding sorted lists of file paths. An empty dictionary
-              is returned if the backup directory doesn't exist or no backups of
-              any type are found.
+
+                - If ``backup_type`` is specific (e.g., "world"), returns a list of
+                  absolute backup file paths, sorted by modification time (newest first).
+                  An empty list is returned if no matching backups are found or if the
+                  server's backup directory doesn't exist.
+                - If ``backup_type`` is "all", returns a dictionary where keys are backup
+                  categories (e.g., "world_backups", "properties_backups") and values
+                  are the corresponding sorted lists of file paths. An empty dictionary
+                  is returned if the backup directory doesn't exist or no backups of
+                  any type are found.
 
         Raises:
             MissingArgumentError: If ``backup_type`` is empty or not a string.
@@ -234,9 +237,10 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         """Removes the oldest backups for a specific component to adhere to retention policies.
 
         This method targets backup files within this server's specific backup directory
+
         (see :attr:`.server_backup_directory`) that match a given ``component_prefix``
-        (e.g., "MyActiveWorld_backup_", "server_backup_") and ``file_extension``
-        (e.g., "mcworld", "properties", "json").
+        (e.g., ``MyActiveWorld_backup_``, ``server_backup_``) and ``file_extension``
+        (e.g., ``mcworld``, ``properties``, ``json``).
 
         It retrieves the number of backups to keep from the application settings
         (key: ``retention.backups``, defaulting to 3 if not set or invalid). If more
@@ -245,8 +249,8 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         Args:
             component_prefix (str): The prefix part of the backup filenames to
-                target (e.g., "MyActiveWorld_backup_" for world backups,
-                "server_backup_" for server.properties backups). Should not be empty.
+                target (e.g., ``MyActiveWorld_backup_`` for world backups,
+                ``server_backup_`` for server.properties backups). Should not be empty.
             file_extension (str): The extension of the backup files, without the
                 leading dot (e.g., "mcworld", "json", "properties"). Should not be empty.
 
@@ -363,18 +367,19 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         """Orchestrates the backup of the server's active world to a ``.mcworld`` file.
 
         This internal helper performs the following sequence:
-        1. Retrieves the active world name using ``self.get_world_name()`` (from
-           :class:`~.core.server.state_mixin.ServerStateMixin`).
-        2. Ensures the server's specific backup directory (derived from
-           :attr:`.server_backup_directory`) exists, creating it if necessary.
-        3. Constructs a timestamped backup filename, e.g.,
-           ``<SafeWorldName>_backup_YYYYMMDD_HHMMSS.mcworld``.
-           The world name is sanitized for filesystem compatibility.
-        4. Invokes ``self.export_world_directory_to_mcworld()`` (from
-           :class:`~.core.server.world_mixin.ServerWorldMixin`) to create the
-           ``.mcworld`` archive in the backup directory.
-        5. After successful archive creation, it calls :meth:`.prune_server_backups`
-           to remove older world backups, adhering to the configured retention policy.
+
+            1. Retrieves the active world name using ``self.get_world_name()`` (from
+               :class:`~.core.server.state_mixin.ServerStateMixin`).
+            2. Ensures the server's specific backup directory (derived from
+               :attr:`.server_backup_directory`) exists, creating it if necessary.
+            3. Constructs a timestamped backup filename, e.g.,
+               ``<SafeWorldName>_backup_YYYYMMDD_HHMMSS.mcworld``.
+               The world name is sanitized for filesystem compatibility.
+            4. Invokes ``self.export_world_directory_to_mcworld()`` (from
+               :class:`~.core.server.world_mixin.ServerWorldMixin`) to create the
+               ``.mcworld`` archive in the backup directory.
+            5. After successful archive creation, it calls :meth:`.prune_server_backups`
+               to remove older world backups, adhering to the configured retention policy.
 
         Returns:
             str: The absolute path to the created ``.mcworld`` backup file.
@@ -542,12 +547,13 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         """Performs a full backup of the server's active world and standard configuration files.
 
         This method orchestrates the backup of the following components:
-        - The active world: Determined by ``self.get_world_name()`` (from
-          :class:`~.core.server.state_mixin.ServerStateMixin`), then backed up to
-          a ``.mcworld`` file via :meth:`._backup_world_data_internal`.
-        - ``allowlist.json``: Backed up via :meth:`._backup_config_file_internal`.
-        - ``permissions.json``: Backed up via :meth:`._backup_config_file_internal`.
-        - ``server.properties``: Backed up via :meth:`._backup_config_file_internal`.
+
+            - The active world: Determined by ``self.get_world_name()`` (from
+              :class:`~.core.server.state_mixin.ServerStateMixin`), then backed up to
+              a ``.mcworld`` file via :meth:`._backup_world_data_internal`.
+            - ``allowlist.json``: Backed up via :meth:`._backup_config_file_internal`.
+            - ``permissions.json``: Backed up via :meth:`._backup_config_file_internal`.
+            - ``server.properties``: Backed up via :meth:`._backup_config_file_internal`.
 
         Each component is backed up individually. The server's specific backup
         directory (derived from :attr:`.server_backup_directory`) is created if it
@@ -716,12 +722,13 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         This method attempts to restore the following components by finding their
         most recent backup file (sorted by modification time) in the server's
         specific backup directory (see :attr:`.server_backup_directory`):
-        - The active world: Restored using
-          :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
-          after finding the latest ``.mcworld`` backup matching the active world's name.
-        - ``server.properties``: Restored via :meth:`._restore_config_file_internal`.
-        - ``allowlist.json``: Restored via :meth:`._restore_config_file_internal`.
-        - ``permissions.json``: Restored via :meth:`._restore_config_file_internal`.
+
+            - The active world: Restored using
+              :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
+              after finding the latest ``.mcworld`` backup matching the active world's name.
+            - ``server.properties``: Restored via :meth:`._restore_config_file_internal`.
+            - ``allowlist.json``: Restored via :meth:`._restore_config_file_internal`.
+            - ``permissions.json``: Restored via :meth:`._restore_config_file_internal`.
 
         Each component is restored individually. If a backup for a specific component
         is not found, or if the restore operation for that component fails, the issue

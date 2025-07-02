@@ -6,25 +6,25 @@ This module provides CLI commands and interactive workflows to manage system-lev
 aspects of both individual Bedrock server instances and the Bedrock Server Manager
 Web UI application itself. Key functionalities include:
 
--   **Server Service Management:**
-    -   ``bsm system configure-service``: Interactively or directly configures
-        system services (systemd on Linux, Windows Service on Windows) for a
-        specific Bedrock server, including autostart and autoupdate settings.
-    -   ``bsm system enable-service``: Enables a server's system service for autostart.
-    -   ``bsm system disable-service``: Disables a server's system service autostart.
--   **Web UI Service Management (via `bsm web service` commands - defined in `cli.web.py` but relevant context):**
-    -   Manages the system service for the main Web UI application.
--   **Resource Monitoring:**
-    -   ``bsm system monitor``: Continuously displays CPU and memory usage for a
-        specified running server process.
--   **Interactive Workflows:**
-    -   :func:`~.interactive_service_workflow`: A helper function that guides users
-        through configuring system services for a server.
--   **Decorators & Helpers:**
-    -   :func:`~.requires_service_manager`: A Click command decorator that checks
-        if the host system has a supported service manager (systemd or pywin32
-        for Windows Services) before allowing a command to run.
-    -   `_perform_service_configuration`: Internal helper for applying configurations.
+    -   **Server Service Management:**
+        -   ``bsm system configure-service``: Interactively or directly configures
+            system services (systemd on Linux, Windows Service on Windows) for a
+            specific Bedrock server, including autostart and autoupdate settings.
+        -   ``bsm system enable-service``: Enables a server's system service for autostart.
+        -   ``bsm system disable-service``: Disables a server's system service autostart.
+    -   **Web UI Service Management (via `bsm web service` commands - defined in `cli.web.py` but relevant context):**
+        -   Manages the system service for the main Web UI application.
+    -   **Resource Monitoring:**
+        -   ``bsm system monitor``: Continuously displays CPU and memory usage for a
+            specified running server process.
+    -   **Interactive Workflows:**
+        -   :func:`~.interactive_service_workflow`: A helper function that guides users
+            through configuring system services for a server.
+    -   **Decorators & Helpers:**
+        -   :func:`~.requires_service_manager`: A Click command decorator that checks
+            if the host system has a supported service manager (systemd or pywin32
+            for Windows Services) before allowing a command to run.
+        -   `_perform_service_configuration`: Internal helper for applying configurations.
 
 Commands in this module typically interact with the API functions defined in
 :mod:`~bedrock_server_manager.api.system` and rely on the

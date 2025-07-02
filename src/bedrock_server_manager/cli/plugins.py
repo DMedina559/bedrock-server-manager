@@ -4,11 +4,12 @@ Defines the `bsm plugin` command group for interacting with the plugin system.
 
 This module provides CLI tools for managing plugins within the Bedrock Server Manager.
 Functionality includes:
--   Listing all discoverable plugins and their current enabled/disabled status and version.
--   Enabling or disabling specific plugins.
--   Triggering a reload of all plugins by the plugin manager.
--   Manually triggering custom plugin events with optional JSON payloads for testing
-    or administrative purposes.
+
+    -   Listing all discoverable plugins and their current enabled/disabled status and version.
+    -   Enabling or disabling specific plugins.
+    -   Triggering a reload of all plugins by the plugin manager.
+    -   Manually triggering custom plugin events with optional JSON payloads for testing
+        or administrative purposes.
 
 Commands primarily interact with the API functions in
 :mod:`~bedrock_server_manager.api.plugins`. An interactive workflow is
@@ -77,17 +78,18 @@ def interactive_plugin_workflow():
     Guides the user through an interactive session to enable or disable plugins.
 
     This workflow:
-    1. Fetches all discoverable plugins and their current statuses using
-       :func:`~bedrock_server_manager.api.plugins.get_plugin_statuses`.
-    2. Displays them in a table using :func:`~._print_plugin_table`.
-    3. Presents a `questionary.checkbox` prompt allowing the user to toggle the
-       enabled state of multiple plugins.
-    4. Calculates which plugins need to be enabled or disabled based on changes.
-    5. Calls :func:`~bedrock_server_manager.api.plugins.set_plugin_status` for each
-       plugin whose state was changed.
-    6. If any changes were successfully applied, triggers a plugin reload via
-       :func:`~bedrock_server_manager.api.plugins.reload_plugins`.
-    7. Finally, displays the updated plugin status table.
+
+        1. Fetches all discoverable plugins and their current statuses using
+           :func:`~bedrock_server_manager.api.plugins.get_plugin_statuses`.
+        2. Displays them in a table using :func:`~._print_plugin_table`.
+        3. Presents a `questionary.checkbox` prompt allowing the user to toggle the
+           enabled state of multiple plugins.
+        4. Calculates which plugins need to be enabled or disabled based on changes.
+        5. Calls :func:`~bedrock_server_manager.api.plugins.set_plugin_status` for each
+           plugin whose state was changed.
+        6. If any changes were successfully applied, triggers a plugin reload via
+           :func:`~bedrock_server_manager.api.plugins.reload_plugins`.
+        7. Finally, displays the updated plugin status table.
 
     Handles user cancellation (Ctrl+C) and API errors gracefully.
     """
@@ -260,10 +262,6 @@ def enable_plugin(plugin_name: Optional[str]):
     After enabling, it's recommended to run `bsm plugin reload` for changes
     to take full effect if not handled automatically by the API.
 
-    Arguments:
-        PLUGIN_NAME: The name of the plugin to enable. Optional; if omitted,
-                     interactive mode is launched.
-
     Calls API: :func:`~bedrock_server_manager.api.plugins.set_plugin_status`.
     """
     if not plugin_name:
@@ -296,10 +294,6 @@ def disable_plugin(plugin_name: Optional[str]):
 
     After disabling, it's recommended to run `bsm plugin reload` for changes
     to take full effect if not handled automatically by the API.
-
-    Arguments:
-        PLUGIN_NAME: The name of the plugin to disable. Optional; if omitted,
-                     interactive mode is launched.
 
     Calls API: :func:`~bedrock_server_manager.api.plugins.set_plugin_status`.
     """
@@ -367,19 +361,6 @@ def trigger_event_cli(event_name: str, payload_json: Optional[str]):
     named event within the plugin system. An optional JSON string can be
     provided as a payload, which will be parsed into a dictionary and
     passed to the event handlers.
-
-    Arguments:
-        EVENT_NAME: The name of the custom event to trigger (e.g.,
-                    "myplugin:my_custom_event"). Required.
-
-    Options:
-        --payload-json <JSON_STRING>
-                                  An optional JSON string representing the
-                                  payload for the event. Must be a valid
-                                  JSON object (dictionary).
-
-    Example:
-        `bsm plugin trigger-event myplugin:test --payload-json '{"data": 123}'`
 
     Calls API: :func:`~bedrock_server_manager.api.plugins.trigger_external_plugin_event_api`.
     """

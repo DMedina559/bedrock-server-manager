@@ -8,14 +8,14 @@ primarily those provided by the
 :class:`~bedrock_server_manager.core.server.backup_restore_mixin.ServerBackupMixin`.
 
 Key functionalities include:
-- Listing available backup files (:func:`~.list_backup_files`).
-- Backing up individual components like the server world (:func:`~.backup_world`)
-  or specific configuration files (:func:`~.backup_config_file`).
-- Performing a comprehensive backup of all standard server data (:func:`~.backup_all`).
-- Restoring all server data from the latest available backups (:func:`~.restore_all`).
-- Restoring the server world from a specific ``.mcworld`` file (:func:`~.restore_world`).
-- Restoring a specific configuration file from its backup (:func:`~.restore_config_file`).
-- Pruning old backups based on retention policies (:func:`~.prune_old_backups`).
+    - Listing available backup files (:func:`~.list_backup_files`).
+    - Backing up individual components like the server world (:func:`~.backup_world`)
+      or specific configuration files (:func:`~.backup_config_file`).
+    - Performing a comprehensive backup of all standard server data (:func:`~.backup_all`).
+    - Restoring all server data from the latest available backups (:func:`~.restore_all`).
+    - Restoring the server world from a specific ``.mcworld`` file (:func:`~.restore_world`).
+    - Restoring a specific configuration file from its backup (:func:`~.restore_config_file`).
+    - Pruning old backups based on retention policies (:func:`~.prune_old_backups`).
 
 Operations involving file modifications are thread-safe using a unified lock
 (``_backup_restore_lock``). For actions requiring the server to be offline,
