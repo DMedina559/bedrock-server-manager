@@ -10,9 +10,11 @@ The configuration is stored in a nested JSON format. Settings are accessed
 programmatically using dot-notation (e.g., :meth:`Settings.get('paths.servers')`).
 
 Key components:
+
     - :class:`Settings`: The main class for managing configuration.
     - :func:`deep_merge`: A utility function for merging dictionaries.
     - `settings`: A global instance of the :class:`Settings` class.
+
 """
 
 import os
@@ -46,6 +48,7 @@ def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any,
     modified in place.
 
     Example:
+
         >>> s = {'a': 1, 'b': {'c': 2, 'd': 3}}
         >>> d = {'b': {'c': 5, 'e': 6}, 'f': 7}
         >>> deep_merge(s, d)
@@ -83,6 +86,7 @@ class Settings:
 
     This class acts as a single source of truth for all configuration data.
     It handles:
+
         - Determining appropriate application data and configuration directories
           based on the environment (respecting ``BSM_DATA_DIR``).
         - Loading settings from a JSON configuration file (``bedrock_server_manager.json``).
@@ -107,15 +111,17 @@ class Settings:
         """Initializes the Settings object.
 
         This constructor performs the following actions:
-        1. Determines the application's primary data and configuration directories.
-        2. Handles migration of the configuration file name from the old
-           `script_config.json` to `bedrock_server_manager.json` if necessary.
-        3. Retrieves the installed package version.
-        4. Loads settings from the configuration file. If the file doesn't exist,
-           it's created with default settings. If an old configuration schema is
-           detected, it's migrated.
-        5. Ensures all necessary application directories (e.g., for servers,
-           backups, logs) exist on the filesystem.
+
+            1. Determines the application's primary data and configuration directories.
+            2. Handles migration of the configuration file name from the old
+               `script_config.json` to `bedrock_server_manager.json` if necessary.
+            3. Retrieves the installed package version.
+            4. Loads settings from the configuration file. If the file doesn't exist,
+               it's created with default settings. If an old configuration schema is
+               detected, it's migrated.
+            5. Ensures all necessary application directories (e.g., for servers,
+               backups, logs) exist on the filesystem.
+
         """
         logger.debug("Initializing Settings")
         # Determine the primary application data and config directories.
@@ -275,24 +281,26 @@ class Settings:
         """Loads settings from the JSON configuration file.
 
         The process is as follows:
-        1. Starts with a fresh copy of the default settings (see :meth:`default_config`).
-        2. If the configuration file (``bedrock_server_manager.json``) doesn't exist,
-           it's created with these default settings.
-        3. If the file exists, it's read:
-            a. If the loaded configuration does not contain a ``config_version`` key,
-               it's assumed to be an old (v1) flat format and is migrated to the
-               current nested (v2) structure via :meth:`_migrate_v1_to_v2`. The
-               migrated config is then reloaded.
-            b. The loaded user settings (either original v2 or migrated v1) are
-               deeply merged on top of the default settings. This ensures that
-               any new settings added in later application versions are present,
-               while user-defined values are preserved.
-        4. If any error occurs during loading (e.g., JSON decoding error, OS error),
-           a warning is logged, and the application proceeds with default settings.
-           The configuration will be saved with current (potentially default) settings
-           on the next call to :meth:`set` or :meth:`_write_config`.
-        5. Finally, :meth:`_ensure_dirs_exist` is called to create any missing
-           critical application directories.
+
+            1. Starts with a fresh copy of the default settings (see :meth:`default_config`).
+            2. If the configuration file (``bedrock_server_manager.json``) doesn't exist,
+               it's created with these default settings.
+            3. If the file exists, it's read:
+                a. If the loaded configuration does not contain a ``config_version`` key,
+                   it's assumed to be an old (v1) flat format and is migrated to the
+                   current nested (v2) structure via :meth:`_migrate_v1_to_v2`. The
+                   migrated config is then reloaded.
+                b. The loaded user settings (either original v2 or migrated v1) are
+                   deeply merged on top of the default settings. This ensures that
+                   any new settings added in later application versions are present,
+                   while user-defined values are preserved.
+            4. If any error occurs during loading (e.g., JSON decoding error, OS error),
+               a warning is logged, and the application proceeds with default settings.
+               The configuration will be saved with current (potentially default) settings
+               on the next call to :meth:`set` or :meth:`_write_config`.
+            5. Finally, :meth:`_ensure_dirs_exist` is called to create any missing
+               critical application directories.
+
         """
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
@@ -330,12 +338,13 @@ class Settings:
         """Migrates a flat v1 configuration (no ``config_version`` key) to the nested v2 format.
 
         This method performs the following steps:
-        1. Backs up the existing v1 configuration file to ``<config_file_name>.v1.bak``.
-        2. Creates a new configuration structure based on :meth:`default_config`.
-        3. Maps known keys from the old flat ``old_config`` dictionary to their
-           new locations in the nested v2 structure.
-        4. Sets ``config_version`` to ``CONFIG_SCHEMA_VERSION`` in the new structure.
-        5. Writes the new v2 configuration to the primary configuration file.
+
+            1. Backs up the existing v1 configuration file to ``<config_file_name>.v1.bak``.
+            2. Creates a new configuration structure based on :meth:`default_config`.
+            3. Maps known keys from the old flat ``old_config`` dictionary to their
+               new locations in the nested v2 structure.
+            4. Sets ``config_version`` to ``CONFIG_SCHEMA_VERSION`` in the new structure.
+            5. Writes the new v2 configuration to the primary configuration file.
 
         Args:
             old_config (dict): The loaded dictionary from the old, flat (v1)

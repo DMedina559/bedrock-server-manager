@@ -1,12 +1,12 @@
-Core Internals
-==============
+Public Classes and Functions
+============================
 
-This section describes the core internal classes and logic of the Bedrock Server Manager.
+This section describes the core classes and logic of the Bedrock Server Manager.
 
 Main Classes
 ------------
 
-.. autoclass:: bedrock_server_manager.core.bedrock_server.BedrockServer
+.. autoclass:: bedrock_server_manager.BedrockServer
    :members:
    :undoc-members:
    :show-inheritance:
@@ -15,7 +15,7 @@ Main Classes
 
    .. automethod:: __init__
 
-.. autoclass:: bedrock_server_manager.core.manager.BedrockServerManager
+.. autoclass:: bedrock_server_manager.BedrockServerManager
    :members:
    :undoc-members:
    :show-inheritance:
@@ -23,38 +23,14 @@ Main Classes
 
    .. automethod:: __init__
 
-Core Utilities
---------------
-
-.. automodule:: bedrock_server_manager.core.utils
-   :members:
-   :undoc-members:
-
-.. automodule:: bedrock_server_manager.core.downloader
-   :members:
-   :undoc-members:
-
-System Interaction
-------------------
-This covers platform specific logic. For a higher-level API for tasks like service management, see the :mod:`bedrock_server_manager.api.system` module.
-
-.. automodule:: bedrock_server_manager.core.system.base
-   :members:
-   :undoc-members:
-
-.. automodule:: bedrock_server_manager.core.system.linux
-   :members:
-   :undoc-members:
-
-.. automodule:: bedrock_server_manager.core.system.windows
-   :members:
-   :undoc-members:
-
-.. automodule:: bedrock_server_manager.core.system.process
-   :members:
-   :undoc-members:
-
-.. automodule:: bedrock_server_manager.core.system.task_scheduler
+.. autoclass:: bedrock_server_manager.Settings
    :members:
    :undoc-members:
    :show-inheritance:
+   :member-order: bysource
+
+   .. automethod:: __init__
+
+.. automodule:: bedrock_server_manager.BedrockDownloader
+   :members:
+   :undoc-members:
