@@ -6,21 +6,16 @@
 Bedrock Server Manager documentation
 ====================================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
-
 .. toctree::
    :maxdepth: 2
    :caption: General Information
 
-   CHANGELOG.md
-   EXTRAS.md
+   ./_manual_docs/extras/extras.md
+   ./_manual_docs/changelog.md
 
 .. toctree::
    :maxdepth: 2
-   :caption: CLI
+   :caption: CLI Commands
 
    cli
 
@@ -28,19 +23,10 @@ documentation for details.
    :maxdepth: 2
    :caption: Plugins
 
-   PLUGIN_API.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: APIs
-
-   api
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Classes
-
-   public_classes
+   ./_manual_docs/plugins/plugin_general.md
+   ./_manual_docs/plugins/plugin_developer.md
+   ./_manual_docs/plugins/plugin_apis.md
+   ./_manual_docs/plugins/plugin_hooks.md
 
 .. toctree::
    :maxdepth: 2

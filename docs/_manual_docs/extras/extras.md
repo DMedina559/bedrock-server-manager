@@ -1,4 +1,4 @@
-# Extra Configuration & Customization
+# Extras
 
 ```{image} https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/src/bedrock_server_manager/web/static/image/icon/favicon.svg
 :alt: Bedrock Server Manager Icon

@@ -1,6 +1,3 @@
-Public Classes
-==============
-
 .. autoclass:: bedrock_server_manager.Settings
    :members:
    :undoc-members:

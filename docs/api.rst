@@ -1,5 +1,5 @@
-Server Actions and Config
-------------------------------------
+Server Actions & Management
+---------------------------
 
 .. automodule:: bedrock_server_manager.api.server
    :members:
@@ -7,31 +7,27 @@ Server Actions and Config
    :show-inheritance:
    :member-order: bysource
 
+Server Installation and Configuration
+-------------------------------------
+
 .. automodule:: bedrock_server_manager.api.server_install_config
    :members:
    :undoc-members:
    :show-inheritance:
    :member-order: bysource
 
-World and Backup Management
--------------------------------
-
-.. automodule:: bedrock_server_manager.api.world
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :member-order: bysource
-
+Server Backup and Restore
+-------------------------
 .. automodule:: bedrock_server_manager.api.backup_restore
    :members:
    :undoc-members:
    :show-inheritance:
    :member-order: bysource
 
-Player and Addon Management 
--------------------------------
+Content Management
+------------------
 
-.. automodule:: bedrock_server_manager.api.player
+.. automodule:: bedrock_server_manager.api.world
    :members:
    :undoc-members:
    :show-inheritance:
@@ -43,8 +39,17 @@ Player and Addon Management
    :show-inheritance:
    :member-order: bysource
 
-Plugin and Task Scheduling
-------------------------------
+Global Players
+--------------
+
+.. automodule:: bedrock_server_manager.api.player
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :member-order: bysource
+
+Plugins
+-------
 
 .. automodule:: bedrock_server_manager.api.plugins
    :members:
@@ -52,20 +57,17 @@ Plugin and Task Scheduling
    :show-inheritance:
    :member-order: bysource
 
+Task Scheduling
+---------------
+
 .. automodule:: bedrock_server_manager.api.task_scheduler
    :members:
    :undoc-members:
    :show-inheritance:
    :member-order: bysource
 
-System and Web Interface
-----------------------------
-
-.. automodule:: bedrock_server_manager.api.system
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :member-order: bysource
+Web Management
+--------------
 
 .. automodule:: bedrock_server_manager.api.web
    :members:
@@ -73,8 +75,17 @@ System and Web Interface
    :show-inheritance:
    :member-order: bysource
 
-Application Utilities and Info
-----------------------------------
+System Management
+-----------------
+
+.. automodule:: bedrock_server_manager.api.system
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :member-order: bysource
+
+Miscellaneous
+-------------
 
 .. automodule:: bedrock_server_manager.api.application
    :members:
@@ -100,8 +111,8 @@ Application Utilities and Info
    :show-inheritance:
    :member-order: bysource
 
-Error Handling
---------------
+Error Classes
+-------------
 
 .. automodule:: bedrock_server_manager.error
    :members:
