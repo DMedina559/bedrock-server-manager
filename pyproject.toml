@@ -45,9 +45,12 @@ Changelog = "https://github.com/DMedina559/bedrock-server-manager/blob/main/docs
 
 [project.optional-dependencies]
 dev = [
-    "setuptools >= 80.9",
     "black >= 25.1.0",
     "pytest >= 8.4.0",
+    "flake8 >= 7.3.0",
+]
+
+docs = [
     "sphinx >= 8.2.0",
     "sphinx-click >= 6.0.0",
     "myst-parser >= 4.0.0",
