@@ -13,7 +13,7 @@ documentation for details.
 
 .. toctree::
    :maxdepth: 2
-   :caption: User Guide & General Information
+   :caption: General Information
 
    CHANGELOG.md
    EXTRAS.md
@@ -21,18 +21,25 @@ documentation for details.
 
 .. toctree::
    :maxdepth: 2
-   :caption: CLI Reference
+   :caption: CLI
 
    cli
 
 .. toctree::
    :maxdepth: 2
-   :caption: API Reference
+   :caption: APIs
 
    api
 
 .. toctree::
    :maxdepth: 2
-   :caption: Core Internals
+   :caption: Classes
 
-   core
+   public_classes
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Internal Functions
+
+   core_functions
+

@@ -1,10 +1,5 @@
-API Reference
-=============
-
-This section details the functions and classes available in the Bedrock Server Manager API.
-
-High-Level Server Management API
---------------------------------
+Server Actions and Config
+------------------------------------
 
 .. automodule:: bedrock_server_manager.api.server
    :members:
@@ -18,7 +13,7 @@ High-Level Server Management API
    :show-inheritance:
    :member-order: bysource
 
-World and Backup Management API
+World and Backup Management
 -------------------------------
 
 .. automodule:: bedrock_server_manager.api.world
@@ -33,7 +28,7 @@ World and Backup Management API
    :show-inheritance:
    :member-order: bysource
 
-Player and Addon Management API
+Player and Addon Management 
 -------------------------------
 
 .. automodule:: bedrock_server_manager.api.player
@@ -48,7 +43,7 @@ Player and Addon Management API
    :show-inheritance:
    :member-order: bysource
 
-Plugin and Task Scheduling API
+Plugin and Task Scheduling
 ------------------------------
 
 .. automodule:: bedrock_server_manager.api.plugins
@@ -63,7 +58,7 @@ Plugin and Task Scheduling API
    :show-inheritance:
    :member-order: bysource
 
-System and Web Interface API
+System and Web Interface
 ----------------------------
 
 .. automodule:: bedrock_server_manager.api.system
@@ -78,7 +73,7 @@ System and Web Interface API
    :show-inheritance:
    :member-order: bysource
 
-Application Utilities and Info API
+Application Utilities and Info
 ----------------------------------
 
 .. automodule:: bedrock_server_manager.api.application
