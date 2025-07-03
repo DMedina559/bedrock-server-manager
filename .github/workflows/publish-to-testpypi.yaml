@@ -1,6 +1,6 @@
 # .github/workflows/publish-to-testpypi.yml
 
-name: Publish Python Package
+name: Publish Test Python Package
 
 on:
   release:
