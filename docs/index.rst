@@ -17,13 +17,18 @@ documentation for details.
 
    CHANGELOG.md
    EXTRAS.md
-   PLUGIN_API.md
 
 .. toctree::
    :maxdepth: 2
    :caption: CLI
 
    cli
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Plugins
+
+   PLUGIN_API.md
 
 .. toctree::
    :maxdepth: 2
