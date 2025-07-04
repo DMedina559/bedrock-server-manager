@@ -1,0 +1,11 @@
+{% extends "!layout.html" %}
+
+{%- block extrahead %}
+  {{ super() }} {# Include existing extrahead content from the theme #}
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ pathto('_static/apple-touch-icon.png', 1) }}">
+  <link rel="icon" type="image/png" sizes="96x96" href="{{ pathto('_static/favicon-96x96.png', 1) }}">
+  <link rel="icon" type="image/svg+xml" href="{{ pathto('_static/favicon.svg', 1) }}">
+  <link rel="manifest" href="{{ pathto('_static/site.webmanifest', 1) }}">
+  {# Add project name as application-name meta tag for consistency, if not handled by manifest #}
+  <meta name="application-name" content="{{ project }}">
+{% endblock %}
