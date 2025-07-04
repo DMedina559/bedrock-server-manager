@@ -93,7 +93,11 @@ async def serve_custom_panorama_api():
 
 
 # --- Route: Serve World Icon ---
-@router.get("/api/server/{server_name}/world/icon", response_class=FileResponse, tags=["Server Info API"])
+@router.get(
+    "/api/server/{server_name}/world/icon",
+    response_class=FileResponse,
+    tags=["Server Info API"],
+)
 async def serve_world_icon_api(
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_current_user),

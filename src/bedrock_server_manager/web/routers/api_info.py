@@ -398,6 +398,7 @@ async def scan_players_api_route(
             detail="Unexpected error scanning player logs.",
         )
 
+
 @router.get(
     "/api/players/get", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
@@ -442,7 +443,7 @@ async def get_all_players_api_route(
                 ),
             )
 
-    except BSMError as e: # Catch specific application errors if needed
+    except BSMError as e:  # Catch specific application errors if needed
         logger.error(
             f"API Get All Players: BSMError occurred: {e}",
             exc_info=True,
@@ -460,6 +461,7 @@ async def get_all_players_api_route(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="A critical unexpected server error occurred while fetching players.",
         )
+
 
 @router.post(
     "/api/downloads/prune",

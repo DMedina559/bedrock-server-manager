@@ -109,14 +109,16 @@ class AllowlistRemovePayload(BaseModel):
 # Define Item model before it's used in PermissionsSetPayload
 class PlayerPermissionItem(BaseModel):
     """Represents a single player's permission data sent from the client."""
+
     xuid: str
     name: str
-    permission_level: str # Matches key from client-side JS and GET response
+    permission_level: str  # Matches key from client-side JS and GET response
 
 
 class PermissionsSetPayload(BaseModel):
     """Request model for setting multiple player permissions."""
-    permissions: List[PlayerPermissionItem] = Field( # Use the defined model
+
+    permissions: List[PlayerPermissionItem] = Field(  # Use the defined model
         ..., description="List of player permission entries."
     )
 
@@ -740,24 +742,30 @@ async def configure_permissions_api_route(
             "message": f"Permissions updated for {success_count} player(s).",
         }
     else:
-        final_status_code = status.HTTP_400_BAD_REQUEST # Default for client-side type errors
-        
+        final_status_code = (
+            status.HTTP_400_BAD_REQUEST
+        )  # Default for client-side type errors
+
         has_server_error = any(
-            not isinstance(e, UserInputError) and isinstance(e, BSMError) 
-            for xuid_key in errors 
-            if (e := getattr(errors[xuid_key], '__cause__', None)) # Trying to get original exception if wrapped
-        ) 
+            not isinstance(e, UserInputError) and isinstance(e, BSMError)
+            for xuid_key in errors
+            if (
+                e := getattr(errors[xuid_key], "__cause__", None)
+            )  # Trying to get original exception if wrapped
+        )
 
         if any("not found" in err_msg.lower() for err_msg in errors.values()):
-             final_status_code = status.HTTP_404_NOT_FOUND
+            final_status_code = status.HTTP_404_NOT_FOUND
 
         is_internal_server_error = False
         for xuid_key in errors:
             msg = errors[xuid_key].lower()
-            if "unexpected server error" in msg or ("bsmerror" in msg and "userinputerror" not in msg):
-                 is_internal_server_error = True
-                 break
-        
+            if "unexpected server error" in msg or (
+                "bsmerror" in msg and "userinputerror" not in msg
+            ):
+                is_internal_server_error = True
+                break
+
         if is_internal_server_error:
             final_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         elif any("not found" in err_msg.lower() for err_msg in errors.values()):
@@ -769,7 +777,7 @@ async def configure_permissions_api_route(
             content={
                 "status": "error",
                 "message": "One or more errors occurred while setting permissions.",
-                "errors": errors, # This is Dict[str, str]
+                "errors": errors,  # This is Dict[str, str]
             },
         )
 
