@@ -244,6 +244,36 @@ table.docutils {
             border-bottom-color: #666666;
         }
 
+    /* Ensure default TD background is consistent with the content area if not striped */
+    table.docutils tbody td {
+        background-color: #333333; /* Default cell background */
+        color: #dddddd; /* Default cell text color */
+    }
+
+    /* Alternating row colors for readability using shades of dark gray */
+    table.docutils tbody tr:nth-child(odd) td {
+        background-color: #363636 !important; /* Slightly different dark shade for odd rows */
+        color: #dddddd !important; /* Ensure text color remains light */
+    }
+
+    table.docutils tbody tr:nth-child(even) td {
+        background-color: #303030 !important; /* Slightly different dark shade for even rows */
+        color: #dddddd !important; /* Ensure text color remains light */
+    }
+
+    /* Ensure links within tables are also styled correctly for the dark background */
+    table.docutils td a {
+        color: #7fDBFF; /* Match general link color */
+    }
+
+        table.docutils td a:hover {
+            color: #A1E9FF;
+        }
+
+        table.docutils td a:visited {
+            color: #BEAEE2; /* Match general visited link color */
+        }
+
 /* Breadcrumbs styling for RTD theme */
 .wy-breadcrumbs li a {
     color: #A1E9FF;
@@ -435,3 +465,20 @@ img {
     .contents.local ul li a:hover {
         color: #A1E9FF;
     }
+
+/* Mobile Header Background Color Change */
+@media screen and (max-width: 768px) { /* RTD theme mobile breakpoint */
+    .wy-nav-top {
+        background: #4CAF50 !important; /* App's theme green from manifest */
+    }
+
+        /* Ensure text/icons in the mobile header have good contrast on green */
+        .wy-nav-top a, /* Title link, "Read the Docs" link etc. */
+        .wy-nav-top span, /* Any text in spans */
+        .wy-nav-top i.fa { /* FontAwesome icons, typically used for menu toggle */
+            color: #ffffff !important; /* White text/icons on green background */
+        }
+    /* If the menu icon is an SVG or other element, its selector might be different */
+    /* For example, if it's an SVG: */
+    /* .wy-nav-top svg { fill: #ffffff !important; } */
+}
