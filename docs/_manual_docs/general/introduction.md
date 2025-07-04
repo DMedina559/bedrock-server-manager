@@ -73,29 +73,29 @@ The structure of the default configuration is as follows:
 
 ```json
 {
-    "config_version": CONFIG_SCHEMA_VERSION,
+    "config_version": 2,
     "paths": {
         "servers": "<app_data_dir>/servers",
         "content": "<app_data_dir>/content",
         "downloads": "<app_data_dir>/.downloads",
         "backups": "<app_data_dir>/backups",
         "plugins": "<app_data_dir>/plugins",
-        "logs": "<app_data_dir>/.logs",
+        "logs": "<app_data_dir>/.logs"
     },
     "retention": {
         "backups": 3,
         "downloads": 3,
-        "logs": 3,
+        "logs": 3
     },
     "logging": {
-        "file_level": logging.INFO,
-        "cli_level": logging.WARN,
+        "file_level": 20,
+        "cli_level": 30
     },
     "web": {
-        "host": ["127.0.0.1", "::1"],
+        "host": "127.0.0.1",
         "port": 11325,
         "token_expires_weeks": 4,
-        "threads": 4,
+        "threads": 4
     },
     "custom": {}
 }
