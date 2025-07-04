@@ -154,6 +154,61 @@ def set_global_setting(key: str, value: Any) -> Dict[str, Any]:
         }
 
 
+@plugin_method("set_custom_global_setting")
+def set_custom_global_setting(key: str, value: Any) -> Dict[str, Any]:
+    """Writes a custom value to the global application settings.
+
+    This function uses :meth:`~bedrock_server_manager.config.settings.Settings.set`
+    to update the value associated with the given `key` and persists the
+    changes to the main application configuration file (e.g., ``bedrock_server_manager.json``).
+
+    Args:
+        key (str): The key for the setting to update (e.g., "custom_dir",
+            "somekey"). This will be prefixed with "custom.".
+        value (Any): The new value to set. This value must be JSON-serializable.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Global setting '<key>' updated successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        MissingArgumentError: If `key` is empty.
+        BSMError: Can be raised by :meth:`~bedrock_server_manager.config.settings.Settings.set`
+            for issues like write errors (e.g., :class:`~.error.ConfigWriteError`)
+            or if the value is not JSON serializable.
+    """
+    if not key:
+        raise MissingArgumentError("A 'key' must be provided to set a setting.")
+
+    key = "custom." + key.strip()  # Prefix to indicate custom settings
+
+    logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
+    try:
+        settings.set(key, value)
+        logger.info(f"API: Successfully wrote to global setting '{key}'.")
+        return {
+            "status": "success",
+            "message": f"Global setting '{key}' updated successfully.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Configuration error setting global key '{key}': {e}", exc_info=True
+        )
+        return {
+            "status": "error",
+            "message": f"Failed to set setting '{key}': {e}",
+        }
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error setting global key '{key}': {e}", exc_info=True
+        )
+        return {
+            "status": "error",
+            "message": f"An unexpected error occurred while setting '{key}': {e}",
+        }
+
+
 def reload_global_settings() -> Dict[str, str]:
     """
     Forces a reload of settings and logging config from the file.
