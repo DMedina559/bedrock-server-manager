@@ -1,0 +1,4 @@
+sphinx >= 8.2.0
+sphinx-click >= 6.0.0
+myst-parser >= 4.0.0
+sphinx-rtd-theme >= 3.0.0
