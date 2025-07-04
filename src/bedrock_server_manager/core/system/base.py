@@ -1,10 +1,33 @@
 # bedrock_server_manager/core/system/base.py
-"""Provides base system utilities and cross-platform functionalities.
+"""Provides base system utilities and foundational cross-platform functionalities.
 
-This module includes functions for checking prerequisites, verifying internet
-connectivity, setting filesystem permissions, and monitoring process status and
-resource usage. It uses platform-agnostic approaches where possible or acts as
-a dispatcher to platform-specific implementations.
+This module contains a collection of essential system-level utilities that are
+generally platform-agnostic or provide a common interface for operations that
+might have platform-specific nuances handled elsewhere. It serves as a core
+part of the system interaction layer.
+
+Key functionalities include:
+
+    - **Internet Connectivity**:
+        - :func:`.check_internet_connectivity`: Verifies basic internet access.
+    - **Filesystem Operations**:
+        - :func:`.set_server_folder_permissions`: Sets appropriate permissions for
+          server directories, with platform-aware logic.
+        - :func:`.delete_path_robustly`: A utility for robustly deleting files
+          or directories, handling potential read-only issues.
+    - **Process Information**:
+        - :func:`.is_server_running`: Checks if a Bedrock server process is active
+          and verified, relying on :mod:`~.core.system.process`.
+    - **Resource Monitoring**:
+        - :class:`.ResourceMonitor`: A singleton class for monitoring CPU and
+          memory usage of processes, requiring the ``psutil`` library.
+
+Constants:
+    - :const:`.PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported,
+      critical for :class:`.ResourceMonitor`.
+
+Internal Helpers:
+    - :func:`._handle_remove_readonly_onerror`: An error handler for ``shutil.rmtree``.
 """
 
 import platform
@@ -23,8 +46,14 @@ try:
     import psutil
 
     PSUTIL_AVAILABLE = True
+    """bool: ``True`` if the `psutil` library was successfully imported, ``False`` otherwise.
+    This flag is checked by components like :class:`.ResourceMonitor` to determine
+    if process resource monitoring capabilities are available.
+    """
 except ImportError:
     PSUTIL_AVAILABLE = False
+    # Ensure PSUTIL_AVAILABLE is defined even if import fails for linters/type checkers.
+    # The docstring above is associated with the True assignment by Sphinx.
 
 # Local application imports.
 from bedrock_server_manager.core.system import process as core_process
@@ -47,13 +76,23 @@ def check_internet_connectivity(
 ) -> None:
     """Checks for basic internet connectivity by attempting a TCP socket connection.
 
+    This function tries to establish a TCP connection to a specified `host` and
+    `port` with a given `timeout`. Success indicates likely internet access.
+    Failure (timeout or other ``OSError``) raises an
+    :class:`~bedrock_server_manager.error.InternetConnectivityError`.
+
     Args:
-        host: The hostname or IP address to connect to. Defaults to a Google DNS server.
-        port: The port number to connect to. Defaults to the DNS port.
-        timeout: The connection timeout in seconds.
+        host (str, optional): The hostname or IP address to connect to.
+            Defaults to "8.8.8.8" (Google Public DNS).
+        port (int, optional): The port number to connect to.
+            Defaults to 53 (DNS port).
+        timeout (int, optional): The connection timeout in seconds.
+            Defaults to 3.
 
     Raises:
-        InternetConnectivityError: If the socket connection fails.
+        InternetConnectivityError: If the socket connection fails due to a
+            timeout, ``OSError`` (e.g., network unreachable, host not found),
+            or any other unexpected exception during the check.
     """
     logger.debug(
         f"Checking internet connectivity by attempting connection to {host}:{port}..."
@@ -79,22 +118,44 @@ def check_internet_connectivity(
 
 
 def set_server_folder_permissions(server_dir: str) -> None:
-    """Sets appropriate file and directory permissions for a server installation.
+    """Sets appropriate permissions for a Bedrock server installation directory.
 
-    - On Linux, it sets 775 for directories and the main executable, and 664 for
-      other files, assigning ownership to the current user and group.
-    - On Windows, it ensures the 'write' permission is set for all items.
+    This function adjusts permissions recursively for the specified `server_dir`
+    based on the operating system:
+
+        -   **On Linux**:
+
+            -   Ownership of all files and directories is set to the current effective
+                user (UID) and group (GID) using ``os.chown``.
+            -   Directories are set to ``0o775`` (rwxrwxr-x).
+            -   The main server executable (assumed to be named "bedrock_server") is
+                set to ``0o775`` (rwxrwxr-x).
+            -   Other files are set to ``0o664`` (rw-rw-r--).
+
+        -   **On Windows**:
+
+            -   Ensures that the "write" permission (``stat.S_IWRITE`` or ``stat.S_IWUSR``)
+                is set for all files and directories. It preserves other existing
+                permissions by ORing with the current mode.
+
+        -   **Other OS**:
+
+            -   Logs a warning that permission setting is not implemented.
 
     Args:
-        server_dir: The full path to the server's installation directory.
+        server_dir (str): The absolute path to the server's installation directory.
 
     Raises:
-        MissingArgumentError: If `server_dir` is empty.
-        AppFileNotFoundError: If `server_dir` does not exist.
-        PermissionsError: If setting permissions fails.
+        MissingArgumentError: If `server_dir` is empty or not a string.
+        AppFileNotFoundError: If `server_dir` does not exist or is not a directory.
+        PermissionsError: If any ``OSError`` occurs during `os.chown` or `os.chmod`
+            operations (e.g., due to insufficient privileges to change ownership
+            or permissions), or for other unexpected errors.
     """
-    if not server_dir:
-        raise MissingArgumentError("Server directory cannot be empty.")
+    if not isinstance(server_dir, str) or not server_dir:
+        raise MissingArgumentError(
+            "Server directory cannot be empty and must be a string."
+        )
     if not os.path.isdir(server_dir):
         raise AppFileNotFoundError(server_dir, "Server directory")
 
@@ -154,23 +215,39 @@ def set_server_folder_permissions(server_dir: str) -> None:
 
 
 def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
-    """Checks if a Bedrock server process is running and verified.
+    """Checks if a specific Bedrock server process is running and verified.
 
-    This method is a simple wrapper around `core_process.get_verified_bedrock_process`.
+    This function acts as a high-level convenience wrapper around
+    :func:`~.core.system.process.get_verified_bedrock_process`. It determines
+    if a Bedrock server, identified by `server_name`, is active by checking
+    its PID file and verifying the running process's identity (e.g., executable
+    path and CWD).
 
     Args:
-        server_name: The name of the server.
-        server_dir: The installation directory of the server.
-        config_dir: The base configuration directory where the PID file is stored.
+        server_name (str): The unique name of the server instance.
+        server_dir (str): The server's installation directory, used for
+            process verification.
+        config_dir (str): The main application configuration directory where the
+            server's PID file is expected to be located.
 
     Returns:
-        True if a matching and verified server process is found, False otherwise.
-    """
-    if not all([server_name, server_dir, config_dir]):
-        raise MissingArgumentError(
-            "server_name, server_dir, and config_dir cannot be empty."
-        )
+        bool: ``True`` if a matching and verified Bedrock server process is found
+        to be running, ``False`` otherwise (e.g., if ``psutil`` is unavailable,
+        PID file is missing, process is not running, or verification fails).
 
+    Raises:
+        MissingArgumentError: If `server_name`, `server_dir`, or `config_dir`
+            are empty or not strings.
+    """
+    if not isinstance(server_name, str) or not server_name:
+        raise MissingArgumentError("server_name cannot be empty and must be a string.")
+    if not isinstance(server_dir, str) or not server_dir:
+        raise MissingArgumentError("server_dir cannot be empty and must be a string.")
+    if not isinstance(config_dir, str) or not config_dir:
+        raise MissingArgumentError("config_dir cannot be empty and must be a string.")
+
+    # get_verified_bedrock_process handles logging for most non-critical failures
+    # and returns None in those cases.
     return (
         core_process.get_verified_bedrock_process(server_name, server_dir, config_dir)
         is not None
@@ -178,34 +255,87 @@ def is_server_running(server_name: str, server_dir: str, config_dir: str) -> boo
 
 
 def _handle_remove_readonly_onerror(func, path, exc_info):
-    """An error handler for `shutil.rmtree` to handle read-only files.
+    """Error handler for ``shutil.rmtree`` to manage read-only files, primarily on Windows.
 
-    If an `OSError` occurs because a file is read-only, this handler attempts
-    to change its permissions to be writable and then retries the operation.
+    This function is designed to be passed as the `onerror` argument to
+    ``shutil.rmtree``. When ``shutil.rmtree`` encounters an ``OSError`` (often
+    a ``PermissionError`` on Windows) while trying to delete a file, this handler
+    is called.
+
+    It checks if the error is due to the file at `path` being read-only.
+    If so, it attempts to make the file writable (``stat.S_IWUSR | stat.S_IWRITE``)
+    and then retries the original operation that failed (e.g., `os.remove` or
+    `os.rmdir`), which is passed as the `func` argument.
+
+    If the error is not related to read-only status, or if making the file
+    writable fails, the original exception (from `exc_info`) is re-raised.
+
+    Args:
+        func (Callable): The function that raised the exception (e.g., `os.remove`).
+        path (str): The path to the file or directory that caused the error.
+        exc_info (Tuple): A tuple as returned by ``sys.exc_info()``, containing
+            the exception type, value, and traceback.
     """
-    if not os.access(path, os.W_OK):
-        logger.debug(f"Path '{path}' is read-only. Attempting to make it writable.")
+    # Check if the exception is an OSError and related to permissions
+    # The specific error codes for read-only might vary, but AccessDenied (EACCES) is common.
+    # We primarily check if we can make it writable.
+    if isinstance(exc_info[1], OSError) and not os.access(path, os.W_OK):
+        logger.debug(
+            f"Read-only error on path '{path}'. Attempting to make it writable and retry."
+        )
         try:
             os.chmod(path, stat.S_IWUSR | stat.S_IWRITE)
-            func(path)  # Retry the original function (e.g., os.remove).
-        except Exception as e:
-            logger.warning(f"Failed to make '{path}' writable and retry operation: {e}")
-            raise exc_info[1]
+            func(path)  # Retry the original function (e.g., os.remove or os.rmdir)
+        except Exception as e_retry:
+            logger.warning(
+                f"Failed to make '{path}' writable and retry operation '{func.__name__}': {e_retry}. Original error: {exc_info[1]}"
+            )
+            # Re-raise the original exception if retry fails
+            raise exc_info[1] from e_retry
     else:
-        # Re-raise the original exception if it wasn't a read-only issue.
+        # If it's not an OSError we can handle or not a writable issue, re-raise the original exception.
+        # For example, if the path is a directory that's not empty and func is os.rmdir.
+        logger.debug(
+            f"Unhandled error during rmtree: {exc_info[1]} on path {path}. Re-raising."
+        )
         raise exc_info[1]
 
 
 def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
-    """Deletes a file or directory robustly, handling read-only attributes.
+    """Deletes a file or directory robustly, attempting to handle read-only attributes.
+
+    This function attempts to delete the specified `path_to_delete`.
+
+        - If it's a directory, it uses `shutil.rmtree` with a custom error
+          handler (:func:`._handle_remove_readonly_onerror`) that tries to make
+          read-only files writable before retrying deletion.
+        - If it's a file, it first checks if it's writable. If not, it attempts
+          to make it writable (``stat.S_IWRITE | stat.S_IWUSR``) before calling `os.remove`.
+        - If the path does not exist, it logs this and returns ``True``.
+        - If the path is neither a file nor a directory, it logs a warning and returns ``False``.
+
+    Deletion failures are logged, and the function returns ``False`` in such cases.
 
     Args:
-        path_to_delete: The full path to the file or directory to delete.
-        item_description: A human-readable description for logging purposes.
+        path_to_delete (str): The absolute path to the file or directory to delete.
+        item_description (str): A human-readable description of the item being
+            deleted, used for logging messages (e.g., "temporary file",
+            "old backup directory").
 
     Returns:
-        True if deletion was successful or the path didn't exist, False otherwise.
+        bool: ``True`` if the deletion was successful or if the path did not
+        exist initially. ``False`` if an error occurred during deletion or if
+        the path was neither a file nor a directory.
+
+    Raises:
+        MissingArgumentError: If `path_to_delete` or `item_description` are
+            empty or not strings.
     """
+    if not isinstance(path_to_delete, str) or not path_to_delete:
+        raise MissingArgumentError("path_to_delete cannot be empty.")
+    if not isinstance(item_description, str) or not item_description:
+        raise MissingArgumentError("item_description cannot be empty.")
+
     if not os.path.exists(path_to_delete):
         logger.debug(
             f"{item_description.capitalize()} at '{path_to_delete}' not found, skipping."
@@ -244,70 +374,135 @@ def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
 
 # --- RESOURCE MONITOR ---
 class ResourceMonitor:
-    """
-    A generic, singleton process resource monitor.
+    """A singleton class for monitoring process resource usage (CPU, memory, uptime).
 
-    This class ensures only one instance exists, preserving the state
-    needed for calculations across multiple calls from different parts of the
-    application. It correctly stores state on a per-process basis.
+    This class provides a way to get resource statistics for a given ``psutil.Process``
+    object. It is implemented as a thread-safe singleton to ensure that the
+    internal state required for calculating CPU percentage (which relies on
+    comparing CPU times between calls) is maintained consistently across the
+    application for each monitored process.
+
+    The monitor stores the last CPU times and timestamp on a per-PID basis
+    to correctly calculate CPU utilization for individual processes.
+
+    Requires the ``psutil`` library. If ``psutil`` is not available (indicated by
+    :const:`.PSUTIL_AVAILABLE` being ``False``), methods like :meth:`.get_stats`
+    will typically log a warning and return ``None`` or raise an error.
+
+    Attributes:
+        _instance (Optional[ResourceMonitor]): The single instance of this class.
+        _lock (threading.Lock): A lock to ensure thread-safe singleton creation
+            and initialization.
+        _last_readings (Dict[int, Tuple[Any, float]]): A dictionary storing the
+            last CPU times (``psutil.cpu_times`` result) and timestamp for each
+            monitored PID. Keyed by PID.
+        _initialized (bool): A flag to ensure ``__init__`` logic runs only once.
     """
 
-    _instance = None
+    _instance: Optional["ResourceMonitor"] = None
     _lock = threading.Lock()
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "ResourceMonitor":
+        """Ensures that only one instance of ResourceMonitor is created (Singleton pattern)."""
         if cls._instance is None:
             with cls._lock:
+                # Double-check locking
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
-        """Initializes the state for resource monitoring."""
-        if not hasattr(self, "_initialized"):
-            # THE FIX: Store a tuple of (cpu_times, timestamp) per PID.
-            self._last_readings: Dict[int, Tuple[Any, float]] = {}
-            self._initialized = True
+    def __init__(self) -> None:
+        """Initializes the resource monitor's state.
+
+        This constructor is called only once for the singleton instance.
+        It sets up the `_last_readings` dictionary to store CPU time snapshots
+        for different processes and an `_initialized` flag.
+        """
+        if not hasattr(self, "_initialized"):  # Ensure this runs only once
+            with self._lock:
+                if not hasattr(self, "_initialized"):
+                    self._last_readings: Dict[int, Tuple[Any, float]] = {}
+                    self._initialized: bool = True
 
     def get_stats(self, process: "psutil.Process") -> Optional[Dict[str, Any]]:
-        """
-        Calculates resource usage statistics for the given process.
+        """Calculates and returns resource usage statistics for the given process.
+
+        If ``psutil`` is not available, this method logs a warning and returns ``None``.
+
+        The CPU percentage is calculated based on the change in CPU times since
+        the last call for the same process ID (PID). The first call for a PID
+        will report 0% CPU usage as there's no prior data for comparison.
+
+        Args:
+            process (psutil.Process): An instance of ``psutil.Process`` representing
+                the process to monitor.
+
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary containing the statistics if
+            successful, or ``None`` if ``psutil`` is unavailable or the process
+            is inaccessible (e.g., ``psutil.NoSuchProcess``, ``psutil.AccessDenied``).
+            The dictionary structure is:
+            ::
+
+                {
+                    "pid": int,          # Process ID
+                    "cpu_percent": float, # CPU usage percentage (e.g., 12.3)
+                    "memory_mb": float,  # Resident Set Size (RSS) memory in megabytes
+                    "uptime": str        # Process uptime formatted as "HH:MM:SS"
+                }
+
+        Raises:
+            TypeError: If the input `process` is not a ``psutil.Process`` instance.
+            SystemError: If an unexpected error occurs while fetching stats using ``psutil``
+                         (other than ``NoSuchProcess`` or ``AccessDenied``).
         """
         if not PSUTIL_AVAILABLE:
-            # If psutil is not available, we can't use psutil.Process for isinstance check
-            # and the method shouldn't have been called or should return gracefully.
-            logger.warning("psutil is not available, cannot get process stats.")
+            logger.warning(
+                "psutil is not available. Cannot get process stats for PID %s.",
+                getattr(process, "pid", "N/A"),  # Safely get PID for log if possible
+            )
             return None
-        if not isinstance(process, psutil.Process):
-            raise TypeError("Input must be a valid psutil.Process object.")
+
+        # Ensure psutil is available before using psutil.Process in isinstance
+        if PSUTIL_AVAILABLE and not isinstance(process, psutil.Process):
+            raise TypeError(
+                f"Input must be a valid psutil.Process object, got {type(process).__name__}."
+            )
 
         pid = process.pid
         try:
-            with process.oneshot():
-                current_cpu_times = process.cpu_times()
+            with process.oneshot():  # Efficiently get multiple process infos
+                current_cpu_times = (
+                    process.cpu_times()
+                )  # specific type: psutil._common.scpustats
                 current_timestamp = time.time()
                 cpu_percent = 0.0
-                # Check if we have a previous reading for THIS specific PID.
-                if pid in self._last_readings:
-                    # Unpack the previous reading for this PID.
-                    prev_cpu_times, prev_timestamp = self._last_readings[pid]
 
+                if pid in self._last_readings:
+                    prev_cpu_times, prev_timestamp = self._last_readings[pid]
                     time_delta = current_timestamp - prev_timestamp
-                    if time_delta > 0.01:
-                        process_delta = (
+
+                    if time_delta > 0.01:  # Avoid division by zero or tiny intervals
+                        # Sum of user and system time deltas
+                        process_cpu_time_delta = (
                             current_cpu_times.user - prev_cpu_times.user
                         ) + (current_cpu_times.system - prev_cpu_times.system)
+                        # Normalize by number of CPU cores for system-wide percentage
+                        cpu_count = psutil.cpu_count(logical=True) or 1
+                        cpu_percent = (
+                            (process_cpu_time_delta / time_delta) * 100 / cpu_count
+                        )
+                        cpu_percent = max(0.0, cpu_percent)  # Ensure non-negative
 
-                        cpu_count = (
-                            psutil.cpu_count() or 1
-                        )  # Avoid division by zero on exotic systems
-                        cpu_percent = (process_delta / time_delta) * 100 / cpu_count
-
-                # Store the new reading (tuple) for THIS specific PID for the next call.
                 self._last_readings[pid] = (current_cpu_times, current_timestamp)
 
-                memory_mb = process.memory_info().rss / (1024 * 1024)
-                uptime_seconds = current_timestamp - process.create_time()
+                memory_info = (
+                    process.memory_info()
+                )  # specific type: psutil._common.smeninfo
+                memory_mb = memory_info.rss / (1024 * 1024)  # RSS in MB
+
+                create_time = process.create_time()  # timestamp
+                uptime_seconds = current_timestamp - create_time
                 uptime_str = str(timedelta(seconds=int(uptime_seconds)))
 
                 return {
@@ -317,8 +512,13 @@ class ResourceMonitor:
                     "uptime": uptime_str,
                 }
         except (psutil.NoSuchProcess, psutil.AccessDenied):
+            # If process disappears or access is denied, remove its last reading
             if pid in self._last_readings:
                 del self._last_readings[pid]
+            logger.debug(
+                f"Could not get stats for PID {pid}: Process gone or access denied."
+            )
             return None
         except Exception as e:
+            # Catch any other psutil errors or unexpected issues
             raise SystemError(f"Failed to get stats for PID {pid}: {e}") from e

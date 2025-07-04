@@ -1,10 +1,21 @@
 # bedrock_server_manager/cli/server_properties.py
 """
-Defines the `bsm properties` command group for server.properties management.
+Defines the `bsm properties` command group for managing `server.properties`.
 
-This module provides commands to view and modify settings in a server's
-`server.properties` file. It features a comprehensive interactive workflow
-for guided configuration and direct commands for scriptable changes.
+This module provides CLI tools to view and modify settings within a Bedrock
+server's ``server.properties`` file. This file controls core gameplay aspects
+like gamemode, difficulty, world name, player limits, etc.
+
+Key functionalities:
+
+    -   An interactive workflow (:func:`~.interactive_properties_workflow`) to
+        guide users through editing common server properties with validation.
+    -   Direct commands to get (``bsm properties get``) and set
+        (``bsm properties set``) specific properties, suitable for scripting.
+
+The commands interact with the API layer, primarily functions in
+:mod:`~bedrock_server_manager.api.server_install_config`, to read,
+validate, and write property changes.
 """
 from typing import Dict, Optional
 
@@ -20,18 +31,32 @@ from bedrock_server_manager.error import BSMError
 
 
 def interactive_properties_workflow(server_name: str):
-    """Guides a user through an interactive session to edit server properties.
+    """
+    Guides a user through an interactive session to edit `server.properties`.
 
-    This function fetches all current properties, then walks the user through
-    a series of prompts for common settings. It only records a property as
-    changed if the new value differs from the original, and then sends a
-    single API request to apply all changes at once.
+    This workflow fetches the current server properties, then interactively
+    prompts the user to edit common settings like server name, gamemode,
+    difficulty, max players, etc., using `questionary`.
+    For each property, it:
+
+        - Displays the current value as the default.
+        - Uses :class:`~.PropertyValidator` (which calls
+          :func:`~bedrock_server_manager.api.server_install_config.validate_server_property_value`)
+          for input validation where applicable.
+        - Tracks only the properties that are actually changed by the user.
+
+    After all prompts, it shows a summary of changes and asks for confirmation
+    before applying them via a single call to
+    :func:`~bedrock_server_manager.api.server_install_config.modify_server_properties`.
 
     Args:
-        server_name: The name of the server whose properties are being edited.
+        server_name (str): The name of the server whose `server.properties`
+                           file is being edited.
 
     Raises:
-        click.Abort: If the user cancels the operation.
+        click.Abort: If the user cancels the operation at any `questionary` prompt
+                     or at the final confirmation step. Also raised if loading
+                     initial properties fails.
     """
     click.secho("\n--- Interactive Server Properties Configuration ---", bold=True)
     click.echo("Loading current server properties...")
@@ -140,7 +165,9 @@ def interactive_properties_workflow(server_name: str):
 
 @click.group()
 def properties():
-    """Views and modifies settings in server.properties."""
+    """
+    Views and modifies settings in a server's `server.properties` file.
+    """
     pass
 
 
@@ -154,10 +181,14 @@ def properties():
 )
 @click.option("-p", "--prop", "property_name", help="Display a single property value.")
 def get_props(server_name: str, property_name: Optional[str]):
-    """Displays server properties from server.properties.
+    """
+    Displays server properties from a server's `server.properties` file.
 
-    If a specific property name is provided, only its value will be shown.
-    Otherwise, all properties are listed.
+    If a specific property name is provided via the `--prop` option, only its
+    value will be shown. Otherwise, all properties and their current values
+    are listed in a sorted key-value format.
+
+    Calls API: :func:`~bedrock_server_manager.api.server_install_config.get_server_properties_api`.
     """
     response = config_api.get_server_properties_api(server_name)
     properties = response.get("properties", {})
@@ -202,12 +233,21 @@ def get_props(server_name: str, property_name: Optional[str]):
     help="Do not restart the server after applying changes.",
 )
 def set_props(server_name: str, no_restart: bool, properties: tuple[str, ...]):
-    """Sets one or more server properties directly.
+    """
+    Sets one or more properties in a server's `server.properties` file.
 
-    If run without the --prop option, this command launches an interactive
-    editor. Otherwise, it applies the specified key-value pairs.
+    If property key-value pairs are provided via the `--prop` option, they are
+    applied directly. Each property should be in the format "key=value".
+    Multiple properties can be set by using the `--prop` option multiple times.
 
-    Example: bsm properties set -s MyServer --prop max-players=15 --prop gamemode=creative
+    If no properties are specified via options, this command launches an
+    interactive workflow (:func:`~.interactive_properties_workflow`) to guide
+    the user through editing common server properties.
+
+    By default, the server is restarted after properties are modified to apply
+    changes, unless `--no-restart` is specified.
+
+    Calls API: :func:`~bedrock_server_manager.api.server_install_config.modify_server_properties`.
     """
     try:
         if not properties:

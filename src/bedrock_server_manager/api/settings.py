@@ -1,9 +1,15 @@
 # bedrock_server_manager/api/settings.py
-"""Provides an API for interacting with the global application settings.
+"""Provides an API for interacting with global application settings.
 
-This module contains functions exposed to the plugin system for reading,
-writing, and reloading configuration values in the main
-`bedrock_server_manager.json` file.
+This module offers functions to read, write, and reload application-wide
+configuration values. These settings are managed by the
+:class:`~bedrock_server_manager.config.settings.Settings` class and are
+typically stored in the main ``bedrock_server_manager.json`` configuration file.
+
+The functions provided here allow other parts of the application, including
+plugins (via methods exposed by
+:func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`), to
+programmatically access and modify these global settings.
 """
 import logging
 from typing import Any, Dict
@@ -26,16 +32,21 @@ logger = logging.getLogger(__name__)
 def get_global_setting(key: str) -> Dict[str, Any]:
     """Reads a single value from the global application settings.
 
+    This function uses :meth:`~bedrock_server_manager.config.settings.Settings.get`
+    to retrieve the value associated with the given `key`.
+
     Args:
-        key: The dot-notation key for the setting (e.g., "paths.backups").
+        key (str): The dot-notation key for the setting (e.g., "paths.backups",
+            "web.port").
 
     Returns:
-        A dictionary containing the operation status and the retrieved value.
-        On success: `{"status": "success", "value": ...}`.
-        On error: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "value": <retrieved_value>}``.
+        The ``<retrieved_value>`` will be ``None`` if the key does not exist in the settings.
+        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
-        MissingArgumentError: If `key` is not provided.
+        MissingArgumentError: If `key` is empty.
     """
     if not key:
         raise MissingArgumentError("A 'key' must be provided to get a setting.")
@@ -63,10 +74,13 @@ def get_global_setting(key: str) -> Dict[str, Any]:
 def get_all_global_settings() -> Dict[str, Any]:
     """Reads the entire global application settings configuration.
 
+    Returns a copy of all currently loaded settings from the
+    :class:`~bedrock_server_manager.config.settings.Settings` instance.
+
     Returns:
-        A dictionary containing the operation status and all settings data.
-        On success: `{"status": "success", "data": ...}`.
-        On error: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "data": <all_settings_dict>}``.
+        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.debug("API: Reading all global settings.")
     try:
@@ -91,17 +105,25 @@ def get_all_global_settings() -> Dict[str, Any]:
 def set_global_setting(key: str, value: Any) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
+    This function uses :meth:`~bedrock_server_manager.config.settings.Settings.set`
+    to update the value associated with the given `key` and persists the
+    changes to the main application configuration file (e.g., ``bedrock_server_manager.json``).
+
     Args:
-        key: The dot-notation key for the setting to update (e.g., "web.port").
-        value: The new value to set. This can be any JSON-serializable type.
+        key (str): The dot-notation key for the setting to update (e.g., "web.port",
+            "paths.backups").
+        value (Any): The new value to set. This value must be JSON-serializable.
 
     Returns:
-        A dictionary containing the operation status and a message.
-        On success: `{"status": "success", "message": "..."}`.
-        On error: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Global setting '<key>' updated successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
-        MissingArgumentError: If `key` is not provided.
+        MissingArgumentError: If `key` is empty.
+        BSMError: Can be raised by :meth:`~bedrock_server_manager.config.settings.Settings.set`
+            for issues like write errors (e.g., :class:`~.error.ConfigWriteError`)
+            or if the value is not JSON serializable.
     """
     if not key:
         raise MissingArgumentError("A 'key' must be provided to set a setting.")
@@ -136,13 +158,23 @@ def reload_global_settings() -> Dict[str, str]:
     """
     Forces a reload of settings and logging config from the file.
 
-    This is useful if `bedrock_server_manager.json` has been edited
+    This is useful if ``bedrock_server_manager.json`` has been edited
     manually and the application needs to pick up the changes without restarting.
-    It will reload both the settings values and re-apply the logging configuration
-    (e.g., to change log levels).
+    It calls :meth:`~bedrock_server_manager.config.settings.Settings.reload`
+    to re-read the configuration file, and then calls
+    :func:`~bedrock_server_manager.logging.setup_logging` to re-apply
+    the logging configuration based on the (potentially) new settings.
 
     Returns:
-        A dictionary containing the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Global settings and logging configuration have been reloaded."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
+
+    Raises:
+        BSMError: Can be raised by :meth:`~bedrock_server_manager.config.settings.Settings.reload`
+            (e.g., :class:`~.error.ConfigLoadError`) or by
+            :func:`~bedrock_server_manager.logging.setup_logging` if critical
+            logging settings are missing or invalid after reload.
     """
     logger.info("API: Received request to reload global settings and logging.")
     try:

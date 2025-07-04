@@ -1,14 +1,17 @@
 # bedrock_server_manager/core/server/player_mixin.py
-"""Provides the ServerPlayerMixin for the BedrockServer class.
+"""
+Provides the :class:`.ServerPlayerMixin` for the
+:class:`~.core.bedrock_server.BedrockServer` class.
 
-This mixin is responsible for scanning a server's log files to identify and
-extract player connection information, specifically player gamertags and their
-corresponding XUIDs.
+This mixin is responsible for scanning a server's log files (typically
+``server_output.txt``) to identify and extract player connection information.
+Specifically, it looks for lines indicating a player connection to parse out
+player gamertags and their corresponding XUIDs. This information can be used,
+for example, to populate a player database or track server activity.
 """
 import os
 import re
-import logging
-from typing import List, Dict, TYPE_CHECKING
+from typing import List, Dict, TYPE_CHECKING, Any
 
 # Local application imports.
 from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
@@ -19,38 +22,58 @@ if TYPE_CHECKING:
 
 
 class ServerPlayerMixin(BedrockServerBaseMixin):
-    """A mixin for BedrockServer that provides methods for player discovery.
+    """Provides methods for discovering player information by scanning server logs.
 
-    This class contains the logic for scanning server logs to find player
-    connection entries, which is a primary method for populating the central
-    player database.
+    This mixin extends :class:`.BedrockServerBaseMixin` and adds the capability
+    to parse the server's log file (typically located at
+    :attr:`~.BedrockServerBaseMixin.server_log_path`) for entries that indicate
+    player connections. It extracts player gamertags and their XUIDs from these
+    log entries.
+
+    The primary method offered is :meth:`.scan_log_for_players`, which performs
+    this scanning operation.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initializes the ServerPlayerMixin.
 
-        This constructor calls `super().__init__` to ensure proper method
-        resolution order in the context of multiple inheritance. It relies on
-        attributes (like `server_name`, `server_log_path`, `logger`) being
-        available from the base class.
+        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
+        multiple inheritance. It relies on attributes initialized by
+        :class:`.BedrockServerBaseMixin`, such as `server_name`,
+        `server_log_path` (used by :meth:`.scan_log_for_players`), and `logger`.
+
+        Args:
+            *args (Any): Variable length argument list passed to `super()`.
+            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        # self.server_name, self.server_log_path, and self.logger are available from BaseMixin.
+        # Attributes from BedrockServerBaseMixin are available.
 
     def scan_log_for_players(self) -> List[Dict[str, str]]:
-        """Scans the server's log file for player connection entries.
+        """Scans the server's log file for player connection entries to extract gamertags and XUIDs.
 
-        This method reads the server's primary output log file line by line,
-        searching for the standard "Player connected" message to extract
-        gamertags and XUIDs.
+        This method reads the server's primary output log file (obtained via
+        :attr:`~.BedrockServerBaseMixin.server_log_path`) line by line. It uses a
+        regular expression to find lines matching the standard Bedrock server
+        message for player connections, which typically looks like:
+        "Player connected: <Gamertag>, xuid: <XUID>".
+
+        It collects unique players based on their XUID to avoid duplicates from
+        multiple connections by the same player within the log.
 
         Returns:
-            A list of unique player dictionaries found in the log. Each
-            dictionary contains 'name' and 'xuid' keys. An empty list is
-            returned if the log file doesn't exist or no players are found.
+            List[Dict[str, str]]: A list of unique player data dictionaries found
+            in the log. Each dictionary has two keys:
+
+                - "name" (str): The player's gamertag.
+                - "xuid" (str): The player's Xbox User ID (XUID).
+
+            Returns an empty list if the log file doesn't exist, is empty, or if
+            no player connection entries are found.
 
         Raises:
-            FileOperationError: If there is an OS-level error reading the log file.
+            FileOperationError: If an OS-level error occurs while trying to read
+                the log file (e.g., permission issues).
         """
         log_file = self.server_log_path  # This property is from BaseMixin.
         self.logger.debug(

@@ -118,67 +118,85 @@
         if (inlineLoaderRow) inlineLoaderRow.style.display = 'table-row'; // Show inline loader
 
         try {
-            const data = await window.sendServerActionRequest(serverName, 'permissions/get', 'GET', null, null);
+            console.log("Fetching global players and server permissions in parallel...");
+            // Fetch both global players and server-specific permissions
+            const [allPlayersResponse, serverPermissionsResponse] = await Promise.all([
+                window.sendServerActionRequest(null, '/api/players/get', 'GET', null, null),
+                window.sendServerActionRequest(serverName, 'permissions/get', 'GET', null, null)
+            ]);
 
-            if (data && data.status === 'success') {
-                const permissions = data.permissions || []; // Corrected: data.permissions (from API structure)
-                const knownPlayers = data.known_players || []; // Corrected: data.known_players (from API structure)
-
-                const currentPermissionsMap = new Map();
-                permissions.forEach(p => {
-                    currentPermissionsMap.set(String(p.xuid), p.permission_level); // Ensure XUID is string for map keys
-                });
-
-                // Combine known players with any players only found in permissions.json
-                const allPlayersMap = new Map();
-                knownPlayers.forEach(p => {
-                    allPlayersMap.set(String(p.xuid), { name: p.name || `Unknown (XUID: ${p.xuid})`, xuid: String(p.xuid) });
-                });
-                permissions.forEach(p => {
-                    const xuidStr = String(p.xuid);
-                    if (!allPlayersMap.has(xuidStr)) {
-                        allPlayersMap.set(xuidStr, { name: `Unknown (XUID: ${xuidStr})`, xuid: xuidStr });
-                    }
-                });
-
-                const combinedPlayers = Array.from(allPlayersMap.values());
-                combinedPlayers.sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
-
-                if (inlineLoaderRow) inlineLoaderRow.remove(); // Remove initial loader row
-
-                if (combinedPlayers.length > 0) {
-                    const fragment = document.createDocumentFragment();
-                    combinedPlayers.forEach(player => {
-                        const rowClone = playerRowTemplate.content.cloneNode(true);
-                        const select = rowClone.querySelector('.permission-select');
-
-                        rowClone.querySelector('.player-name').textContent = player.name;
-                        rowClone.querySelector('.player-xuid').textContent = player.xuid;
-                        select.name = player.xuid;
-                        select.dataset.xuid = player.xuid;
-                        select.value = currentPermissionsMap.get(player.xuid) || 'member';
-
-                        fragment.appendChild(rowClone);
-                    });
-                    tableBody.appendChild(fragment);
-                    saveButton.disabled = false;
-                    saveButton.title = "Save all player permissions";
-                } else {
-                    tableBody.appendChild(noPlayersRowTemplate.content.cloneNode(true));
-                    saveButton.title = "No players to configure";
-                }
-            } else {
-                if (inlineLoaderRow) inlineLoaderRow.remove();
-                const errorMsg = (data && data.message) ? data.message : 'Failed to load permissions data.';
-                showStatusMessage(`Error: ${errorMsg}`, 'error');
-                tableBody.appendChild(noPlayersRowTemplate.content.cloneNode(true));
-                saveButton.title = "Could not load data";
+            // Validate global players response
+            if (!allPlayersResponse || allPlayersResponse.status !== 'success') {
+                throw new Error(allPlayersResponse?.message || 'Failed to load global players list.');
             }
+            // Validate server permissions response
+            if (!serverPermissionsResponse || serverPermissionsResponse.status !== 'success') {
+                throw new Error(serverPermissionsResponse?.message || 'Failed to load server permissions.');
+            }
+
+            let globalPlayers = allPlayersResponse.players || [];
+            // Correctly access nested permissions array based on OpenAPI doc
+            const serverPermissions = serverPermissionsResponse.data?.permissions || [];
+            console.log(`Loaded ${globalPlayers.length} global players and ${serverPermissions.length} server permissions.`);
+
+            const permissionsMap = new Map(serverPermissions.map(p => [String(p.xuid), p.permission_level]));
+            const globalPlayerXuids = new Set(globalPlayers.map(p => String(p.xuid)));
+
+            // Add players from server permissions if they are not in the global list
+            serverPermissions.forEach(p => {
+                const xuidStr = String(p.xuid);
+                if (!globalPlayerXuids.has(xuidStr)) {
+                    // Add this player to the globalPlayers list to be displayed
+                    // It's important that globalPlayers is an array that can be pushed to.
+                    globalPlayers.push({
+                        xuid: xuidStr,
+                        name: p.name || `Unknown (XUID: ${xuidStr})` // Use name from permission if available, else mark unknown
+                    });
+                    console.log(`Found permission for player ${xuidStr} (not in global list), adding to display list.`);
+                }
+            });
+
+            // Sort all players to be displayed by name
+            globalPlayers.sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+
+            if (inlineLoaderRow) inlineLoaderRow.remove(); // Remove initial loader row
+
+            if (globalPlayers.length > 0) {
+                const fragment = document.createDocumentFragment();
+                globalPlayers.forEach(player => {
+                    const rowClone = playerRowTemplate.content.cloneNode(true);
+                    const select = rowClone.querySelector('.permission-select');
+                    const xuidStr = String(player.xuid);
+
+                    rowClone.querySelector('.player-name').textContent = player.name || 'N/A';
+                    rowClone.querySelector('.player-xuid').textContent = xuidStr;
+                    select.name = xuidStr; // Used by savePermissions
+                    select.dataset.xuid = xuidStr; // Also useful for identification
+
+                    // Set permission level from server's permissions, default to 'member'
+                    select.value = permissionsMap.get(xuidStr) || 'member';
+
+                    // If validation errors need to be linked:
+                    // const validationErrorDiv = rowClone.querySelector('.validation-error');
+                    // if (validationErrorDiv) validationErrorDiv.dataset.field = xuidStr;
+
+                    fragment.appendChild(rowClone);
+                });
+                tableBody.appendChild(fragment);
+                saveButton.disabled = false;
+                saveButton.title = "Save all player permissions";
+            } else {
+                tableBody.appendChild(noPlayersRowTemplate.content.cloneNode(true));
+                saveButton.title = "No players to configure"; // Keep disabled (default)
+            }
+
         } catch (error) {
+            console.error('Failed to load permissions page data:', error);
             if (inlineLoaderRow) inlineLoaderRow.remove();
-            showStatusMessage(`Client-side error loading permissions: ${error.message}`, 'error');
-            tableBody.appendChild(noPlayersRowTemplate.content.cloneNode(true));
-            saveButton.title = "Error loading data";
+            showStatusMessage(`Error loading page data: ${error.message}`, 'error');
+            tableBody.innerHTML = ''; // Clear any partial content
+            tableBody.appendChild(noPlayersRowTemplate.content.cloneNode(true)); // Show no players message
+            saveButton.title = "Could not load data"; // Keep save button disabled
         } finally {
             mainLoader.style.display = 'none';
             formSection.style.display = 'block';

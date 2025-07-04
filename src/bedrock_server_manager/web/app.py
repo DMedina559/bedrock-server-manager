@@ -1,7 +1,13 @@
 # bedrock_server_manager/web/app.py
 """
-Initializes and configures the web application instance (FastAPI).
-Provides a function to run the web server.
+Provides the main function for configuring and running the Uvicorn web server.
+
+This module contains the :func:`run_web_server` function, which is responsible
+for initializing and starting the Uvicorn server that serves the FastAPI application.
+The FastAPI application instance (`app`) itself is expected to be defined in
+:mod:`bedrock_server_manager.web.main`. This module handles parsing command-line
+arguments and application settings to correctly configure Uvicorn's host, port,
+debug mode, and worker processes.
 """
 
 import os
@@ -22,14 +28,52 @@ def run_web_server(
     host: Optional[Union[str, List[str]]] = None, debug: bool = False
 ) -> None:
     """
-    Starts the FastAPI web server using Uvicorn.
+    Configures and starts the Uvicorn web server to serve the FastAPI application.
+
+    This function is the main entry point for launching the web interface and API
+    for the Bedrock Server Manager. It handles:
+    - Checking for required authentication environment variables.
+    - Determining the host and port based on command-line arguments and application settings.
+    - Configuring Uvicorn's operational mode (debug/production), log level, and worker count.
+    - Launching Uvicorn to serve the FastAPI application located at
+      ``bedrock_server_manager.web.main:app``.
+
+    Extensive logging is performed throughout the configuration and startup sequence.
+
     Args:
-        host: The host address or list of addresses to bind to from the CLI.
-              This takes precedence over the settings file.
-        debug: If True, run Uvicorn in development mode (with auto-reload).
-               If False (default), run Uvicorn in production mode.
+        host (Optional[Union[str, List[str]]]): Specifies the host address(es)
+            for Uvicorn to bind to. This can be a single IP address/hostname as a
+            string, or a list of addresses/hostnames. If provided via CLI, these
+            values take precedence over the ``web.host`` setting in the application
+            configuration. If multiple hosts are given (either via CLI or settings),
+            Uvicorn will typically bind to the first one in the list.
+            Defaults to ``None``, in which case the host is determined by the
+            ``web.host`` setting (defaulting to "127.0.0.1").
+        debug (bool): If ``True``, Uvicorn is run in development mode. This typically
+            enables auto-reload on code changes, sets a more verbose log level (debug),
+            and uses a single worker process. If ``False`` (default), Uvicorn runs in
+            production mode, with the number of worker processes determined by the
+            ``web.threads`` setting (or its default).
+
     Raises:
-        RuntimeError: If required authentication environment variables are not set.
+        RuntimeError: If the required authentication environment variables
+            (e.g., ``BSM_USERNAME``, ``BSM_PASSWORD``, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
+            are not set. The server will not start without these credentials.
+        Exception: Re-raises any exception encountered during `uvicorn.run` if
+            Uvicorn itself fails to start (e.g., port already in use, invalid app path).
+
+    Environment Variables:
+        - ``BSM_USERNAME``: The username for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
+        - ``BSM_PASSWORD``: The password for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
+
+    Settings Interaction:
+        This function reads the following keys from the global ``settings`` object:
+        - ``web.port`` (int): The port number for Uvicorn to listen on.
+          Defaults to 11325 if not set or invalid. Valid range: 1-65535.
+        - ``web.host`` (Union[str, List[str]]): The host address(es) to bind to if
+          not overridden by the ``host`` argument. Defaults to "127.0.0.1".
+        - ``web.threads`` (int): The number of Uvicorn worker processes to use when
+          not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
 
     username_env = f"{env_name}_USERNAME"

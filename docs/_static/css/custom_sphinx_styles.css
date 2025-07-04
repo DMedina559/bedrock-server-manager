@@ -1,0 +1,303 @@
+/* Custom Sphinx Styles for sphinx-rtd-theme - Inspired by Bedrock Server Manager App */
+
+/* ==========================================================================
+   1. Root CSS Variables (Overrides for RTD Theme)
+   ========================================================================== */
+:root {
+    /* --- Base Colors --- */
+    --rtd-background-color: #2a2a2a; /* Main page background (outside content area) */
+    --rtd-content-background-color: #333; /* Main content area background */
+    --rtd-text-color: #eee; /* Default text color */
+    /* --- Sidebar / Navigation --- */
+    --rtd-nav-background-color: #2a2a2a; /* Sidebar background */
+    --rtd-nav-text-color: #ccc; /* Sidebar text color */
+    --rtd-nav-link-color: #9bc8e6; /* Sidebar link color */
+    --rtd-nav-link-hover-color: #fff; /* Sidebar link hover color */
+    --rtd-nav-link-active-color: #fff; /* Sidebar active link text color */
+    --rtd-nav-link-active-background-color: #4CAF50; /* Active link background (app's green) */
+    --rtd-nav-search-background-color: #444; /* Search box background */
+    --rtd-nav-search-text-color: #eee; /* Search box text color */
+    --rtd-nav-search-border-color: #555; /* Search box border */
+    /* --- Links --- */
+    --rtd-link-color: #79aecf; /* Main content link color */
+    --rtd-link-hover-color: #9bc8e6; /* Main content link hover color */
+    /* --- Headings --- */
+    --rtd-h1-color: #eee;
+    --rtd-h2-color: #eee;
+    --rtd-h3-color: #eee;
+    --rtd-h4-color: #eee;
+    /* Borders for headings will be handled by direct selectors below */
+    /* --- Tables --- */
+    --rtd-table-border-color: #555;
+    --rtd-table-header-background-color: #444;
+    --rtd-table-header-text-color: #eee;
+    --rtd-table-even-row-background-color: transparent; /* Match app's no-striping */
+    --rtd-table-odd-row-background-color: transparent;
+    /* --- Code Blocks --- */
+    --rtd-code-background-color: #222; /* Background for block code */
+    --rtd-code-text-color: #d0d0d0; /* Default text color in code blocks */
+    --rtd-code-border-color: #444;
+    /* --- Admonitions (using direct styling for more control) --- */
+    /* These might not all be direct RTD variables, so we'll style them directly too */
+    /* --- Other UI Elements --- */
+    --rtd-button-background-color: #555;
+    --rtd-button-text-color: #eee;
+    --rtd-button-hover-background-color: #777;
+    --rtd-button-hover-text-color: #fff;
+    /* Font stack */
+    --rtd-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    --rtd-font-family-monospace: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Apply font stack to body */
+body {
+    font-family: var(--rtd-font-family-base);
+    line-height: 1.6; /* Slightly more line height for readability in docs */
+    color: var(--rtd-text-color); /* Ensure base text color is light */
+    background-color: var(--rtd-background-color); /* Ensure body background is dark */
+}
+
+/* Main content area - RTD specific selector */
+.wy-nav-content {
+    background-color: var(--rtd-content-background-color);
+    padding: 25px; /* Match app's .container padding */
+    color: var(--rtd-text-color); /* Ensure text color in content area is light */
+}
+
+
+/* ==========================================================================
+   2. Specific Element Styling for RTD Theme
+   ========================================================================== */
+
+/* Main content area - RTD specific selector */
+.wy-nav-content {
+    background-color: var(--rtd-content-background-color);
+    padding: 25px; /* Match app's .container padding */
+}
+
+/* Headings - Add borders similar to app */
+.rst-content h1,
+.rst-content h2,
+.rst-content h3,
+.rst-content h4,
+.rst-content h5,
+.rst-content h6 {
+    color: var(--rtd-text-color); /* Ensure it uses our text color */
+    font-weight: 600;
+    margin-top: 1.5em;
+    margin-bottom: 0.8em;
+    border-bottom: 1px solid var(--rtd-table-border-color); /* Use table border for consistency */
+    padding-bottom: 0.3em;
+}
+
+.rst-content h1 {
+    font-size: 2.2em;
+    letter-spacing: 1px;
+}
+
+.rst-content h2 {
+    font-size: 1.6em;
+}
+
+.rst-content h3 {
+    font-size: 1.3em;
+    border-bottom-style: dashed;
+}
+
+.rst-content h4 {
+    font-size: 1.1em;
+    border-bottom: none;
+}
+
+
+/* Tables - Ensure they use our variables and look like app tables */
+.rst-content table.docutils {
+    border: 1px solid var(--rtd-table-border-color);
+    margin-bottom: 20px;
+}
+
+    .rst-content table.docutils th,
+    .rst-content table.docutils td {
+        padding: 10px 15px;
+        border: 1px solid var(--rtd-table-border-color);
+    }
+
+    .rst-content table.docutils thead th {
+        background-color: var(--rtd-table-header-background-color);
+        color: var(--rtd-table-header-text-color);
+        font-weight: 600;
+        border-bottom-width: 2px;
+    }
+
+    .rst-content table.docutils caption {
+        caption-side: top;
+        text-align: left;
+        font-weight: bold;
+        padding: 8px 0;
+        color: #ccc; /* Slightly lighter than main text for caption */
+        margin-bottom: 5px;
+    }
+
+/* Code Blocks */
+/* Block code (div.highlight > pre) */
+.rst-content div.highlight > pre {
+    background-color: var(--rtd-code-background-color);
+    color: var(--rtd-code-text-color);
+    border: 1px solid var(--rtd-code-border-color);
+    padding: 10px;
+    border-radius: 0; /* Sharp corners from app */
+}
+/* Ensure the outer div.highlight also has a similar background if it's visible */
+.rst-content div.highlight {
+    background-color: var(--rtd-code-background-color);
+    border-radius: 0;
+    margin-bottom: 1.5em;
+}
+
+/* Inline code literals (e.g., `sc.exe`) */
+/* RTD theme often uses span.pre for inline literals */
+.rst-content tt,
+.rst-content code,
+.rst-content span.pre {
+    background-color: #444; /* Darker than content, lighter than block code */
+    color: #d0d0d0;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    border: 1px solid #555;
+    white-space: nowrap;
+    font-family: var(--rtd-font-family-monospace);
+}
+    /* Avoid double background if span.pre is inside code/tt or vice-versa */
+    .rst-content code span.pre, .rst-content tt span.pre,
+    .rst-content span.pre code, .rst-content span.pre tt {
+        background-color: transparent;
+        border: none;
+        padding: 0;
+    }
+
+
+/* Admonitions */
+.rst-content .admonition {
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 0; /* Sharp corners from app */
+}
+
+    .rst-content .admonition p.admonition-title {
+        font-weight: 600;
+        margin-bottom: 0.5em;
+        font-size: 1.1em;
+    }
+
+    /* Note / Seealso / Tip */
+    .rst-content .admonition.note,
+    .rst-content .admonition.seealso,
+    .rst-content .admonition.tip {
+        background-color: #304d30; /* Darker green, inspired by app's success message */
+        border-color: #4CAF50;
+        color: #E8F5E9;
+    }
+
+        .rst-content .admonition.note .admonition-title,
+        .rst-content .admonition.seealso .admonition-title,
+        .rst-content .admonition.tip .admonition-title {
+            color: #c8e6c9;
+        }
+
+    /* Warning / Caution / Attention */
+    .rst-content .admonition.warning,
+    .rst-content .admonition.caution,
+    .rst-content .admonition.attention {
+        background-color: #6d4c00;
+        border-color: #FFB74D;
+        color: #fff;
+    }
+
+        .rst-content .admonition.warning .admonition-title,
+        .rst-content .admonition.caution .admonition-title,
+        .rst-content .admonition.attention .admonition-title {
+            color: #ffe0b2;
+        }
+
+    /* Error / Danger / Important */
+    .rst-content .admonition.error,
+    .rst-content .admonition.danger,
+    .rst-content .admonition.important {
+        background-color: #611010;
+        border-color: #d32f2f;
+        color: #FFEBEE;
+    }
+
+        .rst-content .admonition.error .admonition-title,
+        .rst-content .admonition.danger .admonition-title,
+        .rst-content .admonition.important .admonition-title {
+            color: #ffcdd2;
+        }
+
+/* RTD Theme Specific: Footer */
+.wy-footer-nav, footer[role="contentinfo"] {
+    background-color: #222; /* Darker footer background */
+    color: #aaa;
+}
+
+    .wy-footer-nav a, footer[role="contentinfo"] a {
+        color: var(--rtd-link-color);
+    }
+
+        .wy-footer-nav a:hover, footer[role="contentinfo"] a:hover {
+            color: var(--rtd-link-hover-color);
+        }
+
+/* RTD Theme Search Box - ensure it's visible on dark background */
+#rtd-search-form input[type="text"] {
+    background-color: var(--rtd-nav-search-background-color);
+    color: var(--rtd-nav-search-text-color);
+    border-color: var(--rtd-nav-search-border-color);
+    border-radius: 0;
+}
+
+#rtd-search-form button[type="submit"] { /* Search button */
+    /* May need to style this if it's not inheriting well */
+}
+
+
+/* RTD version switcher - style if present */
+.rst-versions {
+    background-color: #222;
+    border-top-color: #444;
+    color: #ccc;
+}
+
+    .rst-versions .rst-current-version {
+        background-color: #333;
+    }
+
+        .rst-versions .rst-current-version .rst-current-version-label {
+            color: #eee;
+        }
+
+    .rst-versions .rst-other-versions dd a {
+        color: #9bc8e6;
+    }
+
+        .rst-versions .rst-other-versions dd a:hover {
+            background-color: #444;
+            color: #fff;
+        }
+
+/* Breadcrumbs */
+.wy-breadcrumbs li a {
+    color: var(--rtd-link-color);
+}
+
+    .wy-breadcrumbs li a:hover {
+        color: var(--rtd-link-hover-color);
+        text-decoration: underline;
+    }
+
+.wy-breadcrumbs li {
+    color: #ccc; /* Non-link part of breadcrumbs */
+}

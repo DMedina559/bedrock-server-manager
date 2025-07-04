@@ -1,11 +1,35 @@
 # bedrock_server_manager/cli/system.py
-"""Defines the `bsm system` command group for OS-level server integrations.
+"""
+Defines the `bsm system` command group for OS-level server integrations and monitoring.
 
-This module provides commands to create and manage OS services (e.g.,
-systemd on Linux, Windows Services on Windows) for autostarting servers and to
-monitor the resource usage (CPU, memory) of running server processes. It
-intelligently adapts to the host system's capabilities, enabling or disabling
-features as needed.
+This module provides CLI commands and interactive workflows to manage system-level
+aspects of both individual Bedrock server instances and the Bedrock Server Manager
+Web UI application itself. Key functionalities include:
+
+    -   **Server Service Management:**
+        -   ``bsm system configure-service``: Interactively or directly configures
+            system services (systemd on Linux, Windows Service on Windows) for a
+            specific Bedrock server, including autostart and autoupdate settings.
+        -   ``bsm system enable-service``: Enables a server's system service for autostart.
+        -   ``bsm system disable-service``: Disables a server's system service autostart.
+    -   **Web UI Service Management (via `bsm web service` commands - defined in `cli.web.py` but relevant context):**
+        -   Manages the system service for the main Web UI application.
+    -   **Resource Monitoring:**
+        -   ``bsm system monitor``: Continuously displays CPU and memory usage for a
+            specified running server process.
+    -   **Interactive Workflows:**
+        -   :func:`~.interactive_service_workflow`: A helper function that guides users
+            through configuring system services for a server.
+    -   **Decorators & Helpers:**
+        -   :func:`~.requires_service_manager`: A Click command decorator that checks
+            if the host system has a supported service manager (systemd or pywin32
+            for Windows Services) before allowing a command to run.
+        -   `_perform_service_configuration`: Internal helper for applying configurations.
+
+Commands in this module typically interact with the API functions defined in
+:mod:`~bedrock_server_manager.api.system` and rely on the
+:class:`~bedrock_server_manager.core.manager.BedrockServerManager` for
+capability checks and settings access.
 """
 
 import functools
@@ -37,16 +61,24 @@ logger = logging.getLogger(__name__)
 
 
 def requires_service_manager(func: Callable) -> Callable:
-    """A decorator that restricts a command to systems with a service manager.
+    """
+    A Click command decorator that restricts command execution to systems
+    with a recognized and available OS service manager.
 
-    This decorator checks the central `BedrockServerManager` instance to see
-    if a known service manager is available (systemd on Linux, pywin32 on Windows).
+    This decorator inspects the :class:`~.core.manager.BedrockServerManager`
+    instance (expected in `ctx.obj['bsm']`) to determine if the host system
+    has the necessary capabilities for service management (e.g., `systemctl`
+    on Linux, or `pywin32` for Windows Services on Windows).
+
+    If the capability is missing, an informative error message is printed,
+    and the command execution is aborted using `click.Abort`.
 
     Args:
-        func: The Click command function to wrap.
+        func (Callable): The Click command function to be decorated.
 
     Returns:
-        The wrapped function, which will first perform the capability check.
+        Callable: The decorated function, which includes the pre-execution
+        capability check.
     """
 
     @functools.wraps(func)
@@ -58,8 +90,8 @@ def requires_service_manager(func: Callable) -> Callable:
             os_type = bsm.get_os_type()
             if os_type == "Windows":
                 msg = "Error: This command requires 'pywin32' to be installed (`pip install pywin32`)."
-            else:
-                msg = "Error: This command requires a service manager (like systemd), which was not found."
+            else:  # Primarily targets Linux/systemd here
+                msg = "Error: This command requires a service manager (e.g., systemd for Linux), which was not found or is not supported."
             click.secho(msg, fg="red")
             raise click.Abort()
         return func(*args, **kwargs)
@@ -74,21 +106,35 @@ def _perform_service_configuration(
     setup_service: Optional[bool],
     enable_autostart: Optional[bool],
 ):
-    """Applies service configurations by calling the system API.
+    """
+    Internal helper to apply service configurations by calling the system API.
 
-    This non-interactive function is the backend for all configuration actions.
-    It only acts on settings that are not None and respects the system's
-    detected capabilities.
+    This non-interactive function serves as the backend logic for applying
+    service-related settings. It only processes configuration options that are
+    explicitly provided (not ``None``) and respects the system's detected
+    capabilities (e.g., presence of a service manager).
 
     Args:
-        bsm: The central BedrockServerManager instance.
-        server_name: The name of the server to configure.
-        autoupdate: The desired state for autoupdate.
-        setup_service: If True, creates/updates the system service.
-        enable_autostart: Sets the system service autostart state.
+        bsm (BedrockServerManager): The central BedrockServerManager instance,
+            used for capability checks and potentially passing to API calls.
+        server_name (str): The name of the server to configure.
+        autoupdate (Optional[bool]): The desired state for the server's
+            autoupdate setting. If ``None``, this setting is not changed.
+        setup_service (Optional[bool]): If ``True``, creates or updates the system
+            service for the server. If ``None`` or ``False`` (and `enable_autostart`
+            is also ``None``), service creation/update is skipped.
+        enable_autostart (Optional[bool]): Sets the system service's autostart
+            state (enabled or disabled). If ``None``, this setting is not changed
+            unless `setup_service` is also ``True`` (in which case it might default
+            based on `setup_service`'s logic).
 
     Raises:
-        BSMError: If any of the underlying API calls fail.
+        BSMError: If any of the underlying API calls
+            (e.g., :func:`~bedrock_server_manager.api.system.set_autoupdate`,
+            :func:`~bedrock_server_manager.api.system.create_server_service`)
+            fail and raise an exception that isn't handled by `_handle_api_response`
+            (which would `click.Abort`).
+        click.Abort: If `_handle_api_response` detects an API error.
     """
     if autoupdate is not None:
         autoupdate_value = "true" if autoupdate else "false"
@@ -117,11 +163,24 @@ def _perform_service_configuration(
 
 
 def interactive_service_workflow(bsm: BedrockServerManager, server_name: str):
-    """Guides the user through an interactive session to configure services.
+    """
+    Guides the user through an interactive session to configure server services.
+
+    This function uses `questionary` prompts to ask the user about:
+    1.  Enabling/disabling autoupdate on server start.
+    2.  Creating/updating the system service (systemd/Windows Service), if a
+        service manager is available on the host system.
+    3.  Enabling/disabling autostart for the system service, if service setup
+        is chosen.
+
+    Based on the user's responses, it then calls
+    :func:`~._perform_service_configuration` to apply the changes.
 
     Args:
-        bsm: The central BedrockServerManager instance.
-        server_name: The name of the server being configured.
+        bsm (BedrockServerManager): The initialized BedrockServerManager instance,
+            used to check system capabilities (e.g., `bsm.can_manage_services`).
+        server_name (str): The name of the server for which services are being
+            configured. This is used in prompts and passed to configuration functions.
     """
     click.secho(
         f"\n--- Interactive Service Configuration for '{server_name}' ---", bold=True
@@ -185,7 +244,14 @@ def interactive_service_workflow(bsm: BedrockServerManager, server_name: str):
 
 @click.group()
 def system():
-    """Manages OS-level integrations and server monitoring."""
+    """
+    Manages OS-level integrations and server resource monitoring.
+
+    This command group includes subcommands for configuring system services
+    (like systemd on Linux or Windows Services) for individual Bedrock servers
+    to enable features like autostart. It also provides tools for monitoring
+    the resource usage (CPU, memory) of running server processes.
+    """
     pass
 
 
@@ -222,11 +288,30 @@ def configure_service(
     setup_service: bool,
     autostart_flag: Optional[bool],
 ):
-    """Configures OS-specific service settings for a server.
+    """
+    Configures OS-specific service settings for a Bedrock server.
 
-    If run without configuration flags, this command launches an interactive
-    wizard to guide you through the setup. If any flags are used, it applies
-    the specified settings directly, making it suitable for scripting.
+    This command allows setting up a server to run as a system service
+    (systemd on Linux, Windows Service on Windows), enabling features like
+    automatic startup on boot/login and automatic updates on server start.
+
+    If run without any specific configuration flags (like `--autoupdate` or
+    `--setup-service`), it launches an interactive wizard
+    (:func:`~.interactive_service_workflow`) to guide the user through the
+    available options.
+
+    If configuration flags are provided, it applies those settings directly,
+    making it suitable for scripting or non-interactive use. The command
+    respects system capabilities (e.g., it won't attempt service setup if
+    a service manager isn't available).
+
+    The command can be used with flags like ``--autoupdate`` / ``--no-autoupdate``,
+    ``--setup-service``, and ``--enable-autostart`` / ``--no-enable-autostart``
+    for direct configuration. The ``--setup-service`` flag requires a supported
+    service manager on the system.
+
+    It calls API functions from :mod:`~bedrock_server_manager.api.system`
+    indirectly via :func:`~._perform_service_configuration`.
     """
     bsm: BedrockServerManager = ctx.obj["bsm"]
 
@@ -276,7 +361,18 @@ def configure_service(
 )
 @requires_service_manager
 def enable_service(server_name: str):
-    """Enables the system service to autostart at boot/login."""
+    """
+    Enables a server's system service for automatic startup.
+
+    This command configures the OS service (systemd on Linux, Windows Service
+    on Windows) associated with the specified server to start automatically
+    when the system boots or when the user logs in (depending on service type).
+
+    It requires a supported service manager to be available on the system,
+    checked by the `@requires_service_manager` decorator.
+
+    Calls API: :func:`~bedrock_server_manager.api.system.enable_server_service`.
+    """
     click.echo(f"Attempting to enable system service for '{server_name}'...")
     try:
         response = system_api.enable_server_service(server_name)
@@ -296,7 +392,18 @@ def enable_service(server_name: str):
 )
 @requires_service_manager
 def disable_service(server_name: str):
-    """Disables the system service from autostarting at boot/login."""
+    """
+    Disables a server's system service from starting automatically.
+
+    This command configures the OS service (systemd on Linux, Windows Service
+    on Windows) for the specified server to not start automatically on
+    system boot or user login.
+
+    It requires a supported service manager, checked by the
+    `@requires_service_manager` decorator.
+
+    Calls API: :func:`~bedrock_server_manager.api.system.disable_server_service`.
+    """
     click.echo(f"Attempting to disable system service for '{server_name}'...")
     try:
         response = system_api.disable_server_service(server_name)
@@ -315,7 +422,19 @@ def disable_service(server_name: str):
     help="Name of the server to monitor.",
 )
 def monitor_usage(server_name: str):
-    """Continuously monitors CPU and memory usage of a server process."""
+    """
+    Continuously monitors CPU and memory usage of a specific server process.
+
+    This command repeatedly fetches and displays the Process ID (PID),
+    CPU percentage, memory usage (in MB), and uptime for the specified
+    server's running process. The display refreshes every 2 seconds.
+
+    Press CTRL+C to stop monitoring. This feature relies on the `psutil`
+    library being available for detailed process information.
+
+    Calls API: :func:`~bedrock_server_manager.api.system.get_bedrock_process_info`
+    in a loop.
+    """
     click.secho(
         f"Starting resource monitoring for server '{server_name}'. Press CTRL+C to exit.",
         fg="cyan",

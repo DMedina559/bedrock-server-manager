@@ -1,9 +1,23 @@
 # bedrock_server_manager/api/system.py
-"""Provides API functions for system-level server interactions.
+"""Provides API functions for system-level server interactions and information.
 
-This module orchestrates calls to `BedrockServer` class methods to manage
-system-related configurations and information, such as process resource usage
-and system service management (systemd on Linux, Windows Services on Windows).
+This module serves as an interface for querying system-related information about
+server processes and for managing their integration with the host operating system's
+service management capabilities. It primarily orchestrates calls to the
+:class:`~bedrock_server_manager.core.bedrock_server.BedrockServer` class.
+
+Key functionalities include:
+    - Querying server process resource usage (e.g., PID, CPU, memory) via
+      :func:`~.get_bedrock_process_info`.
+    - Managing OS-level services (systemd on Linux, Windows Services on Windows)
+      for servers, including creation (:func:`~.create_server_service`),
+      enabling (:func:`~.enable_server_service`), and disabling
+      (:func:`~.disable_server_service`) auto-start.
+    - Configuring server-specific settings like autoupdate behavior via
+      :func:`~.set_autoupdate`.
+
+These functions are designed for use by higher-level application components,
+such as the web UI or CLI, to provide system-level control and monitoring.
 """
 import logging
 import platform
@@ -30,22 +44,27 @@ logger = logging.getLogger(__name__)
 def get_bedrock_process_info(server_name: str) -> Dict[str, Any]:
     """Retrieves resource usage for a running Bedrock server process.
 
-    This function queries the system for the server's process and returns
-    details like PID, CPU usage, memory consumption, and uptime.
+    This function queries the system for the server's process by calling
+    :meth:`~.core.bedrock_server.BedrockServer.get_process_info`
+    and returns details like PID, CPU usage, memory consumption, and uptime.
 
     Args:
-        server_name: The name of the server to query.
+        server_name (str): The name of the server to query.
 
     Returns:
-        A dictionary with the operation status and process information.
+        Dict[str, Any]: A dictionary with the operation status and process information.
         On success with a running process:
-        `{"status": "success", "process_info": {"pid": ..., "cpu": ..., ...}}`.
-        If the process is not found:
-        `{"status": "success", "process_info": None, "message": "..."}`.
-        On error: `{"status": "error", "message": "..."}`.
+        ``{"status": "success", "process_info": {"pid": int, "cpu_percent": float, "memory_mb": float, "uptime": str}}``.
+        If the process is not found or inaccessible:
+        ``{"status": "success", "process_info": None, "message": "Server process '<name>' not found..."}``.
+        On error during retrieval: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation if core
+            application settings are misconfigured, or by ``get_process_info``
+            if ``psutil`` is unavailable or encounters issues.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -83,24 +102,34 @@ def get_bedrock_process_info(server_name: str) -> Dict[str, Any]:
 def create_server_service(server_name: str, autostart: bool = False) -> Dict[str, str]:
     """Creates (or updates) a system service for the server.
 
-    On Linux, this creates a systemd user service.
-    On Windows, this creates a Windows Service (requires Administrator privileges).
+    On Linux, this creates a systemd user service. On Windows, this creates a
+    Windows Service (typically requires Administrator privileges).
 
-    This function generates a service file, allowing the server to be
-    managed by the host OS's service manager. It can also enable the
-    service to start on boot/login.
+    This function calls :meth:`~.core.bedrock_server.BedrockServer.create_service`
+    to generate and install the service definition. Based on the `autostart` flag,
+    it then calls either :meth:`~.core.bedrock_server.BedrockServer.enable_service`
+    or :meth:`~.core.bedrock_server.BedrockServer.disable_service`.
+    Triggers ``before_service_change`` and ``after_service_change`` plugin events.
 
     Args:
-        server_name: The name of the server.
-        autostart: If True, the service will be enabled to start on system boot/login.
-            If False, it will be disabled. Defaults to False.
+        server_name (str): The name of the server for which to create the service.
+        autostart (bool, optional): If ``True``, the service will be enabled to
+            start automatically on system boot/login. If ``False``, it will be
+            created but left disabled (or set to manual start). Defaults to ``False``.
 
     Returns:
-        A dictionary with the operation status and a message. Returns an error
-        on unsupported systems.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "System service created and <enabled/disabled> successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by the underlying service management methods for
+            various reasons, including:
+            - :class:`~.error.SystemError` if the OS is unsupported or system commands fail.
+            - :class:`~.error.PermissionsError` if lacking necessary privileges (especially on Windows).
+            - :class:`~.error.CommandNotFoundError` if essential system utilities are missing.
+            - :class:`~.error.FileOperationError` if service file creation/modification fails.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -160,22 +189,29 @@ def create_server_service(server_name: str, autostart: bool = False) -> Dict[str
 
 
 def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
-    """Sets the 'autoupdate' flag in the server's custom configuration.
+    """Sets the 'autoupdate' flag in the server's specific JSON configuration file.
 
     This function modifies the server-specific JSON configuration file to
-    enable or disable the automatic update check before the server starts.
+    enable or disable the automatic update check before the server starts,
+    by calling :meth:`~.core.bedrock_server.BedrockServer.set_autoupdate`.
+    Triggers ``before_autoupdate_change`` and ``after_autoupdate_change`` plugin events.
 
     Args:
-        server_name: The name of the server.
-        autoupdate_value: The desired state, as a string ('true' or 'false').
+        server_name (str): The name of the server.
+        autoupdate_value (str): The desired state for autoupdate.
+            Must be 'true' or 'false' (case-insensitive).
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Autoupdate setting for '<name>' updated to <bool_value>."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
         MissingArgumentError: If `autoupdate_value` is not provided.
         UserInputError: If `autoupdate_value` is not 'true' or 'false'.
+        FileOperationError: If writing the server's JSON configuration file fails.
+        ConfigParseError: If the server's JSON configuration is malformed during load/save.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -230,18 +266,26 @@ def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
 def enable_server_service(server_name: str) -> Dict[str, str]:
     """Enables the system service for autostart.
 
-    On Linux, this enables the systemd user service.
-    On Windows, this sets the Windows Service start type to 'Automatic'
-    (requires Administrator privileges).
+    On Linux, this enables the systemd user service. On Windows, this sets the
+    Windows Service start type to 'Automatic' (typically requires Administrator
+    privileges). This is achieved by calling
+    :meth:`~.core.bedrock_server.BedrockServer.enable_service`.
+    Triggers ``before_service_change`` and ``after_service_change`` plugin events.
 
     Args:
-        server_name: The name of the server whose service will be enabled.
+        server_name (str): The name of the server whose service is to be enabled.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Service for '<name>' enabled successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by the underlying service management methods,
+            e.g., :class:`~.error.SystemError` if the service does not exist or
+            OS commands fail, or :class:`~.error.PermissionsError` on Windows
+            if not run with sufficient privileges.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -288,18 +332,26 @@ def enable_server_service(server_name: str) -> Dict[str, str]:
 def disable_server_service(server_name: str) -> Dict[str, str]:
     """Disables the system service from autostarting.
 
-    On Linux, this disables the systemd user service.
-    On Windows, this sets the Windows Service start type to 'Disabled'
-    (requires Administrator privileges).
+    On Linux, this disables the systemd user service. On Windows, this sets
+    the Windows Service start type to 'Disabled' (typically requires
+    Administrator privileges). This is achieved by calling
+    :meth:`~.core.bedrock_server.BedrockServer.disable_service`.
+    Triggers ``before_service_change`` and ``after_service_change`` plugin events.
 
     Args:
-        server_name: The name of the server whose service will be disabled.
+        server_name (str): The name of the server whose service is to be disabled.
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Service for '<name>' disabled successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by the underlying service management methods,
+            e.g., :class:`~.error.SystemError` if the service does not exist or
+            OS commands fail, or :class:`~.error.PermissionsError` on Windows
+            if not run with sufficient privileges.
     """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")

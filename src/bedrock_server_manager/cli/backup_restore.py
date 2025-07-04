@@ -1,10 +1,31 @@
 # bedrock_server_manager/cli/backup_restore.py
 """
-Defines the `bsm backup` command group for server backup and restore.
+Defines the `bsm backup` command group for server backup and restore operations.
 
-This module provides a comprehensive suite of commands for creating,
-restoring, and managing server backups. It supports both interactive menus
-for guided operations and direct command-line flags for automation.
+This module provides CLI tools to create, restore, list, and prune backups
+for Bedrock server instances. It supports backing up and restoring the server
+world (as ``.mcworld`` files) and key configuration files (``server.properties``,
+``allowlist.json``, ``permissions.json``).
+
+Key functionalities:
+
+    -   Creating backups:
+        -   Full backup (world + all standard configs).
+        -   World-only backup.
+        -   Specific configuration file backup.
+
+    -   Restoring from backups:
+        -   Restore world from a chosen ``.mcworld`` backup.
+        -   Restore a specific configuration file from its backup.
+        (Note: A full "restore all" from latest is handled by API, but CLI might expose it differently or via world/config restore).
+
+    -   Listing available backup files for different components.
+    -   Pruning old backups based on retention policies defined in application settings.
+
+The module includes interactive workflows for guided backup and restore processes,
+as well as direct command-line options for scripting and automation. Commands
+primarily interact with the API functions in
+:mod:`~bedrock_server_manager.api.backup_restore`.
 """
 
 import logging
@@ -27,17 +48,32 @@ logger = logging.getLogger(__name__)
 def _interactive_backup_menu(
     server_name: str,
 ) -> Tuple[str, Optional[str], bool]:
-    """Guides the user through an interactive backup process.
+    """
+    Guides the user through an interactive menu to select backup options.
+
+    Presents choices for backing up:
+
+        - World only
+        - Everything (world + standard configs)
+        - A specific configuration file (server.properties, allowlist.json, permissions.json)
 
     Args:
-        server_name: The name of the server to back up.
+        server_name (str): The name of the server for which to create a backup.
+                           Used in prompts and logging.
 
     Returns:
-        A tuple of (backup_type, file_to_backup, change_status).
-        `change_status` indicates if the server should be stopped/started.
+        Tuple[str, Optional[str], bool]: A tuple containing:
+
+            - ``backup_type`` (str): The type of backup selected (e.g., "world",
+              "all", "config").
+            - ``file_to_backup`` (Optional[str]): The name of the specific
+              configuration file if `backup_type` is "config", otherwise ``None``.
+            - ``change_status`` (bool): Indicates if the server's running status
+              should be managed (stopped/started) for this backup type.
+              ``True`` for world/all, ``False`` for config by default here.
 
     Raises:
-        click.Abort: If the user cancels the operation at any prompt.
+        click.Abort: If the user cancels the operation at any `questionary` prompt.
     """
     click.secho(f"Entering interactive backup for server: {server_name}", fg="yellow")
 
@@ -80,16 +116,28 @@ def _interactive_backup_menu(
 def _interactive_restore_menu(
     server_name: str,
 ) -> Tuple[str, str, bool]:
-    """Guides the user through an interactive restore process.
+    """
+    Guides the user through an interactive menu to select a backup to restore.
+
+    Prompts the user to choose what type of component to restore (world or a
+    specific config file). Then, it lists available backup files for that type
+    and allows the user to select one.
 
     Args:
-        server_name: The name of the server to restore a backup to.
+        server_name (str): The name of the server to which a backup will be restored.
 
     Returns:
-        A tuple of (restore_type, backup_file_path, change_status).
+        Tuple[str, str, bool]: A tuple containing:
+
+            - ``restore_type`` (str): The type of item being restored (e.g., "world",
+              "allowlist", "properties", "permissions").
+            - ``backup_file_path`` (str): The absolute path to the selected backup file.
+            - ``change_status`` (bool): Always ``True`` for restore operations,
+              indicating the server status should be managed.
 
     Raises:
-        click.Abort: If the user cancels or no backups are found.
+        click.Abort: If the user cancels the operation, or if no backups are
+                     found for the selected type, or if listing backups fails.
     """
     click.secho(f"Entering interactive restore for server: {server_name}", fg="yellow")
 
@@ -144,11 +192,14 @@ def _interactive_restore_menu(
 
 @click.group()
 def backup():
-    """Manages server backups (create, restore, prune).
+    """
+    Manages server backups, including creation, restoration, and pruning.
 
-        This command group provides a complete suite of tools for managing
-        server data backups. You can create new backups, restore a server
-    s    to a previous state, and clean up old backup files.
+    This command group provides a suite of tools for handling backups of
+    Bedrock server data. You can create new backups of the world or
+    configuration files, restore a server to a previous state from these
+    backups, and manage storage by pruning old backup files according to
+    configured retention policies.
     """
     pass
 
@@ -181,21 +232,35 @@ def create_backup(
     file_to_backup: Optional[str],
     no_stop: bool,
 ):
-    """Creates a backup of server data.
+    """
+    Creates a backup of specified server data (world, config, or all).
 
-    Backs up server data such as the world, configuration files, or both.
-    If run without the --type option, it will launch an interactive menu to
-    guide you through the process. After a successful backup, it will
-    automatically prune old backups according to your configuration.
+    This command can back up the server's world (as a ``.mcworld`` file),
+    a specific configuration file (e.g., ``server.properties``), or everything
+    (world and all standard configuration files).
 
-    Args:
-        server_name: The name of the server to back up.
-        backup_type: The type of data to back up ('world', 'config', 'all').
-        file_to_backup: The specific config file to back up.
-        no_stop: If True, skips the safe server stop/start procedure.
+    If run without the ``--type`` option, it launches an interactive menu
+    (:func:`~._interactive_backup_menu`) to guide the user through selecting
+    what to back up. If ``--type`` is provided, it attempts the specified
+    backup directly. For "config" type, ``--file`` is also required.
 
-    Raises:
-        click.Abort: If the operation is cancelled or an error occurs.
+    The server is typically stopped before world or "all" backups and restarted
+    afterwards to ensure data integrity, unless ``--no-stop`` is specified
+    (not recommended for world/all). After a successful backup, old backups
+    are automatically pruned based on retention settings.
+
+    When ``--type`` is "config", the ``--file`` option is also required to specify
+    which configuration file to back up (e.g., "server.properties").
+    The ``--no-stop`` flag can be used to perform the backup without stopping the
+    server, but this is risky for 'world' or 'all' backups and may lead to data
+    corruption.
+
+    This command calls the following API functions:
+
+        - :func:`~bedrock_server_manager.api.backup_restore.backup_world`
+        - :func:`~bedrock_server_manager.api.backup_restore.backup_config_file`
+        - :func:`~bedrock_server_manager.api.backup_restore.backup_all`
+        - :func:`~bedrock_server_manager.api.backup_restore.prune_old_backups`
     """
 
     def _run_backup(b_type: str, f_to_backup: Optional[str], s_name: str, stop: bool):
@@ -255,21 +320,37 @@ def create_backup(
     help="Perform restore without stopping the server (risks data corruption).",
 )
 def restore_backup(server_name: str, backup_file_path: Optional[str], no_stop: bool):
-    """Restores server data from a backup file.
+    """
+    Restores server data from a specified backup file.
 
-    This command is destructive and will overwrite current server data with
-    the contents of the backup file.
+    .. warning::
+        This is a **DESTRUCTIVE** operation. It will overwrite the current
+        server data (world or specific configuration file) with the content
+        from the selected backup file.
 
-    If the --file option is provided, the command will infer the restore
-    type from the filename. Otherwise, it launches an interactive menu.
+    If the ``--file`` option is provided with a path to a backup file, the
+    command attempts to infer the type of restore (world or config) from the
+    filename and proceeds with that file.
+    If ``--file`` is not provided, an interactive menu
+    (:func:`~._interactive_restore_menu`) is launched, allowing the user to
+    select the type of data to restore and then choose from a list of
+    available backup files for that type.
 
-    Args:
-        server_name: The name of the server to restore.
-        backup_file_path: The path to the backup file.
-        no_stop: If True, skips the safe server stop/start procedure.
+    The server is typically stopped before the restore operation and restarted
+    afterwards to ensure data integrity, unless ``--no-stop`` is specified
+    (highly discouraged for world restores).
 
-    Raises:
-        click.Abort: If the operation is cancelled or an error occurs.
+    If the ``--file`` option is provided, it should be a path to an existing
+    backup file (not a directory). The command will attempt to infer the restore
+    type (world or config) from the filename.
+    The ``--no-stop`` flag can be used to perform the restore without stopping
+    the server, but this is highly risky and may lead to data corruption.
+
+    This command interacts with the following API functions:
+
+        - :func:`~bedrock_server_manager.api.backup_restore.list_backup_files` (for interactive mode)
+        - :func:`~bedrock_server_manager.api.backup_restore.restore_world`
+        - :func:`~bedrock_server_manager.api.backup_restore.restore_config_file`
     """
     change_status = not no_stop
 
@@ -324,17 +405,16 @@ def restore_backup(server_name: str, backup_file_path: Optional[str], no_stop: b
     help="Name of the server whose backups to prune.",
 )
 def prune_backups(server_name: str):
-    """Deletes old backups for a server, keeping the newest ones.
+    """
+    Deletes old backups for a server, keeping only the newest ones.
 
-    This command checks the backup retention policy defined in the main
-    configuration and deletes any backup files that are older than the
-    configured limit.
+    This command checks the backup retention policy defined in the application's
+    main configuration (setting: ``retention.backups``). It then deletes
+    any backup files (for world and standard configs) for the specified server
+    that are older than the configured limit, ensuring only the most recent
+    backups are retained.
 
-    Args:
-        server_name: The server whose backups will be pruned.
-
-    Raises:
-        click.Abort: If pruning fails due to a BSMError.
+    Calls API: :func:`~bedrock_server_manager.api.backup_restore.prune_old_backups`.
     """
     try:
         click.echo(f"Pruning old backups for server '{server_name}'...")

@@ -37,24 +37,28 @@ F = TypeVar("F", bound=Callable[..., Any])
 def plugin_method(name: str) -> Callable[[F], F]:
     """Decorator to register a function with the PluginAPI bridge.
 
-    This decorator registers the decorated function in the `_api_registry`
-    under the provided `name`. The function can then be accessed by plugins
-    via `plugin_instance.api.name()`.
+    This decorator registers the decorated function in the ``_api_registry``
+    under the provided ``name``. The function can then be accessed by plugins
+    via ``plugin_instance.api.name()``.
 
     The decorated function itself is returned unmodified, so its original
     behavior is preserved.
 
     Example:
+
         ```python
-        # In an API module (e.g., api/server.py)
+        # In an API module
         from bedrock_server_manager.plugins.api_bridge import plugin_api
 
         @plug_api("start_my_server")
         def start_server_function(server_name: str):
+
             # ... implementation ...
+
             pass
         ```
-        Plugins can then call `self.api.start_my_server("some_server")`.
+
+        Plugins can then call ``self.api.start_my_server("some_server")``.
 
     Args:
         name (str): The public name under which to register the API method.

@@ -1,15 +1,22 @@
 # bedrock_server_manager/core/server/config_management_mixin.py
-"""Provides the ServerConfigManagementMixin for the BedrockServer class.
+"""
+Provides the :class:`.ServerConfigManagementMixin` for the
+:class:`~.core.bedrock_server.BedrockServer` class.
 
-This mixin is responsible for all interactions with server-specific
-configuration files, including `allowlist.json`, `permissions.json`, and
-`server.properties`. It provides a structured interface for reading, writing,
-and modifying these critical files, abstracting away the direct file I/O.
+This mixin centralizes the logic for interacting with key server-specific
+configuration files:
+    - ``allowlist.json``: For managing players who are allowed to join the server.
+    - ``permissions.json``: For defining operator levels and permissions for players.
+    - ``server.properties``: The main configuration file for Bedrock server settings.
+
+It offers methods to read, parse, modify, and write these files in a structured
+manner, abstracting direct file I/O and providing error handling for common
+issues like file not found or parsing errors.
 """
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional
 
 # Local application imports.
 from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
@@ -23,39 +30,64 @@ from bedrock_server_manager.error import (
 
 
 class ServerConfigManagementMixin(BedrockServerBaseMixin):
-    """A mixin for BedrockServer to manage server configuration files.
+    """Provides methods to manage server-specific configuration files.
 
-    This class handles the reading, writing, and modification of key server
-    configs like `allowlist.json`, `permissions.json`, and `server.properties`.
+    This mixin extends :class:`.BedrockServerBaseMixin` and is responsible for
+    all interactions with the primary configuration files of a Bedrock server:
+    ``allowlist.json``, ``permissions.json``, and ``server.properties``.
+    It offers a structured interface for reading, writing, and modifying these
+    critical files.
+
+    It relies on attributes initialized by :class:`.BedrockServerBaseMixin`
+    (e.g., `server_dir`, `logger`) for path construction and logging.
+
+    Properties:
+        allowlist_json_path (str): Path to the ``allowlist.json`` file.
+        permissions_json_path (str): Path to the ``permissions.json`` file.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initializes the ServerConfigManagementMixin.
 
-        This constructor calls `super().__init__` to ensure proper method
-        resolution order in the context of multiple inheritance. It relies on
-        attributes (like `server_dir`, `logger`) being available from the base class.
+        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
+        multiple inheritance. It depends on attributes initialized by
+        :class:`.BedrockServerBaseMixin`, such as `server_dir` (to locate
+        configuration files) and `logger`.
+
+        Args:
+            *args (Any): Variable length argument list passed to `super()`.
+            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        # self.server_dir and self.logger are available from the base mixin.
+        # Attributes from BedrockServerBaseMixin (e.g., self.server_dir, self.logger) are available.
 
     # --- ALLOWLIST METHODS ---
     @property
     def allowlist_json_path(self) -> str:
-        """Returns the full path to this server's `allowlist.json` file."""
+        """str: The absolute path to this server's ``allowlist.json`` file.
+
+        Constructed using :attr:`~.BedrockServerBaseMixin.server_dir`.
+        """
         return os.path.join(self.server_dir, "allowlist.json")
 
     def get_allowlist(self) -> List[Dict[str, Any]]:
-        """Loads and returns the content of the server's `allowlist.json`.
+        """Loads and returns the content of the server's ``allowlist.json`` file.
+
+        The ``allowlist.json`` file typically contains a list of player objects,
+        where each object has keys like "name", "xuid", and "ignoresPlayerLimit".
 
         Returns:
-            A list of player dictionaries from the allowlist. Returns an empty
-            list if the file does not exist or is empty.
+            List[Dict[str, Any]]: A list of player dictionaries parsed from the
+            ``allowlist.json`` file. Returns an empty list if the file does not
+            exist, is empty, or if its content is not a valid JSON list.
 
         Raises:
-            AppFileNotFoundError: If the server's directory does not exist.
-            ConfigParseError: If the allowlist file contains invalid JSON.
-            FileOperationError: If there is an OS-level error reading the file.
+            AppFileNotFoundError: If the server's installation directory
+                (:attr:`~.BedrockServerBaseMixin.server_dir`) does not exist.
+            ConfigParseError: If the ``allowlist.json`` file contains malformed JSON
+                that cannot be parsed.
+            FileOperationError: If an OS-level error occurs while trying to read
+                the file (e.g., permission issues).
         """
         self.logger.debug(
             f"Server '{self.server_name}': Loading allowlist from {self.allowlist_json_path}"
@@ -93,22 +125,32 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
         return allowlist_entries
 
     def add_to_allowlist(self, players_to_add: List[Dict[str, Any]]) -> int:
-        """Adds players to the server's allowlist, avoiding duplicates.
+        """Adds one or more players to the server's ``allowlist.json`` file.
 
-        This method checks for existing players by name (case-insensitively)
-        before adding new entries to `allowlist.json`.
+        This method loads the current allowlist, then iterates through the
+        `players_to_add`. For each player, it checks if a player with the same
+        name (case-insensitive) already exists in the allowlist. If not, the new
+        player entry is added. The `ignoresPlayerLimit` key is defaulted to `False`
+        if not present in the input player dictionary, conforming to Bedrock standards.
+        Finally, the updated allowlist is written back to ``allowlist.json``.
 
         Args:
-            players_to_add: A list of player dictionaries to add. Each dictionary
-                should contain at least a 'name' key.
+            players_to_add (List[Dict[str, Any]]): A list of player dictionaries
+                to add. Each dictionary must contain a "name" key (str). It can
+                optionally include "xuid" (str) and "ignoresPlayerLimit" (bool).
+                Example: ``[{"name": "Player1", "xuid": "12345", "ignoresPlayerLimit": False}]``
 
         Returns:
-            The number of players that were actually added to the allowlist.
+            int: The number of players that were actually added to the allowlist
+            (i.e., those not already present).
 
         Raises:
             TypeError: If `players_to_add` is not a list.
-            AppFileNotFoundError: If the server directory does not exist.
-            FileOperationError: If writing to the allowlist file fails.
+            AppFileNotFoundError: If the server's installation directory
+                (:attr:`~.BedrockServerBaseMixin.server_dir`) does not exist.
+            ConfigParseError: If the existing ``allowlist.json`` is malformed
+                (from :meth:`.get_allowlist`).
+            FileOperationError: If reading from or writing to ``allowlist.json`` fails.
         """
         if not isinstance(players_to_add, list):
             raise TypeError("Input 'players_to_add' must be a list of dictionaries.")
@@ -174,23 +216,30 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
         return added_count
 
     def remove_from_allowlist(self, player_name_to_remove: str) -> bool:
-        """Removes a player from the server's allowlist by name.
+        """Removes a player from the server's ``allowlist.json`` by their gamertag.
 
-        The name comparison is case-insensitive.
+        This method loads the current allowlist, filters out the player whose
+        name matches `player_name_to_remove` (case-insensitively), and then
+        writes the modified allowlist back to the file.
 
         Args:
-            player_name_to_remove: The name of the player to remove.
+            player_name_to_remove (str): The gamertag of the player to remove
+                from the allowlist.
 
         Returns:
-            True if the player was found and removed, False otherwise.
+            bool: ``True`` if a player with the given name was found and removed,
+            ``False`` otherwise (e.g., if the player was not on the allowlist).
 
         Raises:
-            MissingArgumentError: If `player_name_to_remove` is empty.
-            AppFileNotFoundError: If the server directory does not exist.
-            FileOperationError: If writing to the allowlist file fails.
+            MissingArgumentError: If `player_name_to_remove` is empty or not a string.
+            AppFileNotFoundError: If the server's installation directory does not exist.
+            ConfigParseError: If the existing ``allowlist.json`` is malformed.
+            FileOperationError: If reading from or writing to ``allowlist.json`` fails.
         """
-        if not player_name_to_remove:
-            raise MissingArgumentError("Player name to remove cannot be empty.")
+        if not isinstance(player_name_to_remove, str) or not player_name_to_remove:
+            raise MissingArgumentError(
+                "Player name to remove cannot be empty and must be a string."
+            )
         if not os.path.isdir(self.server_dir):
             raise AppFileNotFoundError(self.server_dir, "Server directory")
 
@@ -233,29 +282,46 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
     # --- PERMISSIONS.JSON METHODS ---
     @property
     def permissions_json_path(self) -> str:
-        """Returns the full path to this server's `permissions.json` file."""
+        """str: The absolute path to this server's ``permissions.json`` file.
+
+        Constructed using :attr:`~.BedrockServerBaseMixin.server_dir`.
+        """
         return os.path.join(self.server_dir, "permissions.json")
 
     def set_player_permission(
         self, xuid: str, permission_level: str, player_name: Optional[str] = None
-    ):
-        """Sets or updates a player's permission level in `permissions.json`.
+    ) -> None:
+        """Sets or updates a player's permission level in ``permissions.json``.
 
-        If the player already exists in the file, their permission level is
-        updated. If not, a new entry is created.
+        This method manages entries in the server's ``permissions.json`` file.
+        If a player with the given `xuid` already exists in the file, their
+        permission level is updated to `permission_level`. If a `player_name` is
+        provided and differs from an existing entry for that XUID, the name is
+        also updated. If the player (by XUID) does not exist, a new entry is
+        created with the specified `xuid`, `permission_level`, and `player_name`
+        (or XUID if name is not provided).
+
+        Valid permission levels are "operator", "member", and "visitor".
 
         Args:
-            xuid: The player's XUID.
-            permission_level: The permission level to set (e.g., 'operator', 'member').
-            player_name: The player's gamertag (optional, for reference).
+            xuid (str): The player's Xbox User ID (XUID).
+            permission_level (str): The permission level to set. Must be one of
+                "operator", "member", or "visitor" (case-insensitive).
+            player_name (Optional[str], optional): The player's gamertag.
+                If provided, it will be included in the permissions entry for
+                reference. Defaults to ``None`` (in which case XUID might be used
+                as name for new entries).
 
         Raises:
-            AppFileNotFoundError: If the server directory does not exist.
-            MissingArgumentError: If `xuid` or `permission_level` are empty.
-            UserInputError: If `permission_level` is not a valid option.
-            FileOperationError: If writing to the permissions file fails.
+            AppFileNotFoundError: If the server's installation directory does not exist.
+            MissingArgumentError: If `xuid` or `permission_level` are empty or not strings.
+            UserInputError: If `permission_level` is not one of the valid options.
+            FileOperationError: If reading from or writing to ``permissions.json`` fails.
+            ConfigParseError: If the existing ``permissions.json`` is malformed.
         """
-        if not os.path.isdir(self.server_dir):
+        if not os.path.isdir(
+            self.server_dir
+        ):  # Ensures server_dir exists before trying to write to it
             raise AppFileNotFoundError(self.server_dir, "Server directory")
         if not xuid:
             raise MissingArgumentError("Player XUID cannot be empty.")
@@ -338,20 +404,40 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
     def get_formatted_permissions(
         self, player_xuid_to_name_map: Dict[str, str]
     ) -> List[Dict[str, Any]]:
-        """Reads `permissions.json` and enriches it with known player names.
+        """Reads ``permissions.json``, enriches entries with player names, and sorts them.
+
+        This method loads the raw data from the server's ``permissions.json`` file.
+        For each permission entry (which typically contains "xuid" and "permission"),
+        it attempts to find the corresponding player's gamertag using the provided
+        `player_xuid_to_name_map`. If a name is found, it's added to the entry;
+        otherwise, a default placeholder like "Unknown (XUID: <xuid>)" is used.
+
+        The resulting list of enriched permission entries is then sorted alphabetically
+        by player name (case-insensitive).
 
         Args:
-            player_xuid_to_name_map: A dictionary mapping player XUIDs to their
-                last known gamertag.
+            player_xuid_to_name_map (Dict[str, str]): A dictionary mapping player
+                XUIDs (str) to their last known gamertags (str). This is used to
+                populate the "name" field in the returned permission entries.
 
         Returns:
-            A sorted list of player permission dictionaries, each containing
-            'xuid', 'name', and 'permission_level'.
+            List[Dict[str, Any]]: A sorted list of player permission dictionaries.
+
+            Each dictionary in the list will contain:
+
+                - "xuid" (str): The player's XUID.
+                - "name" (str): The player's gamertag (from the map or a default).
+                - "permission_level" (str): The player's permission level (e.g., "operator").
+
+            Returns an empty list if ``permissions.json`` does not exist, is empty,
+            or contains no valid entries.
 
         Raises:
-            AppFileNotFoundError: If the server or permissions file does not exist.
-            ConfigParseError: If the permissions file contains invalid JSON.
-            FileOperationError: If there is an OS-level error reading the file.
+            AppFileNotFoundError: If the server's installation directory or the
+                ``permissions.json`` file itself does not exist.
+            ConfigParseError: If the ``permissions.json`` file contains malformed
+                JSON or its top-level structure is not a list.
+            FileOperationError: If an OS-level error occurs while reading the file.
         """
         if not os.path.isdir(self.server_dir):
             raise AppFileNotFoundError(self.server_dir, "Server directory")
@@ -404,25 +490,36 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
 
     # --- SERVER.PROPERTIES METHODS ---
 
-    def set_server_property(self, property_key: str, property_value: Any):
-        """Modifies or adds a property in the server's `server.properties` file.
+    def set_server_property(self, property_key: str, property_value: Any) -> None:
+        """Modifies or adds a property in the server's ``server.properties`` file.
 
-        This method reads the properties file, finds the line matching the key,
-        replaces it, and writes the file back. If the key is not found, it is
-        appended to the end of the file.
+        This method reads the entire ``server.properties`` file line by line.
+        If a line starting with `property_key=` is found, it's replaced with the
+        new `property_key=property_value`. If the key is not found, the new
+        property line is appended to the end of the file. Comments and blank
+        lines are preserved. Duplicate entries for the same key (if any) will
+        result in the first being updated and subsequent ones being commented out.
+
+        The `property_value` is converted to a string before writing.
 
         Args:
-            property_key: The property key to set (e.g., 'level-name').
-            property_value: The value to set for the property.
+            property_key (str): The property key to set (e.g., "level-name",
+                "max-players").
+            property_value (Any): The value to set for the property. It will be
+                converted to a string.
 
         Raises:
-            MissingArgumentError: If `property_key` is empty.
-            UserInputError: If `property_value` contains invalid characters.
-            AppFileNotFoundError: If `server.properties` does not exist.
-            FileOperationError: If reading or writing the file fails.
+            MissingArgumentError: If `property_key` is empty or not a string.
+            UserInputError: If `property_value`, when converted to a string,
+                contains invalid control characters (excluding tab).
+            AppFileNotFoundError: If the ``server.properties`` file (at
+                :attr:`.ServerStateMixin.server_properties_path`) does not exist.
+            FileOperationError: If reading from or writing to ``server.properties`` fails.
         """
-        if not property_key:
-            raise MissingArgumentError("Property name cannot be empty.")
+        if not isinstance(property_key, str) or not property_key:
+            raise MissingArgumentError(
+                "Property key cannot be empty and must be a string."
+            )
 
         str_value = str(property_value)
         # Check for invalid control characters that can corrupt the properties file.
@@ -489,14 +586,23 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
             ) from e
 
     def get_server_properties(self) -> Dict[str, str]:
-        """Reads and parses the server's `server.properties` file.
+        """Reads and parses the server's ``server.properties`` file into a dictionary.
+
+        Each line in the format ``key=value`` is parsed. Lines starting with ``#``
+        (comments) and blank lines are ignored. If a line is malformed (e.g.,
+        does not contain an "="), a warning is logged, and the line is skipped.
 
         Returns:
-            A dictionary of the server's properties.
+            Dict[str, str]: A dictionary where keys are property names and values
+            are their corresponding string values from the ``server.properties`` file.
+            An empty dictionary is returned if the file is empty or contains no
+            valid properties.
 
         Raises:
-            AppFileNotFoundError: If `server.properties` does not exist.
-            ConfigParseError: If reading the file fails.
+            AppFileNotFoundError: If the ``server.properties`` file (at
+                :attr:`.ServerStateMixin.server_properties_path`) does not exist.
+            ConfigParseError: If an ``OSError`` occurs while trying to read the file
+                (e.g., permission issues), effectively making it unparseable.
         """
         if not os.path.isfile(self.server_properties_path):
             raise AppFileNotFoundError(
@@ -531,16 +637,29 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
     def get_server_property(
         self, property_key: str, default: Optional[Any] = None
     ) -> Optional[Any]:
-        """Gets a specific property value from `server.properties`.
+        """Retrieves a specific property value from ``server.properties``.
+
+        This method first calls :meth:`.get_server_properties` to parse the entire
+        file, then returns the value associated with `property_key`. If the
+        key is not found or if the ``server.properties`` file itself does not
+        exist (or is unreadable), the specified `default` value is returned.
 
         Args:
-            property_key: The key of the property to retrieve.
-            default: The value to return if the key is not found or the file
-                does not exist. Defaults to None.
+            property_key (str): The key of the property to retrieve (e.g., "level-name").
+            default (Optional[Any], optional): The value to return if the key is
+                not found or if the properties file cannot be accessed.
+                Defaults to ``None``.
 
         Returns:
-            The value of the property as a string, or the default value.
+            Optional[Any]: The value of the property (typically a string), or the
+            `default` value if the property is not found or an error occurs
+            during file access/parsing.
         """
+        if not isinstance(property_key, str) or not property_key:
+            self.logger.warning(
+                f"get_server_property called with invalid key: {property_key}. Returning default."
+            )
+            return default
         try:
             props = self.get_server_properties()
             return props.get(property_key, default)

@@ -143,7 +143,6 @@ def _add_commands_to_cli():
 
     # Standalone Commands
     cli.add_command(addon.install_addon)
-    cli.add_command(utils.attach_console)
     cli.add_command(cleanup.cleanup)
     cli.add_command(
         generate_password.generate_password_hash_command, name="generate-password"

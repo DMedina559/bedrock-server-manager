@@ -1,11 +1,25 @@
 # bedrock_server_manager/api/utils.py
-"""Provides utility functions and context managers for the API layer.
+"""Provides utility functions and a context manager for the API layer.
 
-This module contains helper functions that support other API modules or
-perform general tasks. It includes server existence and name format validation,
-a function to reconcile the status of all servers, and a critical context
-manager (`server_lifecycle_manager`) for safely performing operations that
-require a server to be temporarily stopped.
+This module offers a collection of helper functions that support other API
+modules or perform general application-wide tasks. Key functionalities include:
+
+- Server validation:
+    - :func:`~.validate_server_exist`: Checks if a server is correctly installed.
+    - :func:`~.validate_server_name_format`: Validates the naming convention for servers.
+- Server status management:
+    - :func:`~.update_server_statuses`: Reconciles the configured status of all
+      servers with their actual runtime state.
+- System interaction:
+    - :func:`~.attach_to_screen_session`: Provides a way to attach to a server's
+      screen session on Linux.
+    - :func:`~.get_system_and_app_info`: Retrieves basic OS and application version details.
+- Lifecycle management:
+    - :func:`~.server_lifecycle_manager`: A context manager for safely performing
+      operations that require a server to be temporarily stopped and then restarted.
+
+These utilities are designed to be used by other API modules or higher-level
+application logic to encapsulate common or complex operations.
 """
 import os
 import logging
@@ -40,15 +54,22 @@ def validate_server_exist(server_name: str) -> Dict[str, Any]:
     """Validates if a server is correctly installed.
 
     This function checks for the existence of the server's directory and its
-    executable by wrapping the `BedrockServer.is_installed()` method.
+    executable by instantiating a :class:`~.core.bedrock_server.BedrockServer`
+    object for the given `server_name` and then calling its
+    :meth:`~.core.server.installation_mixin.ServerInstallationMixin.is_installed` method.
 
     Args:
-        server_name: The name of the server to validate.
+        server_name (str): The name of the server to validate.
 
     Returns:
-        A dictionary with the operation status and a message.
-        On success: `{"status": "success", "message": "..."}`.
-        On failure: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation status.
+        If valid: ``{"status": "success", "message": "Server '<server_name>' exists and is valid."}``
+        If not installed/invalid: ``{"status": "error", "message": "Server '<server_name>' is not installed..."}``
+        If config error: ``{"status": "error", "message": "Configuration error: <details>"}``
+
+    Raises:
+        BSMError: Can be raised by :class:`~.core.bedrock_server.BedrockServer`
+            during instantiation if core application settings are misconfigured.
     """
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
@@ -95,15 +116,19 @@ def validate_server_exist(server_name: str) -> Dict[str, Any]:
 def validate_server_name_format(server_name: str) -> Dict[str, str]:
     """Validates the format of a potential server name.
 
-    This is a stateless check and does not verify if the server actually exists.
-    It is used to ensure new server names are valid before creation.
+    This is a stateless check (does not verify if the server actually exists)
+    that delegates to
+    :func:`~bedrock_server_manager.core.utils.core_validate_server_name_format`.
+    It ensures new server names conform to allowed character sets (alphanumeric,
+    hyphens, underscores) and are not empty.
 
     Args:
-        server_name: The server name string to validate.
+        server_name (str): The server name string to validate.
 
     Returns:
-        A dictionary with a 'status' of 'success' or 'error', and a 'message'
-        if validation fails.
+        Dict[str, str]: A dictionary with the operation status.
+        If format is valid: ``{"status": "success", "message": "Server name format is valid."}``
+        If format is invalid: ``{"status": "error", "message": "<validation_error_detail>"}``
     """
     logger.debug(f"API: Validating format for '{server_name}'")
     try:
@@ -122,13 +147,23 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
 def update_server_statuses() -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
-    This function iterates through all detected servers and updates the 'status'
-    field in their respective configuration files to match whether the server
-    process is actually running.
+    This function calls
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_servers_data`.
+    During that call, for each discovered server, its
+    :meth:`~.core.bedrock_server.BedrockServer.get_status` method is invoked.
+    This method determines the actual running state of the server process and
+    updates the ``status`` field in the server's JSON configuration file
+    (e.g., ``<server_name>_config.json``) if there's a discrepancy between
+    the stored status and the live status.
 
     Returns:
-        A dictionary summarizing the operation, including any errors that
-        occurred for individual servers.
+        Dict[str, Any]: A dictionary summarizing the operation.
+        On success (even with individual server errors during discovery):
+        ``{"status": "success", "message": "Status check completed for <n> servers."}`` or
+        ``{"status": "error", "message": "Completed with errors: <details>", "updated_servers_count": <n>}``
+        (The "error" status here primarily reflects issues during the overall scan,
+        like directory access problems, rather than individual server status update failures,
+        which are logged and included in the message if `discovery_errors` occur.)
     """
     updated_servers_count = 0
     error_messages = []
@@ -180,12 +215,23 @@ def update_server_statuses() -> Dict[str, Any]:
 def attach_to_screen_session(server_name: str) -> Dict[str, str]:
     """Attaches the current terminal to a server's screen session (Linux-only).
 
+    This function first checks if the system is Linux and if the server is running.
+    It then delegates to
+    :func:`~bedrock_server_manager.core.utils.core_execute_screen_attach`
+    to attempt the screen attach. The screen session is typically named
+    ``bedrock-<server_name>``.
+
     Args:
-        server_name: The name of the server whose screen session to attach to.
+        server_name (str): The name of the server whose screen session to attach to.
 
     Returns:
-        A dictionary with the operation status and a message. Returns an error
-        on non-Linux systems or if the server is not running in a screen.
+        Dict[str, str]: A dictionary with the operation status and a message.
+        Returns an error on non-Linux systems, if the server is not running,
+        or if the screen attach command fails (e.g., session not found).
+
+    Raises:
+        BSMError: Can be raised by :class:`~.core.bedrock_server.BedrockServer`
+            during instantiation if core application settings are misconfigured.
     """
     if platform.system() != "Linux":
         return {
@@ -238,8 +284,11 @@ def attach_to_screen_session(server_name: str) -> Dict[str, str]:
 def get_system_and_app_info() -> Dict[str, Any]:
     """Retrieves basic system and application information.
 
+    Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
+
     Returns:
-        A dictionary containing the OS type and the application version.
+        Dict[str, Any]: On success: ``{"status": "success", "data": {"os_type": "...", "app_version": "..."}}``.
+        On error: ``{"status": "error", "message": "An unexpected error occurred."}``
     """
     logger.debug("API: Requesting system and app info.")
     try:
@@ -260,27 +309,36 @@ def server_lifecycle_manager(
 ):
     """A context manager to safely stop and restart a server for an operation.
 
-    This manager will stop a server if it is running, yield control to the
-    wrapped code block, and then handle restarting the server in its `finally`
-    clause, ensuring the server attempts to return to its original state even
-    if the operation fails.
+    This manager, when ``stop_before=True``, will attempt to stop a server using
+    :func:`~.api_stop_server` if it is running. It then yields control to the
+    wrapped code block. In its ``finally`` clause, it handles restarting the
+    server (if ``start_after=True`` and it was originally running) using
+    :func:`~.api_start_server` with ``mode="detached"``. This ensures an attempt
+    to return the server to its original state even if the operation within
+    the ``with`` block fails.
 
     Args:
-        server_name: The name of the server to manage.
-        stop_before: If True, the server will be stopped if it's running before
-            the `with` block is entered.
-        start_after: If True, the server will be restarted after the `with`
-            block if it was running initially. Defaults to True.
-        restart_on_success_only: If True, the server will only be restarted if
-            the `with` block completes without raising an exception.
-            Defaults to False.
+        server_name (str): The name of the server to manage.
+        stop_before (bool): If ``True``, the server will be stopped if it's running
+            before the ``with`` block is entered. If stopping fails, the context
+            manager may not yield control.
+        start_after (bool, optional): If ``True``, the server will be restarted after
+            the ``with`` block if it was running initially. Defaults to ``True``.
+        restart_on_success_only (bool, optional): If ``True``, the server will only
+            be restarted if the ``with`` block completes without raising an
+            exception. Defaults to ``False``.
 
     Yields:
         None.
 
     Raises:
-        ServerStartError: If the server fails to restart after the operation.
-        Exception: Re-raises any exception that occurs within the `with` block.
+        ServerStopError: If ``stop_before=True`` and the initial attempt to stop
+            the server fails critically (though the current implementation returns a dict).
+        ServerStartError: If ``start_after=True`` and the server fails to restart
+            after the operation. This is raised if the original operation in the
+            ``with`` block succeeded but the subsequent restart failed.
+        Exception: Re-raises any exception that occurs within the ``with`` block itself.
+        BSMError: For other application-specific errors during server interactions.
     """
     server = BedrockServer(server_name)
     was_running = False

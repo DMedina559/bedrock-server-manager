@@ -1,4 +1,14 @@
 # bedrock_server_manager/web/dependencies.py
+"""Defines FastAPI dependencies for use in web route handlers.
+
+Dependencies in FastAPI are a way to share logic, enforce constraints, or
+provide resources to path operation functions. This module centralizes
+common dependencies used across various API routes, such as validating
+the existence of a server instance.
+
+See Also:
+    FastAPI Dependencies: https://fastapi.tiangolo.com/tutorial/dependencies/
+"""
 import logging
 from fastapi import HTTPException, status, Path, Request
 
@@ -12,10 +22,27 @@ logger = logging.getLogger(__name__)
 
 async def validate_server_exists(
     server_name: str = Path(..., title="The name of the server", min_length=1)
-):
+) -> str:
     """
     FastAPI dependency to validate if a server identified by `server_name` exists.
-    Raises HTTPException(404) if the server does not exist or the name is invalid.
+
+    This dependency calls :func:`~bedrock_server_manager.api.utils.validate_server_exist`.
+    If the server does not exist or its name format is invalid, it raises an
+    :class:`~fastapi.HTTPException` (status 404 or 400 respectively).
+    Otherwise, it allows the request to proceed.
+
+    Args:
+        server_name (str): The name of the server, typically extracted from the
+            URL path by FastAPI using :func:`~fastapi.Path`.
+
+    Returns:
+        str: The validated server name if found and valid.
+
+    Raises:
+        fastapi.HTTPException: With status code 404 if the server is not found
+            or the installation is invalid.
+        fastapi.HTTPException: With status code 400 if the `server_name`
+            has an invalid format.
     """
     logger.debug(f"Dependency: Validating existence of server '{server_name}'.")
     try:

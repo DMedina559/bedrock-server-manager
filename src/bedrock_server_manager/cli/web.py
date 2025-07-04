@@ -1,10 +1,29 @@
-﻿# bedrock_server_manager/cli/web.py
+# bedrock_server_manager/cli/web.py
 """
-Defines the `bsm web` command group for managing the web server and its OS integrations.
+Defines the `bsm web` command group for managing the Bedrock Server Manager Web UI.
 
-This module contains the Click command group and subcommands for starting,
-stopping, and managing the Flask-based web management interface, as well as
-commands for managing its system service (e.g., systemd, Windows Services).
+This module provides CLI commands to control the lifecycle of the web server
+application (FastAPI/Uvicorn based) and to manage its integration as an
+OS-level system service (e.g., systemd on Linux, Windows Services on Windows).
+
+Key command groups and commands include:
+
+    -   ``bsm web start``: Starts the web server, with options for host, port,
+        debug mode, and detached/direct execution.
+    -   ``bsm web stop``: Stops a detached web server process.
+    -   ``bsm web service ...``: A subgroup for managing the Web UI's system service:
+        -   ``bsm web service configure``: Interactively or directly configures the
+            Web UI system service (creation, autostart).
+        -   ``bsm web service enable``: Enables the Web UI service for autostart.
+        -   ``bsm web service disable``: Disables autostart for the Web UI service.
+        -   ``bsm web service remove``: Removes the Web UI system service definition.
+        -   ``bsm web service status``: Checks the status of the Web UI system service.
+
+Interactions with system services are contingent on the availability of
+appropriate service management tools on the host OS (e.g., `systemctl` for
+systemd, `pywin32` for Windows Services). The commands use functions from
+:mod:`~bedrock_server_manager.api.web` and the
+:class:`~bedrock_server_manager.core.manager.BedrockServerManager`.
 """
 
 import functools
@@ -24,31 +43,38 @@ from bedrock_server_manager.error import (
     MissingArgumentError,
 )
 
-if platform.system() == "Windows":
-    import win32serviceutil
-    import servicemanager
-    from bedrock_server_manager.core.system.windows_class import (
-        WebServerWindowsService,
-        PYWIN32_AVAILABLE,
-    )
-
 logger = logging.getLogger(__name__)
 
 
 # --- Web System Service ---
 def requires_web_service_manager(func: Callable) -> Callable:
-    """A decorator that restricts a command to systems with a service manager for Web UI."""
+    """
+    A decorator to ensure Web UI service management commands only run on capable systems.
+
+    This decorator checks if the system has a supported service manager
+    (e.g., systemd for Linux, or `pywin32` installed for Windows services)
+    by inspecting `bsm.can_manage_services` from the
+    :class:`~.core.manager.BedrockServerManager` instance in the Click context.
+
+    If the capability is not present, it prints an error and aborts the command.
+
+    Args:
+        func (Callable): The Click command function to decorate.
+
+    Returns:
+        Callable: The wrapped command function.
+    """
 
     @functools.wraps(func)
     @click.pass_context
     def wrapper(ctx: click.Context, *args, **kwargs):
         bsm: BedrockServerManager = ctx.obj["bsm"]
-        if not bsm.can_manag_service:
+        if not bsm.can_manage_services:
             os_type = bsm.get_os_type()
             if os_type == "Windows":
-                msg = "Error: This command requires 'pywin32' to be installed (`pip install pywin32`)."
+                msg = "Error: This command requires 'pywin32' to be installed (`pip install pywin32`) for Web UI service management."
             else:
-                msg = "Error: This command requires a service manager (like systemd), which was not found."
+                msg = "Error: This command requires a supported service manager (e.g., systemd for Linux), which was not found."
             click.secho(msg, fg="red")
             raise click.Abort()
         return func(*args, **kwargs)
@@ -61,6 +87,31 @@ def _perform_web_service_configuration(
     setup_service: Optional[bool],
     enable_autostart: Optional[bool],
 ):
+    """
+    Internal helper to apply Web UI service configurations via API calls.
+
+    This non-interactive function is called by `configure_web_service` (when
+    flags are used) and `interactive_web_service_workflow` to execute the
+    actual service configuration changes. It only acts if the system has
+    service management capabilities.
+
+    Args:
+        bsm (BedrockServerManager): The BedrockServerManager instance for
+            capability checks.
+        setup_service (Optional[bool]): If ``True``, attempts to create/update
+            the Web UI system service.
+        enable_autostart (Optional[bool]): If ``True``, enables autostart for the
+            service; if ``False``, disables it. ``None`` means no change to
+            autostart unless `setup_service` is also ``True``.
+
+    Calls APIs:
+        - :func:`~bedrock_server_manager.api.web.create_web_ui_service`
+        - :func:`~bedrock_server_manager.api.web.enable_web_ui_service`
+        - :func:`~bedrock_server_manager.api.web.disable_web_ui_service`
+
+    Raises:
+        click.Abort: If API calls handled by `_handle_api_response` report errors.
+    """
     if not bsm.can_manage_services:
         click.secho(
             "System service manager not available. Skipping Web UI service configuration.",
@@ -69,15 +120,20 @@ def _perform_web_service_configuration(
         return
 
     if setup_service:
-
-        enable_flag = enable_autostart if enable_autostart is not None else False
+        # When setting up the service, enable_autostart choice (even if None)
+        # is passed to create_web_ui_service, which might have its own default.
+        enable_flag = (
+            enable_autostart if enable_autostart is not None else False
+        )  # Default to False if not specified alongside setup
         os_type = bsm.get_os_type()
         click.secho(
             f"\n--- Configuring Web UI System Service ({os_type}) ---", bold=True
         )
         response = web_api.create_web_ui_service(autostart=enable_flag)
         _handle_api_response(response, "Web UI system service configured successfully.")
-    elif enable_autostart is not None:
+    elif (
+        enable_autostart is not None
+    ):  # Only change autostart if setup_service is False but autostart is specified
         click.echo("Applying autostart setting to existing Web UI service...")
         if enable_autostart:
             response = web_api.enable_web_ui_service()
@@ -88,6 +144,17 @@ def _perform_web_service_configuration(
 
 
 def interactive_web_service_workflow(bsm: BedrockServerManager):
+    """
+    Guides the user through an interactive session to configure the Web UI system service.
+
+    Uses `questionary` to prompt for:
+
+        - Creating/updating the system service.
+        - Enabling/disabling autostart for the service.
+
+    Args:
+        bsm (BedrockServerManager): The BedrockServerManager instance.
+    """
     click.secho("\n--- Interactive Web UI Service Configuration ---", bold=True)
     setup_service_choice = None
     enable_autostart_choice = None
@@ -143,11 +210,12 @@ def interactive_web_service_workflow(bsm: BedrockServerManager):
 
 @click.group()
 def web():
-    """Manages the web UI and its OS service integrations.
+    """
+    Manages the Bedrock Server Manager Web UI application.
 
-    This command group provides utilities to start and stop the web-based
-    management interface, and to configure it as a system service for
-    autostart and background operation.
+    This group of commands allows you to start and stop the web server,
+    and to manage its integration as an OS-level system service for
+    features like automatic startup.
     """
     pass
 
@@ -175,8 +243,17 @@ def web():
     help="Run mode: 'direct' blocks the terminal, 'detached' runs in the background.",
 )
 def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
-    """Starts the web management server.
-    # ... (docstring and existing code for start_web_server remains the same) ...
+    """
+    Starts the Bedrock Server Manager web UI.
+
+    This command launches the Uvicorn server that hosts the FastAPI web application.
+    It can run in 'direct' mode (blocking the terminal, useful for development or
+    when managed by an external process manager) or 'detached' mode (running in
+    the background as a new process).
+
+    The web server's listening host(s) and debug mode can be configured via options.
+
+    Calls API: :func:`~bedrock_server_manager.api.web.start_web_server_api`.
     """
     click.echo(f"Attempting to start web server in '{mode}' mode...")
     if mode == "direct":
@@ -185,30 +262,52 @@ def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
         )
 
     try:
-        host_list = list(hosts)
+        host_list = (
+            list(hosts) if hosts else None
+        )  # Pass None if no hosts are provided, API handles default
         response = web_api.start_web_server_api(host_list, debug, mode)
 
-        if response.get("status") == "error":
-            message = response.get("message", "An unknown error occurred.")
-            click.secho(f"Error: {message}", fg="red")
-            raise click.Abort()
-        else:
-            if mode == "detached":
+        # In 'direct' mode, start_web_server_api (which calls bsm.start_web_ui_direct)
+        # is blocking. So, we'll only reach here after it stops or if mode is 'detached'.
+        if mode == "detached":
+            if response.get("status") == "error":
+                message = response.get("message", "An unknown error occurred.")
+                click.secho(f"Error: {message}", fg="red")
+                raise click.Abort()
+            else:
                 pid = response.get("pid", "N/A")
                 message = response.get(
-                    "message", f"Web server started in detached mode (PID: {pid})."
+                    "message",
+                    f"Web server start initiated in detached mode (PID: {pid}).",
                 )
                 click.secho(f"Success: {message}", fg="green")
+        elif (
+            response and response.get("status") == "error"
+        ):  # Should only happen if direct mode itself fails to launch
+            message = response.get(
+                "message", "Failed to start web server in direct mode."
+            )
+            click.secho(f"Error: {message}", fg="red")
+            raise click.Abort()
 
-    except BSMError as e:
+    except BSMError as e:  # Catch errors from API if they propagate
         click.secho(f"Failed to start web server: {e}", fg="red")
         raise click.Abort()
 
 
 @web.command("stop")
 def stop_web_server():
-    """Stops the detached web server process.
-    # ... (docstring and existing code for stop_web_server remains the same) ...
+    """
+    Stops a detached Bedrock Server Manager web UI process.
+
+    This command attempts to find and terminate a web server process that was
+    previously started in 'detached' mode. It typically relies on a PID file
+    to identify the correct process.
+
+    This command does not affect web servers started in 'direct' mode or those
+    managed by system services.
+
+    Calls API: :func:`~bedrock_server_manager.api.web.stop_web_server_api`.
     """
     click.echo("Attempting to stop the web server...")
     try:
@@ -221,7 +320,13 @@ def stop_web_server():
 
 @web.group("service")
 def web_service_group():
-    """Manages OS-level service integrations for the Web UI."""
+    """
+    Manages OS-level service integrations for the Web UI application.
+
+    This group contains commands to configure, enable, disable, remove, and
+    check the status of the system service (systemd on Linux, Windows Service
+    on Windows) for the Bedrock Server Manager Web UI.
+    """
     pass
 
 
@@ -243,10 +348,25 @@ def configure_web_service(
     setup_service: bool,
     autostart_flag: Optional[bool],
 ):
-    """Configures OS-specific service settings for the Web UI.
+    """
+    Configures the OS-level system service for the Web UI application.
 
-    If run without flags, launches an interactive wizard.
-    --host is required if --setup-service is used non-interactively.
+    This command allows setting up the Web UI to run as a system service,
+    enabling features like automatic startup on boot/login.
+
+    If run without any specific configuration flags (`--setup-service`,
+    `--enable-autostart`), it launches an interactive wizard
+    (:func:`~.interactive_web_service_workflow`) to guide the user.
+
+    If flags are provided, it applies those settings directly. The command
+    respects system capabilities (e.g., won't attempt service setup if a
+    service manager isn't available or `pywin32` is missing on Windows).
+
+    Calls internal helpers:
+
+        - :func:`~.interactive_web_service_workflow` (if no flags)
+        - :func:`~._perform_web_service_configuration` (if flags are present)
+
     """
     bsm: BedrockServerManager = ctx.obj["bsm"]
     if setup_service and not bsm.can_manage_services:
@@ -285,7 +405,16 @@ def configure_web_service(
 @web_service_group.command("enable")
 @requires_web_service_manager
 def enable_web_service_cli():
-    """Enables the Web UI system service to autostart."""
+    """
+    Enables the Web UI system service for automatic startup.
+
+    Configures the OS service for the Web UI (systemd on Linux, Windows Service
+    on Windows) to start automatically when the system boots or user logs in.
+
+    Requires a supported service manager (checked by decorator).
+
+    Calls API: :func:`~bedrock_server_manager.api.web.enable_web_ui_service`.
+    """
     click.echo("Attempting to enable Web UI system service...")
     try:
         response = web_api.enable_web_ui_service()
@@ -298,7 +427,15 @@ def enable_web_service_cli():
 @web_service_group.command("disable")
 @requires_web_service_manager
 def disable_web_service_cli():
-    """Disables the Web UI system service from autostarting."""
+    """
+    Disables the Web UI system service from starting automatically.
+
+    Configures the OS service for the Web UI to not start automatically.
+
+    Requires a supported service manager (checked by decorator).
+
+    Calls API: :func:`~bedrock_server_manager.api.web.disable_web_ui_service`.
+    """
     click.echo("Attempting to disable Web UI system service...")
     try:
         response = web_api.disable_web_ui_service()
@@ -311,7 +448,18 @@ def disable_web_service_cli():
 @web_service_group.command("remove")
 @requires_web_service_manager
 def remove_web_service_cli():
-    """Removes the Web UI system service definition."""
+    """
+    Removes the Web UI system service definition from the OS.
+
+    .. danger::
+        This is a destructive operation. The service definition will be
+        deleted from the system.
+
+    Prompts for confirmation before proceeding.
+    Requires a supported service manager (checked by decorator).
+
+    Calls API: :func:`~bedrock_server_manager.api.web.remove_web_ui_service`.
+    """
     if not questionary.confirm(
         "Are you sure you want to remove the Web UI system service?", default=False
     ).ask():
@@ -329,7 +477,16 @@ def remove_web_service_cli():
 @web_service_group.command("status")
 @requires_web_service_manager
 def status_web_service_cli():
-    """Checks the status of the Web UI system service."""
+    """
+    Checks and displays the status of the Web UI system service.
+
+    Reports whether the service definition exists, if it's currently
+    active (running), and if it's enabled for autostart.
+
+    Requires a supported service manager (checked by decorator).
+
+    Calls API: :func:`~bedrock_server_manager.api.web.get_web_ui_service_status`.
+    """
     click.echo("Checking Web UI system service status...")
     try:
         response = web_api.get_web_ui_service_status()

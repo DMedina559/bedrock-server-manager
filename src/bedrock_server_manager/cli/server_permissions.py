@@ -1,10 +1,23 @@
 # bedrock_server_manager/cli/server_permissions.py
 """
-Defines the `bsm permissions` command group for managing player roles.
+Defines the `bsm permissions` command group for managing player permission levels.
 
-This module provides commands to view and set player permission levels
-(e.g., member, operator) on a specific server. It integrates with the
-global player database to link gamertags to XUIDs.
+This module provides CLI tools to view and set player permission levels
+(e.g., member, operator, visitor) for a specific Bedrock server. These
+permissions are typically stored in the server's ``permissions.json`` file.
+
+The commands interact with the API layer, specifically functions in
+:mod:`~bedrock_server_manager.api.server_install_config` for getting and
+setting permissions, and :mod:`~bedrock_server_manager.api.player` for
+looking up player XUIDs from the global player database.
+
+Key functionalities:
+
+    -   An interactive workflow (:func:`~.interactive_permissions_workflow`) to
+        guide users through selecting a player and assigning a permission level.
+    -   Direct commands (``bsm permissions set``, ``bsm permissions list``) for
+        scripting or quick modifications.
+
 """
 from typing import Optional
 
@@ -20,17 +33,28 @@ from bedrock_server_manager.error import BSMError
 
 
 def interactive_permissions_workflow(server_name: str):
-    """Guides the user through setting a player's permission level.
+    """
+    Guides the user through an interactive workflow to set a player's permission level.
 
-    This interactive workflow fetches all known players, prompts the user to
-    select one, and then prompts for the desired permission level before
-    calling the API to apply the change.
+    This function performs the following steps:
+
+        1.  Fetches all known players from the global player database using
+            :func:`~bedrock_server_manager.api.player.get_all_known_players_api`.
+        2.  If no players are found, it informs the user and suggests commands to
+            populate the database.
+        3.  Prompts the user to select a player from the list using `questionary`.
+        4.  Prompts the user to select a permission level (member, operator, visitor)
+            for the chosen player.
+        5.  Calls :func:`~bedrock_server_manager.api.server_install_config.configure_player_permission`
+            to apply the selected permission to the specified server.
+        6.  Uses :func:`~.handle_api_response` to display the outcome.
 
     Args:
-        server_name: The name of the server to configure.
+        server_name (str): The name of the server for which to configure permissions.
 
     Raises:
-        click.Abort: If the user cancels the operation at any prompt.
+        click.Abort: If the user cancels the operation at any `questionary` prompt
+                     (e.g., by pressing Ctrl+C).
     """
     click.secho("\n--- Interactive Permission Configuration ---", bold=True)
     player_response = player_api.get_all_known_players_api()
@@ -78,7 +102,11 @@ def interactive_permissions_workflow(server_name: str):
 
 @click.group()
 def permissions():
-    """Manages player permission levels on a server."""
+    """
+    Manages player permission levels (e.g., operator, member) on a server.
+
+    These commands interact with the server's `permissions.json` file.
+    """
     pass
 
 
@@ -103,15 +131,22 @@ def permissions():
     help="The permission level to grant. Skips interactive mode.",
 )
 def set_perm(server_name: str, player_name: Optional[str], level: Optional[str]):
-    """Sets a permission level for a player on a specific server.
+    """
+    Sets a permission level for a player on a specific server.
 
-    If run without the --player and --level options, this command launches
-    an interactive wizard. Otherwise, it sets the permission directly.
+    If both `--player` and `--level` options are provided, this command directly
+    attempts to set the permission. It first looks up the player's XUID from the
+    global player database using their gamertag.
 
-    Args:
-        server_name: The name of the server to configure.
-        player_name: The gamertag of the player.
-        level: The permission level to set ('visitor', 'member', or 'operator').
+    If either `--player` or `--level` is omitted, the command falls back to an
+    interactive workflow (:func:`~.interactive_permissions_workflow`) to guide
+    the user through selecting a player and permission level.
+
+    Permission levels are typically 'visitor', 'member', or 'operator'.
+
+    Calls APIs:
+        - :func:`~bedrock_server_manager.api.player.get_all_known_players_api` (for XUID lookup)
+        - :func:`~bedrock_server_manager.api.server_install_config.configure_player_permission`
     """
     try:
         if not player_name or not level:
@@ -163,7 +198,17 @@ def set_perm(server_name: str, player_name: Optional[str], level: Optional[str])
     "-s", "--server", "server_name", required=True, help="The name of the server."
 )
 def list_perms(server_name: str):
-    """Lists all configured player permissions for a server."""
+    """
+    Lists all configured player permissions for a specific server.
+
+    Retrieves and displays the contents of the server's `permissions.json` file,
+    showing each player's gamertag (if known from the global player DB), XUID,
+    and their assigned permission level (e.g., Operator, Member).
+
+    Permission levels are color-coded for readability.
+
+    Calls API: :func:`~bedrock_server_manager.api.server_install_config.get_server_permissions_api`.
+    """
     response = config_api.get_server_permissions_api(server_name)
 
     # Handle API errors first
