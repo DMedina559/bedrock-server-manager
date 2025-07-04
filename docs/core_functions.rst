@@ -8,7 +8,7 @@ These APIs provide a safe, consistent, and stable way to manage servers and the 
 
 .. note::
    **For Plugin Developers:**
-   The ``self.api`` object in your plugin exposes these APIs for your usage. However, to ensure consistency and safety of user data, only a specific **subset** of these APIs are endorsed for plugin use. Please refer to the **`Availiable APIs`** sections of the Plugins Docs for the full list of functions that are guaranteed to be stable and supported for plugins.
+   The ``self.api`` object in your plugin exposes these APIs for your usage. However, to ensure consistency and safety of user data, only a specific **subset** of these APIs are endorsed for plugin use. Please refer to the :doc:`_manual_docs/plugins/plugin_apis` sections of the Plugins Docs for the full list of functions that are guaranteed to be stable and supported for plugins.
 
 .. toctree::
    :maxdepth: 2
