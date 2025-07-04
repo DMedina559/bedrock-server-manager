@@ -239,11 +239,12 @@ class Settings:
                     "cli_level": logging.WARN,
                 },
                 "web": {
-                    "host": ["127.0.0.1", "::1"],
+                    "host": "127.0.0.1",
                     "port": 11325,
                     "token_expires_weeks": 4,
-                    "threads": 8,
+                    "threads": 4,
                 },
+                "custom": {}
             }
 
         Returns:
@@ -270,11 +271,12 @@ class Settings:
                 "cli_level": logging.WARN,
             },
             "web": {
-                "host": ["127.0.0.1", "::1"],
+                "host": "127.0.0.1",
                 "port": 11325,
                 "token_expires_weeks": 4,
-                "threads": 8,
+                "threads": 4,
             },
+            "custom": {},
         }
 
     def load(self):
