@@ -25,76 +25,83 @@ h1, h2, h3, h4, h5, h6 {
     color: #f5f5f5;
 }
 
-/* Sidebar adjustments for dark theme (sphinx_rtd_theme) */
+/* Sidebar --- Aggressive Override Attempt */
 .wy-nav-side {
-    background: #2a2a2a;
+    background: #2a2a2a !important; /* Force dark sidebar background */
 }
 
-/* Styling for "current" (active page/section) menu items at any level */
-.wy-menu-vertical li.current > a,
-.wy-menu-vertical li.toctree-l1.current > a,
-.wy-menu-vertical li.toctree-l2.current > a,
-.wy-menu-vertical li.toctree-l3.current > a,
-.wy-menu-vertical li.toctree-l4.current > a {
-    background: #383838 !important; /* Dark background for all current levels */
-    color: #ffffff !important; /* Ensure text is white */
-    /* border-right: 2px solid #7fDBFF; Optional: highlight with accent color */
+/* Base style for all list items in the vertical menu */
+.wy-menu-vertical li {
+    background-color: transparent !important; /* Ensure no default light background on LIs */
 }
 
-/* Styling for items "on" the current path but not the active page itself */
-.wy-menu-vertical li.on a,
-.wy-menu-vertical li.toctree-l1.on > a,
-.wy-menu-vertical li.toctree-l2.on > a,
-.wy-menu-vertical li.toctree-l3.on > a,
-.wy-menu-vertical li.toctree-l4.on > a {
-    background: #303030; /* Slightly lighter dark background */
-    color: #dddddd !important; /* Ensure text is light */
-}
-
-/* General link styling within the sidebar menu */
-.wy-menu-vertical ul li a {
-    color: #cccccc; /* Default link color in sidebar */
-    /* transition: background-color 0.2s ease, color 0.2s ease; Remove default transition if it causes issues */
-}
-
-    /* Hover effect for general sidebar links */
-    .wy-menu-vertical ul li a:hover {
-        background-color: #444444;
-        color: #ffffff;
+    /* Base style for all links in the vertical menu */
+    .wy-menu-vertical li a {
+        color: #cccccc !important; /* Light text for all links */
+        background-color: transparent !important; /* No background on links by default */
+        padding: .4045em 1.618em; /* Match theme's padding */
+        display: block; /* Ensure link fills its space */
+        line-height: 18px; /* Match theme's line height */
     }
 
-/* Ensure hover on "current" items also maintains desired colors if different */
-.wy-menu-vertical li.current > a:hover,
-.wy-menu-vertical li.toctree-l1.current > a:hover,
-.wy-menu-vertical li.toctree-l2.current > a:hover,
-.wy-menu-vertical li.toctree-l3.current > a:hover,
-.wy-menu-vertical li.toctree-l4.current > a:hover {
-    background-color: #4a4a4a !important; /* Consistent hover for current items */
-    color: #ffffff !important;
-}
-/* Caption in sidebar */
+        /* Hover state for any sidebar link */
+        .wy-menu-vertical li a:hover {
+            background-color: #444444 !important; /* Darker background on hover */
+            color: #ffffff !important; /* White text on hover */
+        }
+
+    /* 'Current' page or item 'on' the active path - applies to the LI and its A tag */
+    .wy-menu-vertical li.current,
+    .wy-menu-vertical li.on {
+        background-color: #383838 !important; /* Dark background for the entire LI */
+    }
+
+        .wy-menu-vertical li.current > a,
+        .wy-menu-vertical li.on > a {
+            background-color: #383838 !important; /* Dark background for the A tag */
+            color: #ffffff !important; /* White text */
+            font-weight: bold;
+        }
+
+        /* Hover state for 'current' or 'on' items */
+        .wy-menu-vertical li.current:hover,
+        .wy-menu-vertical li.on:hover {
+            background-color: #4a4a4a !important; /* Slightly different dark hover for the LI */
+        }
+
+        .wy-menu-vertical li.current > a:hover,
+        .wy-menu-vertical li.on > a:hover {
+            background-color: #4a4a4a !important; /* Consistent hover for the A tag */
+            color: #ffffff !important;
+        }
+
+    /* Ensure text within any spans inside these links also inherits correctly */
+    .wy-menu-vertical li a span {
+        color: inherit !important;
+        background-color: transparent !important;
+    }
+
+/* Sidebar caption text */
 .wy-menu-vertical p.caption span.caption-text {
-    color: #a0a0a0;
+    color: #a0a0a0 !important;
 }
+
 
 /* Search box in sidebar */
 #rtd-search-form input[type="text"] {
     background-color: #444444;
     border-color: #555555;
     color: #eeeeee;
-    box-shadow: none; /* Remove default RTD theme shadow which might not fit dark theme */
+    box-shadow: none;
 }
 
     #rtd-search-form input[type="text"]::placeholder {
         color: #aaaaaa;
     }
 
-
 /* Code blocks - basic dark theme adjustment */
-/* You might want to choose a Pygments style for dark themes in conf.py for better syntax highlighting */
-/* e.g., pygments_style = 'monokai' or 'native' if it's dark by default */
-div.highlight, pre { /* Target pre as well for consistency */
-    background: #2a2a2a !important; /* Dark background for code blocks, !important to override inline styles if any */
+div.highlight, pre {
+    background: #2a2a2a !important;
 }
 
 .highlight .c1, .highlight .cs {
@@ -116,7 +123,7 @@ div.highlight, pre { /* Target pre as well for consistency */
 .highlight .n, .highlight .nn, .highlight .nc, .highlight .nd, .highlight .ni, .highlight .ne, .highlight .nf, .highlight .nl, .highlight .nx, .highlight .py, .highlight .bp, .highlight .vc, .highlight .vg, .highlight .vi, .highlight .vm {
     color: #f8f8f2;
 }
-/* Names (variables, functions, classes) */
+/* Names */
 .highlight .mf, .highlight .mh, .highlight .mi, .highlight .mo, .highlight .il {
     color: #ae81ff;
 }
@@ -127,57 +134,96 @@ div.highlight, pre { /* Target pre as well for consistency */
 /* Operators, Punctuation */
 
 
-/* Admonitions (note, warning, etc.) */
+/* Admonition Refinements with Distinct Backgrounds */
 .admonition {
-    background-color: #383838; /* Dark background for admonition box */
+    color: #dddddd !important; /* Base text color for admonition content */
     border-left-width: 5px;
     border-left-style: solid;
-    /* Default border color if no specific type matches */
-    border-left-color: #555555;
-    color: #dddddd; /* Text color inside admonition */
     padding: 15px;
     margin-bottom: 20px;
-    border-radius: 0px; /* Sharp corners consistent with buttons */
+    border-radius: 0px; /* Sharp corners */
 }
 
-    .admonition p.admonition-title {
-        background-color: #444444; /* Slightly distinct title background */
-        color: #eeeeee;
-        padding: 8px 15px;
-        margin: -15px -15px 10px -15px; /* Extend to edges, add bottom margin */
-        font-weight: bold;
-        border-bottom: 1px solid #505050;
+    /* Ensure common inner elements inherit text color and have no unexpected background */
+    .admonition p,
+    .admonition div,
+    .admonition ul,
+    .admonition ol,
+    .admonition li,
+    .admonition span,
+    .admonition strong,
+    .admonition em {
+        color: #dddddd !important;
+        background-color: transparent !important;
     }
 
-    .admonition p:last-child {
-        margin-bottom: 0;
-    }
+        .admonition p.admonition-title {
+            color: #eeeeee !important;
+            padding: 10px 15px; /* Adjusted padding */
+            margin: -15px -15px 10px -15px;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(255,255,255,0.1); /* Lighter border for title separation */
+        }
 
-    /* Specific admonition types - using app button colors as inspiration */
+        .admonition p:last-child {
+            margin-bottom: 0;
+        }
+
+    /* Specific admonition types - distinct backgrounds and borders */
     .admonition.note,
     .admonition.seealso {
-        border-left-color: #7fDBFF; /* Keep existing info blue for now */
+        background-color: #2c3e50 !important; /* Dark blue-gray */
+        border-left-color: #7fDBFF !important; /* Info blue */
     }
+
+        .admonition.note p.admonition-title,
+        .admonition.seealso p.admonition-title {
+            background-color: #34495e !important; /* Slightly darker/related blue for title bg */
+        }
 
     .admonition.tip,
     .admonition.hint {
-        border-left-color: #4CAF50; /* Green - from primary buttons */
+        background-color: #253f26 !important; /* Dark green-gray */
+        border-left-color: #4CAF50 !important; /* Green */
     }
+
+        .admonition.tip p.admonition-title,
+        .admonition.hint p.admonition-title {
+            background-color: #2e7d32 !important; /* Slightly darker/related green for title bg */
+        }
 
     .admonition.important,
     .admonition.attention {
-        border-left-color: #FFDC00; /* Yellow - standard attention */
+        background-color: #4d4000 !important; /* Dark yellow-brown */
+        border-left-color: #FFDC00 !important; /* Yellow */
     }
+
+        .admonition.important p.admonition-title,
+        .admonition.attention p.admonition-title {
+            background-color: #604D00 !important; /* Slightly darker/related for title bg */
+        }
 
     .admonition.caution,
     .admonition.warning {
-        border-left-color: #FFAB00; /* Orange/Amber - standard warning */
+        background-color: #583700 !important; /* Dark orange-brown */
+        border-left-color: #FFAB00 !important; /* Orange/Amber */
     }
+
+        .admonition.caution p.admonition-title,
+        .admonition.warning p.admonition-title {
+            background-color: #664200 !important; /* Slightly darker/related for title bg */
+        }
 
     .admonition.error,
     .admonition.danger {
-        border-left-color: #D32F2F; /* Red - from danger buttons */
+        background-color: #502424 !important; /* Dark red-brown/maroon */
+        border-left-color: #D32F2F !important; /* Red */
     }
+
+        .admonition.error p.admonition-title,
+        .admonition.danger p.admonition-title {
+            background-color: #b71c1c !important; /* Slightly darker/related red for title bg */
+        }
 
 
 /* Tables */
@@ -191,25 +237,16 @@ table.docutils {
         padding: 8px;
     }
 
-        table.docutils thead th, table.docutils th.head { /* Targeting header row/cells */
+        table.docutils thead th, table.docutils th.head {
             background-color: #404040;
             color: #eeeeee;
-            border-bottom-width: 2px; /* Thicker border below header */
+            border-bottom-width: 2px;
             border-bottom-color: #666666;
         }
-/* Alternating row colors for readability if desired */
-/*
-table.docutils tbody tr:nth-child(odd) td {
-    background-color: #3a3a3a;
-}
-table.docutils tbody tr:nth-child(even) td {
-    background-color: #333333;
-}
-*/
 
 /* Breadcrumbs styling for RTD theme */
 .wy-breadcrumbs li a {
-    color: #A1E9FF; /* Match link hover color for visibility */
+    color: #A1E9FF;
 }
 
     .wy-breadcrumbs li a:hover {
@@ -217,7 +254,7 @@ table.docutils tbody tr:nth-child(even) td {
     }
 
 .wy-breadcrumbs li {
-    color: #bbbbbb; /* Text for non-link parts of breadcrumbs */
+    color: #bbbbbb;
 }
 
 /* Version information in sidebar */
@@ -226,10 +263,10 @@ table.docutils tbody tr:nth-child(even) td {
 }
 
 .wy-side-nav-search {
-    background-color: #222222; /* Darker background for search/logo area */
+    background-color: #222222;
 }
 
-    .wy-side-nav-search input[type=text] { /* Redundant with #rtd-search-form but more specific */
+    .wy-side-nav-search input[type=text] {
         border-color: #555555;
         background-color: #444444;
         color: #eeeeee;
@@ -251,7 +288,7 @@ footer {
 
 /* Ensure visited link colors are also light if they differ */
 a:visited {
-    color: #BEAEE2; /* A slightly different light color for visited links */
+    color: #BEAEE2;
 }
 
     a:visited:hover {
@@ -260,7 +297,7 @@ a:visited {
 
 .wy-menu-vertical li.current a:visited,
 .wy-menu-vertical li.toctree-l1.current > a:visited {
-    color: #ffffff; /* Keep current sidebar item text white even if visited */
+    color: #ffffff !important; /* Keep current sidebar item text white even if visited */
 }
 
 .wy-breadcrumbs li a:visited {
@@ -269,9 +306,9 @@ a:visited {
 
 /* Definition lists */
 dl dt {
-    color: #e0e0e0; /* Lighter color for definition terms */
+    color: #e0e0e0;
     font-weight: bold;
-    background-color: #3a3a3a; /* Slight background for the term */
+    background-color: #3a3a3a;
     padding: 4px 8px;
     border-top: 1px solid #444;
     border-left: 1px solid #444;
@@ -295,27 +332,27 @@ hr {
 
 /* Field lists (used in docstrings often) */
 table.field-list th, table.field-list td {
-    border: none !important; /* Remove borders for field lists to look cleaner */
+    border: none !important;
 }
 
-    table.field-list th.field-name { /* "Parameters:", "Returns:", etc. */
+    table.field-list th.field-name {
         color: #cccccc;
         font-weight: bold;
     }
 
 /* Literal blocks (inline code ``) */
-code.literal, tt.literal, code { /* Added generic 'code' for broader coverage */
-    color: #F5F5F5 !important; /* Brighter text for inline code, !important for specificity */
-    background-color: #3C3C3C !important; /* Darker, contrasting background, !important for specificity */
+code.literal, tt.literal, code {
+    color: #F5F5F5 !important;
+    background-color: #3C3C3C !important;
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-size: 0.9em;
-    border: 1px solid #505050; /* Subtle border for better differentiation */
+    border: 1px solid #505050;
 }
 
 /* Buttons (if any are rendered by Sphinx extensions, basic styling) */
 .button, button, input[type="button"], input[type="submit"], input[type="reset"] {
-    background-color: #4CAF50; /* Example green */
+    background-color: #4CAF50;
     color: white;
     padding: 8px 15px;
     border: none;
@@ -340,23 +377,23 @@ code.literal, tt.literal, code { /* Added generic 'code' for broader coverage */
 /* Fix for RTD theme's next/prev buttons text color in dark mode */
 .rst-footer-buttons li.rst-footer-prev a span.rst-footer- ίδια- Рос,
 .rst-footer-buttons li.rst-footer-next a span.rst-footer-δια- Рос {
-    color: #7fDBFF; /* Ensure arrow icon text is visible */
+    color: #7fDBFF !important; /* Ensure arrow icon text is visible */
 }
 
 .rst-footer-buttons li.rst-footer-prev a:hover span.rst-footer- ίδια- Рос,
 .rst-footer-buttons li.rst-footer-next a:hover span.rst-footer-δια- Рос {
-    color: #A1E9FF;
+    color: #A1E9FF !important;
 }
 
 .rst-footer-buttons li.rst-footer-prev a,
 .rst-footer-buttons li.rst-footer-next a {
-    color: #dddddd; /* Text like "Previous" / "Next" */
+    color: #dddddd !important; /* Text like "Previous" / "Next" */
 }
 
     .rst-footer-buttons li.rst-footer-prev a:hover,
     .rst-footer-buttons li.rst-footer-next a:hover {
-        color: #ffffff;
-        background-color: #444444;
+        color: #ffffff !important;
+        background-color: #444444 !important;
     }
 
 /* Version switcher popup if enabled */
@@ -382,13 +419,8 @@ code.literal, tt.literal, code { /* Added generic 'code' for broader coverage */
             color: #A1E9FF;
         }
 
-/* Make sure images with transparent backgrounds don't look odd on dark theme */
 img {
-    /* If you have SVGs or PNGs with transparency meant for light backgrounds,
-       they might need specific filters or backgrounds if they look bad.
-       Example: img[src$=".svg"] { filter: invert(1) hue-rotate(180deg); }
-       This is highly dependent on the image content.
-    */
+    /* No general filter needed unless specific images cause problems */
 }
 
 /* Ensure table of contents in the page body is styled for dark mode */
