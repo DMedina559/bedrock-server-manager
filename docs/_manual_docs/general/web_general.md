@@ -6,6 +6,12 @@
 :align: center
 ```
 
+```{image} https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/main_index.png
+:alt: Web Interface
+:width: 400px
+:align: center
+```
+
 Bedrock Server Manager 3.1.0 includes a Web server you can run to easily manage your bedrock servers in your web browser, and is also mobile friendly!
 
 The web ui has full parity with the CLI. With the web server you can:
@@ -50,20 +56,24 @@ Follow the on-screen prompt to hash your password
 
 ### Hosts:
 
-By Default Bedrock Server Manager will only listen to local host only interfaces `127.0.0.1` and `[::1]`
+```{note} 
+As of BSM 3.5.0, the web server will only accept one host at a time, if multiple hosts are specified, the first one will be used.
+```
+
+By Default Bedrock Server Manager will only listen to local host only interfaces `127.0.0.1`
 
 To change which host to listen to start the web server with the specified host
 
-Example: specify local host only ipv4 and ipv6:
+Example: specify local host only ipv4:
 
 ```bash
-bedrock-server-manager web start --host 127.0.0.1 --host "::1"
+bedrock-server-manager web start --host 127.0.0.1
 ```
 
-Example: specify all ipv4 and ipv6 addresses:
+Example: specify all ipv4:
 
 ```bash
-bedrock-server-manager web start --host 0.0.0.0 --host "::"
+bedrock-server-manager web start --host 0.0.0.0
 ```
 
 ### Port:
@@ -71,6 +81,11 @@ bedrock-server-manager web start --host 0.0.0.0 --host "::"
 By default Bedrock Server Manager will use port `11325`. This can be change in script_config.json
 
 ### HTTP API:
+
+```{note}
+As of BSM 3.5.0, the HTTP API docs are now integrated in the web server using FastAPIs Swagger UI. 
+Visit: `http(s)://<bsm_host:port>/docs` after starting the web server.
+```
 
 An HTTP API is provided allowing tools like `curl` or `Invoke-RestMethod` to interact with server.
 

@@ -61,22 +61,45 @@ Follow your platforms documentation for setting Enviroment Variables
 
 The app will create its data folders in this location. This is where servers will be installed to and where the app will look when managing various server aspects. 
 
-Certain variables can can be changed directly in the `./.config/script_config.json`
+Certain variables can can be changed directly in the `./.config/bedrock_server_manager.json`
 
-#### The following variables are configurable via json
+#### JSON Configuration File:
 
-* `BASE_DIR`: Directory where servers will be installed
-* `CONTENT_DIR`: Directory where the app will look for addons/worlds
-* `DOWNLOAD_DIR`: Directory where servers will download
-* `BACKUP_DIR`: Directory where server backups will go
-* `LOG_DIR`: Directory where app logs will be saved
-* `BACKUP_KEEP`: How many backups to keep
-* `DOWNLOAD_KEEP`: How many server downloads to keep
-* `LOGS_KEEP`: How many logs to keep
-* `CLI_LOG_LEVEL`: Level for CLI logging.
-* `FILE_LOG_LEVEL`: Level for file logging.
-* `WEB_PORT`: Port used by the web server. 11325 by default
-* `TOKEN_EXPIRES_WEEKS`: How long JWT tokens are vaild for in weeks.
+Provides the default configuration values for the application.
+
+These defaults are used when a configuration file is not found or when a specific setting is missing from an existing configuration file. Paths are constructed dynamically based on the determined application data directory (see _determine_app_data_dir()).
+
+The structure of the default configuration is as follows:
+
+```json
+{
+    "config_version": CONFIG_SCHEMA_VERSION,
+    "paths": {
+        "servers": "<app_data_dir>/servers",
+        "content": "<app_data_dir>/content",
+        "downloads": "<app_data_dir>/.downloads",
+        "backups": "<app_data_dir>/backups",
+        "plugins": "<app_data_dir>/plugins",
+        "logs": "<app_data_dir>/.logs",
+    },
+    "retention": {
+        "backups": 3,
+        "downloads": 3,
+        "logs": 3,
+    },
+    "logging": {
+        "file_level": logging.INFO,
+        "cli_level": logging.WARN,
+    },
+    "web": {
+        "host": ["127.0.0.1", "::1"],
+        "port": 11325,
+        "token_expires_weeks": 4,
+        "threads": 4,
+    },
+    "custom": {}
+}
+```
 
 ### Run the app:
 
