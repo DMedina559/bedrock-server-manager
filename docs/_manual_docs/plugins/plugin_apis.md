@@ -1,4 +1,4 @@
-# Availiable APIs
+# Available APIs
 
 ```{image} https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/src/bedrock_server_manager/web/static/image/icon/favicon.svg
 :alt: Bedrock Server Manager Logo
@@ -614,5 +614,3 @@ self.api.validate_server_property_value(property_name: str, value: str)
 |------|------|---------|
 | `property_name` | `str` | `REQUIRED` |
 | `value` | `str` | `REQUIRED` |
-
----

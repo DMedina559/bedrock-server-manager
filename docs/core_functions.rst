@@ -45,10 +45,12 @@ System Functions
 .. automodule:: bedrock_server_manager.core.system.base
    :members:
    :undoc-members:
+   :exclude-members: PSUTIL_AVAILABLE
 
 .. automodule:: bedrock_server_manager.core.system.process
    :members:
    :undoc-members:
+   :exclude-members: PSUTIL_AVAILABLE
 
 Platform-Specific Functions
 ---------------------------
@@ -56,10 +58,12 @@ Platform-Specific Functions
 .. automodule:: bedrock_server_manager.core.system.linux
    :members:
    :undoc-members:
+   :exclude-members: BEDROCK_EXECUTABLE_NAME, PIPE_NAME_TEMPLATE
 
 .. automodule:: bedrock_server_manager.core.system.windows
    :members:
    :undoc-members:
+   :exclude-members: BEDROCK_EXECUTABLE_NAME, PIPE_NAME_TEMPLATE
 
 Miscellaneous Functions
 -----------------------

@@ -4,17 +4,18 @@
 This module is central to the plugin architecture of the Bedrock Server Manager.
 The :class:`.PluginManager` class handles all aspects of plugin interaction, including:
 
-- Locating plugin files in designated directories.
-- Reading and writing plugin configurations (e.g., enabled status, metadata)
-  from/to a JSON file (typically ``plugins.json``).
-- Validating plugins (e.g., ensuring they subclass
-  :class:`~.plugin_base.PluginBase` and have a ``version`` attribute).
-- Dynamically loading valid and enabled plugins.
-- Managing the lifecycle of plugins (e.g., calling ``on_load``, ``on_unload`` event hooks).
-- Dispatching application-wide events to all loaded plugins.
-- Facilitating custom inter-plugin event communication. Custom event names
-  must follow a 'namespace:event_name' format (e.g., ``myplugin:data_updated``).
-- Providing a mechanism to reload all plugins.
+    - Locating plugin files in designated directories.
+    - Reading and writing plugin configurations (e.g., enabled status, metadata)
+      from/to a JSON file (typically ``plugins.json``).
+    - Validating plugins (e.g., ensuring they subclass
+      :class:`~.plugin_base.PluginBase` and have a ``version`` attribute).
+    - Dynamically loading valid and enabled plugins.
+    - Managing the lifecycle of plugins (e.g., calling ``on_load``, ``on_unload`` event hooks).
+    - Dispatching application-wide events to all loaded plugins.
+    - Facilitating custom inter-plugin event communication. Custom event names
+      must follow a 'namespace:event_name' format (e.g., ``myplugin:data_updated``).
+    - Providing a mechanism to reload all plugins.
+
 """
 import os
 import importlib.util
@@ -235,33 +236,33 @@ class PluginManager:
         consistent with the actual plugin files found on disk. It performs the
         following steps:
 
-        1.  Loads the existing ``plugins.json`` (via :meth:`._load_config`).
-        2.  Scans all directories in ``self.plugin_dirs`` for potential plugin
-            files (``.py`` files not starting with an underscore).
-        3.  For each potential plugin file:
-            a.  Attempts to load its main plugin class using :meth:`._get_plugin_class_from_path`.
-            b.  Validates the loaded plugin class:
-                i.  It must be a subclass of :class:`.PluginBase`.
-                ii. It must have a non-empty ``version`` class attribute.
-            c.  If valid, extracts metadata: description (from the class's docstring)
-                and the ``version`` attribute.
-            d.  Updates the in-memory ``self.plugin_config``:
-                i.  New valid plugins are added. Their initial "enabled" state
-                    is determined by whether their name is in
-                    :const:`~bedrock_server_manager.config.const.DEFAULT_ENABLED_PLUGINS`.
-                ii. Metadata (description, version) for existing plugin entries
-                    in the config is updated if the on-disk plugin has changed.
-                iii. Handles migration of older boolean-based config entries for a
-                     plugin to the newer dictionary format (containing "enabled",
-                     "description", "version").
-                iv. Ensures essential keys ("enabled", "description", "version")
-                     are present in each plugin's configuration entry.
-        4.  Removes entries from ``self.plugin_config`` for any plugins that were
-            previously in the configuration but are no longer found on disk or
-            have become invalid (e.g., missing the ``version`` attribute).
-        5.  If any changes were made to ``self.plugin_config`` during this process,
-            the updated configuration is saved back to ``plugins.json`` using
-            :meth:`._save_config`.
+            1.  Loads the existing ``plugins.json`` (via :meth:`._load_config`).
+            2.  Scans all directories in ``self.plugin_dirs`` for potential plugin
+                files (``.py`` files not starting with an underscore).
+            3.  For each potential plugin file:
+                a.  Attempts to load its main plugin class using :meth:`._get_plugin_class_from_path`.
+                b.  Validates the loaded plugin class:
+                    i.  It must be a subclass of :class:`.PluginBase`.
+                    ii. It must have a non-empty ``version`` class attribute.
+                c.  If valid, extracts metadata: description (from the class's docstring)
+                    and the ``version`` attribute.
+                d.  Updates the in-memory ``self.plugin_config``:
+                    i.  New valid plugins are added. Their initial "enabled" state
+                        is determined by whether their name is in
+                        :const:`~bedrock_server_manager.config.const.DEFAULT_ENABLED_PLUGINS`.
+                    ii. Metadata (description, version) for existing plugin entries
+                        in the config is updated if the on-disk plugin has changed.
+                    iii. Handles migration of older boolean-based config entries for a
+                         plugin to the newer dictionary format (containing "enabled",
+                         "description", "version").
+                    iv. Ensures essential keys ("enabled", "description", "version")
+                         are present in each plugin's configuration entry.
+            4.  Removes entries from ``self.plugin_config`` for any plugins that were
+                previously in the configuration but are no longer found on disk or
+                have become invalid (e.g., missing the ``version`` attribute).
+            5.  If any changes were made to ``self.plugin_config`` during this process,
+                the updated configuration is saved back to ``plugins.json`` using
+                :meth:`._save_config`.
 
         This method is vital for maintaining an accurate and up-to-date registry
         of discoverable plugins and their configured states. It's typically called
@@ -416,27 +417,34 @@ class PluginManager:
 
         This method orchestrates the entire plugin loading process:
 
-        1.  Calls :meth:`._synchronize_config_with_disk` to ensure the plugin
-            configuration (``self.plugin_config``) is up-to-date with files
-            on disk and that all plugin entries are valid.
-        2.  Clears any previously loaded plugin instances from ``self.plugins``.
-            This is important for supporting the :meth:`.reload` functionality.
-        3.  Iterates through the synchronized ``self.plugin_config``:
-            a.  If a plugin is marked as ``enabled`` in its configuration and has
-                a valid ``version``:
-                i.  Finds the plugin's file path using :meth:`._find_plugin_path`.
-                ii. Loads the plugin class from the file using
-                    :meth:`._get_plugin_class_from_path`.
-                iii.If class loading is successful, instantiates the plugin class.
-                    The instance is provided with its name, a
-                    :class:`.api_bridge.PluginAPI` instance (for core interaction),
-                    and a dedicated :class:`logging.Logger` instance.
-                iv. Appends the new plugin instance to the ``self.plugins`` list.
-                v.  Dispatches the ``on_load`` event to the newly loaded plugin
-                    instance via :meth:`.dispatch_event`.
+            1.  Calls :meth:`._synchronize_config_with_disk` to ensure the plugin
+                configuration (``self.plugin_config``) is up-to-date with files
+                on disk and that all plugin entries are valid.
+            2.  Clears any previously loaded plugin instances from ``self.plugins``.
+                This is important for supporting the :meth:`.reload` functionality.
+            3.  Iterates through the synchronized ``self.plugin_config``:
+
+                a.  If a plugin is marked as ``enabled`` in its configuration and has
+                    a valid ``version``:
+
+                    i.  Finds the plugin's file path using :meth:`._find_plugin_path`.
+
+                    ii. Loads the plugin class from the file using
+                        :meth:`._get_plugin_class_from_path`.
+
+                    iii.If class loading is successful, instantiates the plugin class.
+                        The instance is provided with its name, a
+                        :class:`.api_bridge.PluginAPI` instance (for core interaction),
+                        and a dedicated :class:`logging.Logger` instance.
+
+                    iv. Appends the new plugin instance to the ``self.plugins`` list.
+
+                    v.  Dispatches the ``on_load`` event to the newly loaded plugin
+                        instance via :meth:`.dispatch_event`.
 
         Errors during the loading or instantiation of individual plugins are logged,
         and the process continues with other plugins.
+
         """
         logger.info("Starting plugin loading process...")
         self._synchronize_config_with_disk()
@@ -656,14 +664,15 @@ class PluginManager:
         This method provides a way to refresh the plugin system without restarting
         the entire application. It involves:
 
-        1.  Dispatching the ``on_unload`` event to all currently loaded plugins
-            (via :meth:`.dispatch_event`).
-        2.  Clearing all registered custom event listeners from
-            ``self.custom_event_listeners`` (as the plugins that registered
-            them are being unloaded).
-        3.  Calling :meth:`.load_plugins` to re-run the discovery, synchronization,
-            and loading process for all plugins based on the current disk state
-            and ``plugins.json`` configuration.
+            1.  Dispatching the ``on_unload`` event to all currently loaded plugins
+                (via :meth:`.dispatch_event`).
+            2.  Clearing all registered custom event listeners from
+                ``self.custom_event_listeners`` (as the plugins that registered
+                them are being unloaded).
+            3.  Calling :meth:`.load_plugins` to re-run the discovery, synchronization,
+                and loading process for all plugins based on the current disk state
+                and ``plugins.json`` configuration.
+
         """
         logger.info("--- Starting Full Plugin Reload Process ---")
 
