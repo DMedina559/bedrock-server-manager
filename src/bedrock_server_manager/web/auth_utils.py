@@ -16,6 +16,7 @@ or application settings.
 """
 import os
 import datetime
+import logging
 from typing import Optional, Dict, Any
 
 from jose import JWTError, jwt
@@ -25,6 +26,8 @@ from passlib.context import CryptContext
 
 from bedrock_server_manager.config.const import env_name
 from bedrock_server_manager.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 # --- Passlib Context ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -39,7 +42,7 @@ if not JWT_SECRET_KEY:
         "web.jwt_secret_key", "a_very_secret_key_that_should_be_changed"
     )
     if JWT_SECRET_KEY == "a_very_secret_key_that_should_be_changed":
-        print(
+        logger.error(
             f"!!! SECURITY WARNING !!! Using default JWT_SECRET_KEY from settings. "
             f"Set the '{JWT_SECRET_KEY_ENV}' environment variable for production."
         )
@@ -222,7 +225,7 @@ def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
     stored_password_hash = os.environ.get(PASSWORD_ENV)
 
     if not stored_username or not stored_password_hash:
-        print(
+        logger.error(
             "CRITICAL: Web authentication environment variables (USERNAME or PASSWORD HASH) are not set."
         )
         return None

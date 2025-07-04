@@ -106,14 +106,18 @@ class AllowlistRemovePayload(BaseModel):
     players: List[str] = Field(..., description="List of player gamertags to remove.")
 
 
+# Define Item model before it's used in PermissionsSetPayload
+class PlayerPermissionItem(BaseModel):
+    """Represents a single player's permission data sent from the client."""
+    xuid: str
+    name: str
+    permission_level: str # Matches key from client-side JS and GET response
+
+
 class PermissionsSetPayload(BaseModel):
-    """Request model for setting multiple player permissions.
-
-    The dictionary should map XUIDs (str) to permission levels (str, e.g., "operator").
-    """
-
-    permissions: Dict[str, str] = Field(
-        ..., description="Player XUID to permission level mapping."
+    """Request model for setting multiple player permissions."""
+    permissions: List[PlayerPermissionItem] = Field( # Use the defined model
+        ..., description="List of player permission entries."
     )
 
 
@@ -698,35 +702,37 @@ async def configure_permissions_api_route(
         f"API: Configure permissions request for '{server_name}' by user '{identity}'."
     )
 
-    permissions_map = payload.permissions
-    errors: Dict[str, str] = {}
+    # payload.permissions is now a List[PlayerPermissionItem]
+    permission_entries = payload.permissions
+    errors: Dict[str, str] = {}  # Store errors by XUID
     success_count = 0
 
-    for xuid, level in permissions_map.items():
+    for item in permission_entries:
         try:
+            # Pass item.name to the underlying function
             result = server_install_config.configure_player_permission(
-                server_name, xuid, None, level
+                server_name, item.xuid, item.name, item.permission_level
             )
             if result.get("status") == "success":
                 success_count += 1
             else:
-                errors[xuid] = result.get(
+                errors[item.xuid] = result.get(
                     "message", "Unknown error setting permission."
                 )
         except UserInputError as e:
-            errors[xuid] = str(e)
+            errors[item.xuid] = str(e)
         except BSMError as e:
             logger.error(
-                f"API Permissions Update for '{server_name}', XUID '{xuid}': BSMError. {e}",
+                f"API Permissions Update for '{server_name}', XUID '{item.xuid}': BSMError. {e}",
                 exc_info=True,
             )
-            errors[xuid] = str(e)
+            errors[item.xuid] = str(e)
         except Exception as e:
             logger.error(
-                f"API Permissions Update for '{server_name}', XUID '{xuid}': Unexpected error. {e}",
+                f"API Permissions Update for '{server_name}', XUID '{item.xuid}': Unexpected error. {e}",
                 exc_info=True,
             )
-            errors[xuid] = "An unexpected server error occurred."
+            errors[item.xuid] = "An unexpected server error occurred."
 
     if not errors:
         return {
@@ -734,23 +740,36 @@ async def configure_permissions_api_route(
             "message": f"Permissions updated for {success_count} player(s).",
         }
     else:
-        final_status_code = status.HTTP_400_BAD_REQUEST
+        final_status_code = status.HTTP_400_BAD_REQUEST # Default for client-side type errors
+        
+        has_server_error = any(
+            not isinstance(e, UserInputError) and isinstance(e, BSMError) 
+            for xuid_key in errors 
+            if (e := getattr(errors[xuid_key], '__cause__', None)) # Trying to get original exception if wrapped
+        ) 
+
         if any("not found" in err_msg.lower() for err_msg in errors.values()):
-            final_status_code = status.HTTP_404_NOT_FOUND
-        elif any(
-            err_type not in [UserInputError.__name__, AppFileNotFoundError.__name__]
-            for err_type in [
-                type(e).__name__ for e in errors.values() if isinstance(e, Exception)
-            ]
-        ):
+             final_status_code = status.HTTP_404_NOT_FOUND
+
+        is_internal_server_error = False
+        for xuid_key in errors:
+            msg = errors[xuid_key].lower()
+            if "unexpected server error" in msg or ("bsmerror" in msg and "userinputerror" not in msg):
+                 is_internal_server_error = True
+                 break
+        
+        if is_internal_server_error:
             final_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        elif any("not found" in err_msg.lower() for err_msg in errors.values()):
+            final_status_code = status.HTTP_404_NOT_FOUND
+        # else defaults to HTTP_400_BAD_REQUEST if errors exist
 
         return JSONResponse(
             status_code=final_status_code,
             content={
                 "status": "error",
                 "message": "One or more errors occurred while setting permissions.",
-                "errors": errors,
+                "errors": errors, # This is Dict[str, str]
             },
         )
 

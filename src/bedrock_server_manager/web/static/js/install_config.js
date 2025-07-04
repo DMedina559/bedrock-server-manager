@@ -357,29 +357,48 @@ async function savePermissions(buttonElement, serverName, isNewInstall) {
     console.debug(`${functionName}: Button Element:`, buttonElement);
 
     // --- Gather Permissions Data ---
-    const permissionsMap = {}; // Maps XUID -> permission level string
+    const permissionsData = []; // Array of {xuid, name, permission_level} objects
     const permissionSelects = document.querySelectorAll('select.permission-select'); // Target selects by class
     console.debug(`${functionName}: Found ${permissionSelects.length} permission select elements.`);
 
     permissionSelects.forEach(select => {
-        const xuid = select.dataset.xuid; // Get XUID from data attribute
-        const selectedLevel = select.value; // Get selected permission level
-        if (xuid && selectedLevel) {
-            permissionsMap[xuid] = selectedLevel;
-             console.debug(`${functionName}: Gathered permission - XUID: ${xuid}, Level: '${selectedLevel}'`);
+        const xuid = select.dataset.xuid;
+        const selectedLevel = select.value;
+        
+        // Traverse up to the table row (tr) to find the player-name cell
+        const tableRow = select.closest('tr');
+        let playerName = 'Unknown'; // Default name
+        if (tableRow) {
+            const nameCell = tableRow.querySelector('.player-name');
+            if (nameCell) {
+                playerName = nameCell.textContent.trim();
+            } else {
+                console.warn(`${functionName}: Could not find '.player-name' cell in row for XUID: ${xuid}.`, tableRow);
+            }
         } else {
-             console.warn(`${functionName}: Skipping select element missing 'data-xuid' or value.`, select);
+            console.warn(`${functionName}: Could not find parent 'tr' for select element with XUID: ${xuid}.`, select);
+        }
+
+        if (xuid && selectedLevel && playerName) {
+            permissionsData.push({
+                xuid: xuid,
+                name: playerName, // Include the player's name
+                permission_level: selectedLevel // Keep key as permission_level for consistency with GET response
+            });
+            console.debug(`${functionName}: Gathered permission - XUID: ${xuid}, Name: ${playerName}, Level: '${selectedLevel}'`);
+        } else {
+            console.warn(`${functionName}: Skipping select element due to missing data (XUID: ${xuid}, Name: ${playerName}, Level: ${selectedLevel}).`, select);
         }
     });
 
-    console.log(`${functionName}: Permissions map gathered for submission:`, permissionsMap);
+    console.log(`${functionName}: Permissions data array gathered for submission:`, permissionsData);
 
     // --- Clear Validation ---
-    _clearValidationErrors(); // Clear any previous errors (though less likely here)
+    _clearValidationErrors(); // Clear any previous errors
 
     // --- Prepare API Request ---
     const requestBody = {
-        permissions: permissionsMap // Send the map under the 'permissions' key
+        permissions: permissionsData // Send the array of objects
     };
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 

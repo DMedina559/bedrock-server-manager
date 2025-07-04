@@ -398,6 +398,68 @@ async def scan_players_api_route(
             detail="Unexpected error scanning player logs.",
         )
 
+@router.get(
+    "/api/players/get", response_model=GeneralApiResponse, tags=["Global Players API"]
+)
+async def get_all_players_api_route(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Retrieves the list of all known players from the central player database.
+
+    Calls :func:`~bedrock_server_manager.api.player.get_all_known_players_api`.
+    The player data is read from the application's main `players.json` file.
+
+        - Requires authentication.
+        - Returns a list of player objects, each typically containing "name" and "xuid".
+        - If `players.json` is not found or empty, "players" will be an empty list.
+
+    """
+    identity = current_user.get("username", "Unknown")
+    logger.info(f"API: Request to retrieve all players by user '{identity}'.")
+
+    try:
+        result_dict = player_api.get_all_known_players_api()
+
+        if result_dict.get("status") == "success":
+            logger.debug(
+                f"API Get All Players: Successfully retrieved {len(result_dict.get('players', []))} players. "
+                f"Message: {result_dict.get('message', 'N/A')}"
+            )
+            return GeneralApiResponse(
+                status="success",
+                players=result_dict.get("players"),
+                message=result_dict.get("message"),
+            )
+        else:  # status == "error"
+            logger.warning(
+                f"API Get All Players: Handler returned error: {result_dict.get('message')}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result_dict.get(
+                    "message", "Error retrieving player list from API."
+                ),
+            )
+
+    except BSMError as e: # Catch specific application errors if needed
+        logger.error(
+            f"API Get All Players: BSMError occurred: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"A server error occurred while fetching players: {str(e)}",
+        )
+    except Exception as e:
+        logger.error(
+            f"API Get All Players: Unexpected critical error in route: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A critical unexpected server error occurred while fetching players.",
+        )
 
 @router.post(
     "/api/downloads/prune",
