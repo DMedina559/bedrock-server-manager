@@ -77,7 +77,7 @@ class APIDocsGenerator(PluginBase):
             f"> _Application Version: {__version__}_",
             "\n---",
             "This lists contains all functions available to plugins via the `self.api` object.",
-            "For an updated list of available APIs, please download and run the [api_docs_generator](https://github.com/DMedina559/bedrock-server-manager/blob/main/plugins/api_docs_generator.py) plugin."
+            "For an updated list of available APIs, please download and run the [api_docs_generator](https://github.com/DMedina559/bedrock-server-manager/blob/main/plugins/api_docs_generator.py) plugin.",
         ]
 
         # --- API Functions Loop ---
