@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Using sendServerActionRequest which handles status messages and button disabling
         try {
             // serverName is null for global actions, actionPath is absolute
-            const result = await sendServerActionRequest(null, '/plugins/api/reload', 'PUT', null, reloadPluginsBtn); // Updated path
+            const result = await sendServerActionRequest(null, '/api/plugins/reload', 'PUT', null, reloadPluginsBtn); // Updated path
 
             // sendServerActionRequest shows its own success/error messages based on result.status
             // It also re-enables the button in its finally block unless result.status is 'confirm_needed'
@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Use sendServerActionRequest for the GET request.
             // serverName is null for global actions, actionPath is absolute.
             // No body for GET. Button element can be the loader itself or null.
-            const data = await sendServerActionRequest(null, '/plugins/api', 'GET', null, null); // Updated path, Pass null for button if loader handles its own state
+            const data = await sendServerActionRequest(null, '/api/plugins', 'GET', null, null); // Updated path, Pass null for button if loader handles its own state
 
             pluginLoader.style.display = 'none'; // Hide loader
 
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // serverName is null for global actions, actionPath is absolute and constructed with pluginName
-            const result = await sendServerActionRequest(null, `/plugins/api/${pluginName}`, 'POST', { enabled: isEnabled }, toggleSwitch); // Updated path
+            const result = await sendServerActionRequest(null, `/api/plugins/${pluginName}`, 'POST', { enabled: isEnabled }, toggleSwitch); // Updated path
 
             // sendServerActionRequest shows status messages and handles button state.
             // We only need to revert the toggle if the API call was not successful.

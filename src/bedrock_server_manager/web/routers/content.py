@@ -32,10 +32,7 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/content",
-    tags=["Content Management"],
-)
+router = APIRouter()
 
 
 # --- Pydantic Models ---
@@ -60,6 +57,7 @@ class ActionResponse(BaseModel):
     "/server/{server_name}/install_world",
     response_class=HTMLResponse,
     name="install_world_page",
+    include_in_schema=False,
 )
 async def install_world_page(
     request: Request,
@@ -108,6 +106,7 @@ async def install_world_page(
     "/server/{server_name}/install_addon",
     response_class=HTMLResponse,
     name="install_addon_page",
+    include_in_schema=False,
 )
 async def install_addon_page(
     request: Request,

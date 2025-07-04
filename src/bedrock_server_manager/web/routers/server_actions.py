@@ -39,7 +39,7 @@ from bedrock_server_manager.error import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Server Actions API"])
+router = APIRouter()
 
 
 # --- Pydantic Models ---
@@ -116,6 +116,7 @@ def server_start_task(server_name: str):
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Start a server instance",
+    tags=["Server Actions API"],
 )
 async def start_server_route(
     background_tasks: BackgroundTasks,
@@ -176,6 +177,7 @@ def server_stop_task(server_name: str):
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Stop a running server instance",
+    tags=["Server Actions API"],
 )
 async def stop_server_route(
     background_tasks: BackgroundTasks,
@@ -229,6 +231,7 @@ def server_restart_task(server_name: str):
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Restart a server instance",
+    tags=["Server Actions API"],
 )
 async def restart_server_route(
     background_tasks: BackgroundTasks,
@@ -260,6 +263,7 @@ async def restart_server_route(
     "/api/server/{server_name}/send_command",
     response_model=ActionResponse,
     summary="Send a command to a running server instance",
+    tags=["Server Actions API"],
 )
 async def send_command_route(
     server_name: str,
@@ -371,6 +375,7 @@ def server_update_task(server_name: str):
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Update a server instance to the latest version",
+    tags=["Server Actions API"],
 )
 async def update_server_route(
     server_name: str,
@@ -424,6 +429,7 @@ def server_delete_task(server_name: str):
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Delete a server instance and its data",
+    tags=["Server Actions API"],
 )
 async def delete_server_route(
     server_name: str,

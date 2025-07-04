@@ -31,7 +31,7 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Scheduled Tasks"])  # No prefix
+router = APIRouter()  # No prefix
 
 
 # --- Pydantic Models ---
@@ -129,6 +129,7 @@ class GeneralTaskApiResponse(BaseModel):
     "/schedule-tasks/{server_name}/linux",
     response_class=HTMLResponse,
     name="schedule_tasks_linux_page",
+    include_in_schema=False,
 )
 async def schedule_tasks_linux_page_route(
     request: Request,
@@ -209,6 +210,7 @@ async def schedule_tasks_linux_page_route(
     "/schedule-tasks/{server_name}/windows",
     response_class=HTMLResponse,
     name="schedule_tasks_windows_page",
+    include_in_schema=False,
 )
 async def schedule_tasks_windows_page_route(
     request: Request,
@@ -292,7 +294,7 @@ async def schedule_tasks_windows_page_route(
     "/api/server/{server_name}/cron_scheduler/add",
     response_model=GeneralTaskApiResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Scheduled Tasks API - Linux"],
+    tags=["Task Scheduler - Linux"],
 )
 async def add_cron_job_api_route(
     payload: CronJobPayload,
@@ -369,7 +371,7 @@ async def add_cron_job_api_route(
 @router.post(
     "/api/server/{server_name}/cron_scheduler/modify",
     response_model=GeneralTaskApiResponse,
-    tags=["Scheduled Tasks API - Linux"],
+    tags=["Task Scheduler - Linux"],
 )
 async def modify_cron_job_api_route(
     payload: CronJobPayload,
@@ -464,7 +466,7 @@ async def modify_cron_job_api_route(
 @router.delete(
     "/api/server/{server_name}/cron_scheduler/delete",
     response_model=GeneralTaskApiResponse,
-    tags=["Scheduled Tasks API - Linux"],
+    tags=["Task Scheduler - Linux"],
 )
 async def delete_cron_job_api_route(
     cron_string: str = Query(
@@ -555,7 +557,7 @@ async def delete_cron_job_api_route(
     "/api/server/{server_name}/task_scheduler/add",
     response_model=GeneralTaskApiResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Scheduled Tasks API - Windows"],
+    tags=["Task Scheduler - Windows"],
 )
 async def add_windows_task_api_route(
     payload: WindowsTaskPayload,
@@ -669,7 +671,7 @@ async def add_windows_task_api_route(
 @router.put(
     "/api/server/{server_name}/task_scheduler/task/{task_name:path}",
     response_model=GeneralTaskApiResponse,
-    tags=["Scheduled Tasks API - Windows"],
+    tags=["Task Scheduler - Windows"],
 )
 async def modify_windows_task_api_route(
     server_name: str,
@@ -804,7 +806,7 @@ async def modify_windows_task_api_route(
 @router.delete(
     "/api/server/{server_name}/task_scheduler/task/{task_name:path}",
     response_model=GeneralTaskApiResponse,
-    tags=["Scheduled Tasks API - Windows"],
+    tags=["Task Scheduler - Windows"],
 )
 async def delete_windows_task_api_route(
     server_name: str,

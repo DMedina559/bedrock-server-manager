@@ -35,7 +35,7 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["API Information"])
+router = APIRouter()
 
 
 # --- Pydantic Models ---
@@ -362,7 +362,7 @@ async def server_process_info_api_route(
 
 # --- Global Action Endpoints ---
 @router.post(
-    "/api/players/scan", response_model=GeneralApiResponse, tags=["Global Actions API"]
+    "/api/players/scan", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -548,7 +548,7 @@ async def get_system_info_api_route():
 
 
 @router.post(
-    "/api/players/add", response_model=GeneralApiResponse, tags=["Player Info API"]
+    "/api/players/add", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def add_players_api_route(
     payload: AddPlayersPayload, current_user: Dict[str, Any] = Depends(get_current_user)

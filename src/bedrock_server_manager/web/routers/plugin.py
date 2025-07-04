@@ -35,10 +35,10 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/plugins", tags=["Plugin Management"])
+router = APIRouter()
 
 
-# --- Corrected Pydantic Models ---
+# --- Pydantic Models ---
 class PluginStatusSetPayload(BaseModel):
     """Request model for setting a plugin's enabled status."""
 
@@ -76,7 +76,12 @@ class GeneralPluginApiResponse(BaseModel):
 
 
 # --- HTML Route ---
-@router.get("/", response_class=HTMLResponse, name="manage_plugins_page")
+@router.get(
+    "/plugins",
+    response_class=HTMLResponse,
+    name="manage_plugins_page",
+    include_in_schema=False,
+)
 async def manage_plugins_page_route(
     request: Request, current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -99,7 +104,9 @@ async def manage_plugins_page_route(
 
 
 # --- API Route ---
-@router.get("/api", response_model=GeneralPluginApiResponse, tags=["Plugin API"])
+@router.get(
+    "/api/plugins", response_model=GeneralPluginApiResponse, tags=["Plugin API"]
+)
 async def get_plugins_status_api_route(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -136,7 +143,9 @@ async def get_plugins_status_api_route(
 
 # --- API Route ---
 @router.post(
-    "/api/trigger_event", response_model=GeneralPluginApiResponse, tags=["Plugin API"]
+    "/api/plugins/trigger_event",
+    response_model=GeneralPluginApiResponse,
+    tags=["Plugin API"],
 )
 async def trigger_event_api_route(
     payload: TriggerEventPayload,
@@ -195,7 +204,9 @@ async def trigger_event_api_route(
 
 
 @router.post(
-    "/api/{plugin_name}", response_model=GeneralPluginApiResponse, tags=["Plugin API"]
+    "/api/plugins/{plugin_name}",
+    response_model=GeneralPluginApiResponse,
+    tags=["Plugin API"],
 )
 async def set_plugin_status_api_route(
     plugin_name: str,
@@ -254,7 +265,9 @@ async def set_plugin_status_api_route(
         )
 
 
-@router.put("/api/reload", response_model=GeneralPluginApiResponse, tags=["Plugin API"])
+@router.put(
+    "/api/plugins/reload", response_model=GeneralPluginApiResponse, tags=["Plugin API"]
+)
 async def reload_plugins_api_route(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):

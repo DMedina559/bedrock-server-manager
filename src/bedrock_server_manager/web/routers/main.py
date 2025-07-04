@@ -26,13 +26,11 @@ from ..dependencies import validate_server_exists
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    tags=["main"],
-)
+router = APIRouter()
 
 
 # --- Route: Main Dashboard ---
-@router.get("/", response_class=HTMLResponse, name="index")
+@router.get("/", response_class=HTMLResponse, name="index", include_in_schema=False)
 async def index(
     request: Request,
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
@@ -69,7 +67,9 @@ async def index(
 
 
 # --- Route: Redirect to OS-Specific Scheduler Page ---
-@router.get("/server/{server_name}/scheduler", name="task_scheduler")
+@router.get(
+    "/server/{server_name}/scheduler", name="task_scheduler", include_in_schema=False
+)
 async def task_scheduler_route(
     server_name: str,
     request: Request,
@@ -115,7 +115,10 @@ async def task_scheduler_route(
 
 
 @router.get(
-    "/server/{server_name}/monitor", response_class=HTMLResponse, name="monitor_server"
+    "/server/{server_name}/monitor",
+    response_class=HTMLResponse,
+    name="monitor_server",
+    include_in_schema=False,
 )
 async def monitor_server_route(
     request: Request,

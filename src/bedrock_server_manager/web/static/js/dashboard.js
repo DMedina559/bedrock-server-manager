@@ -48,12 +48,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         case 'task-scheduler-menu': targetUrl = `/server/${serverNameEncoded}/scheduler`; break; // This redirects via main_router
 
                         // Routes with /content prefix
-                        case 'content-link-world': targetUrl = `/content/server/${serverNameEncoded}/install_world`; break;
-                        case 'content-link-addon': targetUrl = `/content/server/${serverNameEncoded}/install_addon`; break;
+                        case 'content-link-world': targetUrl = `/server/${serverNameEncoded}/install_world`; break;
+                        case 'content-link-addon': targetUrl = `/server/${serverNameEncoded}/install_addon`; break;
 
                         // Routes with /backup-restore prefix
-                        case 'backup-link-menu': targetUrl = `/backup-restore/server/${serverNameEncoded}/backup`; break;
-                        case 'restore-link-menu': targetUrl = `/backup-restore/server/${serverNameEncoded}/restore`; break;
+                        case 'backup-link-menu': targetUrl = `/server/${serverNameEncoded}/backup`; break;
+                        case 'restore-link-menu': targetUrl = `/server/${serverNameEncoded}/restore`; break;
 
                         default:
                             console.warn(`${functionName}: No URL map for link ID '${action.id}'.`);

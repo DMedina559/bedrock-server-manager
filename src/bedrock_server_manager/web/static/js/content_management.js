@@ -57,7 +57,7 @@ function triggerWorldInstall(buttonElement, serverName, worldFilePath) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/content/api/server/${serverName}/world/install`; // Updated for FastAPI prefix
+    const apiUrl = `/api/server/${serverName}/world/install`; // Updated for FastAPI prefix
     console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl}...`);
     // sendServerActionRequest handles button disabling, status messages, and response processing
     sendServerActionRequest(null, apiUrl, 'POST', requestBody, buttonElement);
@@ -87,7 +87,7 @@ async function triggerWorldExport(buttonElement, serverName) {
     console.log(`${functionName}: Sending API request to export world.`);
     // Call the generic request handler
     // Export endpoint doesn't require a request body (body = null)
-    const absoluteActionPath = `/content/api/server/${serverName}/world/export`; // Updated for FastAPI prefix
+    const absoluteActionPath = `/api/server/${serverName}/world/export`; // Updated for FastAPI prefix
     const result = await sendServerActionRequest(
         null, // serverName is now part of absolute path
         absoluteActionPath,
@@ -129,7 +129,7 @@ async function triggerWorldReset(buttonElement, serverName) {
     console.log(`${functionName}: Sending API request to reset world.`);
     // Call the generic request handler
     // Export endpoint doesn't require a request body (body = null)
-    const absoluteActionPath = `/content/api/server/${serverName}/world/reset`; // Updated for FastAPI prefix
+    const absoluteActionPath = `/api/server/${serverName}/world/reset`; // Updated for FastAPI prefix
     const result = await sendServerActionRequest(
         null, // serverName is now part of absolute path
         absoluteActionPath,
@@ -195,7 +195,7 @@ function triggerAddonInstall(buttonElement, serverName, addonFilePath) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/content/api/server/${serverName}/addon/install`; // Updated for FastAPI prefix
+    const apiUrl = `/api/server/${serverName}/addon/install`; // Updated for FastAPI prefix
     console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl}...`);
     sendServerActionRequest(null, apiUrl, 'POST', requestBody, buttonElement);
 

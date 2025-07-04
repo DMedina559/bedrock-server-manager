@@ -42,10 +42,7 @@ from bedrock_server_manager.error import BSMError, UserInputError, AppFileNotFou
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/backup-restore",
-    tags=["Backup & Restore"],
-)
+router = APIRouter()
 
 
 # --- Pydantic Models ---
@@ -103,7 +100,10 @@ class GeneralResponse(BaseModel):
 
 # --- HTML Routes ---
 @router.get(
-    "/server/{server_name}/backup", response_class=HTMLResponse, name="backup_menu_page"
+    "/server/{server_name}/backup",
+    response_class=HTMLResponse,
+    name="backup_menu_page",
+    include_in_schema=False,
 )
 async def backup_menu_page(
     request: Request,
@@ -133,6 +133,7 @@ async def backup_menu_page(
     "/server/{server_name}/backup/select",
     response_class=HTMLResponse,
     name="backup_config_select_page",
+    include_in_schema=False,
 )
 async def backup_config_select_page(
     request: Request,
@@ -162,6 +163,7 @@ async def backup_config_select_page(
     "/server/{server_name}/restore",
     response_class=HTMLResponse,
     name="restore_menu_page",
+    include_in_schema=False,
 )
 async def restore_menu_page(
     request: Request,
@@ -191,6 +193,7 @@ async def restore_menu_page(
     "/server/{server_name}/restore/{restore_type}/select_file",
     response_class=HTMLResponse,
     name="select_backup_file_page",
+    include_in_schema=False,
 )
 async def show_select_backup_file_page(
     request: Request,

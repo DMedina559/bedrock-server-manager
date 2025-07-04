@@ -48,7 +48,7 @@ function triggerBackup(buttonElement, serverName, backupType) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const absoluteActionPath = `/backup-restore/api/server/${serverName}/backup/action`;
+    const absoluteActionPath = `/api/server/${serverName}/backup/action`;
     console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for backup type '${backupType}'...`);
     // sendServerActionRequest handles disabling button, showing status messages, and handling response
     sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
@@ -85,7 +85,7 @@ function triggerSpecificConfigBackup(buttonElement, serverName, filename) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const absoluteActionPath = `/backup-restore/api/server/${serverName}/backup/action`;
+    const absoluteActionPath = `/api/server/${serverName}/backup/action`;
     console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for specific config backup ('${trimmedFilename}')...`);
     sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
@@ -142,7 +142,7 @@ function triggerRestore(buttonElement, serverName, restoreType, backupFilePath) 
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const absoluteActionPath = `/backup-restore/api/server/${serverName}/restore/action`;
+    const absoluteActionPath = `/api/server/${serverName}/restore/action`;
     console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for restore type '${normalizedRestoreType}'...`);
     sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
@@ -180,7 +180,7 @@ function triggerRestoreAll(buttonElement, serverName) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const absoluteActionPath = `/backup-restore/api/server/${serverName}/restore/action`;
+    const absoluteActionPath = `/api/server/${serverName}/restore/action`;
     console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for restore all...`);
     sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
@@ -208,7 +208,7 @@ async function handleSelectBackupType(buttonElement, serverName, restoreType) {
     // It should return a JSON response. If successful, the response might contain 
     // a URL to redirect to.
 
-    const absoluteActionPath = `/backup-restore/api/server/${serverName}/restore/select_backup_type`;
+    const absoluteActionPath = `/api/server/${serverName}/restore/select_backup_type`;
 
     try {
         // Assuming sendServerActionRequest returns a promise that resolves with the response data

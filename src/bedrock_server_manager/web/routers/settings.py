@@ -32,7 +32,7 @@ from bedrock_server_manager.error import BSMError, UserInputError, MissingArgume
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Global Settings"])
+router = APIRouter()
 
 
 # --- Pydantic Models ---
@@ -63,7 +63,12 @@ class SettingsResponse(BaseModel):
 
 
 # --- HTML Route: /settings ---
-@router.get("/settings", response_class=HTMLResponse, name="manage_settings_page")
+@router.get(
+    "/settings",
+    response_class=HTMLResponse,
+    name="manage_settings_page",
+    include_in_schema=False,
+)
 async def manage_settings_page_route(
     request: Request, current_user: Dict[str, Any] = Depends(get_current_user)
 ):

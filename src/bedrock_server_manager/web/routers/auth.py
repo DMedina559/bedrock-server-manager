@@ -76,7 +76,7 @@ class MessageResponse(BaseModel):
 
 
 # --- Web UI Login Page Route ---
-@router.get("/login", response_class=HTMLResponse)
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_page(
     request: Request,
     user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),

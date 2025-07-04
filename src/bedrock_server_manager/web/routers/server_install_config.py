@@ -37,7 +37,7 @@ from bedrock_server_manager.error import BSMError, UserInputError, AppFileNotFou
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Server Installation & Configuration"])
+router = APIRouter()
 
 
 # --- Pydantic Models ---
@@ -129,7 +129,12 @@ class ServiceUpdatePayload(BaseModel):
 
 
 # --- HTML Route: /install ---
-@router.get("/install", response_class=HTMLResponse, name="install_server_page")
+@router.get(
+    "/install",
+    response_class=HTMLResponse,
+    name="install_server_page",
+    include_in_schema=False,
+)
 async def install_server_page(
     request: Request, current_user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -259,6 +264,7 @@ async def install_server_api_route(
     "/server/{server_name}/configure_properties",
     response_class=HTMLResponse,
     name="configure_properties_page",
+    include_in_schema=False,
 )
 async def configure_properties_page(
     request: Request,
@@ -294,6 +300,7 @@ async def configure_properties_page(
     "/server/{server_name}/configure_allowlist",
     response_class=HTMLResponse,
     name="configure_allowlist_page",
+    include_in_schema=False,
 )
 async def configure_allowlist_page(
     request: Request,
@@ -329,6 +336,7 @@ async def configure_allowlist_page(
     "/server/{server_name}/configure_permissions",
     response_class=HTMLResponse,
     name="configure_permissions_page",
+    include_in_schema=False,
 )
 async def configure_permissions_page(
     request: Request,
@@ -364,6 +372,7 @@ async def configure_permissions_page(
     "/server/{server_name}/configure_service",
     response_class=HTMLResponse,
     name="configure_service_page",
+    include_in_schema=False,
 )
 async def configure_service_page(
     request: Request,
