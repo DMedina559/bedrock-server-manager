@@ -127,10 +127,10 @@ def cli(ctx: click.Context):
         sys.exit(1)
 
     ctx.obj = {
-        "cli_group": cli,
+        "cli": cli,
         "bsm": bsm,
         "settings": settings,
-        "plugin_manager": global_api_plugin_manager,  # Add the shared plugin manager
+        "plugin_manager": global_api_plugin_manager,
     }
 
     if ctx.invoked_subcommand is None:
