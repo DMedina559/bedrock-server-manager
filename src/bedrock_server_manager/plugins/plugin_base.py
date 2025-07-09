@@ -602,3 +602,53 @@ class PluginBase(ABC):
                 a list of pruned files or a count.
         """
         pass
+
+    # --- Plugin Extension Hooks ---
+
+    def get_cli_commands(self) -> List[Any]:
+        """
+        Called by the PluginManager after the plugin is loaded to retrieve
+        any custom CLI commands (click.Command or click.Group instances)
+        the plugin wishes to register with the main application.
+
+        Plugins should override this method to return a list of Click objects.
+
+        Example:
+            import click
+
+            @click.command()
+            def my_command():
+                click.echo("Hello from plugin command!")
+
+            return [my_command]
+
+        Returns:
+            List[Any]: A list of click.Command or click.Group objects.
+                       Defaults to an empty list.
+        """
+        return []
+
+    def get_fastapi_routers(self) -> List[Any]:
+        """
+        Called by the PluginManager after the plugin is loaded to retrieve
+        any custom FastAPI routers (fastapi.APIRouter instances)
+        the plugin wishes to register with the main web application.
+
+        Plugins should override this method to return a list of APIRouter objects.
+
+        Example:
+            from fastapi import APIRouter
+
+            my_router = APIRouter(prefix="/my_plugin_api", tags=["My Plugin"])
+
+            @my_router.get("/status")
+            async def get_status():
+                return {"status": "ok"}
+
+            return [my_router]
+
+        Returns:
+            List[Any]: A list of fastapi.APIRouter objects.
+                       Defaults to an empty list.
+        """
+        return []

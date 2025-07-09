@@ -66,8 +66,66 @@ app.include_router(backup_restore.router)
 app.include_router(content.router)
 app.include_router(settings.router)
 app.include_router(api_info.router)
-app.include_router(plugin.router)
+app.include_router(plugin.router) # Core plugin management UI routes
 app.include_router(util.router)
+
+
+# --- Dynamically include FastAPI routers from plugins ---
+# This section runs when web/main.py is imported (e.g., by Uvicorn).
+# It needs access to a PluginManager instance that has already loaded plugins.
+
+# Import necessary modules (ideally, these would be less deep if possible, or PluginManager could be a singleton)
+from bedrock_server_manager.config.settings import Settings as GlobalSettings # Alias to avoid conflict if any
+from bedrock_server_manager.plugins.plugin_manager import PluginManager as GlobalPluginManager # Alias
+import logging # Use standard logging
+
+web_main_logger = logging.getLogger("bsm_web_main") # Specific logger for this module
+
+try:
+    # Instantiate settings if not already available globally in a way this module can see.
+    # PluginManager relies on the global `settings` from `config.settings` when it's imported.
+    # So, ensuring `config.settings.settings` is initialized is key.
+    # `GlobalSettings()` call ensures it's loaded if not already.
+    _ = GlobalSettings() # Ensures settings are loaded for PluginManager
+
+    pm_instance = GlobalPluginManager()
+    pm_instance.load_plugins() # Load plugins and collect their routers
+
+    if pm_instance.plugin_fastapi_routers:
+        web_main_logger.info(
+            f"Found {len(pm_instance.plugin_fastapi_routers)} FastAPI router(s) from plugins. Attempting to include them."
+        )
+        for router_idx, router_obj in enumerate(pm_instance.plugin_fastapi_routers):
+            try:
+                # Basic check if it's an APIRouter, can be made more robust
+                if hasattr(router_obj, "routes") and callable(getattr(router_obj, "include_router", None)):
+                    app.include_router(router_obj)
+                    router_prefix = getattr(router_obj, 'prefix', f"N/A_idx_{router_idx}")
+                    web_main_logger.info(f"Successfully included FastAPI router with prefix '{router_prefix}' from a plugin.")
+                else:
+                    web_main_logger.warning(
+                        f"Plugin provided an object that does not appear to be a valid FastAPI APIRouter at index {router_idx}. Object: {type(router_obj)}"
+                    )
+            except Exception as e_router:
+                web_main_logger.error(
+                    f"Failed to include a FastAPI router (index {router_idx}) from a plugin: {e_router}", exc_info=True
+                )
+    else:
+        web_main_logger.info("No additional FastAPI routers found from plugins to include.")
+
+except ImportError as e_imp:
+    web_main_logger.critical(
+        f"Could not import Settings or PluginManager for FastAPI plugin integration: {e_imp}. Plugin web endpoints will be disabled.",
+        exc_info=True
+    )
+except Exception as e_plugin_load:
+    web_main_logger.critical(
+        f"Critical error during plugin FastAPI router integration: {e_plugin_load}. Plugin web endpoints may be disabled.",
+        exc_info=True
+    )
+    # Depending on severity, one might re-raise to prevent app startup,
+    # but for now, we allow the app to try starting without plugin routers.
+
 
 if __name__ == "__main__":
     import uvicorn

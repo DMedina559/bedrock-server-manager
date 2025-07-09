@@ -105,7 +105,148 @@ class HomeAutomationStarterPlugin(PluginBase):
         self.api.start_server(server_name=TARGET_SERVER_NAME, mode="detached")
 ```
 
-## 5. Best Practices
+## 5. Extending Functionality: Custom CLI Commands and FastAPI Endpoints
+
+Plugins can significantly extend Bedrock Server Manager by adding their own custom CLI commands and FastAPI web endpoints. This allows for deep integration and tailored functionality.
+
+To enable this, your plugin class (derived from `PluginBase`) needs to override one or both of the following methods:
+
+*   **`get_cli_commands(self) -> List[click.Command | click.Group]`**:
+    This method should return a list of Click command or group objects that your plugin wants to add to the main `bedrock-server-manager` CLI.
+*   **`get_fastapi_routers(self) -> List[fastapi.APIRouter]`**:
+    This method should return a list of FastAPI `APIRouter` instances that your plugin wants to add to the main web application.
+
+The Plugin Manager will call these methods on your plugin instance after it's loaded. The collected commands and routers are then integrated into the main application.
+
+### 5.1. Adding Custom CLI Commands
+
+To add CLI commands, define your Click commands/groups as usual and then return them in a list from `get_cli_commands()`.
+
+**Example:**
+
+```python
+# my_cli_plugin.py
+from bedrock_server_manager.plugins.plugin_base import PluginBase
+import click
+
+# Define a Click command group
+@click.group("myplug")
+def my_plugin_cli_group():
+    """A custom command group from My CLI Plugin."""
+    pass # This docstring will appear in 'bsm myplug --help'
+
+@my_plugin_cli_group.command("greet")
+@click.option('--name', default='CLI User', help='The person to greet.')
+def greet_command(name):
+    """Greets a user from the plugin's CLI."""
+    click.echo(f"Hello, {name}, from My CLI Plugin!")
+
+@my_plugin_cli_group.command("status")
+def status_command():
+    """Shows a custom status from the plugin."""
+    click.echo("My CLI Plugin status: All systems nominal.")
+
+class MyCLIPlugin(PluginBase):
+    version = "1.1.0"  # Mandatory
+
+    def on_load(self):
+        self.logger.info(f"{self.name} v{self.version} loaded.")
+
+    def get_cli_commands(self):
+        self.logger.info(f"Providing CLI command group 'myplug' with its subcommands.")
+        # Return the top-level group; Click handles its subcommands.
+        return [my_plugin_cli_group] 
+```
+
+After enabling `my_cli_plugin.py`, the following commands would become available:
+
+*   `bedrock-server-manager myplug --help`
+*   `bedrock-server-manager myplug greet --name "Awesome Dev"`
+*   `bedrock-server-manager myplug status`
+
+### 5.2. Adding Custom FastAPI Endpoints (Web APIs and Pages)
+
+To add web endpoints, define your FastAPI `APIRouter` instances and return them in a list from `get_fastapi_routers()`. These routers will be included in the main FastAPI application.
+
+**Example:**
+
+```python
+# my_web_api_plugin.py
+from bedrock_server_manager import PluginBase
+from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
+
+# Attempt to import authentication dependency; provide a fallback for isolated testing/robustness
+try:
+    from bedrock_server_manager.web.auth_utils import get_current_user
+    HAS_AUTH_DEP = True
+except ImportError:
+    HAS_AUTH_DEP = False
+    async def get_current_active_user(): return {"username": "anonymous_plugin_user"} # Dummy
+
+# Create an APIRouter instance
+plugin_web_router = APIRouter(
+    prefix="/my_web_plugin",  # URL prefix for all routes in this router
+    tags=["My Web Plugin"],   # Tag for OpenAPI documentation (e.g., /docs)
+    dependencies=[Depends(get_current_user)] if HAS_AUTH_DEP else [] # Secure all routes
+)
+
+@plugin_web_router.get("/info")
+async def get_plugin_web_info():
+    """Returns some information via the plugin's web API."""
+    return {"plugin_name": "My Web API Plugin", "message": "API is active!"}
+
+@plugin_web_router.post("/submit_data")
+async def submit_data_to_plugin(data: dict):
+    """A sample POST endpoint for the plugin."""
+    # In a real plugin, you might use self.api here if you had access to it from the router
+    # or if the router was created within the plugin instance method that has `self`.
+    # This example keeps the router definition self-contained for clarity.
+    return {"status": "success", "received_data": data, "plugin_response": "Data processed by My Web API Plugin."}
+
+@plugin_web_router.get("/custom-html-page", response_class=HTMLResponse)
+async def get_plugin_custom_html():
+    """Serves a custom HTML page from the plugin."""
+    html_content = """
+    <html>
+        <head><title>My Plugin Page</title></head>
+        <body><h1>Hello from My Web Plugin's Custom HTML Page!</h1></body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+class MyWebAPIPlugin(PluginBase):
+    version = "1.2.0" # Mandatory
+
+    def on_load(self):
+        self.logger.info(f"{self.name} v{self.version} loaded.")
+        if not HAS_AUTH_DEP:
+            self.logger.warning("Auth dependency 'get_current_active_user' not found. Plugin API endpoints might be unsecured.")
+
+    def get_fastapi_routers(self):
+        self.logger.info(f"Providing FastAPI router for '/my_web_plugin'.")
+        return [plugin_web_router] # Return a list containing your router(s)
+```
+
+After enabling `my_web_api_plugin.py` and restarting the Bedrock Server Manager web server, you could access:
+
+*   `GET /my_web_plugin/info` (API endpoint)
+*   `POST /my_web_plugin/submit_data` (API endpoint, with a JSON body)
+*   `GET /my_web_plugin/custom-html-page` (HTML page)
+
+These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api/openapi.json` or `/docs`).
+
+```{tip}
+**Tips for Plugin Web Endpoints:**
+
+*   **Unique Prefixes:** Always use a unique `prefix` for your `APIRouter` (e.g., `/my_plugin_name`) to avoid conflicts with core application routes or other plugins.
+*   **OpenAPI Tags:** Use the `tags` parameter in your `APIRouter` to group your plugin's endpoints clearly in the OpenAPI documentation.
+*   **Authentication & Authorization:** You can secure your plugin's endpoints by adding FastAPI dependencies (like authentication checks) to your `APIRouter` or individual routes. You can import and use dependencies from `bedrock_server_manager.web.dependencies` if they suit your needs (as shown with `get_current_active_user`).
+*   **Serving HTML:** As shown, you can return `fastapi.responses.HTMLResponse` to serve custom web pages directly from your plugin. For more complex UIs, consider if client-side rendering calling your plugin's APIs is more appropriate.
+*   **Accessing `self.api` or `self.logger` from Routers:** If your route handlers need access to the plugin instance's `self.api` or `self.logger`, you'll need to define the router and its routes in a way that they can capture `self` (e.g., by defining routes as methods of a class that gets instantiated with `self`, or by creating the router instance within a method of your plugin class). The examples above define routers at the module level for simplicity.
+```
+
+## 6. Best Practices
 
 ```{tip}
 *   **Always use `self.logger`:** Do not use `print()`. The provided logger is integrated with the application's logging system.

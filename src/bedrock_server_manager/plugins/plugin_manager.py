@@ -80,6 +80,8 @@ class PluginManager:
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
+        self.plugin_cli_commands: List[Any] = []
+        self.plugin_fastapi_routers: List[Any] = []
 
         for directory in self.plugin_dirs:
             try:
@@ -458,6 +460,12 @@ class PluginManager:
                 f"Clearing {len(self.plugins)} previously loaded plugin instances before attempting new load."
             )
             self.plugins.clear()
+        
+        # Clear any previously collected commands and routers
+        self.plugin_cli_commands.clear()
+        logger.debug("Cleared previously collected plugin CLI commands.")
+        self.plugin_fastapi_routers.clear()
+        logger.debug("Cleared previously collected plugin FastAPI routers.")
 
         loaded_plugin_count = 0
         for plugin_name, config_data in self.plugin_config.items():
@@ -511,6 +519,53 @@ class PluginManager:
                         f"Dispatching 'on_load' event to plugin '{plugin_name}'."
                     )
                     self.dispatch_event(instance, "on_load")
+
+                    # Collect CLI commands
+                    try:
+                        if hasattr(instance, "get_cli_commands") and callable(
+                            getattr(instance, "get_cli_commands")
+                        ):
+                            commands = instance.get_cli_commands()
+                            if isinstance(commands, list) and commands:
+                                self.plugin_cli_commands.extend(commands)
+                                logger.info(
+                                    f"Collected {len(commands)} CLI command(s) from plugin '{plugin_name}'."
+                                )
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' added {len(commands)} CLI command(s). "
+                                    "Ensure you trust this plugin and understand what these commands do before execution."
+                                )
+                            elif commands: # Not a list or empty
+                                logger.warning(f"Plugin '{plugin_name}' get_cli_commands() did not return a list or returned an empty list.")
+                    except Exception as e_cli:
+                        logger.error(
+                            f"Error collecting CLI commands from plugin '{plugin_name}': {e_cli}",
+                            exc_info=True,
+                        )
+
+                    # Collect FastAPI routers
+                    try:
+                        if hasattr(instance, "get_fastapi_routers") and callable(
+                            getattr(instance, "get_fastapi_routers")
+                        ):
+                            routers = instance.get_fastapi_routers()
+                            if isinstance(routers, list) and routers:
+                                self.plugin_fastapi_routers.extend(routers)
+                                logger.info(
+                                    f"Collected {len(routers)} FastAPI router(s) from plugin '{plugin_name}'."
+                                )
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
+                                    "Ensure you trust this plugin as it can expose new web endpoints."
+                                )
+                            elif routers: # Not a list or empty
+                                logger.warning(f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list.")
+                    except Exception as e_api:
+                        logger.error(
+                            f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",
+                            exc_info=True,
+                        )
+
                 except Exception as e:
                     logger.error(
                         f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
@@ -521,7 +576,9 @@ class PluginManager:
                     f"Could not retrieve class for plugin '{plugin_name}' from path '{path}' during load phase. Skipping."
                 )
         logger.info(
-            f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins."
+            f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
+            f"Collected {len(self.plugin_cli_commands)} total CLI command(s) and "
+            f"{len(self.plugin_fastapi_routers)} total FastAPI router(s) from plugins."
         )
 
     def _is_valid_custom_event_name(self, event_name: str) -> bool:
@@ -696,6 +753,12 @@ class PluginManager:
             self.custom_event_listeners.clear()
         else:
             logger.info("No custom plugin event listeners to clear.")
+
+        # Also clear collected commands and routers on full reload
+        self.plugin_cli_commands.clear()
+        logger.debug("Cleared collected plugin CLI commands during reload.")
+        self.plugin_fastapi_routers.clear()
+        logger.debug("Cleared collected plugin FastAPI routers during reload.")
 
         logger.info(
             "Re-running plugin discovery, synchronization, and loading process..."
