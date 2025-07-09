@@ -460,7 +460,7 @@ class PluginManager:
                 f"Clearing {len(self.plugins)} previously loaded plugin instances before attempting new load."
             )
             self.plugins.clear()
-        
+
         # Clear any previously collected commands and routers
         self.plugin_cli_commands.clear()
         logger.debug("Cleared previously collected plugin CLI commands.")
@@ -535,8 +535,10 @@ class PluginManager:
                                     f"Plugin '{plugin_name}' added {len(commands)} CLI command(s). "
                                     "Ensure you trust this plugin and understand what these commands do before execution."
                                 )
-                            elif commands: # Not a list or empty
-                                logger.warning(f"Plugin '{plugin_name}' get_cli_commands() did not return a list or returned an empty list.")
+                            elif commands:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_cli_commands() did not return a list or returned an empty list."
+                                )
                     except Exception as e_cli:
                         logger.error(
                             f"Error collecting CLI commands from plugin '{plugin_name}': {e_cli}",
@@ -558,8 +560,10 @@ class PluginManager:
                                     f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
                                     "Ensure you trust this plugin as it can expose new web endpoints."
                                 )
-                            elif routers: # Not a list or empty
-                                logger.warning(f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list.")
+                            elif routers:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list."
+                                )
                     except Exception as e_api:
                         logger.error(
                             f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",

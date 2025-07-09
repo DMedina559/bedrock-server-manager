@@ -207,12 +207,12 @@ async def get_root_favicon():
 
 
 # --- Catch-all Route ---
-#@router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
-#async def catch_all_api_route(
+# @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
+# async def catch_all_api_route(
 #    request: Request,
 #    full_path: str,
 #    current_user: Dict[str, Any] = Depends(get_current_user),
-#):
+# ):
 #    """Redirects any unmatched authenticated API path to the main dashboard ('/').
 #
 #    This route acts as a catch-all for any GET requests under the API namespace
