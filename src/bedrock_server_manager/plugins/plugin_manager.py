@@ -244,7 +244,9 @@ class PluginManager:
                 logger.error(
                     f"Could not create module spec for plugin '{module_name_for_spec}' at {path}."
                 )
-                raise ImportError(f"Could not create module spec for {plugin_name}")
+                raise ImportError(
+                    f"Could not create module spec for {module_name_for_spec}"
+                )
 
             module = importlib.util.module_from_spec(spec)
             # Important for package imports within the plugin:
@@ -392,7 +394,7 @@ class PluginManager:
 
             if not plugin_class:
                 logger.warning(
-                    f"Could not find a valid PluginBase subclass in '{path}' for plugin '{plugin_name}'. "
+                    f"Could not find a valid PluginBase subclass in '{path_to_load}' for plugin '{plugin_name}'. "
                     "This file will be ignored."
                 )
                 if plugin_name in self.plugin_config:
@@ -407,7 +409,7 @@ class PluginManager:
             version_attr = getattr(plugin_class, "version", None)
             if not version_attr or not str(version_attr).strip():
                 logger.warning(
-                    f"Plugin class '{plugin_class.__name__}' in file '{path}' (for plugin '{plugin_name}') "
+                    f"Plugin class '{plugin_class.__name__}' in file '{path_to_load}' (for plugin '{plugin_name}') "
                     "is missing a valid 'version' class attribute or the version is empty. "
                     "This plugin will be ignored and cannot be loaded."
                 )
