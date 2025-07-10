@@ -10,8 +10,6 @@ from typing import Optional
 
 # Local imports
 from bedrock_server_manager.config.splash_text import SPLASH_TEXTS
-from bedrock_server_manager.config.const import app_name_title, get_installed_version
-from bedrock_server_manager.config.settings import settings
 from bedrock_server_manager.error import SystemError
 
 logger = logging.getLogger(__name__)

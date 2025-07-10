@@ -28,26 +28,24 @@ exceptions and aborting with a user-friendly message.
 """
 
 import logging
-import platform
-import sys
 from typing import Tuple
 
 import click
 import questionary
 
-from bedrock_server_manager.api import server as server_api
-from bedrock_server_manager.api import server_install_config as config_api
-from bedrock_server_manager.cli.system import interactive_service_workflow
-from bedrock_server_manager.cli.server_allowlist import interactive_allowlist_workflow
-from bedrock_server_manager.cli.server_permissions import (
+from ..api import server as server_api
+from ..api import server_install_config as config_api
+from .system import interactive_service_workflow
+from .server_allowlist import interactive_allowlist_workflow
+from .server_permissions import (
     interactive_permissions_workflow,
 )
-from bedrock_server_manager.cli.server_properties import interactive_properties_workflow
-from bedrock_server_manager.cli.utils import (
+from .server_properties import interactive_properties_workflow
+from .utils import (
     handle_api_response as _handle_api_response,
     ServerNameValidator,
 )
-from bedrock_server_manager.error import BSMError
+from ..error import BSMError
 
 
 logger = logging.getLogger(__name__)

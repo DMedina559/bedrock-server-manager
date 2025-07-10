@@ -21,10 +21,10 @@ import os
 import json
 import logging
 import collections.abc
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
-from bedrock_server_manager.error import ConfigurationError
-from bedrock_server_manager.config.const import (
+from ..error import ConfigurationError
+from .const import (
     package_name,
     env_name,
     get_installed_version,

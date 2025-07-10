@@ -23,11 +23,11 @@ import logging
 from typing import Dict, Any
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.error import BSMError, FileError
+from ..core import BedrockServerManager
+from ..error import BSMError, FileError
 
 logger = logging.getLogger(__name__)
 

@@ -35,27 +35,15 @@ capability checks and settings access.
 import functools
 import logging
 import time
-import platform
-import sys
-from typing import Callable, Optional, Any
+from typing import Callable, Optional
 
 import click
 import questionary
 
-from bedrock_server_manager.api import system as system_api
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.error import BSMError
-
-if platform.system() == "Windows":
-    from bedrock_server_manager.core.system.windows_class import (
-        BedrockServerWindowsService,
-        PYWIN32_AVAILABLE,
-    )
-
-    if PYWIN32_AVAILABLE:
-        import win32serviceutil
-        import servicemanager
+from ..api import system as system_api
+from .utils import handle_api_response as _handle_api_response
+from ..core import BedrockServerManager
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 

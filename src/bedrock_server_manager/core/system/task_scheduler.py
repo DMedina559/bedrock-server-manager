@@ -29,11 +29,10 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Dict, Any
 import xml.etree.ElementTree as ET
 import re
-from typing import Union
 
 # Local application imports.
-from bedrock_server_manager.config.const import EXPATH
-from bedrock_server_manager.error import (
+from ...config import EXPATH
+from ...error import (
     CommandNotFoundError,
     SystemError,
     InvalidServerNameError,

@@ -8,7 +8,7 @@ import click
 if platform.system() == "Windows":
     import win32serviceutil
     import servicemanager
-    from bedrock_server_manager.core.system.windows_class import (
+    from ..core.system.windows_class import (
         WebServerWindowsService,
         BedrockServerWindowsService,
         PYWIN32_AVAILABLE,

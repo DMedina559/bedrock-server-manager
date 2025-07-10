@@ -26,12 +26,12 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Type, Callable, Tuple
 
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.config.const import (
+from ..config.const import _MISSING_PARAM_PLACEHOLDER
+from ..config import (
     GUARD_VARIABLE,
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
-    _MISSING_PARAM_PLACEHOLDER,
+    settings,
 )
 from .plugin_base import PluginBase
 from .api_bridge import PluginAPI

@@ -24,11 +24,11 @@ from typing import Tuple
 import click
 import questionary
 
-from bedrock_server_manager.api import server_install_config as config_api
-from bedrock_server_manager.cli.utils import (
+from ..api import server_install_config as config_api
+from .utils import (
     handle_api_response as _handle_api_response,
 )
-from bedrock_server_manager.error import BSMError
+from ..error import BSMError
 
 
 def interactive_allowlist_workflow(server_name: str):

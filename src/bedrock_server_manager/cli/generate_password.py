@@ -14,8 +14,8 @@ stored or directly used in configurations.
 
 import click
 
-from bedrock_server_manager.config.const import env_name
-from bedrock_server_manager.web.auth_utils import pwd_context
+from ..config import env_name
+from ..web.auth_utils import pwd_context
 
 
 @click.command("generate-password")

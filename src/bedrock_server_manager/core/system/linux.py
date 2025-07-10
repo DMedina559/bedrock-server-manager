@@ -52,9 +52,9 @@ import time
 from typing import Optional, Any
 
 # Local application imports.
-from bedrock_server_manager.core.system import process as core_process
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from . import process as core_process
+from ...config import settings
+from ...error import (
     CommandNotFoundError,
     ServerNotRunningError,
     SendCommandError,

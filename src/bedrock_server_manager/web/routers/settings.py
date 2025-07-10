@@ -26,10 +26,10 @@ from fastapi.responses import (
 from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse
-from bedrock_server_manager.web.templating import templates
-from bedrock_server_manager.web.auth_utils import get_current_user
-from bedrock_server_manager.api import settings as settings_api
-from bedrock_server_manager.error import BSMError, UserInputError, MissingArgumentError
+from ..templating import templates
+from ..auth_utils import get_current_user
+from ...api import settings as settings_api
+from ...error import BSMError, UserInputError, MissingArgumentError
 
 logger = logging.getLogger(__name__)
 

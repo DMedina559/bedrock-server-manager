@@ -21,9 +21,9 @@ for use by administrative interfaces like a web UI or CLI.
 import logging
 from typing import Dict, Any
 
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.plugins.api_bridge import plugin_method
-from bedrock_server_manager.error import UserInputError
+from .. import plugin_manager
+from ..plugins import plugin_method
+from ..error import UserInputError
 
 logger = logging.getLogger(__name__)
 

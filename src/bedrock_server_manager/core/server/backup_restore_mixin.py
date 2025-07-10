@@ -23,23 +23,19 @@ import os
 import glob
 import re
 import shutil
-import logging
 from typing import Optional, Dict, List, Union, Any
 
 # Local application imports.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.error import (
+from .base_server_mixin import BedrockServerBaseMixin
+from ...error import (
     FileOperationError,
     UserInputError,
     BackupRestoreError,
     MissingArgumentError,
     ConfigurationError,
     AppFileNotFoundError,
-    ExtractError,
 )
-from bedrock_server_manager.utils import (
-    general,
-)
+from ...utils import get_timestamp
 
 
 class ServerBackupMixin(BedrockServerBaseMixin):
@@ -431,7 +427,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         os.makedirs(server_bck_dir, exist_ok=True)
 
-        timestamp = general.get_timestamp()
+        timestamp = get_timestamp()
         # Sanitize the world name to ensure it's a valid filename component.
         safe_world_name_for_file = re.sub(r'[<>:"/\\|?*]', "_", active_world_name)
         backup_filename = f"{safe_world_name_for_file}_backup_{timestamp}.mcworld"
@@ -525,7 +521,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         os.makedirs(server_bck_dir, exist_ok=True)  # Ensures backup directory exists
 
         name_part, ext_part = os.path.splitext(config_filename_in_server_dir)
-        timestamp = general.get_timestamp()  # YYYYMMDD_HHMMSS format
+        timestamp = get_timestamp()  # YYYYMMDD_HHMMSS format
         backup_config_filename = f"{name_part}_backup_{timestamp}{ext_part}"
         backup_destination_path = os.path.join(server_bck_dir, backup_config_filename)
 

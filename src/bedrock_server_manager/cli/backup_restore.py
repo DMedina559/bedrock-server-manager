@@ -35,9 +35,9 @@ from typing import Optional, Tuple
 import click
 import questionary
 
-from bedrock_server_manager.api import backup_restore as backup_restore_api
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.error import BSMError
+from ..api import backup_restore as backup_restore_api
+from .utils import handle_api_response as _handle_api_response
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 

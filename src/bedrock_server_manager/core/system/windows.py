@@ -49,14 +49,13 @@ import subprocess
 import logging
 import signal
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
     import win32pipe
     import win32file
     import win32service
-    import win32serviceutil
     import pywintypes
 
     PYWIN32_AVAILABLE = True
@@ -70,7 +69,6 @@ except ImportError:
 
 
 try:
-    import win32api
     import perfmon
     import win32evtlogutil
 
@@ -83,9 +81,9 @@ except ImportError:
     )
 
 # Local application imports.
-from bedrock_server_manager.core.system import process as core_process
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from . import process as core_process
+from ...config import settings
+from ...error import (
     MissingArgumentError,
     ServerStartError,
     AppFileNotFoundError,

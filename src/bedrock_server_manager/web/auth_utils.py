@@ -184,21 +184,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def get_password_hash(password: str) -> str:
-    """Hashes a password using passlib (for generating new password hashes).
-
-    Uses the global :data:`pwd_context` (a :class:`passlib.context.CryptContext` instance)
-    to generate the hash.
-
-    Args:
-        password (str): The plain text password to hash.
-
-    Returns:
-        str: The generated password hash.
-    """
-    return pwd_context.hash(password)
-
-
 def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
     """
     Authenticates a user against environment variable credentials.

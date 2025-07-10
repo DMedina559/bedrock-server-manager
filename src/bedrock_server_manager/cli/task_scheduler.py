@@ -30,10 +30,10 @@ import click
 import questionary
 from questionary import ValidationError, Validator
 
-from bedrock_server_manager.api import task_scheduler as api_task_scheduler
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.config.const import EXPATH
-from bedrock_server_manager.error import BSMError
+from ..api import task_scheduler as api_task_scheduler
+from .utils import handle_api_response as _handle_api_response
+from ..config import EXPATH
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 

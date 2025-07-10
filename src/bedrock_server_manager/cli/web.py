@@ -28,17 +28,15 @@ systemd, `pywin32` for Windows Services). The commands use functions from
 
 import functools
 import logging
-import platform
-import sys
-from typing import Tuple, Callable, Optional, List, Any
+from typing import Tuple, Callable, Optional
 
 import click
 import questionary
 
-from bedrock_server_manager.api import web as web_api
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.error import (
+from ..api import web as web_api
+from .utils import handle_api_response as _handle_api_response
+from ..core import BedrockServerManager
+from ..error import (
     BSMError,
     MissingArgumentError,
 )

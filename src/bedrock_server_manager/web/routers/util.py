@@ -15,14 +15,14 @@ from typing import Dict, Any
 from fastapi import APIRouter, Request, Depends, HTTPException, status, Path
 from fastapi.responses import FileResponse, RedirectResponse
 
-from bedrock_server_manager.web.auth_utils import (
+from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
 )
 from ..dependencies import validate_server_exists
-from bedrock_server_manager.core.bedrock_server import BedrockServer
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from ...core import BedrockServer
+from ...config import settings
+from ...error import (
     BSMError,
     AppFileNotFoundError,
     InvalidServerNameError,

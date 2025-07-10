@@ -30,8 +30,8 @@ import json
 from typing import Optional, Any, Dict, TYPE_CHECKING
 
 # Local application imports.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.error import (
+from .base_server_mixin import BedrockServerBaseMixin
+from ...error import (
     MissingArgumentError,
     UserInputError,
     FileOperationError,

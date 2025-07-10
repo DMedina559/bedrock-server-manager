@@ -27,20 +27,18 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from .. import plugin_manager
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.core.system import process as system_process_utils
-from bedrock_server_manager.error import (
+from ..core import BedrockServerManager
+from ..core.system import process as system_process_utils
+from ..error import (
     BSMError,
     FileOperationError,
     ServerProcessError,
     SystemError,
     UserInputError,
-    MissingArgumentError,
 )
 
 logger = logging.getLogger(__name__)

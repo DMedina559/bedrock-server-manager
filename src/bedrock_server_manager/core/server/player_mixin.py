@@ -14,8 +14,8 @@ import re
 from typing import List, Dict, TYPE_CHECKING, Any
 
 # Local application imports.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.error import FileOperationError
+from .base_server_mixin import BedrockServerBaseMixin
+from ...error import FileOperationError
 
 if TYPE_CHECKING:
     pass

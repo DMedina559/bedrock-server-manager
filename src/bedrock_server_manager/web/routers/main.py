@@ -17,8 +17,8 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, Path
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from bedrock_server_manager.web.templating import templates
-from bedrock_server_manager.web.auth_utils import (
+from ..templating import templates
+from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
 )

@@ -20,17 +20,15 @@ These functions are designed for use by higher-level application components,
 such as the web UI or CLI, to provide system-level control and monitoring.
 """
 import logging
-import platform
 from typing import Dict, Any
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.cli.plugins import plugin
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from .. import plugin_manager
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core.bedrock_server import BedrockServer
-from bedrock_server_manager.error import (
+from ..core import BedrockServer
+from ..error import (
     BSMError,
     InvalidServerNameError,
     MissingArgumentError,

@@ -19,17 +19,17 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from ..schemas import ActionResponse, BaseApiResponse
-from bedrock_server_manager.web.templating import templates
-from bedrock_server_manager.web.auth_utils import get_current_user
+from ..templating import templates
+from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
-from bedrock_server_manager.api import (
+from ...api import (
     world as world_api,
     addon as addon_api,
     application as app_api,
     utils as utils_api,
 )
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import BSMError, UserInputError
+from ...config import settings
+from ...error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
 

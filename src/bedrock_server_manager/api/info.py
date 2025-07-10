@@ -20,11 +20,11 @@ import logging
 from typing import Dict, Any
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core.bedrock_server import BedrockServer
-from bedrock_server_manager.error import (
+from ..core import BedrockServer
+from ..error import (
     BSMError,
     InvalidServerNameError,
 )

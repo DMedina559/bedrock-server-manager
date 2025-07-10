@@ -11,13 +11,13 @@ import threading
 from typing import Dict, Optional
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from .. import plugin_manager
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core import downloader
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from ..core import prune_old_downloads
+from ..config import settings
+from ..error import (
     BSMError,
     UserInputError,
     MissingArgumentError,
@@ -113,9 +113,7 @@ def prune_download_cache(
 
         try:
             # Delegate the actual file deletion to the core downloader module.
-            downloader.prune_old_downloads(
-                download_dir=download_dir, download_keep=effective_keep
-            )
+            prune_old_downloads(download_dir=download_dir, download_keep=effective_keep)
 
             logger.info(f"API: Pruning successful for directory '{download_dir}'.")
             result = {

@@ -21,9 +21,9 @@ from typing import Tuple
 
 import click
 
-from bedrock_server_manager.api import player as player_api
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.error import BSMError
+from ..api import player as player_api
+from .utils import handle_api_response as _handle_api_response
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 

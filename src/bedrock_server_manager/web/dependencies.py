@@ -10,10 +10,10 @@ See Also:
     FastAPI Dependencies: https://fastapi.tiangolo.com/tutorial/dependencies/
 """
 import logging
-from fastapi import HTTPException, status, Path, Request
+from fastapi import HTTPException, status, Path
 
-from bedrock_server_manager.api import utils as utils_api
-from bedrock_server_manager.error import (
+from ..api import utils as utils_api
+from ..error import (
     InvalidServerNameError,
 )
 

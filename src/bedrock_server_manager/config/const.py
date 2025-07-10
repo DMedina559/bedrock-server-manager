@@ -10,7 +10,7 @@ from typing import Dict, Tuple
 from importlib.metadata import version, PackageNotFoundError
 
 # Local imports
-from bedrock_server_manager.utils import package_finder
+from ..utils import package_finder
 
 # --- Package Constants ---
 package_name: str = "bedrock-server-manager"

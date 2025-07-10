@@ -23,10 +23,10 @@ import questionary
 from click.core import Context
 
 # Make sure this import points to your API functions module
-from bedrock_server_manager.api import plugins as plugins_api
-from bedrock_server_manager.config.const import app_name_title
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.error import BSMError, UserInputError
+from ..api import plugins as plugins_api
+from ..config import app_name_title
+from .utils import handle_api_response as _handle_api_response
+from ..error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
 

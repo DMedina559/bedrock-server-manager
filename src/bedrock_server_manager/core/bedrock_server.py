@@ -8,55 +8,35 @@ specialized mixin classes (e.g., for process control, world management, backups)
 each contributing a distinct set of features. This compositional approach promotes
 code organization and modularity, allowing for clear separation of concerns.
 """
-import logging
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
 if TYPE_CHECKING:
     # This allows for type hinting the Settings class without creating a circular import.
-    from bedrock_server_manager.config.settings import Settings
+    from ..config import Settings
 
 # Import all the mixin classes that will be combined to form the BedrockServer.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.core.server.installation_mixin import (
-    ServerInstallationMixin,
-)
-from bedrock_server_manager.core.server.state_mixin import ServerStateMixin
-from bedrock_server_manager.core.server.process_mixin import ServerProcessMixin
-from bedrock_server_manager.core.server.world_mixin import ServerWorldMixin
-from bedrock_server_manager.core.server.addon_mixin import ServerAddonMixin
-from bedrock_server_manager.core.server.backup_restore_mixin import ServerBackupMixin
-from bedrock_server_manager.core.server.systemd_mixin import ServerSystemdMixin
-from bedrock_server_manager.core.server.player_mixin import ServerPlayerMixin
-from bedrock_server_manager.core.server.windows_service_mixin import (
-    ServerWindowsServiceMixin,
-)
-from bedrock_server_manager.core.server.config_management_mixin import (
-    ServerConfigManagementMixin,
-)
-from bedrock_server_manager.core.server.install_update_mixin import (
-    ServerInstallUpdateMixin,
-)
-from bedrock_server_manager.error import FileOperationError, ConfigParseError
+from . import server
+from ..error import FileOperationError, ConfigParseError
 
 
 class BedrockServer(
     # The order of inheritance is important for Method Resolution Order (MRO).
     # More specific mixins should generally come before more general ones.
     # BedrockServerBaseMixin, providing foundational __init__, is typically last.
-    ServerStateMixin,
-    ServerProcessMixin,
-    ServerInstallationMixin,
-    ServerWorldMixin,
-    ServerAddonMixin,
-    ServerBackupMixin,
-    ServerSystemdMixin,
-    ServerWindowsServiceMixin,
-    ServerPlayerMixin,
-    ServerConfigManagementMixin,
-    ServerInstallUpdateMixin,
+    server.ServerStateMixin,
+    server.ServerProcessMixin,
+    server.ServerInstallationMixin,
+    server.ServerWorldMixin,
+    server.ServerAddonMixin,
+    server.ServerBackupMixin,
+    server.ServerSystemdMixin,
+    server.ServerWindowsServiceMixin,
+    server.ServerPlayerMixin,
+    server.ServerConfigManagementMixin,
+    server.ServerInstallUpdateMixin,
     # Foundational BedrockServerBaseMixin is last to ensure its __init__ runs after
     # all other mixins have potentially set up their specific attributes.
-    BedrockServerBaseMixin,
+    server.BedrockServerBaseMixin,
 ):
     """Represents and manages a single Minecraft Bedrock Server instance.
 

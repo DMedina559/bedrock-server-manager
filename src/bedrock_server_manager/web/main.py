@@ -12,13 +12,14 @@ it to be run by an ASGI server like Uvicorn. The Uvicorn server is also
 started here if the script is run directly.
 """
 from sys import version
+import os
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import os
 
-from bedrock_server_manager.web import templating
-from bedrock_server_manager.config.const import get_installed_version
+from . import templating
+from ..config import get_installed_version
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")
@@ -43,42 +44,28 @@ _templates_instance = Jinja2Templates(directory=TEMPLATES_DIR)
 
 templating.configure_templates(_templates_instance)
 
-from bedrock_server_manager.web.routers import (
-    main,
-    auth,
-    schedule_tasks,
-    server_actions,
-    server_install_config,
-    backup_restore,
-    content,
-    util,
-    settings,
-    api_info,
-    plugin,
-)
+from . import routers
 
-app.include_router(main.router)
-app.include_router(auth.router)
-app.include_router(schedule_tasks.router)
-app.include_router(server_actions.router)
-app.include_router(server_install_config.router)
-app.include_router(backup_restore.router)
-app.include_router(content.router)
-app.include_router(settings.router)
-app.include_router(api_info.router)
-app.include_router(plugin.router)  # Core plugin management UI routes
-app.include_router(util.router)
+app.include_router(routers.main_router)
+app.include_router(routers.auth_router)
+app.include_router(routers.schedule_tasks_router)
+app.include_router(routers.server_actions_router)
+app.include_router(routers.server_install_config_router)
+app.include_router(routers.backup_restore_router)
+app.include_router(routers.content_router)
+app.include_router(routers.settings_router)
+app.include_router(routers.api_info_router)
+app.include_router(routers.plugin_router)
+app.include_router(routers.util_router)
 
 
 # --- Dynamically include FastAPI routers from plugins ---
-# This section runs when web/main.py is imported (e.g., by Uvicorn).
-# It uses the global_api_plugin_manager that was initialized and loaded by api.__init__.py
 
 import logging  # Use standard logging
 
 # Import the shared plugin_manager from the api module
 try:
-    from bedrock_server_manager.api import plugin_manager as global_api_plugin_manager
+    from .. import plugin_manager as global_api_plugin_manager
 except ImportError as e_imp_pm_web:
     # Fallback or error logging if it cannot be imported
     # This should ideally not happen if the application structure is correct

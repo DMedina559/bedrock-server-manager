@@ -26,9 +26,9 @@ import subprocess
 from typing import Any, Dict, List, Optional
 
 # Local application imports.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.core.system import base as system_base
-from bedrock_server_manager.error import (
+from .base_server_mixin import BedrockServerBaseMixin
+from ..system import base as system_base
+from ...error import (
     AppFileNotFoundError,
     MissingArgumentError,
     FileOperationError,

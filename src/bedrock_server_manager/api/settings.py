@@ -15,12 +15,12 @@ import logging
 from typing import Any, Dict
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager.plugins.api_bridge import plugin_method
-from bedrock_server_manager.logging import setup_logging
+from ..plugins import plugin_method
+from ..logging import setup_logging
 
 # Local application imports.
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from ..config import settings
+from ..error import (
     BSMError,
     MissingArgumentError,
 )

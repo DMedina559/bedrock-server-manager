@@ -11,9 +11,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-# Local imports
-from bedrock_server_manager.config.settings import settings
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +36,8 @@ def startup_checks(
         logger.critical(message)
         # Raising an exception is the correct way to halt execution on a critical failure.
         raise RuntimeError(message)
+
+    from bedrock_server_manager.config.settings import settings
 
     # Ensure essential directories exist
     dirs_to_create = {

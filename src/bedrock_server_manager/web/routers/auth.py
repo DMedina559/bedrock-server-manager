@@ -32,15 +32,15 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from bedrock_server_manager.web.templating import templates
-from bedrock_server_manager.web.auth_utils import (
+from ..templating import templates
+from ..auth_utils import (
     create_access_token,
     authenticate_user,
     get_current_user_optional,
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
-from bedrock_server_manager.config.settings import settings
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 

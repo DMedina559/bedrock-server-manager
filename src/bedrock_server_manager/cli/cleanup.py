@@ -22,7 +22,7 @@ from typing import Optional
 
 import click
 
-from bedrock_server_manager.config.settings import settings
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 

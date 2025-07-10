@@ -19,23 +19,17 @@ Key functions include:
     for potential future reference or alternative implementations but should not be
     relied upon in their current state.
 """
-
 import os
 import re
 import logging
-import platform
-import subprocess
 import time
-import shutil
-from typing import Tuple, Optional
+from typing import Optional
 
 # Local imports
-from bedrock_server_manager.error import (
+from ..error import (
     MissingArgumentError,
     FileOperationError,
     InvalidServerNameError,
-    SystemError,
-    CommandNotFoundError,
 )
 
 # Dummy import for unused legacy functions.

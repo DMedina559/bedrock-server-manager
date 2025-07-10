@@ -18,8 +18,8 @@ from typing import Optional, List, Union
 
 import uvicorn
 
-from bedrock_server_manager.config.const import env_name
-from bedrock_server_manager.config.settings import settings
+from ..config import env_name
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 

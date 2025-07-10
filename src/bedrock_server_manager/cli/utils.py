@@ -37,12 +37,12 @@ import click
 import questionary
 from questionary import ValidationError, Validator
 
-from bedrock_server_manager.api import (
+from ..api import (
     application as api_application,
     server_install_config as config_api,
     utils as api_utils,
 )
-from bedrock_server_manager.error import BSMError
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 

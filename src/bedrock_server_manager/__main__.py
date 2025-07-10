@@ -9,6 +9,7 @@ the interactive menu system.
 """
 
 import logging
+import platform
 import sys
 
 import click
@@ -16,14 +17,14 @@ import click
 # --- Early and Essential Imports ---
 # This block handles critical import failures gracefully.
 try:
-    from bedrock_server_manager import __version__
-    from bedrock_server_manager.api import utils as api_utils
-    from bedrock_server_manager.config.const import app_name_title
-    from bedrock_server_manager.config.settings import Settings
-    from bedrock_server_manager.core.manager import BedrockServerManager
-    from bedrock_server_manager.error import UserExitError
-    from bedrock_server_manager.logging import log_separator, setup_logging
-    from bedrock_server_manager.utils.general import startup_checks
+    from . import __version__
+    from .api import utils as api_utils
+    from .config import app_name_title
+    from .config import settings
+    from .core import BedrockServerManager
+    from .error import UserExitError
+    from .logging import log_separator, setup_logging
+    from .utils.general import startup_checks
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -38,7 +39,7 @@ except ImportError as e:
 
 # --- Import all Click command modules ---
 # These are grouped logically for clarity.
-from bedrock_server_manager.cli import (
+from .cli import (
     addon,
     backup_restore,
     cleanup,
@@ -55,8 +56,13 @@ from bedrock_server_manager.cli import (
     web,
     world,
     plugins,
-    windows_service,
 )
+
+# Guarded import for Windows-specific functionality
+if platform.system() == "Windows":
+    from .cli import windows_service
+else:
+    windows_service = None
 
 # --- Import the shared PluginManager instance ---
 # This instance is created in bedrock_server_manager/__init__.py
@@ -64,7 +70,7 @@ from bedrock_server_manager.cli import (
 # So, by the time __main__ fully runs, plugins should be loaded if api module was imported.
 # One of the CLI modules (e.g. cli.plugins) or api.utils might import api.__init__ early.
 try:
-    from bedrock_server_manager.api import plugin_manager as global_api_plugin_manager
+    from . import plugin_manager as global_api_plugin_manager
 except ImportError as e_imp_pm:
     # Fallback or error logging if bedrock_server_manager.api.plugin_manager cannot be imported
     # This might happen if `api.__init__` itself has an issue or isn't processed yet.
@@ -96,9 +102,6 @@ def cli(ctx: click.Context):
     """
     try:
         # --- Initial Application Setup ---
-        settings = (
-            Settings()
-        )  # Settings are generally loaded globally on first import too.
         log_dir = settings.get("paths.logs")
 
         logger = setup_logging(

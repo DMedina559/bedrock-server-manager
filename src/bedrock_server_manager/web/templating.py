@@ -15,8 +15,8 @@ import os
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 
-from bedrock_server_manager.utils import get_utils
-from bedrock_server_manager.config.const import get_installed_version, app_name_title
+from ..utils import get_utils
+from ..config import get_installed_version, app_name_title
 
 templates: Optional[Jinja2Templates] = None
 

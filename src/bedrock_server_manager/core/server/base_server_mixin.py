@@ -17,10 +17,10 @@ from typing import Optional, Any
 from functools import cached_property
 
 # Local application imports.
-from bedrock_server_manager.config.const import EXPATH as CONST_EXPATH
-from bedrock_server_manager.core.system import base as system_base
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import MissingArgumentError, ConfigurationError
+from ...config import EXPATH as CONST_EXPATH
+from ..system import base as system_base
+from ...config import Settings
+from ...error import MissingArgumentError, ConfigurationError
 
 
 class BedrockServerBaseMixin:

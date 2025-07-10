@@ -38,9 +38,9 @@ from pathlib import Path
 from typing import Tuple, Optional, Set
 
 # Local application imports.
-from bedrock_server_manager.core.system import base as system_base
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import (
+from .system import base as system_base
+from ..config import Settings
+from ..error import (
     DownloadError,
     ExtractError,
     MissingArgumentError,

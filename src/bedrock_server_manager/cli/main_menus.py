@@ -14,10 +14,10 @@ import click
 import questionary
 from questionary import Separator
 
-from bedrock_server_manager.config.const import app_name_title
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.error import UserExitError
-from bedrock_server_manager.utils.get_utils import _get_splash_text
+from ..config import app_name_title
+from ..core import BedrockServerManager
+from ..error import UserExitError
+from ..utils.get_utils import _get_splash_text
 
 from .utils import get_server_name_interactively, list_servers
 

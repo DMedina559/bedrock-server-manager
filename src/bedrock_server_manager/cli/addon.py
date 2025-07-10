@@ -23,10 +23,9 @@ from typing import Optional
 import click
 import questionary
 
-from bedrock_server_manager.api import addon as addon_api
-from bedrock_server_manager.api import application as api_application
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.error import BSMError
+from ..api import addon as addon_api, application as api_application
+from .utils import handle_api_response as _handle_api_response
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 

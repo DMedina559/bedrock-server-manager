@@ -59,13 +59,12 @@ except ImportError:
     # and to prevent NameError if accessed before a check.
     # The docstring above will be associated with the True assignment by Sphinx.
 
-from bedrock_server_manager.config.const import GUARD_VARIABLE
-from bedrock_server_manager.error import (
+from ...config import GUARD_VARIABLE
+from ...error import (
     FileOperationError,
     SystemError,
     ServerProcessError,
     AppFileNotFoundError,
-    UserInputError,
     MissingArgumentError,
     PermissionsError,
     ServerStopError,
