@@ -273,3 +273,24 @@ class PluginAPI:
             event_name, self._plugin_name, *args, **kwargs
         )
         # Note: The PluginManager's method will log the details of the event dispatch.
+
+    def get_plugin_html_pages(self) -> List[Dict[str, str]]:
+        """
+        Retrieves a list of plugin routes that are tagged for HTML rendering.
+
+        This allows the main application (or other plugins, if appropriate)
+        to discover web pages provided by plugins that are intended to be
+        directly accessible or linked in a UI.
+
+        Returns:
+            List[Dict[str, str]]: A list of dictionaries, where each dictionary
+            contains 'name' and 'path' for a route tagged for HTML rendering.
+            The 'name' is a user-friendly display name for the link, and 'path'
+            is the URL path for the route.
+        """
+        logger.debug(
+            f"Plugin '{self._plugin_name}' (or core app via API) is requesting "
+            "the list of HTML rendering plugin pages."
+        )
+        # Delegate to the PluginManager's method that collects these routes
+        return self._plugin_manager.get_html_render_routes()

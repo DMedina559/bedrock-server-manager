@@ -13,7 +13,8 @@ to obtain the configured templates object.
 """
 import os
 from fastapi.templating import Jinja2Templates
-from typing import Optional
+from typing import Optional, List
+from pathlib import Path
 
 from ..utils import get_utils
 from ..config import get_installed_version, app_name_title
@@ -21,28 +22,31 @@ from ..config import get_installed_version, app_name_title
 templates: Optional[Jinja2Templates] = None
 
 
-def configure_templates(templates_instance: Jinja2Templates):
+def configure_templates(template_directories: List[Path]):
     """
-    Configures the global Jinja2Templates instance with global variables and filters.
+    Creates and configures the global Jinja2Templates instance.
 
     This function should be called exactly once from the main application startup
-    sequence (e.g., in ``main.py`` or ``app.py``) to initialize and prepare the
-    shared :class:`~fastapi.templating.Jinja2Templates` instance for the entire web application.
-
-    It sets global variables like application name, version, splash text, and
-    adds custom filters like ``os.path.basename`` (as "basename").
+    sequence (e.g., in ``main.py``) to initialize the templating system.
+    It creates the Jinja2Templates instance with the provided list of directories
+    and sets global variables and filters.
 
     Args:
-        templates_instance (:class:`~fastapi.templating.Jinja2Templates`): The
-            :class:`~fastapi.templating.Jinja2Templates` instance that was
-            created in the main application setup.
+        template_directories (List[Path]): A list of `pathlib.Path` objects,
+            each pointing to a directory to be included in Jinja2's search path.
+            The order matters for template overriding (first found wins).
     """
     global templates
 
-    templates = templates_instance
+    if not template_directories:
+        raise ValueError("At least one template directory must be provided.")
 
+    templates = Jinja2Templates(directory=template_directories)
+
+    # Add custom filters
     templates.env.filters["basename"] = os.path.basename
 
+    # Add global variables
     templates.env.globals["app_name"] = app_name_title
     templates.env.globals["app_version"] = get_installed_version()
     templates.env.globals["splash_text"] = get_utils._get_splash_text()

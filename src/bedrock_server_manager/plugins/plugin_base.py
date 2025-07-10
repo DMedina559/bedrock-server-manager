@@ -14,11 +14,9 @@ of the server manager.
 from abc import ABC
 from typing import Dict, Any, List
 from logging import Logger  # Used for type hinting the logger instance.
-from .api_bridge import PluginAPI  # Used for type hinting the API bridge instance.
+from pathlib import Path  # For type hinting Path objects
 
-# The get_installed_version import seems unused in this file.
-# If it were used, its purpose would be to fetch the application's version.
-# from bedrock_server_manager.config.const import get_installed_version
+from .api_bridge import PluginAPI  # Used for type hinting the API bridge instance.
 
 
 class PluginBase(ABC):
@@ -636,19 +634,53 @@ class PluginBase(ABC):
 
         Plugins should override this method to return a list of APIRouter objects.
 
+        Returns:
+            List[Any]: A list of fastapi.APIRouter objects. Defaults to an empty list.
+        """
+        return []
+
+    def get_template_paths(self) -> List["Path"]:
+        """
+        Called by the PluginManager after the plugin is loaded to retrieve
+        a list of paths to directories containing Jinja2 templates that this
+        plugin wishes to make available to the application's template loader.
+
+        Plugins should override this method to return a list of `pathlib.Path` objects.
+        Each path should point to a directory containing template files.
+
         Example:
-            from fastapi import APIRouter
-
-            my_router = APIRouter(prefix="/my_plugin_api", tags=["My Plugin"])
-
-            @my_router.get("/status")
-            async def get_status():
-                return {"status": "ok"}
-
-            return [my_router]
+            from pathlib import Path
+            # Assuming templates are in a 'templates' subdir relative to the plugin file
+            return [Path(__file__).parent / "templates"]
 
         Returns:
-            List[Any]: A list of fastapi.APIRouter objects.
-                       Defaults to an empty list.
+            List[Path]: A list of Path objects pointing to template directories.
+                        Defaults to an empty list.
+        """
+        return []
+
+    def get_static_mounts(self) -> List[tuple[str, "Path", str]]:
+        """
+        Called by the PluginManager after the plugin is loaded to retrieve
+        configurations for mounting static file directories for this plugin.
+
+        Each configuration should be a tuple: `(mount_path, directory_path, name)`,
+        suitable for `FastAPI.mount(mount_path, StaticFiles(directory=directory_path), name=name)`.
+
+        - `mount_path` (str): The URL path prefix for these static files (e.g., "/static/myplugin").
+                              This should be unique among plugins.
+        - `directory_path` (Path): A `pathlib.Path` object pointing to the directory
+                                   containing the static files for this plugin.
+        - `name` (str): A unique name for this static mount (e.g., "myplugin_static").
+
+        Example:
+            from pathlib import Path
+            # Assuming static files are in a 'static' subdir relative to the plugin file
+            static_dir = Path(__file__).parent / "static"
+            return [("/static/myplugin", static_dir, "myplugin_static")]
+
+        Returns:
+            List[tuple[str, Path, str]]: A list of tuples, each for a static directory mount.
+                                        Defaults to an empty list.
         """
         return []

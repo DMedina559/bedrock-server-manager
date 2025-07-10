@@ -61,8 +61,43 @@ async def index(
     logger.info(
         f"Dashboard route '/' accessed by user '{current_user.get('username')}'. Rendering server list."
     )
+
+    # --- Dynamically get HTML rendering plugin routes ---
+    plugin_html_pages = []
+    try:
+        # Import the shared plugin_manager from the main web app module
+        from ...web.main import global_api_plugin_manager
+
+        if global_api_plugin_manager and hasattr(
+            global_api_plugin_manager, "get_html_render_routes"
+        ):
+            plugin_html_pages = global_api_plugin_manager.get_html_render_routes()
+            logger.debug(
+                f"Retrieved {len(plugin_html_pages)} plugin HTML pages for the dashboard."
+            )
+        elif global_api_plugin_manager:
+            logger.warning(
+                "global_api_plugin_manager does not have 'get_html_render_routes' method."
+            )
+        else:
+            logger.warning(
+                "global_api_plugin_manager is not available in web.routers.main."
+            )
+    except ImportError:
+        logger.error(
+            "Could not import global_api_plugin_manager in web.routers.main.",
+            exc_info=True,
+        )
+    except Exception as e:
+        logger.error(f"Error getting plugin HTML pages: {e}", exc_info=True)
+
     return templates.TemplateResponse(
-        "index.html", {"request": request, "current_user": current_user}
+        "index.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "plugin_html_pages": plugin_html_pages,
+        },
     )
 
 

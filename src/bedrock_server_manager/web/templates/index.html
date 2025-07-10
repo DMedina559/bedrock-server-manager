@@ -42,6 +42,16 @@
         <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
         <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
 
+        {# --- Plugin Web Pages Submenu --- #}
+        {% if plugin_html_pages %}
+        <hr class="nav-separator">
+        <div class="nav-sub-header">Plugin Pages</div>
+        {% for page in plugin_html_pages %}
+        <a href="{{ page.path }}" class="nav-link plugin-page-link" title="{{ page.name }}">{{ page.name }}</a>
+        {% endfor %}
+        {% endif %}
+        {# --- End Plugin Web Pages Submenu --- #}
+
         {# Separator #}
         <hr class="nav-separator">
 

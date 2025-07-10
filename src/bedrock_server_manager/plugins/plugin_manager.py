@@ -82,6 +82,13 @@ class PluginManager:
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_cli_commands: List[Any] = []
         self.plugin_fastapi_routers: List[Any] = []
+        self.html_render_tag = (
+            "Plugin Web Page"  # Tag for identifying HTML rendering routes
+        )
+        self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
+        self.plugin_static_mounts: List[tuple[str, Path, str]] = (
+            []
+        )  # For FastAPI app.mount()
 
         for directory in self.plugin_dirs:
             try:
@@ -169,19 +176,39 @@ class PluginManager:
             if found, otherwise ``None``.
         """
         logger.debug(
-            f"Searching for plugin file for '{plugin_name}' in {self.plugin_dirs}."
+            f"Searching for loadable path for plugin '{plugin_name}' in {self.plugin_dirs}."
         )
-        for directory in self.plugin_dirs:
-            path = directory / f"{plugin_name}.py"
-            if path.exists():
-                logger.debug(f"Found plugin file for '{plugin_name}' at: {path}")
-                return path
+        for p_dir in self.plugin_dirs:  # p_dir for plugin directory
+            # Check for single file plugin first: my_plugin.py
+            single_file_path = p_dir / f"{plugin_name}.py"
+            if single_file_path.is_file() and not single_file_path.name.startswith("_"):
+                logger.debug(
+                    f"Found single-file plugin for '{plugin_name}' at: {single_file_path}"
+                )
+                return single_file_path
+
+            # Check for directory-based plugin: my_plugin/__init__.py
+            dir_path = p_dir / plugin_name
+            if (
+                dir_path.is_dir()
+                and not dir_path.name.startswith("_")
+                and not dir_path.name.startswith(".")
+            ):
+                init_py_path = dir_path / "__init__.py"
+                if init_py_path.is_file():
+                    logger.debug(
+                        f"Found directory-based plugin for '{plugin_name}' at: {init_py_path} (directory: {dir_path})"
+                    )
+                    return init_py_path
+
         logger.debug(
-            f"Plugin file for '{plugin_name}' not found in any configured directory."
+            f"Loadable path for plugin '{plugin_name}' not found in any configured directory."
         )
         return None
 
-    def _get_plugin_class_from_path(self, path: Path) -> Optional[Type[PluginBase]]:
+    def _get_plugin_class_from_path(
+        self, path: Path, plugin_name_override: Optional[str] = None
+    ) -> Optional[Type[PluginBase]]:
         """Dynamically loads a Python module and finds the :class:`.PluginBase` subclass.
 
         It imports the Python module specified by `path` using :mod:`importlib.util`.
@@ -190,26 +217,53 @@ class PluginManager:
 
         Args:
             path (Path): The :class:`pathlib.Path` object pointing to the plugin's
-                Python file.
+                Python file (e.g., `my_plugin.py` or `my_plugin_pkg/__init__.py`).
+            plugin_name_override (Optional[str]): If provided, this name is used as the
+                module name for importlib, which is crucial for packages.
+                If None, `path.stem` is used (suitable for single file plugins).
 
         Returns:
             Optional[Type[:class:`.PluginBase`]]: The :class:`.PluginBase` subclass
             found in the module, or ``None`` if no such class is found or if an
             error occurs during module loading or class inspection.
         """
-        plugin_name = path.stem
-        logger.debug(f"Attempting to load module '{plugin_name}' from path: {path}")
+        # Determine the module name for importlib.
+        # For a package 'my_pkg/__init__.py', path.stem would be '__init__',
+        # but we need 'my_pkg' as the module name.
+        # For a file 'my_file.py', path.stem is 'my_file', which is correct.
+        module_name_for_spec = (
+            plugin_name_override if plugin_name_override else path.stem
+        )
+
+        logger.debug(
+            f"Attempting to load module '{module_name_for_spec}' from path: {path}"
+        )
         try:
-            spec = importlib.util.spec_from_file_location(plugin_name, path)
+            spec = importlib.util.spec_from_file_location(module_name_for_spec, path)
             if spec is None or spec.loader is None:
                 logger.error(
-                    f"Could not create module spec for plugin '{plugin_name}' at {path}."
+                    f"Could not create module spec for plugin '{module_name_for_spec}' at {path}."
                 )
                 raise ImportError(f"Could not create module spec for {plugin_name}")
 
             module = importlib.util.module_from_spec(spec)
+            # Important for package imports within the plugin:
+            # Add the parent directory of the plugin to sys.path if it's a package
+            # so that 'from . import foo' works.
+            # path is either .../my_plugin.py or .../my_package/__init__.py
+            # if path.name == "__init__.py":
+            #    package_dir = path.parent.parent # Go up from __init__.py then from my_package
+            #    if str(package_dir) not in sys.path:
+            #        sys.path.insert(0, str(package_dir))
+            #        logger.debug(f"Added {package_dir} to sys.path for package plugin {module_name_for_spec}")
+            # The above sys.path manipulation can be risky and might not be needed
+            # if spec_from_file_location handles packages correctly by setting parent.
+            # Let's test without it first. Modern importlib should handle it.
+
             spec.loader.exec_module(module)
-            logger.debug(f"Successfully executed module '{plugin_name}' from {path}.")
+            logger.debug(
+                f"Successfully executed module '{module_name_for_spec}' from {path}."
+            )
 
             for member_name, obj in inspect.getmembers(module):
                 if (
@@ -218,15 +272,15 @@ class PluginManager:
                     and obj is not PluginBase
                 ):
                     logger.debug(
-                        f"Found PluginBase subclass '{obj.__name__}' in module '{plugin_name}'."
+                        f"Found PluginBase subclass '{obj.__name__}' in module '{module_name_for_spec}'."
                     )
                     return obj
             logger.warning(
-                f"No PluginBase subclass found in module '{plugin_name}' at {path}."
+                f"No PluginBase subclass found in module '{module_name_for_spec}' at {path}."
             )
         except Exception as e:
             logger.error(
-                f"Failed to load or inspect plugin file at '{path}' for plugin class: {e}",
+                f"Failed to load or inspect plugin file at '{path}' (module name '{module_name_for_spec}') for plugin class: {e}",
                 exc_info=True,
             )
         return None
@@ -275,32 +329,66 @@ class PluginManager:
         config_changed = False
 
         valid_plugins_found_on_disk = set()
-        all_potential_plugin_files: Dict[str, Path] = {}
-        logger.debug(f"Scanning for plugin files in directories: {self.plugin_dirs}")
-        for directory in self.plugin_dirs:
-            if not directory.exists():
+        # Stores plugin_name -> path_to_load (either .py file or __init__.py)
+        all_potential_plugins: Dict[str, Path] = {}
+        logger.debug(f"Scanning for plugins in directories: {self.plugin_dirs}")
+
+        for p_dir in self.plugin_dirs:  # p_dir for plugin directory
+            if not p_dir.exists():
                 logger.warning(
-                    f"Plugin directory '{directory}' does not exist. Skipping scan for this directory."
+                    f"Plugin directory '{p_dir}' does not exist. Skipping scan for this directory."
                 )
                 continue
-            logger.debug(f"Scanning directory: {directory}")
-            for path in directory.glob("*.py"):
-                if not path.name.startswith("_"):
-                    plugin_name_stem = path.stem
-                    if plugin_name_stem not in all_potential_plugin_files:
-                        all_potential_plugin_files[plugin_name_stem] = path
+            logger.debug(f"Scanning directory: {p_dir}")
+            for item in p_dir.iterdir():
+                plugin_name = ""
+                path_to_load: Optional[Path] = None
+
+                if (
+                    item.is_file()
+                    and item.name.endswith(".py")
+                    and not item.name.startswith("_")
+                ):
+                    # Single file plugin
+                    plugin_name = item.stem
+                    path_to_load = item
+                    logger.debug(
+                        f"Discovered potential single-file plugin: '{item}' for plugin name '{plugin_name}'."
+                    )
+                elif (
+                    item.is_dir()
+                    and not item.name.startswith("_")
+                    and not item.name.startswith(".")
+                ):
+                    # Potential directory-based plugin (package)
+                    init_py_path = item / "__init__.py"
+                    if init_py_path.is_file():
+                        plugin_name = item.name  # Directory name is the plugin name
+                        path_to_load = init_py_path
                         logger.debug(
-                            f"Discovered potential plugin file: '{path}' for plugin '{plugin_name_stem}'."
+                            f"Discovered potential directory-based plugin: '{item}' (loading from '{init_py_path}') for plugin name '{plugin_name}'."
                         )
+
+                if plugin_name and path_to_load:
+                    if plugin_name in all_potential_plugins:
+                        logger.warning(
+                            f"Plugin name conflict: '{plugin_name}' already found at '{all_potential_plugins[plugin_name]}'. Skipping '{path_to_load}'. Check user and default plugin directories."
+                        )
+                    else:
+                        all_potential_plugins[plugin_name] = path_to_load
+
         logger.info(
-            f"Found {len(all_potential_plugin_files)} potential plugin files across all directories."
+            f"Found {len(all_potential_plugins)} potential plugins (files/directories) across all scan paths."
         )
 
-        for plugin_name, path in all_potential_plugin_files.items():
+        for plugin_name, path_to_load in all_potential_plugins.items():
             logger.debug(
-                f"Processing plugin file: '{path}' for plugin '{plugin_name}'."
+                f"Processing plugin '{plugin_name}' from path: '{path_to_load}'."
             )
-            plugin_class = self._get_plugin_class_from_path(path)
+            # Pass the plugin_name to _get_plugin_class_from_path for correct module naming
+            plugin_class = self._get_plugin_class_from_path(
+                path_to_load, plugin_name_override=plugin_name
+            )
 
             if not plugin_class:
                 logger.warning(
@@ -466,6 +554,10 @@ class PluginManager:
         logger.debug("Cleared previously collected plugin CLI commands.")
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared previously collected plugin FastAPI routers.")
+        self.plugin_template_paths.clear()
+        logger.debug("Cleared previously collected plugin template paths.")
+        self.plugin_static_mounts.clear()
+        logger.debug("Cleared previously collected plugin static mounts.")
 
         loaded_plugin_count = 0
         for plugin_name, config_data in self.plugin_config.items():
@@ -570,6 +662,84 @@ class PluginManager:
                             exc_info=True,
                         )
 
+                    # Collect template paths
+                    try:
+                        if hasattr(instance, "get_template_paths") and callable(
+                            getattr(instance, "get_template_paths")
+                        ):
+                            template_paths = instance.get_template_paths()
+                            if isinstance(template_paths, list) and template_paths:
+                                # Basic validation: check if items are Path objects
+                                valid_paths = [
+                                    p
+                                    for p in template_paths
+                                    if isinstance(p, Path) and p.is_dir()
+                                ]
+                                if len(valid_paths) != len(template_paths):
+                                    logger.warning(
+                                        f"Plugin '{plugin_name}' provided some invalid template paths (not Path objects or not directories). Only valid ones will be used."
+                                    )
+                                self.plugin_template_paths.extend(valid_paths)
+                                if valid_paths:
+                                    logger.info(
+                                        f"Collected {len(valid_paths)} template director(y/ies) from plugin '{plugin_name}': {[str(p) for p in valid_paths]}"
+                                    )
+                            elif template_paths:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_template_paths() did not return a list or returned an empty list."
+                                )
+                    except Exception as e_tpl:
+                        logger.error(
+                            f"Error collecting template paths from plugin '{plugin_name}': {e_tpl}",
+                            exc_info=True,
+                        )
+
+                    # Collect static mounts
+                    try:
+                        if hasattr(instance, "get_static_mounts") and callable(
+                            getattr(instance, "get_static_mounts")
+                        ):
+                            static_mounts_configs = instance.get_static_mounts()
+                            if (
+                                isinstance(static_mounts_configs, list)
+                                and static_mounts_configs
+                            ):
+                                valid_mounts = []
+                                for mount_config in static_mounts_configs:
+                                    if (
+                                        isinstance(mount_config, tuple)
+                                        and len(mount_config) == 3
+                                        and isinstance(
+                                            mount_config[0], str
+                                        )  # mount_path
+                                        and isinstance(mount_config[1], Path)
+                                        and mount_config[1].is_dir()  # dir_path
+                                        and isinstance(mount_config[2], str)
+                                    ):  # name
+                                        valid_mounts.append(mount_config)
+                                    else:
+                                        logger.warning(
+                                            f"Plugin '{plugin_name}' provided an invalid static mount configuration: {mount_config}. Expected (str, Path, str) with valid directory."
+                                        )
+
+                                self.plugin_static_mounts.extend(valid_mounts)
+                                if valid_mounts:
+                                    logger.info(
+                                        f"Collected {len(valid_mounts)} static mount configuration(s) from plugin '{plugin_name}'."
+                                    )
+                                    logger.warning(
+                                        f"Plugin '{plugin_name}' added {len(valid_mounts)} static file director(y/ies). Ensure these paths are safe and intended."
+                                    )
+                            elif static_mounts_configs:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_static_mounts() did not return a list or returned an empty list."
+                                )
+                    except Exception as e_static:
+                        logger.error(
+                            f"Error collecting static mounts from plugin '{plugin_name}': {e_static}",
+                            exc_info=True,
+                        )
+
                 except Exception as e:
                     logger.error(
                         f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
@@ -581,9 +751,34 @@ class PluginManager:
                 )
         logger.info(
             f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
-            f"Collected {len(self.plugin_cli_commands)} total CLI command(s) and "
-            f"{len(self.plugin_fastapi_routers)} total FastAPI router(s) from plugins."
+            f"Collected {len(self.plugin_cli_commands)} total CLI command(s), "
+            f"{len(self.plugin_fastapi_routers)} total FastAPI router(s), "
+            f"{len(self.plugin_template_paths)} total template paths, and "
+            f"{len(self.plugin_static_mounts)} total static mounts from plugins."
         )
+
+    def get_html_render_routes(self) -> List[Dict[str, str]]:
+        """
+        Collects routes from all plugin routers that are tagged for HTML rendering.
+
+        Returns:
+            List[Dict[str, str]]: A list of dictionaries, where each dictionary
+                                 contains 'name' and 'path' for a tagged route.
+        """
+        html_routes = []
+        for router in self.plugin_fastapi_routers:
+            for route in router.routes:
+                if hasattr(route, "tags") and self.html_render_tag in route.tags:
+                    # Use route name or summary if available, otherwise path
+                    route_name = route.name
+                    if hasattr(route, "summary") and route.summary:
+                        route_name = route.summary
+                    elif not route_name:  # If route.name is also None or empty
+                        route_name = route.path
+
+                    html_routes.append({"name": route_name, "path": route.path})
+        logger.debug(f"Collected {len(html_routes)} HTML rendering plugin routes.")
+        return html_routes
 
     def _is_valid_custom_event_name(self, event_name: str) -> bool:
         """Checks if a custom event name follows the 'namespace:event_name' format.
@@ -763,6 +958,10 @@ class PluginManager:
         logger.debug("Cleared collected plugin CLI commands during reload.")
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared collected plugin FastAPI routers during reload.")
+        self.plugin_template_paths.clear()
+        logger.debug("Cleared collected plugin template paths during reload.")
+        self.plugin_static_mounts.clear()
+        logger.debug("Cleared collected plugin static mounts during reload.")
 
         logger.info(
             "Re-running plugin discovery, synchronization, and loading process..."

@@ -8,6 +8,7 @@ from . import player
 from . import plugins
 from . import server
 from . import server_install_config
+from . import settings
 from . import system
 from . import task_scheduler
 from . import utils
@@ -24,6 +25,7 @@ __all__ = [
     "plugins",
     "server",
     "server_install_config",
+    "settings",
     "system",
     "task_scheduler",
     "utils",
