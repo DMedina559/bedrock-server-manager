@@ -684,3 +684,30 @@ class PluginBase(ABC):
                                         Defaults to an empty list.
         """
         return []
+
+    def get_cli_menu_items(self) -> List[Dict[str, Any]]:
+        """
+        Called by the PluginManager after the plugin is loaded to retrieve
+        a list of menu item configurations for the main CLI interactive menu.
+
+        Each configuration should be a dictionary with at least:
+        - "name" (str): The text to display for the menu item.
+        - "handler" (Callable): A callable (e.g., a method of the plugin instance)
+                                that will be executed when this menu item is selected.
+                                This handler is expected to accept a `click.Context`
+                                object as its first argument.
+
+        Example:
+            def my_plugin_menu_handler(self, ctx: click.Context):
+                self.logger.info(f"'{self.name}' custom CLI menu item executed!")
+                ctx.invoke(some_other_click_command, foo="bar")
+                # Or use questionary for a sub-menu
+                # choice = questionary.select(...).ask() ...
+
+            return [{"name": "Run My Plugin Action", "handler": self.my_plugin_menu_handler}]
+
+        Returns:
+            List[Dict[str, Any]]: A list of menu item configuration dictionaries.
+                                  Defaults to an empty list.
+        """
+        return []

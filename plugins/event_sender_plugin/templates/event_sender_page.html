@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Custom Event Sender{% endblock %}
+
+{% block head_styles %}
+{{ super() }}
+<style>
+    .event-sender-container {
+        background-color: #403f3f;
+        padding: 20px 30px; /* Adjusted padding */
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        max-width: 700px; /* Slightly wider for payload */
+        margin: 40px auto;
+    }
+
+        .event-sender-container h1 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .event-sender-container label {
+            display: block;
+            margin-top: 15px; /* Spacing between fields */
+            margin-bottom: 5px; /* Closer to its input */
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .event-sender-container input[type="text"],
+        .event-sender-container textarea {
+            width: calc(100% - 22px); /* Full width minus padding/border */
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-family: inherit; /* Consistent font */
+            font-size: 1rem;
+        }
+
+        .event-sender-container textarea {
+            min-height: 100px; /* Good starting height for JSON */
+            resize: vertical; /* Allow vertical resize */
+        }
+
+        .event-sender-container button[type="button"] { /* Changed to type="button" for JS control */
+            background-color: #007bff; /* Primary button color */
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 20px;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+            .event-sender-container button[type="button"]:hover {
+                background-color: #0056b3;
+            }
+
+        .event-sender-container .home-link {
+            display: inline-block;
+            margin-top: 25px;
+            color: #007bff;
+            text-decoration: none;
+        }
+
+            .event-sender-container .home-link:hover {
+                text-decoration: underline;
+            }
+
+        .event-sender-container .payload-note {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="event-sender-container">
+    <h1>Custom Plugin Event Sender</h1>
+    <p>Use this page to manually trigger custom events within the application. Other plugins can listen for these events.</p>
+
+    <div>
+        <label for="event-name">Event Name (e.g., <code>myplugin:myevent</code>):</label>
+        <input type="text" id="event-name" name="event-name" placeholder="namespace:event_name_goes_here">
+    </div>
+
+    <div>
+        <label for="event-payload">Event Payload (JSON format):</label>
+        <textarea id="event-payload" name="event-payload" placeholder='{ "key": "value", "number": 123 }'></textarea>
+        <p class="payload-note">Enter a valid JSON object, or leave empty for no payload.</p>
+    </div>
+
+    <div>
+        <button type="button" id="send-event-button">Send Event</button>
+    </div>
+
+    <a href="{{ request.url_for('index') }}" class="home-link">Back to Dashboard</a>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const eventNameInput = document.getElementById('event-name');
+        const eventPayloadInput = document.getElementById('event-payload');
+        const sendEventButton = document.getElementById('send-event-button');
+
+        if (sendEventButton) {
+            sendEventButton.addEventListener('click', async function () {
+                const eventName = eventNameInput.value.trim();
+                const payloadString = eventPayloadInput.value.trim();
+                let payload = {}; // Default to empty object if payload is empty
+
+                if (!eventName) {
+                    showStatusMessage('Event Name is required.', 'error');
+                    eventNameInput.focus();
+                    return;
+                }
+
+                // Validate event name format (simple check for namespace:name)
+                if (!eventName.includes(':') || eventName.startsWith(':') || eventName.endsWith(':')) {
+                    showStatusMessage('Event Name must be in "namespace:event_name" format.', 'error');
+                    eventNameInput.focus();
+                    return;
+                }
+
+                if (payloadString) {
+                    try {
+                        payload = JSON.parse(payloadString);
+                        if (typeof payload !== 'object' || payload === null) {
+                            showStatusMessage('Event Payload must be a valid JSON object (e.g., {"key": "value"}).', 'error');
+                            eventPayloadInput.focus();
+                            return;
+                        }
+                    } catch (e) {
+                        showStatusMessage('Event Payload is not valid JSON: ' + e.message, 'error');
+                        eventPayloadInput.focus();
+                        return;
+                    }
+                }
+
+                // Construct the body for sendServerActionRequest
+                const requestBody = {
+                    event_name: eventName,
+                    payload: payload // This is the actual data payload for the event
+                };
+
+                const response = await sendServerActionRequest(
+                    null,
+                    '/api/plugins/trigger_event',
+                    'POST',
+                    requestBody,
+                    sendEventButton, // Disable button during request
+                    true // Suppress default success pop-up from sendServerActionRequest
+                );
+
+                if (response) { // sendServerActionRequest returns false on fetch/HTTP error
+                    if (response.status === 'success') {
+                        showStatusMessage(response.message || `Event '${eventName}' triggered successfully.`, 'success');
+
+                    } else {
+                        // Application-level error from /api/plugins/trigger_event
+                        showStatusMessage(response.message || `Failed to trigger event '${eventName}'.`, 'error');
+                    }
+                } else {
+
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

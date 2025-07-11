@@ -87,6 +87,7 @@ class PluginManager:
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
+        self.plugin_cli_menu_items: List[Dict[str, Any]] = []  # For dynamic CLI menus
 
         for directory in self.plugin_dirs:
             try:
@@ -558,6 +559,8 @@ class PluginManager:
         logger.debug("Cleared previously collected plugin template paths.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared previously collected plugin static mounts.")
+        self.plugin_cli_menu_items.clear()
+        logger.debug("Cleared previously collected plugin CLI menu items.")
 
         loaded_plugin_count = 0
         for plugin_name, config_data in self.plugin_config.items():
@@ -740,6 +743,52 @@ class PluginManager:
                             exc_info=True,
                         )
 
+                    # Collect CLI menu items
+                    try:
+                        if hasattr(instance, "get_cli_menu_items") and callable(
+                            getattr(instance, "get_cli_menu_items")
+                        ):
+                            menu_items = instance.get_cli_menu_items()
+                            if isinstance(menu_items, list) and menu_items:
+                                valid_menu_items = []
+                                for item_idx, item_config in enumerate(menu_items):
+                                    if (
+                                        isinstance(item_config, dict)
+                                        and "name" in item_config
+                                        and isinstance(item_config["name"], str)
+                                        and "handler" in item_config
+                                        and callable(item_config["handler"])
+                                    ):
+                                        # Store plugin instance with handler for context, or handler itself if it's bound
+                                        valid_menu_items.append(
+                                            {
+                                                "name": item_config["name"],
+                                                "handler": item_config[
+                                                    "handler"
+                                                ],  # Assumes handler is bound or static
+                                                "plugin_name": instance.name,  # For context if needed
+                                            }
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"Plugin '{plugin_name}' provided an invalid CLI menu item configuration at index {item_idx}: {item_config}. Expected dict with 'name' (str) and 'handler' (callable)."
+                                        )
+
+                                self.plugin_cli_menu_items.extend(valid_menu_items)
+                                if valid_menu_items:
+                                    logger.info(
+                                        f"Collected {len(valid_menu_items)} CLI menu item(s) from plugin '{plugin_name}'."
+                                    )
+                            elif menu_items:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_cli_menu_items() did not return a list or returned an empty list."
+                                )
+                    except Exception as e_cli_menu:
+                        logger.error(
+                            f"Error collecting CLI menu items from plugin '{plugin_name}': {e_cli_menu}",
+                            exc_info=True,
+                        )
+
                 except Exception as e:
                     logger.error(
                         f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
@@ -753,8 +802,9 @@ class PluginManager:
             f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
             f"Collected {len(self.plugin_cli_commands)} total CLI command(s), "
             f"{len(self.plugin_fastapi_routers)} total FastAPI router(s), "
-            f"{len(self.plugin_template_paths)} total template paths, and "
-            f"{len(self.plugin_static_mounts)} total static mounts from plugins."
+            f"{len(self.plugin_template_paths)} total template paths, "
+            f"{len(self.plugin_static_mounts)} total static mounts, and "
+            f"{len(self.plugin_cli_menu_items)} total CLI menu items from plugins."
         )
 
     def get_html_render_routes(self) -> List[Dict[str, str]]:
@@ -962,6 +1012,8 @@ class PluginManager:
         logger.debug("Cleared collected plugin template paths during reload.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared collected plugin static mounts during reload.")
+        self.plugin_cli_menu_items.clear()
+        logger.debug("Cleared collected plugin CLI menu items during reload.")
 
         logger.info(
             "Re-running plugin discovery, synchronization, and loading process..."
