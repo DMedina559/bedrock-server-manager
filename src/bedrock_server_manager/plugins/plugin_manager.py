@@ -82,9 +82,7 @@ class PluginManager:
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_cli_commands: List[Any] = []
         self.plugin_fastapi_routers: List[Any] = []
-        self.html_render_tag = (
-            "Plugin Web Page"  # Tag for identifying HTML rendering routes
-        )
+        self.html_render_tag = "plugin-ui"  # Tag for HTML rendering in FastAPI
         self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Content Uploader{% endblock %}
+
+{% block head_styles %}
+{{ super() }}
+    {# Add any plugin-specific styles here, or inline them if small #}
+<style>
+    .plugin-upload-container {
+        background-color: #403f3f;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        max-width: 600px;
+        margin: 40px auto;
+    }
+
+        .plugin-upload-container h1 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+
+        .plugin-upload-container label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .plugin-upload-container input[type="file"] {
+            border: 1px solid #ced4da;
+            padding: 10px;
+            border-radius: 4px;
+            width: calc(100% - 22px);
+            margin-bottom: 20px;
+        }
+
+        .plugin-upload-container button[type="submit"] {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+            .plugin-upload-container button[type="submit"]:hover {
+                background-color: #218838;
+            }
+
+        .plugin-upload-container .home-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #007bff;
+            text-decoration: none;
+        }
+
+            .plugin-upload-container .home-link:hover {
+                text-decoration: underline;
+            }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="plugin-upload-container">
+    <h1>Upload Minecraft Content</h1>
+    <p>Select a .mcworld, .mcpack, or .mcaddon file to upload.</p>
+
+    {# Display messages passed via query parameters (handled by base.html's logic or a local script if preferred) #}
+    {# If base.html handles query param messages, this div might not be needed or can be for additional local messages #}
+    {# <div id="message-area"></div> #}
+
+    <form action="{{ request.url_for('handle_file_upload') }}" method="post" enctype="multipart/form-data">
+        <div>
+            <label for="file">Choose file:</label>
+            <input type="file" id="file" name="file" accept=".mcworld,.mcpack,.mcaddon" required>
+        </div>
+        <div>
+            <button type="submit">Upload File</button>
+        </div>
+    </form>
+    <a href="{{ request.url_for('index') }}" class="home-link">Back to Dashboard</a>
+</div>
+
+{% endblock %}
