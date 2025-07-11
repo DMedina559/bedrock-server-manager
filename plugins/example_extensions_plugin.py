@@ -88,7 +88,9 @@ async def greet_name_via_api(name: str):
     }
 
 
-@example_plugin_api_router.get("/custom-page", response_class=HTMLResponse)
+@example_plugin_api_router.get(
+    "/custom-page", response_class=HTMLResponse, tags=["plugin-ui"]
+)
 async def get_custom_html_page():
     """Serves a simple custom HTML page from the plugin."""
     html_content = f"""
