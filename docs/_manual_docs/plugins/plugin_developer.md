@@ -17,9 +17,12 @@ For a complete list of all available event hooks, see the [Available APIs](./plu
 
 ## 1. Getting Started: Your First Plugin
 
-1.  **Locate the `plugins` directory:** Find the application's data directory. Inside, there will be a `plugins` folder.
-2.  **Create a Python file:** Inside the `plugins` directory, create a new file (e.g., `my_first_plugin.py`). The filename (without the `.py`) will be used as your plugin's name.
-3.  **Write the code:** In your new file, create a class that inherits from `PluginBase`.
+1.  **Locate a `plugins` directory:** 
+    *   **User Plugins:** Find the application's data directory (typically `~/.bedrock-server-manager/` or where `BSM_DATA_DIR` points). Inside, there will be a `plugins` folder. This is for your custom plugins.
+    *   **Default Plugins:** The application also ships with default plugins located within its installation source at `src/bedrock_server_manager/plugins/default/`. While you can look here for examples, you should place your custom plugins in the user plugins directory.
+    *   **Root `plugins/` folder (for development/examples):** The main repository also contains a `plugins/` folder in its root. This is primarily for development-time examples and testing of the plugin system itself. For user-created plugins meant for regular use, the user plugins directory is preferred.
+2.  **Choose your plugin structure:** Plugins can be single Python files or complete Python packages (directories). This will be detailed in the next section.
+3.  **Write the code:** Create your plugin file(s) and define a class that inherits from `PluginBase`.
 
 Here is the most basic "Hello World" plugin:
 
@@ -44,11 +47,54 @@ class MyFirstPlugin(PluginBase):
 ```
 
 4.  **Run the application:** Start the Bedrock Server Manager.
-5.  **Enable your plugin:** Use the command `bedrock-server-manager plugin enable my_first_plugin` to activate it. You should see your "Hello from MyFirstPlugin!" message in the logs on the next startup.
+5.  **Enable your plugin:** Use the command `bedrock-server-manager plugin enable <your_plugin_name>` to activate it. You should see your "Hello from MyFirstPlugin!" message in the logs on the next startup.
 
-## 2. The `PluginBase` Class
+---
 
-Every plugin **must** inherit from `bedrock_server_manager.PluginBase`. When your plugin is initialized, you are provided with three essential attributes:
+## 2. Plugin Structures: Single File vs. Package
+
+Bedrock Server Manager supports two primary ways to structure your plugin:
+
+### 2.1. Single-File Plugin
+
+This is the simplest structure, suitable for smaller plugins.
+
+*   Create a Python file (e.g., `my_simple_plugin.py`) directly in one of the plugin search paths (e.g., your user `plugins` directory).
+*   The filename (without the `.py` extension, so `my_simple_plugin` in this case) becomes the internal name of your plugin.
+*   Your `PluginBase` subclass must be defined within this file.
+
+This is the structure used in the "Hello World" example above.
+
+### 2.2. Package-Based Plugin (Directory)
+
+For more complex plugins that might include multiple Python modules, templates, static files, or other resources, structuring your plugin as a Python package (a directory) is recommended.
+
+*   Create a directory in one of the plugin search paths (e.g., `plugins/my_packaged_plugin/`).
+*   The name of this directory (`my_packaged_plugin`) becomes the internal name of your plugin.
+*   Inside this directory, you **must** have an `__init__.py` file.
+*   The main `PluginBase` subclass for your plugin should be defined (or imported and made available) in this `__init__.py` file.
+
+**Example Directory Structure for a Packaged Plugin:**
+
+```
+plugins/
+└── my_packaged_plugin/       # Plugin Name: my_packaged_plugin
+    ├── __init__.py           # Main plugin file, contains MyPluginClass(PluginBase)
+    ├── internal_logic.py     # Optional: other Python modules for your plugin
+    ├── templates/              # Optional: For Jinja2 HTML templates
+    │   └── my_page.html
+    └── static/                 # Optional: For CSS, JS, images
+        └── css/
+            └── style.css
+```
+
+This package structure allows for better organization and enables features like serving custom HTML templates and static files, as detailed later. Python's standard import mechanisms (e.g., `from . import internal_logic`) will work within your plugin package.
+
+---
+
+## 3. The `PluginBase` Class
+
+Every plugin **must** inherit from `bedrock_server_manager.PluginBase` (typically imported as `from bedrock_server_manager import PluginBase`). When your plugin is initialized, you are provided with three essential attributes:
 
 *   `self.name` (str): The name of your plugin, derived from its filename.
 *   `self.logger` (logging.Logger): A pre-configured Python logger. **Always use this for logging.**
@@ -236,14 +282,164 @@ After enabling `my_web_api_plugin.py` and restarting the Bedrock Server Manager 
 
 These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api/openapi.json` or `/docs`).
 
+#### 5.2.1. Serving HTML Pages with Application Styling (Jinja2 Templates)
+
+While returning direct `HTMLResponse` content is possible, for a look and feel consistent with the main application, plugins can serve HTML pages rendered via Jinja2 templates that extend the application's `base.html`. This requires structuring your plugin as a package.
+
+**1. Provide Template Files:**
+
+*   Create a subdirectory in your plugin package to hold your HTML templates (e.g., `my_packaged_plugin/templates/`).
+*   Your HTML template file (e.g., `my_page.html`) should extend the main application's base template:
+
+    ```html+jinja
+    {# my_packaged_plugin/templates/my_page.html #}
+    {% extends "base.html" %}
+
+    {% block title %}{{ super() }} - My Plugin Page Title{% endblock %}
+
+    {% block content %}
+        <h1>Hello from My Plugin!</h1>
+        <p>This content is specific to the plugin and uses the main app layout.</p>
+        <p>Data from route: {{ my_plugin_data }}</p>
+    {% endblock %}
+    ```
+
+**2. Register Template Directory:**
+
+Implement the `get_template_paths()` method in your plugin class:
+
+```python
+# my_packaged_plugin/__init__.py
+from pathlib import Path
+from bedrock_server_manager import PluginBase
+# ... other imports for your router, etc.
+
+class MyPackagedPlugin(PluginBase):
+    version = "1.0.0"
+    # ... other plugin methods ...
+
+    def get_template_paths(self) -> list[Path]:
+        """Returns the path to this plugin's templates directory."""
+        plugin_root_dir = Path(__file__).parent
+        return [plugin_root_dir / "templates"]
+
+    def get_fastapi_routers(self):
+        # Return your router that uses these templates
+        return [my_plugin_web_router] 
+```
+
+**3. Render Templates in Route Handlers:**
+
+In your plugin's FastAPI route handlers, import and use the main application's configured Jinja2 `templates` environment.
+
+```python
+# my_packaged_plugin/__init__.py or a submodule like web_routes.py
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse # Keep for other types of responses if needed
+# It's recommended to import the get_templates function for access
+from bedrock_server_manager.web.templating import get_templates
+
+my_plugin_web_router = APIRouter(prefix="/my-package", tags=["My Packaged Plugin"])
+templates_env = get_templates() # Get the configured Jinja2 environment
+
+@my_plugin_web_router.get("/styled-page", response_class=HTMLResponse)
+async def get_styled_plugin_page(request: Request):
+    # "my_page.html" will be found by Jinja2 if the plugin's template path
+    # was correctly registered via get_template_paths().
+    return templates_env.TemplateResponse(
+        "my_page.html", 
+        {"request": request, "my_plugin_data": "Some dynamic data!"}
+    )
+```
+
+The Plugin Manager and the main application will ensure that the path returned by `get_template_paths()` is added to the Jinja2 loader's search path.
+
+#### 5.2.2. Serving Plugin-Specific Static Files (CSS, JS, Images)
+
+If your plugin requires its own static assets (CSS, JavaScript, images) that are not part of the main application's static files, you can make them available.
+
+**1. Organize Static Files:**
+
+*   Create a subdirectory in your plugin package for these static files (e.g., `my_packaged_plugin/static_files/`).
+    ```
+    my_packaged_plugin/
+    └── static_files/
+        ├── css/
+        │   └── plugin_style.css
+        └── js/
+            └── plugin_script.js
+    ```
+
+**2. Register Static Directory Mounts:**
+
+Implement the `get_static_mounts()` method in your plugin class:
+
+```python
+# my_packaged_plugin/__init__.py
+from pathlib import Path
+from bedrock_server_manager import PluginBase
+# ...
+
+class MyPackagedPlugin(PluginBase):
+    version = "1.0.0"
+    # ...
+
+    def get_static_mounts(self) -> list[tuple[str, Path, str]]:
+        """Returns configurations for mounting this plugin's static file directories."""
+        plugin_root_dir = Path(__file__).parent
+        plugin_static_dir = plugin_root_dir / "static_files"
+        
+        # mount_url_path: The URL path your static files will be served from.
+        #                 Must be unique (e.g., include plugin name).
+        # local_directory_path: The actual path to your static files.
+        # mount_name: A unique name for this static route in FastAPI.
+        mount_url_path = "/static/my_packaged_plugin"
+        mount_name = "my_packaged_plugin_static_files"
+        
+        if plugin_static_dir.is_dir(): # Only add if the directory exists
+            return [(mount_url_path, plugin_static_dir, mount_name)]
+        return []
+```
+
+**3. Reference Static Files in Templates:**
+
+In your plugin's Jinja2 templates (or even directly in HTMLResponse content if carefully constructed), use FastAPI/Starlette's `request.url_for()` to generate correct URLs for your plugin's static files, using the `name` you provided in `get_static_mounts()`.
+
+```html+jinja
+{# my_packaged_plugin/templates/my_page.html #}
+{% extends "base.html" %}
+
+{% block head_styles %}
+    {{ super() }}
+    {# Link to this plugin's specific CSS file #}
+    <link rel="stylesheet" href="{{ request.url_for('my_packaged_plugin_static_files', path='css/plugin_style.css') }}">
+{% endblock %}
+
+{% block content %}
+    <h1>Plugin Page with Custom Styles!</h1>
+    <!-- ... -->
+{% endblock %}
+
+{% block body_scripts %}
+    {{ super() }}
+    {# Link to this plugin's specific JS file #}
+    <script src="{{ request.url_for('my_packaged_plugin_static_files', path='js/plugin_script.js') }}"></script>
+{% endblock %}
+```
+
+The Plugin Manager and main application will use the information from `get_static_mounts()` to call `app.mount()` appropriately for your plugin.
+
 ```{tip}
 **Tips for Plugin Web Endpoints:**
 
-*   **Unique Prefixes:** Always use a unique `prefix` for your `APIRouter` (e.g., `/my_plugin_name`) to avoid conflicts with core application routes or other plugins.
-*   **OpenAPI Tags:** Use the `tags` parameter in your `APIRouter` to group your plugin's endpoints clearly in the OpenAPI documentation.
-*   **Authentication & Authorization:** You can secure your plugin's endpoints by adding FastAPI dependencies (like authentication checks) to your `APIRouter` or individual routes. You can import and use dependencies from `bedrock_server_manager.web.dependencies` if they suit your needs (as shown with `get_current_active_user`).
-*   **Serving HTML:** As shown, you can return `fastapi.responses.HTMLResponse` to serve custom web pages directly from your plugin. For more complex UIs, consider if client-side rendering calling your plugin's APIs is more appropriate.
-*   **Accessing `self.api` or `self.logger` from Routers:** If your route handlers need access to the plugin instance's `self.api` or `self.logger`, you'll need to define the router and its routes in a way that they can capture `self` (e.g., by defining routes as methods of a class that gets instantiated with `self`, or by creating the router instance within a method of your plugin class). The examples above define routers at the module level for simplicity.
+*   **Unique Prefixes & Mount Names:** Essential for routers and static mounts to avoid conflicts.
+*   **Authentication:** Apply as needed to your plugin's routers or individual routes.
+*   **Accessing `self.api` or `self.logger` from Module-Level Routers:** If your route handlers are defined at the module level (outside the plugin class, which is common for cleaner separation), they won't have direct access to `self.api` or `self.logger`.
+    *   For logging, use a module-level logger: `module_logger = logging.getLogger(__name__)`.
+    *   For `self.api` functionality, you would need to either:
+        *   Pass the `PluginAPI` instance to your route handlers (e.g., via FastAPI dependencies if the plugin instance or its API can be made available that way). This is more advanced and requires coordination with how the PluginManager integrates routers.
+        *   Call globally accessible API functions if some core functions are exposed that way and don't require plugin-specific context.
+        *   For now, complex API interactions from module-level routes might require careful thought on dependency injection.
 ```
 
 ## 6. Best Practices
