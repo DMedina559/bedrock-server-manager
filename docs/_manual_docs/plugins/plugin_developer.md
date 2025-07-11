@@ -172,7 +172,7 @@ To add CLI commands, define your Click commands/groups as usual and then return 
 
 ```python
 # my_cli_plugin.py
-from bedrock_server_manager.plugins.plugin_base import PluginBase
+from bedrock_server_manager import PluginBase
 import click
 
 # Define a Click command group
@@ -336,14 +336,17 @@ In your plugin's FastAPI route handlers, import and use the main application's c
 # my_packaged_plugin/__init__.py or a submodule like web_routes.py
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse # Keep for other types of responses if needed
-# It's recommended to import the get_templates function for access
-from bedrock_server_manager.web.templating import get_templates
 
 my_plugin_web_router = APIRouter(prefix="/my-package", tags=["My Packaged Plugin"])
 templates_env = get_templates() # Get the configured Jinja2 environment
 
 @my_plugin_web_router.get("/styled-page", response_class=HTMLResponse)
 async def get_styled_plugin_page(request: Request):
+
+    # It's recommended to import the get_templates function for access
+    # It's recommended to import ondemand to make sure templates are fully loaded by the time your router is registered.
+    from bedrock_server_manager.web.templating import get_templates
+
     # "my_page.html" will be found by Jinja2 if the plugin's template path
     # was correctly registered via get_template_paths().
     return templates_env.TemplateResponse(
