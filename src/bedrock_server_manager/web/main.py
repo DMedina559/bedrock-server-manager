@@ -97,7 +97,6 @@ app.include_router(routers.content_router)
 app.include_router(routers.settings_router)
 app.include_router(routers.api_info_router)
 app.include_router(routers.plugin_router)
-app.include_router(routers.util_router)
 
 
 # --- Dynamically include FastAPI routers from plugins ---
@@ -189,6 +188,8 @@ if (
 elif global_api_plugin_manager:
     web_main_plugin_logger.info("No additional static mounts found from plugins.")
 # No else here, as the error for global_api_plugin_manager being unavailable is already logged above.
+
+app.include_router(routers.util_router)
 
 
 if __name__ == "__main__":

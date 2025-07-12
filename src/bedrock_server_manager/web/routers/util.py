@@ -207,30 +207,30 @@ async def get_root_favicon():
 
 
 # --- Catch-all Route ---
-# @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
-# async def catch_all_api_route(
-#    request: Request,
-#    full_path: str,
-#    current_user: Dict[str, Any] = Depends(get_current_user),
-# ):
-#    """Redirects any unmatched authenticated API path to the main dashboard ('/').
-#
-#    This route acts as a catch-all for any GET requests under the API namespace
-#    that haven't been matched by other more specific routes. It logs the attempt
-#    and redirects the authenticated user to the root of the web application.
-#
-#    Args:
-#        request (Request): The incoming request object, provided by FastAPI.
-#        full_path (str): The unmatched path segment captured by the route.
-#        current_user (Dict[str, Any]): The authenticated user object, injected by
-#                                       `get_current_user`. Used for logging.
-#
-#    Returns:
-#        RedirectResponse: A redirect to the main dashboard page ("/").
-#    """
-#    logger.warning(
-#        f"User '{current_user.get('username', 'Unknown')}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
-#    )
-#
-#    index_url = "/"
-#    return RedirectResponse(url=index_url)
+@router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
+async def catch_all_api_route(
+    request: Request,
+    full_path: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Redirects any unmatched authenticated API path to the main dashboard ('/').
+
+    This route acts as a catch-all for any GET requests under the API namespace
+    that haven't been matched by other more specific routes. It logs the attempt
+    and redirects the authenticated user to the root of the web application.
+
+    Args:
+        request (Request): The incoming request object, provided by FastAPI.
+        full_path (str): The unmatched path segment captured by the route.
+        current_user (Dict[str, Any]): The authenticated user object, injected by
+                                       `get_current_user`. Used for logging.
+
+    Returns:
+        RedirectResponse: A redirect to the main dashboard page ("/").
+    """
+    logger.warning(
+        f"User '{current_user.get('username', 'Unknown')}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
+    )
+
+    index_url = "/"
+    return RedirectResponse(url=index_url)
