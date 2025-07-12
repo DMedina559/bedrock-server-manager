@@ -2,16 +2,19 @@
 """
 Plugin to provide a web UI for sending custom plugin events.
 """
-from bedrock_server_manager import PluginBase
 from pathlib import Path
+from typing import Dict, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 import click  # For prompts and colored output
 import json  # For parsing JSON payload
 
+from bedrock_server_manager.web import get_templates, get_current_user
+from bedrock_server_manager import PluginBase
+
 
 class EventSenderPlugin(PluginBase):
-    version = "1.0.0"
+    version = "1.0.1"
 
     def on_load(self):
         self.logger.info(
@@ -31,9 +34,10 @@ class EventSenderPlugin(PluginBase):
             summary="Custom Event Sender",  # For dynamic submenu in UI
             tags=["plugin-ui"],  # For discovery by dynamic submenu
         )
-        async def get_event_sender_page(request: Request):
-            from bedrock_server_manager.web.templating import get_templates
-
+        async def get_event_sender_page(
+            request: Request,
+            current_user: Dict[str, Any] = Depends(get_current_user),
+        ):
             self.logger.debug(f"Serving event sender page for plugin: {self.name}")
             templates_env = get_templates()
             # Template name will be relative to one of the template folders.
