@@ -11,21 +11,21 @@ including:
   for protecting routes and retrieving authenticated user information.
 - User authentication against credentials stored in environment variables.
 
-The JWT secret key and token expiration are configurable via environment variables
-or application settings.
+The JWT secret key and token expiration are configurable via environment variables.
 """
 import os
 import datetime
 import logging
 from typing import Optional, Dict, Any
+import secrets
 
 from jose import JWTError, jwt
 from fastapi import HTTPException, Security, Request
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from passlib.context import CryptContext
 
-from bedrock_server_manager.config.const import env_name
-from bedrock_server_manager.config.settings import settings
+from ..error import MissingArgumentError
+from ..config import env_name, settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +38,9 @@ JWT_SECRET_KEY_ENV = f"{env_name}_TOKEN"
 JWT_SECRET_KEY = os.environ.get(JWT_SECRET_KEY_ENV)
 
 if not JWT_SECRET_KEY:
-    JWT_SECRET_KEY = settings.get(
-        "web.jwt_secret_key", "a_very_secret_key_that_should_be_changed"
-    )
-    if JWT_SECRET_KEY == "a_very_secret_key_that_should_be_changed":
-        logger.error(
-            f"!!! SECURITY WARNING !!! Using default JWT_SECRET_KEY from settings. "
-            f"Set the '{JWT_SECRET_KEY_ENV}' environment variable for production."
-        )
+        JWT_SECRET_KEY = secrets.token_urlsafe(32)
+        logger.warning("JWT secret key not found in environment variables. Using a randomly generated key. Tokens will not be valid across server restarts.")
+
 ALGORITHM = "HS256"
 try:
     JWT_EXPIRES_WEEKS = float(settings.get("web.token_expires_weeks", 4.0))
