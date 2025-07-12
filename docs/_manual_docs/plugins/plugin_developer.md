@@ -11,7 +11,7 @@ This guide will walk you through creating your own plugins to extend and customi
 This guide assumes you have a basic understanding of Python programming. 
 
 For a complete list of all available event hooks, see the [Plugin Base](../../plugin_internals.rst).
-For a complete list of all available event hooks, see the [Available APIs](./plugin_apis.md).
+For a complete list of all available APIs, see the [Available APIs](./plugin_apis.md).
 
 ---
 
@@ -224,7 +224,7 @@ from fastapi.responses import HTMLResponse
 
 # Attempt to import authentication dependency; provide a fallback for isolated testing/robustness
 try:
-    from bedrock_server_manager.web.auth_utils import get_current_user
+    from bedrock_server_manager.web import get_current_user
     HAS_AUTH_DEP = True
 except ImportError:
     HAS_AUTH_DEP = False
@@ -337,15 +337,13 @@ In your plugin's FastAPI route handlers, import and use the main application's c
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse # Keep for other types of responses if needed
 
+from bedrock_server_manager.web import get_templates
+
 my_plugin_web_router = APIRouter(prefix="/my-package", tags=["My Packaged Plugin"])
 templates_env = get_templates() # Get the configured Jinja2 environment
 
 @my_plugin_web_router.get("/styled-page", response_class=HTMLResponse)
 async def get_styled_plugin_page(request: Request):
-
-    # It's recommended to import the get_templates function for access
-    # It's recommended to import ondemand to make sure templates are fully loaded by the time your router is registered.
-    from bedrock_server_manager.web.templating import get_templates
 
     # "my_page.html" will be found by Jinja2 if the plugin's template path
     # was correctly registered via get_template_paths().
@@ -437,12 +435,6 @@ The Plugin Manager and main application will use the information from `get_stati
 
 *   **Unique Prefixes & Mount Names:** Essential for routers and static mounts to avoid conflicts.
 *   **Authentication:** Apply as needed to your plugin's routers or individual routes.
-*   **Accessing `self.api` or `self.logger` from Module-Level Routers:** If your route handlers are defined at the module level (outside the plugin class, which is common for cleaner separation), they won't have direct access to `self.api` or `self.logger`.
-    *   For logging, use a module-level logger: `module_logger = logging.getLogger(__name__)`.
-    *   For `self.api` functionality, you would need to either:
-        *   Pass the `PluginAPI` instance to your route handlers (e.g., via FastAPI dependencies if the plugin instance or its API can be made available that way). This is more advanced and requires coordination with how the PluginManager integrates routers.
-        *   Call globally accessible API functions if some core functions are exposed that way and don't require plugin-specific context.
-        *   For now, complex API interactions from module-level routes might require careful thought on dependency injection.
 ```
 
 ### 5.3. Adding Custom CLI Interactive Menu Items
