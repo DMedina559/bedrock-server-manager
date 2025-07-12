@@ -38,8 +38,10 @@ JWT_SECRET_KEY_ENV = f"{env_name}_TOKEN"
 JWT_SECRET_KEY = os.environ.get(JWT_SECRET_KEY_ENV)
 
 if not JWT_SECRET_KEY:
-        JWT_SECRET_KEY = secrets.token_urlsafe(32)
-        logger.warning("JWT secret key not found in environment variables. Using a randomly generated key. Tokens will not be valid across server restarts.")
+    JWT_SECRET_KEY = secrets.token_urlsafe(32)
+    logger.warning(
+        "JWT secret key not found in environment variables. Using a randomly generated key. Tokens will not be valid across server restarts."
+    )
 
 ALGORITHM = "HS256"
 try:
