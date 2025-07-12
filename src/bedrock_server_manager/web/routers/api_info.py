@@ -922,7 +922,7 @@ async def get_system_info_api_route():
     try:
         result = utils_api.get_system_and_app_info()
         if result.get("status") == "success":
-            return GeneralApiResponse(status="success", info=result.get("info"))
+            return GeneralApiResponse(status="success", info=result.get("data"))
         else:
 
             raise HTTPException(

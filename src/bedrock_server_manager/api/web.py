@@ -50,6 +50,7 @@ def start_web_server_api(
     host: Optional[Union[str, List[str]]] = None,
     debug: bool = False,
     mode: str = "direct",
+    threads: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
 
@@ -72,6 +73,9 @@ def start_web_server_api(
             debug mode (e.g., with auto-reload). Defaults to ``False``.
         mode (str, optional): The start mode, either 'direct' or 'detached'.
             Defaults to 'direct'.
+        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
+
+            Only used for Windows Service
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -97,7 +101,7 @@ def start_web_server_api(
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            bsm.start_web_ui_direct(host, debug)
+            bsm.start_web_ui_direct(host, debug, threads)
             result = {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",

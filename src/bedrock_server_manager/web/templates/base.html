@@ -89,10 +89,10 @@ content and scripts using Jinja2 blocks.
         {# --- Footer --- #}
         <footer class="footer" style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #555; font-size: 0.9em; color: #aaa;">
             <p>
-                <a href="{{ url_for('index') }}" target="_none" rel="noopener">Index</a> | {# Changed from 'main_routes.index' to 'index' #}
-                <a href="https://github.com/DMedina559/bedrock-server-manager/tree/main/docs" target="_none" rel="noopener">Docs</a> |
-                <a href="https://github.com/dmedina559" target="_none" rel="noopener">GitHub</a> |
-                <strong>{{ app_name }}</strong> {{ app_version }} © MIT 2025
+                <a href="https://bedrock-server-manager.readthedocs.io/en/latest/" target="_none" rel="noopener">Docs</a> |
+                <a href="/docs" target="_none" rel="noopener">HTTP API</a> |
+                <a href="https://github.com/dmedina559" target="_none" rel="noopener">GitHub</a>
+                <br>Version {{ app_version }} © MIT 2025
             </p>
 
         </footer>

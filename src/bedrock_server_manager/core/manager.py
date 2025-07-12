@@ -573,7 +573,10 @@ class BedrockServerManager:
 
     # --- Web UI Process Management ---
     def start_web_ui_direct(
-        self, host: Optional[Union[str, List[str]]] = None, debug: bool = False
+        self,
+        host: Optional[Union[str, List[str]]] = None,
+        debug: bool = False,
+        threads: Optional[int] = None,
     ) -> None:
         """Starts the Web UI application directly in the current process (blocking).
 
@@ -593,6 +596,9 @@ class BedrockServerManager:
             debug (bool): If ``True``, runs the underlying Uvicorn/FastAPI app
                 in debug mode (e.g., with auto-reload). Passed directly to
                 :func:`~.web.app.run_web_server`. Defaults to ``False``.
+            threads (Optional[int]): Specifies the number of worker processes for Uvicorn
+
+                Only used for Windows Service
 
         Raises:
             RuntimeError: If :func:`~.web.app.run_web_server` raises a RuntimeError
@@ -608,7 +614,7 @@ class BedrockServerManager:
                 run_web_server as run_bsm_web_application,
             )
 
-            run_bsm_web_application(host, debug)
+            run_bsm_web_application(host, debug, threads)
             logger.info("BSM: Web application (direct mode) shut down.")
         except (RuntimeError, ImportError) as e:
             logger.critical(

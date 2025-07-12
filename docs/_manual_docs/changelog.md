@@ -22,19 +22,23 @@ Mirror: [https://dmedina559.github.io/bedrock-server-manager/](https://dmedina55
 ```
 
 1.  **Windows Service**:
-    *   Windows service has the following considerations:
-        *   You must use the `sc.exe` command to start/stop the services (`bedrock-server_name`/`BedrockServerManagerWebUI`).
-        *   A BSM session cannot be opened with the `bedrock-server-manager` / `python -m bedrock_server_manager` command while any services are running. All BSM services must be stopped first.
-        *   Services will not run if you have a BSM session already open, but multiple services can be started/stopped simultaneously.
-        *   After creating a service, you must open the Services app (`services.msc`) and change the service's "Log On As" account from "Local System" to your local Windows user account.
-        *   Requires an administrator account:
-            *   You can run BSM with the `sudo` command on recent versions of Windows. See [Microsoft Sudo for Windows documentation](https://learn.microsoft.com/en-us/windows/advanced-settings/sudo/).
-            *   Services can only be created through the BSM CLI (when run as admin). To start/stop a Bedrock server service, use the Web UI (only if the UI itself is running as a service) or the `sc.exe` command.
-            *   It is recommended to create a web service first, run it via the Windows Services app, and then use the Web UI to easily manage your Bedrock server services.
+ 
+    Running Bedrock Server Manager components (Web UI, individual Bedrock Servers) as Windows Services allows them to run in the background, start automatically on boot, and be managed by the Windows Service Control Manager.
+
+    ```{important}
+    It is **highly recommended** to use a Python installation downloaded from [python.org](https://www.python.org/downloads/windows/) rather than the version available from the Microsoft Store. The Microsoft Store version of Python has been observed to cause significant file locking issues when used with Windows Services, preventing other Python scripts or applications (including new BSM CLI sessions) from running correctly, even when using virtual environments. Using the python.org installer typically avoids these specific locking problems.
+    ```
+    *   General Considerations:
+        * Administrator Privileges: Creating, configuring, starting, and stopping Windows services requires Administrator privileges. You can achieve this by:
+            * Running your Command Prompt or PowerShell as an Administrator before executing bsm commands.
+            * Using the sudo command on recent versions of Windows if you have it configured.
+                * See [Microsoft Sudo for Windows documentation](https://learn.microsoft.com/en-us/windows/advanced-settings/sudo/).
+        * Service Account: By default, services created by BSM might be configured to run as the "Local System" account. For Bedrock servers, which often need to access user-specific paths for server files, content, and backups (e.g., in your user profile or a directory your user owns), it is usually necessary to change the service's "Log On As" account to your local Windows user account. This can be done via the Services app (services.msc) after the service has been created by BSM. This step ensures the service has the correct permissions. Failure to do this is a common cause of services not starting or functioning correctly.
 2.  **Web server as a service**:
     *   Create a system service (Systemd on Linux / Windows Service).
     *   On Linux, you'll need to manually create an environment file with your BSM environment variables and add the `EnvironmentFile=` line to your systemd file.
     *   The `host` will be read from the JSON config file.
+    *   On Windows, uvicorn workers will default to 1 instead of the configured settings value.
 3.  **Config JSON migrations**:
     *   The global `script_config.json` has been renamed to `bedrock_server_manager.json`.
     *   Global settings have been migrated to a new nested format. A backup will be created, and an auto-migration will be attempted.

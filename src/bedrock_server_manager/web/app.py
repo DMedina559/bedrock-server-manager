@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 def run_web_server(
-    host: Optional[Union[str, List[str]]] = None, debug: bool = False
+    host: Optional[Union[str, List[str]]] = None,
+    debug: bool = False,
+    threads: Optional[int] = None,
 ) -> None:
     """
     Configures and starts the Uvicorn web server to serve the FastAPI application.
@@ -54,6 +56,9 @@ def run_web_server(
             and uses a single worker process. If ``False`` (default), Uvicorn runs in
             production mode, with the number of worker processes determined by the
             ``web.threads`` setting (or its default).
+        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
+
+            Only used for Windows Service
 
     Raises:
         RuntimeError: If the required authentication environment variables
@@ -150,13 +155,22 @@ def run_web_server(
     else:
         threads_setting_key = "web.threads"
         try:
-            workers_val = int(settings.get(threads_setting_key, 4))
-            if workers_val > 0:
-                workers = workers_val
+            if threads is None:
+                workers_val = int(settings.get(threads_setting_key, 4))
+                if workers_val > 0:
+                    workers = workers_val
+                else:
+                    logger.warning(
+                        f"Invalid '{threads_setting_key}' ({workers_val}). Using default: {workers}."
+                    )
             else:
-                logger.warning(
-                    f"Invalid '{threads_setting_key}' ({workers_val}). Using default: {workers}."
-                )
+                workers_val = int(threads)
+                if workers_val > 0:
+                    workers = workers_val
+                else:
+                    logger.warning(
+                        f"Invalid 'threads' passed ({workers}). Using default: {workers}."
+                    )
         except (ValueError, TypeError):
             logger.warning(
                 f"Invalid format for '{threads_setting_key}'. Using default: {workers}."

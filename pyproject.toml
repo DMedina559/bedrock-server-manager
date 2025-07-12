@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bedrock-server-manager"
-version = "3.5.0b3"
+version = "3.5.0b4"
 authors = [
   { name="DMedina559", email="dmedina559-github@outlook.com" },
 ]
