@@ -112,53 +112,46 @@ async function fetchAndUpdateAllowlistDisplay(serverName) {
     const functionName = 'fetchAndUpdateAllowlistDisplay';
     console.log(`${functionName}: Initiating for server: ${serverName}`);
 
-    const displayList = document.getElementById('current-allowlist-display'); // Get the main UL
+    const displayList = document.getElementById('current-allowlist-display');
 
-    // --- Check only for the main list element ---
     if (!displayList) {
         console.error(`${functionName}: Target display element '#current-allowlist-display' not found. Cannot update UI.`);
+        showStatusMessage("Internal page error: Allowlist display area not found.", "error");
         return;
     }
     console.debug(`${functionName}: Found display list UL element.`);
 
-    // --- Clear previous content and show loading state ---
-    displayList.innerHTML = ''; // Clear previous list items (including any old 'no-players' message)
+    displayList.innerHTML = '';
     const loadingLi = document.createElement('li');
     loadingLi.textContent = 'Loading allowlist...';
     loadingLi.style.fontStyle = 'italic';
     displayList.appendChild(loadingLi);
 
-
     try {
-        // --- Fetch Current Allowlist using the GET allowlist endpoint ---
-        console.log(`${functionName}: Calling sendServerActionRequest to fetch allowlist (GET /allowlist)...`);
         const apiResponseData = await sendServerActionRequest(
             serverName,
-            'allowlist',           // Action path relative to server for GET
-            'GET',                 // Method
-            null,                  // No body
-            null                   // No button associated
+            'allowlist/get', // Corrected actionPath
+            'GET',
+            null,
+            null
         );
 
-        // --- Process the Response ---
-        displayList.removeChild(loadingLi); // Remove loading indicator
+        displayList.removeChild(loadingLi);
         console.debug(`${functionName}: Received response from sendServerActionRequest:`, apiResponseData);
 
-        if (apiResponseData === false) {
+        if (apiResponseData === false) { // Error handled by sendServerActionRequest
             console.error(`${functionName}: sendServerActionRequest reported an HTTP/Network error or unexpected content type.`);
-            const errorLi = document.createElement('li');
-            errorLi.textContent = 'Error loading allowlist data.';
-            errorLi.style.color = 'red';
-            displayList.appendChild(errorLi);
-            return; // Stop processing
+            // showStatusMessage already called by sendServerActionRequest
+            // Optionally, display a persistent error in the list area if needed
+            // displayList.innerHTML = '<li style="color: red;">Error loading allowlist data. Check console.</li>';
+            return;
         }
 
-        if (apiResponseData.status === 'success' && Array.isArray(apiResponseData.existing_players)) {
-            const players = apiResponseData.existing_players;
+        if (apiResponseData.status === 'success' && Array.isArray(apiResponseData.players)) { // Corrected to apiResponseData.players
+            const players = apiResponseData.players; // Corrected to apiResponseData.players
             console.log(`${functionName}: API success status. Processing ${players.length} player entries.`);
 
             if (players.length > 0) {
-                // Populate list with current players and remove buttons
                 players.forEach(player => {
                     const li = document.createElement('li');
                     li.classList.add('allowlist-player-item');
@@ -184,40 +177,30 @@ async function fetchAndUpdateAllowlistDisplay(serverName) {
                     li.appendChild(removeButton);
                     displayList.appendChild(li);
                 });
-                console.debug(`${functionName}: Added ${players.length} player items to the list.`);
             } else {
-                // Allowlist is empty - dynamically create the 'no players' message
-                console.log(`${functionName}: Allowlist is empty. Creating and displaying 'no players' message.`);
+                console.log(`${functionName}: Allowlist is empty. Displaying 'no players' message.`);
                 const li = document.createElement('li');
-                // Set the ID here if needed for styling/selection, otherwise just use text/class
-                li.id = 'no-players-message';
+                li.id = 'no-players-message'; // Keep ID if CSS targets it
                 li.textContent = 'No players currently in allowlist.';
                 li.style.fontStyle = 'italic';
-                li.style.color = '#aaa'; // Re-apply style if needed
+                li.style.color = '#aaa';
                 displayList.appendChild(li);
             }
             console.log(`${functionName}: Allowlist display updated successfully.`);
 
-        } else {
-            // API call was successful (HTTP 200), but the application status was 'error' or format unexpected
-            const errorMsg = `Could not refresh allowlist display: ${apiResponseData.message || 'API returned success status false or invalid data format.'}`;
+        } else { // API call was successful (HTTP 200), but app status 'error' or unexpected format
+            const errorMsg = `Could not refresh allowlist: ${apiResponseData.message || 'API returned an error or invalid data.'}`;
             console.error(`${functionName}: ${errorMsg}`);
-            showStatusMessage(errorMsg, "warning");
-            const errorLi = document.createElement('li');
-            errorLi.textContent = `Error loading allowlist: ${apiResponseData.message || 'API Error'}`;
-            errorLi.style.color = 'red';
-            displayList.appendChild(errorLi);
+            showStatusMessage(errorMsg, "error"); // Use showStatusMessage for this API error
         }
 
-    } catch (error) {
-        // Catch unexpected errors *within* this function's try block (e.g., DOM errors)
+    } catch (error) { // Catch unexpected errors *within* this function's try block
         console.error(`${functionName}: Unexpected error during UI update:`, error);
-        showStatusMessage(`Client-side error updating allowlist display: ${error.message}`, "error");
-        displayList.innerHTML = ''; // Clear loading/previous
-        const errorLi = document.createElement('li');
-        errorLi.textContent = 'Error updating display.';
-        errorLi.style.color = 'red';
-        displayList.appendChild(errorLi);
+        showStatusMessage(`Client-side error updating allowlist: ${error.message}`, "error");
+        if (displayList.contains(loadingLi)) { // Ensure loader is removed on error
+            displayList.removeChild(loadingLi);
+        }
+        // displayList.innerHTML = '<li style="color: red;">Error updating display.</li>'; // Replaced by showStatusMessage
     }
     console.log(`${functionName}: Execution finished.`);
 }
@@ -243,19 +226,17 @@ async function removeAllowlistPlayer(buttonElement, serverName, playerName) {
         return;
     }
 
-    // --- Confirmation ---
     if (!confirm(`Are you sure you want to remove '${playerName}' from the allowlist for server '${serverName}'?`)) {
         console.log(`${functionName}: Player removal cancelled by user.`);
         showStatusMessage('Player removal cancelled.', 'info');
-        return; // Stop if user cancels
+        return;
     }
 
     console.log(`${functionName}: Deletion confirmed for '${playerName}'.`);
 
-    // --- Send API Request DELETE endpoint ---
     const actionPath = 'allowlist/remove';
     const requestBody = {
-        players: [playerName] // The API expects an array of players
+        players: [playerName]
     };
 
     console.log(`${functionName}: Calling sendServerActionRequest (DELETE ${actionPath}) with body:`, requestBody);
@@ -263,71 +244,62 @@ async function removeAllowlistPlayer(buttonElement, serverName, playerName) {
     const apiResponseData = await sendServerActionRequest(
         serverName,
         actionPath,
-        'DELETE',      // HTTP DELETE method
-        requestBody,   // Pass the JSON body
-        buttonElement  // Pass button for disabling
+        'DELETE',
+        requestBody,
+        buttonElement
     );
 
     console.log(`${functionName}: Delete allowlist player API call finished. Response data:`, apiResponseData);
 
-    // --- Handle API Response ---
-    // The success/error handling logic remains robust enough, as we still get a 'status' field.
     if (apiResponseData && apiResponseData.status === 'success') {
         console.log(`${functionName}: Player '${playerName}' removal reported success by API.`);
-        // Remove the list item from the display on success
         const listItem = buttonElement.closest('li');
         if (listItem) {
             listItem.remove();
             console.debug(`${functionName}: Removed list item for '${playerName}'.`);
-            // Check if the list is now empty and display the 'no players' message if needed
             const list = document.getElementById('current-allowlist-display');
-            const noPlayersLi = document.getElementById('no-players-message');
-            // Check count of remaining items excluding the message template
-            if (list && list.querySelectorAll('li:not(#no-players-message)').length === 0) {
-                if (noPlayersLi) {
-                    noPlayersLi.style.display = ''; // Show existing message
-                    list.appendChild(noPlayersLi); // Ensure it's back in the list
-                    console.debug(`${functionName}: List is now empty, displayed 'no players' message.`);
-                }
+            // const noPlayersLi = document.getElementById('no-players-message'); // This element is created dynamically now
+            if (list && list.querySelectorAll('li').length === 0) { // Simpler check if list is empty
+                // Re-create the "no players" message if needed
+                const li = document.createElement('li');
+                li.id = 'no-players-message';
+                li.textContent = 'No players currently in allowlist.';
+                li.style.fontStyle = 'italic';
+                li.style.color = '#aaa';
+                list.appendChild(li);
+                console.debug(`${functionName}: List is now empty, displayed 'no players' message.`);
             }
         } else {
-            console.warn(`${functionName}: Could not find parent list item to remove after successful delete. Refreshing list as fallback.`);
-            // Fallback: Refresh the whole list if DOM manipulation fails
-            fetchAndUpdateAllowlistDisplay(serverName);
+            console.warn(`${functionName}: Could not find parent list item to remove. Refreshing list as fallback.`);
+            await fetchAndUpdateAllowlistDisplay(serverName); // Await refresh
         }
-        // The bulk endpoint gives a generic success message, which is fine.
         showStatusMessage(apiResponseData.message || `Player ${playerName} processed.`, "success");
     } else {
         console.error(`${functionName}: Player '${playerName}' removal failed or API reported an error.`);
         // Error message is shown by sendServerActionRequest
     }
     console.log(`${functionName}: Execution finished.`);
-} // End of removeAllowlistPlayer
+}
 
 
-// --- Initial Setup on DOM Ready ---
-// This part remains unchanged as it is not affected by the deletion logic.
 document.addEventListener('DOMContentLoaded', () => {
     const functionName = 'AllowlistDOMContentLoaded';
     console.log(`${functionName}: DOM fully loaded and parsed.`);
 
-    // --- Get server name using the data attribute ---
-    const serverNameElement = document.querySelector('p[data-server-name]'); // Find the paragraph with the attribute
+    const serverNameElement = document.querySelector('p[data-server-name]');
     let foundServerName = null;
 
     if (serverNameElement && serverNameElement.dataset.serverName) {
-        foundServerName = serverNameElement.dataset.serverName; // Access the data attribute value
+        foundServerName = serverNameElement.dataset.serverName;
         console.log(`${functionName}: Found server name from data attribute: '${foundServerName}'`);
     } else {
         console.error(`${functionName}: Could not find server name via data-server-name attribute on paragraph.`);
-        const list = document.getElementById('current-allowlist-display');
-        if (list) list.innerHTML = '<li style="color: red;">Error: Could not determine server name for initial load.</li>';
-        return; // Cannot proceed without server name
+        showStatusMessage("Critical page error: Could not determine server context.", "error");
+        return;
     }
 
-    // --- If server name was found, perform initial fetch ---
     if (foundServerName) {
         console.log(`${functionName}: Performing initial fetch and display of allowlist for server '${foundServerName}'.`);
-        fetchAndUpdateAllowlistDisplay(foundServerName); // Call the function
+        fetchAndUpdateAllowlistDisplay(foundServerName);
     }
 });

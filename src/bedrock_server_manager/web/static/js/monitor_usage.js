@@ -6,139 +6,113 @@
  *
  * @requires serverName - A global JavaScript variable (typically set via Jinja2 template)
  *                         containing the name of the server to monitor.
- * @requires utils.js - Assumed implicitly if status messages beyond console logs are needed,
- *                     but this script primarily updates a dedicated element.
+ * @requires utils.js - For showStatusMessage and sendServerActionRequest.
  */
 
-// --- Initialization checks ---
-// Although serverName check is inside updateStatus, a check here could prevent intervals starting unnecessarily.
-// if (typeof serverName === 'undefined') {
-//     console.error(`[${new Date().toISOString()}] Monitor Script Error: Global 'serverName' is not defined. Monitoring cannot start.`);
-//     // Optionally alert the user or display a static error message
-//     const statusElement = document.getElementById('status-info');
-//     if (statusElement) statusElement.textContent = "Error: Server name not specified for monitoring.";
-// }
+// Ensure utils.js is loaded
+if (typeof sendServerActionRequest === 'undefined' || typeof showStatusMessage === 'undefined') {
+    console.error("CRITICAL ERROR: Missing required functions from utils.js. Ensure utils.js is loaded first.");
+    const statusElementFallback = document.getElementById('status-info');
+    if (statusElementFallback) statusElementFallback.textContent = "CRITICAL PAGE ERROR: Utilities not loaded.";
+}
 
-/**
- * Fetches the current server resource usage status from the API
- * and updates the content of the '#status-info' DOM element.
- * This function is intended to be called repeatedly by `setInterval`.
- * Handles API success, API errors, and network/fetch errors gracefully.
- * @async
- */
 async function updateStatus() {
     const timestamp = new Date().toISOString();
     const functionName = 'updateStatus';
+    const statusElement = document.getElementById('status-info'); // Get element once
 
-    // --- Pre-check: Ensure serverName is defined ---
-    // This check is crucial as the interval will keep calling this function.
     if (typeof serverName === 'undefined' || !serverName) {
-        // Log error only once maybe? Or rely on initial check outside interval.
-        // For robustness, keep check here but maybe reduce logging frequency if needed.
         console.error(`[${timestamp}] ${functionName}: CRITICAL - 'serverName' variable is not defined or empty. Cannot fetch status.`);
-        const statusElement = document.getElementById('status-info');
-        if (statusElement) { statusElement.textContent = "Configuration Error: Server name missing."; }
-        // Consider clearing the interval if this state persists?
-        // clearInterval(statusIntervalId); // Need interval ID reference
+        if (typeof showStatusMessage === 'function') {
+            // Show persistent error on the page if serverName is missing, and stop polling.
+            showStatusMessage("Configuration Error: Server name missing for monitoring. Status updates stopped.", "error");
+            if (statusElement) statusElement.textContent = "Configuration Error: Server name missing.";
+            if (statusIntervalId) clearInterval(statusIntervalId); // Stop further polling
+        } else {
+            if (statusElement) statusElement.textContent = "Configuration Error: Server name missing.";
+        }
+        return;
+    }
+
+    if (!statusElement) {
+        console.error(`[${timestamp}] ${functionName}: Error - Target display element '#status-info' not found. Cannot update status. Polling stopped.`);
+        if (statusIntervalId) clearInterval(statusIntervalId); // Stop further polling
         return;
     }
 
     console.debug(`[${timestamp}] ${functionName}: Initiating status fetch for server: '${serverName}'`);
-
-    // --- Get Target DOM Element ---
-    const statusElement = document.getElementById('status-info');
-    if (!statusElement) {
-        console.error(`[${timestamp}] ${functionName}: Error - Target display element '#status-info' not found in the DOM. Cannot update status.`);
-        // Consider clearing interval if the target element disappears?
-        return; // Cannot proceed without the display element
-    }
-
-    // --- Fetch Data ---
-    const apiUrl = `/api/server/${serverName}/process_info`;
-    console.debug(`[${timestamp}] ${functionName}: Fetching URL: ${apiUrl}`);
+    const actionPath = 'process_info';
 
     try {
-        const response = await fetch(apiUrl);
-        console.debug(`[${timestamp}] ${functionName}: Received response - Status: ${response.status}, OK: ${response.ok}`);
+        // Pass `true` for suppressSuccessPopup for silent polling
+        const data = await sendServerActionRequest(serverName, actionPath, 'GET', null, null, true);
 
-        if (!response.ok) {
-            // Attempt to get more specific error info from response body if possible
-            let errorDetail = `Status: ${response.status} ${response.statusText}`;
-            try {
-                const errorData = await response.json(); // Try parsing error response
-                if (errorData && errorData.message) {
-                     errorDetail += ` - ${errorData.message}`;
-                }
-            } catch (parseError) { /* Ignore if error response is not JSON */ }
-            throw new Error(`HTTP error! ${errorDetail}`); // Throw to trigger catch block
-        }
-
-        const data = await response.json(); // Parse successful JSON response
-        console.debug(`[${timestamp}] ${functionName}: Received data:`, data);
-
-        // --- Update Display based on API Response Data ---
-        if (data.status === 'success') {
-            const info = data.process_info; // Process info might be null if server stopped gracefully
-
+        if (data && data.status === 'success' && data.data) { // Check data.data
+            const info = data.data.process_info; // Access process_info from data.data
             if (info) {
-                // Server is running, format and display stats
                 const statusText = `
 PID          : ${info.pid ?? 'N/A'}
 CPU Usage    : ${info.cpu_percent != null ? info.cpu_percent.toFixed(1) + '%' : 'N/A'}
 Memory Usage : ${info.memory_mb != null ? info.memory_mb.toFixed(1) + ' MB' : 'N/A'}
 Uptime       : ${info.uptime ?? 'N/A'}
-                `.trim(); // Use trim() to remove leading/trailing whitespace from template literal
-
+                `.trim();
                 statusElement.textContent = statusText;
-                console.log(`[${timestamp}] ${functionName}: Status display updated for running server '${serverName}'.`);
             } else {
-                 // API call successful, but process_info is null/missing -> Server is likely stopped
-                 statusElement.textContent = "Server Status: STOPPED (Process info not found)";
-                 console.log(`[${timestamp}] ${functionName}: Server '${serverName}' appears to be stopped (no process info).`);
+                statusElement.textContent = "Server Status: STOPPED (Process info not found)";
             }
-        } else {
-            // API call succeeded (HTTP 2xx) but reported an application-level error
-            const errorMessage = `API Error: ${data.message || 'Unknown error from server API.'}`;
-            statusElement.textContent = errorMessage;
+        } else if (data && data.status === 'error') {
+            // Error pop-up already shown by sendServerActionRequest.
+            // Update the on-page display to a persistent error state.
+            statusElement.textContent = `Error fetching status: ${data.message || 'API error occurred.'}`;
             console.warn(`[${timestamp}] ${functionName}: API reported error for server '${serverName}': ${data.message || '(No message provided)'}`);
+        } else if (data === false) {
+            // Network/fetch error. Pop-up already shown by sendServerActionRequest.
+            // Update the on-page display to a persistent error state.
+            statusElement.textContent = "Error fetching status: Network or server connection issue.";
+            console.error(`[${timestamp}] ${functionName}: Failed to fetch server status for '${serverName}' due to network/server issue.`);
+        } else {
+            // Unexpected response structure from sendServerActionRequest (should not happen)
+            statusElement.textContent = "Error fetching status: Unexpected response.";
+            console.error(`[${timestamp}] ${functionName}: Unexpected response from sendServerActionRequest for '${serverName}'.`);
         }
-
     } catch (error) {
-        // Handle fetch errors (network, DNS, CORS) or errors thrown above
-        console.error(`[${timestamp}] ${functionName}: Failed to fetch or process server status for '${serverName}':`, error);
-        statusElement.textContent = `Error fetching status: ${error.message}`; // Display error to user
+        // This catch is for unexpected errors in this function's logic (e.g. if sendServerActionRequest itself throws)
+        console.error(`[${timestamp}] ${functionName}: Unexpected client-side error in updateStatus for '${serverName}':`, error);
+        if (typeof showStatusMessage === 'function') {
+            showStatusMessage(`Client-side error fetching status: ${error.message}`, "error");
+        }
+        statusElement.textContent = `Client-side error: ${error.message}`;
     }
 }
 
-// --- Global Interval ID ---
-let statusIntervalId = null; // Variable to hold the interval ID
+let statusIntervalId = null;
 
-// --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', () => {
     const timestamp = new Date().toISOString();
     const functionName = 'DOMContentLoaded (Monitor)';
     console.log(`[${timestamp}] ${functionName}: Page loaded. Initializing server status monitoring.`);
+    const statusElement = document.getElementById('status-info'); // Defined here for initial check
 
-    // Check if serverName is defined *before* setting up interval
     if (typeof serverName === 'undefined' || !serverName) {
-         console.error(`[${timestamp}] ${functionName}: CRITICAL - Global 'serverName' is not defined. Monitoring cannot start.`);
-         const statusElement = document.getElementById('status-info');
-         if (statusElement) { statusElement.textContent = "Error: Server name not specified for monitoring."; }
-         return; // Exit initialization
+        console.error(`[${timestamp}] ${functionName}: CRITICAL - Global 'serverName' is not defined. Monitoring will not start.`);
+        const errorMessage = "Error: Server name not specified for monitoring. Status updates cannot start.";
+        if (typeof showStatusMessage === 'function') {
+            showStatusMessage(errorMessage, "error");
+        }
+        if (statusElement) { // Check if statusElement itself exists
+            statusElement.textContent = errorMessage;
+        }
+        return;
     }
 
-    // Perform initial update immediately
     console.log(`[${timestamp}] ${functionName}: Performing initial status update for server '${serverName}'.`);
-    updateStatus(); // Call once immediately
+    updateStatus();
 
-    // Set up repeating interval
-    const updateIntervalMilliseconds = 2000; // Update every 2 seconds (2000 ms)
+    const updateIntervalMilliseconds = 2000;
     console.log(`[${timestamp}] ${functionName}: Setting status update interval to ${updateIntervalMilliseconds}ms.`);
-    // Store the interval ID so it could potentially be cleared later if needed
     statusIntervalId = setInterval(updateStatus, updateIntervalMilliseconds);
 });
 
-// --- Optional: Clean up interval on page unload ---
 // window.addEventListener('beforeunload', () => {
 //     if (statusIntervalId) {
 //         console.log(`[${new Date().toISOString()}] Clearing status update interval (ID: ${statusIntervalId}) on page unload.`);

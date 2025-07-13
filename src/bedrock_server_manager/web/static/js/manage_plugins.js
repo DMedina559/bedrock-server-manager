@@ -31,54 +31,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const originalButtonText = reloadPluginsBtn.innerHTML; // Store original content (including icon)
         reloadPluginsBtn.innerHTML = '<div class="spinner-small"></div> Reloading...'; // Show loading state
 
-        // Assuming showStatusMessage is globally available from utils.js
-        if (typeof showStatusMessage === 'function') {
-            showStatusMessage('Sending reload request...', "success");
-        }
-
-        const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
-        const csrfToken = csrfTokenMeta ? csrfTokenMeta.getAttribute('content') : null;
-
-        if (!csrfToken) {
-            if (typeof showStatusMessage === 'function') {
-                showStatusMessage('CSRF token not found. Cannot reload plugins.', 'error');
-            }
-            reloadPluginsBtn.disabled = false;
-            reloadPluginsBtn.innerHTML = originalButtonText;
-            return;
-        }
-
+        // Using sendServerActionRequest which handles status messages and button disabling
         try {
-            const response = await fetch('/api/plugins/reload', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRFToken': csrfToken
-                }
-            });
+            // serverName is null for global actions, actionPath is absolute
+            const result = await sendServerActionRequest(null, '/api/plugins/reload', 'PUT', null, reloadPluginsBtn); // Updated path
 
-            const result = await response.json();
+            // sendServerActionRequest shows its own success/error messages based on result.status
+            // It also re-enables the button in its finally block unless result.status is 'confirm_needed'
+            // (which is not expected here).
 
-            if (result.status === 'success') {
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(result.message || 'Plugins reloaded successfully.', 'success');
-                }
+            if (result && result.status === 'success') {
                 // Refresh the plugin list on the page to reflect any changes
                 await fetchAndRenderPlugins();
             } else {
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(result.message || 'Failed to reload plugins.', 'error');
-                }
+                // Error message already shown by sendServerActionRequest if result exists and has status 'error'
+                // If result is false, it means a fetch-level error occurred, also handled by sendServerActionRequest
+                console.error(`${functionName}: Reload plugins API call failed or returned error. Result:`, result);
             }
         } catch (error) {
-            console.error(`${functionName}: Error reloading plugins:`, error);
+            // This catch is for unexpected errors in this function's logic,
+            // not for API call failures handled by sendServerActionRequest.
+            console.error(`${functionName}: Unexpected error during reload plugin process:`, error);
             if (typeof showStatusMessage === 'function') {
-                showStatusMessage(`Error during plugin reload: ${error.message}`, 'error');
+                showStatusMessage(`Unexpected error during plugin reload: ${error.message}`, 'error');
             }
+            // Ensure button is re-enabled in case of an unexpected error here
+            // reloadPluginsBtn.disabled = false; // Handled by finally
+            // reloadPluginsBtn.innerHTML = originalButtonText; // Handled by finally
         } finally {
-            reloadPluginsBtn.disabled = false;
-            reloadPluginsBtn.innerHTML = originalButtonText; // Restore original button content
+            // Always restore the original button text and ensure it's enabled.
+            reloadPluginsBtn.innerHTML = originalButtonText;
+            // sendServerActionRequest should also try to re-enable, but this is a safeguard.
+            if (reloadPluginsBtn.disabled) {
+                reloadPluginsBtn.disabled = false;
+            }
         }
     }
 
@@ -92,49 +78,63 @@ document.addEventListener('DOMContentLoaded', () => {
         pluginList.querySelectorAll('li:not(#plugin-loader)').forEach(el => el.remove());
 
         try {
-            const response = await fetch('/api/plugins');
-            const data = await response.json();
+            // Use sendServerActionRequest for the GET request.
+            // serverName is null for global actions, actionPath is absolute.
+            // No body for GET. Button element can be the loader itself or null.
+            const data = await sendServerActionRequest(null, '/api/plugins', 'GET', null, null); // Updated path, Pass null for button if loader handles its own state
 
-            pluginLoader.style.display = 'none'; // Hide loader after fetch
+            pluginLoader.style.display = 'none'; // Hide loader
 
-            if (!response.ok || data.status !== 'success') {
-                throw new Error(data.message || `Failed to load plugins (HTTP ${response.status})`);
-            }
+            if (data && data.status === 'success') {
+                const plugins = data.data; // Changed from data.plugins to data.data based on GeneralPluginApiResponse
+                if (plugins && Object.keys(plugins).length > 0) {
+                    const sortedPluginNames = Object.keys(plugins).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
-            const plugins = data.plugins;
-            if (plugins && Object.keys(plugins).length > 0) {
-                const sortedPluginNames = Object.keys(plugins).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                    sortedPluginNames.forEach(pluginName => {
+                        const pluginData = plugins[pluginName];
+                        const isEnabled = pluginData.enabled;
+                        const version = pluginData.version || 'N/A';
 
-                sortedPluginNames.forEach(pluginName => {
-                    const pluginData = plugins[pluginName];
-                    const isEnabled = pluginData.enabled;
-                    const version = pluginData.version || 'N/A';
+                        const itemClone = pluginItemTemplate.content.cloneNode(true);
+                        const nameSpan = itemClone.querySelector('.plugin-name');
+                        const versionSpan = itemClone.querySelector('.plugin-version');
+                        const toggleSwitch = itemClone.querySelector('.plugin-toggle-switch');
 
-                    const itemClone = pluginItemTemplate.content.cloneNode(true);
-                    const nameSpan = itemClone.querySelector('.plugin-name');
-                    const versionSpan = itemClone.querySelector('.plugin-version');
-                    const toggleSwitch = itemClone.querySelector('.plugin-toggle-switch');
+                        nameSpan.textContent = pluginName;
+                        versionSpan.textContent = `v${version}`;
+                        toggleSwitch.checked = isEnabled;
+                        toggleSwitch.dataset.pluginName = pluginName;
 
-                    nameSpan.textContent = pluginName;
-                    versionSpan.textContent = `v${version}`;
-                    toggleSwitch.checked = isEnabled;
-                    toggleSwitch.dataset.pluginName = pluginName;
-
-                    toggleSwitch.addEventListener('change', handlePluginToggle);
-                    pluginList.appendChild(itemClone);
-                });
+                        toggleSwitch.addEventListener('change', handlePluginToggle);
+                        pluginList.appendChild(itemClone);
+                    });
+                } else {
+                    pluginList.appendChild(noPluginsTemplate.content.cloneNode(true));
+                }
             } else {
-                pluginList.appendChild(noPluginsTemplate.content.cloneNode(true));
+                // Error message already shown by sendServerActionRequest if data exists and has status 'error'
+                // Or if data is false (fetch-level error)
+                console.error(`${functionName}: Failed to fetch plugins. Data:`, data);
+                if (loadErrorTemplate) {
+                    pluginList.appendChild(loadErrorTemplate.content.cloneNode(true));
+                }
+                // sendServerActionRequest should have already shown a status message.
+                // If data.message exists, it was an application error. Otherwise, a fetch error.
+                if (data && data.message && typeof showStatusMessage === 'function') {
+                    // showStatusMessage(data.message, 'error'); // This might be redundant
+                } else if (data === false && typeof showStatusMessage === 'function') {
+                    // showStatusMessage('Failed to load plugin data due to a network or server error.', 'error'); // Redundant
+                }
             }
         } catch (error) {
-            console.error(`${functionName}: Error fetching or rendering plugins:`, error);
-            pluginLoader.style.display = 'none'; // Ensure loader is hidden on error
-            // Check if error template exists before appending
+            // This catch is for unexpected errors in this function's logic itself
+            console.error(`${functionName}: Unexpected error fetching or rendering plugins:`, error);
+            pluginLoader.style.display = 'none';
             if (loadErrorTemplate) {
                 pluginList.appendChild(loadErrorTemplate.content.cloneNode(true));
             }
             if (typeof showStatusMessage === 'function') {
-                showStatusMessage(`Error fetching plugin data: ${error.message}`, 'error');
+                showStatusMessage(`Unexpected error fetching plugin data: ${error.message}`, 'error');
             }
         }
     }
@@ -147,53 +147,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const pluginName = toggleSwitch.dataset.pluginName;
         const isEnabled = toggleSwitch.checked;
 
-        // Temporarily disable the switch to prevent rapid toggling
-        toggleSwitch.disabled = true;
-
-        const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
-        const csrfToken = csrfTokenMeta ? csrfTokenMeta.getAttribute('content') : null;
-
-        if (!csrfToken) {
-            if (typeof showStatusMessage === 'function') {
-                showStatusMessage('CSRF token not found. Cannot update plugin status.', 'error');
-            }
-            toggleSwitch.checked = !isEnabled; // Revert UI change
-            toggleSwitch.disabled = false;
-            return;
-        }
+        // Temporarily disable the switch to prevent rapid toggling - sendServerActionRequest will handle this
+        // toggleSwitch.disabled = true; 
 
         try {
-            const response = await fetch(`/api/plugins/${pluginName}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({ enabled: isEnabled })
-            });
+            // serverName is null for global actions, actionPath is absolute and constructed with pluginName
+            const result = await sendServerActionRequest(null, `/api/plugins/${pluginName}`, 'POST', { enabled: isEnabled }, toggleSwitch); // Updated path
 
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(result.message || `Plugin '${pluginName}' status updated. Reload plugins to apply changes.`, 'success');
-                }
-            } else {
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(result.message || `Failed to update plugin '${pluginName}'.`, 'error');
-                }
+            // sendServerActionRequest shows status messages and handles button state.
+            // We only need to revert the toggle if the API call was not successful.
+            if (!result || result.status !== 'success') {
+                console.error(`${functionName}: Failed to update plugin '${pluginName}' status. Result:`, result);
                 toggleSwitch.checked = !isEnabled; // Revert UI change on error
+                // Error message should have been shown by sendServerActionRequest
+            } else {
+                if (typeof showStatusMessage === 'function' && result.message) {
+                    // showStatusMessage(result.message, 'success'); // Potentially redundant if sendServerActionRequest shows it
+                } else if (typeof showStatusMessage === 'function') {
+                    // showStatusMessage(`Plugin '${pluginName}' status updated. Reload plugins to apply changes.`, 'success');
+                }
             }
         } catch (error) {
-            console.error(`${functionName}: Error updating plugin '${pluginName}':`, error);
+            // This catch is for unexpected errors in this function's logic
+            console.error(`${functionName}: Unexpected error updating plugin '${pluginName}':`, error);
             if (typeof showStatusMessage === 'function') {
-                showStatusMessage(`Error updating plugin '${pluginName}': ${error.message}`, 'error');
+                showStatusMessage(`Unexpected error updating plugin '${pluginName}': ${error.message}`, 'error');
             }
-            toggleSwitch.checked = !isEnabled; // Revert UI change on error
-        } finally {
-            toggleSwitch.disabled = false; // Re-enable the switch
+            toggleSwitch.checked = !isEnabled; // Revert UI change
+            toggleSwitch.disabled = false; // Ensure switch is re-enabled
         }
+        // Note: sendServerActionRequest handles button (toggleSwitch in this case) re-enabling.
     }
 
     // --- Initial Load ---

@@ -6,30 +6,31 @@
 
 {# Add page-specific JS to the head #}
 {% block head_scripts %}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='js/install_config.js') }}" defer></script> {# Keep if triggerInstallServer is here #}
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script> {# Contains triggerInstallServer #}
 {% endblock %}
 
 
 {# Main content for this page #}
 {% block content %}
     {# Page Heading #}
-    <h2>Install New Bedrock Server</h2>
+<h2>Install New Bedrock Server</h2>
 
     {# Area for JavaScript-driven status messages #}
-    <div id="status-message-area" style="min-height: 1.5em; margin-bottom: 15px;">
-        <!-- Status messages from install actions will appear here -->
-    </div>
+<div id="status-message-area" style="min-height: 1.5em; margin-bottom: 15px;">
+    <!-- Status messages from install actions will appear here -->
+</div>
 
     {# Area for JavaScript-driven validation errors #}
-    <div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;">
-        <!-- Overall validation errors will appear here -->
-    </div>
+<div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;">
+    <!-- Overall validation errors will appear here -->
+</div>
 
     {# Server-side flash messages handled by base.html #}
 
-    <section class="install-config-section">
-        {# No <form> tag needed if using JS onclick, otherwise wrap form groups #}
+<section class="install-config-section">
+    {# No <form>
+        tag needed if using JS onclick, otherwise wrap form groups #}
 
         <div class="form-group">
             <label for="install-server-name" class="form-label">Server Name:</label>
@@ -40,17 +41,26 @@
 
         <div class="form-group">
             <label for="install-server-version" class="form-label">Server Version:</label>
-            <input type="text" id="install-server-version" name="server_version" class="form-input" value="{{ server_version or 'LATEST' }}" required>
-            <small class="form-help-text">E.g., LATEST, PREVIEW, or a specific version like 1.21.0.03</small>
+            <input type="text" id="install-server-version" name="server_version" class="form-input" value="{{ server_version or 'LATEST' }}" required oninput="checkCustomVersion(this.value)">
+            <small class="form-help-text">E.g., LATEST, PREVIEW, CUSTOM, or a specific version like 1.21.0.03</small>
             <div class="validation-error" data-field="server_version"></div>
+        </div>
+
+        <div id="custom-zip-selector-group" class="form-group" style="display: none;">
+            <label for="custom-zip-selector" class="form-label">Custom Server ZIP:</label>
+            <select id="custom-zip-selector" name="server_zip_path" class="form-input">
+                <!-- Options will be populated by JavaScript -->
+            </select>
+            <small class="form-help-text">Select a custom server ZIP file from the downloads/custom directory.</small>
+            <div class="validation-error" data-field="server_zip_path"></div>
         </div>
 
         {# Form Actions / Navigation #}
         <div class="form-actions">
             <button type="button" onclick="triggerInstallServer(this)" class="action-button">Install Server</button>
-             {# Use main-button style for primary navigation back #}
-            <a href="{{ url_for('main_routes.index') }}" class="action-button">Cancel</a>
+            {# Use main-button style for primary navigation back #}
+            <a href="{{ request.url_for('index') if request else '/' }}" class="action-button">Cancel</a>
         </div>
-    </section> {# End .install-config-section #}
+</section> {# End .install-config-section #}
 
 {% endblock %}

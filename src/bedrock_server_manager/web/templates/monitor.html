@@ -14,7 +14,7 @@
         const serverName = "{{ server_name | e }}";
     </script>
     {# Include the JavaScript that fetches and updates the status #}
-    <script src="{{ url_for('static', filename='js/monitor_usage.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/monitor_usage.js') }}" defer></script>
 {% endblock %}
 
 
@@ -22,6 +22,10 @@
 {% block content %}
     {# Main heading for the page #}
     <h2>Server Monitor</h2>
+
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
+    <!-- Status messages appear here -->
+</div>
 
     {# Display the server context #}
     <p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
@@ -41,7 +45,7 @@
         <div class="form-actions monitor-actions"> {# Added monitor-actions for potential specific styling #}
             {# Link back to the main dashboard #}
             {# Changed class to action-button for consistent look #}
-            <a href="{{ url_for('main_routes.index') }}" class="action-button">
+            <a href="{{ request.url_for('index') }}" class="action-button">
                 « Back to Dashboard
             </a>
         </div>

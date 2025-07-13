@@ -9,11 +9,11 @@
 {# Include JavaScript files needed for this page #}
 {% block head_scripts %}
     {# Core utilities #}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# Contains saveServiceSettings function and toggle switch JS logic #}
-    <script src="{{ url_for('static', filename='js/install_config.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
     {# server_actions.js might be needed if saveServiceSettings calls start_server #}
-    <script src="{{ url_for('static', filename='js/server_actions.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/server_actions.js') }}" defer></script>
 {% endblock %}
 
 
@@ -51,89 +51,90 @@
         {# --- Conditionally render options based on OS --- #}
         {% if os == 'Linux' or os == 'Windows' %}
 
-            <p>Configure automatic behavior for this server.</p>
+        <p>Configure automatic behavior for this server.</p>
 
-            {# --- Auto-Update Toggle (Common to Linux/Windows) --- #}
-            {# This setting controls whether the server checks for updates when started #}
-            <div class="form-group form-group-toggle-container">
-                <div class="form-label-group">
-                    {# Label linked to the actual checkbox input #}
-                    <label for="service-autoupdate-cb" class="form-label">Enable Auto-Update on Start:</label>
-                    <small class="form-help-text">
-                        {% if os == 'Linux' %}Checks for updates when the systemd service starts.{% endif %}
-                        {% if os == 'Windows' %}Checks for updates when starting via the manager (not Task Scheduler).{% endif %}
-                    </small>
-                </div>
-                <div class="toggle-switch-container">
-                    {# Checkbox input stores the state #}
-                    <input type="checkbox" id="service-autoupdate-cb" name="autoupdate-cb" class="toggle-input" value="true" {% if autoupdate %}checked{% endif %}>
-                    {# Visual switch linked to the checkbox #}
-                    <label for="service-autoupdate-cb" class="toggle-switch"></label>
-                </div>
-                {# Hidden input ensures 'false' is submitted if checkbox is unchecked #}
-                <input type="hidden" name="autoupdate" class="toggle-hidden-false" value="false">
-                {# Placeholder for validation error related to this toggle #}
-                {# <div class="validation-error" data-field="autoupdate" style="grid-column: 1 / -1;"></div> #}
+        {# --- Auto-Update Toggle (Common to Linux/Windows) --- #}
+        {# This setting controls whether the server checks for updates when started #}
+        <div class="form-group form-group-toggle-container">
+            <div class="form-label-group">
+                {# Label linked to the actual checkbox input #}
+                <label for="service-autoupdate-cb" class="form-label">Enable Auto-Update on Start:</label>
+                <small class="form-help-text">
+                    Checks for updates when starting via the manager.
+                </small>
             </div>
-
-            {# --- Auto-Start Toggle (Linux Only - Systemd) --- #}
-            {% if os == 'Linux' %}
-            <div class="form-group form-group-toggle-container">
-                <div class="form-label-group">
-                    <label for="service-autostart-cb" class="form-label">Enable Autostart on Login (Systemd):</label>
-                    <small class="form-help-text">Starts the server automatically via systemd when the user logs in.</small>
-                </div>
-                 <div class="toggle-switch-container">
-                   <input type="checkbox" id="service-autostart-cb" name="autostart-cb" class="toggle-input" value="true" {% if autostart %}checked{% endif %}>
-                   <label for="service-autostart-cb" class="toggle-switch"></label>
-                 </div>
-                  <input type="hidden" name="autostart" class="toggle-hidden-false" value="false">
+            <div class="toggle-switch-container">
+                {# Checkbox input stores the state #}
+                <input type="checkbox" id="service-autoupdate-cb" name="autoupdate-cb" class="toggle-input" value="true" {% if autoupdate %}checked{% endif %}>
+                {# Visual switch linked to the checkbox #}
+                <label for="service-autoupdate-cb" class="toggle-switch"></label>
             </div>
-            {% endif %}
+            {# Hidden input ensures 'false' is submitted if checkbox is unchecked #}
+            <input type="hidden" name="autoupdate" class="toggle-hidden-false" value="false">
+            {# Placeholder for validation error related to this toggle #}
+            {# <div class="validation-error" data-field="autoupdate" style="grid-column: 1 / -1;"></div> #}
+        </div>
 
-
-            {# --- Start Server after Save Toggle (New Install Only) --- #}
-            {% if new_install %}
-            <div class="form-group form-group-toggle-container" style="margin-top: 20px; border-top: 1px solid #555; padding-top: 15px;">
-                 <div class="form-label-group">
-                    <label for="service-start-server" class="form-label">Start Server After Saving?</label>
-                    <small class="form-help-text">Automatically start the server once these settings are saved.</small>
-                 </div>
-                 <div class="toggle-switch-container">
-                    {# This checkbox value is read directly by JS, no hidden false needed #}
-                   <input type="checkbox" id="service-start-server" name="start_server" class="toggle-input" value="true"> {# Default off #}
-                   <label for="service-start-server" class="toggle-switch"></label>
-                 </div>
+        {# --- Auto-Start Toggle (Linux - Systemd | Windows - SC.exe) --- #}
+        {% if os == 'Linux' or os == 'Windows' %}
+        <div class="form-group form-group-toggle-container">
+            <div class="form-label-group">
+                <label for="service-autostart-cb" class="form-label">Enable Autostart on Login:</label>
+                <small class="form-help-text">Starts the server automatically.</small>
             </div>
-            {% endif %} {# End of new_install section #}
-
-            {# --- Form Actions --- #}
-            <div class="form-actions">
-                {# Save button calls JS function, passing necessary data #}
-                {# Use |tojson filter for boolean new_install flag #}
-                <button type="button"
-                        onclick="saveServiceSettings(this, '{{ server_name | e }}', '{{ os }}', {{ new_install | tojson }})"
-                        class="action-button start-button"> {# Green save button #}
-                    Save Service Settings
-                </button>
-
-                {# Navigation button/link #}
-                 <a href="{{ url_for('main_routes.index') }}" class="action-link">
-                     {% if new_install %}
-                        Finish Setup & Go To Dashboard
-                     {% else %}
-                        « Back to Dashboard
-                     {% endif %}
-                 </a>
+            <div class="toggle-switch-container">
+                <input type="checkbox" id="service-autostart-cb" name="autostart-cb" class="toggle-input" value="true" {% if autostart %}checked{% endif %}>
+                <label for="service-autostart-cb" class="toggle-switch"></label>
             </div>
+            <input type="hidden" name="autostart" class="toggle-hidden-false" value="false">
+        </div>
+        {% endif %}
+
+
+        {# --- Start Server after Save Toggle (New Install Only) --- #}
+        {% if new_install %}
+        <div class="form-group form-group-toggle-container" style="margin-top: 20px; border-top: 1px solid #555; padding-top: 15px;">
+            <div class="form-label-group">
+                <label for="service-start-server" class="form-label">Start Server After Saving?</label>
+                <small class="form-help-text">Automatically start the server once these settings are saved.</small>
+            </div>
+            <div class="toggle-switch-container">
+                {# This checkbox value is read directly by JS, no hidden false needed #}
+                <input type="checkbox" id="service-start-server" name="start_server" class="toggle-input" value="true"> {# Default off #}
+                <label for="service-start-server" class="toggle-switch"></label>
+            </div>
+        </div>
+        {% endif %} {# End of new_install section #}
+
+        {# --- Form Actions --- #}
+        <div class="form-actions">
+            {# Save button calls JS function, passing necessary data #}
+            {# Use |tojson filter for boolean new_install flag #}
+            <button type="button"
+                    onclick="saveServiceSettings(this, '{{ server_name | e }}', '{{ os }}', {{ new_install | tojson }})"
+                    class="action-button start-button">
+                {# Green save button #}
+                Save Service Settings
+            </button>
+
+            {# Navigation button/link #}
+            <a href="{{ request.url_for('index') }}" class="action-link">
+                {% if new_install %}
+                Finish Setup & Go To Dashboard
+                {% else %}
+                « Back to Dashboard
+                {% endif %}
+            </a>
+        </div>
 
         {% else %} {# --- Unsupported OS --- #}
-            <div class="message-box message-warning"> {# Use warning style #}
-                Service configuration is not currently supported on this operating system ({{ os }}).
-            </div>
-            <div class="form-actions">
-                 <a href="{{ url_for('main_routes.index') }}" class="action-button">Back to Dashboard</a> {# Simple back button #}
-            </div>
+        <div class="message-box message-warning">
+            {# Use warning style #}
+            Service configuration is not currently supported on this operating system ({{ os }}).
+        </div>
+        <div class="form-actions">
+            <a href="{{ request.url_for('index') }}" class="action-button">Back to Dashboard</a> {# Simple back button #}
+        </div>
         {% endif %} {# End of OS check #}
 
     </section> {# --- End of .service-config-section --- #}

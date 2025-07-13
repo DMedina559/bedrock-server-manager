@@ -148,6 +148,11 @@ async function triggerInstallServer(buttonElement) {
         server_version: serverVersion,
         overwrite: false
     };
+
+    if (serverVersion.toUpperCase() === 'CUSTOM') {
+        const customZipSelector = document.getElementById('custom-zip-selector');
+        initialRequestBody.server_zip_path = customZipSelector.value;
+    }
     console.debug(`${functionName}: Constructing initial request body:`, initialRequestBody);
     const apiUrl = '/api/server/install';
     console.log(`${functionName}: Sending initial install request to ${apiUrl}...`);
@@ -170,37 +175,37 @@ async function triggerInstallServer(buttonElement) {
         // --- User Interaction: Confirmation Dialog ---
         const confirmMsg = initialApiResponse.message || `Server '${serverName}' already exists. Overwrite all data? THIS CANNOT BE UNDONE!`;
         if (confirm(confirmMsg)) {
-             // User confirmed overwrite
-             console.log(`${functionName}: Overwrite confirmed by user. Sending second request...`);
-             showStatusMessage("Overwrite confirmed. Re-attempting installation...", "info");
-             const overwriteRequestBody = { ...initialRequestBody, overwrite: true }; // Copy initial body and set overwrite to true
-             console.debug(`${functionName}: Constructing overwrite request body:`, overwriteRequestBody);
+            // User confirmed overwrite
+            console.log(`${functionName}: Overwrite confirmed by user. Sending second request...`);
+            showStatusMessage("Overwrite confirmed. Re-attempting installation...", "info");
+            const overwriteRequestBody = { ...initialRequestBody, overwrite: true }; // Copy initial body and set overwrite to true
+            console.debug(`${functionName}: Constructing overwrite request body:`, overwriteRequestBody);
 
-             // --- Second API Call (overwrite: true) ---
-             const finalApiResponse = await sendServerActionRequest(null, apiUrl, 'POST', overwriteRequestBody, buttonElement);
-             console.log(`${functionName}: Overwrite install API response received:`, finalApiResponse);
+            // --- Second API Call (overwrite: true) ---
+            const finalApiResponse = await sendServerActionRequest(null, apiUrl, 'POST', overwriteRequestBody, buttonElement);
+            console.log(`${functionName}: Overwrite install API response received:`, finalApiResponse);
 
-             if (finalApiResponse && finalApiResponse.status === 'success') {
-                  // Overwrite successful -> Navigate
-                  _handleInstallSuccessNavigation(finalApiResponse);
-             } else {
-                  console.error(`${functionName}: Overwrite install failed. Final API response:`, finalApiResponse);
-                  // Error message shown by sendServerActionRequest
-             }
+            if (finalApiResponse && finalApiResponse.status === 'success') {
+                // Overwrite successful -> Navigate
+                _handleInstallSuccessNavigation(finalApiResponse);
+            } else {
+                console.error(`${functionName}: Overwrite install failed. Final API response:`, finalApiResponse);
+                // Error message shown by sendServerActionRequest
+            }
         } else {
-             // User cancelled overwrite
-             console.log(`${functionName}: Overwrite cancelled by user.`);
-             showStatusMessage("Installation cancelled (overwrite not confirmed).", "info");
-             if (buttonElement) buttonElement.disabled = false; // Re-enable button if confirmation cancelled
+            // User cancelled overwrite
+            console.log(`${functionName}: Overwrite cancelled by user.`);
+            showStatusMessage("Installation cancelled (overwrite not confirmed).", "info");
+            if (buttonElement) buttonElement.disabled = false; // Re-enable button if confirmation cancelled
         }
     } else if (initialApiResponse.status === 'success') {
-         // --- Direct Success (New Install) ---
-         console.log(`${functionName}: New server install successful.`);
-         _handleInstallSuccessNavigation(initialApiResponse);
+        // --- Direct Success (New Install) ---
+        console.log(`${functionName}: New server install successful.`);
+        _handleInstallSuccessNavigation(initialApiResponse);
     } else {
-         // --- Other Errors from Initial Call ---
-         console.error(`${functionName}: Initial install attempt failed. Status: ${initialApiResponse.status}, Message: ${initialApiResponse.message}`);
-         // Error message shown by sendServerActionRequest
+        // --- Other Errors from Initial Call ---
+        console.error(`${functionName}: Initial install attempt failed. Status: ${initialApiResponse.status}, Message: ${initialApiResponse.message}`);
+        // Error message shown by sendServerActionRequest
     }
     console.log(`${functionName}: Execution finished.`);
 }
@@ -250,7 +255,7 @@ function _clearValidationErrors() {
     document.querySelectorAll('.validation-error').forEach(el => {
         el.textContent = ''; // Clear text content
     });
-     console.debug(`${functionName}: Validation messages cleared.`);
+    console.debug(`${functionName}: Validation messages cleared.`);
 }
 
 
@@ -280,27 +285,27 @@ async function saveProperties(buttonElement, serverName, isNewInstall) {
         if (!name) return; // Skip unnamed elements
 
         if (element.type === 'checkbox' && element.classList.contains('toggle-input')) {
-             // For toggles, only send 'true' if checked. The hidden input handles 'false'.
+            // For toggles, only send 'true' if checked. The hidden input handles 'false'.
             if (element.checked) {
                 const baseName = name.replace('-cb', ''); // Use base name
                 propertiesData[baseName] = 'true';
-                 console.debug(`${functionName}: Gathered toggle '${baseName}' = true (from checkbox)`);
+                console.debug(`${functionName}: Gathered toggle '${baseName}' = true (from checkbox)`);
             }
-             // 'false' value comes from the corresponding hidden input when it's *not* disabled
+            // 'false' value comes from the corresponding hidden input when it's *not* disabled
         } else if (element.type === 'hidden') {
             // Only include hidden inputs if they are ENABLED
             if (!element.disabled) {
-                 propertiesData[name] = element.value;
-                 console.debug(`${functionName}: Gathered enabled hidden input '${name}' = '${element.value}'`);
+                propertiesData[name] = element.value;
+                console.debug(`${functionName}: Gathered enabled hidden input '${name}' = '${element.value}'`);
             } else {
-                 console.debug(`${functionName}: Skipped disabled hidden input '${name}' (likely toggle false value)`);
+                console.debug(`${functionName}: Skipped disabled hidden input '${name}' (likely toggle false value)`);
             }
         } else if (element.tagName === 'SELECT' || element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-             // Standard inputs (excluding the toggle checkbox itself)
-             if (!element.classList.contains('toggle-input')) { // Avoid double-adding toggle state
-                  propertiesData[name] = element.value;
-                  console.debug(`${functionName}: Gathered input/select/textarea '${name}' = '${element.value}'`);
-             }
+            // Standard inputs (excluding the toggle checkbox itself)
+            if (!element.classList.contains('toggle-input')) { // Avoid double-adding toggle state
+                propertiesData[name] = element.value;
+                console.debug(`${functionName}: Gathered input/select/textarea '${name}' = '${element.value}'`);
+            }
         }
     });
 
@@ -313,7 +318,8 @@ async function saveProperties(buttonElement, serverName, isNewInstall) {
     const apiUrl = `/api/server/${serverName}/properties/set`;
     console.log(`${functionName}: Calling sendServerActionRequest to save properties at ${apiUrl}...`);
 
-    const apiResponseData = await sendServerActionRequest(null, apiUrl, 'POST', propertiesData, buttonElement);
+    const payload = { properties: propertiesData };
+    const apiResponseData = await sendServerActionRequest(null, apiUrl, 'POST', payload, buttonElement);
     console.log(`${functionName}: Save properties API call finished. Response data:`, apiResponseData);
 
     // --- Handle API Response ---
@@ -322,16 +328,16 @@ async function saveProperties(buttonElement, serverName, isNewInstall) {
         const successMsg = apiResponseData.message || "Properties saved successfully.";
 
         if (isNewInstall) {
-             console.log(`${functionName}: Properties saved during new install. Navigating to allowlist config...`);
-             showStatusMessage(`${successMsg} Proceeding to Allowlist...`, "success");
-             setTimeout(() => {
-                 const nextUrl = `/server/${encodeURIComponent(serverName)}/configure_allowlist?new_install=True`; // Ensure server name is URL-safe
-                 console.log(`${functionName}: Navigating to ${nextUrl}`);
-                 window.location.href = nextUrl;
-             }, 1500);
+            console.log(`${functionName}: Properties saved during new install. Navigating to allowlist config...`);
+            showStatusMessage(`${successMsg} Proceeding to Allowlist...`, "success");
+            setTimeout(() => {
+                const nextUrl = `/server/${encodeURIComponent(serverName)}/configure_allowlist?new_install=True`; // Ensure server name is URL-safe
+                console.log(`${functionName}: Navigating to ${nextUrl}`);
+                window.location.href = nextUrl;
+            }, 1500);
         } else {
-             console.log(`${functionName}: Properties saved successfully (standard configuration).`);
-             showStatusMessage(successMsg, "success"); // Show success message from API
+            console.log(`${functionName}: Properties saved successfully (standard configuration).`);
+            showStatusMessage(successMsg, "success"); // Show success message from API
         }
     } else {
         console.error(`${functionName}: Properties save failed or had validation errors.`);
@@ -356,29 +362,48 @@ async function savePermissions(buttonElement, serverName, isNewInstall) {
     console.debug(`${functionName}: Button Element:`, buttonElement);
 
     // --- Gather Permissions Data ---
-    const permissionsMap = {}; // Maps XUID -> permission level string
+    const permissionsData = []; // Array of {xuid, name, permission_level} objects
     const permissionSelects = document.querySelectorAll('select.permission-select'); // Target selects by class
     console.debug(`${functionName}: Found ${permissionSelects.length} permission select elements.`);
 
     permissionSelects.forEach(select => {
-        const xuid = select.dataset.xuid; // Get XUID from data attribute
-        const selectedLevel = select.value; // Get selected permission level
-        if (xuid && selectedLevel) {
-            permissionsMap[xuid] = selectedLevel;
-             console.debug(`${functionName}: Gathered permission - XUID: ${xuid}, Level: '${selectedLevel}'`);
+        const xuid = select.dataset.xuid;
+        const selectedLevel = select.value;
+
+        // Traverse up to the table row (tr) to find the player-name cell
+        const tableRow = select.closest('tr');
+        let playerName = 'Unknown'; // Default name
+        if (tableRow) {
+            const nameCell = tableRow.querySelector('.player-name');
+            if (nameCell) {
+                playerName = nameCell.textContent.trim();
+            } else {
+                console.warn(`${functionName}: Could not find '.player-name' cell in row for XUID: ${xuid}.`, tableRow);
+            }
         } else {
-             console.warn(`${functionName}: Skipping select element missing 'data-xuid' or value.`, select);
+            console.warn(`${functionName}: Could not find parent 'tr' for select element with XUID: ${xuid}.`, select);
+        }
+
+        if (xuid && selectedLevel && playerName) {
+            permissionsData.push({
+                xuid: xuid,
+                name: playerName, // Include the player's name
+                permission_level: selectedLevel // Keep key as permission_level for consistency with GET response
+            });
+            console.debug(`${functionName}: Gathered permission - XUID: ${xuid}, Name: ${playerName}, Level: '${selectedLevel}'`);
+        } else {
+            console.warn(`${functionName}: Skipping select element due to missing data (XUID: ${xuid}, Name: ${playerName}, Level: ${selectedLevel}).`, select);
         }
     });
 
-    console.log(`${functionName}: Permissions map gathered for submission:`, permissionsMap);
+    console.log(`${functionName}: Permissions data array gathered for submission:`, permissionsData);
 
     // --- Clear Validation ---
-    _clearValidationErrors(); // Clear any previous errors (though less likely here)
+    _clearValidationErrors(); // Clear any previous errors
 
     // --- Prepare API Request ---
     const requestBody = {
-        permissions: permissionsMap // Send the map under the 'permissions' key
+        permissions: permissionsData // Send the array of objects
     };
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
@@ -395,16 +420,16 @@ async function savePermissions(buttonElement, serverName, isNewInstall) {
         const successMsg = apiResponseData.message || "Permissions saved successfully.";
 
         if (isNewInstall) {
-             console.log(`${functionName}: Permissions saved during new install. Navigating to service config...`);
-             showStatusMessage(`${successMsg} Proceeding to Service Configuration...`, "success");
-             setTimeout(() => {
-                 const nextUrl = `/server/${encodeURIComponent(serverName)}/configure_service?new_install=True`;
-                 console.log(`${functionName}: Navigating to ${nextUrl}`);
-                 window.location.href = nextUrl;
-             }, 1500);
+            console.log(`${functionName}: Permissions saved during new install. Navigating to service config...`);
+            showStatusMessage(`${successMsg} Proceeding to Service Configuration...`, "success");
+            setTimeout(() => {
+                const nextUrl = `/server/${encodeURIComponent(serverName)}/configure_service?new_install=True`;
+                console.log(`${functionName}: Navigating to ${nextUrl}`);
+                window.location.href = nextUrl;
+            }, 1500);
         } else {
-             console.log(`${functionName}: Permissions saved successfully (standard configuration).`);
-             showStatusMessage(successMsg, "success");
+            console.log(`${functionName}: Permissions saved successfully (standard configuration).`);
+            showStatusMessage(successMsg, "success");
         }
     } else {
         console.error(`${functionName}: Permissions save failed or had validation errors.`);
@@ -436,10 +461,10 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
 
     const configSection = document.querySelector('.service-config-section');
     if (!configSection) {
-         const errorMsg = "Internal page error: Service configuration section not found.";
-         console.error(`${functionName}: ${errorMsg}`);
-         showStatusMessage(errorMsg, "error");
-         return;
+        const errorMsg = "Internal page error: Service configuration section not found.";
+        console.error(`${functionName}: ${errorMsg}`);
+        showStatusMessage(errorMsg, "error");
+        return;
     }
 
     try { // Wrap gathering in try-catch in case querySelector fails unexpectedly
@@ -447,26 +472,23 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
         if (autoupdateCheckbox) {
             requestBody.autoupdate = autoupdateCheckbox.checked; // Boolean value
         } else {
-             console.warn(`${functionName}: Autoupdate checkbox (#service-autoupdate-cb) not found.`);
-             // Decide default? Or fail? Let's proceed without it for now.
+            console.warn(`${functionName}: Autoupdate checkbox (#service-autoupdate-cb) not found.`);
+            // Decide default? Or fail? Let's proceed without it for now.
         }
 
-        if (currentOs === 'Linux') {
+        if (currentOs === 'Linux' || currentOs === 'Windows') {
             const autostartCheckbox = configSection.querySelector('#service-autostart-cb'); // The .toggle-input checkbox
             if (autostartCheckbox) {
                 requestBody.autostart = autostartCheckbox.checked; // Boolean value
             } else {
-                 console.warn(`${functionName}: Autostart checkbox (#service-autostart-cb) not found (Linux).`);
+                console.warn(`${functionName}: Autostart checkbox (#service-autostart-cb) not found.`);
             }
-            console.debug(`${functionName}: Linux settings gathered:`, requestBody);
-        } else if (currentOs === 'Windows') {
-             // Only autoupdate is relevant currently for Windows config
-            console.debug(`${functionName}: Windows settings gathered:`, requestBody);
+            console.debug(`${functionName}: Settings gathered:`, requestBody);
         } else {
-             const errorMsg = `Unsupported OS '${currentOs}' for service configuration.`;
-             console.error(`${functionName}: ${errorMsg}`);
-             showStatusMessage(errorMsg, "error");
-             return; // Cannot proceed
+            const errorMsg = `Unsupported OS '${currentOs}' for service configuration.`;
+            console.error(`${functionName}: ${errorMsg}`);
+            showStatusMessage(errorMsg, "error");
+            return; // Cannot proceed
         }
 
         if (isNewInstall) {
@@ -494,7 +516,7 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
     const saveResponse = await sendServerActionRequest(null, apiUrl, 'POST', requestBody, buttonElement);
     console.log(`${functionName}: Save service settings API call finished. Response data:`, saveResponse);
 
-    if (!saveResponse || saveResponse.status !== 'success') {
+    if (!saveResponse || !['success', 'success_with_warning'].includes(saveResponse.status)) {
         console.error(`${functionName}: Saving service settings failed. API response indicated failure or error.`);
         // Error message shown by sendServerActionRequest
         return; // Stop the workflow if saving settings failed
@@ -521,18 +543,18 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
                     window.location.href = "/";
                 }, 2000); // Longer delay after start
             } else {
-                 showStatusMessage(startResponse.message || "Server started successfully.", "success");
+                showStatusMessage(startResponse.message || "Server started successfully.", "success");
             }
         } else {
-             // Start failed
-             const startErrorMsg = startResponse?.message || "Unknown error starting server.";
-             console.warn(`${functionName}: Server failed to start after saving service settings: ${startErrorMsg}`);
-             showStatusMessage(`Service settings saved, but server failed to start: ${startErrorMsg}`, "warning");
-             // Button re-enabling handled by sendServerActionRequest
-             // If it's a new install, maybe don't redirect? Let user see error.
-             if (isNewInstall) {
-                 console.log(`${functionName}: Staying on page due to server start failure during new install.`);
-             }
+            // Start failed
+            const startErrorMsg = startResponse?.message || "Unknown error starting server.";
+            console.warn(`${functionName}: Server failed to start after saving service settings: ${startErrorMsg}`);
+            showStatusMessage(`Service settings saved, but server failed to start: ${startErrorMsg}`, "warning");
+            // Button re-enabling handled by sendServerActionRequest
+            // If it's a new install, maybe don't redirect? Let user see error.
+            if (isNewInstall) {
+                console.log(`${functionName}: Staying on page due to server start failure during new install.`);
+            }
         }
     } else if (isNewInstall) {
         // New install, saved settings, but didn't request start
@@ -543,10 +565,35 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
             window.location.href = "/";
         }, 1500);
     } else {
-         // Standard save, not new install, didn't request start
-         console.log(`${functionName}: Service settings saved successfully (standard configuration).`);
-         showStatusMessage(saveSuccessMsg, "success");
-         // Button re-enabling handled by sendServerActionRequest
+        // Standard save, not new install, didn't request start
+        console.log(`${functionName}: Service settings saved successfully (standard configuration).`);
+        showStatusMessage(saveSuccessMsg, "success");
+        // Button re-enabling handled by sendServerActionRequest
     }
     console.log(`${functionName}: Execution finished.`);
+}
+
+async function checkCustomVersion(version) {
+    const customZipGroup = document.getElementById('custom-zip-selector-group');
+    if (version.toUpperCase() === 'CUSTOM') {
+        customZipGroup.style.display = 'block';
+        const data = await sendServerActionRequest(null, '/api/downloads/list', 'GET', null, null, true);
+        const selector = document.getElementById('custom-zip-selector');
+        selector.innerHTML = '';
+        if (data && data.custom_zips && data.custom_zips.length > 0) {
+            data.custom_zips.forEach(zip => {
+                const option = document.createElement('option');
+                option.value = zip;
+                option.textContent = zip;
+                selector.appendChild(option);
+            });
+        } else {
+            const option = document.createElement('option');
+            option.textContent = 'No custom zips found';
+            option.disabled = true;
+            selector.appendChild(option);
+        }
+    } else {
+        customZipGroup.style.display = 'none';
+    }
 }

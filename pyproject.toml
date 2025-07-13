@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=80.9"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "bedrock-server-manager"
-version = "3.4.1"
+version = "3.5.0b4"
 authors = [
   { name="DMedina559", email="dmedina559-github@outlook.com" },
 ]
@@ -24,28 +24,40 @@ classifiers = [
 ]
 
 dependencies = [
-    "requests >= 2.32.3",
-    "psutil >= 7.0.0",
-    'pywin32 >= 309; sys_platform == "win32"',
-    "flask >= 3.1.0",
-    "flask-wtf >= 1.2.2",
-    "flask-jwt-extended >= 4.7.1",
-    "waitress >= 3.0.2",
-    "click >= 3.2.0",
-    "questionary >= 2.1.0"
+    "requests >=2.32.3,<2.33",
+    "psutil >=7.0.0,<7.1",
+    'pywin32 >=310,<311; sys_platform == "win32"',
+    "click >=8.2.0,<8.3",
+    "questionary >=2.1.0,<2.2",
+    "fastapi >=0.115.0,<0.116",
+    "uvicorn[standard] >=0.35.0,<0.36",
+    "python-jose[cryptography] >=3.5.0,<3.6",
+    "jinja2 >=3.1.0,<3.2",
+    "passlib >=1.7.4,<1.8",
+    "python_multipart >=0.0.20,<0.1",
+    "bcrypt >=4.3.0,<4.4",
 ]
 
-keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "cli"]
+keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "cli", "web", "fastapi"]
 
 [project.urls]
 Repository = "https://github.com/dmedina559/bedrock-server-manager.git"
 "Bug Tracker" = "https://github.com/DMedina559/bedrock-server-manager/issues"
-Changelog = "https://github.com/DMedina559/bedrock-server-manager/blob/main/docs/CHANGELOG.md"
+Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/_manual_docs/changelog.html"
 
 [project.optional-dependencies]
 dev = [
-    "black",
-    "pytest",
+    "pytest >=8.4.0,<8.5",
+    "pytest-mock >=3.14.0,<3.15",
+    "black >=25.1.0,<25.2",
+    "flake8 >=7.3.0,<7.4",
+]
+
+docs = [
+    "sphinx >=8.2.0,<8.3",
+    "sphinx-click >=6.0.0,<6.1",
+    "myst-parser >=4.0.0,<4.1",
+    "sphinx-rtd-theme >=3.0.0,<3.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -62,4 +74,4 @@ bedrock-server-manager = "bedrock_server_manager.__main__:main"
 ]
 
 [tool.pytest.ini_options]
-testpaths = [".test"]
+testpaths = ["test"]

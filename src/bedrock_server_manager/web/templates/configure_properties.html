@@ -7,8 +7,8 @@
 
 {# --- Head Scripts Block --- #}
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/install_config.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
 {% endblock %}
 
 {# --- Main Content Block --- #}
@@ -134,7 +134,6 @@
         </div>
 
         {# Other fields follow the same pattern - defaults are set statically #}
-        {# ... remaining form fields from your example ... #}
         <div class="form-group form-group-toggle-container">
             <div class="form-label-group">
                 <label for="allow-list-cb" class="form-label">Enable Allow List:</label>
@@ -203,11 +202,11 @@
             Save Properties
         </button>
         {% if new_install %}
-        <a href="{{ url_for('install_config_routes.configure_allowlist_route', server_name=server_name, new_install='True') }}" class="action-link">
+        <a href="{{ request.url_for('configure_allowlist_page', server_name=server_name) ~ ('?new_install=true' if new_install else '') if request else '#' }}" class="action-link">
             Skip & Go to Allowlist »
         </a>
         {% else %}
-        <a href="{{ url_for('main_routes.index') }}" class="action-link">
+        <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
             « Back to Dashboard
         </a>
         {% endif %}
@@ -305,21 +304,24 @@
             const formContainer = document.getElementById('properties-form-container');
 
             try {
-                const response = await fetch(`/api/server/${serverName}/properties/get`);
-                const data = await response.json();
+                // Refactored to use sendServerActionRequest
+                const data = await window.sendServerActionRequest(serverName, 'properties/get', 'GET', null, null);
 
-                if (!response.ok || data.status !== 'success') {
-                    throw new Error(data.message || `HTTP error! Status: ${response.status}`);
+                if (data && data.status === 'success' && data.properties) {
+                    populateForm(data.properties);
+                } else {
+                    const errorMsg = (data && data.message) ? data.message : 'Failed to load server properties.';
+                    console.error('Failed to load server properties:', errorMsg);
+                    if (typeof showStatusMessage === 'function' && !(data && data.status === 'error')) {
+                         showStatusMessage(`Error loading properties: ${errorMsg}`, 'error');
+                    }
                 }
-
-                populateForm(data.properties);
-
-            } catch (error) {
-                console.error('Failed to load server properties:', error);
-                showStatusMessage(`Error loading properties: ${error.message}`, 'error');
+            } catch (error) { // Catch errors from this script's logic
+                console.error('Client-side error in loadProperties:', error);
+                if (typeof showStatusMessage === 'function') {
+                    showStatusMessage(`Client-side error loading properties: ${error.message}`, 'error');
+                }
             } finally {
-                // Hide loader and show the form, even if population fails,
-                // so the user can see the form with default values.
                 loader.style.display = 'none';
                 formContainer.style.display = 'block';
                 console.log(`${functionName}: Loading complete. Form is now visible.`);

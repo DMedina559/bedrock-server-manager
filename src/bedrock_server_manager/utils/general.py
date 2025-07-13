@@ -11,9 +11,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-# Local imports
-from bedrock_server_manager.config.settings import settings
-
 logger = logging.getLogger(__name__)
 
 
@@ -40,24 +37,26 @@ def startup_checks(
         # Raising an exception is the correct way to halt execution on a critical failure.
         raise RuntimeError(message)
 
+    from bedrock_server_manager.config.settings import settings
+
     # Ensure essential directories exist
     dirs_to_create = {
-        "BASE_DIR": settings.get("BASE_DIR"),
-        "CONTENT_DIR": settings.get("CONTENT_DIR"),
+        "BASE_DIR": settings.get("paths.servers"),
+        "CONTENT_DIR": settings.get("paths.content"),
         "WORLDS_SUBDIR": (
-            os.path.join(str(settings.get("CONTENT_DIR")), "worlds")
-            if settings.get("CONTENT_DIR")
+            os.path.join(str(settings.get("paths.content")), "worlds")
+            if settings.get("paths.content")
             else None
         ),
         "ADDONS_SUBDIR": (
-            os.path.join(str(settings.get("CONTENT_DIR")), "addons")
-            if settings.get("CONTENT_DIR")
+            os.path.join(str(settings.get("paths.content")), "addons")
+            if settings.get("paths.content")
             else None
         ),
-        "DOWNLOAD_DIR": settings.get("DOWNLOAD_DIR"),
-        "PLUGIN_DIR": settings.get("PLUGIN_DIR"),
-        "BACKUP_DIR": settings.get("BACKUP_DIR"),
-        "LOG_DIR": settings.get("LOG_DIR"),
+        "DOWNLOAD_DIR": settings.get("paths.downloads"),
+        "PLUGIN_DIR": settings.get("paths.plugins"),
+        "BACKUP_DIR": settings.get("paths.backups"),
+        "LOG_DIR": settings.get("paths.logs"),
     }
 
     for name, dir_path in dirs_to_create.items():

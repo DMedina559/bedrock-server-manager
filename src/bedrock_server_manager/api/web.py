@@ -1,15 +1,24 @@
 # bedrock_server_manager/api/web.py
-"""Provides API functions for managing the application's web server.
+"""Provides API functions for managing the application's own web user interface.
 
-This module contains the logic for starting, stopping, and checking the status
-of the built-in web user interface, which is powered by Flask. It handles
-both direct (blocking) and detached (background) modes of operation.
+This module contains the logic for controlling the lifecycle and querying the
+status of the built-in web UI, which is powered by FastAPI. It interfaces with the
+:class:`~bedrock_server_manager.core.manager.BedrockServerManager` to handle:
+
+    - Starting the web server in 'direct' (blocking) or 'detached' (background) modes
+      (:func:`~.start_web_server_api`).
+    - Stopping the detached web server process (:func:`~.stop_web_server_api`).
+    - Checking the runtime status of the web server (:func:`~.get_web_server_status_api`).
+    - Managing the system service for the Web UI (create, enable, disable, remove, get status)
+      via functions like :func:`~.create_web_ui_service` and :func:`~.get_web_ui_service_status`.
+
+These functions are intended for programmatic control of the application's web server,
+often used by CLI commands or service management scripts.
 """
 import logging
 from typing import Dict, Optional, Any, List, Union
 import os
 
-# psutil is an optional dependency required for detached mode process management.
 try:
     import psutil
 
@@ -18,13 +27,13 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from .. import plugin_manager
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.core.system import process as system_process_utils
-from bedrock_server_manager.error import (
+from ..core import BedrockServerManager
+from ..core.system import process as system_process_utils
+from ..error import (
     BSMError,
     FileOperationError,
     ServerProcessError,
@@ -41,29 +50,44 @@ def start_web_server_api(
     host: Optional[Union[str, List[str]]] = None,
     debug: bool = False,
     mode: str = "direct",
+    threads: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
 
     This function can start the web server in two modes:
-    - 'direct': A blocking call that runs the server in the current process.
-      Useful for development or when managed by an external process manager.
-    - 'detached': Launches the server as a new background process and creates
-      a PID file to track it. Requires the `psutil` library.
+        - 'direct': A blocking call that runs the server in the current process
+          Useful for development or when managed by an external process manager.
+        - 'detached': Launches the server as a new background process and creates
+          a PID file to track it. Requires the `psutil` library. Uses various
+          methods from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`
+          and :mod:`~bedrock_server_manager.core.system.process` for process management.
+
+    Triggers ``before_web_server_start`` and ``after_web_server_start`` plugin events.
 
     Args:
-        host: The host address(es) to bind the web server to. Can be a single
-            string or a list of strings. Defaults to the setting value.
-        debug: If True, starts the Flask server in debug mode.
-        mode: The start mode, either 'direct' or 'detached'.
+        host (Optional[Union[str, List[str]]], optional): The host address(es)
+            to bind the web server to. Can be a single string or a list of strings.
+            If ``None``, defaults to the application's configured setting (typically "0.0.0.0").
+            Defaults to ``None``.
+        debug (bool, optional): If ``True``, starts the web server (Uvicorn) in
+            debug mode (e.g., with auto-reload). Defaults to ``False``.
+        mode (str, optional): The start mode, either 'direct' or 'detached'.
+            Defaults to 'direct'.
+        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
+
+            Only used for Windows Service
 
     Returns:
-        A dictionary containing the operation status, a message, and the PID
-        if started in detached mode.
+        Dict[str, Any]: A dictionary with the operation result.
+        If 'direct' mode: ``{"status": "success", "message": "Web server (direct mode) shut down."}``
+        If 'detached' mode (success): ``{"status": "success", "pid": <pid>, "message": "Web server started (PID: <pid>)."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
 
     Raises:
         UserInputError: If the provided `mode` is invalid.
         SystemError: If `detached` mode is used but `psutil` is not installed.
-        ServerProcessError: If the web server is already running.
+        ServerProcessError: If the web server is already running in detached mode.
+        BSMError: For other application-specific errors during startup.
     """
     mode = mode.lower()
 
@@ -77,7 +101,7 @@ def start_web_server_api(
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            bsm.start_web_ui_direct(host, debug)
+            bsm.start_web_ui_direct(host, debug, threads)
             result = {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",
@@ -158,12 +182,29 @@ def start_web_server_api(
 def stop_web_server_api() -> Dict[str, str]:
     """Stops the detached web server process.
 
-    This function reads the PID from the web server's PID file, verifies that
-    the process is the correct one, and terminates it. Requires the `psutil`
-    library.
+    This function reads the PID from the web server's PID file (path obtained
+    via :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_web_ui_pid_path`),
+    verifies that the process is the correct one using expected executable and arguments
+    (from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`),
+    and then terminates it. Uses utilities from
+    :mod:`~bedrock_server_manager.core.system.process`.
+    Requires the `psutil` library.
+    Triggers ``before_web_server_stop`` and ``after_web_server_stop`` plugin events.
 
     Returns:
-        A dictionary containing the operation status and a descriptive message.
+        Dict[str, str]: A dictionary with the operation result.
+        If successfully stopped: ``{"status": "success", "message": "Web server (PID: <pid>) stopped."}``
+        If not running (no PID file or stale PID): ``{"status": "success", "message": "Web server not running..."}``
+        On error (e.g., PID file error, process mismatch, termination error):
+        ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        SystemError: If `psutil` is not installed.
+        BSMError: Propagates errors from underlying operations, including:
+            :class:`~.error.FileOperationError` (PID file issues),
+            :class:`~.error.ServerProcessError` (process verification failure),
+            :class:`~.error.ServerStopError` (termination failure),
+            :class:`~.error.ConfigurationError` (if web UI paths not configured in BSM).
     """
     plugin_manager.trigger_guarded_event("before_web_server_stop")
 
@@ -195,7 +236,7 @@ def stop_web_server_api() -> Dict[str, str]:
             }
 
         # Verify it's the correct process before terminating.
-        system_process_utils.verify_process_identity(pid, expected_exe, expected_arg)
+        system_process_utils.verify_process_identity(pid, expected_exe)
         system_process_utils.terminate_process_by_pid(pid)
         system_process_utils.remove_pid_file_if_exists(pid_file_path)
         result = {"status": "success", "message": f"Web server (PID: {pid}) stopped."}
@@ -225,13 +266,27 @@ def get_web_server_status_api() -> Dict[str, Any]:
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
-    PID file and then inspecting the process itself to ensure it is running
-    and is the correct executable. Requires the `psutil` library.
+    PID file (path obtained via
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_web_ui_pid_path`)
+    and then inspecting the process itself (using utilities from
+    :mod:`~bedrock_server_manager.core.system.process`) to ensure it is running
+    and is the correct executable (details from
+    :class:`~bedrock_server_manager.core.manager.BedrockServerManager`).
+    Requires the `psutil` library.
 
     Returns:
-        A dictionary with the status, PID (if available), and a message.
-        Possible statuses: "RUNNING", "STOPPED", "MISMATCHED_PROCESS", "ERROR".
-        Example: `{"status": "RUNNING", "pid": 1234, "message": "..."}`
+        Dict[str, Any]: A dictionary with the web server's status.
+        The ``"status"`` field can be one of "RUNNING", "STOPPED",
+        "MISMATCHED_PROCESS", or "ERROR".
+        If running, ``"pid"`` (int) will be present.
+        A ``"message"`` (str) field provides details.
+        Example: ``{"status": "RUNNING", "pid": 1234, "message": "Web server running..."}``
+
+    Raises:
+        BSMError: Can be raised by underlying operations if critical errors occur
+            (e.g., :class:`~.error.ConfigurationError` if web UI paths are not set up
+            in BedrockServerManager), though many operational errors are returned
+            in the status dictionary.
     """
     logger.debug("API: Getting web server status...")
     if not PSUTIL_AVAILABLE:
@@ -302,4 +357,312 @@ def get_web_server_status_api() -> Dict[str, Any]:
             "status": "ERROR",
             "pid": None,
             "message": f"Unexpected error: {str(e)}",
+        }
+
+
+def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
+    """Creates (or updates) a system service for the Web UI.
+
+    On Linux, this creates a systemd user service. On Windows, this creates a
+    Windows Service (typically requires Administrator privileges).
+    This function calls
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.create_web_service_file`,
+    and then either
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service` or
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
+    based on the `autostart` flag.
+    Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Args:
+        autostart (bool, optional): If ``True``, the service will be enabled
+            to start automatically on system boot/login. If ``False``, it will be
+            created but left disabled. Defaults to ``False``.
+
+    Returns:
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Web UI system service created and <enabled/disabled> successfully."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        BSMError: Propagates errors from the underlying service management calls,
+            such as :class:`~.error.SystemError`, :class:`~.error.PermissionsError`,
+            :class:`~.error.CommandNotFoundError`, or :class:`~.error.FileOperationError`.
+    """
+
+    plugin_manager.trigger_event(
+        "before_web_service_change", action="create", autostart=autostart
+    )
+
+    result = {}
+    try:
+
+        if not bsm.can_manage_services:
+            return {
+                "status": "error",
+                "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
+            }
+
+        bsm.create_web_service_file()
+
+        if autostart:
+            bsm.enable_web_service()
+            action_done = "created and enabled"
+        else:
+            bsm.disable_web_service()
+            action_done = "created and disabled"
+
+        result = {
+            "status": "success",
+            "message": f"Web UI system service {action_done} successfully.",
+        }
+
+    except BSMError as e:
+        logger.error(f"API: Failed to create Web UI system service: {e}", exc_info=True)
+        result = {"status": "error", "message": f"Failed to create Web UI service: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error creating Web UI system service: {e}", exc_info=True
+        )
+        result = {
+            "status": "error",
+            "message": f"Unexpected error creating Web UI service: {e}",
+        }
+    finally:
+        plugin_manager.trigger_event(
+            "after_web_service_change", action="create", result=result
+        )
+
+    return result
+
+
+def enable_web_ui_service() -> Dict[str, str]:
+    """Enables the Web UI system service for autostart.
+
+    On Linux, this enables the systemd user service. On Windows, this sets the
+    Windows Service start type to 'Automatic' (typically requires Administrator
+    privileges). It calls
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`.
+    Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Returns:
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Web UI service enabled successfully."}``
+        If service management tools are unavailable:
+        ``{"status": "error", "message": "System service management tool ... not found."}``
+        On other error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        BSMError: Propagates errors from the underlying
+            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`
+            call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
+    """
+    plugin_manager.trigger_event("before_web_service_change", action="enable")
+    result = {}
+    try:
+
+        if not bsm.can_manage_services:
+            return {
+                "status": "error",
+                "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
+            }
+        bsm.enable_web_service()
+        result = {
+            "status": "success",
+            "message": "Web UI service enabled successfully.",
+        }
+    except BSMError as e:
+        logger.error(f"API: Failed to enable Web UI system service: {e}", exc_info=True)
+        result = {"status": "error", "message": f"Failed to enable Web UI service: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error enabling Web UI system service: {e}", exc_info=True
+        )
+        result = {
+            "status": "error",
+            "message": f"Unexpected error enabling Web UI service: {e}",
+        }
+    finally:
+        plugin_manager.trigger_event(
+            "after_web_service_change", action="enable", result=result
+        )
+    return result
+
+
+def disable_web_ui_service() -> Dict[str, str]:
+    """Disables the Web UI system service from autostarting.
+
+    On Linux, this disables the systemd user service. On Windows, this sets the
+    Windows Service start type to 'Disabled' or 'Manual' (typically requires
+    Administrator privileges). It calls
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`.
+    Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Returns:
+        Dict[str, str]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Web UI service disabled successfully."}``
+        If service management tools are unavailable:
+        ``{"status": "error", "message": "System service management tool ... not found."}``
+        On other error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        BSMError: Propagates errors from the underlying
+            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
+            call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
+    """
+    plugin_manager.trigger_event("before_web_service_change", action="disable")
+    result = {}
+    try:
+
+        if not bsm.can_manage_services:
+            return {
+                "status": "error",
+                "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
+            }
+        bsm.disable_web_service()
+        result = {
+            "status": "success",
+            "message": "Web UI service disabled successfully.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Failed to disable Web UI system service: {e}", exc_info=True
+        )
+        result = {
+            "status": "error",
+            "message": f"Failed to disable Web UI service: {e}",
+        }
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error disabling Web UI system service: {e}", exc_info=True
+        )
+        result = {
+            "status": "error",
+            "message": f"Unexpected error disabling Web UI service: {e}",
+        }
+    finally:
+        plugin_manager.trigger_event(
+            "after_web_service_change", action="disable", result=result
+        )
+    return result
+
+
+def remove_web_ui_service() -> Dict[str, str]:
+    """Removes the Web UI system service.
+
+    The service should ideally be stopped and disabled before removal.
+    This function calls
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.remove_web_service_file`.
+
+    .. warning::
+        This is a **DESTRUCTIVE** operation that removes the service definition
+        from the system.
+
+    Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Returns:
+        Dict[str, str]: A dictionary with the operation result.
+        On success (service removed or was not found):
+        ``{"status": "success", "message": "Web UI service removed successfully."}``
+        If service management tools are unavailable:
+        ``{"status": "error", "message": "System service management tool ... not found."}``
+        On other error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        BSMError: Propagates errors from the underlying
+            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.remove_web_service_file`
+            call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`,
+            :class:`~.error.FileOperationError`).
+    """
+    plugin_manager.trigger_event("before_web_service_change", action="remove")
+    result = {}
+    try:
+
+        if not bsm.can_manage_services:
+            return {
+                "status": "error",
+                "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
+            }
+
+        removed = bsm.remove_web_service_file()
+        if removed:
+            result = {
+                "status": "success",
+                "message": "Web UI service removed successfully.",
+            }
+        else:
+
+            result = {
+                "status": "error",
+                "message": "Web UI service removal failed or file not found.",
+            }
+
+    except BSMError as e:
+        logger.error(f"API: Failed to remove Web UI system service: {e}", exc_info=True)
+        result = {"status": "error", "message": f"Failed to remove Web UI service: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error removing Web UI system service: {e}", exc_info=True
+        )
+        result = {
+            "status": "error",
+            "message": f"Unexpected error removing Web UI service: {e}",
+        }
+    finally:
+        plugin_manager.trigger_event(
+            "after_web_service_change", action="remove", result=result
+        )
+    return result
+
+
+def get_web_ui_service_status() -> Dict[str, Any]:
+    """Gets the current status of the Web UI system service.
+
+    This function calls several methods on the
+    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance:
+    :meth:`~.check_web_service_exists`,
+    :meth:`~.is_web_service_active`, and
+    :meth:`~.is_web_service_enabled`.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "service_exists": bool, "is_active": bool, "is_enabled": bool, "message": Optional[str]}``.
+        - ``service_exists``: ``True`` if the service definition is found on the system.
+        - ``is_active``: ``True`` if the service is currently running.
+        - ``is_enabled``: ``True`` if the service is set to start automatically.
+        A "message" field may be present if service management tools are unavailable.
+        On error during checks: ``{"status": "error", "message": "<error_message>"}``.
+    """
+    response_data: Dict[str, Any] = {
+        "service_exists": False,
+        "is_active": False,
+        "is_enabled": False,
+    }
+    try:
+        if not bsm.can_manage_services:
+            return {
+                "status": "success",
+                "message": "System service management tool (systemctl/sc.exe) not found. Cannot determine Web UI service status.",
+                **response_data,
+            }
+
+        response_data["service_exists"] = bsm.check_web_service_exists()
+        if response_data["service_exists"]:
+            response_data["is_active"] = bsm.is_web_service_active()
+            response_data["is_enabled"] = bsm.is_web_service_enabled()
+
+        return {"status": "success", **response_data}
+
+    except BSMError as e:
+        logger.error(f"API: Error getting Web UI service status: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Error getting Web UI service status: {e}",
+        }
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error getting Web UI service status: {e}", exc_info=True
+        )
+        return {
+            "status": "error",
+            "message": f"Unexpected error getting Web UI service status: {e}",
         }

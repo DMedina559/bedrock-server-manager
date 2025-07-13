@@ -9,6 +9,7 @@ the interactive menu system.
 """
 
 import logging
+import platform
 import sys
 
 import click
@@ -16,14 +17,14 @@ import click
 # --- Early and Essential Imports ---
 # This block handles critical import failures gracefully.
 try:
-    from bedrock_server_manager import __version__
-    from bedrock_server_manager.api import utils as api_utils
-    from bedrock_server_manager.config.const import app_name_title
-    from bedrock_server_manager.config.settings import Settings
-    from bedrock_server_manager.core.manager import BedrockServerManager
-    from bedrock_server_manager.error import UserExitError
-    from bedrock_server_manager.logging import log_separator, setup_logging
-    from bedrock_server_manager.utils.general import startup_checks
+    from . import __version__
+    from .api import utils as api_utils
+    from .config import app_name_title
+    from .config import settings
+    from .core import BedrockServerManager
+    from .error import UserExitError
+    from .logging import log_separator, setup_logging
+    from .utils.general import startup_checks
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -38,7 +39,7 @@ except ImportError as e:
 
 # --- Import all Click command modules ---
 # These are grouped logically for clarity.
-from bedrock_server_manager.cli import (
+from .cli import (
     addon,
     backup_restore,
     cleanup,
@@ -57,9 +58,31 @@ from bedrock_server_manager.cli import (
     plugins,
 )
 
+# Guarded import for Windows-specific functionality
+if platform.system() == "Windows":
+    from .cli import windows_service
+else:
+    windows_service = None
+
+# --- Import the shared PluginManager instance ---
+# This instance is created in bedrock_server_manager/__init__.py
+# and plugins are loaded by bedrock_server_manager/api/__init__.py when it's imported.
+# So, by the time __main__ fully runs, plugins should be loaded if api module was imported.
+# One of the CLI modules (e.g. cli.plugins) or api.utils might import api.__init__ early.
+try:
+    from . import plugin_manager as global_api_plugin_manager
+except ImportError as e_imp_pm:
+    # Fallback or error logging if bedrock_server_manager.api.plugin_manager cannot be imported
+    # This might happen if `api.__init__` itself has an issue or isn't processed yet.
+    # Using print for very early messages as logger might not be set up.
+    print(
+        f"WARNING [BSM __main__]: Could not import global_api_plugin_manager from bedrock_server_manager.api: {e_imp_pm}. Plugin CLI extensions might be unavailable.",
+        file=sys.stderr,
+    )
+    global_api_plugin_manager = None
+
+
 # --- Main Click Group Definition ---
-
-
 @click.group(
     invoke_without_command=True,
     context_settings=dict(help_option_names=["-h", "--help"]),
@@ -79,36 +102,40 @@ def cli(ctx: click.Context):
     """
     try:
         # --- Initial Application Setup ---
-        # This block runs every time the CLI is invoked.
-        settings = Settings()
-        log_dir = settings.get("LOG_DIR")
+        log_dir = settings.get("paths.logs")
+
         logger = setup_logging(
             log_dir=log_dir,
-            log_keep=settings.get("LOGS_KEEP"),
-            file_log_level=settings.get("FILE_LOG_LEVEL"),
-            cli_log_level=settings.get("CLI_LOG_LEVEL"),
+            log_keep=settings.get("retention.logs"),
+            file_log_level=settings.get("logging.file_level"),
+            cli_log_level=settings.get("logging.cli_level"),
+            force_reconfigure=True,
         )
         log_separator(logger, app_name=app_name_title, app_version=__version__)
-
-        logger.info(f"Starting {app_name_title} v{__version__}...")
+        logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
         bsm = BedrockServerManager(settings_instance=settings)
         startup_checks(app_name_title, __version__)
+
+        # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
+        # This ensures plugin_manager.load_plugins() has been called.
         api_utils.update_server_statuses()
 
     except Exception as setup_e:
-        # If setup fails, it's a critical error.
-        click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
         logging.getLogger("bsm_critical_setup").critical(
-            "An unrecoverable error occurred during application startup.", exc_info=True
+            f"An unrecoverable error occurred during CLI application startup: {setup_e}",
+            exc_info=True,
         )
+        click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
         sys.exit(1)
 
-    # Pass the main `cli` group object to the context. This is crucial for
-    # sub-menus to be able to find and invoke other commands.
-    ctx.obj = {"cli": cli, "bsm": bsm, "settings": settings}
+    ctx.obj = {
+        "cli": cli,
+        "bsm": bsm,
+        "settings": settings,
+        "plugin_manager": global_api_plugin_manager,
+    }
 
-    # If no subcommand was invoked, run the main interactive menu.
     if ctx.invoked_subcommand is None:
         logger.info("No command specified; launching main interactive menu.")
         try:
@@ -122,11 +149,47 @@ def cli(ctx: click.Context):
             sys.exit(1)
 
 
+# --- Helper function to add plugin CLI commands ---
+def _add_plugin_cli_commands(main_cli_group: click.Group, pm_instance):
+    """Adds CLI commands from plugins to the main CLI group."""
+    if pm_instance and hasattr(pm_instance, "plugin_cli_commands"):
+        plugin_commands = pm_instance.plugin_cli_commands
+        if plugin_commands:
+            # Using print as this runs very early, before logger might be fully set up by CLI.
+            print(
+                f"[BSM __main__] Adding {len(plugin_commands)} CLI command(s) from plugins to group '{main_cli_group.name}'."
+            )
+            for cmd_idx, cmd in enumerate(plugin_commands):
+                if isinstance(cmd, (click.Command, click.Group)):
+                    main_cli_group.add_command(cmd)
+                    cmd_name = getattr(cmd, "name", f"unknown_cmd_idx_{cmd_idx}")
+                    print(f"[BSM __main__] Added plugin CLI command/group: {cmd_name}")
+                else:
+                    print(
+                        f"[BSM __main__] WARNING: Plugin provided an object that is not a valid Click command/group at index {cmd_idx}: {type(cmd)}"
+                    )
+        # No explicit message if plugin_commands is empty, as PluginManager logs collection.
+    elif pm_instance:
+        print(
+            "[BSM __main__] WARNING: Imported plugin_manager has no 'plugin_cli_commands' attribute.",
+            file=sys.stderr,
+        )
+    else:
+        # This case is logged by the import try-except block for global_api_plugin_manager
+        print(
+            "[BSM __main__] INFO: global_api_plugin_manager is None. Cannot add plugin CLI commands.",
+            file=sys.stderr,
+        )
+
+
 # --- Command Assembly ---
 # A structured way to add all commands to the main `cli` group.
 def _add_commands_to_cli():
-    """Attaches all command groups and standalone commands to the main CLI group."""
-    # Command Groups
+    """Attaches all core command groups/standalone commands AND plugin commands to the main CLI group."""
+    # `cli` is the globally defined Click group.
+    # `global_api_plugin_manager` is the plugin_manager from bedrock_server_manager.api
+
+    # Core Command Groups
     cli.add_command(backup_restore.backup)
     cli.add_command(player.player)
     cli.add_command(server_permissions.permissions)
@@ -138,18 +201,25 @@ def _add_commands_to_cli():
     cli.add_command(world.world)
     cli.add_command(server_allowlist.allowlist)
     cli.add_command(plugins.plugin)
+    cli.add_command(windows_service.service)
 
     # Standalone Commands
     cli.add_command(addon.install_addon)
-    cli.add_command(utils.attach_console)
     cli.add_command(cleanup.cleanup)
     cli.add_command(
         generate_password.generate_password_hash_command, name="generate-password"
     )
     cli.add_command(utils.list_servers)
 
+    # After adding all core commands, add plugin commands using the global plugin manager instance
+    if (
+        global_api_plugin_manager
+    ):  # Check if it was successfully imported and initialized
+        _add_plugin_cli_commands(cli, global_api_plugin_manager)
+    # If global_api_plugin_manager is None, warnings/errors already printed during its import attempt
 
-# Call the assembly function to build the CLI
+
+# Call the assembly function to build the CLI with core and plugin commands
 _add_commands_to_cli()
 
 

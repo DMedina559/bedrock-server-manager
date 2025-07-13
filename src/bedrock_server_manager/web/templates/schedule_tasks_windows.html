@@ -5,13 +5,20 @@
 {% block title %}{{ super() }} - Task Scheduler: {{ server_name }}{% endblock %}
 
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/windows_task.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/windows_task.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
 <h2>Windows Task Scheduler</h2>
 <p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
+
+{# Display error message passed from route, if any #}
+{% if error_message %}
+<div class="message-box message-error">
+    {{ error_message }}
+</div>
+{% endif %}
 
 <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;"></div>
 
@@ -39,7 +46,6 @@
                         <td data-label="Schedule">{{ task.schedule }}</td>
                         <td data-label="Actions" style="text-align: center;">
                             <div class="actions">
-                                {# Pass the command to pre-select it in the form #}
                                 <a href="#" onclick="event.preventDefault(); prepareModifyFormWindows('{{ task.task_name | e }}', '{{ task.command | e }}')" class="action-link modify-link" title="Modify this task">Modify</a>
                                 <a href="#" onclick="event.preventDefault(); confirmDeleteWindows('{{ task.task_name | e }}', '{{ server_name | e }}')" class="action-button danger-button" title="Delete this task">Delete</a>
                             </div>
@@ -58,7 +64,7 @@
 
     <div class="list-actions form-actions">
         <button type="button" onclick="prepareNewTaskForm()" class="action-button">Add New Task</button>
-        <a href="{{ url_for('main_routes.index') }}" class="action-link">« Back to Dashboard</a>
+        <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">« Back to Dashboard</a>
     </div>
 </section>
 

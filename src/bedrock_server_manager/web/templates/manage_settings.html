@@ -1,0 +1,52 @@
+{# bedrock_server_manager/web/templates/manage_settings.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Manage Settings{% endblock %}
+
+{% block head_scripts %}
+{# Scripts are now loaded in body_scripts block in base.html #}
+{% endblock %}
+
+{% block content %}
+    {# --- Page Header --- #}
+    {# Use standard h2 for section titles #}
+<h2>Manage Global Settings</h2>
+<p style="margin-bottom: 15px;">Edit application-wide settings. Changes are saved automatically when you modify a field.</p>
+
+    {# --- Status Message Areas --- #}
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;"></div>
+<div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;"></div>
+
+    {# --- Loading Indicator --- #}
+<div id="settings-loader" class="loader-container">
+    <div class="spinner"></div>
+    <p>Loading settings...</p>
+</div>
+
+    {# --- Settings Configuration Section (Initially hidden, populated by JS) --- #}
+<section id="settings-form-section" class="properties-config-section" style="display: none;">
+    {# Header inside the section to contain the reload button #}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h3>Application Configuration</h3>
+        <button id="reload-settings-btn" class="action-button">
+            <i class="fas fa-sync-alt"></i> Reload from File
+        </button>
+    </div>
+    {# form-grid container where fieldsets will be appended #}
+    <div id="settings-form-container" class="form-grid">
+        {# The dynamically generated fieldsets and form groups will be injected here #}
+    </div>
+</section>
+
+    {# The page-actions div should be outside the section, at the end of the content block #}
+<div class="page-actions">
+    <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
+        « Back to Dashboard
+    </a>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+{# This script is loaded after utils.js (which is in base.html) #}
+<script src="{{ request.url_for('static', path='js/manage_settings.js') }}" defer></script>
+{% endblock %}

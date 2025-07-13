@@ -1,13 +1,29 @@
 # bedrock_server_manager/api/plugins.py
 """
-Provides API functions for managing plugin configurations and lifecycle.
+Provides API functions for interacting with the application's plugin system.
+
+This module serves as an interface to the global plugin manager instance,
+which is an object of
+:class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
+It allows for retrieving plugin statuses, enabling or disabling plugins,
+reloading the plugin system, and triggering custom plugin events from
+external sources.
+
+Key functionalities include:
+- Getting statuses and metadata of all discovered plugins (:func:`~.get_plugin_statuses`).
+- Setting the enabled/disabled state of a specific plugin (:func:`~.set_plugin_status`).
+- Reloading all plugins (:func:`~.reload_plugins`).
+- Triggering custom plugin events externally (:func:`~.trigger_external_plugin_event_api`).
+
+These functions facilitate management and interaction with plugins, primarily
+for use by administrative interfaces like a web UI or CLI.
 """
 import logging
 from typing import Dict, Any
 
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.plugins.api_bridge import plugin_method
-from bedrock_server_manager.error import UserInputError
+from .. import plugin_manager
+from ..plugins import plugin_method
+from ..error import UserInputError
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +32,19 @@ logger = logging.getLogger(__name__)
 def get_plugin_statuses() -> Dict[str, Any]:
     """
     Retrieves the statuses and metadata of all discovered plugins.
+
+    This function first ensures the plugin configuration is synchronized with
+    the plugin files on disk by calling an internal method of the
+    :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
+    It then returns a copy of the current plugin configuration.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "plugins": PluginConfigDict}``
+        where ``PluginConfigDict`` is a dictionary mapping plugin names (str)
+        to their configuration (another dict containing keys like "enabled" (bool),
+        "description" (str), "version" (str)).
+        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.debug("API: Attempting to get plugin statuses.")
     try:
@@ -34,12 +63,28 @@ def set_plugin_status(plugin_name: str, enabled: bool) -> Dict[str, Any]:
     """
     Sets the enabled/disabled status for a specific plugin.
 
+    This function updates the ``enabled`` field for the given `plugin_name`
+    in the plugin configuration, which is managed by the
+    :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
+    The configuration is synchronized with disk before modification, and the
+    changes are saved back to ``plugins.json``.
+
+    Note:
+        For the change in enabled status to take full effect (i.e., for the
+        plugin to be loaded or unloaded), :func:`~.reload_plugins` typically
+        needs to be called afterwards.
+
     Args:
-        plugin_name: The name of the plugin to configure.
-        enabled: True to enable the plugin, False to disable it.
+        plugin_name (str): The name of the plugin to configure.
+        enabled (bool): ``True`` to enable the plugin, ``False`` to disable it.
 
     Returns:
-        A dictionary with operation status and a message.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Plugin '<name>' has been <enabled/disabled>..."}``
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        UserInputError: If `plugin_name` is empty or not found in the configuration.
     """
     if not plugin_name:
         raise UserInputError("Plugin name cannot be empty.")
@@ -94,8 +139,18 @@ def set_plugin_status(plugin_name: str, enabled: bool) -> Dict[str, Any]:
 
 def reload_plugins() -> Dict[str, Any]:
     """
-    Triggers the plugin manager to unload all active plugins and then reload
-    all plugins based on the current configuration.
+    Triggers the plugin manager to unload all active plugins and
+    then reload all plugins based on the current configuration.
+
+    This function calls the `reload` method of the global
+    :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager` instance.
+    This process involves dispatching `on_unload` to existing plugins, clearing
+    event listeners, and then re-running the full plugin discovery and loading sequence.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Plugins have been reloaded successfully."}``
+        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.info("API: Attempting to reload all plugins.")
     try:
@@ -120,12 +175,27 @@ def trigger_external_plugin_event_api(
     """
     Allows an external source (like a web route or CLI) to trigger a custom plugin event.
 
+    This function calls the `trigger_custom_plugin_event` method of the global
+    :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager` instance.
+    The `triggering_plugin_name` argument for the core method is set to
+    ``"external_api_trigger"`` to identify the source of this event.
+
     Args:
-        event_name: The name of the custom event to trigger.
-        payload: An optional dictionary of data to pass to the event listeners.
+        event_name (str): The name of the custom event to trigger. Must follow
+            the 'namespace:event_name' format for custom events.
+        payload (Optional[Dict[str, Any]], optional): A dictionary of data to
+            pass as keyword arguments to the event listeners' callback functions.
+            Defaults to ``None`` (an empty dictionary will be passed).
 
     Returns:
-        A dictionary with the operation status and a message.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "message": "Event '<event_name>' triggered."}``
+        On error (e.g., invalid event name format, unexpected error during dispatch):
+        ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        UserInputError: If `event_name` is empty or does not follow the
+            'namespace:event_name' format required by the plugin manager.
     """
     if not event_name:
         logger.warning("API: Trigger custom event failed - event_name is required.")

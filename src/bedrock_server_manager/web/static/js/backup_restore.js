@@ -48,10 +48,10 @@ function triggerBackup(buttonElement, serverName, backupType) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/api/server/${serverName}/backup/action`;
-    console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl} for backup type '${backupType}'...`);
+    const absoluteActionPath = `/api/server/${serverName}/backup/action`;
+    console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for backup type '${backupType}'...`);
     // sendServerActionRequest handles disabling button, showing status messages, and handling response
-    sendServerActionRequest(serverName, 'backup/action', 'POST', requestBody, buttonElement);
+    sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
     console.log(`${functionName}: Backup request initiated (asynchronous).`);
 }
@@ -85,9 +85,9 @@ function triggerSpecificConfigBackup(buttonElement, serverName, filename) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/api/server/${serverName}/backup/action`;
-    console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl} for specific config backup ('${trimmedFilename}')...`);
-    sendServerActionRequest(serverName, 'backup/action', 'POST', requestBody, buttonElement);
+    const absoluteActionPath = `/api/server/${serverName}/backup/action`;
+    console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for specific config backup ('${trimmedFilename}')...`);
+    sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
     console.log(`${functionName}: Specific config backup request initiated (asynchronous).`);
 }
@@ -142,9 +142,9 @@ function triggerRestore(buttonElement, serverName, restoreType, backupFilePath) 
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/api/server/${serverName}/restore/action`;
-    console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl} for restore type '${normalizedRestoreType}'...`);
-    sendServerActionRequest(serverName, 'restore/action', 'POST', requestBody, buttonElement);
+    const absoluteActionPath = `/api/server/${serverName}/restore/action`;
+    console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for restore type '${normalizedRestoreType}'...`);
+    sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
     console.log(`${functionName}: Restore request initiated (asynchronous).`);
 }
@@ -180,9 +180,77 @@ function triggerRestoreAll(buttonElement, serverName) {
     console.debug(`${functionName}: Constructed request body:`, requestBody);
 
     // --- Call API Helper ---
-    const apiUrl = `/api/server/${serverName}/restore/action`;
-    console.log(`${functionName}: Calling sendServerActionRequest to ${apiUrl} for restore all...`);
-    sendServerActionRequest(serverName, 'restore/action', 'POST', requestBody, buttonElement);
+    const absoluteActionPath = `/api/server/${serverName}/restore/action`;
+    console.log(`${functionName}: Calling sendServerActionRequest to ${absoluteActionPath} for restore all...`);
+    sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
 
     console.log(`${functionName}: Restore All request initiated (asynchronous).`);
+}
+
+
+/**
+ * Handles the click for selecting a backup type to restore.
+ * This will make an API call to an endpoint that then shows the selection page.
+ *
+ * @param {HTMLButtonElement} buttonElement - The button element clicked.
+ * @param {string} serverName - The name of the server.
+ * @param {string} restoreType - The type of restore to initiate (e.g., 'world', 'properties').
+ */
+async function handleSelectBackupType(buttonElement, serverName, restoreType) {
+    const functionName = 'handleSelectBackupType';
+    console.log(`${functionName}: Initiated for server '${serverName}', type '${restoreType}'.`);
+
+    const requestBody = {
+        restore_type: restoreType
+    };
+
+    // The API endpoint for this action will be POST /backup-restore/api/server/<serverName>/restore/select_backup_type
+    // It should return a JSON response. If successful, the response might contain 
+    // a URL to redirect to.
+
+    const absoluteActionPath = `/api/server/${serverName}/restore/select_backup_type`;
+
+    try {
+        // Assuming sendServerActionRequest returns a promise that resolves with the response data
+        const responseData = await sendServerActionRequest(null, absoluteActionPath, 'POST', requestBody, buttonElement);
+
+        if (responseData && responseData.status === 'success') {
+            // Backend returns a URL to redirect to
+            if (responseData.redirect_url) {
+                console.log(`${functionName}: Redirecting to ${responseData.redirect_url}`);
+                window.location.href = responseData.redirect_url;
+            }
+            // Option 2: Backend returns HTML content to inject (more complex)
+            // else if (responseData.html_content) {
+            //     console.log(`${functionName}: Received HTML content to display.`);
+            //     // This would require significant changes to how the page flow works.
+            //     // For now, a redirect is simpler if the backend can provide it.
+            //     // If not, the backend might need to be updated to provide a redirect_url
+            //     // or this JS needs to handle raw data and build the next step.
+            // } 
+            else {
+                // Fallback: If successful but no clear next step from API, log and show message.
+                // This might happen if the API itself handles the redirect (e.g. returns a 302)
+                // which sendServerActionRequest might not fully handle for page navigation.
+                console.log(`${functionName}: Action successful. Response:`, responseData);
+                if (responseData.message) {
+                    showStatusMessage(responseData.message, 'success');
+                }
+                // If the Python route itself renders and returns HTML, window.location.href might not be needed
+                // if the fetch response is directly the new page's HTML. But sendServerActionRequest expects JSON.
+                // For now, this assumes the Python route will respond with JSON that includes a redirect_url.
+            }
+        } else if (responseData && responseData.status === 'error') {
+            console.error(`${functionName}: API error: ${responseData.message}`);
+            showStatusMessage(responseData.message || 'Failed to initiate backup type selection.', 'error');
+        } else if (responseData === false) {
+            // sendServerActionRequest returned false, meaning a fetch/network error or CSRF token issue (though CSRF is removed).
+            // The error message should have already been shown by sendServerActionRequest.
+            console.error(`${functionName}: sendServerActionRequest failed.`);
+        }
+    } catch (error) {
+        console.error(`${functionName}: Unexpected error: ${error.message}`, error);
+        showStatusMessage('An unexpected error occurred.', 'error');
+        if (buttonElement) buttonElement.disabled = false; // Ensure button is re-enabled
+    }
 }

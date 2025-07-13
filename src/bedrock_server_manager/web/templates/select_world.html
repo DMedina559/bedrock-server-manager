@@ -8,9 +8,9 @@
 {# --- Head Scripts Block --- #}
 {# Include JavaScript files needed for world installation/export actions #}
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# content_management.js contains triggerWorldInstall AND triggerWorldExport #}
-<script src="{{ url_for('static', filename='js/content_management.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/content_management.js') }}" defer></script>
 {% endblock %}
 
 
@@ -31,38 +31,38 @@
     {# Server-side flash messages (handled by base.html) #}
 
     {# --- Current World Section --- #}
-    <div class="server-card">
+<div class="server-card">
 
-        {# --- Export World Section --- #}
-        <section class="export-world-section action-section">
-            {# Added action-section class for consistency #}
-            <h4>Export Current World</h4>
-            <p>Create a <code class="endpoint-path">.mcworld</code> from the server's current world.</p>
-            <button type="button"
-                    class="action-button export-button" {# Specific class if needed #}
-                    {# Pass button element and server name to the JS function #}
-                    onclick="triggerWorldExport(this, '{{ server_name | e }}')">
-                Export Current World
-            </button>
-        </section>
+    {# --- Export World Section --- #}
+    <section class="export-world-section action-section">
+        {# Added action-section class for consistency #}
+        <h4>Export Current World</h4>
+        <p>Create a <code class="endpoint-path">.mcworld</code> from the server's current world.</p>
+        <button type="button"
+                class="action-button export-button" {# Specific class if needed #}
+                {# Pass button element and server name to the JS function #}
+                onclick="triggerWorldExport(this, '{{ server_name | e }}')">
+            Export Current World
+        </button>
+    </section>
 
-        {# --- Reset World Section --- #}
-        <section class="reset-world-section action-section">
-            {# Added action-section class for consistency #}
-            <h4>Reset Current World</h4>
-            <p>Deletes the server's current world.</p>
-            <button type="button"
-                    class="action-button danger-button" {# Specific class if needed #}
-                    {# Pass button element and server name to the JS function #}
-                    onclick="triggerWorldReset(this, '{{ server_name | e }}')">
-                Reset Current World
-            </button>
-        </section>
+    {# --- Reset World Section --- #}
+    <section class="reset-world-section action-section">
+        {# Added action-section class for consistency #}
+        <h4>Reset Current World</h4>
+        <p>Deletes the server's current world.</p>
+        <button type="button"
+                class="action-button danger-button" {# Specific class if needed #}
+                {# Pass button element and server name to the JS function #}
+                onclick="triggerWorldReset(this, '{{ server_name | e }}')">
+            Reset Current World
+        </button>
+    </section>
 
-    </div> {# End of sections-container #}
+</div> {# End of sections-container #}
 
     {# --- Separator after BOTH sections --- #}
-    <hr style="margin: 20px 0;">
+<hr style="margin: 20px 0;">
 
     {# --- Import World Section --- #}
 <section class="select-world-section list-section">
@@ -129,7 +129,8 @@
     {# Always show the back button #}
 <div class="navigation-link" style="margin-top: 25px;">
     {# Link back to the main dashboard #}
-    <a href="{{ url_for('main_routes.index') }}" class="action-link">
+    <a href="{{ request.url_for('index') }}" class="action-link">
+        {# Assuming 'index' is the name of the main dashboard route #}
         « Back to Dashboard
     </a>
 </div>

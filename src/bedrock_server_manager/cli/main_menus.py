@@ -14,10 +14,10 @@ import click
 import questionary
 from questionary import Separator
 
-from bedrock_server_manager.config.const import app_name_title
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.error import UserExitError
-from bedrock_server_manager.utils.get_utils import _get_splash_text
+from ..config import app_name_title
+from ..core import BedrockServerManager
+from ..error import UserExitError
+from ..utils.get_utils import _get_splash_text
 
 from .utils import get_server_name_interactively, list_servers
 
@@ -113,19 +113,32 @@ def main_menu(ctx: click.Context):
             click.secho(_get_splash_text(), fg="yellow")
 
             # Display server list for context before showing the menu
-            ctx.invoke(list_servers, loop=False, server_name_filter=None)
+            ctx.invoke(list_servers, loop=False, server_name=None)
 
             # --- Dynamically build menu choices ---
-            # Fetch server data once to build the menu and reuse the list
             servers_data, _ = bsm.get_servers_data()
             server_names = [s["name"] for s in servers_data]
 
             menu_choices = ["Install New Server"]
-
             if server_names:
                 menu_choices.append("Manage Existing Server")
 
-            menu_choices.extend(["Manage Plugins", "Exit"])
+            menu_choices.append("Manage Plugins")
+
+            # --- Add Plugin Custom Menus if available ---
+            plugin_manager = ctx.obj.get("plugin_manager")  # Safely get plugin_manager
+            plugin_menu_items = []
+            if plugin_manager and hasattr(plugin_manager, "plugin_cli_menu_items"):
+                plugin_menu_items = plugin_manager.plugin_cli_menu_items
+
+            if plugin_menu_items:
+                menu_choices.append(Separator("--- Plugin Features ---"))
+                menu_choices.append("Custom Menus")
+
+            menu_choices.append(
+                Separator("--- Application ---")
+            )  # Add a separator before Exit
+            menu_choices.append("Exit")
 
             choice = questionary.select(
                 "\nChoose an action:",
@@ -160,6 +173,18 @@ def main_menu(ctx: click.Context):
                     "Press any key to return to the main menu..."
                 ).ask()
 
+            elif choice == "Custom Menus":
+                # This option is only shown if plugin_menu_items exist
+                if (
+                    plugin_menu_items
+                ):  # Double check, though it shouldn't be shown otherwise
+                    _handle_plugin_custom_menus(ctx, plugin_menu_items)
+                else:
+                    click.secho("No plugin custom menus available.", fg="yellow")
+                    questionary.press_any_key_to_continue(
+                        "Press any key to return to the main menu..."
+                    ).ask()
+
         except UserExitError:
             click.secho("\nExiting application. Goodbye!", fg="green")
             raise
@@ -170,6 +195,64 @@ def main_menu(ctx: click.Context):
             logger.error(f"Main menu loop error: {e}", exc_info=True)
             click.secho(f"\nAn unexpected error occurred: {e}", fg="red")
             click.pause("Press any key to return to the main menu...")
+
+
+def _handle_plugin_custom_menus(ctx: click.Context, plugin_menu_items: list):
+    """
+    Displays a sub-menu listing custom menu items provided by plugins.
+    Executes the handler associated with the selected plugin menu item.
+    """
+    if not plugin_menu_items:
+        click.secho("No custom menus provided by plugins.", fg="yellow")
+        return
+
+    menu_item_choices = [Separator("--- Plugin Provided Menus ---")]
+    # Create a mapping from display name to the actual item dictionary for easy handler lookup
+    handler_map = {}
+
+    for item in plugin_menu_items:
+        # Construct a unique display name if multiple plugins provide items with the same name
+        # For now, assume names are descriptive enough or plugins namespace them.
+        # Or, we can add plugin_name to the display string.
+        display_name = f"{item['name']} (plugin: {item['plugin_name']})"
+        menu_item_choices.append(display_name)
+        handler_map[display_name] = item["handler"]
+
+    menu_item_choices.append(Separator(" "))
+    menu_item_choices.append("Back to Main Menu")
+
+    selected_display_name = questionary.select(
+        "Select a plugin menu action:",
+        choices=menu_item_choices,
+        use_indicator=True,
+    ).ask()
+
+    if selected_display_name is None or selected_display_name == "Back to Main Menu":
+        return
+
+    handler_to_call = handler_map.get(selected_display_name)
+    if handler_to_call and callable(handler_to_call):
+        try:
+            # Pass the click context to the handler
+            # The handler is expected to be a bound method or a function that can accept ctx
+            handler_to_call(ctx)
+        except Exception as e:
+            logger.error(
+                f"Error executing plugin menu handler for '{selected_display_name}': {e}",
+                exc_info=True,
+            )
+            click.secho(
+                f"An error occurred while running the plugin action '{selected_display_name}': {e}",
+                fg="red",
+            )
+    else:
+        click.secho(
+            f"Could not find or call handler for '{selected_display_name}'.", fg="red"
+        )
+
+    questionary.press_any_key_to_continue(
+        "Press any key to return to the main menu..."
+    ).ask()
 
 
 def manage_server_menu(ctx: click.Context, server_name: str):
@@ -265,7 +348,7 @@ def manage_server_menu(ctx: click.Context, server_name: str):
     while True:
         click.clear()
         click.secho(f"--- Managing Server: {server_name} ---", fg="magenta", bold=True)
-        ctx.invoke(list_servers, server_name_filter=server_name)
+        ctx.invoke(list_servers, server_name=server_name)
 
         choice = questionary.select(
             f"\nSelect an action for '{server_name}':",

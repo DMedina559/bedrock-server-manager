@@ -5,10 +5,8 @@
 {% block title %}{{ super() }} - Cron Scheduler: {{ server_name }}{% endblock %}
 
 {% block head_scripts %}
-    {# Core utilities #}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-    {# JS specific to Linux cron job interactions #}
-<script src="{{ url_for('static', filename='js/linux_task.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/linux_task.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -16,6 +14,13 @@
 <p style="margin-bottom: 15px;">Server Context: <strong>{{ server_name }}</strong></p>
 
 <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;"></div>
+
+{# Display error message passed from route, if any #}
+{% if error_message %}
+<div class="message-box message-error">
+    {{ error_message }}
+</div>
+{% endif %}
 
 <section class="schedule-tasks-section list-section">
     <h3>Current Scheduled Jobs</h3>
@@ -48,7 +53,6 @@
                     <td data-label="Command">{{ job.command_display }}</td>
                     <td data-label="Actions">
                         <div class="actions">
-                            {# Construct the full original string needed by JS and the API #}
                             {% set original_cron_string = job.minute ~ ' ' ~ job.hour ~ ' ' ~ job.day_of_month ~ ' ' ~ job.month ~ ' ' ~ job.day_of_week ~ ' ' ~ job.command %}
                             <a href="#"
                                onclick="event.preventDefault(); fillModifyForm('{{ original_cron_string | e | replace('\\', '\\\\') }}');"
@@ -70,7 +74,7 @@
     {% endif %}
 
     <div class="list-actions form-actions">
-        <a href="{{ url_for('main_routes.index') }}" class="action-link">« Back to Dashboard</a>
+        <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">« Back to Dashboard</a>
         <button type="button" onclick="prepareNewCronForm()" class="action-button">Add New Job</button>
     </div>
 </section>

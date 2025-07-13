@@ -126,24 +126,45 @@ We use [Black](https://github.com/psf/black) for uncompromising Python code form
     ```
     You can also set up Black to run as a pre-commit hook to automatically format files before each commit. (See Black's documentation for pre-commit setup).
 
-### Docstrings (Google Python Format)
+### Docstrings (Google Python Format for Sphinx)
 
-All public modules, classes, functions, and methods should have docstrings following the [Google Python Style Guide for Docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
+Comprehensive documentation is crucial for maintainability and for our automated documentation generation pipeline using Sphinx. All public modules, classes, functions, and methods **must** have docstrings.
 
-Example:
+We follow the [Google Python Style Guide for Docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings), ensuring they are **Sphinx-compatible**. This means they should be parsable by Sphinx to generate the project's API documentation.
+
+**Key requirements for docstrings:**
+
+*   **Summary Line:** Start with a concise summary line.
+*   **Detailed Explanation:** Follow with a more detailed explanation if needed.
+*   **Args Section:** Document all parameters using the `Args:` (or `Arguments:`) section. Clearly specify the type and meaning of each parameter.
+    *   Example: `param1 (int): Description of the first parameter.`
+*   **Returns Section:** Document the return value using the `Returns:` (or `Yields:`) section, including its type.
+    *   Example: `bool: True if the operation was successful, False otherwise.`
+*   **Raises Section:** Document any exceptions raised using the `Raises:` section.
+    *   Example: `ValueError: If param1 is negative.`
+*   **Attributes Section (for classes):** Document class attributes under an `Attributes:` section in the class docstring.
+*   **Clarity and Completeness:** Ensure docstrings are clear, grammatically correct, and provide enough information for another developer (or your future self) to understand the code's purpose, usage, and behavior without needing to read the source code.
+
+**Plugin API Methods:**
+
+*   Functions intended to be exposed as API methods for plugins **must** be decorated with `@plugin_method("exposed_api_name")` (from `bedrock_server_manager.plugins.api_bridge`).
+*   These methods require particularly thorough docstrings as they form the public contract for plugin developers. Their documentation is automatically collated into a dedicated "Plugin API Reference" section.
+
+**Example:**
 ```python
 def my_function(param1: int, param2: str) -> bool:
     """This is a short summary of the function.
 
     This function does something interesting with its parameters.
-    It can span multiple lines.
+    It can span multiple lines, providing further details on its
+    behavior, usage context, or any notable aspects.
 
     Args:
-        param1: The first parameter, an integer.
-        param2: The second parameter, a string.
+        param1 (int): The first parameter, which must be a non-negative integer.
+        param2 (str): The second parameter, expected to be a descriptive string.
 
     Returns:
-        True if the operation was successful, False otherwise.
+        bool: True if the operation was successful, False otherwise.
 
     Raises:
         ValueError: If param1 is negative.

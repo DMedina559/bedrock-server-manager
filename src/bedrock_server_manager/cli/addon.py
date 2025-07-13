@@ -1,10 +1,19 @@
 # bedrock_server_manager/cli/addon.py
-"""
-Defines the `bsm install-addon` command for server addon management.
+"""Defines CLI commands for managing Bedrock server addons.
 
-This module provides a CLI command to install Minecraft addons (such as
-.mcpack or .mcaddon files) onto a specified server, with support for
-both direct file path and interactive selection modes.
+This module provides tools to install addons (behavior packs, resource packs)
+onto a specified server. Addons are typically ``.mcpack`` or ``.mcaddon`` files.
+Functionality may be expanded in the future to include listing, removing, or
+exporting addons.
+
+Commands currently include:
+
+    -   ``bsm install-addon``: Installs an addon from a local file or by selecting
+        from available addons in the content directory.
+
+These commands interact with the API functions in
+:mod:`~bedrock_server_manager.api.addon` and
+:mod:`~bedrock_server_manager.api.application` (for listing available addons).
 """
 
 import logging
@@ -14,10 +23,9 @@ from typing import Optional
 import click
 import questionary
 
-from bedrock_server_manager.api import addon as addon_api
-from bedrock_server_manager.api import application as api_application
-from bedrock_server_manager.cli.utils import handle_api_response as _handle_api_response
-from bedrock_server_manager.error import BSMError
+from ..api import addon as addon_api, application as api_application
+from .utils import handle_api_response as _handle_api_response
+from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 
@@ -34,20 +42,23 @@ logger = logging.getLogger(__name__)
     help="Path to the addon file (.mcpack, .mcaddon); skips interactive menu.",
 )
 def install_addon(server_name: str, addon_file_path: Optional[str]):
-    """Installs a behavior or resource pack addon to a server.
+    """
+    Installs a behavior or resource pack addon to a specified server.
 
-    This command installs an addon from a local file path. An addon is
-    typically a `.mcpack` or `.mcaddon` file.
+    This command installs an addon from a local file (typically ``.mcpack``
+    or ``.mcaddon``). The addon's contents are extracted and applied to the
+    server's relevant world development packs folders (behavior_packs,
+    resource_packs) and potentially registered in world configuration files.
 
-    If the --file option is not provided, the command enters an interactive
-    mode, listing available addons from the content directory for selection.
+    If the ``--file`` option is provided with a path to an addon file,
+    that file will be used for installation.
+    If ``--file`` is not provided, the command enters an interactive mode,
+    listing all available addon files from the application's global content
+    directory (typically ``content/addons``) for the user to select.
 
-    Args:
-        server_name: The name of the server to install the addon on.
-        addon_file_path: Direct path to the addon file to be installed.
-
-    Raises:
-        click.Abort: If the operation is cancelled by the user or an error occurs.
+    Calls APIs:
+        - :func:`~bedrock_server_manager.api.application.list_available_addons_api` (for interactive mode)
+        - :func:`~bedrock_server_manager.api.addon.import_addon`
     """
     try:
         selected_addon_path = addon_file_path

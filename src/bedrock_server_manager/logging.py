@@ -17,6 +17,7 @@ from typing import Optional
 # --- Constants ---
 DEFAULT_LOG_DIR: str = "logs"  # Default directory if not specified by settings
 DEFAULT_LOG_KEEP: int = 3  # Default number of backup logs to keep
+_logging_configured = False
 
 
 def setup_logging(
@@ -27,121 +28,120 @@ def setup_logging(
     cli_log_level: int = logging.WARN,
     when: str = "midnight",
     interval: int = 1,
+    force_reconfigure: bool = False,
 ) -> logging.Logger:
     """
-    Sets up the root logger with timed rotating file and console handlers.
+    Sets up or re-configures the root logger with file and console handlers.
 
-    Configures logging to write detailed information to a specified file
-    with daily rotation by default, and outputs a simpler format (level/message)
-    to the console. Prevents adding duplicate handlers if called multiple times.
+    On first call, it configures logging. On subsequent calls (if
+    `force_reconfigure` is True), it removes existing handlers and adds new
+    ones with the updated settings, allowing for dynamic log level changes.
 
     Args:
-        log_dir: Directory to store log files. Defaults to `DEFAULT_LOG_DIR`.
+        log_dir: Directory to store log files.
         log_filename: The base name of the log file.
-        log_keep: Number of backup log files to keep. Defaults to `DEFAULT_LOG_KEEP`.
-        file_log_level: The minimum log level for the file handler (e.g., `logging.INFO`).
-        cli_log_level: The minimum log level for the console handler (e.g., `logging.WARN`).
+        log_keep: Number of backup log files to keep.
+        file_log_level: The minimum log level for the file handler.
+        cli_log_level: The minimum log level for the console handler.
         when: Time interval for rotation (e.g., 'midnight', 'h', 'd').
-              See `logging.handlers.TimedRotatingFileHandler` documentation.
-        interval: The interval number based on 'when' (e.g., 1 for daily if `when='midnight'`).
+        interval: The interval number based on 'when'.
+        force_reconfigure: If True, remove existing handlers and re-apply
+                           configuration. Defaults to False.
 
     Returns:
         The configured logger instance.
     """
+    global _logging_configured
     logger = logging.getLogger()
-    logger.setLevel(
-        min(file_log_level, cli_log_level)
-    )  # Set the threshold for the logger
+    logger.setLevel(min(file_log_level, cli_log_level))
 
-    # Prevent adding handlers multiple times if this function is called again
-    if not logger.hasHandlers():
-        # Ensure log directory exists
-        try:
-            os.makedirs(log_dir, exist_ok=True)
-        except OSError as e:
-            # Log error but try to continue - console logging might still work
-            logging.error(
-                f"Could not create log directory '{log_dir}': {e}", exc_info=True
+    # If already configured and not forcing a reconfigure, do nothing.
+    if _logging_configured and not force_reconfigure:
+        logger.debug("Logging already configured. Skipping setup.")
+        return logger
+
+    # --- Remove existing handlers if re-configuring ---
+    if force_reconfigure:
+        logger.debug("Force reconfigure requested. Removing existing handlers.")
+        # Create a list of handlers to remove to avoid modifying the list while iterating
+        handlers_to_remove = [
+            h
+            for h in logger.handlers
+            if isinstance(
+                h, (logging.StreamHandler, logging.handlers.TimedRotatingFileHandler)
             )
-            # Attempt console-only setup if dir creation fails
+        ]
+        for handler in handlers_to_remove:
+            logger.debug(f"Removing handler: {handler}")
+            # Ensure handler stream is closed before removing
             try:
-                console_formatter = logging.Formatter("%(levelname)s: %(message)s")
-                console_handler = logging.StreamHandler(sys.stdout)
-                console_handler.setFormatter(console_formatter)
-                console_handler.setLevel(cli_log_level)
-                logger.addHandler(console_handler)
-                logger.warning(
-                    f"File logging disabled due to directory error for '{log_dir}'. Using console logging only."
-                )
-            except Exception as console_e:
-                logging.error(
-                    f"Failed to set up even console logging: {console_e}", exc_info=True
-                )
-            return (
-                logger  # Return logger even if only console handler worked or neither
-            )
+                handler.close()
+            except Exception as e:
+                logger.debug(f"Error closing handler {handler}: {e}")
+            logger.removeHandler(handler)
 
-        log_path = os.path.join(log_dir, log_filename)
-
-        try:
-            # --- Define Log Formats ---
-            # Detailed format for the file
-            file_formatter = logging.Formatter(
-                "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-            )
-            # Simple format for the console
-            console_formatter = logging.Formatter("%(levelname)s: %(message)s")
-
-            # --- File Handler ---
-            # Rotates logs at specified interval
-            file_handler = logging.handlers.TimedRotatingFileHandler(
-                log_path,
-                when=when,
-                interval=interval,
-                backupCount=log_keep,
-                encoding="utf-8",
-            )
-            file_handler.setLevel(
-                file_log_level
-            )  # Handler level also respects the setting
-            file_handler.setFormatter(file_formatter)  # Use detailed formatter
-            logger.addHandler(file_handler)
-
-            # --- Console Handler ---
+    # Ensure log directory exists
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+    except OSError as e:
+        # Use basic print since logging might not be set up yet
+        print(
+            f"CRITICAL: Could not create log directory '{log_dir}': {e}",
+            file=sys.stderr,
+        )
+        # Attempt a minimal console-only setup
+        if not logger.hasHandlers():
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setLevel(cli_log_level)
-            console_handler.setFormatter(console_formatter)  # Use simple formatter
-            logger.addHandler(console_handler)
-
-        except Exception as e:
-            # Use the root logger's basic config if our handlers fail
-            logging.error(
-                f"Failed to configure custom log handlers for {log_path}: {e}",
-                exc_info=True,
+            console_handler.setFormatter(
+                logging.Formatter("%(levelname)s: %(message)s")
             )
-            # Fallback: attempt to add just a basic console handler if none were added
-            if not logger.hasHandlers():
-                try:
-                    console_formatter = logging.Formatter("%(levelname)s: %(message)s")
-                    console_handler = logging.StreamHandler(sys.stdout)
-                    console_handler.setFormatter(console_formatter)
-                    console_handler.setLevel(file_log_level)
-                    logger.addHandler(console_handler)
-                    logger.warning(
-                        "Using basic console logging due to configuration error."
-                    )
-                except Exception as console_e:
-                    logging.error(
-                        f"Failed to set up fallback console logging: {console_e}",
-                        exc_info=True,
-                    )
+            logger.addHandler(console_handler)
+            logger.warning(
+                f"File logging disabled due to directory error for '{log_dir}'."
+            )
+        return logger
 
-        # Log initial setup message using the configured handlers
-        logger.debug(
-            f"Logging setup complete. CLI Level: '{logging.getLevelName(cli_log_level)}', File Log path: '{log_path}', File Level: {logging.getLevelName(file_log_level)}, Rotation: {when} (interval {interval}), Keep: {log_keep}"
+    log_path = os.path.join(log_dir, log_filename)
+
+    try:
+        # --- Define Log Formats ---
+        file_formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
         )
-    else:
-        logger.debug("Logging already configured. Skipping setup.")
+        console_formatter = logging.Formatter("%(levelname)s: %(message)s")
+
+        # --- File Handler ---
+        file_handler = logging.handlers.TimedRotatingFileHandler(
+            log_path,
+            when=when,
+            interval=interval,
+            backupCount=log_keep,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(file_log_level)
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
+
+        # --- Console Handler ---
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(cli_log_level)
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+
+        _logging_configured = True
+        logger.info(
+            f"Logging has been {'re' if force_reconfigure else ''}configured. "
+            f"CLI Level: '{logging.getLevelName(cli_log_level)}', "
+            f"File Level: '{logging.getLevelName(file_log_level)}'"
+        )
+
+    except Exception as e:
+        print(f"CRITICAL: Failed to configure log handlers: {e}", file=sys.stderr)
+        if not logger.hasHandlers():
+            # Fallback to a very basic console logger if everything failed
+            logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+            logger.warning("Using basic fallback logging due to configuration error.")
 
     return logger
 

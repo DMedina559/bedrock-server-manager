@@ -4,8 +4,8 @@
 {% block title %}{{ super() }} - Manage Plugins{% endblock %}
 
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/manage_plugins.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/manage_plugins.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -20,12 +20,10 @@
     </div>
 
     <section class="list-section">
-        <!-- Flex container to align heading and button -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h3>Available Plugins</h3>
-            <!-- The new Reload Plugins button -->
             <button id="reload-plugins-btn" class="action-button">
-                <i class="fas fa-sync-alt"></i> Reload Plugins
+                <i class="fas fa-sync-alt"></i> Reload Plugins {# Assuming Font Awesome is available #}
             </button>
         </div>
         <ul id="plugin-list" class="item-list">
@@ -38,15 +36,10 @@
         </ul>
     </section>
 
-    <!-- ==========================================================================
-        CLIENT-SIDE TEMPLATES (FOR JAVASCRIPT)
-    ========================================================================== -->
-    <!-- Template for a single plugin item. Cloned and populated by JS. -->
     <template id="plugin-item-template">
         <li>
             <div class="plugin-details">
                 <strong class="plugin-name"></strong>
-                <!-- Add a small, greyed-out span for the version -->
                 <small class="plugin-version" style="margin-left: 8px; color: #bbb;"></small>
             </div>
             <div class="plugin-controls">
@@ -58,15 +51,13 @@
         </li>
     </template>
 
-    <!-- Template for when no plugins are found -->
     <template id="no-plugins-template">
-        <!-- This uses the special 'no players' message style from forms.css -->
         <li id="no-players-message">
+            {# Original ID was no-players-message, might be a typo in original #}
             No plugins found or available to configure.
         </li>
     </template>
 
-    <!-- Template for when an error occurs -->
     <template id="load-error-template">
         <li class="list-item-error">
             <p>Error loading plugin information. Please check the application logs or try again later.</p>
@@ -75,8 +66,8 @@
 </div>
 
 <div class="page-actions">
-    <a href="{{ url_for('main_routes.index') }}" class="action-link">
-          Back to Dashboard
+    <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
+        Back to Dashboard
     </a>
 </div>
 {% endblock %}
