@@ -1,254 +1,99 @@
 # bedrock_server_manager/web/app.py
 """
-Initializes and configures the Flask web application instance.
+Provides the main function for configuring and running the Uvicorn web server.
 
-Sets up configurations (secret keys, JWT, authentication), registers blueprints
-for different application sections, initializes extensions (CSRF, JWT), defines
-context processors, and provides a function to run the web server using Waitress
-(production) or Flask's built-in development server.
+This module contains the :func:`run_web_server` function, which is responsible
+for initializing and starting the Uvicorn server that serves the FastAPI application.
+The FastAPI application instance (`app`) itself is expected to be defined in
+:mod:`bedrock_server_manager.web.main`. This module handles parsing command-line
+arguments and application settings to correctly configure Uvicorn's host, port,
+debug mode, and worker processes.
 """
 
 import os
 import sys
 import logging
 import ipaddress
-import datetime
-import secrets
-from typing import Optional, Dict, List, Union
+from typing import Optional, List, Union
 
-# Third-party imports
-from flask import (
-    Flask,
-    session,
-)
+import uvicorn
 
-try:
-    from waitress import serve
-
-    WAITRESS_AVAILABLE = True
-except ImportError:
-    WAITRESS_AVAILABLE = False
-
-# Local imports
-from bedrock_server_manager.config.const import env_name
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.web.routes.main_routes import main_bp
-from bedrock_server_manager.web.utils.variable_inject import inject_global_variables
-from bedrock_server_manager.web.routes.schedule_tasks_routes import schedule_tasks_bp
-from bedrock_server_manager.web.routes.server_actions_routes import server_actions_bp
-from bedrock_server_manager.web.routes.backup_restore_routes import backup_restore_bp
-from bedrock_server_manager.web.routes.api_info_routes import api_info_bp
-from bedrock_server_manager.web.routes.content_routes import content_bp
-from bedrock_server_manager.web.routes.util_routes import util_bp
-from bedrock_server_manager.web.routes.auth_routes import (
-    auth_bp,
-    csrf,
-    jwt,
-)
-from bedrock_server_manager.web.utils.validators import register_server_validation
-from bedrock_server_manager.web.routes.server_install_config_routes import (
-    server_install_config_bp,
-)
-from bedrock_server_manager.web.routes.plugin_routes import plugin_bp  # Added import
-from bedrock_server_manager.error import ConfigurationError
+from ..config import env_name
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def create_app() -> Flask:
-    """
-    Factory function to create and configure the Flask application instance.
-
-    Initializes Flask, sets up secret keys, configures CSRF protection and JWT,
-    loads authentication credentials, registers blueprints, and sets up context processors.
-
-    Returns:
-        The configured Flask application instance.
-
-    Raises:
-        RuntimeError: If essential configurations like SECRET_KEY or JWT_SECRET_KEY
-                      cannot be properly set.
-        ConfigurationError: If required settings like BASE_DIR are missing.
-    """
-    app = Flask(
-        __name__,
-        template_folder="templates",  # Relative to this file's location initially
-        static_folder="static",  # Relative to this file's location initially
-    )
-    logger.info("Creating and configuring Flask application instance...")
-
-    # --- Basic App Setup (Paths) ---
-    # Ensure paths are absolute relative to this file's directory
-    APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-    app.template_folder = os.path.join(APP_ROOT, "templates")
-    app.static_folder = os.path.join(APP_ROOT, "static")
-    # Static URL path defaults to /static, no need to set explicitly unless changing
-    app.static_url_path = "/static"
-    app.jinja_env.filters["basename"] = os.path.basename
-    logger.debug(f"Application Root: {APP_ROOT}")
-    logger.debug(f"Template Folder: {app.template_folder}")
-    logger.debug(f"Static Folder: {app.static_folder}")
-
-    # --- Validate Essential Settings ---
-    if not settings.get("BASE_DIR"):
-        logger.critical("Configuration error: BASE_DIR setting is missing or empty.")
-        raise ConfigurationError("Essential setting BASE_DIR is not configured.")
-
-    # --- Configure Secret Key (CSRF, Session) ---
-    secret_key_env = f"{env_name}_SECRET"
-    secret_key_value = os.environ.get(secret_key_env)
-    if secret_key_value:
-        app.config["SECRET_KEY"] = secret_key_value
-        logger.info(f"Loaded SECRET_KEY from environment variable '{secret_key_env}'.")
-    else:
-        app.config["SECRET_KEY"] = secrets.token_hex(16)  # Generate secure random key
-        logger.warning(
-            f"!!! SECURITY WARNING !!! Using randomly generated SECRET_KEY. "
-            f"Flask sessions will not persist across application restarts. "
-            f"Set the '{secret_key_env}' environment variable for production."
-        )
-    # Ensure secret key is truly set before initializing extensions that need it
-    if not app.config.get("SECRET_KEY"):
-        # This path is highly unlikely with the logic above but is a critical failure
-        logger.critical(
-            "FATAL: SECRET_KEY is missing after configuration attempt. Cannot initialize CSRF/Session."
-        )
-        raise RuntimeError(
-            "SECRET_KEY must be set for CSRF protection and session management."
-        )
-    logger.debug("SECRET_KEY configured.")
-
-    # --- Initialize CSRF Protection ---
-    csrf.init_app(app)
-    # Exempt specific blueprints if needed (e.g., API endpoints using JWT)
-    # csrf.exempt(server_actions_bp) # Example if needed
-    logger.debug("Initialized Flask-WTF CSRF Protection.")
-
-    # --- Configure JWT ---
-    jwt_secret_key_env = f"{env_name}_TOKEN"
-    jwt_secret_key_value = os.environ.get(jwt_secret_key_env)
-    if jwt_secret_key_value:
-        app.config["JWT_SECRET_KEY"] = jwt_secret_key_value
-        logger.info(
-            f"Loaded JWT_SECRET_KEY from environment variable '{jwt_secret_key_env}'."
-        )
-    else:
-        app.config["JWT_SECRET_KEY"] = secrets.token_urlsafe(
-            32
-        )  # Generate strong random key
-        logger.critical(
-            f"!!! SECURITY WARNING !!! Using randomly generated JWT_SECRET_KEY. "
-            f"This is NOT suitable for production deployments. Existing JWTs will become invalid "
-            f"after application restarts. Set the '{jwt_secret_key_env}' environment variable "
-            f"with a persistent, strong, secret key!"
-        )
-    # Ensure JWT key is set
-    if not app.config.get("JWT_SECRET_KEY"):
-        logger.critical(
-            "FATAL: JWT_SECRET_KEY is missing after configuration attempt. JWT functionality will fail."
-        )
-        raise RuntimeError("JWT_SECRET_KEY must be set for JWT functionality.")
-    logger.debug("JWT_SECRET_KEY configured.")
-
-    # Configure JWT expiration time (get from settings or use default)
-    try:
-        # For simplicity, let's just do weeks for now, stored as an int/float
-        jwt_expires_weeks = float(settings.get("TOKEN_EXPIRES_WEEKS", 4.0))
-        app.config["JWT_ACCESS_TOKEN_EXPIRES"] = datetime.timedelta(
-            weeks=jwt_expires_weeks
-        )
-        logger.debug(f"JWT access token expiration set to {jwt_expires_weeks} weeks.")
-    except (ValueError, TypeError) as e:
-        logger.warning(
-            f"Invalid format for TOKEN_EXPIRES_WEEKS setting. Using default (4 weeks). Error: {e}",
-            exc_info=True,
-        )
-        app.config["JWT_ACCESS_TOKEN_EXPIRES"] = datetime.timedelta(weeks=4)
-
-    # Initialize JWT Manager
-    jwt.init_app(app)
-    logger.debug("Initialized Flask-JWT-Extended.")
-
-    # --- Load Web UI Authentication Credentials ---
-    username_env = f"{env_name}_USERNAME"
-    password_env = f"{env_name}_PASSWORD"
-    # Store them in app.config for access within views (e.g., auth route)
-    app.config[username_env] = os.environ.get(username_env)
-    app.config[password_env] = os.environ.get(password_env)
-
-    if not app.config[username_env] or not app.config[password_env]:
-        logger.warning(
-            f"Web authentication environment variables ('{username_env}', '{password_env}') "
-            f"are not set. Web UI login will not function correctly."
-        )
-    else:
-        logger.info("Web authentication credentials loaded from environment variables.")
-
-    # --- Register Blueprints ---
-    app.register_blueprint(main_bp)
-    app.register_blueprint(schedule_tasks_bp)
-    app.register_blueprint(server_actions_bp)
-    app.register_blueprint(server_install_config_bp)
-    app.register_blueprint(backup_restore_bp)
-    app.register_blueprint(content_bp)
-    app.register_blueprint(util_bp)
-    app.register_blueprint(api_info_bp)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(plugin_bp)  # Registered the new blueprint
-    logger.debug("Registered application blueprints.")
-
-    # --- Register Context Processors ---
-    # Inject global variables for templates
-    app.context_processor(inject_global_variables)
-    logger.debug("Registered context processor: inject_global_variables.")
-
-    # Inject login status for templates
-    @app.context_processor
-    def inject_user() -> Dict[str, bool]:
-        """Injects the user's login status into template contexts."""
-        is_logged_in = session.get("logged_in", False)
-        # logger.debug(f"Injecting context: is_logged_in={is_logged_in}") # Can be noisy
-        return dict(is_logged_in=is_logged_in)
-
-    logger.debug("Registered context processor: inject_user (login status).")
-
-    # --- Register Request Validators ---
-    register_server_validation(app)
-    logger.debug("Registered before_request handler: register_server_validation.")
-
-    logger.info("Flask application creation and configuration complete.")
-    return app
-
-
 def run_web_server(
-    host: Optional[Union[str, List[str]]] = None, debug: bool = False
+    host: Optional[Union[str, List[str]]] = None,
+    debug: bool = False,
+    threads: Optional[int] = None,
 ) -> None:
     """
-    Starts the Flask web server using Waitress (production) or Flask dev server (debug).
+    Configures and starts the Uvicorn web server to serve the FastAPI application.
+
+    This function is the main entry point for launching the web interface and API
+    for the Bedrock Server Manager. It handles:
+    - Checking for required authentication environment variables.
+    - Determining the host and port based on command-line arguments and application settings.
+    - Configuring Uvicorn's operational mode (debug/production), log level, and worker count.
+    - Launching Uvicorn to serve the FastAPI application located at
+      ``bedrock_server_manager.web.main:app``.
+
+    Extensive logging is performed throughout the configuration and startup sequence.
+
     Args:
-        host: The host address or list of addresses to bind to.
-              - None (default): Bind to '127.0.0.1' (IPv4) and '::1' (IPv6).
-              - Specific IP (v4 or v6) or list of IPs: Bind only to those IPs.
-              - Hostname or list of hostnames: Bind to the address(es) they resolve to.
-        debug: If True, run using Flask's built-in development server.
-               If False (default), run using Waitress production WSGI server.
+        host (Optional[Union[str, List[str]]]): Specifies the host address(es)
+            for Uvicorn to bind to. This can be a single IP address/hostname as a
+            string, or a list of addresses/hostnames. If provided via CLI, these
+            values take precedence over the ``web.host`` setting in the application
+            configuration. If multiple hosts are given (either via CLI or settings),
+            Uvicorn will typically bind to the first one in the list.
+            Defaults to ``None``, in which case the host is determined by the
+            ``web.host`` setting (defaulting to "127.0.0.1").
+        debug (bool): If ``True``, Uvicorn is run in development mode. This typically
+            enables auto-reload on code changes, sets a more verbose log level (debug),
+            and uses a single worker process. If ``False`` (default), Uvicorn runs in
+            production mode, with the number of worker processes determined by the
+            ``web.threads`` setting (or its default).
+        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
+
+            Only used for Windows Service
+
     Raises:
-        RuntimeError: If required authentication environment variables are not set.
-        ConfigurationError: If required settings (PORT) are missing.
+        RuntimeError: If the required authentication environment variables
+            (e.g., ``BSM_USERNAME``, ``BSM_PASSWORD``, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
+            are not set. The server will not start without these credentials.
+        Exception: Re-raises any exception encountered during `uvicorn.run` if
+            Uvicorn itself fails to start (e.g., port already in use, invalid app path).
+
+    Environment Variables:
+        - ``BSM_USERNAME``: The username for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
+        - ``BSM_PASSWORD``: The password for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
+
+    Settings Interaction:
+        This function reads the following keys from the global ``settings`` object:
+        - ``web.port`` (int): The port number for Uvicorn to listen on.
+          Defaults to 11325 if not set or invalid. Valid range: 1-65535.
+        - ``web.host`` (Union[str, List[str]]): The host address(es) to bind to if
+          not overridden by the ``host`` argument. Defaults to "127.0.0.1".
+        - ``web.threads`` (int): The number of Uvicorn worker processes to use when
+          not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
-    app = create_app()
 
     username_env = f"{env_name}_USERNAME"
     password_env = f"{env_name}_PASSWORD"
-    if not app.config.get(username_env) or not app.config.get(password_env):
+    if not os.environ.get(username_env) or not os.environ.get(password_env):
         error_msg = (
             f"Cannot start web server: Required authentication environment variables "
             f"('{username_env}', '{password_env}') are not set."
         )
         logger.critical(error_msg)
         raise RuntimeError(error_msg)
+    else:
+        logger.info("Web authentication credentials found in environment variables.")
 
-    port_setting_key = f"WEB_PORT"
+    port_setting_key = "web.port"
     port_val = settings.get(port_setting_key, 11325)
     try:
         port = int(port_val)
@@ -256,111 +101,106 @@ def run_web_server(
             raise ValueError("Port out of range")
     except (ValueError, TypeError):
         logger.error(
-            f"Invalid port number configured in setting '{port_setting_key}': {port_val}. Using default 11325."
+            f"Invalid port number configured: {port_val}. Using default 11325."
         )
         port = 11325
-    logger.info(f"Web server configured to run on port: {port}")
+    logger.info(f"FastAPI server configured to run on port: {port}")
 
-    listen_addresses = []
-    host_info = ""
-    current_host_list: Optional[List[str]] = None
+    hosts_to_use_cli: Optional[List[str]] = None
+    if host:
+        logger.info(f"Using host(s) provided via command-line: {host}")
+        if isinstance(host, str):
+            hosts_to_use_cli = [host]
+        elif isinstance(host, list):
+            hosts_to_use_cli = host
 
-    if isinstance(host, str):
-        current_host_list = [host]
-    elif isinstance(host, list):
-        current_host_list = host
-    # If host is None, current_host_list remains None
+    final_host_to_bind = "127.0.0.1"
 
-    if current_host_list and len(current_host_list) > 0:
-        # Ensure all elements are strings for join and processing
-        str_host_list = [str(h) for h in current_host_list if h]
-        if not str_host_list:  # If all hosts were None or empty strings
-            listen_addresses = [f"127.0.0.1:{port}", f"[::1]:{port}"]
-            host_info = "default local host only (invalid hosts provided)"
+    if hosts_to_use_cli:
+        final_host_to_bind = hosts_to_use_cli[0]
+        if len(hosts_to_use_cli) > 1:
             logger.warning(
-                f"No valid hosts provided in list: {current_host_list}. {host_info}"
+                f"Multiple hosts via CLI {hosts_to_use_cli}, Uvicorn binds to first: {final_host_to_bind}"
             )
+    else:
+        logger.info("No host via command-line, using settings.")
+        settings_host = settings.get("web.host")
+        if isinstance(settings_host, list) and settings_host:
+            final_host_to_bind = settings_host[0]
+            if len(settings_host) > 1:
+                logger.warning(
+                    f"Multiple hosts in settings {settings_host}, Uvicorn binds to first: {final_host_to_bind}"
+                )
+        elif isinstance(settings_host, str) and settings_host:
+            final_host_to_bind = settings_host
         else:
-            host_info = f"specified address(es): {', '.join(str_host_list)}"
-            for h_item in str_host_list:
-                try:
-                    ip = ipaddress.ip_address(h_item)
-                    if isinstance(ip, ipaddress.IPv6Address):
-                        listen_addresses.append(f"[{h_item}]:{port}")
-                    else:
-                        listen_addresses.append(f"{h_item}:{port}")
-                except ValueError:
-                    listen_addresses.append(f"{h_item}:{port}")  # Assume hostname
-            logger.info(f"Binding to {host_info} -> {listen_addresses}")
-    else:  # host was None or an empty list
-        listen_addresses = [f"127.0.0.1:{port}", f"[::1]:{port}"]
-        host_info = "local host only interfaces (IPv4 and IPv6 dual-stack)"
-        logger.info(f"Binding to {host_info} -> {listen_addresses}")
+            logger.warning(
+                f"Host setting 'web.host' invalid ('{settings_host}'). Defaulting to {final_host_to_bind}."
+            )
 
-    server_mode = (
-        "DEBUG (Flask Development Server)" if debug else "PRODUCTION (Waitress)"
-    )
-    logger.info(f"Starting web server in {server_mode} mode...")
+    try:
+        ipaddress.ip_address(final_host_to_bind)
+        logger.info(f"Uvicorn will bind to IP: {final_host_to_bind}")
+    except ValueError:
+        logger.info(f"Uvicorn will bind to hostname: {final_host_to_bind}")
+
+    uvicorn_log_level = "info"
+    reload_enabled = False
+    workers = 1
 
     if debug:
-        logger.warning(
-            "Running in DEBUG mode with Flask development server. NOT suitable for production."
-        )
-        debug_host_to_run: Optional[str] = None  # Use a different variable name
-
-        if current_host_list and len(current_host_list) > 0:
-            first_host = (
-                str(current_host_list[0]).split(":")[0].strip("[]")
-            )  # Ensure it's a string
-            debug_host_to_run = first_host
-            if len(current_host_list) > 1:
-                logger.warning(
-                    f"Debug mode: Multiple hosts specified {current_host_list}, binding only to the first: {debug_host_to_run}"
-                )
-        else:  # host was None or empty list
-            debug_host_to_run = "127.0.0.1"
+        logger.warning("Running FastAPI in DEBUG mode (Uvicorn reload enabled).")
+        uvicorn_log_level = "debug"
+        reload_enabled = True
+    else:
+        threads_setting_key = "web.threads"
+        try:
+            if threads is None:
+                workers_val = int(settings.get(threads_setting_key, 4))
+                if workers_val > 0:
+                    workers = workers_val
+                else:
+                    logger.warning(
+                        f"Invalid '{threads_setting_key}' ({workers_val}). Using default: {workers}."
+                    )
+            else:
+                workers_val = int(threads)
+                if workers_val > 0:
+                    workers = workers_val
+                else:
+                    logger.warning(
+                        f"Invalid 'threads' passed ({workers}). Using default: {workers}."
+                    )
+        except (ValueError, TypeError):
             logger.warning(
-                "Debug mode: No host specified, binding only to IPv4 loopback (127.0.0.1). Use --host '::' for all IPv6+IPv4 or --host '::1' for IPv6 loopback."
+                f"Invalid format for '{threads_setting_key}'. Using default: {workers}."
             )
 
-        logger.info(
-            f"Attempting to start Flask development server on host='{debug_host_to_run}', port={port}..."
+        if (
+            workers > 1 and reload_enabled
+        ):  # This state should ideally be avoided for stability
+            logger.warning(
+                "Uvicorn reload mode is enabled with multiple workers. This may lead to unexpected behavior. For production, disable reload or use a process manager like Gunicorn with Uvicorn workers."
+            )
+            # Consider forcing reload_enabled = False if workers > 1 in production mode
+        logger.info(f"Uvicorn production mode with {workers} worker(s).")
+
+    server_mode = (
+        "DEBUG (Uvicorn with reload)" if reload_enabled else "PRODUCTION (Uvicorn)"
+    )
+    logger.info(f"Starting FastAPI web server in {server_mode} mode...")
+    logger.info(f"Listening on: http://{final_host_to_bind}:{port}")
+
+    try:
+        uvicorn.run(
+            "bedrock_server_manager.web.main:app",  # Path to the FastAPI app instance as a string
+            host=final_host_to_bind,
+            port=port,
+            log_level=uvicorn_log_level.lower(),  # Ensure log level is lowercase
+            reload=reload_enabled,
+            workers=workers if not reload_enabled and workers > 1 else None,
         )
-        try:
-            app.run(host=debug_host_to_run, port=port, debug=True)
-        except OSError as e:
-            logger.critical(
-                f"Failed to start Flask development server on {debug_host_to_run}:{port}. Error: {e}",
-                exc_info=True,
-            )
-            sys.exit(1)
-        except Exception as e:
-            logger.critical(
-                f"Unexpected error starting Flask development server: {e}",
-                exc_info=True,
-            )
-            sys.exit(1)
-    else:  # Production (Waitress)
-        if not WAITRESS_AVAILABLE:
-            # This should ideally be caught by web_api.start_web_server if mode is direct
-            # but good to have a check here too.
-            logger.error("Waitress package not found. Cannot start production server.")
-            raise ImportError(
-                "Waitress package not found. Please install it to run in production mode."
-            )
+    except Exception as e:
+        logger.critical(f"Failed to start Uvicorn: {e}", exc_info=True)
 
-        if not listen_addresses:  # Should not happen if logic above is correct
-            logger.error("No listen addresses determined for Waitress. Aborting.")
-            raise ValueError("Cannot start Waitress: No listen addresses configured.")
-
-        listen_string = " ".join(listen_addresses)
-        logger.info(
-            f"Starting Waitress production server. Listening on: {listen_string}"
-        )
-        try:
-            serve(app, listen=listen_string, threads=4)
-        except Exception as e:
-            logger.critical(
-                f"Failed to start Waitress server. Error: {e}", exc_info=True
-            )
-            raise
+        raise

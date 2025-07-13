@@ -1,0 +1,484 @@
+/* docs/_static/css/custom_sphinx_styles.css */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    color: #eeeeee; /* Light text for dark background */
+    background-color: #1e1e1e; /* Dark background for the page - adjust as needed */
+}
+
+/* Main content area in sphinx_rtd_theme */
+.wy-nav-content-wrap, .wy-nav-content {
+    background-color: #333333; /* Your app's main content area background (solid version) */
+}
+
+/* General link color for dark background */
+a {
+    color: #7fDBFF; /* A light blue, good for dark themes */
+}
+
+    a:hover {
+        color: #A1E9FF; /* A slightly brighter/lighter blue for hover */
+    }
+
+/* Headings - ensure they are also light */
+h1, h2, h3, h4, h5, h6 {
+    color: #f5f5f5;
+}
+
+/* Sidebar --- Aggressive Override Attempt */
+.wy-nav-side {
+    background: #2a2a2a !important; /* Force dark sidebar background */
+}
+
+/* Base style for all list items in the vertical menu */
+.wy-menu-vertical li {
+    background-color: transparent !important; /* Ensure no default light background on LIs */
+}
+
+    /* Base style for all links in the vertical menu */
+    .wy-menu-vertical li a {
+        color: #cccccc !important; /* Light text for all links */
+        background-color: transparent !important; /* No background on links by default */
+        padding: .4045em 1.618em; /* Match theme's padding */
+        display: block; /* Ensure link fills its space */
+        line-height: 18px; /* Match theme's line height */
+    }
+
+        /* Hover state for any sidebar link */
+        .wy-menu-vertical li a:hover {
+            background-color: #444444 !important; /* Darker background on hover */
+            color: #ffffff !important; /* White text on hover */
+        }
+
+    /* 'Current' page or item 'on' the active path - applies to the LI and its A tag */
+    .wy-menu-vertical li.current,
+    .wy-menu-vertical li.on {
+        background-color: #383838 !important; /* Dark background for the entire LI */
+    }
+
+        .wy-menu-vertical li.current > a,
+        .wy-menu-vertical li.on > a {
+            background-color: #383838 !important; /* Dark background for the A tag */
+            color: #ffffff !important; /* White text */
+            font-weight: bold;
+        }
+
+        /* Hover state for 'current' or 'on' items */
+        .wy-menu-vertical li.current:hover,
+        .wy-menu-vertical li.on:hover {
+            background-color: #4a4a4a !important; /* Slightly different dark hover for the LI */
+        }
+
+        .wy-menu-vertical li.current > a:hover,
+        .wy-menu-vertical li.on > a:hover {
+            background-color: #4a4a4a !important; /* Consistent hover for the A tag */
+            color: #ffffff !important;
+        }
+
+    /* Ensure text within any spans inside these links also inherits correctly */
+    .wy-menu-vertical li a span {
+        color: inherit !important;
+        background-color: transparent !important;
+    }
+
+/* Sidebar caption text */
+.wy-menu-vertical p.caption span.caption-text {
+    color: #a0a0a0 !important;
+}
+
+
+/* Search box in sidebar */
+#rtd-search-form input[type="text"] {
+    background-color: #444444;
+    border-color: #555555;
+    color: #eeeeee;
+    box-shadow: none;
+}
+
+    #rtd-search-form input[type="text"]::placeholder {
+        color: #aaaaaa;
+    }
+
+/* Code blocks - basic dark theme adjustment */
+div.highlight, pre {
+    background: #2a2a2a !important;
+}
+
+.highlight .c1, .highlight .cs {
+    color: #888888;
+}
+/* Comments */
+.highlight .k, .highlight .kc, .highlight .kd, .highlight .kp, .highlight .ow {
+    color: #66d9ef;
+}
+/* Keywords */
+.highlight .nb {
+    color: #AE81FF;
+}
+/* Name.Builtin */
+.highlight .s, .highlight .s1, .highlight .s2, .highlight .sa, .highlight .sb, .highlight .sc, .highlight .dl, .highlight .sd, .highlight .se, .highlight .sh, .highlight .si, .highlight .sx, .highlight .sr, .highlight .ss, .highlight .sy {
+    color: #e6db74;
+}
+/* Strings */
+.highlight .n, .highlight .nn, .highlight .nc, .highlight .nd, .highlight .ni, .highlight .ne, .highlight .nf, .highlight .nl, .highlight .nx, .highlight .py, .highlight .bp, .highlight .vc, .highlight .vg, .highlight .vi, .highlight .vm {
+    color: #f8f8f2;
+}
+/* Names */
+.highlight .mf, .highlight .mh, .highlight .mi, .highlight .mo, .highlight .il {
+    color: #ae81ff;
+}
+/* Numbers */
+.highlight .o, .highlight .p {
+    color: #F92672;
+}
+/* Operators, Punctuation */
+
+
+/* Admonition Refinements with Distinct Backgrounds */
+.admonition {
+    color: #dddddd !important; /* Base text color for admonition content */
+    border-left-width: 5px;
+    border-left-style: solid;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 0px; /* Sharp corners */
+}
+
+    /* Ensure common inner elements inherit text color and have no unexpected background */
+    .admonition p,
+    .admonition div,
+    .admonition ul,
+    .admonition ol,
+    .admonition li,
+    .admonition span,
+    .admonition strong,
+    .admonition em {
+        color: #dddddd !important;
+        background-color: transparent !important;
+    }
+
+        .admonition p.admonition-title {
+            color: #eeeeee !important;
+            padding: 10px 15px; /* Adjusted padding */
+            margin: -15px -15px 10px -15px;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(255,255,255,0.1); /* Lighter border for title separation */
+        }
+
+        .admonition p:last-child {
+            margin-bottom: 0;
+        }
+
+    /* Specific admonition types - distinct backgrounds and borders */
+    .admonition.note,
+    .admonition.seealso {
+        background-color: #2c3e50 !important; /* Dark blue-gray */
+        border-left-color: #7fDBFF !important; /* Info blue */
+    }
+
+        .admonition.note p.admonition-title,
+        .admonition.seealso p.admonition-title {
+            background-color: #34495e !important; /* Slightly darker/related blue for title bg */
+        }
+
+    .admonition.tip,
+    .admonition.hint {
+        background-color: #253f26 !important; /* Dark green-gray */
+        border-left-color: #4CAF50 !important; /* Green */
+    }
+
+        .admonition.tip p.admonition-title,
+        .admonition.hint p.admonition-title {
+            background-color: #2e7d32 !important; /* Slightly darker/related green for title bg */
+        }
+
+    .admonition.important,
+    .admonition.attention {
+        background-color: #4d4000 !important; /* Dark yellow-brown */
+        border-left-color: #FFDC00 !important; /* Yellow */
+    }
+
+        .admonition.important p.admonition-title,
+        .admonition.attention p.admonition-title {
+            background-color: #604D00 !important; /* Slightly darker/related for title bg */
+        }
+
+    .admonition.caution,
+    .admonition.warning {
+        background-color: #583700 !important; /* Dark orange-brown */
+        border-left-color: #FFAB00 !important; /* Orange/Amber */
+    }
+
+        .admonition.caution p.admonition-title,
+        .admonition.warning p.admonition-title {
+            background-color: #664200 !important; /* Slightly darker/related for title bg */
+        }
+
+    .admonition.error,
+    .admonition.danger {
+        background-color: #502424 !important; /* Dark red-brown/maroon */
+        border-left-color: #D32F2F !important; /* Red */
+    }
+
+        .admonition.error p.admonition-title,
+        .admonition.danger p.admonition-title {
+            background-color: #b71c1c !important; /* Slightly darker/related red for title bg */
+        }
+
+
+/* Tables */
+table.docutils {
+    border: 1px solid #555555;
+    box-shadow: none;
+}
+
+    table.docutils th, table.docutils td {
+        border: 1px solid #555555;
+        padding: 8px;
+    }
+
+        table.docutils thead th, table.docutils th.head {
+            background-color: #404040;
+            color: #eeeeee;
+            border-bottom-width: 2px;
+            border-bottom-color: #666666;
+        }
+
+    /* Ensure default TD background is consistent with the content area if not striped */
+    table.docutils tbody td {
+        background-color: #333333; /* Default cell background */
+        color: #dddddd; /* Default cell text color */
+    }
+
+    /* Alternating row colors for readability using shades of dark gray */
+    table.docutils tbody tr:nth-child(odd) td {
+        background-color: #363636 !important; /* Slightly different dark shade for odd rows */
+        color: #dddddd !important; /* Ensure text color remains light */
+    }
+
+    table.docutils tbody tr:nth-child(even) td {
+        background-color: #303030 !important; /* Slightly different dark shade for even rows */
+        color: #dddddd !important; /* Ensure text color remains light */
+    }
+
+    /* Ensure links within tables are also styled correctly for the dark background */
+    table.docutils td a {
+        color: #7fDBFF; /* Match general link color */
+    }
+
+        table.docutils td a:hover {
+            color: #A1E9FF;
+        }
+
+        table.docutils td a:visited {
+            color: #BEAEE2; /* Match general visited link color */
+        }
+
+/* Breadcrumbs styling for RTD theme */
+.wy-breadcrumbs li a {
+    color: #A1E9FF;
+}
+
+    .wy-breadcrumbs li a:hover {
+        color: #7fDBFF;
+    }
+
+.wy-breadcrumbs li {
+    color: #bbbbbb;
+}
+
+/* Version information in sidebar */
+.wy-side-nav-search > a.icon-home, .wy-side-nav-search .version {
+    color: #dddddd;
+}
+
+.wy-side-nav-search {
+    background-color: #222222;
+}
+
+    .wy-side-nav-search input[type=text] {
+        border-color: #555555;
+        background-color: #444444;
+        color: #eeeeee;
+        box-shadow: none;
+    }
+
+/* Footer adjustments */
+footer {
+    color: #aaaaaa;
+}
+
+    footer a {
+        color: #7fDBFF;
+    }
+
+        footer a:hover {
+            color: #A1E9FF;
+        }
+
+/* Ensure visited link colors are also light if they differ */
+a:visited {
+    color: #BEAEE2;
+}
+
+    a:visited:hover {
+        color: #D1C4E9;
+    }
+
+.wy-menu-vertical li.current a:visited,
+.wy-menu-vertical li.toctree-l1.current > a:visited {
+    color: #ffffff !important; /* Keep current sidebar item text white even if visited */
+}
+
+.wy-breadcrumbs li a:visited {
+    color: #BEAEE2;
+}
+
+/* Definition lists */
+dl dt {
+    color: #e0e0e0;
+    font-weight: bold;
+    background-color: #3a3a3a;
+    padding: 4px 8px;
+    border-top: 1px solid #444;
+    border-left: 1px solid #444;
+}
+
+dl dd {
+    margin-left: 20px;
+    padding: 8px;
+    border-left: 1px solid #444;
+    border-bottom: 1px solid #444;
+}
+
+    dl dd p:last-child {
+        margin-bottom: 0;
+    }
+
+/* Horizontal rules */
+hr {
+    border-top: 1px solid #555555;
+}
+
+/* Field lists (used in docstrings often) */
+table.field-list th, table.field-list td {
+    border: none !important;
+}
+
+    table.field-list th.field-name {
+        color: #cccccc;
+        font-weight: bold;
+    }
+
+/* Literal blocks (inline code ``) */
+code.literal, tt.literal, code {
+    color: #F5F5F5 !important;
+    background-color: #3C3C3C !important;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 0.9em;
+    border: 1px solid #505050;
+}
+
+/* Buttons (if any are rendered by Sphinx extensions, basic styling) */
+.button, button, input[type="button"], input[type="submit"], input[type="reset"] {
+    background-color: #4CAF50;
+    color: white;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+    .button:hover, button:hover, input[type="button"]:hover, input[type="submit"]:hover, input[type="reset"]:hover {
+        background-color: #45a049;
+    }
+
+/* Ensure specific RTD elements like "Edit on GitHub" link are styled */
+.rst-content .ethical-rtd a {
+    color: #7fDBFF;
+}
+
+    .rst-content .ethical-rtd a:hover {
+        color: #A1E9FF;
+    }
+
+/* Fix for RTD theme's next/prev buttons text color in dark mode */
+.rst-footer-buttons li.rst-footer-prev a span.rst-footer- ίδια- Рос,
+.rst-footer-buttons li.rst-footer-next a span.rst-footer-δια- Рос {
+    color: #7fDBFF !important; /* Ensure arrow icon text is visible */
+}
+
+.rst-footer-buttons li.rst-footer-prev a:hover span.rst-footer- ίδια- Рос,
+.rst-footer-buttons li.rst-footer-next a:hover span.rst-footer-δια- Рос {
+    color: #A1E9FF !important;
+}
+
+.rst-footer-buttons li.rst-footer-prev a,
+.rst-footer-buttons li.rst-footer-next a {
+    color: #dddddd !important; /* Text like "Previous" / "Next" */
+}
+
+    .rst-footer-buttons li.rst-footer-prev a:hover,
+    .rst-footer-buttons li.rst-footer-next a:hover {
+        color: #ffffff !important;
+        background-color: #444444 !important;
+    }
+
+/* Version switcher popup if enabled */
+.rst-versions {
+    background-color: #2a2a2a;
+    border-top-color: #555555;
+    color: #eeeeee;
+}
+
+    .rst-versions .rst-current-version {
+        background-color: #333333;
+    }
+
+        .rst-versions .rst-current-version strong {
+            color: #eeeeee;
+        }
+
+    .rst-versions .rst-other-versions dd a {
+        color: #7fDBFF;
+    }
+
+        .rst-versions .rst-other-versions dd a:hover {
+            color: #A1E9FF;
+        }
+
+img {
+    /* No general filter needed unless specific images cause problems */
+}
+
+/* Ensure table of contents in the page body is styled for dark mode */
+.contents.local .topic-title {
+    color: #f5f5f5; /* Match headings */
+}
+
+.contents.local ul li a {
+    color: #7fDBFF; /* Match links */
+}
+
+    .contents.local ul li a:hover {
+        color: #A1E9FF;
+    }
+
+/* Mobile Header Background Color Change */
+@media screen and (max-width: 768px) { /* RTD theme mobile breakpoint */
+    .wy-nav-top {
+        background: #4CAF50 !important; /* App's theme green from manifest */
+    }
+
+        /* Ensure text/icons in the mobile header have good contrast on green */
+        .wy-nav-top a, /* Title link, "Read the Docs" link etc. */
+        .wy-nav-top span, /* Any text in spans */
+        .wy-nav-top i.fa { /* FontAwesome icons, typically used for menu toggle */
+            color: #ffffff !important; /* White text/icons on green background */
+        }
+    /* If the menu icon is an SVG or other element, its selector might be different */
+    /* For example, if it's an SVG: */
+    /* .wy-nav-top svg { fill: #ffffff !important; } */
+}

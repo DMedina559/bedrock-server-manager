@@ -6,8 +6,8 @@
 
 {# --- Head Scripts Block --- #}
 {% block head_scripts %}
-<script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/allowlist.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/allowlist.js') }}" defer></script>
 {% endblock %}
 
 {# --- Main Content Block --- #}
@@ -52,18 +52,11 @@
     {# --- Section to Display Current Allowlist --- #}
 <section class="current-allowlist-section list-section">
     <h2>Current Allowlist</h2>
-
-    {# This list is populated by the JavaScript in body_scripts #}
     <ul id="current-allowlist-display" class="item-list">
-        {# Loading indicator will be placed here by JS and then replaced #}
     </ul>
-
-    {# Template for the empty list message - JS will manage its visibility #}
     <template id="no-players-template">
         <li class="list-item-empty">No players currently in allowlist.</li>
     </template>
-
-    {# Template for a single player item - JS will clone and populate this #}
     <template id="player-item-template">
         <li class="list-item">
             <div class="item-details">
@@ -73,24 +66,24 @@
             <button type="button" class="action-button danger-button remove-button">Remove</button>
         </li>
     </template>
-
 </section>
 
-    {# --- Navigation Actions (Unchanged) --- #}
 <div class="form-actions navigation-link">
     {% if new_install %}
-    <a href="{{ url_for('install_config_routes.configure_permissions_route', server_name=server_name, new_install='True') }}" class="action-link">
+    <a href="{{ request.url_for('configure_permissions_page', server_name=server_name) ~ ('?new_install=true' if new_install else '') if request else '#' }}" class="action-link">
         Skip & Go to Permissions »
     </a>
+    <a href="{{ request.url_for('configure_properties_page', server_name=server_name) ~ ('?new_install=true' if new_install else '') if request else '#' }}" class="action-link">
+        « Back to Server Properties
+    </a>
     {% else %}
-    <a href="{{ url_for('main_routes.index') }}" class="action-link">
+    <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
         « Back to Dashboard
     </a>
     {% endif %}
 </div>
 {% endblock %}
 
-{# --- Page-Specific JavaScript Block --- #}
 {% block body_scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -99,59 +92,55 @@
         const playerItemTemplate = document.getElementById('player-item-template');
         const noPlayersTemplate = document.getElementById('no-players-template');
 
-        // This function can be called to refresh the list at any time
         window.fetchAndUpdateAllowlistDisplay = async () => {
             console.log('Fetching and updating allowlist display...');
-            // 1. Show loader
             allowlistDisplay.innerHTML = `<div class="loader-container-small"><div class="spinner"></div><p>Loading...</p></div>`;
 
             try {
-                const response = await fetch(`/api/server/${serverName}/allowlist/get`);
-                const data = await response.json();
-
-                if (!response.ok || data.status !== 'success') {
-                    throw new Error(data.message || `HTTP error! Status: ${response.status}`);
-                }
-
-                // 2. Clear the list (removes loader)
+                const data = await window.sendServerActionRequest(serverName, 'allowlist/get', 'GET', null, null);
                 allowlistDisplay.innerHTML = '';
 
-                // 3. Populate the list
-                if (data.existing_players && data.existing_players.length > 0) {
-                    data.existing_players.forEach(player => {
-                        const playerClone = playerItemTemplate.content.cloneNode(true);
-                        const nameSpan = playerClone.querySelector('.item-name');
-                        const tagSpan = playerClone.querySelector('.ignores-limit-tag');
-                        const removeButton = playerClone.querySelector('.remove-button');
+                if (data && data.status === 'success' && Array.isArray(data.players)) { // Changed existing_players to players
+                    const players = data.players; // Changed existing_players to players
+                    if (players.length > 0) {
+                        players.forEach(player => {
+                            const playerClone = playerItemTemplate.content.cloneNode(true);
+                            const nameSpan = playerClone.querySelector('.item-name');
+                            const tagSpan = playerClone.querySelector('.ignores-limit-tag');
+                            const removeButton = playerClone.querySelector('.remove-button');
 
-                        nameSpan.textContent = player.name;
-                        if (String(player.ignoresPlayerLimit).toLowerCase() === 'true') {
-                            tagSpan.style.display = 'inline-block';
-                        }
+                            nameSpan.textContent = player.name;
+                            if (String(player.ignoresPlayerLimit).toLowerCase() === 'true') {
+                                tagSpan.style.display = 'inline-block';
+                            }
 
-                        // The removeAllowlistPlayer function is expected to be in allowlist.js
-                        if (window.removeAllowlistPlayer) {
-                            removeButton.onclick = () => removeAllowlistPlayer(removeButton, serverName, player.name);
-                        } else {
-                            removeButton.style.display = 'none'; // Hide if function doesn't exist
-                            console.warn('removeAllowlistPlayer function not found in allowlist.js');
-                        }
-
-                        allowlistDisplay.appendChild(playerClone);
-                    });
+                            if (window.removeAllowlistPlayer) {
+                                removeButton.onclick = () => removeAllowlistPlayer(removeButton, serverName, player.name);
+                            } else {
+                                removeButton.style.display = 'none';
+                            }
+                            allowlistDisplay.appendChild(playerClone);
+                        });
+                    } else {
+                        const noPlayersClone = noPlayersTemplate.content.cloneNode(true);
+                        allowlistDisplay.appendChild(noPlayersClone);
+                    }
                 } else {
-                    // Show the "no players" message
-                    const noPlayersClone = noPlayersTemplate.content.cloneNode(true);
-                    allowlistDisplay.appendChild(noPlayersClone);
+                    const errorMsg = (data && data.message) ? data.message : 'Failed to load allowlist data.';
+                    console.error('Failed to load allowlist:', errorMsg);
+                    if (typeof showStatusMessage === 'function' && !(data && data.status === 'error')) {
+                        showStatusMessage(`Error loading allowlist: ${errorMsg}`, 'error');
+                    }
                 }
             } catch (error) {
-                console.error('Failed to load allowlist:', error);
-                // Replace loader with an error message
-                allowlistDisplay.innerHTML = `<li class="list-item-error">Error loading allowlist: ${error.message}</li>`;
+                console.error('Client-side error in fetchAndUpdateAllowlistDisplay:', error);
+                allowlistDisplay.innerHTML = '';
+                if (typeof showStatusMessage === 'function') {
+                    showStatusMessage(`Client-side error loading allowlist: ${error.message}`, 'error');
+                }
             }
         };
 
-        // --- Toggle Switch Logic (for the "add" section) ---
         const toggleInput = document.getElementById('ignore-limit-add');
         if (toggleInput) {
             const hiddenFalseInput = document.querySelector('input[name="ignore_limit_add"]');
@@ -159,10 +148,8 @@
                 if (hiddenFalseInput) hiddenFalseInput.disabled = toggleInput.checked;
             };
             toggleInput.addEventListener('change', syncHiddenFalse);
-            syncHiddenFalse(); // Initial sync
+            syncHiddenFalse();
         }
-
-        // Initial load of the allowlist
         fetchAndUpdateAllowlistDisplay();
     });
 </script>

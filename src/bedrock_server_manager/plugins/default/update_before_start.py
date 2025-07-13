@@ -14,7 +14,7 @@ class AutoupdatePlugin(PluginBase):
     configuration. If enabled, it triggers the update process before launch.
     """
 
-    version = "1.0.0"
+    version = "1.0.1"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
@@ -34,7 +34,7 @@ class AutoupdatePlugin(PluginBase):
         try:
             # Create an instance for the server to access its configuration.
             server_instance = BedrockServer(server_name)
-            autoupdate_enabled = server_instance.get_custom_config_value("autoupdate")
+            autoupdate_enabled = server_instance.get_autoupdate()
 
             if not autoupdate_enabled:
                 self.logger.info(

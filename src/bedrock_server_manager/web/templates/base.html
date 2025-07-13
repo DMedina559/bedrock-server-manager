@@ -1,4 +1,3 @@
-<!-- bedrock_server_manager//web/templates/base.html -->
 <!--
 Base HTML template for the Bedrock Server Manager web interface.
 Provides the core structure, including head elements (meta, title, CSS, favicons),
@@ -6,13 +5,14 @@ header, main content area with flash messages, and placeholders for page-specifi
 content and scripts using Jinja2 blocks.
 -->
 <!DOCTYPE html>
-<html lang="en"> {# Specify language for accessibility #}
+<html lang="en">
+ {# Specify language for accessibility #}
 <head>
     <meta charset="UTF-8">
+    {# Standard favicon #}
+    <link rel="shortcut icon" href="{{ url_for('static', path='image/icon/favicon.ico') }}" />
     {# Responsive viewport settings #}
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {# CSRF Protection Token (for AJAX requests) #}
-    <meta name="csrf-token" content="{{ csrf_token() }}">
 
     {# --- Page Title Block --- #}
     {# Child templates override this block with their specific title. #}
@@ -20,35 +20,24 @@ content and scripts using Jinja2 blocks.
     <title>{% block title %}{{ app_name | default('Bedrock Server Manager') }}{% endblock %}</title>
 
     {# -------------------- Favicons / Icons -------------------- #}
-    {# Standard favicon #}
-    <link rel="shortcut icon" href="{{ url_for('static', filename='image/icon/favicon.ico') }}" />
     {# PNG icons for various sizes #}
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='image/icon/favicon-96x96.png') }}" sizes="96x96" />
+    <link rel="icon" type="image/png" href="{{ url_for('static', path='image/icon/favicon-96x96.png') }}" sizes="96x96" />
     {# SVG icon (preferred by modern browsers) #}
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='image/icon/favicon.svg') }}" />
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='image/icon/favicon.svg') }}" />
     {# Apple touch icon #}
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='image/icon/apple-touch-icon.png') }}" />
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='image/icon/apple-touch-icon.png') }}" />
     {# Web App Manifest #}
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}" />
+    <link rel="manifest" href="{{ url_for('static', path='site.webmanifest') }}" />
 
     {# -------------------- Core CSS Stylesheets -------------------- #}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/buttons.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/forms.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tables.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tabs.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/messages.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/controls.css') }}"> {# Added controls CSS #}
-
-    {# Conditional Panorama Background Override #}
-    {% if panorama_url %}
-    <style>
-        body {
-            background-image: url('{{ panorama_url | safe }}');
-        }
-    </style>
-    {% endif %}
+    <link rel="stylesheet" href="{{ url_for('static', path='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/buttons.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/forms.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/tables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/tabs.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/messages.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/layout.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/controls.css') }}">
 
     {# Page-specific CSS Block - Child templates can add extra stylesheets here #}
     {% block head_styles %}{% endblock %}
@@ -65,9 +54,10 @@ content and scripts using Jinja2 blocks.
         {# --- Page Header --- #}
         <header class="header">
             {# Link back to the main dashboard #}
-            <a href="{{ url_for('main_routes.index') }}" class="header-link">
+            <a href="{{ url_for('index') }}" class="header-link">
+                {# Changed from 'main_routes.index' to 'index' #}
                 {# Logo Image #}
-                <img src="{{ url_for('static', filename='image/icon/favicon.svg') }}" alt="{{ app_name | default('Bedrock Server Manager') }} Logo" class="header-logo">
+                <img src="{{ url_for('static', path='image/icon/favicon.svg') }}" alt="{{ app_name | default('Bedrock Server Manager') }} Logo" class="header-logo">
                 {# Main Application Title - Apply splitting logic HERE #}
                 <h1>
                     {% set name_parts = (app_name or 'Bedrock Server Manager').rsplit(' ', 1) %}
@@ -85,23 +75,12 @@ content and scripts using Jinja2 blocks.
 
         {# --- Main Content Area --- #}
         <main>
-            {# Flash Messages Display Area #}
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        {% set css_class = 'message-box' %}
-                        {% if category == 'error' or category == 'danger' %}
-                            {% set css_class = 'message-box message-error' %}
-                        {% elif category == 'warning' %}
-                            {% set css_class = 'message-box message-warning' %}
-                        {% elif category == 'info' %}
-                            {# {% set css_class = 'message-box message-info' %} #}
-                        {% endif %}
-                        <div class="{{ css_class }}">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-            {# --- End Flash Messages --- #}
+            {# Removed Flask-style get_flashed_messages block #}
+
+            {# Div for JavaScript-driven status messages (showStatusMessage in utils.js) #}
+            <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out; margin-top: 15px; margin-bottom: 15px;">
+                <!-- JavaScript status messages will appear here -->
+            </div>
 
             {# Main Content Block - Child templates inject their content here #}
             {% block content %}{% endblock %}
@@ -110,21 +89,59 @@ content and scripts using Jinja2 blocks.
         {# --- Footer --- #}
         <footer class="footer" style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #555; font-size: 0.9em; color: #aaa;">
             <p>
-                <a href="{{ url_for('main_routes.index') }}" target="_none" rel="noopener">Index</a> |
-                <a href="https://github.com/DMedina559/bedrock-server-manager/tree/main/docs" target="_none" rel="noopener">Docs</a> |
-                <a href="https://github.com/dmedina559" target="_none" rel="noopener">GitHub</a> |
-                <strong>{{ app_name }}</strong> {{ app_version }} © MIT 2025
+                <a href="https://bedrock-server-manager.readthedocs.io/en/latest/" target="_none" rel="noopener">Docs</a> |
+                <a href="/docs" target="_none" rel="noopener">HTTP API</a> |
+                <a href="https://github.com/dmedina559" target="_none" rel="noopener">GitHub</a>
+                <br>Version {{ app_version }} © MIT 2025
             </p>
 
         </footer>
-        
+
         {# --- End Footer --- #}
 
     </div> {# --- End of .container --- #}
 
     {# -------------------- Scripts at End of Body -------------------- #}
     {# Load global utilities first #}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+    <script src="{{ url_for('static', path='js/utils.js') }}" defer></script>
+
+    {# Script to read URL query parameters and display messages #}
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const message = urlParams.get('message');
+            const category = urlParams.get('category'); // e.g., 'error', 'warning', 'info'
+
+            if (message) {
+                // Assuming showStatusMessage is defined in utils.js
+                // and can handle a category argument for styling.
+                if (typeof showStatusMessage === 'function') {
+                    showStatusMessage(message, category);
+                } else {
+                    console.warn('showStatusMessage function not found in utils.js. Displaying raw message.');
+                    const statusMessageArea = document.getElementById('status-message-area');
+                    if (statusMessageArea) {
+                        statusMessageArea.textContent = message;
+                        statusMessageArea.style.opacity = 1;
+                        // Add basic styling based on category if showStatusMessage is missing
+                        if (category === 'error' || category === 'danger') {
+                            statusMessageArea.classList.add('message-error');
+                        } else if (category === 'warning') {
+                            statusMessageArea.classList.add('message-warning');
+                        } else if (category === 'info') {
+                            statusMessageArea.classList.add('message-info');
+                        }
+                    }
+                }
+                // Remove the query parameters from the URL to prevent re-display on refresh
+                // This creates a cleaner URL and prevents issues if the user bookmarks.
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.delete('message');
+                newUrl.searchParams.delete('category');
+                window.history.replaceState({}, document.title, newUrl.toString());
+            }
+        });
+    </script>
 
     {# Page-specific JS Block - Child templates can add scripts here #}
     {% block body_scripts %}{% endblock %}

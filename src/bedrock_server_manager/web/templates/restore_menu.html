@@ -8,83 +8,65 @@
 {# --- Head Scripts Block --- #}
 {# Include JavaScript files needed for this page's actions (utils, backup_restore) #}
 {% block head_scripts %}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# backup_restore.js contains triggerRestoreAll and potentially other handlers #}
-    <script src="{{ url_for('static', filename='js/backup_restore.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
 {% endblock %}
 
 
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
-    <h2>Restore Options</h2>
+<h2>Restore Options</h2>
 
     {# Display the server context #}
-    <p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
+<p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
 
     {# --- Status Message Area --- #}
     {# Targeted by JavaScript (showStatusMessage) #}
-    <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
-        <!-- Status messages from restore actions will appear here -->
-    </div>
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
+    <!-- Status messages from restore actions will appear here -->
+</div>
 
     {# Server-side flash messages (handled by base.html) #}
 
     {# Section containing the restore options #}
-    <section class="restore-menu-section">
-        <p>Choose a restore action:</p>
+<section class="restore-menu-section">
+    <p>Choose a restore action:</p>
 
-        {# Group for restore action buttons/forms #}
-        <div class="button-group action-buttons-group" style="margin-bottom: 20px;">
+    {# Group for restore action buttons/forms #}
+    <div class="button-group action-buttons-group" style="margin-bottom: 20px;">
 
-            {# Form to navigate to World backup selection #}
-            <form action="{{ url_for('backup_restore_routes.restore_select_backup_route', server_name=server_name) }}" method="post" style="display: inline-block; margin: 0;">
-                {# Keep buttons inline #}
-                {# CSRF token required for POST requests #}
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {# Hidden input to tell the next route which backup type to list #}
-                <input type="hidden" name="restore_type" value="world">
-                {# Submit button styled as action button #}
-                <button type="submit" class="action-button">Select World Backup...</button>
-            </form>
+        {# Button to navigate to World backup selection via JS #}
+        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'world')">Select World Backup...</button>
 
-            {# Form to navigate to properties backup selection #}
-            <form action="{{ url_for('backup_restore_routes.restore_select_backup_route', server_name=server_name) }}" method="post" style="display: inline-block; margin: 0;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="restore_type" value="properties">
-                <button type="submit" class="action-button">Select Properties Backup...</button>
-            </form>
+        {# Button to navigate to properties backup selection via JS #}
+        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'properties')">Select Properties Backup...</button>
 
-            {# Form to navigate to allowlist backup selection #}
-            <form action="{{ url_for('backup_restore_routes.restore_select_backup_route', server_name=server_name) }}" method="post" style="display: inline-block; margin: 0;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="restore_type" value="allowlist">
-                <button type="submit" class="action-button">Select Allowlist Backup...</button>
-            </form>
+        {# Button to navigate to allowlist backup selection via JS #}
+        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'allowlist')">Select Allowlist Backup...</button>
 
-            {# Form to navigate to permissions backup selection #}
-            <form action="{{ url_for('backup_restore_routes.restore_select_backup_route', server_name=server_name) }}" method="post" style="display: inline-block; margin: 0;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="restore_type" value="permissions">
-                <button type="submit" class="action-button">Select Permissions Backup...</button>
-            </form>
+        {# Button to navigate to permissions backup selection via JS #}
+        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'permissions')">Select Permissions Backup...</button>
 
-            {# Button to trigger Restore All API call directly via JavaScript #}
-            {# 'this' refers to the button element (for disabling) #}
-            {# 'server_name' comes from Jinja context #}
-            <button type="button" onclick="triggerRestoreAll(this, '{{ server_name | e }}')" class="action-button">
-                Restore All (Latest)
-            </button>
+        {# Button to trigger Restore All API call directly via JavaScript #}
+        {# 'this' refers to the button element (for disabling) #}
+        {# 'server_name' comes from Jinja context #}
+        <button type="button" onclick="triggerRestoreAll(this, '{{ server_name | e }}')" class="action-button">
+            Restore All (Latest)
+        </button>
 
-        </div> {# --- End .button-group --- #}
+    </div> {# --- End .button-group --- #}
 
-        {# Navigation Link Back #}
-        <div class="navigation-link"> {# Consistent class for back link #}
-             <a href="{{ url_for('main_routes.index') }}" class="action-link">
-                 « Back to Dashboard
-             </a>
-        </div>
+    {# Navigation Link Back #}
+    <div class="navigation-link">
+        {# Consistent class for back link #}
+        <a href="{{ request.url_for('index') }}" class="action-link">
+            {# Assuming 'index' is the name of the main dashboard route #}
+            « Back to Dashboard
+        </a>
+    </div>
 
-    </section> {# --- End .restore-menu-section --- #}
+</section> {# --- End .restore-menu-section --- #}
 
 {% endblock %}

@@ -1,10 +1,30 @@
 # bedrock_server_manager/core/downloader.py
-"""Handles downloading, extracting, and managing Minecraft Bedrock Server files.
+"""Manages downloading, extracting, and maintaining Minecraft Bedrock Server files.
 
-This module provides the `BedrockDownloader` class, which manages the lifecycle
-of downloading and setting up a specific server version. It also includes a
-standalone `prune_old_downloads` function for general maintenance of the
-download cache.
+This module is central to acquiring the necessary files for running a Minecraft
+Bedrock server. It provides functionalities to:
+
+    - Fetch the latest or specific versions of the Bedrock Server software for
+      Linux and Windows.
+    - Download the server software from official sources, using the Minecraft
+      download API as the primary method.
+    - Extract the downloaded server files into a designated server directory, with
+      options for preserving existing configuration, worlds, and data during updates.
+    - Manage a local cache of downloaded server ZIP files, including pruning old
+      versions to save disk space.
+
+Key Components:
+
+    - :class:`BedrockDownloader`: A class that orchestrates the download and setup
+      process for a single server instance. It handles version resolution,
+      downloading, extraction, and local cache pruning related to its operation.
+    - :func:`prune_old_downloads`: A standalone utility function to clean up
+      old downloaded server ZIP files from a specified directory, independent
+      of a specific `BedrockDownloader` instance.
+
+The module aims to provide a robust and error-handled way to obtain server files,
+dealing with potential network issues, file system operations, and changes in
+download URLs or API responses.
 """
 
 import re
@@ -18,8 +38,9 @@ from pathlib import Path
 from typing import Tuple, Optional, Set
 
 # Local application imports.
-from bedrock_server_manager.core.system import base as system_base
-from bedrock_server_manager.error import (
+from .system import base as system_base
+from ..config import Settings
+from ..error import (
     DownloadError,
     ExtractError,
     MissingArgumentError,
@@ -42,7 +63,7 @@ def prune_old_downloads(download_dir: str, download_keep: int):
 
     Args:
         download_dir: The directory containing the downloaded
-            'bedrock-server-*.zip' files.
+            ``bedrock-server-*.zip`` files.
         download_keep: The number of most recent ZIP files to retain.
 
     Raises:
@@ -61,7 +82,11 @@ def prune_old_downloads(download_dir: str, download_keep: int):
     logger.debug(f"Configured to keep {download_keep} downloads in '{download_dir}'.")
 
     if not os.path.isdir(download_dir):
-        raise AppFileNotFoundError(download_dir, "Download directory")
+        # Log a warning and return if the directory doesn't exist, as it's not a critical error for pruning.
+        logger.warning(
+            f"Download directory '{download_dir}' not found. Skipping pruning."
+        )
+        return
 
     logger.info(
         f"Pruning old Bedrock server downloads in '{download_dir}' (keeping {download_keep})..."
@@ -70,23 +95,24 @@ def prune_old_downloads(download_dir: str, download_keep: int):
     try:
         dir_path = Path(download_dir)
         # Find all files matching the bedrock server download pattern.
+        # Using rglob to catch files in subdirectories if any were accidentally created,
+        # though typically downloads are flat in their respective 'stable'/'preview' dirs.
         download_files = list(dir_path.glob("bedrock-server-*.zip"))
 
-        # Sort files by modification time (oldest first) to identify which to delete.
-        download_files.sort(key=lambda p: p.stat().st_mtime)
+        # Sort files by modification time (newest first) to identify which to keep.
+        download_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         logger.debug(
-            f"Found {len(download_files)} potential download files matching pattern."
+            f"Found {len(download_files)} potential download files matching pattern in '{download_dir}'."
         )
 
-        num_files = len(download_files)
-        if num_files > download_keep:
-            num_to_delete = num_files - download_keep
-            files_to_delete = download_files[:num_to_delete]
+        if len(download_files) > download_keep:
+            files_to_delete = download_files[download_keep:]
             logger.info(
-                f"Found {num_files} downloads. Will delete {num_to_delete} oldest file(s) to keep {download_keep}."
+                f"Found {len(download_files)} downloads in '{download_dir}'. Will delete {len(files_to_delete)} oldest file(s) to keep {download_keep}."
             )
 
             deleted_count = 0
+            failed_deletions = []
             for file_path_obj in files_to_delete:
                 try:
                     file_path_obj.unlink()
@@ -97,44 +123,77 @@ def prune_old_downloads(download_dir: str, download_keep: int):
                         f"Failed to delete old server download '{file_path_obj}': {e_unlink}",
                         exc_info=True,
                     )
+                    failed_deletions.append(str(file_path_obj))
 
-            # If not all intended files were deleted, raise an error.
-            if deleted_count < num_to_delete:
-                raise FileOperationError(
-                    f"Failed to delete all required old downloads ({num_to_delete - deleted_count} failed). Check logs."
+            if failed_deletions:
+                # If some deletions failed, log a warning but don't necessarily raise an error
+                # as pruning is a maintenance task and shouldn't block primary operations.
+                logger.warning(
+                    f"Failed to delete {len(failed_deletions)} old download(s) in '{download_dir}': {', '.join(failed_deletions)}. Check logs."
                 )
-            logger.info(f"Successfully deleted {deleted_count} old download(s).")
+            if deleted_count > 0:
+                logger.info(
+                    f"Successfully deleted {deleted_count} old download(s) from '{download_dir}'."
+                )
+            elif (
+                not failed_deletions
+            ):  # No deletions needed or no files to delete beyond retention
+                logger.info(
+                    f"No files were deleted from '{download_dir}' as part of this pruning operation."
+                )
         else:
             logger.info(
-                f"Found {num_files} download(s), which is not more than the {download_keep} to keep. No files deleted."
+                f"Found {len(download_files)} download(s) in '{download_dir}', which is not more than the {download_keep} to keep. No files deleted."
             )
 
     except OSError as e_os:
-        raise FileOperationError(
-            f"Error pruning downloads in '{download_dir}': {e_os}"
-        ) from e_os
+        # Log as warning, pruning failures are not usually critical.
+        logger.warning(
+            f"Error accessing or processing files for pruning in '{download_dir}': {e_os}",
+            exc_info=True,
+        )
     except Exception as e_generic:
-        raise FileOperationError(
-            f"Unexpected error pruning downloads: {e_generic}"
-        ) from e_generic
+        logger.error(
+            f"Unexpected error during pruning operation for '{download_dir}': {e_generic}",
+            exc_info=True,
+        )
 
 
 class BedrockDownloader:
-    """Manages the download and extraction of a specific Bedrock Server version.
+    """Manages the download, extraction, and setup of a Bedrock Server instance.
 
-    This class handles the entire lifecycle for acquiring server files, including:
-    - Resolving the correct download URL for a given version spec (e.g., "LATEST").
-    - Downloading the server ZIP archive.
-    - Extracting the files into a target directory.
-    - Pruning the download cache.
+    This class orchestrates the process of obtaining and preparing Minecraft
+    Bedrock server files for a specific server instance. It handles:
+
+        - **Version Targeting**: Allows specifying "LATEST" (stable), "PREVIEW", or a
+          concrete version number (e.g., "1.20.10.01", "1.20.10.01-PREVIEW").
+        - **URL Resolution**: Primarily uses the official Minecraft download API to find
+          the correct download URL for the target version and operating system (Linux/Windows).
+        - **Downloading**: Downloads the server ZIP archive from the resolved URL,
+          saving it to a version-specific (stable/preview) subdirectory within the
+          configured global downloads path. It skips downloading if the file already exists.
+        - **Extraction**: Extracts the contents of the downloaded ZIP archive into the
+          specified server directory. It supports "fresh install" and "update" modes,
+          where the latter preserves user data like worlds, properties, and allowlists.
+        - **Cache Pruning**: After a download, it can trigger pruning of older ZIP files
+          within its specific download subdirectory (stable or preview) based on retention settings.
+
+    An instance of this class is typically created when a new server needs to be
+    installed or an existing one updated.
 
     Attributes:
-        DOWNLOAD_PAGE_URL: The URL of the Minecraft Bedrock Server download page.
-        PRESERVED_ITEMS_ON_UPDATE: A set of files and directories that should not
-            be overwritten during an update extraction.
+        settings (Settings): The application settings object.
+        server_dir (str): The absolute path to the target server directory.
+        input_target_version (str): The user-provided version string.
+        os_name (str): The name of the current operating system (e.g., "Linux", "Windows").
+        base_download_dir (Optional[str]): The root directory for all downloads.
+        resolved_download_url (Optional[str]): The final URL used for downloading.
+        actual_version (Optional[str]): The specific version number resolved (e.g., "1.20.10.01").
+        zip_file_path (Optional[str]): Full path to the downloaded server ZIP file.
+        specific_download_dir (Optional[str]): Path to the subdirectory within
+            `base_download_dir` used for this instance's downloads (e.g., ".../downloads/stable").
     """
 
-    DOWNLOAD_PAGE_URL: str = "https://www.minecraft.net/en-us/download/server/bedrock"
     PRESERVED_ITEMS_ON_UPDATE: Set[str] = {
         "worlds/",
         "allowlist.json",
@@ -142,18 +201,30 @@ class BedrockDownloader:
         "server.properties",
     }
 
-    def __init__(self, settings_obj, server_dir: str, target_version: str = "LATEST"):
+    def __init__(
+        self,
+        settings_obj: Optional[Settings],
+        server_dir: str,
+        target_version: str = "LATEST",
+        server_zip_path: Optional[str] = None,
+    ):
         """Initializes the BedrockDownloader.
 
         Args:
-            settings_obj: The application's `Settings` object.
-            server_dir: The target directory for the server installation.
-            target_version: The version identifier to download (e.g., "LATEST",
-                "PREVIEW", "1.20.10.01", "1.20.10.01-PREVIEW").
-
+            settings_obj (Settings): The application's ``Settings`` object,
+                providing access to configuration like download paths.
+            server_dir (str): The target directory where the server files will be
+                installed or updated. This path will be converted to an absolute path.
+            target_version (str, optional): The version identifier for the server
+                to download. Defaults to "LATEST".
+                Examples: "LATEST", "PREVIEW", "CUSTOM", "1.20.10.01", "1.20.10.01-PREVIEW".
+            server_zip_path (str, optional): Absolute path to a custom server ZIP file.
+                Required if `target_version` is "CUSTOM".
         Raises:
-            MissingArgumentError: If any of the required arguments are not provided.
-            ConfigurationError: If the `DOWNLOAD_DIR` setting is missing.
+            MissingArgumentError: If `settings_obj`, `server_dir`, or
+                `target_version` are not provided or are empty.
+            ConfigurationError: If the `paths.downloads` setting is missing or
+                empty in the provided `settings_obj`.
         """
         if not settings_obj:
             raise MissingArgumentError(
@@ -173,8 +244,22 @@ class BedrockDownloader:
         self.input_target_version: str = target_version.strip()
         self.logger = logging.getLogger(__name__)
 
+        # For "CUSTOM" version, the path to the ZIP file must be provided.
+        if self.input_target_version.upper() == "CUSTOM":
+            if not server_zip_path or not os.path.isabs(server_zip_path):
+                raise MissingArgumentError(
+                    "Absolute path to server ZIP file is required for CUSTOM version."
+                )
+            if not os.path.exists(server_zip_path):
+                raise AppFileNotFoundError(
+                    server_zip_path, "Custom server ZIP file not found"
+                )
+            self.server_zip_path = server_zip_path
+        else:
+            self.server_zip_path = None
+
         self.os_name: str = platform.system()
-        self.base_download_dir: Optional[str] = self.settings.get("DOWNLOAD_DIR")
+        self.base_download_dir: Optional[str] = self.settings.get("paths.downloads")
         if not self.base_download_dir:
             raise ConfigurationError(
                 "DOWNLOAD_DIR setting is missing or empty in configuration."
@@ -196,9 +281,27 @@ class BedrockDownloader:
         self._determine_version_parameters()
 
     def _determine_version_parameters(self):
-        """Parses the input version string to set internal version parameters."""
+        """Parses the ``input_target_version`` string to set internal parameters.
+
+        This method analyzes the ``self.input_target_version`` attribute to
+        determine if the target is "LATEST" (stable), "PREVIEW", a specific
+        stable version number (e.g., "1.20.10.01"), or a specific preview
+        version number (e.g., "1.20.10.01-PREVIEW").
+
+        It populates the following internal attributes:
+
+            - ``self._version_type``: Set to "LATEST" or "PREVIEW".
+            - ``self._custom_version_number``: Set to the version number string
+              (e.g., "1.20.10.01") if a specific version is targeted, otherwise empty.
+
+        """
         target_upper = self.input_target_version.upper()
-        if target_upper == "PREVIEW":
+        if target_upper == "CUSTOM":
+            self._version_type = "CUSTOM"
+            self.logger.info(
+                f"Instance targeting CUSTOM version for server: {self.server_dir}"
+            )
+        elif target_upper == "PREVIEW":
             self._version_type = "PREVIEW"
             self.logger.info(
                 f"Instance targeting latest PREVIEW version for server: {self.server_dir}"
@@ -334,35 +437,61 @@ class BedrockDownloader:
         return self.resolved_download_url
 
     def _get_version_from_url(self) -> str:
-        """Extracts the version number from the resolved download URL.
-
+        """Extracts the version number from the resolved download URL or custom zip path.
         This method populates `self.actual_version`.
-
         Returns:
             The extracted version string (e.g., "1.20.10.01").
-
         Raises:
             MissingArgumentError: If the download URL has not been resolved yet.
             DownloadError: If the URL format is unexpected and the version
                 cannot be parsed.
         """
-        if not self.resolved_download_url:
+        source_path = (
+            self.server_zip_path
+            if self._version_type == "CUSTOM"
+            else self.resolved_download_url
+        )
+
+        if not source_path:
             raise MissingArgumentError(
-                "Download URL is not set. Cannot extract version."
+                "Download URL or custom zip path is not set. Cannot extract version."
             )
 
-        match = re.search(r"bedrock-server-([0-9.]+)\.zip", self.resolved_download_url)
+        # First, try to match the official bedrock-server-X.Y.Z.W.zip format
+        match = re.search(r"bedrock-server-([0-9.]+)\.zip", source_path)
         if match:
             version = match.group(1).rstrip(".")
             self.logger.debug(
-                f"Extracted version '{version}' from URL: {self.resolved_download_url}"
+                f"Extracted version '{version}' from standard path format: {source_path}"
             )
             self.actual_version = version
             return self.actual_version
-        else:
-            raise DownloadError(
-                f"Failed to extract version number from URL format: {self.resolved_download_url}"
-            )
+
+        # If it's a custom zip, try a more general version extraction
+        if self._version_type == "CUSTOM":
+            # Try to find any version-like number in the filename (e.g., 1.0.0, 2.3.4.5)
+            match = re.search(r"(\d+\.\d+\.\d+(\.\d+)?)", Path(source_path).name)
+            if match:
+                version = match.group(1)
+                self.logger.debug(
+                    f"Extracted version '{version}' from custom ZIP name: {source_path}"
+                )
+                self.actual_version = version
+                return self.actual_version
+            else:
+                # Fallback for custom zips that don't have a clear version number
+                custom_version = Path(source_path).stem
+                self.logger.warning(
+                    f"Could not parse a version number from custom ZIP '{source_path}'. "
+                    f"Using filename stem '{custom_version}' as version."
+                )
+                self.actual_version = custom_version
+                return self.actual_version
+
+        # If it's not a custom zip and didn't match the standard format, it's an error
+        raise DownloadError(
+            f"Failed to extract version number from URL format: {source_path}"
+        )
 
     def _download_server_zip_file(self):
         """Downloads the server ZIP file from the resolved URL.
@@ -439,7 +568,20 @@ class BedrockDownloader:
             raise FileOperationError(f"Unexpected error during download: {e}") from e
 
     def _execute_instance_pruning(self):
-        """Calls the standalone prune function for this instance's download directory."""
+        """Executes download cache pruning for this downloader instance.
+
+        This method calls the global :func:`prune_old_downloads` function,
+        passing the instance's specific download directory (e.g.,
+        ``.../downloads/stable`` or ``.../downloads/preview``) and the
+        configured retention policy from settings (``retention.downloads``).
+
+        Pruning failures are logged as warnings and do not interrupt the main
+        download or setup operations, as pruning is a non-critical maintenance task.
+        """
+        if self._version_type == "CUSTOM":
+            self.logger.debug("Skipping pruning for CUSTOM version.")
+            return
+
         if not self.specific_download_dir:
             self.logger.debug(
                 "Instance's specific_download_dir not set, skipping instance pruning."
@@ -452,7 +594,7 @@ class BedrockDownloader:
             return
 
         try:
-            keep_setting = self.settings.get("DOWNLOAD_KEEP", 3)
+            keep_setting = self.settings.get("retention.downloads", 3)
             effective_keep = int(keep_setting)
             if effective_keep < 0:
                 self.logger.error(
@@ -477,52 +619,117 @@ class BedrockDownloader:
             )
 
     def get_version_for_target_spec(self) -> str:
-        """Resolves the actual version string for the instance's target.
+        """Resolves and returns the actual version string for the instance's target.
 
-        This method performs the network requests to find the URL and parse
-        the version from it, but does not download the file itself. It populates
-        `self.actual_version` and `self.resolved_download_url`.
+        This method orchestrates the lookup of the download URL (via
+        :meth:`._lookup_bedrock_download_url`) and the extraction of the version
+        number from that URL (via :meth:`._get_version_from_url`). It populates
+        instance attributes ``self.actual_version`` and
+        ``self.resolved_download_url`` as side effects.
+
+        This method primarily focuses on identifying the version and its download
+        source without actually downloading the server files.
 
         Returns:
-            The actual version string corresponding to the target specification.
+            str: The actual, resolved version string (e.g., "1.20.10.01")
+            corresponding to the initial target specification.
 
         Raises:
-            DownloadError: If a definitive version cannot be resolved.
+            SystemError: If the OS is unsupported (from :meth:`._lookup_bedrock_download_url`).
+            InternetConnectivityError: If network issues prevent API access (from
+                :meth:`._lookup_bedrock_download_url`).
+            DownloadError: If the API response is invalid, the URL cannot be
+                found or constructed, or if the version cannot be parsed from the URL.
         """
         self.logger.debug(
             f"Getting prospective version for target spec: '{self.input_target_version}'"
         )
-        # 1. Resolve the download URL.
-        self._lookup_bedrock_download_url()
-        # 2. Parse the version from the resolved URL.
-        self._get_version_from_url()
+        if self._version_type == "CUSTOM":
+            self.logger.debug("Custom version specified, skipping download URL lookup.")
+            self._get_version_from_url()
+        else:
+            # 1. Resolve the download URL.
+            self._lookup_bedrock_download_url()
+            # 2. Parse the version from the resolved URL.
+            self._get_version_from_url()
+
         # 3. Return the result.
         if not self.actual_version:
             raise DownloadError("Could not determine actual version from resolved URL.")
         return self.actual_version
 
     def prepare_download_assets(self) -> Tuple[str, str, str]:
-        """Orchestrates the full download preparation process.
+        """Orchestrates the download preparation, including potential download.
 
-        This method coordinates all steps required before extraction:
-        - Checks internet connectivity.
-        - Creates necessary directories.
-        - Resolves the download URL and version.
-        - Downloads the server archive if it's not already present locally.
-        - Prunes the download cache.
+        This comprehensive method coordinates all steps required to make the server
+        ZIP file available locally, prior to extraction. The steps include:
+
+            1.  Checking for internet connectivity using :func:`system_base.check_internet_connectivity`.
+            2.  Ensuring the main server directory (``self.server_dir``) and the base
+                download directory (``self.base_download_dir``) exist, creating them
+                if necessary.
+            3.  Resolving the actual version and download URL by calling
+                :meth:`.get_version_for_target_spec()`. This populates
+                ``self.actual_version`` and ``self.resolved_download_url``.
+            4.  Determining the specific download subdirectory (e.g., ``.../downloads/stable``
+                or ``.../downloads/preview``) and ensuring it exists. This sets
+                ``self.specific_download_dir``.
+            5.  Constructing the full path to the target ZIP file (``self.zip_file_path``).
+            6.  If the ZIP file does not already exist at ``self.zip_file_path``, it
+                downloads the file using :meth:`._download_server_zip_file()`.
+            7.  Finally, it triggers cache pruning for the specific download directory
+                using :meth:`._execute_instance_pruning()`.
 
         Returns:
-            A tuple containing the actual version string, the path to the
-            downloaded ZIP file, and the specific download directory used.
+            Tuple[str, str, str]: A tuple containing:
+                - ``actual_version`` (str): The resolved version string (e.g., "1.20.10.01").
+                - ``zip_file_path`` (str): The absolute path to the downloaded (or pre-existing)
+                  server ZIP file.
+                - ``specific_download_dir`` (str): The absolute path to the specific
+                  download subdirectory used (e.g., ".../downloads/stable").
 
         Raises:
-            InternetConnectivityError: If there's no internet connection.
-            FileOperationError: If directories cannot be created.
-            DownloadError: If the download process fails.
+            InternetConnectivityError: If internet is unavailable or if download fails.
+            FileOperationError: If directory creation or file writing fails.
+            DownloadError: If version/URL resolution fails, or if critical attributes
+                           are not set post-preparation.
+            SystemError: Propagated from version resolution if OS is unsupported.
         """
         self.logger.info(
             f"Starting Bedrock server download preparation for directory: '{self.server_dir}'"
         )
+
+        # For CUSTOM version, we use a local file, so we skip most of the download logic.
+        if self._version_type == "CUSTOM":
+            self.logger.info(
+                f"Custom version specified. Using local ZIP: {self.server_zip_path}"
+            )
+            if not self.server_zip_path:
+                raise MissingArgumentError(
+                    "server_zip_path is required for CUSTOM version."
+                )
+
+            # Set the zip_file_path and actual_version from the custom path.
+            self.zip_file_path = self.server_zip_path
+            self._get_version_from_url()
+
+            # The specific_download_dir for a custom zip is its parent directory.
+            self.specific_download_dir = str(Path(self.server_zip_path).parent)
+            self.logger.debug(
+                f"Setting specific_download_dir for custom zip to: {self.specific_download_dir}"
+            )
+
+            if (
+                not self.actual_version
+                or not self.zip_file_path
+                or not self.specific_download_dir
+            ):
+                raise DownloadError(
+                    "Critical state missing after custom ZIP preparation."
+                )
+
+            return self.actual_version, self.zip_file_path, self.specific_download_dir
+
         system_base.check_internet_connectivity()
 
         try:
@@ -591,21 +798,36 @@ class BedrockDownloader:
         return self.actual_version, self.zip_file_path, self.specific_download_dir
 
     def extract_server_files(self, is_update: bool):
-        """Extracts files from the downloaded ZIP to the server directory.
+        """Extracts server files from the downloaded ZIP to the target server directory.
 
-        This method assumes `prepare_download_assets()` has been successfully called.
-        In update mode, it preserves essential files like worlds and properties.
+        This method assumes that :meth:`.prepare_download_assets()` has been
+        successfully called, so that ``self.zip_file_path`` points to a valid
+        local ZIP file and ``self.server_dir`` is the target extraction directory.
+
+        The behavior changes based on the `is_update` flag:
+
+            - If `is_update` is ``True``, extraction preserves specific files and
+              directories listed in :attr:`.PRESERVED_ITEMS_ON_UPDATE` (e.g., worlds,
+              server.properties, allowlist.json, permissions.json). Other files
+              from the ZIP archive will overwrite existing files.
+            - If `is_update` is ``False`` (fresh install), all files from the ZIP
+              archive are extracted, potentially overwriting anything in the
+              ``self.server_dir``.
 
         Args:
-            is_update: If True, performs an update extraction, preserving key
-                files. If False, performs a fresh extraction of all files.
+            is_update (bool): If ``True``, performs an update extraction, preserving
+                key server files and data. If ``False``, performs a fresh
+                extraction of all files.
 
         Raises:
-            MissingArgumentError: If the ZIP file path is not set.
-            AppFileNotFoundError: If the downloaded ZIP file does not exist.
-            FileOperationError: If creating the server directory fails or there
-                are filesystem errors during extraction.
-            ExtractError: If the ZIP file is invalid or corrupted.
+            MissingArgumentError: If ``self.zip_file_path`` is not set (i.e.,
+                :meth:`.prepare_download_assets()` was likely not called).
+            AppFileNotFoundError: If the ZIP file at ``self.zip_file_path``
+                does not exist.
+            FileOperationError: If creating the ``self.server_dir`` fails or if
+                there are other filesystem errors during extraction (e.g., permissions).
+            ExtractError: If the ZIP file is invalid, corrupted, or if an
+                unexpected error occurs during the extraction process.
         """
         if not self.zip_file_path:
             raise MissingArgumentError(
@@ -668,13 +890,31 @@ class BedrockDownloader:
             raise ExtractError(f"Unexpected error during extraction: {e}") from e
 
     def full_server_setup(self, is_update: bool) -> str:
-        """A convenience method for the full download and extraction process.
+        """Performs the complete server setup: download and extraction.
+
+        This is a high-level convenience method that orchestrates the entire
+        process of obtaining and setting up the Bedrock server files. It calls
+        :meth:`.prepare_download_assets()` to handle the download (or use a
+        cached version) and then calls :meth:`.extract_server_files()` to
+        extract the archive into the target server directory.
 
         Args:
-            is_update: True if this is an update, False for a fresh install.
+            is_update (bool): ``True`` if this is an update to an existing server
+                (preserving data), ``False`` for a fresh installation. This flag
+                is passed down to :meth:`.extract_server_files()`.
 
         Returns:
-            The actual version string of the server that was set up.
+            str: The actual version string of the server that was successfully
+            set up (e.g., "1.20.10.01").
+
+        Raises:
+            InternetConnectivityError: If internet is unavailable or download fails.
+            FileOperationError: If directory/file operations fail during download or extraction.
+            DownloadError: If version/URL resolution or download preparation fails.
+            ExtractError: If the server archive extraction fails.
+            SystemError: If the OS is unsupported.
+            MissingArgumentError: If prerequisites for extraction are not met.
+            AppFileNotFoundError: If the ZIP file is missing before extraction.
         """
         self.logger.info(
             f"Starting full server setup for '{self.server_dir}', version '{self.input_target_version}', update={is_update}"
@@ -689,17 +929,50 @@ class BedrockDownloader:
         return actual_version
 
     def get_actual_version(self) -> Optional[str]:
-        """Returns the resolved actual version string (e.g., '1.20.10.01')."""
+        """Returns the resolved actual version string of the server.
+
+        This value is populated after :meth:`.get_version_for_target_spec` or
+        :meth:`.prepare_download_assets` has been successfully called.
+
+        Returns:
+            Optional[str]: The actual version string (e.g., "1.20.10.01"),
+            or ``None`` if the version has not been resolved yet.
+        """
         return self.actual_version
 
     def get_zip_file_path(self) -> Optional[str]:
-        """Returns the full path to the downloaded server ZIP file."""
+        """Returns the absolute path to the downloaded (or identified) server ZIP file.
+
+        This value is populated after :meth:`.prepare_download_assets` has
+        successfully identified or downloaded the ZIP file.
+
+        Returns:
+            Optional[str]: The full path to the server ZIP file, or ``None`` if
+            not yet determined.
+        """
         return self.zip_file_path
 
     def get_specific_download_dir(self) -> Optional[str]:
-        """Returns the specific download directory used (e.g., '.../downloads/stable')."""
+        """Returns the specific download directory used for this instance's downloads.
+
+        This is typically a subdirectory like 'stable' or 'preview' within the
+        main download directory. It's populated by :meth:`.prepare_download_assets`.
+
+        Returns:
+            Optional[str]: The absolute path to the instance's specific download
+            directory (e.g., ``/path/to/downloads/stable``), or ``None`` if not
+            yet determined.
+        """
         return self.specific_download_dir
 
     def get_resolved_download_url(self) -> Optional[str]:
-        """Returns the fully resolved download URL."""
+        """Returns the fully resolved download URL for the server archive.
+
+        This value is populated after :meth:`.get_version_for_target_spec` or
+        :meth:`.prepare_download_assets` (which calls the former) has successfully
+        resolved the URL.
+
+        Returns:
+            Optional[str]: The complete download URL, or ``None`` if not yet resolved.
+        """
         return self.resolved_download_url

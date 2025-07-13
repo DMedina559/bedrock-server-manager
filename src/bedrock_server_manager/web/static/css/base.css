@@ -45,7 +45,7 @@ body {
     /* Sets the background image */
     /* url('../image/panorama.jpeg') assumes the image is in static/image relative to CSS */
     /* Use url_for('static', filename='image/panorama.jpeg') in template or adjust path */
-    background-image: url('../image/panorama.jpeg'); /* Default Panorama */
+    background-image: url('/api/panorama'); /* Default Panorama */
     /* Custom panorama URL will override this via inline style if set */
 
     /* Sizing: Height fills viewport, width adjusts automatically. */

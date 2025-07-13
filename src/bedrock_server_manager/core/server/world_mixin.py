@@ -1,20 +1,34 @@
 # bedrock_server_manager/core/server/world_mixin.py
-"""Provides the ServerWorldMixin for the BedrockServer class.
+"""
+Provides the :class:`.ServerWorldMixin` for the
+:class:`~.core.bedrock_server.BedrockServer` class.
 
-This mixin encapsulates all logic related to managing a server's world files.
-This includes exporting the world to a `.mcworld` archive, importing a world
-from such an archive, and resetting the world by deleting its directory.
+This mixin encapsulates logic related to managing a Bedrock server's world files.
+Its responsibilities include:
+
+    - Exporting an existing world directory to a ``.mcworld`` archive file.
+    - Importing a world from a ``.mcworld`` archive, potentially replacing the
+      server's active world.
+    - Deleting the server's active world directory.
+    - Locating and checking for the existence of the world icon (``world_icon.jpeg``).
+
+Operations often involve determining the active world's name (via ``get_world_name()``,
+expected from :class:`~.core.server.state_mixin.ServerStateMixin`) and interacting
+with the filesystem within the server's ``worlds`` subdirectory.
+
+.. warning::
+    Some methods in this mixin, such as those for importing or deleting worlds,
+    are **DESTRUCTIVE** and can lead to data loss if not used carefully.
 """
 import os
 import shutil
 import zipfile
-import logging
-from typing import Optional
+from typing import Optional, Any
 
 # Local application imports.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.core.system import base as system_base_utils
-from bedrock_server_manager.error import (
+from .base_server_mixin import BedrockServerBaseMixin
+from ..system import base as system_base_utils
+from ...error import (
     MissingArgumentError,
     ExtractError,
     FileOperationError,
@@ -25,71 +39,121 @@ from bedrock_server_manager.error import (
 
 
 class ServerWorldMixin(BedrockServerBaseMixin):
-    """A mixin for BedrockServer providing world management methods."""
+    """Provides methods for managing Bedrock server worlds.
 
-    def __init__(self, *args, **kwargs):
+    This mixin extends :class:`.BedrockServerBaseMixin` and adds functionalities
+    for common world-related tasks such as exporting worlds to ``.mcworld``
+    archives, importing worlds from these archives (potentially replacing the
+    active world), and deleting the active world's directory. It also includes
+    helpers for locating world-specific files like the world icon.
+
+    It heavily relies on being able to determine the active world's name, which
+    is typically provided by :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
+    Destructive operations like world import and deletion should be used with caution.
+
+    Internal Properties:
+        _worlds_base_dir_in_server (str): Path to the "worlds" subdirectory in the server installation.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initializes the ServerWorldMixin.
 
-        This constructor calls `super().__init__` to ensure proper method
-        resolution order in the context of multiple inheritance. It relies on
-        attributes and methods from other mixins or the base class.
+        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
+        multiple inheritance. It depends on attributes initialized by
+        :class:`.BedrockServerBaseMixin` (e.g., `server_dir`, `logger`) and
+        assumes methods like ``get_world_name()`` (from
+        :class:`~.core.server.state_mixin.ServerStateMixin`) will be available on
+        the composed :class:`~.core.bedrock_server.BedrockServer` object.
+
+        Args:
+            *args (Any): Variable length argument list passed to `super()`.
+            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        # Attributes from BaseMixin: self.server_name, self.server_dir, self.logger, self.settings.
-        # This mixin also relies on self.get_world_name() being available from the StateMixin.
+        # Attributes from BaseMixin are available.
+        # Relies on self.get_world_name() from StateMixin.
 
     @property
     def _worlds_base_dir_in_server(self) -> str:
-        """Returns the path to the 'worlds' subdirectory within the server installation."""
+        """str: The absolute path to the 'worlds' subdirectory within the server's
+        installation directory (:attr:`~.BedrockServerBaseMixin.server_dir`).
+        """
         return os.path.join(self.server_dir, "worlds")
 
     def _get_active_world_directory_path(self) -> str:
-        """Determines the full path to the currently active world directory.
+        """Determines the full path to the directory of the currently active world.
 
-        This path is constructed based on the `level-name` property read from
-        `server.properties`.
+        This path is constructed by joining the base worlds directory
+        (:attr:`._worlds_base_dir_in_server`) with the active world's name,
+        which is obtained by calling ``self.get_world_name()``. This method
+        is expected to be provided by :class:`~.core.server.state_mixin.ServerStateMixin`.
 
         Returns:
-            The absolute path to the active world directory.
+            str: The absolute path to the active world's directory.
 
         Raises:
-            FileOperationError: If the `get_world_name` method is missing.
-            AppFileNotFoundError: If `server.properties` is not found.
-            ConfigParseError: If `level-name` is missing from `server.properties`.
+            AttributeError: If the ``get_world_name`` method is not available on
+                the instance (indicating a missing required mixin).
+            AppFileNotFoundError: If ``server.properties`` (used by `get_world_name`)
+                is not found.
+            ConfigParseError: If ``level-name`` is missing from ``server.properties``
+                or the file is malformed.
         """
         if not hasattr(self, "get_world_name"):
-            raise FileOperationError(
-                "Internal error: get_world_name method missing. Cannot determine active world directory."
+            # This indicates a programming error / incorrect mixin composition.
+            self.logger.error(
+                "Internal error: get_world_name method is missing from this Server instance."
+            )
+            raise AttributeError(
+                "The 'get_world_name' method, typically from ServerStateMixin, is required but not found."
             )
 
-        # This method is expected to be on the final class from StateMixin.
-        active_world_name = self.get_world_name()
+        active_world_name: str = self.get_world_name()  # type: ignore
+        if not active_world_name or not isinstance(active_world_name, str):
+            # get_world_name should ideally raise if it can't determine, but double check.
+            raise ConfigParseError(
+                f"Active world name ('{active_world_name}') received from get_world_name() is invalid for server '{self.server_name}'."
+            )
         return os.path.join(self._worlds_base_dir_in_server, active_world_name)
 
     def extract_mcworld_to_directory(
         self, mcworld_file_path: str, target_world_dir_name: str
     ) -> str:
-        """Extracts a .mcworld file into a named world directory.
+        """Extracts a ``.mcworld`` archive file into a specified world directory name.
 
-        This method will first delete the target world directory if it already
-        exists to ensure a clean extraction.
+        The extraction target is a subdirectory named `target_world_dir_name`
+        within the server's main "worlds" folder (see :attr:`._worlds_base_dir_in_server`).
+
+        .. warning::
+            If the `target_world_dir_name` directory already exists, **it will be
+            deleted** before extraction to ensure a clean import.
 
         Args:
-            mcworld_file_path: The path to the `.mcworld` file to extract.
-            target_world_dir_name: The name of the directory to create within
-                the server's `worlds` folder for the extracted contents.
+            mcworld_file_path (str): The absolute path to the ``.mcworld`` file
+                to be extracted.
+            target_world_dir_name (str): The desired name for the world directory
+                that will be created inside the server's "worlds" folder to
+                contain the extracted content.
 
         Returns:
-            The full path to the directory where the world was extracted.
+            str: The absolute path to the directory where the world was extracted
+            (e.g., ``<server_dir>/worlds/<target_world_dir_name>``).
 
         Raises:
-            MissingArgumentError: If required arguments are empty.
-            AppFileNotFoundError: If the source `.mcworld` file does not exist.
-            FileOperationError: If creating or clearing the target directory fails.
-            ExtractError: If the `.mcworld` file is not a valid zip archive.
+            MissingArgumentError: If `mcworld_file_path` or `target_world_dir_name`
+                are empty or not strings.
+            AppFileNotFoundError: If the source `mcworld_file_path` does not exist
+                or is not a file.
+            FileOperationError: If creating the target directory structure or
+                clearing a pre-existing target directory fails (e.g., due to
+                permissions or other ``OSError``).
+            ExtractError: If the ``.mcworld`` file is not a valid ZIP archive or
+                if an error occurs during the extraction process itself.
         """
-        if not mcworld_file_path:
-            raise MissingArgumentError("Path to the .mcworld file cannot be empty.")
+        if not isinstance(mcworld_file_path, str) or not mcworld_file_path:
+            raise MissingArgumentError(
+                "Path to the .mcworld file cannot be empty and must be a string."
+            )
         if not target_world_dir_name:
             raise MissingArgumentError("Target world directory name cannot be empty.")
 
@@ -154,25 +218,41 @@ class ServerWorldMixin(BedrockServerBaseMixin):
 
     def export_world_directory_to_mcworld(
         self, world_dir_name: str, target_mcworld_file_path: str
-    ):
-        """Exports a world directory into a .mcworld file.
+    ) -> None:
+        """Exports a specified world directory into a ``.mcworld`` archive file.
 
-        This method archives the contents of a specified world directory into a
-        zip file and renames it to have a `.mcworld` extension.
+        This method takes the name of a world directory (located within the server's
+        "worlds" folder), archives its entire contents into a ZIP file, and then
+        renames this ZIP file to have a ``.mcworld`` extension, saving it to
+        `target_mcworld_file_path`.
+
+        The parent directory for `target_mcworld_file_path` will be created if
+        it does not exist. If `target_mcworld_file_path` itself already exists,
+        it will be overwritten. A temporary ``.zip`` file is created during the
+        process and is cleaned up.
 
         Args:
-            world_dir_name: The name of the world directory to export (e.g., "MyWorld").
-            target_mcworld_file_path: The full path where the resulting
-                `.mcworld` file should be saved.
+            world_dir_name (str): The name of the world directory to export,
+                relative to the server's "worlds" folder (e.g., "MyFavoriteWorld").
+            target_mcworld_file_path (str): The absolute path where the resulting
+                ``.mcworld`` archive file should be saved.
 
         Raises:
-            MissingArgumentError: If required arguments are empty.
-            AppFileNotFoundError: If the source world directory does not exist.
-            FileOperationError: If creating the parent directory for the export fails.
-            BackupRestoreError: If creating or renaming the archive fails.
+            MissingArgumentError: If `world_dir_name` or `target_mcworld_file_path`
+                are empty or not strings.
+            AppFileNotFoundError: If the source world directory
+                (``<server_dir>/worlds/<world_dir_name>``) does not exist or is not a directory.
+            FileOperationError: If creating the parent directory for the
+                `target_mcworld_file_path` fails due to an ``OSError``.
+            BackupRestoreError: If creating the ZIP archive (via ``shutil.make_archive``)
+                or renaming it to ``.mcworld`` fails, or for other unexpected errors
+                during the export process. This can wrap underlying ``OSError`` or
+                other exceptions.
         """
-        if not world_dir_name:
-            raise MissingArgumentError("Source world directory name cannot be empty.")
+        if not isinstance(world_dir_name, str) or not world_dir_name:
+            raise MissingArgumentError(
+                "Source world directory name cannot be empty and must be a string."
+            )
         if not target_mcworld_file_path:
             raise MissingArgumentError("Target .mcworld file path cannot be empty.")
 
@@ -244,25 +324,43 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             ) from e_unexp
 
     def import_active_world_from_mcworld(self, mcworld_backup_file_path: str) -> str:
-        """Imports a .mcworld file, replacing the server's active world.
+        """Imports a ``.mcworld`` file, replacing the server's currently active world.
 
-        This is a destructive operation that determines the active world from
-        `server.properties`, then replaces its contents with the extracted
-        contents of the provided `.mcworld` file.
+        .. warning::
+            This is a **DESTRUCTIVE** operation. The existing active world directory
+            will be deleted before the new world is imported.
+
+        This method first determines the name of the server's active world by
+        calling ``self.get_world_name()`` (expected from
+        :class:`~.core.server.state_mixin.ServerStateMixin`). It then uses
+        :meth:`.extract_mcworld_to_directory` to extract the contents of the
+        provided `mcworld_backup_file_path` into a directory with that active
+        world name, effectively replacing it.
 
         Args:
-            mcworld_backup_file_path: The path to the source `.mcworld` file.
+            mcworld_backup_file_path (str): The absolute path to the source
+                ``.mcworld`` file that contains the world data to import.
 
         Returns:
-            The name of the world directory that was imported into.
+            str: The name of the world directory (which is the active world name)
+            that the ``.mcworld`` file was imported into.
 
         Raises:
-            MissingArgumentError: If the file path is empty.
-            AppFileNotFoundError: If the source file does not exist.
-            BackupRestoreError: If the import process fails at any stage.
+            MissingArgumentError: If `mcworld_backup_file_path` is empty or not a string.
+            AppFileNotFoundError: If the source `mcworld_backup_file_path` does not exist.
+            BackupRestoreError: If any part of the import process fails, including
+                failure to determine the active world name, or errors during
+                extraction (which can wrap :class:`~.error.ExtractError`,
+                :class:`~.error.FileOperationError`, etc.).
+            AttributeError: If ``get_world_name()`` is missing.
         """
-        if not mcworld_backup_file_path:
-            raise MissingArgumentError(".mcworld backup file path cannot be empty.")
+        if (
+            not isinstance(mcworld_backup_file_path, str)
+            or not mcworld_backup_file_path
+        ):
+            raise MissingArgumentError(
+                ".mcworld backup file path cannot be empty and must be a string."
+            )
 
         mcworld_filename = os.path.basename(mcworld_backup_file_path)
         self.logger.info(
@@ -307,17 +405,32 @@ class ServerWorldMixin(BedrockServerBaseMixin):
     def delete_active_world_directory(self) -> bool:
         """Deletes the server's currently active world directory.
 
-        This is a destructive operation. The server will generate a new world
-        on its next start.
+        .. warning::
+            This is a **DESTRUCTIVE** operation. The active world's data will be
+            permanently removed. The server will typically generate a new world
+            with the same name on its next startup if the ``level-name`` in
+            ``server.properties`` is not changed.
+
+        This method determines the active world's directory path using
+        :meth:`._get_active_world_directory_path` and then uses the robust
+        deletion utility :func:`~.core.system.base.delete_path_robustly`
+        to remove it.
 
         Returns:
-            True if the directory was successfully deleted or did not exist.
+            bool: ``True`` if the active world directory was successfully deleted
+            or if it did not exist initially.
 
         Raises:
-            FileOperationError: If determining the world path fails or if the
-                path exists but is not a directory, or if deletion fails.
-            AppFileNotFoundError: If `server.properties` is missing.
-            ConfigParseError: If `level-name` is missing from `server.properties`.
+            FileOperationError: If determining the world path fails (e.g., due to
+                issues with ``server.properties`` or if the path is not a directory),
+                or if the deletion itself fails critically (though
+                `delete_path_robustly` attempts to handle many common issues).
+            AppFileNotFoundError: If ``server.properties`` is missing (propagated
+                from :meth:`._get_active_world_directory_path` via `get_world_name`).
+            ConfigParseError: If ``level-name`` is missing from ``server.properties``
+                (propagated).
+            AttributeError: If ``get_world_name()`` method (from StateMixin)
+                is not available.
         """
         try:
             active_world_dir = self._get_active_world_directory_path()
@@ -363,14 +476,19 @@ class ServerWorldMixin(BedrockServerBaseMixin):
 
     @property
     def world_icon_filename(self) -> str:
-        """Returns the standard filename for the world icon."""
+        """str: The standard filename for a world's icon image (``world_icon.jpeg``)."""
         return "world_icon.jpeg"
 
     @property
     def world_icon_filesystem_path(self) -> Optional[str]:
-        """Returns the absolute path to the world icon for the active world.
+        """Optional[str]: The absolute filesystem path to the world icon for the active world.
 
-        Returns `None` if the active world name cannot be determined.
+        This is constructed by joining the active world's directory path (from
+        :meth:`._get_active_world_directory_path`) with the standard icon filename
+        (:attr:`.world_icon_filename`).
+
+        Returns ``None`` if the active world directory path cannot be determined
+        (e.g., if ``get_world_name()`` fails or is unavailable).
         """
         try:
             active_world_dir = self._get_active_world_directory_path()
@@ -382,10 +500,15 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             return None
 
     def has_world_icon(self) -> bool:
-        """Checks if the world_icon.jpeg file exists for the active world.
+        """Checks if the standard world icon file (``world_icon.jpeg``) exists for the active world.
+
+        This method uses :attr:`.world_icon_filesystem_path` to determine the
+        expected location of the icon and checks if a file exists at that path.
 
         Returns:
-            True if the icon exists and is a file, False otherwise.
+            bool: ``True`` if the world icon file exists and is a regular file,
+            ``False`` otherwise (e.g., path cannot be determined, file does not
+            exist, or is not a file).
         """
         icon_path = self.world_icon_filesystem_path
         if icon_path and os.path.isfile(icon_path):
@@ -394,9 +517,11 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
             return True
 
-        if icon_path:
+        # Log if path was determined but file not found/not a file
+        if icon_path:  # Implies get_world_name succeeded
             self.logger.debug(
-                f"Server '{self.server_name}': World icon not found or not a file at '{icon_path}'."
+                f"Server '{self.server_name}': World icon not found or is not a file at determined path '{icon_path}'."
             )
-        # If icon_path is None, a warning was already logged.
+        # If icon_path is None, _get_active_world_directory_path (via world_icon_filesystem_path)
+        # would have already logged a warning if get_world_name failed.
         return False

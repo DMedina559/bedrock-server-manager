@@ -1,25 +1,38 @@
 # bedrock_server_manager/cli/generate_password.py
-"""
-Generates a secure password hash for web interface authentication.
+"""Provides a CLI utility to generate secure password hashes for Web UI authentication.
 
-This module provides a CLI command to interactively create a salted and
-hashed password suitable for use with the BSM web server. It ensures that
-plaintext passwords are not stored, improving security.
+This module contains a single Click command, ``bsm generate-password``,
+which interactively prompts the user for a password, confirms it, and then
+outputs a bcrypt hash of that password.
+
+The generated hash is intended to be used as the value for the
+``BSM_PASSWORD`` (or equivalent, based on :const:`~.config.const.env_name`)
+environment variable, which is used to secure the Bedrock Server Manager
+web interface. This approach ensures that plaintext passwords are not
+stored or directly used in configurations.
 """
 
 import click
-from werkzeug.security import generate_password_hash
 
-from bedrock_server_manager.config.const import env_name
+from ..config import env_name
+from ..web.auth_utils import pwd_context
 
 
 @click.command("generate-password")
 def generate_password_hash_command():
-    """Generates a secure password hash for web authentication.
+    """Generates a bcrypt hash for a given password, for Web UI authentication.
 
-    This interactive command prompts for a password, confirms it, and then
-    prints the resulting hash. The hash should be used to set the
-    BSM_PASSWORD environment variable for securing the web interface.
+    This interactive command securely prompts the user to enter a new password
+    and then confirm it. Upon successful confirmation, it generates a bcrypt
+    hash of the password using the application's configured `passlib.context.CryptContext`.
+
+    The output is the generated hash, which is intended to be used as the value
+    for the ``BSM_PASSWORD`` (or equivalent, based on
+    :const:`~.config.const.env_name`) environment variable. This variable,
+    along with ``BSM_USERNAME``, secures access to the web interface.
+
+    The command provides clear instructions on how to use the generated hash.
+    Input is hidden during password entry for security.
     """
     click.secho(
         "--- Bedrock Server Manager Password Hash Generator ---", fg="cyan", bold=True
@@ -34,22 +47,17 @@ def generate_password_hash_command():
             prompt_suffix=": ",
         )
 
-        # click.prompt with confirmation will not return an empty string,
-        # but this check remains as a safeguard.
         if not plaintext_password:
             click.secho("Error: Password cannot be empty.", fg="red")
             raise click.Abort()
 
-        click.echo("\nGenerating password hash...")
+        click.echo("\nGenerating password hash using...")
 
-        hashed_password = generate_password_hash(
-            plaintext_password, method="pbkdf2:sha256", salt_length=16
-        )
+        hashed_password = pwd_context.hash(plaintext_password)
 
         click.secho("Hash generated successfully.", fg="green")
 
         click.echo("\n" + "=" * 60)
-        click.secho("      PASSWORD HASH GENERATED SUCCESSFULLY", fg="green", bold=True)
         click.echo("=" * 60)
         click.echo("\nSet the following environment variable to secure your web UI:")
         click.echo(

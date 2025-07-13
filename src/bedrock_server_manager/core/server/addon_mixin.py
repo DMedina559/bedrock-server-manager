@@ -1,12 +1,24 @@
 # bedrock_server_manager/core/server/addon_mixin.py
-"""Provides the ServerAddonMixin for the BedrockServer class.
+"""
+Provides the :class:`.ServerAddonMixin` for the :class:`~.core.bedrock_server.BedrockServer` class.
 
 This mixin encapsulates the logic for processing and managing server addons,
-specifically `.mcaddon` and `.mcpack` files. It handles the extraction of
-these archives, parsing of `manifest.json` files, and the installation of
-behavior and resource packs into the server's active world directory. It is
-designed to work in conjunction with the world and state management mixins
-of the `BedrockServer`.
+specifically ``.mcaddon`` and ``.mcpack`` files. Its responsibilities include:
+    - Processing and extracting ``.mcaddon`` and ``.mcpack`` archives.
+    - Parsing ``manifest.json`` files within addons to identify pack type, UUID, version, and name.
+    - Installing behavior and resource packs into the server's active world directory.
+    - Listing currently installed addons and their activation status.
+    - Exporting installed addons back into ``.mcpack`` format.
+    - Removing addons from a world, including deleting files and deactivating them.
+
+It is designed to work in conjunction with other mixins of the
+:class:`~.core.bedrock_server.BedrockServer`, primarily relying on:
+    - :class:`~.core.server.state_mixin.ServerStateMixin` for methods like
+      :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` to determine
+      the active world.
+    - :class:`~.core.server.world_mixin.ServerWorldMixin` for methods like
+      :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
+      when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 import os
 import glob
@@ -15,11 +27,11 @@ import zipfile
 import tempfile
 import json
 import re
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict, Optional, Any
 
 # Local application imports.
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.error import (
+from .base_server_mixin import BedrockServerBaseMixin
+from ...error import (
     MissingArgumentError,
     FileOperationError,
     UserInputError,
@@ -30,22 +42,47 @@ from bedrock_server_manager.error import (
 
 
 class ServerAddonMixin(BedrockServerBaseMixin):
-    """A mixin for BedrockServer to manage addons (.mcaddon, .mcpack).
+    """A mixin for the :class:`~.core.bedrock_server.BedrockServer` to manage server addons.
 
-    This class provides methods to process addon archives, extract their
-    contents, read manifest files, and correctly install behavior or resource
-    packs into the server's active world. It also includes functionality to
-    list, export, and remove installed addons.
+    This mixin provides a comprehensive suite of functionalities for handling
+    Minecraft Bedrock Edition addons, typically distributed as ``.mcaddon`` or
+    ``.mcpack`` files. Its primary responsibilities include:
+
+        - Processing addon archives (``.mcaddon``, ``.mcpack``) by extracting their contents.
+        - Parsing ``manifest.json`` files to retrieve addon metadata (type, UUID, version, name).
+        - Installing behavior packs and resource packs into the active server world.
+        - Listing all installed addons within a world, detailing their activation status
+          (e.g., 'ACTIVE', 'INACTIVE', 'ORPHANED').
+        - Exporting an installed addon back into a ``.mcpack`` file.
+        - Removing an addon from a world, which involves deleting its files and
+          deactivating it in the world's configuration.
+
+    It inherits from :class:`.BedrockServerBaseMixin` to access common server
+    attributes like ``server_name``, ``server_dir``, and ``logger``. It also
+    relies on methods from other mixins that will be part of the composed
+    :class:`~.core.bedrock_server.BedrockServer` class, such as
+    :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` and
+    :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initializes the ServerAddonMixin.
 
-        This constructor calls `super().__init__` to ensure proper method
-        resolution order in the context of multiple inheritance. It relies on
-        attributes (like `server_name`, `server_dir`, `logger`) and methods
-        (like `get_world_name`) being available from other mixins or the base
-        `BedrockServer` class.
+        This constructor participates in Python's cooperative multiple inheritance
+        by calling ``super().__init__(*args, **kwargs)``. It ensures that the
+        initialization chain is correctly followed, allowing this mixin to
+        rely on attributes (e.g., ``server_name``, ``server_dir``, ``logger`` from
+        :class:`.BedrockServerBaseMixin`) and methods (e.g.,
+        :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` from
+        :class:`~.core.server.state_mixin.ServerStateMixin`, or
+        :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
+        from :class:`~.core.server.world_mixin.ServerWorldMixin`) that are
+        provided by other base or sibling mixins in the final
+        :class:`~.core.bedrock_server.BedrockServer` class.
+
+        Args:
+            *args (Any): Variable length argument list passed to `super().__init__()`.
+            **kwargs (Any): Arbitrary keyword arguments passed to `super().__init__()`.
         """
         super().__init__(*args, **kwargs)
         # This mixin depends on attributes from BaseMixin: self.server_name, self.base_dir, self.server_dir, self.logger.
@@ -53,19 +90,26 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         # - self.get_world_name() (from StateMixin)
         # - self.extract_mcworld_to_directory() (from WorldMixin)
 
-    def process_addon_file(self, addon_file_path: str):
-        """Processes a given addon file (.mcaddon or .mcpack).
+    def process_addon_file(self, addon_file_path: str) -> None:
+        """Processes a given addon file (``.mcaddon`` or ``.mcpack``).
 
-        This method acts as a dispatcher, determining the file type based on its
-        extension and delegating to the appropriate internal processing method.
+        This method acts as a high-level dispatcher. It inspects the file extension
+        of the provided ``addon_file_path`` to determine if it's an ``.mcaddon``
+        or ``.mcpack`` file. It then delegates the actual processing to the
+        corresponding internal helper methods:
+        :meth:`._process_mcaddon_archive` for ``.mcaddon`` files or
+        :meth:`._process_mcpack_archive` for ``.mcpack`` files.
 
         Args:
-            addon_file_path: The full path to the addon file to be processed.
+            addon_file_path (str): The absolute path to the addon file
+                (``.mcaddon`` or ``.mcpack``) to be processed.
 
         Raises:
-            MissingArgumentError: If `addon_file_path` is empty.
-            AppFileNotFoundError: If the file at `addon_file_path` does not exist.
-            UserInputError: If the file has an unsupported extension.
+            MissingArgumentError: If ``addon_file_path`` is empty or not provided.
+            AppFileNotFoundError: If the file specified by ``addon_file_path``
+                does not exist or is not a file.
+            UserInputError: If the file extension is not ``.mcaddon`` or ``.mcpack``
+                (case-insensitive).
         """
         if not addon_file_path:
             raise MissingArgumentError("Addon file path cannot be empty.")
@@ -89,19 +133,28 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             self.logger.error(err_msg)
             raise UserInputError(err_msg)
 
-    def _process_mcaddon_archive(self, mcaddon_file_path: str):
-        """Extracts a .mcaddon archive and processes its contents.
+    def _process_mcaddon_archive(self, mcaddon_file_path: str) -> None:
+        """Extracts a ``.mcaddon`` archive and processes its contents.
 
-        An .mcaddon file is a zip archive that can contain multiple .mcpack
-        and .mcworld files. This method extracts them to a temporary directory
-        and then processes each one individually.
+        An ``.mcaddon`` file is a ZIP archive that can bundle multiple ``.mcpack``
+        (behavior/resource packs) and potentially ``.mcworld`` (world template) files.
+        This method handles the extraction of the ``.mcaddon`` archive into a
+        temporary directory. It then delegates the processing of the extracted
+        contents (individual ``.mcpack`` or ``.mcworld`` files) to
+        :meth:`._process_extracted_mcaddon_contents`.
+
+        The temporary directory is automatically cleaned up after processing,
+        regardless of success or failure.
 
         Args:
-            mcaddon_file_path: The path to the .mcaddon file.
+            mcaddon_file_path (str): The absolute path to the ``.mcaddon`` file.
 
         Raises:
-            ExtractError: If the file is not a valid zip archive.
-            FileOperationError: If an OS-level error occurs during extraction.
+            ExtractError: If the ``.mcaddon`` file is not a valid ZIP archive
+                (e.g., corrupted or wrong file type).
+            FileOperationError: If an OS-level error occurs during the creation of
+                the temporary directory, or during the extraction of the archive
+                (e.g., due to permission issues or disk full).
         """
         self.logger.info(
             f"Server '{self.server_name}': Processing .mcaddon '{os.path.basename(mcaddon_file_path)}'."
@@ -148,18 +201,37 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         exc_info=True,
                     )
 
-    def _process_extracted_mcaddon_contents(self, temp_dir_with_extracted_files: str):
-        """Processes the contents of an extracted .mcaddon archive.
+    def _process_extracted_mcaddon_contents(
+        self, temp_dir_with_extracted_files: str
+    ) -> None:
+        """Processes ``.mcworld`` and ``.mcpack`` files from an extracted ``.mcaddon`` archive.
 
-        This method scans the temporary directory for `.mcworld` and `.mcpack`
-        files and calls the appropriate handlers for each.
+        This method iterates through the files within the provided temporary directory
+        (which contains the extracted contents of an ``.mcaddon`` file).
+        It identifies and processes:
+
+            - ``.mcworld`` files: These are processed by calling
+              :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`,
+              effectively importing the world template into the server's active world.
+              Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+              to determine the active world.
+            - ``.mcpack`` files: These are processed by recursively calling
+              :meth:`._process_mcpack_archive` for each pack.
 
         Args:
-            temp_dir_with_extracted_files: The path to the directory containing
-                the extracted files.
+            temp_dir_with_extracted_files (str): The absolute path to the
+                temporary directory containing the extracted files from an
+                ``.mcaddon`` archive.
 
         Raises:
-            FileOperationError: If processing any of the contained files fails.
+            FileOperationError: If processing any of the contained ``.mcworld`` or
+                ``.mcpack`` files fails. This can be due to issues raised by
+                :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
+                or :meth:`._process_mcpack_archive`.
+            AttributeError: If required methods from other mixins, such as
+                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` or
+                :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`,
+                are not available on the server instance.
         """
         self.logger.debug(
             f"Server '{self.server_name}': Processing extracted .mcaddon contents in '{temp_dir_with_extracted_files}'."
@@ -220,19 +292,28 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"No .mcworld or .mcpack files found in extracted .mcaddon at '{temp_dir_with_extracted_files}'."
             )
 
-    def _process_mcpack_archive(self, mcpack_file_path: str):
-        """Extracts a .mcpack archive and installs it.
+    def _process_mcpack_archive(self, mcpack_file_path: str) -> None:
+        """Extracts a ``.mcpack`` archive and initiates its installation.
 
-        An .mcpack file is a zip archive containing a single behavior or
-        resource pack. This method extracts it and passes the contents to the
-        installation logic.
+        An ``.mcpack`` file is typically a ZIP archive containing a single
+        behavior or resource pack. This method performs the following steps:
+
+            1. Extracts the contents of the ``.mcpack`` file into a temporary directory.
+            2. Delegates the installation of the extracted pack data to
+               :meth:`._install_pack_from_extracted_data`.
+
+        The temporary directory is automatically cleaned up after processing.
 
         Args:
-            mcpack_file_path: The path to the .mcpack file.
+            mcpack_file_path (str): The absolute path to the ``.mcpack`` file.
 
         Raises:
-            ExtractError: If the file is not a valid zip archive.
-            FileOperationError: If an OS-level error occurs during extraction.
+            ExtractError: If the ``.mcpack`` file is not a valid ZIP archive.
+            FileOperationError: If an OS-level error occurs during temporary
+                directory creation or archive extraction (e.g., permission issues,
+                disk full).
+
+            # Note: Further errors can be raised by _install_pack_from_extracted_data
         """
         mcpack_filename = os.path.basename(mcpack_file_path)
         self.logger.info(
@@ -275,23 +356,44 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
     def _install_pack_from_extracted_data(
         self, extracted_pack_dir: str, original_mcpack_path: str
-    ):
-        """Installs a pack from its extracted files into the server's world.
+    ) -> None:
+        """Installs a behavior or resource pack from its extracted files into the active world.
 
-        This method reads the `manifest.json` from the extracted pack data,
-        determines its type (behavior or resource), copies the files to a
-        versioned folder within the active world's directory, and updates the
-        corresponding world activation JSON file.
+        This core installation logic performs these actions:
+
+            1. Reads and validates the ``manifest.json`` from the ``extracted_pack_dir``
+               using :meth:`._extract_manifest_info` to get pack metadata (type, UUID,
+               version, name).
+            2. Determines the target installation path within the active world's
+               ``behavior_packs`` or ``resource_packs`` directory. The folder name
+               includes the pack name and version for uniqueness (e.g., ``MyPack_1.0.0``).
+               Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
+            3. Copies the contents from ``extracted_pack_dir`` to this target path.
+               If a directory for this pack version already exists, it's removed first
+               to ensure a clean installation.
+            4. Updates the corresponding world activation JSON file
+               (``world_behavior_packs.json`` or ``world_resource_packs.json``)
+               using :meth:`._update_world_pack_json_file` to activate the pack.
 
         Args:
-            extracted_pack_dir: The temporary directory with the pack's contents.
-            original_mcpack_path: The path of the original .mcpack file, used for logging.
+            extracted_pack_dir (str): The absolute path to the temporary
+                directory containing the extracted contents of a pack.
+            original_mcpack_path (str): The original path of the ``.mcpack``
+                file, used for logging and potentially for deriving a pack name if
+                the manifest is severely corrupted (though current logic prioritizes manifest).
 
         Raises:
-            AppFileNotFoundError: If `manifest.json` is missing.
-            ConfigParseError: If the manifest is invalid.
-            FileOperationError: If file I/O fails during installation.
-            UserInputError: If the pack type in the manifest is unknown.
+            AppFileNotFoundError: If ``manifest.json`` is missing in ``extracted_pack_dir``
+                (raised by :meth:`._extract_manifest_info`).
+            ConfigParseError: If the ``manifest.json`` is malformed or missing
+                required information (raised by :meth:`._extract_manifest_info`).
+            UserInputError: If the pack type specified in the manifest is unknown
+                (not 'data' or 'resources').
+            FileOperationError: If any file I/O operation fails during the
+                installation, such as creating directories, copying files, or
+                updating the world JSON files.
+            AttributeError: If :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                is not available.
         """
         original_mcpack_filename = os.path.basename(original_mcpack_path)
         self.logger.debug(
@@ -404,23 +506,38 @@ class ServerAddonMixin(BedrockServerBaseMixin):
     def _extract_manifest_info(
         self, extracted_pack_dir: str
     ) -> Tuple[str, str, List[int], str]:
-        """Extracts key information from a pack's manifest.json file.
+        """Extracts and validates key information from a pack's ``manifest.json`` file.
+
+        This method reads the ``manifest.json`` located in the ``extracted_pack_dir``,
+        parses its JSON content, and extracts essential metadata about the pack.
+        It specifically looks for the pack's display name, UUID, version (as a
+        three-part integer list), and type ('data' for behavior packs,
+        'resources' for resource packs).
 
         Args:
-            extracted_pack_dir: The directory containing the `manifest.json` file.
+            extracted_pack_dir (str): The absolute path to the directory
+                containing the ``manifest.json`` file for the pack.
 
         Returns:
-            A tuple containing:
-            - pack_type (str): The type of pack ('data' or 'resources').
-            - uuid (str): The pack's UUID.
-            - version (List[int]): The pack's version as a list of integers.
-            - name (str): The pack's display name.
+            Tuple[str, str, List[int], str]: A tuple containing:
+                - ``pack_type`` (str): The type of the pack, normalized to lowercase
+                  (e.g., 'data', 'resources').
+                - ``uuid`` (str): The pack's unique identifier (UUID).
+                - ``version`` (List[int]): The pack's version, as a list of three
+                  integers (e.g., ``[1, 0, 0]``).
+                - ``name`` (str): The human-readable display name of the pack.
 
         Raises:
-            AppFileNotFoundError: If `manifest.json` is not found.
-            ConfigParseError: If the manifest is malformed or missing required keys.
-            FileOperationError: If the manifest file cannot be read.
-            UserInputError: If the pack type is not 'data' or 'resources'.
+            AppFileNotFoundError: If ``manifest.json`` is not found within
+                ``extracted_pack_dir`` or is not a file.
+            ConfigParseError: If the ``manifest.json`` content is not valid JSON,
+                is not a JSON object, or is missing essential fields (e.g.,
+                ``header.uuid``, ``header.version``, ``header.name``,
+                ``modules`` array, or a valid ``modules[0].type``).
+            FileOperationError: If an OS-level error occurs while trying to read
+                the ``manifest.json`` file (e.g., permission issues).
+            UserInputError: If the pack type specified in the manifest's module
+                section is not 'data' or 'resources' (case-insensitive).
         """
         manifest_file = os.path.join(extracted_pack_dir, "manifest.json")
         self.logger.debug(f"Attempting to read manifest file: {manifest_file}")
@@ -496,21 +613,40 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
     def _update_world_pack_json_file(
         self, world_json_file_path: str, pack_uuid: str, pack_version_list: List[int]
-    ):
+    ) -> None:
         """Adds or updates a pack entry in a world's activation JSON file.
 
-        This function reads the specified JSON file (e.g., `world_behavior_packs.json`),
-        finds the entry for the given `pack_uuid`, and updates its version if the
-        new version is greater than or equal to the existing one. If the pack is
-        not found, it is appended to the list.
+        This method manages the activation of a behavior or resource pack by
+        modifying the world's corresponding JSON configuration file (e.g.,
+        ``world_behavior_packs.json`` or ``world_resource_packs.json``).
+
+        The logic is as follows:
+
+            1. Reads the existing list of activated packs from ``world_json_file_path``.
+               If the file doesn't exist or is invalid, it starts with an empty list.
+            2. Searches for an existing entry with the given ``pack_uuid``.
+               - If found, it compares the ``pack_version_list`` with the existing
+                 version. If the new version is greater than or equal to the existing
+                 one, the entry is updated with the new version.
+               - If an existing entry has an invalid version format, it's overwritten.
+            3. If no entry with ``pack_uuid`` is found, a new entry for the pack
+               (with its UUID and version) is appended to the list.
+            4. Writes the updated list of packs back to the ``world_json_file_path``,
+               pretty-printed with an indent of 2.
+
+        The directory for ``world_json_file_path`` is created if it doesn't exist.
 
         Args:
-            world_json_file_path: The path to the world's pack activation file.
-            pack_uuid: The UUID of the pack to add or update.
-            pack_version_list: The version of the pack as a list of integers.
+            world_json_file_path (str): The absolute path to the world's pack
+                activation JSON file (e.g., ``.../worlds/MyWorld/world_behavior_packs.json``).
+            pack_uuid (str): The UUID of the pack to add or update in the activation list.
+            pack_version_list (List[int]): The version of the pack as a list of
+                three integers (e.g., ``[1, 0, 0]``).
 
         Raises:
-            FileOperationError: If the JSON file cannot be read or written.
+            FileOperationError: If the JSON file cannot be read or written due to
+                OS-level errors (e.g., permission issues, disk full), or if
+                creating the parent directory fails.
         """
         json_filename_basename = os.path.basename(world_json_file_path)
         self.logger.debug(
@@ -596,27 +732,49 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
     def list_world_addons(
         self, world_name: Optional[str] = None
-    ) -> Dict[str, List[Dict]]:
-        """Lists all addons for a world, comparing installed files to activations.
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Lists all behavior and resource packs for a specified world.
 
-        This method scans the physical pack folders (`behavior_packs`,
-        `resource_packs`) and compares them against the world's activation
-        JSON files to determine the status of each pack.
+        This method provides a detailed inventory of addons by:
+
+            1. Scanning the physical pack folders (``behavior_packs`` and ``resource_packs``)
+               within the specified world's directory to find all installed packs by
+               reading their ``manifest.json`` files.
+            2. Reading the world's activation JSON files (``world_behavior_packs.json``
+               and ``world_resource_packs.json``) to determine which packs are active.
+            3. Comparing these two sets of information to determine the status of each pack.
+
+        The status can be:
+            - ``ACTIVE``: The pack is physically present and listed in the activation file.
+            - ``INACTIVE``: The pack is physically present but not listed in the activation file.
+            - ``ORPHANED``: The pack is listed in the activation file but not physically present.
 
         Args:
-            world_name: The name of the world to inspect. Defaults to the
-                server's currently active world.
+            world_name (Optional[str]): The name of the world to inspect.
+                If ``None`` (default), uses the server's currently active world name
+                obtained via :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
 
         Returns:
-            A dictionary with 'behavior_packs' and 'resource_packs' keys.
-            Each key contains a list of pack dictionaries with details like
-            name, uuid, version, and status ('ACTIVE', 'INACTIVE', 'ORPHANED').
+            Dict[str, List[Dict[str, Any]]]: A dictionary with two keys:
+            ``"behavior_packs"`` and ``"resource_packs"``. Each key maps to a list
+            of dictionaries, where each dictionary represents an addon with the
+            following string keys:
+
+                - ``"name"`` (str): The display name of the pack from its manifest.
+                - ``"uuid"`` (str): The UUID of the pack from its manifest.
+                - ``"version"`` (List[int]): The version of the pack (e.g., ``[1, 0, 0]``).
+                - ``"status"`` (str): The activation status: 'ACTIVE', 'INACTIVE', or 'ORPHANED'.
+
+            The lists of pack dictionaries are sorted by pack name.
 
         Raises:
-            AppFileNotFoundError: If the specified world directory does not exist.
+            AppFileNotFoundError: If the directory for the specified ``world_name``
+                does not exist.
+            AttributeError: If :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                is not available when ``world_name`` is ``None``.
         """
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = self.get_world_name()  # type: ignore
 
         self.logger.info(
             f"Listing addons for world '{world_name}' in server '{self.server_name}'."
@@ -650,16 +808,38 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             "resource_packs": resource_pack_results,
         }
 
-    def _scan_physical_packs(self, world_dir: str, pack_folder_name: str) -> List[Dict]:
-        """Scans a world's pack folder and parses the manifest of each pack.
+    def _scan_physical_packs(
+        self, world_dir: str, pack_folder_name: str
+    ) -> List[Dict[str, Any]]:
+        """Scans a world's pack subfolder (e.g., 'behavior_packs') and parses manifests.
+
+        This method iterates through each subdirectory within the specified
+        ``pack_folder_name`` (e.g., ``behavior_packs`` or ``resource_packs``)
+        located inside the given ``world_dir``. For each subdirectory found,
+        it attempts to read and parse its ``manifest.json`` file using
+        :meth:`._extract_manifest_info`.
+
+        If a manifest is successfully parsed, a dictionary containing the pack's
+        name, UUID, version, and its full path is added to the returned list.
+        If a manifest cannot be read or is invalid, a warning is logged, and
+        that pack directory is skipped.
 
         Args:
-            world_dir: The path to the world directory.
-            pack_folder_name: The name of the subfolder to scan (e.g., 'behavior_packs').
+            world_dir (str): The absolute path to the world directory.
+            pack_folder_name (str): The name of the pack subfolder to scan
+                (typically ``"behavior_packs"`` or ``"resource_packs"``).
 
         Returns:
-            A list of dictionaries, where each dictionary represents a
-            physically installed pack with its name, uuid, version, and path.
+            List[Dict[str, Any]]: A list of dictionaries. Each dictionary
+            represents a physically installed pack and contains the following keys:
+
+                - ``"name"`` (str): The pack's display name.
+                - ``"uuid"`` (str): The pack's UUID.
+                - ``"version"`` (List[int]): The pack's version (e.g., ``[1, 0, 0]``).
+                - ``"path"`` (str): The absolute path to the pack's directory.
+
+            Returns an empty list if the ``pack_folder_name`` does not exist or
+            contains no valid packs.
         """
         pack_base_dir = os.path.join(world_dir, pack_folder_name)
         if not os.path.isdir(pack_base_dir):
@@ -687,15 +867,27 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     )
         return installed_packs
 
-    def _read_world_activation_json(self, world_json_file_path: str) -> List[Dict]:
-        """Safely reads a world's pack activation JSON file.
+    def _read_world_activation_json(
+        self, world_json_file_path: str
+    ) -> List[Dict[str, Any]]:
+        """Safely reads and parses a world's pack activation JSON file.
+
+        This method attempts to read the specified JSON file (e.g.,
+        ``world_behavior_packs.json`` or ``world_resource_packs.json``).
+        It expects the file to contain a JSON list of pack activation entries.
+
+        If the file does not exist, is empty, contains invalid JSON, or if its
+        top-level structure is not a list, an empty list is returned, and a
+        warning may be logged.
 
         Args:
-            world_json_file_path: The path to the JSON file to read.
+            world_json_file_path (str): The absolute path to the world's pack
+                activation JSON file.
 
         Returns:
-            A list of pack activation entries if the file is valid, otherwise
-            an empty list.
+            List[Dict[str, Any]]: A list of pack activation entries (dictionaries,
+            typically with ``"pack_id"`` and ``"version"`` keys) if the file is
+            valid and contains a list. Returns an empty list otherwise.
         """
         if not os.path.exists(world_json_file_path):
             return []
@@ -718,20 +910,39 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return []
 
     def _compare_physical_and_activated(
-        self, physical: List[Dict], activated: List[Dict]
-    ) -> List[Dict]:
-        """Compares physical packs with activated entries to determine status.
+        self, physical: List[Dict[str, Any]], activated: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Compares lists of physical and activated packs to determine addon statuses.
 
-        - ACTIVE: The pack is physically present and listed in the activation file.
-        - INACTIVE: The pack is physically present but not in the activation file.
-        - ORPHANED: The pack is in the activation file but not physically present.
+        This utility method reconciles two lists:
+
+            1. ``physical``: Packs found by scanning the filesystem (e.g., from
+               :meth:`._scan_physical_packs`). Each dict should contain 'name', 'uuid', 'version'.
+            2. ``activated``: Packs listed in a world's activation JSON file (e.g., from
+               :meth:`._read_world_activation_json`). Each dict should contain 'pack_id' (UUID)
+               and 'version'.
+
+        It determines the status for each pack based on this comparison:
+
+            - ``ACTIVE``: The pack is present in both ``physical`` and ``activated`` lists
+              (matched by UUID).
+            - ``INACTIVE``: The pack is present in the ``physical`` list but not in the
+              ``activated`` list.
+            - ``ORPHANED``: The pack is present in the ``activated`` list but not in the
+              ``physical`` list.
 
         Args:
-            physical: A list of physically installed packs.
-            activated: A list of activated pack entries from the world JSON.
+            physical (List[Dict[str, Any]]): A list of dictionaries representing
+                physically installed packs. Expected keys: "name", "uuid", "version".
+            activated (List[Dict[str, Any]]): A list of dictionaries representing
+                packs listed in an activation JSON file. Expected keys: "pack_id", "version".
 
         Returns:
-            A sorted list of pack dictionaries, each with an added 'status' key.
+            List[Dict[str, Any]]: A new list of pack dictionaries, sorted by pack
+            name. Each dictionary includes the original pack information (name, uuid,
+            version) plus an added ``"status"`` key (str) indicating 'ACTIVE',
+            'INACTIVE', or 'ORPHANED'. For orphaned packs, the name might be
+            "Unknown (Orphaned)" if not found in the physical list.
         """
         results = []
         activated_uuids = {
@@ -778,26 +989,46 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         export_dir: str,
         world_name: Optional[str] = None,
     ) -> str:
-        """Exports a specific installed addon into a .mcpack file.
+        """Exports a specific installed addon from a world into a ``.mcpack`` file.
+
+        This method locates an installed behavior or resource pack within the
+        specified world by its UUID, then archives its contents into a new
+        ``.mcpack`` file. The exported file is named using the pack's name
+        and version (e.g., ``MyPack_1.0.0.mcpack``) and saved in the
+        ``export_dir``.
 
         Args:
-            pack_uuid: The UUID of the pack to export.
-            pack_type: The type of pack ('behavior' or 'resource').
-            export_dir: The directory where the .mcpack file will be saved.
-            world_name: The name of the world to export from. Defaults to the
-                server's active world.
+            pack_uuid (str): The UUID of the pack to export.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or
+                ``"resource"``.
+            export_dir (str): The absolute path to the directory where the
+                ``.mcpack`` file will be saved. This directory will be created
+                if it does not already exist.
+            world_name (Optional[str]): The name of the world from which to export
+                the addon. If ``None`` (default), uses the server's currently active
+                world name.
 
         Returns:
-            The full path to the created .mcpack file.
+            str: The absolute path to the created ``.mcpack`` file.
 
         Raises:
-            MissingArgumentError: If required arguments are missing.
-            UserInputError: If `pack_type` is invalid.
-            AppFileNotFoundError: If the specified pack cannot be found.
-            FileOperationError: If the export fails.
+            MissingArgumentError: If ``pack_uuid``, ``pack_type``, or ``export_dir``
+                are empty or not provided.
+            UserInputError: If ``pack_type`` is not ``"behavior"`` or ``"resource"``.
+            AppFileNotFoundError: If the specified pack (by UUID and type) cannot be
+                found in the physical ``behavior_packs`` or ``resource_packs``
+                folder of the world, or if the world directory itself is missing.
+            FileOperationError: If any OS-level error occurs during directory
+                creation, file scanning, or ``.mcpack`` archive creation (e.g.,
+                permission issues, disk full).
+            AttributeError: If methods like
+                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                are unavailable when ``world_name`` is ``None``.
         """
-        if not pack_uuid or not pack_type:
-            raise MissingArgumentError("Pack UUID and pack type are required.")
+        if not pack_uuid or not pack_type or not export_dir:
+            raise MissingArgumentError(
+                "Pack UUID, pack type, and export directory are required."
+            )
         if pack_type not in ("behavior", "resource"):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
@@ -852,22 +1083,36 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
     def remove_addon(
         self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
-    ):
+    ) -> None:
         """Removes a specific addon from a world.
 
-        This is a destructive operation that deletes the addon's files and
-        deactivates it by removing it from the world's activation JSON.
+        .. warning::
+            This is a destructive operation. It permanently deletes the addon's
+            files from the world's ``behavior_packs`` or ``resource_packs``
+            directory and deactivates the addon by removing its entry from the
+            world's corresponding activation JSON file (e.g.,
+            ``world_behavior_packs.json``).
+
+        If the addon's files are not found, it will still attempt to remove its
+        entry from the activation JSON file.
 
         Args:
-            pack_uuid: The UUID of the pack to remove.
-            pack_type: The type of pack ('behavior' or 'resource').
-            world_name: The name of the world to remove from. Defaults to the
-                server's active world.
+            pack_uuid (str): The UUID of the pack to remove.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or
+                ``"resource"``.
+            world_name (Optional[str]): The name of the world from which to remove
+                the addon. If ``None`` (default), uses the server's currently active
+                world name.
 
         Raises:
-            MissingArgumentError: If required arguments are missing.
-            UserInputError: If `pack_type` is invalid.
-            FileOperationError: If the removal fails.
+            MissingArgumentError: If ``pack_uuid`` or ``pack_type`` are empty or
+                not provided.
+            UserInputError: If ``pack_type`` is not ``"behavior"`` or ``"resource"``.
+            FileOperationError: If an OS-level error occurs during file/directory
+                deletion or when updating the world's activation JSON file.
+            AttributeError: If methods like
+                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                are unavailable when ``world_name`` is ``None``.
         """
         if not pack_uuid or not pack_type:
             raise MissingArgumentError("Pack UUID and pack type are required.")
@@ -908,15 +1153,27 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
         self._remove_pack_from_world_json(world_json_path, pack_uuid)
 
-    def _remove_pack_from_world_json(self, world_json_file_path: str, pack_uuid: str):
-        """Removes a pack entry from a world's pack activation JSON file.
+    def _remove_pack_from_world_json(
+        self, world_json_file_path: str, pack_uuid: str
+    ) -> None:
+        """Removes a specific pack entry from a world's pack activation JSON file.
+
+        This method reads the specified world activation JSON file (e.g.,
+        ``world_behavior_packs.json``), filters out any entry that matches the
+        given ``pack_uuid``, and then writes the modified list back to the file.
+
+        If the activation file does not exist, or if the pack UUID is not found
+        in the file, the method does nothing further after logging this.
 
         Args:
-            world_json_file_path: Path to the world activation JSON file.
-            pack_uuid: The UUID of the pack to remove from the list.
+            world_json_file_path (str): The absolute path to the world's pack
+                activation JSON file (e.g., ``.../worlds/MyWorld/world_behavior_packs.json``).
+            pack_uuid (str): The UUID of the pack to remove from the activation list.
 
         Raises:
-            FileOperationError: If the JSON file cannot be written to.
+            FileOperationError: If the JSON file exists but cannot be written back
+                due to OS-level errors (e.g., permission issues, disk full).
+                Reading errors are handled internally by :meth:`._read_world_activation_json`.
         """
         json_filename = os.path.basename(world_json_file_path)
         if not os.path.exists(world_json_file_path):

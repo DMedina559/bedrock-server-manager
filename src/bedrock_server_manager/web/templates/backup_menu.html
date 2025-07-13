@@ -3,76 +3,49 @@
 {% extends "base.html" %}
 
 {# --- Page Title Block --- #}
-{# Sets the browser window/tab title, includes server name #}
 {% block title %}{{ super() }} - Backup Menu: {{ server_name }}{% endblock %}
 
 {# --- Head Scripts Block --- #}
-{# Includes JavaScript files needed for this page's actions #}
 {% block head_scripts %}
-    {# Utility functions (showStatusMessage, sendServerActionRequest) #}
-    <script src="{{ url_for('static', filename='js/utils.js') }}" defer></script>
-    {# Backup/Restore specific frontend functions #}
-    <script src="{{ url_for('static', filename='js/backup_restore.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
 {% endblock %}
-
 
 {# --- Main Content Block --- #}
-{# Overrides the content block in base.html #}
 {% block content %}
+<h2>Backup Options</h2>
+<p>Server: <strong>{{ server_name }}</strong></p>
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
+    <!-- Status messages from backup actions will appear here -->
+</div>
 
-    {# Main heading for the page #}
-    <h2>Backup Options</h2>
-
-    {# Display the server context #}
-    <p>Server: <strong>{{ server_name }}</strong></p>
-
-    {# --- Status Message Area --- #}
-    {# Targeted by JavaScript (showStatusMessage) to display feedback #}
-    <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
-        {# Status messages from backup actions will appear here #}
+<section class="backup-menu-section">
+    <p>Choose a backup action:</p>
+    <div class="button-group action-buttons-group" style="margin-bottom: 20px;">
+        <button type="button" onclick="triggerBackup(this, '{{ server_name | e }}', 'world')" class="action-button">
+            Backup World Now
+        </button>
+        {# Ensure 'backup_config_select_page' is the correct route name defined in your FastAPI router #}
+        <a href="{{ request.url_for('backup_config_select_page', server_name=server_name) if request else '#' }}" class="action-button">
+            Backup Config File...
+        </a>
+        <button type="button" onclick="triggerBackup(this, '{{ server_name | e }}', 'all')" class="action-button">
+            Backup All Now
+        </button>
     </div>
 
-    {# Section containing the menu options #}
-    <section class="backup-menu-section">
-        {# Prompt text #}
-        <p>Choose a backup action:</p>
-
-        {# Group for buttons that trigger immediate backup actions via JavaScript #}
-        <div class="button-group action-buttons-group" style="margin-bottom: 20px;">
-            {# Button to trigger world backup API call #}
-            {# 'this' refers to the button element itself (for disabling) #}
-            {# 'server_name' comes from Jinja context #}
-            {# 'world' specifies the backup type for the JS function #}
-            <button type="button" onclick="triggerBackup(this, '{{ server_name | e }}', 'world')" class="action-button">
-                Backup World Now
-            </button>
-
-            {# Link to the page for selecting specific config files #}
-            <a href="{{ url_for('backup_restore_routes.backup_config_select_route', server_name=server_name) }}" class="action-button">
-                Backup Config File... {# Ellipsis indicates navigation #}
-            </a>
-
-            {# Button to trigger full backup (world + standard configs) API call #}
-            <button type="button" onclick="triggerBackup(this, '{{ server_name | e }}', 'all')" class="action-button">
-                Backup All Now
-            </button>
-        </div>
-
-        {# Navigation link back to main dashboard #}
-        <div class="navigation-link" style="margin-top: 30px;"> {# Add spacing #}
-            {# Using action-link style for less emphasis than action buttons #}
-            <a href="{{ url_for('main_routes.index') }}" class="action-link">
-                « Back to Dashboard
-            </a>
-        </div>
-
-    </section> {# End of .backup-menu-section #}
-
+    <div class="navigation-link" style="margin-top: 30px;">
+        {# Ensure 'index' is the correct route name for your main dashboard page in FastAPI #}
+        <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
+            « Back to Dashboard
+        </a>
+    </div>
+</section>
 {% endblock %}
 
-{# --- Optional Body Scripts Block --- #}
 {% block body_scripts %}
-{# <script>
+{#
+<script>
     // Any page-specific initialization if needed
 </script> #}
 {% endblock %}

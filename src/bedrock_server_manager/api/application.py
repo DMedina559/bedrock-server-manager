@@ -1,20 +1,33 @@
 # bedrock_server_manager/api/application.py
 """Provides API functions for application-wide information and actions.
 
-This module handles requests for general application details, such as version
-and directories. It also provides functions to list available content files
-(e.g., worlds, addons) and to retrieve consolidated data for all managed
-servers by interfacing with the `BedrockServerManager` core class.
+This module offers endpoints to retrieve general details about the Bedrock
+Server Manager application itself and to perform operations that span across
+multiple server instances. It primarily interfaces with the
+:class:`~bedrock_server_manager.core.manager.BedrockServerManager` core class.
+
+Key functionalities include:
+    - Retrieving application metadata (name, version, OS, key directories) via
+      :func:`~.get_application_info_api`.
+    - Listing globally available content like world templates
+      (:func:`~.list_available_worlds_api`) and addons
+      (:func:`~.list_available_addons_api`).
+    - Aggregating status and version information for all detected server instances
+      using :func:`~.get_all_servers_data`.
+
+These functions are exposed to the plugin system via
+:func:`~bedrock_server_manager.plugins.api_bridge.plugin_method` and are
+intended for use by UIs, CLIs, or other high-level components.
 """
 import logging
 from typing import Dict, Any
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.error import BSMError, FileError
+from ..core import BedrockServerManager
+from ..error import BSMError, FileError
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +39,18 @@ bsm = BedrockServerManager()
 def get_application_info_api() -> Dict[str, Any]:
     """Retrieves general information about the application.
 
+    Accesses properties from the global
+    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance.
+
     Returns:
-        A dictionary containing application details. On success, the format is
-        `{"status": "success", "data": {"application_name": ..., "version": ...}}`.
-        On error, the format is `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "data": ApplicationInfoDict}``
+        where ``ApplicationInfoDict`` contains keys like:
+        ``"application_name"`` (str), ``"version"`` (str), ``"os_type"`` (str),
+        ``"base_directory"`` (str, path to servers),
+        ``"content_directory"`` (str, path to global content),
+        ``"config_directory"`` (str, path to app config).
+        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.debug("API: Requesting application info.")
     try:
@@ -51,10 +72,17 @@ def get_application_info_api() -> Dict[str, Any]:
 def list_available_worlds_api() -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
+    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_worlds`
+    to scan the ``worlds`` sub-folder within the application's global content directory.
+
     Returns:
-        A dictionary containing a list of world file paths. On success, the
-        format is `{"status": "success", "files": ["/path/to/world1.mcworld", ...]}`.
-        On error, the format is `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
+        list of absolute paths to ``.mcworld`` files.
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        FileError: If the content directory is not configured or accessible.
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
@@ -72,10 +100,17 @@ def list_available_worlds_api() -> Dict[str, Any]:
 def list_available_addons_api() -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
+    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_addons`
+    to scan the ``addons`` sub-folder within the application's global content directory.
+
     Returns:
-        A dictionary containing a list of addon file paths. On success, the
-        format is `{"status": "success", "files": ["/path/to/addon1.mcaddon", ...]}`.
-        On error, the format is `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
+        list of absolute paths to ``.mcaddon`` or ``.mcpack`` files.
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        FileError: If the content directory is not configured or accessible.
     """
     logger.debug("API: Requesting list of available addons.")
     try:
@@ -93,18 +128,29 @@ def list_available_addons_api() -> Dict[str, Any]:
 def get_all_servers_data() -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
-    This function acts as an API orchestrator, calling the core manager
+    This function acts as an API orchestrator, calling the core
+    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_servers_data`
     to gather data from all individual server instances. It can handle
     partial failures, where data for some servers is retrieved successfully
-    while others fail.
+    while others fail (errors for individual servers are included in the message).
+    The status of each server is also reconciled with its live state during this call.
 
     Returns:
-        A dictionary containing server data.
-        - On full success: `{"status": "success", "servers": [...]}`.
-        - On partial success: `{"status": "success", "servers": [...], "message": "..."}`.
-          The `servers` list contains data for successful servers, and the `message`
-          details the errors for the failed ones.
-        - On total failure: `{"status": "error", "message": "..."}`.
+        Dict[str, Any]: A dictionary with the operation result.
+
+        On full success (all servers processed without error):
+          ``{"status": "success", "servers": List[ServerDataDict]}``
+        On partial success (some individual server errors occurred during scan):
+          ``{"status": "success", "servers": List[ServerDataDict], "message": "Completed with errors: <details>"}``
+          The ``servers`` list contains data for successfully processed servers.
+        On total failure (e.g., cannot access base server directory):
+          ``{"status": "error", "message": "<error_message>"}``
+
+        Each ``ServerDataDict`` contains keys like "name", "status", "version".
+
+    Raises:
+        BSMError: If there's a fundamental issue accessing the base server
+            directory (e.g., :class:`~.error.AppFileNotFoundError`).
     """
     logger.debug("API: Getting status for all servers...")
 

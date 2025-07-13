@@ -11,13 +11,13 @@ import threading
 from typing import Dict, Optional
 
 # Plugin system imports to bridge API functionality.
-from bedrock_server_manager import plugin_manager
-from bedrock_server_manager.plugins.api_bridge import plugin_method
+from .. import plugin_manager
+from ..plugins import plugin_method
 
 # Local application imports.
-from bedrock_server_manager.core import downloader
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from ..core import prune_old_downloads
+from ..config import settings
+from ..error import (
     BSMError,
     UserInputError,
     MissingArgumentError,
@@ -35,24 +35,36 @@ def prune_download_cache(
 ) -> Dict[str, str]:
     """Prunes old downloaded server archives (.zip) in a directory.
 
-    This function removes older server archive files from the specified
-    download directory, keeping a specified number of the most recent files.
-    The operation is thread-safe to prevent concurrent modifications.
+    This function removes older ``bedrock-server-*.zip`` archive files from the
+    specified `download_dir`, keeping a specified number of the most recent
+    files. It delegates the actual pruning logic to
+    :func:`~bedrock_server_manager.core.downloader.prune_old_downloads`.
+
+    The operation uses a non-blocking lock (``_misc_lock``) to ensure thread
+    safety; if another pruning operation is in progress, this call will be
+    skipped, returning a "skipped" status.
+    Triggers ``before_prune_download_cache`` and ``after_prune_download_cache`` plugin events.
 
     Args:
-        download_dir: The path to the directory containing the downloaded
+        download_dir (str): The path to the directory containing the downloaded
             server archives.
-        keep_count: The number of recent archives to keep. If None, the
-            value from the `DOWNLOAD_KEEP` setting is used. Defaults to None.
+        keep_count (Optional[int], optional): The number of recent archives to keep.
+            If ``None``, the value from the global application setting
+            ``retention.downloads`` (defaulting to 3 if not set) is used.
+            Defaults to ``None``.
 
     Returns:
-        A dictionary containing the status of the operation ('success', 'error',
-        or 'skipped') and a descriptive message.
+        Dict[str, str]: A dictionary with the operation result.
+        Possible statuses: "success", "error", or "skipped" (if lock not acquired).
+        Example: ``{"status": "success", "message": "Download cache pruned..."}``
 
     Raises:
         MissingArgumentError: If `download_dir` is not provided.
-        UserInputError: If `keep_count` or the `DOWNLOAD_KEEP` setting is
-            not a valid non-negative integer.
+        UserInputError: If `keep_count` (or the ``retention.downloads`` setting)
+            is not a valid non-negative integer.
+        BSMError: Can be raised by the underlying prune operation for issues like
+            :class:`~.error.AppFileNotFoundError` (if `download_dir` is invalid after initial checks)
+            or :class:`~.error.FileOperationError`.
     """
     # Attempt to acquire the lock without blocking. If another operation
     # is in progress, skip this one to avoid conflicts.
@@ -75,7 +87,7 @@ def prune_download_cache(
             # Determine the number of files to keep, prioritizing the function
             # argument over the global setting.
             if keep_count is None:
-                keep_setting = settings.get("DOWNLOAD_KEEP", 3)
+                keep_setting = settings.get("retention.downloads", 3)
                 effective_keep = int(keep_setting)
             else:
                 effective_keep = int(keep_count)
@@ -101,9 +113,7 @@ def prune_download_cache(
 
         try:
             # Delegate the actual file deletion to the core downloader module.
-            downloader.prune_old_downloads(
-                download_dir=download_dir, download_keep=effective_keep
-            )
+            prune_old_downloads(download_dir=download_dir, download_keep=effective_keep)
 
             logger.info(f"API: Pruning successful for directory '{download_dir}'.")
             result = {

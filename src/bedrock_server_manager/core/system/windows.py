@@ -1,15 +1,46 @@
 # bedrock_server_manager/core/system/windows.py
-"""Provides Windows-specific implementations for system interactions.
+"""Provides Windows-specific implementations for system process and service management.
 
-This module includes functions for:
-- Starting the Bedrock server process directly in the foreground.
-- Managing a named pipe server for inter-process communication (IPC) to send
-  commands to the running Bedrock server.
-- Handling OS signals for graceful shutdown of the foreground server.
-- Sending commands to the server via the named pipe.
-- Stopping the server process by PID.
+This module offers functionalities tailored for the Windows operating system,
+primarily focused on managing Bedrock server processes both in the foreground
+and as background Windows Services. It leverages the ``pywin32`` package for
+many of its operations, and its availability is checked by the
+:const:`PYWIN32_AVAILABLE` flag. Some optional ``pywin32`` modules for cleanup
+are checked via :const:`PYWIN32_HAS_OPTIONAL_MODULES`.
 
-It relies on the optional `pywin32` package for named pipe functionality.
+Key functionalities include:
+
+Foreground Process Management:
+
+    - Starting a Bedrock server directly in the foreground with IPC capabilities
+      (:func:`_windows_start_server`).
+    - Sending commands to this foreground server via a named pipe
+      (:func:`_windows_send_command`).
+    - Stopping the foreground server process using its PID
+      (:func:`_windows_stop_server_by_pid`).
+    - Internal mechanisms for named pipe server creation, client handling, and
+      OS signal management for graceful shutdowns.
+
+Windows Service Management (Requires Administrator Privileges):
+
+    - Checking if a service exists (:func:`check_service_exists`).
+    - Creating or updating a Windows Service to run the Bedrock server
+      (:func:`create_windows_service`).
+    - Enabling (:func:`enable_windows_service`) or disabling
+      (:func:`disable_windows_service`) a service.
+    - Deleting a service, including cleanup of associated registry entries like
+      performance counters and event log sources (:func:`delete_windows_service`).
+
+The module defines constants like :const:`BEDROCK_EXECUTABLE_NAME` and
+:const:`PIPE_NAME_TEMPLATE`, and uses global variables such as
+:data:`managed_bedrock_servers` and :data:`_foreground_server_shutdown_event`
+to manage the state of servers started directly.
+
+Note:
+    Functions interacting with the Windows Service Control Manager (SCM)
+    typically require Administrator privileges to execute successfully. The module
+    attempts to handle :class:`~bedrock_server_manager.error.PermissionsError`
+    where appropriate.
 """
 import os
 import threading
@@ -18,12 +49,13 @@ import subprocess
 import logging
 import signal
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
     import win32pipe
     import win32file
+    import win32service
     import pywintypes
 
     PYWIN32_AVAILABLE = True
@@ -31,12 +63,27 @@ except ImportError:
     PYWIN32_AVAILABLE = False
     win32pipe = None
     win32file = None
+    win32service = None
+    win32serviceutil = None
     pywintypes = None
 
+
+try:
+    import perfmon
+    import win32evtlogutil
+
+    PYWIN32_HAS_OPTIONAL_MODULES = True
+except ImportError:
+    PYWIN32_HAS_OPTIONAL_MODULES = False
+    logging.warning(
+        "Optional pywin32 modules (perfmon, win32evtlogutil, win32api) not found. "
+        "Some cleanup steps will be skipped."
+    )
+
 # Local application imports.
-from bedrock_server_manager.core.system import process as core_process
-from bedrock_server_manager.config.settings import settings
-from bedrock_server_manager.error import (
+from . import process as core_process
+from ...config import settings
+from ...error import (
     MissingArgumentError,
     ServerStartError,
     AppFileNotFoundError,
@@ -45,41 +92,518 @@ from bedrock_server_manager.error import (
     SystemError,
     SendCommandError,
     ServerNotRunningError,
+    PermissionsError,
 )
 
 logger = logging.getLogger(__name__)
 
 # --- Constants ---
 BEDROCK_EXECUTABLE_NAME = "bedrock_server.exe"
+"""The standard filename of the Minecraft Bedrock dedicated server executable on Windows."""
+
 PIPE_NAME_TEMPLATE = r"\\.\pipe\BedrockServerPipe_{server_name}"
+"""Template string for creating named pipe names for IPC with foreground servers.
+The ``{server_name}`` placeholder will be replaced by a sanitized server name.
+Example: ``\\\\.\\pipe\\BedrockServerPipe_MyServer``
+"""
 
-# A global dictionary to keep track of running server processes and their control objects.
-# This is used to manage the state of servers started in the foreground.
+# --- Global State Variables ---
 managed_bedrock_servers: Dict[str, Dict[str, Any]] = {}
+"""A global dictionary to keep track of running foreground server processes and their
+associated objects (like the Popen instance, pipe listener thread).
+Structure: ``{'server_name': {'process': Popen, 'pipe_thread': Thread, ...}}``
+This is primarily used by `_windows_start_server` and its helper threads.
+"""
 
-# A module-level event to signal a shutdown for servers running in the foreground.
 _foreground_server_shutdown_event = threading.Event()
+"""A ``threading.Event`` used to signal a shutdown request to all actively managed
+foreground server instances (specifically, their main management loops and
+pipe listener threads within `_windows_start_server`).
+"""
+
+# --- pywin32 Availability Flags ---
+# These are set based on imports at the top of the module.
+# PYWIN32_AVAILABLE (bool): True if essential pywin32 modules (win32pipe, win32file,
+# win32service, pywintypes) were successfully imported. Critical for most of this
+# module's functionality.
+# PYWIN32_HAS_OPTIONAL_MODULES (bool): True if optional pywin32 modules
+# (win32api, perfmon, win32evtlogutil) used for extended cleanup tasks
+# (like for `delete_windows_service`) were imported.
+
+# NOTE: All functions in this section require Administrator privileges to interact
+# with the Windows Service Control Manager (SCM).
 
 
-def _handle_os_signals(sig, frame):
-    """A signal handler for SIGINT to gracefully shut down a foreground server process."""
+def check_service_exists(service_name: str) -> bool:
+    """Checks if a Windows service with the given name exists.
+
+    Requires Administrator privileges for a definitive check, otherwise, it might
+    return ``False`` due to access denied errors.
+
+    Args:
+        service_name (str): The short name of the service to check (e.g., "MyBedrockServer").
+
+    Returns:
+        bool: ``True`` if the service exists, ``False`` otherwise. Returns ``False``
+        if ``pywin32`` is not installed or if access is denied (which is logged
+        as a warning).
+
+    Raises:
+        MissingArgumentError: If `service_name` is empty.
+        SystemError: For unexpected Service Control Manager (SCM) errors other
+            than "service does not exist" or "access denied".
+    """
+    if not PYWIN32_AVAILABLE:
+        logger.debug("pywin32 not available, check_service_exists returning False.")
+        return False
+    if not service_name:
+        raise MissingArgumentError("Service name cannot be empty.")
+
+    scm_handle = None
+    service_handle = None
+    try:
+        scm_handle = win32service.OpenSCManager(
+            None, None, win32service.SC_MANAGER_CONNECT
+        )
+        service_handle = win32service.OpenService(
+            scm_handle, service_name, win32service.SERVICE_QUERY_STATUS
+        )
+        # If OpenService succeeds, the service exists.
+        return True
+    except pywintypes.error as e:
+        # Error 1060: The specified service does not exist.
+        if e.winerror == 1060:
+            return False
+        # Error 5: Access is denied.
+        elif e.winerror == 5:
+            logger.warning(
+                "Access denied when checking for service '%s'. This check requires Administrator privileges.",
+                service_name,
+            )
+            return False
+        else:
+            raise SystemError(
+                f"Failed to check service '{service_name}': {e.strerror}"
+            ) from e
+    finally:
+        if service_handle:
+            win32service.CloseServiceHandle(service_handle)
+        if scm_handle:
+            win32service.CloseServiceHandle(scm_handle)
+
+
+def create_windows_service(
+    service_name: str,
+    display_name: str,
+    description: str,
+    command: str,
+) -> None:
+    """Creates a new Windows service or updates an existing one.
+
+    This function interacts with the Windows Service Control Manager (SCM) to
+    either create a new service or modify the configuration of an existing
+    service (specifically its display name, description, and executable command).
+    The service is configured for automatic start (``SERVICE_AUTO_START``) and
+    runs as ``LocalSystem`` by default upon creation.
+
+    Requires Administrator privileges.
+
+    Args:
+        service_name (str): The short, unique name for the service
+            (e.g., "MyBedrockServerSvc").
+        display_name (str): The user-friendly name shown in the Services console
+            (e.g., "My Bedrock Server").
+        description (str): A detailed description of the service.
+        command (str): The full command line to execute for the service,
+            including the path to the executable and any arguments.
+            Example: ``"C:\\path\\to\\python.exe C:\\path\\to\\script.py --run-as-service"``
+
+    Raises:
+        SystemError: If ``pywin32`` is not available, or for other unexpected
+            SCM errors during service creation/update.
+        MissingArgumentError: If any of the required string arguments
+            (`service_name`, `display_name`, `description`, `command`) are empty.
+        PermissionsError: If the operation fails due to insufficient privileges
+            (typically requires Administrator rights).
+    """
+    if not PYWIN32_AVAILABLE:
+        raise SystemError("pywin32 is required to manage Windows services.")
+    if not all([service_name, display_name, description, command]):
+        raise MissingArgumentError(
+            "service_name, display_name, description, and command are required."
+        )
+
+    logger.info(f"Attempting to create/update Windows service '{service_name}'...")
+
+    scm_handle = None
+    service_handle = None
+    try:
+        scm_handle = win32service.OpenSCManager(
+            None, None, win32service.SC_MANAGER_ALL_ACCESS
+        )
+
+        service_exists = check_service_exists(service_name)
+
+        if not service_exists:
+            logger.info(f"Service '{service_name}' does not exist. Creating...")
+            # When creating, we can rely on defaults for the service account (LocalSystem)
+            service_handle = win32service.CreateService(
+                scm_handle,
+                service_name,
+                display_name,
+                win32service.SERVICE_ALL_ACCESS,
+                win32service.SERVICE_WIN32_OWN_PROCESS,
+                win32service.SERVICE_AUTO_START,
+                win32service.SERVICE_ERROR_NORMAL,
+                command,
+                None,
+                0,
+                None,
+                None,
+                None,
+            )
+            logger.info(f"Service '{service_name}' created successfully.")
+        else:
+            logger.info(f"Service '{service_name}' already exists. Updating...")
+            service_handle = win32service.OpenService(
+                scm_handle, service_name, win32service.SERVICE_ALL_ACCESS
+            )
+
+            win32service.ChangeServiceConfig(
+                service_handle,
+                win32service.SERVICE_NO_CHANGE,  # ServiceType
+                win32service.SERVICE_NO_CHANGE,  # StartType
+                win32service.SERVICE_NO_CHANGE,  # ErrorControl
+                command,  # BinaryPathName
+                None,  # LoadOrderGroup
+                0,  # TagId
+                None,  # Dependencies
+                None,  # ServiceStartName
+                None,  # Password
+                display_name,  # DisplayName
+            )
+            logger.info(f"Service '{service_name}' command and display name updated.")
+
+        # Set or update the service description (this part was already correct)
+        win32service.ChangeServiceConfig2(
+            service_handle, win32service.SERVICE_CONFIG_DESCRIPTION, description
+        )
+        logger.info(f"Service '{service_name}' description updated.")
+
+    except pywintypes.error as e:
+        if e.winerror == 5:
+            raise PermissionsError(
+                f"Failed to create/update service '{service_name}'. This operation requires Administrator privileges."
+            ) from e
+        # Check for error 1057 specifically
+        elif e.winerror == 1057:
+            raise SystemError(
+                f"Failed to update service '{service_name}': {e.strerror}. This can happen if the service account is misconfigured."
+            ) from e
+        else:
+            raise SystemError(
+                f"Failed to create/update service '{service_name}': {e.strerror}"
+            ) from e
+    finally:
+        if service_handle:
+            win32service.CloseServiceHandle(service_handle)
+        if scm_handle:
+            win32service.CloseServiceHandle(scm_handle)
+
+
+def enable_windows_service(service_name: str) -> None:
+    """Enables a Windows service by setting its start type to 'Automatic'.
+
+    This function interacts with the Windows Service Control Manager (SCM)
+    to change the start type of the specified service to ``SERVICE_AUTO_START``.
+
+    Requires Administrator privileges.
+
+    Args:
+        service_name (str): The short name of the service to enable.
+
+    Raises:
+        SystemError: If ``pywin32`` is not available, if the service does not
+            exist, or for other unexpected SCM errors.
+        MissingArgumentError: If `service_name` is empty.
+        PermissionsError: If the operation fails due to insufficient privileges.
+    """
+    if not PYWIN32_AVAILABLE:
+        raise SystemError("pywin32 is required to manage Windows services.")
+    if not service_name:
+        raise MissingArgumentError("Service name cannot be empty.")
+
+    logger.info(f"Enabling service '{service_name}' (setting to Automatic start)...")
+    scm_handle = None
+    service_handle = None
+    try:
+        scm_handle = win32service.OpenSCManager(
+            None, None, win32service.SC_MANAGER_CONNECT
+        )
+        service_handle = win32service.OpenService(
+            scm_handle, service_name, win32service.SERVICE_CHANGE_CONFIG
+        )
+
+        win32service.ChangeServiceConfig(
+            service_handle,
+            win32service.SERVICE_NO_CHANGE,
+            win32service.SERVICE_AUTO_START,  # Set to Automatic
+            win32service.SERVICE_NO_CHANGE,
+            None,
+            None,
+            0,
+            None,
+            None,
+            None,
+            None,
+        )
+        logger.info(f"Service '{service_name}' enabled successfully.")
+    except pywintypes.error as e:
+        if e.winerror == 5:
+            raise PermissionsError(
+                f"Failed to enable service '{service_name}'. Administrator privileges required."
+            ) from e
+        elif e.winerror == 1060:
+            raise SystemError(
+                f"Cannot enable: Service '{service_name}' not found."
+            ) from e
+        else:
+            raise SystemError(
+                f"Failed to enable service '{service_name}': {e.strerror}"
+            ) from e
+    finally:
+        if service_handle:
+            win32service.CloseServiceHandle(service_handle)
+        if scm_handle:
+            win32service.CloseServiceHandle(scm_handle)
+
+
+def disable_windows_service(service_name: str) -> None:
+    """Disables a Windows service by setting its start type to 'Disabled'.
+
+    This function interacts with the Windows Service Control Manager (SCM)
+    to change the start type of the specified service to ``SERVICE_DISABLED``.
+    If the service does not exist, a warning is logged, and the function returns
+    gracefully.
+
+    Requires Administrator privileges.
+
+    Args:
+        service_name (str): The short name of the service to disable.
+
+    Raises:
+        SystemError: If ``pywin32`` is not available or for unexpected SCM errors
+            (other than service not existing).
+        MissingArgumentError: If `service_name` is empty.
+        PermissionsError: If the operation fails due to insufficient privileges.
+    """
+    if not PYWIN32_AVAILABLE:
+        raise SystemError("pywin32 is required to manage Windows services.")
+    if not service_name:
+        raise MissingArgumentError("Service name cannot be empty.")
+
+    logger.info(f"Disabling service '{service_name}'...")
+    scm_handle = None
+    service_handle = None
+    try:
+        scm_handle = win32service.OpenSCManager(
+            None, None, win32service.SC_MANAGER_CONNECT
+        )
+        service_handle = win32service.OpenService(
+            scm_handle, service_name, win32service.SERVICE_CHANGE_CONFIG
+        )
+        win32service.ChangeServiceConfig(
+            service_handle,
+            win32service.SERVICE_NO_CHANGE,
+            win32service.SERVICE_DISABLED,  # Set to Disabled
+            win32service.SERVICE_NO_CHANGE,
+            None,
+            None,
+            0,
+            None,
+            None,
+            None,
+            None,
+        )
+        logger.info(f"Service '{service_name}' disabled successfully.")
+    except pywintypes.error as e:
+        if e.winerror == 5:
+            raise PermissionsError(
+                f"Failed to disable service '{service_name}'. Administrator privileges required."
+            ) from e
+        elif e.winerror == 1060:
+            logger.warning(
+                "Attempted to disable service '%s', but it does not exist.",
+                service_name,
+            )
+            return
+        else:
+            raise SystemError(
+                f"Failed to disable service '{service_name}': {e.strerror}"
+            ) from e
+    finally:
+        if service_handle:
+            win32service.CloseServiceHandle(service_handle)
+        if scm_handle:
+            win32service.CloseServiceHandle(scm_handle)
+
+
+def delete_windows_service(service_name: str) -> None:
+    """Deletes a Windows service and performs associated cleanup.
+
+    This function interacts with the Windows Service Control Manager (SCM) to
+    delete the specified service. It also attempts to perform cleanup operations
+    such as unloading performance counters and removing event log sources from
+    the registry, provided that optional ``pywin32`` modules (like ``perfmon``
+    and ``win32evtlogutil``) are available (checked by
+    :const:`PYWIN32_HAS_OPTIONAL_MODULES`).
+
+    The service should ideally be stopped before deletion, though this function
+    does not explicitly stop it. If the service does not exist or is already
+    marked for deletion, warnings are logged, and the function may proceed with
+    cleanup or return gracefully.
+
+    Requires Administrator privileges.
+
+    Args:
+        service_name (str): The short name of the service to delete.
+
+    Raises:
+        SystemError: If ``pywin32`` is not available or for critical SCM errors
+            during deletion (e.g., service cannot be deleted for reasons other
+            than access denied, not existing, or already marked for deletion).
+        MissingArgumentError: If `service_name` is empty.
+        PermissionsError: If the operation fails due to insufficient privileges.
+    """
+    if not PYWIN32_AVAILABLE:
+        raise SystemError("pywin32 is required to manage Windows services.")
+    if not service_name:
+        raise MissingArgumentError("Service name cannot be empty.")
+
+    logger.info(f"Attempting to delete service '{service_name}' and perform cleanup...")
+
+    # --- Step 1: Unload Performance Counters (Optional Cleanup) ---
+    if PYWIN32_HAS_OPTIONAL_MODULES:
+        try:
+            # Service performance counters are often registered with a specific name,
+            # which might be 'python.exe <service_name>' as shown in the reference.
+            # Adjust if your service uses a different registration name.
+            perfmon.UnloadPerfCounterTextStrings("python.exe " + service_name)
+            logger.info(f"Unloaded performance counter strings for '{service_name}'.")
+        except (AttributeError, pywintypes.error, Exception) as e:
+            # AttributeError if perfmon is missing expected function, pywintypes.error for Win32 errors
+            logger.warning(f"Failed to unload perf counters for '{service_name}': {e}")
+        except ImportError:
+            # This block might be redundant if PYWIN32_HAS_OPTIONAL_MODULES handles it,
+            # but good for safety if perfmon itself is missing specific components.
+            logger.warning("perfmon module not fully available for counter cleanup.")
+    else:
+        logger.info(
+            "Skipping performance counter cleanup (optional pywin32 modules not found)."
+        )
+
+    # --- Step 2: Delete the Windows Service ---
+    scm_handle = None
+    service_handle = None
+    try:
+        # Open Service Control Manager with all access rights
+        scm_handle = win32service.OpenSCManager(
+            None, None, win32service.SC_MANAGER_ALL_ACCESS
+        )
+        # Open the specific service with SERVICE_ALL_ACCESS to allow deletion
+        # and potentially other operations if needed (e.g., stopping).
+        service_handle = win32service.OpenService(
+            scm_handle, service_name, win32service.SERVICE_ALL_ACCESS
+        )
+        win32service.DeleteService(service_handle)
+        logger.info(f"Service '{service_name}' deleted successfully.")
+    except pywintypes.error as e:
+        if e.winerror == 5:  # Access is denied
+            raise PermissionsError(
+                f"Failed to delete service '{service_name}'. Administrator privileges required."
+            ) from e
+        elif e.winerror == 1060:  # The specified service does not exist.
+            logger.warning(
+                "Attempted to delete service '%s', but it does not exist.", service_name
+            )
+            return  # Exit early if service doesn't exist, no more cleanup needed for it
+        elif e.winerror == 1072:  # The specified service has been marked for deletion.
+            logger.info(
+                f"Service '{service_name}' was already marked for deletion. Continuing with cleanup."
+            )
+            # Do not return here, continue to cleanup other aspects
+        else:
+            raise SystemError(
+                f"Failed to delete service '{service_name}': {e.strerror}. "
+                "Ensure the service is stopped before deletion."
+            ) from e
+    finally:
+        # Ensure service handles are closed to prevent resource leaks
+        if service_handle:
+            win32service.CloseServiceHandle(service_handle)
+        if scm_handle:
+            win32service.CloseServiceHandle(scm_handle)
+
+    # --- Step 3: Remove Event Log Source (Optional Cleanup) ---
+    if PYWIN32_HAS_OPTIONAL_MODULES:
+        try:
+            win32evtlogutil.RemoveSourceFromRegistry(service_name)
+            logger.info(f"Removed event log source for '{service_name}' from registry.")
+        except (AttributeError, pywintypes.error, Exception) as e:
+            # AttributeError if win32evtlogutil is missing expected function, pywintypes.error for Win32 errors
+            logger.warning(
+                f"Failed to remove event log source for '{service_name}': {e}"
+            )
+        except ImportError:
+            # Safety check if win32evtlogutil itself is missing specific components
+            logger.warning(
+                "win32evtlogutil module not fully available for event log cleanup."
+            )
+    else:
+        logger.info(
+            "Skipping event log source cleanup (optional pywin32 modules not found)."
+        )
+
+
+# --- FOREGROUND SERVER MANAGEMENT ---
+
+
+def _handle_os_signals(sig: int, frame: Any):
+    """Signal handler for SIGINT (Ctrl+C) to initiate graceful shutdown.
+
+    This function is registered as the handler for `signal.SIGINT`. When the
+    signal is received, it sets the global `_foreground_server_shutdown_event`,
+    which is monitored by the main loop in `_windows_start_server` to begin
+    the shutdown sequence.
+
+    Args:
+        sig (int): The signal number.
+        frame (Any): The current stack frame (unused).
+    """
     logger.info(f"OS Signal {sig} received. Setting foreground shutdown event.")
     _foreground_server_shutdown_event.set()
 
 
 def _handle_individual_pipe_client(
-    pipe_handle, bedrock_process: subprocess.Popen, server_name_for_log: str
+    pipe_handle: Any, bedrock_process: subprocess.Popen, server_name_for_log: str
 ):
-    """Handles I/O for a single connected named pipe client.
+    """Handles I/O for a single connected named pipe client in a dedicated thread.
 
-    This function runs in its own thread for each client that connects to the
-    pipe server. It reads commands from the client and forwards them to the
-    Bedrock server's standard input.
+    This function is executed in a new thread for each client that connects to
+    the named pipe server managed by `_main_pipe_server_listener_thread`.
+    It continuously reads data (commands) sent by the client through the pipe,
+    decodes it, and writes it to the standard input of the `bedrock_process`.
+    The loop continues until the client disconnects, an error occurs, or the
+    Bedrock server process terminates.
 
     Args:
-        pipe_handle: The handle to the named pipe instance for this client.
-        bedrock_process: The `subprocess.Popen` object for the Bedrock server.
-        server_name_for_log: The name of the server, for logging purposes.
+        pipe_handle (Any): The handle to the connected named pipe instance for this
+            specific client (typically a `pywintypes.HANDLE` or similar).
+        bedrock_process (subprocess.Popen): The `subprocess.Popen` object representing
+            the running Bedrock server. This is used to send commands to its stdin
+            and to check if it's still running.
+        server_name_for_log (str): The name of the server this pipe client is
+            associated with, used for logging purposes.
     """
     client_thread_name = threading.current_thread().name
     client_info = (
@@ -180,18 +704,31 @@ def _main_pipe_server_listener_thread(
     server_name: str,
     overall_shutdown_event: threading.Event,
 ):
-    """The main listener thread for a named pipe server.
+    """Main listener thread for the named pipe server, handling client connections.
 
-    This thread runs a loop that creates new named pipe instances and waits for
-    clients to connect. When a client connects, it spawns a new thread
-    (`_handle_individual_pipe_client`) to handle that specific client, allowing
-    for multiple concurrent connections.
+    This function runs in a dedicated thread when a Bedrock server is started
+    in the foreground via `_windows_start_server`. Its primary responsibility
+    is to create named pipe instances using `win32pipe.CreateNamedPipe` and
+    wait for client connections using `win32pipe.ConnectNamedPipe`.
+
+    Upon a successful client connection, it spawns a new daemon thread running
+    `_handle_individual_pipe_client` to manage I/O for that specific client.
+    This allows the main listener to immediately go back to waiting for new
+    connections, enabling multiple clients to interact with the server
+    concurrently via the named pipe.
+
+    The listener loop continues as long as the `overall_shutdown_event` is not
+    set and the `bedrock_process` is still running. If the shutdown event is
+    triggered or the server process terminates, the listener thread will exit.
 
     Args:
-        pipe_name: The name of the pipe to create (e.g., `\\.\\pipe\\MyPipe`).
-        bedrock_process: The `subprocess.Popen` object for the Bedrock server.
-        server_name: The name of the server, for logging.
-        overall_shutdown_event: A `threading.Event` that signals this thread to exit.
+        pipe_name (str): The full name of the pipe to create and listen on
+            (e.g., ``\\\\.\\pipe\\BedrockServerPipe_MyServer``).
+        bedrock_process (subprocess.Popen): The `subprocess.Popen` object for the
+            Bedrock server. Used to check if the server is still running.
+        server_name (str): The name of the server, used for logging purposes.
+        overall_shutdown_event (threading.Event): A `threading.Event` object that
+            signals this listener thread to terminate its loop and exit.
     """
     logger.info(f"MAIN_PIPE_LISTENER: Starting for pipe '{pipe_name}'.")
 
@@ -272,19 +809,39 @@ def _main_pipe_server_listener_thread(
 def _windows_start_server(server_name: str, server_dir: str, config_dir: str) -> None:
     """Starts a Bedrock server in the foreground and manages its lifecycle on Windows.
 
-        This is a blocking function that launches the server, creates a named pipe
-        for command injection, writes a PID file, and waits for a shutdown
-    -   signal (like Ctrl+C) before cleaning up.
+    This function is intended to be run as the main blocking process when
+    starting a server directly (not as a service). It performs the following:
 
-        Args:
-            server_name: The name of the server.
-            server_dir: The server's installation directory.
-            config_dir: The application's configuration directory for storing the PID file.
+        1. Checks if `pywin32` is available (required for named pipe IPC).
+        2. Verifies that another instance of the same server isn't already running
+           by checking PID files and process status. Cleans up stale PID files.
+        3. Sets up an OS signal handler for `SIGINT` (Ctrl+C) to trigger graceful shutdown.
+        4. Launches the Bedrock server executable (`bedrock_server.exe`) as a subprocess,
+           redirecting its stdout/stderr to `server_output.txt` in the server directory.
+        5. Writes the new server process's PID to a ``<server_name>.pid`` file.
+        6. Starts a named pipe server listener thread (`_main_pipe_server_listener_thread`)
+           to accept commands for the Bedrock server. The pipe name is derived from
+           `server_name`.
+        7. Enters a blocking loop, waiting for the `_foreground_server_shutdown_event`
+           to be set (e.g., by Ctrl+C or if the server process dies).
+        8. Upon shutdown, attempts to gracefully stop the Bedrock server by sending
+           the "stop" command via its stdin, then waits for it to terminate. If it
+           doesn't stop in time, it's forcibly terminated.
+        9. Cleans up the PID file, closes handles, and restores the original SIGINT handler.
 
-        Raises:
-            SystemError: If the `pywin32` package is not installed.
-            ServerStartError: If the server is already running or fails to start.
-            AppFileNotFoundError: If the server executable is not found.
+    Args:
+        server_name (str): The unique name identifier for the server.
+        server_dir (str): The absolute path to the server's installation directory,
+            where `bedrock_server.exe` is located.
+        config_dir (str): The absolute path to the application's configuration
+            directory, used for storing the PID file.
+
+    Raises:
+        SystemError: If the `pywin32` package is not installed (required for IPC).
+        MissingArgumentError: If `server_name`, `server_dir`, or `config_dir` are empty.
+        ServerStartError: If the server appears to be already running, or if any
+            critical step in launching the server or its IPC mechanism fails.
+        AppFileNotFoundError: If `bedrock_server.exe` is not found in `server_dir`.
     """
     if not PYWIN32_AVAILABLE:
         raise SystemError(
@@ -458,10 +1015,24 @@ def _windows_start_server(server_name: str, server_dir: str, config_dir: str) ->
 def _windows_send_command(server_name: str, command: str) -> None:
     """Sends a command to a running Bedrock server via its named pipe.
 
+    This function connects to the named pipe associated with the specified
+    `server_name` (the pipe name is derived using :const:`PIPE_NAME_TEMPLATE`).
+    It then writes the given `command` string (UTF-8 encoded, with a newline)
+    to the pipe, which should be received by the server's pipe listener
+    (specifically, :func:`_handle_individual_pipe_client` which forwards it to
+    the Bedrock server's stdin).
+
+    Args:
+        server_name (str): The name of the server to send the command to.
+        command (str): The command string to send (e.g., "list", "say Hello").
+
     Raises:
         SystemError: If the `pywin32` module is not installed.
-        ServerNotRunningError: If the named pipe does not exist.
-        SendCommandError: If writing to the pipe fails.
+        MissingArgumentError: If `server_name` or `command` is empty.
+        ServerNotRunningError: If the named pipe for the server does not exist
+            (typically means the server or its pipe listener is not running).
+        SendCommandError: If connecting to or writing to the pipe fails for
+            other reasons (e.g., Windows errors).
     """
     if not PYWIN32_AVAILABLE:
         raise SystemError("Cannot send command: 'pywin32' module not found.")
@@ -510,17 +1081,36 @@ def _windows_send_command(server_name: str, command: str) -> None:
 
 
 def _windows_stop_server_by_pid(server_name: str, config_dir: str) -> None:
-    """Stops the Bedrock server on Windows by terminating its process via PID.
+    """Stops a Bedrock server process on Windows using its PID file.
 
-    This function reads the PID from the server's PID file and uses the
-    `terminate_process_by_pid` utility to stop it.
+    This function attempts to stop a Bedrock server that was presumably started
+    in the foreground (e.g., via :func:`_windows_start_server`). It performs
+    the following steps:
+
+        1. Constructs the path to the server's PID file (e.g., ``<server_name>.pid``)
+           within the specified `config_dir`.
+        2. Reads the PID from this file using :func:`core_process.read_pid_from_file`.
+        3. If no PID file is found or no PID is read, it assumes the server is not
+           running and returns.
+        4. Checks if the process with the read PID is actually running using
+           :func:`core_process.is_process_running`. If not, it cleans up the stale
+           PID file and returns.
+        5. If the process is running, it terminates the process using
+           :func:`core_process.terminate_process_by_pid`.
+        6. Cleans up the PID file after successful termination.
 
     Args:
-        server_name: The name of the server to stop.
-        config_dir: The application's configuration directory.
+        server_name (str): The name of the server to stop. This is used to
+            determine the PID file name.
+        config_dir (str): The application's configuration directory where the
+            PID file is expected to be located.
 
     Raises:
-        ServerStopError: If terminating the process fails.
+        MissingArgumentError: If `server_name` or `config_dir` are empty.
+        ServerStopError: If reading the PID file fails (other than not found),
+            or if terminating the process via PID fails. This typically wraps
+            underlying ``FileOperationError`` or ``SystemError`` from the
+            ``core_process`` module.
     """
     if not all([server_name, config_dir]):
         raise MissingArgumentError("server_name and config_dir are required.")

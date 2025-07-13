@@ -52,7 +52,7 @@ from bedrock_server_manager import PluginBase
 # These should be names of actual, configured servers in your BSM setup.
 # SERVER_A_NAME should be the one you manually start to trigger the test.
 # SERVER_B_NAME is the one that will be started by the plugin.
-SERVER_A_NAME_TRIGGER = "test" # The server you will manually start.
+SERVER_A_NAME_TRIGGER = "test"  # The server you will manually start.
 SERVER_B_NAME_NESTED = "test_2"  # A DIFFERENT server to be started by the plugin.
 # Ensure SERVER_A_NAME_TRIGGER != SERVER_B_NAME_NESTED for this test.
 
@@ -61,20 +61,20 @@ SERVER_B_NAME_NESTED = "test_2"  # A DIFFERENT server to be started by the plugi
 # or if SERVER_A_NAME_TRIGGER and SERVER_B_NAME_NESTED were accidentally the same.
 _server_b_triggered_by_this_plugin = False
 
+
 class NestedDifferentServerStartPlugin(PluginBase):
     """
     Tests that the granular re-entrancy guard allows nested event dispatches
     for the same event type but different identifying parameters (e.g., different server names).
     """
+
     version = "1.0.0"
 
     def on_load(self):
         global _server_b_triggered_by_this_plugin
-        _server_b_triggered_by_this_plugin = False # Reset state on load/reload
+        _server_b_triggered_by_this_plugin = False  # Reset state on load/reload
 
-        self.logger.info(
-            f"Plugin '{self.name}' v{self.version} loaded."
-        )
+        self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
         if SERVER_A_NAME_TRIGGER == SERVER_B_NAME_NESTED:
             self.logger.error(
                 f"'{self.name}' Misconfiguration: SERVER_A_NAME_TRIGGER ('{SERVER_A_NAME_TRIGGER}') "
@@ -82,7 +82,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
                 "This test requires two different server names. Plugin might not work as intended."
             )
             return
-            
+
         self.logger.info(
             f"'{self.name}': Test Instructions:\n"
             f"  1. Ensure this plugin is enabled and BSM DEBUG logging for PluginManager is active.\n"
@@ -99,12 +99,15 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}' (mode: {mode})."
         )
 
-        if server_name == SERVER_A_NAME_TRIGGER and not _server_b_triggered_by_this_plugin:
+        if (
+            server_name == SERVER_A_NAME_TRIGGER
+            and not _server_b_triggered_by_this_plugin
+        ):
             self.logger.info(
                 f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): This is the initial trigger. "
                 f"Attempting to start Server B ('{SERVER_B_NAME_NESTED}')."
             )
-            _server_b_triggered_by_this_plugin = True # Set flag to avoid re-triggering from Server B's handler if it's this plugin
+            _server_b_triggered_by_this_plugin = True  # Set flag to avoid re-triggering from Server B's handler if it's this plugin
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
@@ -116,7 +119,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
                 self.logger.error(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): API call self.api.start_server "
                     f"for '{SERVER_B_NAME_NESTED}' failed unexpectedly: {e}",
-                    exc_info=True
+                    exc_info=True,
                 )
 
         elif server_name == SERVER_B_NAME_NESTED:
@@ -131,9 +134,9 @@ class NestedDifferentServerStartPlugin(PluginBase):
             self.logger.debug(
                 f"--- NESTED TEST: 'before_server_start' for '{server_name}' is not part of the primary test flow. Ignoring."
             )
-        
+
         self.logger.info(
-             f"--- NESTED TEST: Finished 'before_server_start' for server '{server_name}'."
+            f"--- NESTED TEST: Finished 'before_server_start' for server '{server_name}'."
         )
 
     def on_unload(self):

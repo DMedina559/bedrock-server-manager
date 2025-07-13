@@ -69,7 +69,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} message."
             )
 
-    def before_server_stop(self, server_name: str, mode: str):
+    def before_server_stop(self, server_name: str):
         """Sends a shutdown warning and waits before the server stops."""
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
         if self._is_server_running(server_name):
