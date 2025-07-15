@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from ..schemas import BaseApiResponse
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
-from ...config import settings
+from ...instances import get_settings_instance
 from ...api import (
     application as app_api,
     utils as utils_api,
@@ -752,7 +752,7 @@ async def prune_downloads_api_route(
     )
 
     try:
-        download_cache_base_dir = settings.get("paths.downloads")
+        download_cache_base_dir = get_settings_instance().get("paths.downloads")
         if not download_cache_base_dir:
             raise BSMError("DOWNLOAD_DIR setting is missing or empty in configuration.")
 

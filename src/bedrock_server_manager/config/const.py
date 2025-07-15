@@ -34,6 +34,9 @@ SCRIPT_DIR: str = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 GUARD_VARIABLE = "BSM_PLUGIN_RECURSION_GUARD"
 
+# --- Application Constants ---
+SERVER_TIMEOUT = 30
+
 # --- PLUGIN Constants ---
 
 # A list of plugin names (module names without .py) that are enabled by default

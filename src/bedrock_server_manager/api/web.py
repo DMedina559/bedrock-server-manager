@@ -31,7 +31,7 @@ from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServerManager
+from ..instances import get_manager_instance
 from ..core.system import process as system_process_utils
 from ..error import (
     BSMError,
@@ -42,8 +42,6 @@ from ..error import (
 )
 
 logger = logging.getLogger(__name__)
-# A global BedrockServerManager instance for accessing web UI configuration.
-bsm = BedrockServerManager()
 
 
 def start_web_server_api(
@@ -101,7 +99,7 @@ def start_web_server_api(
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            bsm.start_web_ui_direct(host, debug, threads)
+            get_manager_instance().start_web_ui_direct(host, debug, threads)
             result = {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",
@@ -115,9 +113,9 @@ def start_web_server_api(
                 )
 
             logger.info("API: Starting web server in detached mode...")
-            pid_file_path = bsm.get_web_ui_pid_path()
-            expected_exe = bsm.get_web_ui_executable_path()
-            expected_arg = bsm.get_web_ui_expected_start_arg()
+            pid_file_path = get_manager_instance().get_web_ui_pid_path()
+            expected_exe = get_manager_instance().get_web_ui_executable_path()
+            expected_arg = get_manager_instance().get_web_ui_expected_start_arg()
 
             # Check for an existing, valid PID file.
             existing_pid = None
@@ -214,9 +212,9 @@ def stop_web_server_api() -> Dict[str, str]:
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        pid_file_path = bsm.get_web_ui_pid_path()
-        expected_exe = bsm.get_web_ui_executable_path()
-        expected_arg = bsm.get_web_ui_expected_start_arg()
+        pid_file_path = get_manager_instance().get_web_ui_pid_path()
+        expected_exe = get_manager_instance().get_web_ui_executable_path()
+        expected_arg = get_manager_instance().get_web_ui_expected_start_arg()
 
         # Read the PID from the file.
         pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -243,7 +241,9 @@ def stop_web_server_api() -> Dict[str, str]:
 
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
-        system_process_utils.remove_pid_file_if_exists(bsm.get_web_ui_pid_path())
+        system_process_utils.remove_pid_file_if_exists(
+            get_manager_instance().get_web_ui_pid_path()
+        )
         error_type = (
             "PID file error"
             if isinstance(e, FileOperationError)
@@ -296,9 +296,9 @@ def get_web_server_status_api() -> Dict[str, Any]:
         }
     pid = None
     try:
-        pid_file_path = bsm.get_web_ui_pid_path()
-        expected_exe = bsm.get_web_ui_executable_path()
-        expected_arg = bsm.get_web_ui_expected_start_arg()
+        pid_file_path = get_manager_instance().get_web_ui_pid_path()
+        expected_exe = get_manager_instance().get_web_ui_executable_path()
+        expected_arg = get_manager_instance().get_web_ui_expected_start_arg()
 
         try:
             pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -396,19 +396,19 @@ def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
     result = {}
     try:
 
-        if not bsm.can_manage_services:
+        if not get_manager_instance().can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        bsm.create_web_service_file()
+        get_manager_instance().create_web_service_file()
 
         if autostart:
-            bsm.enable_web_service()
+            get_manager_instance().enable_web_service()
             action_done = "created and enabled"
         else:
-            bsm.disable_web_service()
+            get_manager_instance().disable_web_service()
             action_done = "created and disabled"
 
         result = {
@@ -460,12 +460,12 @@ def enable_web_ui_service() -> Dict[str, str]:
     result = {}
     try:
 
-        if not bsm.can_manage_services:
+        if not get_manager_instance().can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        bsm.enable_web_service()
+        get_manager_instance().enable_web_service()
         result = {
             "status": "success",
             "message": "Web UI service enabled successfully.",
@@ -513,12 +513,12 @@ def disable_web_ui_service() -> Dict[str, str]:
     result = {}
     try:
 
-        if not bsm.can_manage_services:
+        if not get_manager_instance().can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        bsm.disable_web_service()
+        get_manager_instance().disable_web_service()
         result = {
             "status": "success",
             "message": "Web UI service disabled successfully.",
@@ -577,13 +577,13 @@ def remove_web_ui_service() -> Dict[str, str]:
     result = {}
     try:
 
-        if not bsm.can_manage_services:
+        if not get_manager_instance().can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        removed = bsm.remove_web_service_file()
+        removed = get_manager_instance().remove_web_service_file()
         if removed:
             result = {
                 "status": "success",
@@ -638,17 +638,21 @@ def get_web_ui_service_status() -> Dict[str, Any]:
         "is_enabled": False,
     }
     try:
-        if not bsm.can_manage_services:
+        if not get_manager_instance().can_manage_services:
             return {
                 "status": "success",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot determine Web UI service status.",
                 **response_data,
             }
 
-        response_data["service_exists"] = bsm.check_web_service_exists()
+        response_data["service_exists"] = (
+            get_manager_instance().check_web_service_exists()
+        )
         if response_data["service_exists"]:
-            response_data["is_active"] = bsm.is_web_service_active()
-            response_data["is_enabled"] = bsm.is_web_service_enabled()
+            response_data["is_active"] = get_manager_instance().is_web_service_active()
+            response_data["is_enabled"] = (
+                get_manager_instance().is_web_service_enabled()
+            )
 
         return {"status": "success", **response_data}
 

@@ -27,7 +27,7 @@ from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServer
+from ..instances import get_server_instance
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -126,7 +126,7 @@ def import_addon(
         )
 
         try:
-            server = BedrockServer(server_name)
+            server = get_server_instance(server_name)
 
             # If the server is running, send a warning message to players.
             if server.is_running():

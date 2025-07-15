@@ -27,8 +27,7 @@ from contextlib import contextmanager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServer
-from ..core import BedrockServerManager
+from ..instances import get_server_instance, get_manager_instance
 from ..core import utils as core_utils
 from .server import (
     start_server as api_start_server,
@@ -41,8 +40,6 @@ from ..error import (
 )
 
 logger = logging.getLogger(__name__)
-# A global BedrockServerManager instance for manager-level tasks like listing all servers.
-bsm = BedrockServerManager()
 
 
 @plugin_method("validate_server_exist")
@@ -73,7 +70,7 @@ def validate_server_exist(server_name: str) -> Dict[str, Any]:
     logger.debug(f"API: Validating existence of server '{server_name}'...")
     try:
         # Instantiating BedrockServer also validates underlying configurations.
-        server = BedrockServer(server_name)
+        server = get_server_instance(server_name)
 
         # is_installed() returns a simple boolean.
         if server.is_installed():
@@ -168,7 +165,7 @@ def update_server_statuses() -> Dict[str, Any]:
     try:
         # get_servers_data() from the manager now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = bsm.get_servers_data()
+        all_servers_data, discovery_errors = get_manager_instance().get_servers_data()
         if discovery_errors:
             error_messages.extend(discovery_errors)
 
@@ -220,7 +217,10 @@ def get_system_and_app_info() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting system and app info.")
     try:
-        data = {"os_type": bsm.get_os_type(), "app_version": bsm.get_app_version()}
+        data = {
+            "os_type": get_manager_instance().get_os_type(),
+            "app_version": get_manager_instance().get_app_version(),
+        }
         logger.info(f"API: Successfully retrieved system info: {data}")
         return {"status": "success", "data": data}
     except Exception as e:
@@ -268,7 +268,7 @@ def server_lifecycle_manager(
         Exception: Re-raises any exception that occurs within the ``with`` block itself.
         BSMError: For other application-specific errors during server interactions.
     """
-    server = BedrockServer(server_name)
+    server = get_server_instance(server_name)
     was_running = False
     operation_succeeded = True
 

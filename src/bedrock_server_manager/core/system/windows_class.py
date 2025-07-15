@@ -40,7 +40,7 @@ except ImportError:
 
 # Local application imports.
 from . import process as core_process
-from .. import BedrockServer
+from ...instances import get_server_instance
 from ...api.web import start_web_server_api, stop_web_server_api
 from .windows import _main_pipe_server_listener_thread
 
@@ -136,7 +136,7 @@ class BedrockServerWindowsService(win32serviceutil.ServiceFramework):
             self.logger.info("Main application logging initialized successfully.")
 
             self.logger.info("Instantiating BedrockServer object.")
-            self.server = BedrockServer(self.server_name)
+            self.server = get_server_instance(self.server_name)
             self._svc_display_name_ = self.server.windows_service_display_name
             self.logger.info("BedrockServer instantiated successfully.")
 

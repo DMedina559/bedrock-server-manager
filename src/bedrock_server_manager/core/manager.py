@@ -32,7 +32,7 @@ from typing import Optional, List, Dict, Any, Union, Tuple
 
 # Local application imports.
 from ..config import Settings
-from .bedrock_server import BedrockServer
+from ..instances import get_server_instance
 from ..config import EXPATH, app_name_title, package_name
 from ..error import (
     ConfigurationError,
@@ -495,9 +495,8 @@ class BedrockServerManager:
             logger.debug(f"BSM: Processing potential server '{server_name_candidate}'.")
             try:
                 # Instantiate a BedrockServer to use its encapsulated logic.
-                server_instance = BedrockServer(
+                server_instance = get_server_instance(
                     server_name=server_name_candidate,
-                    manager_expath=self._expath,
                 )
 
                 # Validate it's a real server before trying to scan its logs.
@@ -1484,9 +1483,8 @@ class BedrockServerManager:
             f"BSM: Validating server '{server_name}' using BedrockServer class."
         )
         try:
-            server_instance = BedrockServer(
+            server_instance = get_server_instance(
                 server_name=server_name,
-                manager_expath=self._expath,
             )
             is_valid = server_instance.is_installed()
             if is_valid:
@@ -1557,9 +1555,8 @@ class BedrockServerManager:
 
             try:
                 # Instantiate a BedrockServer to leverage its encapsulated logic.
-                server = BedrockServer(
+                server = get_server_instance(
                     server_name=server_name_candidate,
-                    manager_expath=self._expath,
                 )
 
                 # Use the instance's own method to validate its installation.

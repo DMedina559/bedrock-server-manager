@@ -53,7 +53,7 @@ from typing import Optional, Any
 
 # Local application imports.
 from . import process as core_process
-from ...instances import get_settings_instance
+from ...config import SERVER_TIMEOUT
 from ...error import (
     CommandNotFoundError,
     ServerNotRunningError,
@@ -783,9 +783,7 @@ def _linux_start_server(server_name: str, server_dir: str, config_dir: str) -> N
                     bedrock_process.stdin.write(b"stop\n")
                     bedrock_process.stdin.flush()
                     bedrock_process.stdin.close()
-                bedrock_process.wait(
-                    timeout=settings.get("SERVER_STOP_TIMEOUT_SEC", 30)
-                )
+                bedrock_process.wait(timeout=SERVER_TIMEOUT)
             except (subprocess.TimeoutExpired, OSError, ValueError):
                 logger.warning(
                     f"Graceful stop failed for '{server_name}'. Terminating process."

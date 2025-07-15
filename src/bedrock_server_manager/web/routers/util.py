@@ -20,7 +20,7 @@ from ..auth_utils import (
     get_current_user_optional,
 )
 from ..dependencies import validate_server_exists
-from ...core import BedrockServer
+from ...instances import get_server_instance
 from ...instances import get_settings_instance
 from ...error import (
     BSMError,
@@ -129,7 +129,7 @@ async def serve_world_icon_api(
     )
 
     try:
-        server = BedrockServer(server_name)
+        server = get_server_instance(server_name)
         icon_path = server.world_icon_filesystem_path
 
         if server.has_world_icon() and icon_path and os.path.isfile(icon_path):

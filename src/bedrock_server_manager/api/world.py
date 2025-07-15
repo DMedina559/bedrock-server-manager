@@ -33,7 +33,7 @@ from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServer
+from ..instances import get_server_instance
 from ..instances import get_settings_instance
 from .utils import server_lifecycle_manager
 from ..error import (
@@ -80,7 +80,7 @@ def get_world_name(server_name: str) -> Dict[str, Any]:
 
     logger.debug(f"API: Attempting to get world name for server '{server_name}'...")
     try:
-        server = BedrockServer(server_name)
+        server = get_server_instance(server_name)
         world_name_str = server.get_world_name()
         logger.info(
             f"API: Retrieved world name for '{server_name}': '{world_name_str}'"
@@ -177,7 +177,7 @@ def export_world(
         )
 
         try:
-            server = BedrockServer(server_name)
+            server = get_server_instance(server_name)
 
             os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = server.get_world_name()
@@ -294,7 +294,7 @@ def import_world(
         )
 
         try:
-            server = BedrockServer(server_name)
+            server = get_server_instance(server_name)
             if not os.path.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
@@ -395,7 +395,7 @@ def reset_world(server_name: str) -> Dict[str, str]:
         logger.info(f"API: Initiating world reset for server '{server_name}'...")
 
         try:
-            server = BedrockServer(server_name)
+            server = get_server_instance(server_name)
             world_name_for_msg = server.get_world_name()
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,

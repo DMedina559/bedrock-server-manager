@@ -23,7 +23,7 @@ from typing import Dict, Any
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServer
+from ..instances import get_server_instance
 from ..error import (
     BSMError,
     InvalidServerNameError,
@@ -60,7 +60,7 @@ def get_server_running_status(server_name: str) -> Dict[str, Any]:
 
     logger.info(f"API: Checking running status for server '{server_name}'...")
     try:
-        server = BedrockServer(server_name)
+        server = get_server_instance(server_name)
         is_running = server.is_running()
         logger.debug(
             f"API: is_running() check for '{server_name}' returned: {is_running}"
@@ -115,7 +115,7 @@ def get_server_config_status(server_name: str) -> Dict[str, Any]:
 
     logger.info(f"API: Getting config status for server '{server_name}'...")
     try:
-        server = BedrockServer(server_name)
+        server = get_server_instance(server_name)
         status = server.get_status_from_config()
         logger.debug(
             f"API: get_status_from_config() for '{server_name}' returned: '{status}'"
@@ -168,7 +168,7 @@ def get_server_installed_version(server_name: str) -> Dict[str, Any]:
 
     logger.info(f"API: Getting installed version for server '{server_name}'...")
     try:
-        server = BedrockServer(server_name)
+        server = get_server_instance(server_name)
         version = server.get_version()
         logger.debug(f"API: get_version() for '{server_name}' returned: '{version}'")
         return {"status": "success", "installed_version": version}

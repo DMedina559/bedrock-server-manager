@@ -26,13 +26,12 @@ from typing import Dict, Any
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServerManager
+from ..instances import get_manager_instance
 from ..error import BSMError, FileError
 
 logger = logging.getLogger(__name__)
 
 # Instantiate the core manager to be used by the API functions.
-bsm = BedrockServerManager()
 
 
 @plugin_method("get_application_info_api")
@@ -55,12 +54,12 @@ def get_application_info_api() -> Dict[str, Any]:
     logger.debug("API: Requesting application info.")
     try:
         info = {
-            "application_name": bsm._app_name_title,
-            "version": bsm.get_app_version(),
-            "os_type": bsm.get_os_type(),
-            "base_directory": bsm._base_dir,
-            "content_directory": bsm._content_dir,
-            "config_directory": bsm._config_dir,
+            "application_name": get_manager_instance()._app_name_title,
+            "version": get_manager_instance().get_app_version(),
+            "os_type": get_manager_instance().get_os_type(),
+            "base_directory": get_manager_instance()._base_dir,
+            "content_directory": get_manager_instance()._content_dir,
+            "config_directory": get_manager_instance()._config_dir,
         }
         return {"status": "success", "data": info}
     except Exception as e:
@@ -86,7 +85,7 @@ def list_available_worlds_api() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
-        worlds = bsm.list_available_worlds()
+        worlds = get_manager_instance().list_available_worlds()
         return {"status": "success", "files": worlds}
     except FileError as e:
         # Handle specific file-related errors from the core manager.
@@ -114,7 +113,7 @@ def list_available_addons_api() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available addons.")
     try:
-        addons = bsm.list_available_addons()
+        addons = get_manager_instance().list_available_addons()
         return {"status": "success", "files": addons}
     except FileError as e:
         # Handle specific file-related errors from the core manager.
@@ -156,7 +155,7 @@ def get_all_servers_data() -> Dict[str, Any]:
 
     try:
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = bsm.get_servers_data()
+        servers_data, bsm_error_messages = get_manager_instance().get_servers_data()
 
         # Check if the core layer collected any individual server errors.
         if bsm_error_messages:

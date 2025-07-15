@@ -25,14 +25,13 @@ from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..core import BedrockServerManager
+from ..instances import get_manager_instance
 from ..error import (
     BSMError,
     UserInputError,
 )
 
 logger = logging.getLogger(__name__)
-bsm = BedrockServerManager()
 
 
 @plugin_method("add_players_manually_api")
@@ -81,7 +80,7 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
     try:
         # The core parsing function expects a single comma-separated string.
         combined_input = ",".join(player_strings)
-        parsed_list = bsm.parse_player_cli_argument(combined_input)
+        parsed_list = get_manager_instance().parse_player_cli_argument(combined_input)
 
         # --- Plugin Hook: Before Add ---
         plugin_manager.trigger_event("before_players_add", players_data=parsed_list)
@@ -89,7 +88,7 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
         num_saved = 0
         if parsed_list:
             # Delegate saving to the core manager.
-            num_saved = bsm.save_player_data(parsed_list)
+            num_saved = get_manager_instance().save_player_data(parsed_list)
 
         result = {
             "status": "success",
@@ -136,7 +135,7 @@ def get_all_known_players_api() -> Dict[str, Any]:
     """
     logger.info("API: Request to get all known players.")
     try:
-        players = bsm.get_known_players()
+        players = get_manager_instance().get_known_players()
         return {"status": "success", "players": players}
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
@@ -181,7 +180,9 @@ def scan_and_update_player_db_api() -> Dict[str, Any]:
     result = {}
     try:
         # Delegate the entire discovery and saving process to the core manager.
-        scan_result = bsm.discover_and_store_players_from_all_server_logs()
+        scan_result = (
+            get_manager_instance().discover_and_store_players_from_all_server_logs()
+        )
 
         # Format a comprehensive success message from the scan results.
         message = (

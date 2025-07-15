@@ -20,7 +20,6 @@ try:
     from . import __version__
     from .api import utils as api_utils
     from .config import app_name_title
-    from .core import BedrockServerManager
     from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks

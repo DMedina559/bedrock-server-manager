@@ -19,3 +19,15 @@ def get_manager_instance():
 
         _manager = BedrockServerManager()
     return _manager
+
+
+_servers = {}
+
+
+def get_server_instance(server_name: str):
+    global _servers
+    if _servers.get(server_name) is None:
+        from bedrock_server_manager.core.bedrock_server import BedrockServer
+
+        _servers[server_name] = BedrockServer(server_name)
+    return _servers.get(server_name)
