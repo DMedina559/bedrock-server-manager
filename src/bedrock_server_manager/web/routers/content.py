@@ -28,7 +28,7 @@ from ...api import (
     application as app_api,
     utils as utils_api,
 )
-from ...config import settings
+from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
@@ -383,7 +383,9 @@ async def install_world_api_route(
                 detail=f"Server '{server_name}' not found.",
             )
 
-        content_base_dir = os.path.join(settings.get("paths.content"), "worlds")
+        content_base_dir = os.path.join(
+            get_settings_instance().get("paths.content"), "worlds"
+        )
         full_world_file_path = os.path.normpath(
             os.path.join(content_base_dir, selected_filename)
         )
@@ -699,7 +701,9 @@ async def install_addon_api_route(
                 detail=f"Server '{server_name}' not found.",
             )
 
-        content_base_dir = os.path.join(settings.get("paths.content"), "addons")
+        content_base_dir = os.path.join(
+            get_settings_instance().get("paths.content"), "addons"
+        )
         full_addon_file_path = os.path.normpath(
             os.path.join(content_base_dir, selected_filename)
         )

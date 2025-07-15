@@ -40,7 +40,7 @@ from ..auth_utils import (
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
-from ...config import settings
+from ...instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +142,8 @@ async def api_login_for_access_token(
 
     access_token = create_access_token(data={"sub": authenticated_username})
 
-    cookie_secure = settings.get("web.jwt_cookie_secure", False)
-    cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
+    cookie_secure = get_settings_instance().get("web.jwt_cookie_secure", False)
+    cookie_samesite = get_settings_instance().get("web.jwt_cookie_samesite", "Lax")
 
     response.set_cookie(
         key="access_token_cookie",

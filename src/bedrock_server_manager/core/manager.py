@@ -104,7 +104,7 @@ class BedrockServerManager:
         _WEB_SERVICE_WINDOWS_DISPLAY_NAME (str): Display name for the Web UI Windows service.
     """
 
-    def __init__(self, settings_instance: Optional[Settings] = None) -> None:
+    def __init__(self) -> None:
         """
         Initializes the BedrockServerManager instance.
 
@@ -125,11 +125,6 @@ class BedrockServerManager:
                :class:`~.error.ConfigurationError` if not.
 
         Args:
-            settings_instance (Optional[:class:`~.config.settings.Settings`]):
-                An optional, pre-configured :class:`~.config.settings.Settings`
-                object. If ``None`` (default), a new :class:`~.config.settings.Settings`
-                object will be instantiated and loaded. This parameter allows for
-                dependency injection, primarily for testing purposes.
 
         Raises:
             ConfigurationError: If the provided or loaded :class:`~.config.settings.Settings`
@@ -137,10 +132,9 @@ class BedrockServerManager:
                 ``paths.servers`` or ``paths.content``), or if core application
                 constants cannot be accessed.
         """
-        if settings_instance:
-            self.settings = settings_instance
-        else:
-            self.settings = Settings()
+        from ..instances import get_settings_instance
+
+        self.settings = get_settings_instance()
         logger.debug(
             f"BedrockServerManager initialized using settings from: {self.settings.config_path}"
         )
@@ -503,7 +497,6 @@ class BedrockServerManager:
                 # Instantiate a BedrockServer to use its encapsulated logic.
                 server_instance = BedrockServer(
                     server_name=server_name_candidate,
-                    settings_instance=self.settings,
                     manager_expath=self._expath,
                 )
 
@@ -1493,7 +1486,6 @@ class BedrockServerManager:
         try:
             server_instance = BedrockServer(
                 server_name=server_name,
-                settings_instance=self.settings,
                 manager_expath=self._expath,
             )
             is_valid = server_instance.is_installed()
@@ -1567,7 +1559,6 @@ class BedrockServerManager:
                 # Instantiate a BedrockServer to leverage its encapsulated logic.
                 server = BedrockServer(
                     server_name=server_name_candidate,
-                    settings_instance=self.settings,
                     manager_expath=self._expath,
                 )
 

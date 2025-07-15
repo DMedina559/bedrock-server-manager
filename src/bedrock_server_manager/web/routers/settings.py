@@ -30,6 +30,7 @@ from ..schemas import BaseApiResponse
 from ..templating import templates
 from ..auth_utils import get_current_user
 from ...api import settings as settings_api
+from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError, MissingArgumentError
 
 logger = logging.getLogger(__name__)
@@ -277,7 +278,7 @@ async def get_themes_api_route(
                     themes[theme_name] = f"/static/css/themes/{filename}"
 
         # Scan custom themes
-        custom_themes_path = settings_api.settings.get("paths.themes")
+        custom_themes_path = get_settings_instance().get("paths.themes")
         if os.path.isdir(custom_themes_path):
             for filename in os.listdir(custom_themes_path):
                 if filename.endswith(".css"):

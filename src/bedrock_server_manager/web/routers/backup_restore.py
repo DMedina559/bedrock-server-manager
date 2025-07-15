@@ -38,7 +38,7 @@ from ..templating import templates
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ...api import backup_restore as backup_restore_api
-from ...config import settings
+from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError
 
 logger = logging.getLogger(__name__)
@@ -773,7 +773,7 @@ def restore_action_task(
                 )
                 return
 
-            backup_base_dir = settings.get("paths.backups")
+            backup_base_dir = get_settings_instance().get("paths.backups")
             if not backup_base_dir:
                 logger.error(
                     "Background task 'restore_action': BACKUP_DIR not configured."

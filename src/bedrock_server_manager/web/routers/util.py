@@ -21,7 +21,7 @@ from ..auth_utils import (
 )
 from ..dependencies import validate_server_exists
 from ...core import BedrockServer
-from ...config import settings
+from ...instances import get_settings_instance
 from ...error import (
     BSMError,
     AppFileNotFoundError,
@@ -59,7 +59,7 @@ async def serve_custom_panorama_api():
     """
     logger.debug("Request received to serve custom panorama background.")
     try:
-        config_dir = settings.config_dir
+        config_dir = get_settings_instance().config_dir
         if not config_dir:
 
             logger.error("Config directory not set in settings.")

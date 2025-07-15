@@ -34,7 +34,7 @@ from ..plugins import plugin_method
 
 # Local application imports.
 from ..core import BedrockServer
-from ..config import settings
+from ..instances import get_settings_instance
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -160,7 +160,7 @@ def export_world(
         if export_dir:
             effective_export_dir = export_dir
         else:
-            content_base_dir = settings.get("paths.content")
+            content_base_dir = get_settings_instance().get("paths.content")
             if not content_base_dir:
                 raise FileOperationError(
                     "CONTENT_DIR setting missing for default export directory."

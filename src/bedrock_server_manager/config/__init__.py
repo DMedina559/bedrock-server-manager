@@ -8,7 +8,7 @@ This includes:
 - Providing access to these configurations throughout the application.
 """
 
-from .settings import settings, Settings
+from .settings import Settings
 from .const import (
     package_name,
     executable_name,
@@ -27,7 +27,6 @@ from .splash_text import SPLASH_TEXTS
 
 __all__ = [
     # from settings.py
-    "settings",
     "Settings",
     # from const.py
     "package_name",

@@ -39,7 +39,7 @@ from typing import Tuple, Optional, Set
 
 # Local application imports.
 from .system import base as system_base
-from ..config import Settings
+from ..instances import get_settings_instance
 from ..error import (
     DownloadError,
     ExtractError,
@@ -203,7 +203,6 @@ class BedrockDownloader:
 
     def __init__(
         self,
-        settings_obj: Optional[Settings],
         server_dir: str,
         target_version: str = "LATEST",
         server_zip_path: Optional[str] = None,
@@ -226,10 +225,6 @@ class BedrockDownloader:
             ConfigurationError: If the `paths.downloads` setting is missing or
                 empty in the provided `settings_obj`.
         """
-        if not settings_obj:
-            raise MissingArgumentError(
-                "Settings object cannot be None for BedrockDownloader."
-            )
         if not server_dir:
             raise MissingArgumentError(
                 "Server directory cannot be empty for BedrockDownloader."
@@ -239,7 +234,7 @@ class BedrockDownloader:
                 "Target version cannot be empty for BedrockDownloader."
             )
 
-        self.settings = settings_obj
+        self.settings = get_settings_instance()
         self.server_dir: str = os.path.abspath(server_dir)
         self.input_target_version: str = target_version.strip()
         self.logger = logging.getLogger(__name__)

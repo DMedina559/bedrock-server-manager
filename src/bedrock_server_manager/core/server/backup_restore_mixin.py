@@ -95,7 +95,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             The absolute path to the backup directory if ``paths.backups`` is
             configured in settings, otherwise ``None`` (and a warning is logged).
         """
-        backup_base_dir = self.settings.get("paths.backups")
+        backup_base_dir = get_settings_instance().get("paths.backups")
         if not backup_base_dir:
             self.logger.warning(
                 f"Global backup directory ('paths.backups') not configured in settings. "
@@ -272,7 +272,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         if not isinstance(file_extension, str) or not file_extension.strip():
             raise MissingArgumentError("file_extension must be a non-empty string.")
 
-        backup_keep_count = self.settings.get("retention.backups", 3)  # Default to 3
+        backup_keep_count = get_settings_instance().get(
+            "retention.backups", 3
+        )  # Default to 3
 
         self.logger.info(
             f"Server '{self.server_name}': Pruning backups in '{server_bck_dir}' for prefix '{component_prefix}', "

@@ -20,11 +20,11 @@ try:
     from . import __version__
     from .api import utils as api_utils
     from .config import app_name_title
-    from .config import settings
     from .core import BedrockServerManager
     from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
+    from .instances import get_manager_instance, get_settings_instance
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -96,19 +96,19 @@ def cli(ctx: click.Context):
     """
     try:
         # --- Initial Application Setup ---
-        log_dir = settings.get("paths.logs")
+        log_dir = get_settings_instance().get("paths.logs")
 
         logger = setup_logging(
             log_dir=log_dir,
-            log_keep=settings.get("retention.logs"),
-            file_log_level=settings.get("logging.file_level"),
-            cli_log_level=settings.get("logging.cli_level"),
+            log_keep=get_settings_instance().get("retention.logs"),
+            file_log_level=get_settings_instance().get("logging.file_level"),
+            cli_log_level=get_settings_instance().get("logging.cli_level"),
             force_reconfigure=True,
         )
         log_separator(logger, app_name=app_name_title, app_version=__version__)
         logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
-        bsm = BedrockServerManager(settings_instance=settings)
+        bsm = get_manager_instance()
         startup_checks(app_name_title, __version__)
 
         # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
@@ -126,7 +126,7 @@ def cli(ctx: click.Context):
     ctx.obj = {
         "cli": cli,
         "bsm": bsm,
-        "settings": settings,
+        "settings": get_settings_instance(),
         "plugin_manager": global_api_plugin_manager,
     }
 

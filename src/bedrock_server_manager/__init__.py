@@ -5,7 +5,7 @@ import logging
 from .core import BedrockServerManager, BedrockServer, BedrockDownloader
 
 # Configuration
-from .config import settings, Settings, get_installed_version
+from .config import Settings, get_installed_version
 
 # Plugin system essentials
 from .plugins import PluginBase, PluginManager
@@ -23,7 +23,6 @@ __all__ = [
     "BedrockServer",
     "BedrockDownloader",
     # Config
-    "settings",  # The global instance
     "Settings",  # The class
     # Plugins
     "PluginBase",

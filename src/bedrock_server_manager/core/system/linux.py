@@ -53,7 +53,7 @@ from typing import Optional, Any
 
 # Local application imports.
 from . import process as core_process
-from ...config import settings
+from ...instances import get_settings_instance
 from ...error import (
     CommandNotFoundError,
     ServerNotRunningError,

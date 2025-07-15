@@ -34,7 +34,7 @@ from typing import Tuple
 import click
 import questionary
 
-from ..config import settings
+from ..instances import get_settings_instance
 from ..api import server as server_api
 from ..api import server_install_config as config_api
 from .system import interactive_service_workflow
@@ -198,7 +198,7 @@ def install(ctx: click.Context):
 
         server_zip_path = None
         if target_version.upper() == "CUSTOM":
-            download_dir = settings.get("paths.downloads")
+            download_dir = get_settings_instance().get("paths.downloads")
             custom_dir = os.path.join(download_dir, "custom")
             if not os.path.isdir(custom_dir):
                 click.secho(

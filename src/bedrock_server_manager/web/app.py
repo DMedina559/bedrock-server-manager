@@ -19,7 +19,7 @@ from typing import Optional, List, Union
 import uvicorn
 
 from ..config import env_name
-from ..config import settings
+from ..instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def run_web_server(
         logger.info("Web authentication credentials found in environment variables.")
 
     port_setting_key = "web.port"
-    port_val = settings.get(port_setting_key, 11325)
+    port_val = get_settings_instance().get(port_setting_key, 11325)
     try:
         port = int(port_val)
         if not (0 < port < 65536):
@@ -124,7 +124,7 @@ def run_web_server(
             )
     else:
         logger.info("No host via command-line, using settings.")
-        settings_host = settings.get("web.host")
+        settings_host = get_settings_instance().get("web.host")
         if isinstance(settings_host, list) and settings_host:
             final_host_to_bind = settings_host[0]
             if len(settings_host) > 1:
@@ -156,7 +156,7 @@ def run_web_server(
         threads_setting_key = "web.threads"
         try:
             if threads is None:
-                workers_val = int(settings.get(threads_setting_key, 4))
+                workers_val = int(get_settings_instance().get(threads_setting_key, 4))
                 if workers_val > 0:
                     workers = workers_val
                 else:
@@ -198,7 +198,7 @@ def run_web_server(
             port=port,
             log_level=uvicorn_log_level.lower(),  # Ensure log level is lowercase
             reload=reload_enabled,
-            workers=1,#workers if not reload_enabled and workers > 1 else None,
+            workers=1,  # workers if not reload_enabled and workers > 1 else None,
             forwarded_allow_ips="*",
             proxy_headers=True,
         )

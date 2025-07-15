@@ -78,7 +78,7 @@ except ImportError:
 
 # Local application imports.
 from . import process as core_process
-from ...config import settings
+from ...instances import get_settings_instance
 from ...error import (
     MissingArgumentError,
     ServerStartError,
@@ -979,7 +979,7 @@ def _windows_start_server(server_name: str, server_dir: str, config_dir: str) ->
                     bedrock_process.stdin.flush()
                     bedrock_process.stdin.close()
                 bedrock_process.wait(
-                    timeout=settings.get("SERVER_STOP_TIMEOUT_SEC", 30)
+                    timeout=get_settings_instance().get("SERVER_STOP_TIMEOUT_SEC", 30)
                 )
             except (subprocess.TimeoutExpired, OSError, ValueError):
                 logger.warning(

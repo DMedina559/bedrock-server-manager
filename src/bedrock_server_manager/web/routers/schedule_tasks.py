@@ -26,7 +26,7 @@ from ..templating import templates
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ...api import task_scheduler as task_scheduler_api
-from ...config import settings
+from ...instances import get_settings_instance
 from ...config import EXPATH
 from ...error import BSMError, UserInputError
 
@@ -261,7 +261,7 @@ async def schedule_tasks_windows_page_route(
     tasks = []
     error_message: Optional[str] = None
     try:
-        config_dir = settings.config_dir
+        config_dir = get_settings_instance().config_dir
         if not config_dir:
             raise BSMError("Base configuration directory not set.")
 
@@ -736,7 +736,7 @@ async def add_windows_task_api_route(
         )
 
     try:
-        config_dir = settings.config_dir
+        config_dir = get_settings_instance().config_dir
         if not config_dir:
             raise BSMError("Base configuration directory not set.")
 
@@ -894,7 +894,7 @@ async def modify_windows_task_api_route(
         )
 
     try:
-        config_dir = settings.config_dir
+        config_dir = get_settings_instance().config_dir
         if not config_dir:
             raise BSMError("Base configuration directory not set.")
 
@@ -1030,7 +1030,7 @@ async def delete_windows_task_api_route(
         )
 
     try:
-        config_dir = settings.config_dir
+        config_dir = get_settings_instance().config_dir
         if not config_dir:
             raise BSMError("Base configuration directory not set.")
 

@@ -25,7 +25,8 @@ from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from passlib.context import CryptContext
 
 from ..error import MissingArgumentError
-from ..config import env_name, settings
+from ..config import env_name
+from ..instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,9 @@ if not JWT_SECRET_KEY:
 
 ALGORITHM = "HS256"
 try:
-    JWT_EXPIRES_WEEKS = float(settings.get("web.token_expires_weeks", 4.0))
+    JWT_EXPIRES_WEEKS = float(
+        get_settings_instance().get("web.token_expires_weeks", 4.0)
+    )
 except (ValueError, TypeError):
     JWT_EXPIRES_WEEKS = 4.0
 ACCESS_TOKEN_EXPIRE_MINUTES = JWT_EXPIRES_WEEKS * 7 * 24 * 60

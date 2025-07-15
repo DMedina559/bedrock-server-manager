@@ -85,9 +85,9 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Mount custom themes directory
-from ..config import settings
+from ..instances import get_settings_instance
 
-themes_path = settings.get("paths.themes")
+themes_path = get_settings_instance().get("paths.themes")
 if os.path.isdir(themes_path):
     app.mount("/themes", StaticFiles(directory=themes_path), name="themes")
 

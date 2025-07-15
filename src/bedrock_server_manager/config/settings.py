@@ -539,16 +539,3 @@ class Settings:
         ``bedrock_server_manager.config.const``.
         """
         return self._version_val
-
-
-# A singleton instance of the Settings class, used throughout the application.
-settings = Settings()
-"""The global singleton instance of the :class:`Settings` class.
-
-This instance should be imported and used by other modules to access
-application-wide configuration.
-
-Example:
-    >>> from bedrock_server_manager.config.settings import settings
-    >>> server_path = settings.get("paths.servers")
-"""

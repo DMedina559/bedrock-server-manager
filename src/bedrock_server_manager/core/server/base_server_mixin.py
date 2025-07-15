@@ -19,7 +19,8 @@ from functools import cached_property
 # Local application imports.
 from ...config import EXPATH as CONST_EXPATH
 from ..system import base as system_base
-from ...config import Settings
+from ...instances import get_settings_instance
+from ...config.settings import Settings
 from ...error import MissingArgumentError, ConfigurationError
 
 
@@ -106,7 +107,7 @@ class BedrockServerBaseMixin:
         if settings_instance:
             self.settings = settings_instance
         else:
-            self.settings = Settings()
+            self.settings = get_settings_instance()
         self.logger.debug(
             f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from: {self.settings.config_path}"
         )

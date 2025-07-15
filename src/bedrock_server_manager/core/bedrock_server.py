@@ -8,11 +8,7 @@ specialized mixin classes (e.g., for process control, world management, backups)
 each contributing a distinct set of features. This compositional approach promotes
 code organization and modularity, allowing for clear separation of concerns.
 """
-from typing import TYPE_CHECKING, Dict, Any, Optional
-
-if TYPE_CHECKING:
-    # This allows for type hinting the Settings class without creating a circular import.
-    from ..config import Settings
+from typing import Dict, Any, Optional
 
 # Import all the mixin classes that will be combined to form the BedrockServer.
 from . import server
@@ -143,7 +139,6 @@ class BedrockServer(
     def __init__(
         self,
         server_name: str,
-        settings_instance: Optional["Settings"] = None,
         manager_expath: Optional[str] = None,
     ) -> None:
         """Initializes a BedrockServer instance.
@@ -171,9 +166,11 @@ class BedrockServer(
                 such as generating systemd service files that need to invoke the BSM
                 application.
         """
+        from ..instances import get_settings_instance
+
         super().__init__(
             server_name=server_name,
-            settings_instance=settings_instance,
+            settings_instance=get_settings_instance(),
             manager_expath=manager_expath,
         )
         self.logger.info(

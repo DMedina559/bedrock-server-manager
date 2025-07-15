@@ -31,8 +31,8 @@ from ..config import (
     GUARD_VARIABLE,
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
-    settings,
 )
+from ..instances import get_settings_instance
 from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
 
@@ -67,7 +67,7 @@ class PluginManager:
         loaded plugin instances, and custom event listeners. It also ensures
         that the configured plugin directories exist on the filesystem.
         """
-        self.settings = settings
+        self.settings = get_settings_instance()
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 

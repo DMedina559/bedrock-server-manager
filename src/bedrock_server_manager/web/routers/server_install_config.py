@@ -35,7 +35,7 @@ from ...api import (
     utils as utils_api,
 )
 from ...error import BSMError, UserInputError, AppFileNotFoundError
-from ...config import settings
+from ...instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ async def get_custom_zips(current_user: Dict[str, Any] = Depends(get_current_use
     Retrieves a list of available custom server ZIP files.
     """
     try:
-        download_dir = settings.get("paths.downloads")
+        download_dir = get_settings_instance().get("paths.downloads")
         custom_dir = os.path.join(download_dir, "custom")
         if not os.path.isdir(custom_dir):
             return {"status": "success", "custom_zips": []}
@@ -306,7 +306,7 @@ async def install_server_api_route(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="server_zip_path is required for CUSTOM version.",
                 )
-            download_dir = settings.get("paths.downloads")
+            download_dir = get_settings_instance().get("paths.downloads")
             custom_dir = os.path.join(download_dir, "custom")
             server_zip_path = os.path.abspath(
                 os.path.join(custom_dir, payload.server_zip_path)

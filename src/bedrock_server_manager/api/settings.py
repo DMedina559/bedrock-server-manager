@@ -19,7 +19,7 @@ from ..plugins import plugin_method
 from ..logging import setup_logging
 
 # Local application imports.
-from ..config import settings
+from ..instances import get_settings_instance
 from ..error import (
     BSMError,
     MissingArgumentError,
@@ -53,7 +53,7 @@ def get_global_setting(key: str) -> Dict[str, Any]:
 
     logger.debug(f"API: Reading global setting '{key}'.")
     try:
-        retrieved_value = settings.get(key)
+        retrieved_value = get_settings_instance().get(key)
         logger.debug(f"API: Successfully read global setting '{key}'.")
         return {
             "status": "success",
@@ -86,7 +86,7 @@ def get_all_global_settings() -> Dict[str, Any]:
     try:
         # Accessing _settings is an internal detail, but this API provides
         # a controlled public interface to it. A copy is returned.
-        all_settings = settings._settings.copy()
+        all_settings = get_settings_instance()._settings.copy()
         logger.debug("API: Successfully retrieved all global settings.")
         return {
             "status": "success",
@@ -130,7 +130,7 @@ def set_global_setting(key: str, value: Any) -> Dict[str, Any]:
 
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
-        settings.set(key, value)
+        get_settings_instance().set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
             "status": "success",
@@ -185,7 +185,7 @@ def set_custom_global_setting(key: str, value: Any) -> Dict[str, Any]:
 
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
-        settings.set(key, value)
+        get_settings_instance().set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
             "status": "success",
@@ -234,16 +234,16 @@ def reload_global_settings() -> Dict[str, str]:
     logger.info("API: Received request to reload global settings and logging.")
     try:
         # Step 1: Reload the settings from the file
-        settings.reload()
+        get_settings_instance().reload()
         logger.info("API: Global settings successfully reloaded.")
 
         # Step 2: Re-apply logging configuration with the new settings
         logger.info("API: Re-applying logging configuration...")
         setup_logging(
-            log_dir=settings.get("paths.logs"),
-            log_keep=settings.get("retention.logs"),
-            file_log_level=settings.get("logging.file_level"),
-            cli_log_level=settings.get("logging.cli_level"),
+            log_dir=get_settings_instance().get("paths.logs"),
+            log_keep=get_settings_instance().get("retention.logs"),
+            file_log_level=get_settings_instance().get("logging.file_level"),
+            cli_log_level=get_settings_instance().get("logging.cli_level"),
             force_reconfigure=True,  # Crucial flag to force removal of old handlers
         )
         logger.info("API: Logging configuration successfully re-applied.")

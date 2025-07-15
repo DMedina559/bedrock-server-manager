@@ -234,7 +234,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             # The BedrockDownloader's _custom_version_number handles this normalization.
             try:
                 temp_downloader_for_parse = BedrockDownloader(
-                    settings_obj=self.settings,  # Assumes self.settings is available
                     server_dir=self.server_dir,  # Assumes self.server_dir is available
                     target_version=target_version_specification,
                 )
@@ -293,7 +292,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         try:
             # This requires a network call to get the latest version info.
             downloader = BedrockDownloader(
-                settings_obj=self.settings,
                 server_dir=self.server_dir,  # Used by downloader for context, though not for file ops here
                 target_version=target_spec_upper,  # "LATEST" or "PREVIEW"
             )
@@ -442,7 +440,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             )
 
         downloader = BedrockDownloader(
-            settings_obj=self.settings,
             server_dir=self.server_dir,
             target_version=target_version_specification,
             server_zip_path=server_zip_path,

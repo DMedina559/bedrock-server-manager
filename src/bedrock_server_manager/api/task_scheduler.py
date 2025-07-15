@@ -39,7 +39,7 @@ import logging
 from typing import Dict, List, Optional, Any
 
 # Local imports
-from ..config import settings
+from ..instances import get_settings_instance
 from ..utils import get_timestamp
 from ..core.system import task_scheduler as core_task
 from ..error import (
@@ -317,7 +317,9 @@ def get_server_task_names(
 
     logger.debug(f"API: Getting Windows task names for server '{server_name}'...")
     try:
-        effective_config_dir = config_dir or getattr(settings, "config_dir", None)
+        effective_config_dir = config_dir or getattr(
+            get_settings_instance(), "config_dir", None
+        )
         if not effective_config_dir:
             raise FileOperationError(
                 "Base configuration directory is not set or available."
@@ -433,7 +435,9 @@ def create_windows_task(
         f"API: Creating Windows task '{task_name}' for server '{server_name}'..."
     )
     try:
-        effective_config_dir = config_dir or getattr(settings, "config_dir", None)
+        effective_config_dir = config_dir or getattr(
+            get_settings_instance(), "config_dir", None
+        )
         if not effective_config_dir:
             raise FileOperationError(
                 "Base configuration directory is not set or available."
@@ -517,7 +521,9 @@ def modify_windows_task(
         f"API: Modifying Windows task '{old_task_name}' to '{new_task_name}'..."
     )
     try:
-        effective_config_dir = config_dir or getattr(settings, "config_dir", None)
+        effective_config_dir = config_dir or getattr(
+            get_settings_instance(), "config_dir", None
+        )
         if not effective_config_dir:
             raise FileOperationError(
                 "Base configuration directory is not set or available."
