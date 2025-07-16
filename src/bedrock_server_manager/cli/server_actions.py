@@ -68,34 +68,17 @@ def server():
 @click.option(
     "-s", "--server", "server_name", required=True, help="Name of the server to start."
 )
-@click.option(
-    "-m",
-    "--mode",
-    type=click.Choice(["direct", "detached"], case_sensitive=False),
-    default="detached",
-    show_default=True,
-    help="Start mode: 'detached' runs in background, 'direct' blocks terminal.",
-)
-def start_server(server_name: str, mode: str):
+def start_server(server_name: str):
     """
     Starts a specific Bedrock server instance.
 
-    This command initiates the startup sequence for the named server.
-    It can start the server in 'detached' mode (running in the background,
-    often managed by a system service if configured) or 'direct' mode
-    (running in the foreground, blocking the current terminal).
-
     Calls API: :func:`~bedrock_server_manager.api.server.start_server`.
     """
-    click.echo(f"Attempting to start server '{server_name}' in {mode} mode...")
+    click.echo(f"Attempting to start server '{server_name}'...")
 
     try:
-        response = server_api.start_server(server_name, mode)
-        # Custom response handling because 'direct' mode blocks and won't show this.
-        if mode == "detached":
-            _handle_api_response(
-                response, f"Server '{server_name}' started successfully."
-            )
+        response = server_api.start_server(server_name)
+        _handle_api_response(response, f"Server '{server_name}' started successfully.")
     except BSMError as e:
         click.secho(f"Failed to start server: {e}", fg="red")
         raise click.Abort()
@@ -137,7 +120,7 @@ def restart_server(server_name: str):
     Gracefully restarts a specific Bedrock server.
 
     This command first attempts to stop the server if it's running, then
-    starts it again in 'detached' mode. If the server is already stopped,
+    starts it again. If the server is already stopped,
     it will simply be started.
 
     Calls API: :func:`~bedrock_server_manager.api.server.restart_server`.
@@ -269,7 +252,7 @@ def install(ctx: click.Context):
         if questionary.confirm(
             f"Start server '{server_name}' now?", default=True
         ).ask():
-            ctx.invoke(start_server, server_name=server_name, mode="detached")
+            ctx.invoke(start_server, server_name=server_name)
 
     except BSMError as e:
         click.secho(f"An application error occurred: {e}", fg="red")

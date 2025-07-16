@@ -42,14 +42,7 @@ Note:
     attempts to handle :class:`~bedrock_server_manager.error.PermissionsError`
     where appropriate.
 """
-import os
-import threading
-import time
-import subprocess
 import logging
-import signal
-import re
-from typing import Optional, Dict, Any
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
@@ -77,31 +70,13 @@ except ImportError:
     PYWIN32_HAS_OPTIONAL_MODULES = False
 
 # Local application imports.
-from . import process as core_process
-from ...config import SERVER_TIMEOUT
 from ...error import (
     MissingArgumentError,
-    ServerStartError,
-    AppFileNotFoundError,
-    ServerStopError,
-    FileOperationError,
     SystemError,
-    SendCommandError,
-    ServerNotRunningError,
     PermissionsError,
 )
 
 logger = logging.getLogger(__name__)
-
-# --- Constants ---
-BEDROCK_EXECUTABLE_NAME = "bedrock_server.exe"
-"""The standard filename of the Minecraft Bedrock dedicated server executable on Windows."""
-
-_foreground_server_shutdown_event = threading.Event()
-"""A ``threading.Event`` used to signal a shutdown request to all actively managed
-foreground server instances (specifically, their main management loops and
-pipe listener threads within `_windows_start_server`).
-"""
 
 # --- pywin32 Availability Flags ---
 # These are set based on imports at the top of the module.
@@ -545,86 +520,3 @@ def delete_windows_service(service_name: str) -> None:
         logger.info(
             "Skipping event log source cleanup (optional pywin32 modules not found)."
         )
-
-
-# --- FOREGROUND SERVER MANAGEMENT ---
-
-
-# --- FOREGROUND SERVER MANAGEMENT ---
-
-
-def _windows_stop_server_by_pid(server_name: str, config_dir: str) -> None:
-    """Stops a Bedrock server process on Windows using its PID file.
-
-    This function attempts to stop a Bedrock server that was presumably started
-    in the foreground (e.g., via :func:`_windows_start_server`). It performs
-    the following steps:
-
-        1. Constructs the path to the server's PID file (e.g., ``<server_name>.pid``)
-           within the specified `config_dir`.
-        2. Reads the PID from this file using :func:`core_process.read_pid_from_file`.
-        3. If no PID file is found or no PID is read, it assumes the server is not
-           running and returns.
-        4. Checks if the process with the read PID is actually running using
-           :func:`core_process.is_process_running`. If not, it cleans up the stale
-           PID file and returns.
-        5. If the process is running, it terminates the process using
-           :func:`core_process.terminate_process_by_pid`.
-        6. Cleans up the PID file after successful termination.
-
-    Args:
-        server_name (str): The name of the server to stop. This is used to
-            determine the PID file name.
-        config_dir (str): The application's configuration directory where the
-            PID file is expected to be located.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `config_dir` are empty.
-        ServerStopError: If reading the PID file fails (other than not found),
-            or if terminating the process via PID fails. This typically wraps
-            underlying ``FileOperationError`` or ``SystemError`` from the
-            ``core_process`` module.
-    """
-    if not all([server_name, config_dir]):
-        raise MissingArgumentError("server_name and config_dir are required.")
-
-    logger.info(f"Attempting to stop server '{server_name}' by PID on Windows...")
-
-    try:
-        pid_file_path = core_process.get_bedrock_server_pid_file_path(
-            server_name, config_dir
-        )
-        pid_to_stop = core_process.read_pid_from_file(pid_file_path)
-
-        if pid_to_stop is None:
-            logger.info(
-                f"No PID file for '{server_name}'. Assuming server is not running."
-            )
-            return
-
-        if not core_process.is_process_running(pid_to_stop):
-            logger.warning(
-                f"Stale PID {pid_to_stop} found for '{server_name}'. Removing PID file."
-            )
-            core_process.remove_pid_file_if_exists(pid_file_path)
-            return
-
-        # If the process is running, terminate it.
-        logger.info(
-            f"Found running server '{server_name}' with PID {pid_to_stop}. Terminating..."
-        )
-        core_process.terminate_process_by_pid(pid_to_stop)
-
-        # Clean up the PID file after successful termination.
-        core_process.remove_pid_file_if_exists(pid_file_path)
-        logger.info(
-            f"Stop sequence for server '{server_name}' (PID {pid_to_stop}) completed."
-        )
-
-    except (AppFileNotFoundError, FileOperationError):
-        logger.info(
-            f"Could not find or read PID file for '{server_name}'. Assuming it's already stopped."
-        )
-    except (ServerStopError, SystemError) as e:
-        # Re-raise as a ServerStopError to signal failure to the caller.
-        raise ServerStopError(f"Failed to stop server '{server_name}': {e}") from e

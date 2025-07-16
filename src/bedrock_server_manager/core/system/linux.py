@@ -42,27 +42,16 @@ Note:
 
 import platform
 import os
-import re
-import signal
-import threading
 import logging
 import subprocess
 import shutil
-import time
-from typing import Optional, Any
+from typing import Optional
 
 # Local application imports.
-from . import process as core_process
-from ...config import SERVER_TIMEOUT
 from ...error import (
     CommandNotFoundError,
-    ServerNotRunningError,
-    SendCommandError,
     SystemError,
-    ServerStartError,
-    ServerStopError,
     MissingArgumentError,
-    PermissionsError,
     FileOperationError,
     AppFileNotFoundError,
 )
@@ -469,95 +458,4 @@ def disable_systemd_service(service_name_full: str) -> None:
             return
         raise SystemError(
             f"Failed to disable systemd service '{name_to_use}'. Error: {e.stderr.strip()}"
-        ) from e
-
-
-# --- Constants ---
-BEDROCK_EXECUTABLE_NAME = "bedrock_server"
-"""The standard filename of the Minecraft Bedrock dedicated server executable on Linux."""
-
-# --- Global State Variables ---
-_foreground_server_shutdown_event = threading.Event()
-"""A ``threading.Event`` used to signal a shutdown request to all actively managed
-foreground server instances (specifically, their main management loops and
-FIFO listener threads within :func:`._linux_start_server`).
-"""
-
-
-def _linux_stop_server(server_name: str, config_dir: str) -> None:
-    """Stops a Bedrock server on Linux, trying graceful shutdown then PID termination.
-
-    This function attempts to stop a Bedrock server using a two-pronged approach:
-        1. **Graceful Shutdown via Pipe**: It first tries to send the "stop" command
-           to the server using :func:`._linux_send_command`. If this is successful,
-           it assumes the server will shut down cleanly.
-        2. **PID Termination**: If sending the "stop" command fails (e.g., because
-           the server or its pipe listener is not running, indicated by
-           :class:`~bedrock_server_manager.error.ServerNotRunningError` or
-           :class:`~bedrock_server_manager.error.SendCommandError`), this function
-           falls back to stopping the server by its Process ID (PID). It uses
-           :func:`core_process.get_bedrock_server_pid_file_path` and
-           :func:`core_process.read_pid_from_file` to find the PID, then
-           :func:`core_process.is_process_running` to check if it's active, and
-           finally :func:`core_process.terminate_process_by_pid` to stop it.
-           Stale PID files are cleaned up.
-
-    Args:
-        server_name (str): The name of the server to stop.
-        config_dir (str): The application's configuration directory, used to
-            locate the server's PID file.
-
-    Raises:
-        MissingArgumentError: If `server_name` or `config_dir` are empty.
-        ServerStopError: If the fallback PID termination method fails (e.g.,
-            cannot read PID file for unexpected reasons, or ``terminate_process_by_pid``
-            encounters a critical error).
-    """
-    if not all([server_name, config_dir]):
-        raise MissingArgumentError("server_name and config_dir are required.")
-
-    logger.info(f"Attempting to stop server '{server_name}' on Linux...")
-
-    # First, try the graceful 'stop' command via the pipe.
-    try:
-        _linux_send_command(server_name, "stop")
-        logger.info(
-            f"'stop' command sent to '{server_name}'. Please allow time for it to shut down."
-        )
-        return
-    except ServerNotRunningError:
-        logger.warning(
-            f"Could not send 'stop' command because pipe not found. Attempting to stop by PID."
-        )
-    except SendCommandError as e:
-        logger.error(
-            f"Failed to send 'stop' command to '{server_name}': {e}. Attempting to stop by PID."
-        )
-
-    # If sending the command fails, fall back to PID termination.
-    try:
-        pid_file_path = core_process.get_bedrock_server_pid_file_path(
-            server_name, config_dir
-        )
-        pid_to_stop = core_process.read_pid_from_file(pid_file_path)
-
-        if pid_to_stop is None or not core_process.is_process_running(pid_to_stop):
-            logger.info(
-                f"No running process found for PID from file. Cleaning up stale PID file if it exists."
-            )
-            core_process.remove_pid_file_if_exists(pid_file_path)
-            return
-
-        logger.info(
-            f"Found running server '{server_name}' with PID {pid_to_stop}. Terminating process..."
-        )
-        core_process.terminate_process_by_pid(pid_to_stop)
-        core_process.remove_pid_file_if_exists(pid_file_path)
-        logger.info(f"Stop-by-PID sequence for server '{server_name}' completed.")
-
-    except (AppFileNotFoundError, FileOperationError):
-        logger.info(f"No PID file found for '{server_name}'. Assuming already stopped.")
-    except (ServerStopError, SystemError) as e:
-        raise ServerStopError(
-            f"Failed to stop server '{server_name}' by PID: {e}"
         ) from e
