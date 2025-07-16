@@ -27,9 +27,7 @@ class AutoupdatePlugin(PluginBase):
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.
         """
-        self.logger.debug(
-            f"Handling before_server_start for '{server_name}'."
-        )
+        self.logger.debug(f"Handling before_server_start for '{server_name}'.")
 
         try:
             # Create an instance for the server to access its configuration.
