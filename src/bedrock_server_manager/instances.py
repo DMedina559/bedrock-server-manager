@@ -1,6 +1,7 @@
 _settings = None
 _manager = None
 _plugin_manager = None
+_servers = {}
 
 
 def get_settings_instance():
@@ -30,11 +31,8 @@ def get_plugin_manager_instance():
     return _plugin_manager
 
 
-_servers = {}
-
-
 def get_server_instance(server_name: str):
-    global _servers
+    # global _servers
     if _servers.get(server_name) is None:
         from bedrock_server_manager.core.bedrock_server import BedrockServer
 
