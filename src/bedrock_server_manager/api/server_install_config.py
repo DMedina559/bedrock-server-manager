@@ -29,11 +29,14 @@ import re
 from typing import Dict, List, Optional, Any
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance, get_settings_instance
+from ..instances import (
+    get_server_instance,
+    get_settings_instance,
+    get_plugin_manager_instance,
+)
 from . import player as player_api
 from .utils import (
     server_lifecycle_manager,
@@ -49,6 +52,8 @@ from ..error import (
 )
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 
 # --- Allowlist ---

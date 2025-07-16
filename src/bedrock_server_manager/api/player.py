@@ -21,17 +21,18 @@ import logging
 from typing import Dict, List, Any
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_manager_instance
+from ..instances import get_manager_instance, get_plugin_manager_instance
 from ..error import (
     BSMError,
     UserInputError,
 )
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("add_players_manually_api")

@@ -23,11 +23,10 @@ import threading
 from typing import Dict
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
+from ..instances import get_server_instance, get_plugin_manager_instance
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -43,6 +42,8 @@ logger = logging.getLogger(__name__)
 # This ensures that only one addon installation can occur at a time,
 # preventing potential file corruption.
 _addon_lock = threading.Lock()
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("import_addon")

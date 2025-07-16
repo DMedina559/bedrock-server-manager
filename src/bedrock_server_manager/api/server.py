@@ -36,11 +36,10 @@ else:
 
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
+from ..instances import get_server_instance, get_plugin_manager_instance
 from ..config import EXPATH
 from ..config import API_COMMAND_BLACKLIST
 from ..core.system import (
@@ -58,6 +57,8 @@ from ..error import (
 )
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("get_server_setting")

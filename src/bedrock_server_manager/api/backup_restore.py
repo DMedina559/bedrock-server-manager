@@ -29,11 +29,10 @@ import threading
 from typing import Dict, Any
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
+from ..instances import get_server_instance, get_plugin_manager_instance
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -48,6 +47,8 @@ logger = logging.getLogger(__name__)
 # This ensures that only one file-modifying operation can run at a time across
 # the entire module, preventing race conditions and potential data corruption.
 _backup_restore_lock = threading.Lock()
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("list_backup_files")

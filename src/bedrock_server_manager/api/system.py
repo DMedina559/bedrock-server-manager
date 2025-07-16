@@ -23,11 +23,10 @@ import logging
 from typing import Dict, Any
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
+from ..instances import get_server_instance, get_plugin_manager_instance
 from ..error import (
     BSMError,
     InvalidServerNameError,
@@ -36,6 +35,8 @@ from ..error import (
 )
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("get_bedrock_process_info")

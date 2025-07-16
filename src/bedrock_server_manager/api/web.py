@@ -27,11 +27,10 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_manager_instance
+from ..instances import get_manager_instance, get_plugin_manager_instance
 from ..core.system import process as system_process_utils
 from ..error import (
     BSMError,
@@ -42,6 +41,8 @@ from ..error import (
 )
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 
 def start_web_server_api(

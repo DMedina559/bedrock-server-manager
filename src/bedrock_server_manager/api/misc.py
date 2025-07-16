@@ -11,12 +11,11 @@ import threading
 from typing import Dict, Optional
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
 from ..core import prune_old_downloads
-from ..instances import get_settings_instance
+from ..instances import get_settings_instance, get_plugin_manager_instance
 from ..error import (
     BSMError,
     UserInputError,
@@ -27,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 # A lock to prevent race conditions during miscellaneous file operations.
 _misc_lock = threading.Lock()
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("prune_download_cache")

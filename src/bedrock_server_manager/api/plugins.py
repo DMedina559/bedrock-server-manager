@@ -21,11 +21,13 @@ for use by administrative interfaces like a web UI or CLI.
 import logging
 from typing import Dict, Any
 
-from .. import plugin_manager
+from ..instances import get_plugin_manager_instance
 from ..plugins import plugin_method
 from ..error import UserInputError
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 
 @plugin_method("get_plugin_statuses")

@@ -29,12 +29,14 @@ import threading
 from typing import Dict, Optional, Any
 
 # Plugin system imports to bridge API functionality.
-from .. import plugin_manager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
-from ..instances import get_settings_instance
+from ..instances import (
+    get_settings_instance,
+    get_server_instance,
+    get_plugin_manager_instance,
+)
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -45,6 +47,8 @@ from ..error import (
 from bedrock_server_manager.utils.general import get_timestamp
 
 logger = logging.getLogger(__name__)
+
+plugin_manager = get_plugin_manager_instance()
 
 # A unified lock to prevent race conditions during any world file operation
 # (export, import, reset). This ensures data integrity.
