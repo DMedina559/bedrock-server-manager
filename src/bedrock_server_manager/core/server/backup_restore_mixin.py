@@ -36,6 +36,7 @@ from ...error import (
     AppFileNotFoundError,
 )
 from ...utils import get_timestamp
+from ...instances import get_settings_instance
 
 
 class ServerBackupMixin(BedrockServerBaseMixin):
