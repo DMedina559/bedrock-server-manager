@@ -440,9 +440,7 @@ def test_downloader_determine_version_parameters(
             server_zip_path=str(dummy_zip),
         )
     else:
-        downloader = BedrockDownloader(
-                str(temp_server_dir), target_version_input
-        )
+        downloader = BedrockDownloader(str(temp_server_dir), target_version_input)
     assert downloader._version_type == expected_version_type
     assert downloader._custom_version_number == expected_custom_number
 
@@ -504,9 +502,7 @@ def test_get_version_for_target_spec_latest_preview(
 ):
     """Test get_version_for_target_spec for LATEST/PREVIEW on different OS."""
     mocker.patch("platform.system", return_value=os_name)
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, target_version
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, target_version)
 
     mock_response = mocker.Mock()
     api_data = common_api_response_data(
@@ -559,9 +555,7 @@ def test_get_version_for_target_spec_specific_version(
     """Test get_version_for_target_spec for a specific version string."""
     mocker.patch("platform.system", return_value="Linux")  # Assume Linux for this test
     target_version = "1.19.50.02"
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, "1.19.50.02"
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, "1.19.50.02")
 
     mock_response = mocker.Mock()
     # API still returns its "latest" stable URL for the OS
@@ -589,9 +583,7 @@ def test_get_version_for_target_spec_specific_preview_version(
     mocker.patch("platform.system", return_value="Windows")  # Assume Windows
     target_version = "1.19.80.20-PREVIEW"
     custom_number = "1.19.80.20"
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, target_version
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, target_version)
 
     mock_response = mocker.Mock()
     # API returns its "latest" PREVIEW URL for the OS
@@ -617,9 +609,7 @@ def test_get_version_for_target_spec_specific_preview_version(
 def test_lookup_unsupported_os(downloader_instance, mocker):
     """Test URL lookup on an unsupported OS."""
     mocker.patch("platform.system", return_value="Solaris")
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, "1.19.50.02"
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, "1.19.50.02")
     with pytest.raises(
         SystemError, match="Unsupported OS for Bedrock server download: Solaris"
     ):
@@ -655,9 +645,7 @@ def test_lookup_api_missing_download_type(
 ):
     """Test URL lookup when API response is missing the required downloadType."""
     mocker.patch("platform.system", return_value="Linux")
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, "LATEST"
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, "LATEST")
 
     mock_response = mocker.Mock()
     api_data = {
@@ -679,9 +667,7 @@ def test_lookup_fail_to_construct_specific_url(
 ):
     """Test failure to construct URL for a specific version if base URL format changes."""
     mocker.patch("platform.system", return_value="Linux")
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, "1.19.50.02"
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, "1.19.50.02")
 
     mock_response = mocker.Mock()
     # Provide a base URL that doesn't match the expected bedrock-server-VERSION.zip pattern
@@ -738,13 +724,14 @@ def mock_successful_requests_get_stream(mocker):
     return mock_get, mock_response
 
 
-def test_prepare_download_assets_success_new_download(
-    downloader_instance, mocker
-):
+def test_prepare_download_assets_success_new_download(downloader_instance, mocker):
     """Test prepare_download_assets successfully downloads a new file."""
+
     # Mock parts of the process leading up to download
     def get_version_side_effect():
-        downloader_instance.resolved_download_url = "http://example.com/bedrock-server-1.20.0.zip"
+        downloader_instance.resolved_download_url = (
+            "http://example.com/bedrock-server-1.20.0.zip"
+        )
         downloader_instance.actual_version = "1.20.0"
         return "1.20.0"
 
@@ -753,20 +740,26 @@ def test_prepare_download_assets_success_new_download(
         "get_version_for_target_spec",
         side_effect=get_version_side_effect,
     )
-    
+
     # Mock the download method itself
-    mock_download = mocker.patch.object(downloader_instance, "_download_server_zip_file")
+    mock_download = mocker.patch.object(
+        downloader_instance, "_download_server_zip_file"
+    )
 
     mocker.patch("bedrock_server_manager.core.system.base.check_internet_connectivity")
     mock_prune = mocker.patch(
         "bedrock_server_manager.core.downloader.prune_old_downloads"
     )
-    
+
     # Ensure the file does not exist before calling prepare_download_assets
-    zip_path = Path(downloader_instance.base_download_dir) / "stable" / "bedrock-server-1.20.0.zip"
+    zip_path = (
+        Path(downloader_instance.base_download_dir)
+        / "stable"
+        / "bedrock-server-1.20.0.zip"
+    )
     if zip_path.exists():
         zip_path.unlink()
-        
+
     actual_version, zip_file_path, specific_download_dir = (
         downloader_instance.prepare_download_assets()
     )
@@ -1130,9 +1123,7 @@ def test_downloader_getters_after_version_lookup(
     """Test getters after get_version_for_target_spec populates some attributes."""
     mocker.patch("platform.system", return_value="Linux")
     target_version = "1.18.0"
-    downloader = BedrockDownloader(
-            downloader_instance.server_dir, target_version
-    )
+    downloader = BedrockDownloader(downloader_instance.server_dir, target_version)
 
     mock_response = mocker.Mock()
     api_data = common_api_response_data(

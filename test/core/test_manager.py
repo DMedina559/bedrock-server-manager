@@ -179,7 +179,9 @@ def test_manager_initialization_success(
     assert manager_instance._base_dir == str(temp_manager_dirs["servers"])
     assert manager_instance._content_dir == str(temp_manager_dirs["content"])
     assert manager_instance._expath == "/dummy/bsm_executable"
-    assert manager_instance.settings.version == "3.5.0-test"  # From mock_manager_settings
+    assert (
+        manager_instance.settings.version == "3.5.0-test"
+    )  # From mock_manager_settings
 
     # Check default capabilities (assuming shutil.which was mocked to return None by manager_instance fixture)
     assert not manager_instance.capabilities["scheduler"]
