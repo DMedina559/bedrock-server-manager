@@ -69,14 +69,7 @@ def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any,
     """
     for key, value in source.items():
         if isinstance(value, collections.abc.Mapping):
-            # Ensure the destination node is a dictionary before merging
-            node = destination.setdefault(key, {})
-            if not isinstance(node, collections.abc.Mapping):
-                # If the destination node exists but is not a dictionary,
-                # overwrite it with the source dictionary node
-                node = {}
-                destination[key] = node
-            deep_merge(value, node)
+            destination[key] = deep_merge(value, destination.get(key, {}))
         else:
             destination[key] = value
     return destination
@@ -140,7 +133,6 @@ class Settings:
         self._app_data_dir_path = self._determine_app_data_dir()
         self._config_dir_path = self._determine_app_config_dir()
         self.config_file_name = NEW_CONFIG_FILE_NAME
-        self._migrate_config_filename()
         self.config_path = os.path.join(self._config_dir_path, self.config_file_name)
 
         # Get the installed package version.
@@ -156,39 +148,6 @@ class Settings:
 
     def __del__(self):
         self.db.close()
-
-    def _migrate_config_filename(self):
-        """
-        Checks for the old config filename and renames it to the new one.
-
-        This is a one-time operation for existing installations that previously
-        used `script_config.json`. If `script_config.json` exists and
-        `bedrock_server_manager.json` does not, `script_config.json` will be
-        renamed to `bedrock_server_manager.json`.
-
-        Raises:
-            ConfigurationError: If the renaming operation fails due to an OSError
-                (e.g., permission issues).
-        """
-        old_config_path = os.path.join(self._config_dir_path, OLD_CONFIG_FILE_NAME)
-        new_config_path = os.path.join(self._config_dir_path, NEW_CONFIG_FILE_NAME)
-
-        if os.path.exists(old_config_path) and not os.path.exists(new_config_path):
-            logger.info(
-                f"Found old configuration file '{OLD_CONFIG_FILE_NAME}'. "
-                f"Migrating to '{NEW_CONFIG_FILE_NAME}'..."
-            )
-            try:
-                os.rename(old_config_path, new_config_path)
-                logger.info(
-                    "Successfully migrated configuration file name. "
-                    f"The old file '{OLD_CONFIG_FILE_NAME}' has been renamed."
-                )
-            except OSError as e:
-                raise ConfigurationError(
-                    f"Failed to rename configuration file from '{old_config_path}' to "
-                    f"'{new_config_path}'. Please check file permissions."
-                ) from e
 
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
@@ -414,9 +373,8 @@ class Settings:
         for old_key, (category, new_key) in key_map.items():
             if old_key in old_config:
                 new_config[category][new_key] = old_config[old_key]
-
-        # 3. Save the new configuration file
         self._settings = new_config
+        # 3. Save the new configuration file
         self._write_config()
         logger.info("Successfully migrated configuration to the new format.")
 
