@@ -141,14 +141,12 @@ class PluginBase(ABC):
 
     # --- Server Lifecycle Event Hooks ---
 
-    def before_server_start(self, server_name: str, mode: str):
+    def before_server_start(self, server_name: str):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         just before a server start operation is attempted.
 
         Args:
             server_name (str): The name of the server that is about to be started.
-            mode (str): The mode in which the server is being started (e.g.,
-                "direct", "detached").
         """
         pass
 

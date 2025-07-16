@@ -246,60 +246,15 @@ def get_all_server_settings(server_name: str) -> Dict[str, Any]:
 
 
 @plugin_method("start_server")
-def start_server(
-    server_name: str,
-    mode: str = "direct",
-) -> Dict[str, Any]:
-    """Starts the specified Bedrock server.
-
-    Triggers the ``before_server_start`` and ``after_server_start`` plugin events.
-    Manages platform-specific start methods:
-
-    -   **direct**: Runs the server directly in the current process via
-        :meth:`~.core.bedrock_server.BedrockServer.start`. This is a blocking
-        call until the server stops.
-    -   **detached**: Attempts to start the server in the background. It prioritizes
-        using the OS-native service manager (systemd on Linux, Windows Services on
-        Windows) if a service for this server is configured and active. If a
-        service is not used or fails, it falls back to launching a new,
-        independent background process via
-        :func:`~.core.system.process.launch_detached_process`.
-
-    Args:
-        server_name (str): The name of the server to start.
-        mode (str, optional): The start mode. Can be 'direct' or 'detached'.
-            Defaults to 'direct'.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the operation result.
-        - If direct mode: ``{"status": "success", "message": "Server... (direct mode) process finished."}``
-        - If detached via service: ``{"status": "success", "message": "Server... started via <service_manager>."}``
-        - If detached via fallback: ``{"status": "success", "message": "Server... start initiated... (Launcher PID: <pid>).", "pid": <pid>}``
-        - On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        UserInputError: If `mode` is invalid (not 'direct' or 'detached').
-        ServerStartError: If the server is not installed, already running, or if
-            :meth:`~.core.bedrock_server.BedrockServer.start` (in direct mode)
-            encounters an issue.
-        BSMError: For other application-specific errors during startup.
-    """
-    mode = mode.lower()
-
+def start_server(server_name: str) -> Dict[str, Any]:
+    """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-    if mode not in ["direct", "detached"]:
-        raise UserInputError(
-            f"Invalid start mode '{mode}'. Must be 'direct' or 'detached'."
-        )
 
     # --- Plugin Hook ---
-    plugin_manager.trigger_guarded_event(
-        "before_server_start", server_name=server_name, mode=mode
-    )
+    plugin_manager.trigger_guarded_event("before_server_start", server_name=server_name)
 
-    logger.info(f"API: Attempting to start server '{server_name}' in '{mode}' mode...")
+    logger.info(f"API: Attempting to start server '{server_name}'...")
     result = {}
     try:
         server = get_server_instance(server_name)
@@ -313,105 +268,13 @@ def start_server(
                 "message": f"Server '{server_name}' is already running.",
             }
 
-        if mode == "direct":
-            logger.debug(
-                f"API: Calling server.start() for '{server_name}' (direct mode)."
-            )
-            server.start()  # This is a blocking call.
-            logger.info(f"API: Direct start for server '{server_name}' completed.")
-            result = {
-                "status": "success",
-                "message": f"Server '{server_name}' (direct mode) process finished.",
-            }
-            return result
-        elif mode == "detached":
-            use_service_manager = False
-
-            # --- OS-Specific Service Start (Preferred Method) ---
-            if platform.system() == "Linux" and server.check_service_exists():
-                logger.debug(f"API: Using systemd to start server '{server_name}'.")
-                systemctl_cmd_path = shutil.which("systemctl")
-                if systemctl_cmd_path:
-                    try:
-                        subprocess.run(
-                            [
-                                systemctl_cmd_path,
-                                "--user",
-                                "start",
-                                server.systemd_service_name_full,
-                            ],
-                            check=True,
-                            capture_output=True,
-                            text=True,
-                        )
-                        use_service_manager = True
-                        result = {
-                            "status": "success",
-                            "message": f"Server '{server_name}' started via systemd.",
-                        }
-                    except subprocess.CalledProcessError as e:
-                        logger.warning(
-                            f"systemd service '{server.systemd_service_name_full}' failed to start: {e.stderr.strip()}. "
-                            "Falling back to generic detached process."
-                        )
-                else:
-                    logger.warning(
-                        "'systemctl' command not found, falling back to generic detached process."
-                    )
-            elif (
-                platform.system() == "Windows"
-                and PYWIN32_AVAILABLE
-                and server.check_service_exists()
-            ):
-                logger.debug(f"API: Using Windows Service to start '{server_name}'.")
-                try:
-                    win32serviceutil.StartService(server.windows_service_name)
-                    use_service_manager = True
-                    result = {
-                        "status": "success",
-                        "message": f"Server '{server_name}' started via Windows Service.",
-                    }
-                except Exception as e:
-                    logger.warning(
-                        f"Windows service '{server.windows_service_name}' failed to start: {e}. "
-                        "Falling back to generic detached process."
-                    )
-
-            if use_service_manager:
-                return result
-
-            # --- Generic Detached Start (Fallback for All OSes) ---
-            logger.info(
-                f"API: Starting server '{server_name}' using generic detached process launcher."
-            )
-            cli_command_parts = [
-                EXPATH,
-                "server",
-                "start",
-                "--server",
-                server_name,
-                "--mode",
-                "direct",  # The detached process runs the server directly
-            ]
-            cli_command_str_list = [os.fspath(part) for part in cli_command_parts]
-            launcher_pid_file_path = get_bedrock_launcher_pid_file_path(
-                server.server_name,
-                server.server_config_dir,  # Use BedrockServer instance properties
-            )
-
-            launcher_pid = launch_detached_process(
-                cli_command_str_list,
-                launcher_pid_file_path,  # Pass the launcher PID file path
-            )
-            logger.info(
-                f"API: Detached server starter for '{server_name}' launched with PID {launcher_pid}."
-            )
-            result = {
-                "status": "success",
-                "message": f"Server '{server_name}' start initiated in detached mode (Launcher PID: {launcher_pid}).",
-                "pid": launcher_pid,
-            }
-            return result
+        server.start()
+        logger.info(f"API: Start for server '{server_name}' completed.")
+        result = {
+            "status": "success",
+            "message": f"Server '{server_name}' process started.",
+        }
+        return result
 
     except BSMError as e:
         logger.error(f"API: Failed to start server '{server_name}': {e}", exc_info=True)
@@ -574,13 +437,12 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
     """Restarts the specified Bedrock server by orchestrating stop and start.
 
     This function internally calls :func:`~.stop_server` and then
-    :func:`~.start_server` (with ``mode="detached"``).
+    :func:`~.start_server`.
 
-    - If the server is already stopped, this function will attempt to start it
-      in 'detached' mode.
+    - If the server is already stopped, this function will attempt to start it.
     - If running, it will attempt to stop it (optionally sending a restart
       message to the server if ``send_message=True``), wait briefly for the
-      stop to complete, and then start it again in 'detached' mode.
+      stop to complete, and then start it again.
 
     Args:
         server_name (str): The name of the server to restart.
@@ -616,7 +478,7 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
             logger.info(
                 f"API: Server '{server_name}' was not running. Attempting to start..."
             )
-            start_result = start_server(server_name, mode="detached")
+            start_result = start_server(server_name)
             if start_result.get("status") == "success":
                 start_result["message"] = (
                     f"Server '{server_name}' was not running and has been started."
@@ -642,7 +504,7 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
             )
             return stop_result
 
-        start_result = start_server(server_name, mode="detached")
+        start_result = start_server(server_name)
         if start_result.get("status") == "error":
             start_result["message"] = (
                 f"Restart failed during start phase: {start_result.get('message')}"
