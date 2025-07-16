@@ -42,7 +42,8 @@ except ImportError:
 from . import process as core_process
 from ...instances import get_server_instance
 from ...api.web import start_web_server_api, stop_web_server_api
-from .windows import _main_pipe_server_listener_thread
+
+# from .windows import _main_pipe_server_listener_thread
 
 logger = logging.getLogger(__name__)
 
@@ -169,17 +170,17 @@ class BedrockServerWindowsService(win32serviceutil.ServiceFramework):
             core_process.write_pid_to_file(pid_file_path, self.bedrock_process.pid)
 
             self.logger.info("Starting pipe listener thread.")
-            pipe_listener_thread = threading.Thread(
-                target=_main_pipe_server_listener_thread,
-                args=(
-                    pipe_name,
-                    self.bedrock_process,
-                    self.server_name,
-                    self.shutdown_event,
-                ),
-                daemon=True,
-            )
-            pipe_listener_thread.start()
+            # pipe_listener_thread = threading.Thread(
+            #    target=_main_pipe_server_listener_thread,
+            #    args=(
+            #        pipe_name,
+            #        self.bedrock_process,
+            #        self.server_name,
+            #        self.shutdown_event,
+            #    ),
+            #    daemon=True,
+            # )
+            # pipe_listener_thread.start()
 
             self.logger.info("--- ALL STARTUP CHECKS PASSED ---")
             self.logger.info("Reporting SERVICE_RUNNING to SCM.")

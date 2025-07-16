@@ -72,83 +72,47 @@ def log_background_task_result(
         )
 
 
-def server_start_task(server_name: str):
-    """Background task to start a server.
-
-    Calls :func:`bedrock_server_manager.api.server.start_server` in detached mode
-    and logs the result using :func:`.log_background_task_result`.
-    Catches and logs exceptions during the task execution.
-
-    Args:
-        server_name (str): The name of the server to start.
-    """
-    logger.info(f"Background task initiated: Starting server '{server_name}'.")
-    try:
-        result = server_api.start_server(server_name, mode="detached")
-        log_background_task_result("start_server", server_name, result)
-    except UserInputError as e_thread:
-        logger.warning(
-            f"Background task 'start_server' for '{server_name}': Input error. {e_thread}"
-        )
-    except BSMError as e_thread:
-        logger.error(
-            f"Background task 'start_server' for '{server_name}': Application error. {e_thread}"
-        )
-    except Exception as e_thread:
-        logger.error(
-            f"Background task 'start_server' for '{server_name}': Unexpected error. {e_thread}",
-            exc_info=True,
-        )
-
-
 # --- API Route: Start Server ---
 @router.post(
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
     summary="Start a server instance",
     tags=["Server Actions API"],
 )
 async def start_server_route(
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
-    Initiates starting a specific Bedrock server instance in the background.
-
-    The server start operation is performed as a background task.
-    This endpoint immediately returns a 202 Accepted response indicating
-    the task has been queued.
+    Starts a specific Bedrock server instance.
 
     - **server_name**: Path parameter, validated by `validate_server_exists` dependency.
     - Requires authentication.
 
     Args:
-        background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to start. Validated by dependency.
         current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the start operation has been initiated.
-
-    Example Response:
-    .. code-block:: json
-
-        {
-            "status": "success",
-            "message": "Start operation for server 'MyServer' initiated in background.",
-            "details": null
-        }
     """
     identity = current_user.get("username", "Unknown")
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
 
-    background_tasks.add_task(server_start_task, server_name)
-
-    return ActionResponse(
-        message=f"Start operation for server '{server_name}' initiated in background."
-    )
+    try:
+        result = server_api.start_server(server_name)
+        if result.get("status") == "success":
+            return ActionResponse(message=result.get("message"))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("message"),
+            )
+    except BSMError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 def server_stop_task(server_name: str):
