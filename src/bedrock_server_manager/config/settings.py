@@ -83,6 +83,14 @@ def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any,
 
 
 class Settings:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(Settings, cls).__new__(cls)
+            cls._instance.__initialized = False
+        return cls._instance
+
     """Manages loading, accessing, and saving application settings.
 
     This class acts as a single source of truth for all configuration data.
@@ -124,6 +132,9 @@ class Settings:
                backups, logs) exist on the filesystem.
 
         """
+        if self.__initialized:
+            return
+        self.__initialized = True
         logger.debug("Initializing Settings")
         # Determine the primary application data and config directories.
         self._app_data_dir_path = self._determine_app_data_dir()
@@ -522,6 +533,8 @@ class Settings:
         since the last load or save will be reflected.
         """
         logger.info("Reloading configuration from database")
+        self.db.close()
+        self.db = SessionLocal()
         self.load()
         logger.info("Configuration reloaded successfully.")
 

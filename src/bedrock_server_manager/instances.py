@@ -5,12 +5,9 @@ _servers = {}
 
 
 def get_settings_instance():
-    global _settings
-    if _settings is None:
-        from .config.settings import Settings
+    from .config.settings import Settings
 
-        _settings = Settings()
-    return _settings
+    return Settings()
 
 
 def get_manager_instance():
