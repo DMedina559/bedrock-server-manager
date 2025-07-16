@@ -2,17 +2,16 @@
 """Manages application-wide configuration settings.
 
 This module provides the `Settings` class, which is responsible for loading
-settings from a JSON file, providing default values for missing keys, saving
-changes back to the file, and determining the appropriate application data and
+settings from a database, providing default values for missing keys, saving
+changes back to the database, and determining the appropriate application data and
 configuration directories based on the environment.
 
-The configuration is stored in a nested JSON format. Settings are accessed
+The configuration is stored in a key-value format in the database. Settings are accessed
 programmatically using dot-notation (e.g., :meth:`Settings.get('paths.servers')`).
 
 Key components:
 
     - :class:`Settings`: The main class for managing configuration.
-    - :func:`deep_merge`: A utility function for merging dictionaries.
     - `settings`: A global instance of the :class:`Settings` class.
 
 """
@@ -23,6 +22,8 @@ import logging
 import collections.abc
 from typing import Any, Dict
 
+from ..db.database import SessionLocal, engine
+from ..db.models import Setting, Base
 from ..error import ConfigurationError
 from .const import (
     package_name,
@@ -89,13 +90,13 @@ class Settings:
 
         - Determining appropriate application data and configuration directories
           based on the environment (respecting ``BSM_DATA_DIR``).
-        - Loading settings from a JSON configuration file (``bedrock_server_manager.json``).
+        - Loading settings from a database.
         - Providing sensible default values for missing settings.
         - Migrating settings from older formats (e.g., ``script_config.json`` or schema v1).
-        - Saving changes back to the configuration file.
+        - Saving changes back to the database.
         - Ensuring critical directories (e.g., for servers, backups, logs) exist.
 
-    Settings are stored in a nested dictionary structure and can be accessed
+    Settings are stored in a key-value format in the database and can be accessed
     programmatically using dot-notation via the :meth:`get` and :meth:`set` methods
     (e.g., ``settings.get('paths.servers')``).
 
@@ -116,7 +117,7 @@ class Settings:
             2. Handles migration of the configuration file name from the old
                `script_config.json` to `bedrock_server_manager.json` if necessary.
             3. Retrieves the installed package version.
-            4. Loads settings from the configuration file. If the file doesn't exist,
+            4. Loads settings from the database. If the database is empty,
                it's created with default settings. If an old configuration schema is
                detected, it's migrated.
             5. Ensures all necessary application directories (e.g., for servers,
@@ -134,9 +135,16 @@ class Settings:
         # Get the installed package version.
         self._version_val = get_installed_version()
 
+        # Setup database
+        Base.metadata.create_all(bind=engine)
+        self.db = SessionLocal()
+
         # Load settings from the config file or create a default one.
         self._settings: Dict[str, Any] = {}
         self.load()
+
+    def __del__(self):
+        self.db.close()
 
     def _migrate_config_filename(self):
         """
@@ -283,14 +291,13 @@ class Settings:
         }
 
     def load(self):
-        """Loads settings from the JSON configuration file.
+        """Loads settings from the database.
 
         The process is as follows:
 
             1. Starts with a fresh copy of the default settings (see :meth:`default_config`).
-            2. If the configuration file (``bedrock_server_manager.json``) doesn't exist,
-               it's created with these default settings.
-            3. If the file exists, it's read:
+            2. If the database is empty, it's populated with these default settings.
+            3. If the database has settings, they are loaded:
                 a. If the loaded configuration does not contain a ``config_version`` key,
                    it's assumed to be an old (v1) flat format and is migrated to the
                    current nested (v2) structure via :meth:`_migrate_v1_to_v2`. The
@@ -310,30 +317,32 @@ class Settings:
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
 
-        if not os.path.exists(self.config_path):
+        # Check if the database is empty
+        if self.db.query(Setting).count() == 0:
             logger.info(
-                f"Configuration file not found at {self.config_path}. "
-                "Creating with default settings."
+                "No settings found in the database. Creating with default settings."
             )
             self._write_config()
         else:
             try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    user_config = json.load(f)
+                user_config = {}
+                for setting in self.db.query(Setting).all():
+                    user_config[setting.key] = setting.value
 
                 # Check for old config format and migrate if necessary.
                 if "config_version" not in user_config:
                     self._migrate_v1_to_v2(user_config)
                     # Reload config from the newly migrated file
-                    with open(self.config_path, "r", encoding="utf-8") as f:
-                        user_config = json.load(f)
+                    user_config = {}
+                    for setting in self.db.query(Setting).all():
+                        user_config[setting.key] = setting.value
 
                 # Deep merge user settings into the default settings.
                 deep_merge(user_config, self._settings)
 
             except (ValueError, OSError) as e:
                 logger.warning(
-                    f"Could not load config file at {self.config_path}: {e}. "
+                    f"Could not load config from database: {e}. "
                     "Using default settings. A new config will be saved on the next settings change."
                 )
 
@@ -430,21 +439,23 @@ class Settings:
                     ) from e
 
     def _write_config(self):
-        """Writes the current settings dictionary to the JSON configuration file.
-
-        The settings are stored in the file specified by :attr:`config_path`.
-        The parent directory for the config file is created if it doesn't exist.
-        The JSON is pretty-printed with an indent of 4 and sorted keys.
+        """Writes the current settings dictionary to the database.
 
         Raises:
             ConfigurationError: If writing the configuration fails (e.g., due to
                 permission issues or an object that cannot be serialized to JSON).
         """
         try:
-            os.makedirs(self._config_dir_path, exist_ok=True)
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(self._settings, f, indent=4, sort_keys=True)
-        except (OSError, TypeError) as e:
+            for key, value in self._settings.items():
+                setting = self.db.query(Setting).filter_by(key=key).first()
+                if setting:
+                    setting.value = value
+                else:
+                    setting = Setting(key=key, value=value)
+                    self.db.add(setting)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
             raise ConfigurationError(f"Failed to write configuration: {e}") from e
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -475,14 +486,14 @@ class Settings:
         """Sets a configuration value using dot-notation and saves the change.
 
         Intermediate dictionaries are created if they do not exist along the
-        path specified by `key`. The configuration is only written to disk via
+        path specified by `key`. The configuration is only written to the database via
         :meth:`_write_config` if the new ``value`` is different from the
         existing value for the given ``key``.
 
         Example:
             ``settings.set("retention.backups", 5)``
             This will update the "backups" key within the "retention" dictionary
-            and then save the entire configuration to the file.
+            and then save the entire configuration to the database.
 
         Args:
             key (str): The dot-separated configuration key to set (e.g.,
@@ -503,14 +514,14 @@ class Settings:
         self._write_config()
 
     def reload(self):
-        """Reloads the settings from the configuration file.
+        """Reloads the settings from the database.
 
         This method re-runs the :meth:`load` method, which re-reads the
-        configuration file (specified by :attr:`config_path`) and updates the
-        in-memory settings dictionary. Any external changes made to the file
+        configuration from the database and updates the
+        in-memory settings dictionary. Any external changes made to the database
         since the last load or save will be reflected.
         """
-        logger.info(f"Reloading configuration from {self.config_path}")
+        logger.info("Reloading configuration from database")
         self.load()
         logger.info("Configuration reloaded successfully.")
 

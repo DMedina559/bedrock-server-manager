@@ -36,6 +36,7 @@ dependencies = [
     "passlib >=1.7.4,<1.8",
     "python_multipart >=0.0.20,<0.1",
     "bcrypt >=4.3.0,<4.4",
+    "sqlalchemy >=2.0.0,<2.1",
 ]
 
 keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "cli", "web", "fastapi"]
