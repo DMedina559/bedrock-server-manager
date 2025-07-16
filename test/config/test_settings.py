@@ -125,7 +125,7 @@ def test_determine_app_data_dir(monkeypatch, tmp_path):
     monkeypatch.delenv(f"{env_name}_DATA_DIR")
     settings = Settings()
     assert settings._determine_app_data_dir() == os.path.join(
-        os.path.expanduser("~"), f".{package_name}"
+        os.path.expanduser("~"), f"{package_name}"
     )
     Settings._instance = None
 
