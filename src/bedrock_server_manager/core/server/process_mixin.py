@@ -216,23 +216,53 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             ) from e
 
     def get_process_info(self) -> Optional[Dict[str, Any]]:
-        """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process."""
-        process = self.process_manager.get_server_process(self.server_name)
-        if process is None or process.poll() is not None:
-            return None
+        """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process.
 
-        if not PSUTIL_AVAILABLE:
-            return None
+        This method first uses
+        :func:`~.core.system.process.get_verified_bedrock_process` to locate and
+        verify the Bedrock server process associated with this server instance.
+        If a valid process is found, it then uses the :attr:`._resource_monitor`
+        (an instance of :class:`~.core.system.base.ResourceMonitor` from the base
+        mixin) to calculate its current resource statistics.
 
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary containing process information
+            if the server is running, verified, and ``psutil`` is available.
+            The dictionary has keys: "pid", "cpu_percent", "memory_mb", "uptime".
+            Returns ``None`` if the server is not running, cannot be verified,
+            ``psutil`` is unavailable, or if an error occurs during statistics retrieval.
+            Example: ``{"pid": 1234, "cpu_percent": 15.2, "memory_mb": 256.5, "uptime": "0:10:30"}``
+        """
         try:
-            p = psutil.Process(process.pid)
-            with p.oneshot():
-                uptime = time.time() - p.create_time()
-                return {
-                    "pid": p.pid,
-                    "cpu_percent": p.cpu_percent(),
-                    "memory_mb": p.memory_info().rss / (1024 * 1024),
-                    "uptime": time.strftime("%H:%M:%S", time.gmtime(uptime)),
-                }
-        except psutil.NoSuchProcess:
+            # 1. Find and verify the process.
+            # get_verified_bedrock_process handles cases where psutil might not be available.
+            process_obj: Optional["psutil_for_types.Process"] = (
+                system_process.get_verified_bedrock_process(
+                    self.server_name, self.server_dir, self.app_config_dir
+                )
+            )
+
+            if process_obj is None:
+                self.logger.debug(
+                    f"No verified process found for server '{self.server_name}' to get info."
+                )
+                return None
+
+            # 2. Delegate the measurement of the found process to the resource monitor.
+            # _resource_monitor is initialized in BedrockServerBaseMixin.
+            # It also checks for PSUTIL_AVAILABLE.
+            return self._resource_monitor.get_stats(process_obj)
+
+        except (
+            BSMError
+        ) as e_bsm:  # Catch known BSM errors, e.g. from get_verified_bedrock_process
+            self.logger.warning(
+                f"Known error while trying to get process info for '{self.server_name}': {e_bsm}"
+            )
+            return None
+        except Exception as e_unexp:  # Catch any other unexpected errors
+            self.logger.error(
+                f"Unexpected error getting process info for '{self.server_name}': {e_unexp}",
+                exc_info=True,
+            )
             return None
