@@ -77,20 +77,10 @@ class TestServerSettings:
 
 
 class TestServerLifecycle:
-    def test_start_server_direct(self, mock_get_server_instance, mock_bedrock_server):
-        result = start_server("test-server", mode="direct")
+    def test_start_server(self, mock_get_server_instance, mock_bedrock_server):
+        result = start_server("test-server")
         assert result["status"] == "success"
         mock_bedrock_server.start.assert_called_once()
-
-    @patch("bedrock_server_manager.api.server.launch_detached_process")
-    def test_start_server_detached(
-        self, mock_launch, mock_get_server_instance, mock_bedrock_server
-    ):
-        mock_launch.return_value = 12345
-        result = start_server("test-server", mode="detached")
-        assert result["status"] == "success"
-        assert result["pid"] == 12345
-        mock_launch.assert_called_once()
 
     def test_start_server_already_running(
         self, mock_get_server_instance, mock_bedrock_server
@@ -125,7 +115,7 @@ class TestServerLifecycle:
         result = restart_server("test-server")
         assert result["status"] == "success"
         mock_stop.assert_called_once_with("test-server")
-        mock_start.assert_called_once_with("test-server", mode="detached")
+        mock_start.assert_called_once_with("test-server")
 
 
 class TestSendCommand:

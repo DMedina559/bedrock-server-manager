@@ -25,7 +25,7 @@ def test_server_start_success(runner):
         result = runner.invoke(server, ["start", "-s", "test-server"])
 
         assert result.exit_code == 0
-        mock_start.assert_called_once_with("test-server", "detached")
+        mock_start.assert_called_once_with("test-server")
         mock_handle_response.assert_called_once()
 
 

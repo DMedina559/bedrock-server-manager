@@ -69,7 +69,7 @@ class TestConcretePlugin:
         hooks = [
             ("on_load", ()),
             ("on_unload", ()),
-            ("before_server_start", ("server1", "detached")),
+            ("before_server_start", ("server1",)),
             ("after_server_start", ("server1", {"status": "success"})),
             ("before_command_send", ("server1", "say hello")),
             ("after_command_send", ("server1", "say hello", {"status": "success"})),
