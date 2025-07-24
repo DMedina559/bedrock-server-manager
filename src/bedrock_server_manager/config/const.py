@@ -46,6 +46,7 @@ DEFAULT_ENABLED_PLUGINS = [
     "update_before_start",
     "server_lifecycle_notifications",
     "world_operation_notifications",
+    "autostart_plugin",
 ]
 
 # Define which keyword arguments identify a unique instance of a standard event.
