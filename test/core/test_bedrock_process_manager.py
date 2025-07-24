@@ -154,3 +154,27 @@ def test_get_server_process_not_found(mock_thread):
 
     # Assert
     assert process is None
+
+
+@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
+def test_server_restart_failsafe(mock_thread):
+    # Arrange
+    manager = BedrockProcessManager()
+    server_name = "test_server"
+    manager.failure_counts[server_name] = 3
+
+    mock_settings = MagicMock()
+    mock_settings.get.return_value = 3
+
+    with (
+        patch(
+            "bedrock_server_manager.core.bedrock_process_manager.get_settings_instance",
+            return_value=mock_settings,
+        ),
+        patch.object(manager, "start_server") as mock_start_server,
+    ):
+        # Act
+        manager._try_restart_server(server_name)
+
+        # Assert
+        mock_start_server.assert_not_called()

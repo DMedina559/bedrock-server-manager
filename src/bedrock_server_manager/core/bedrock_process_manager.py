@@ -26,6 +26,7 @@ class BedrockProcessManager:
         if not hasattr(self, "initialized"):
             self.servers: Dict[str, subprocess.Popen] = {}
             self.intentionally_stopped: Dict[str, bool] = {}
+            self.failure_counts: Dict[str, int] = {}
             self.monitoring_thread = threading.Thread(
                 target=self._monitor_servers, daemon=True
             )
@@ -106,6 +107,9 @@ class BedrockProcessManager:
                 if process.poll() is not None:
                     # Server has crashed
                     if not self.intentionally_stopped.get(server_name, False):
+                        self.failure_counts[server_name] = (
+                            self.failure_counts.get(server_name, 0) + 1
+                        )
                         del self.servers[server_name]
                         self._try_restart_server(server_name)
                     else:
@@ -114,18 +118,16 @@ class BedrockProcessManager:
 
     def _try_restart_server(self, server_name: str):
         max_retries = get_settings_instance().get("SERVER_MAX_RESTART_RETRIES", 3)
-        for i in range(max_retries):
-            try:
-                print(
-                    f"Attempting to restart server '{server_name}' (Attempt {i+1}/{max_retries})"
-                )
-                self.start_server(server_name)
-                print(f"Server '{server_name}' restarted successfully.")
-                return
-            except ServerStartError as e:
-                print(f"Failed to restart server '{server_name}': {e}")
-                time.sleep(5)
-        print(f"Failed to restart server '{server_name}' after {max_retries} attempts.")
+        failure_count = self.failure_counts.get(server_name, 0)
+
+        if failure_count >= max_retries:
+            return
+
+        try:
+            self.start_server(server_name)
+            self.failure_counts[server_name] = 0  # Reset on success
+        except ServerStartError as e:
+            time.sleep(5)
 
 
 def get_bedrock_process_manager() -> BedrockProcessManager:
