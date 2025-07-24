@@ -564,16 +564,12 @@ class PluginManager:
             self.plugins.clear()
 
         # Clear any previously collected commands and routers
-        self.plugin_cli_commands.clear()
-        logger.debug("Cleared previously collected plugin CLI commands.")
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared previously collected plugin FastAPI routers.")
         self.plugin_template_paths.clear()
         logger.debug("Cleared previously collected plugin template paths.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared previously collected plugin static mounts.")
-        self.plugin_cli_menu_items.clear()
-        logger.debug("Cleared previously collected plugin CLI menu items.")
 
         loaded_plugin_count = 0
         for plugin_name, config_data in self.plugin_config.items():
@@ -746,6 +742,42 @@ class PluginManager:
             f"{len(self.plugin_template_paths)} total template paths, "
             f"{len(self.plugin_static_mounts)} total static mounts, and "
         )
+
+    def unload_plugins(self):
+        """Unloads all currently active plugins.
+
+        This method provides a way to refresh the plugin system without restarting
+        the entire application. It involves:
+
+            1.  Dispatching the ``on_unload`` event to all currently loaded plugins
+                (via :meth:`.dispatch_event`).
+            2.  Clearing all registered custom event listeners from
+                ``self.custom_event_listeners`` (as the plugins that registered
+                them are being unloaded).
+        """
+        logger.info("--- Unloading all plugins ---")
+
+        if self.plugins:
+            logger.info(f"Unloading {len(self.plugins)} currently active plugins...")
+            for plugin_instance in list(self.plugins):
+                logger.debug(
+                    f"Dispatching 'on_unload' event to plugin '{plugin_instance.name}'."
+                )
+                self.dispatch_event(plugin_instance, "on_unload")
+            logger.info(
+                f"Finished dispatching 'on_unload' to {len(self.plugins)} plugins."
+            )
+            self.plugins.clear()
+        else:
+            logger.info("No plugins were active to unload.")
+
+        if self.custom_event_listeners:
+            logger.info(
+                f"Clearing {sum(len(v) for v in self.custom_event_listeners.values())} custom plugin event listeners from {len(self.custom_event_listeners)} event types."
+            )
+            self.custom_event_listeners.clear()
+        else:
+            logger.info("No custom plugin event listeners to clear.")
 
     def get_html_render_routes(self) -> List[Dict[str, str]]:
         """

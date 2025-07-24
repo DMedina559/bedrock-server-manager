@@ -16,6 +16,8 @@ import click
 
 # --- Early and Essential Imports ---
 # This block handles critical import failures gracefully.
+import atexit
+
 try:
     from . import __version__
     from . import api
@@ -30,6 +32,14 @@ try:
     )
 
     global_api_plugin_manager = get_plugin_manager_instance()
+
+    def shutdown_hooks():
+        from .api.utils import stop_all_servers
+
+        stop_all_servers()
+        global_api_plugin_manager.unload_plugins()
+
+    atexit.register(shutdown_hooks)
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)

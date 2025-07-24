@@ -228,6 +228,16 @@ def get_system_and_app_info() -> Dict[str, Any]:
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
+def stop_all_servers():
+    """Stops all running servers."""
+    logger.info("API: Stopping all servers...")
+    servers_data, _ = get_manager_instance().get_servers_data()
+    for server_data in servers_data:
+        server_name = server_data.get("name")
+        if server_name and server_data.get("status") == "running":
+            api_stop_server(server_name)
+
+
 @contextmanager
 def server_lifecycle_manager(
     server_name: str,
