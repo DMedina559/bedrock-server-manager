@@ -95,14 +95,12 @@ class PluginManager:
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
-        self.plugin_cli_commands: List[Any] = []
         self.plugin_fastapi_routers: List[Any] = []
         self.html_render_tag = "plugin-ui"  # Tag for HTML rendering in FastAPI
         self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
-        self.plugin_cli_menu_items: List[Dict[str, Any]] = []  # For dynamic CLI menus
 
         for directory in self.plugin_dirs:
             try:
