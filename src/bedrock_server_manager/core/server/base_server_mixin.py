@@ -17,7 +17,6 @@ from typing import Optional, Any
 from functools import cached_property
 
 # Local application imports.
-from ...config import EXPATH as CONST_EXPATH
 from ..system import base as system_base
 from ...instances import get_settings_instance
 from ...config.settings import Settings
@@ -116,17 +115,6 @@ class BedrockServerBaseMixin:
             f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from: {self.settings.config_path}"
         )
 
-        # Determine the path to the main application executable.
-        if manager_expath:
-            self.manager_expath: str = manager_expath
-        else:
-            self.manager_expath: str = CONST_EXPATH
-            if not self.manager_expath:
-                self.logger.warning(
-                    "manager_expath not provided and const.EXPATH is not set. "
-                    "Some features (like systemd service creation) may not work."
-                )
-
         # Resolve critical paths from settings.
         _base_dir_val = self.settings.get("paths.servers")
         if not _base_dir_val:
@@ -155,13 +143,6 @@ class BedrockServerBaseMixin:
 
         # For process resource monitoring.
         self._resource_monitor = system_base.ResourceMonitor()
-
-        # For managing a server process started in the foreground on Windows (used by ProcessMixin).
-        self._windows_popen_process: Optional[subprocess.Popen] = None
-        self._windows_pipe_listener_thread: Optional[threading.Thread] = None
-        self._windows_pipe_shutdown_event: Optional[threading.Event] = None
-        self._windows_stdout_handle: Optional[Any] = None
-        self._windows_pid_file_path_managed: Optional[str] = None
 
         self.logger.debug(
             f"BedrockServerBaseMixin initialized for '{self.server_name}' "

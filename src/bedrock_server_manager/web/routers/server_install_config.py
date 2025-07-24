@@ -1147,8 +1147,8 @@ async def configure_service_api_route(
 
     Calls :func:`~bedrock_server_manager.api.system.set_autoupdate` for the
     autoupdate flag and
-    :func:`~bedrock_server_manager.api.system.create_server_service` for the
-    autostart flag (which implicitly handles service creation/enable/disable).
+    :func:`~bedrock_server_manager.api.system.set_autostart` for the
+    autostart flag.
 
     - **server_name**: Path parameter, validated by `validate_server_exists`.
     - **Request body**: Expects a :class:`.ServiceUpdatePayload`.
@@ -1216,31 +1216,15 @@ async def configure_service_api_route(
 
         # Handle autostart
         if payload.autostart is not None:
-            if current_os in ["Linux", "Windows"]:
-                result_autostart = system_api.create_server_service(
-                    server_name, payload.autostart
-                )
-                if result_autostart.get("status") == "success":
-                    messages.append("Autostart setting applied successfully.")
-                else:
-                    error_message = result_autostart.get("message", "").lower()
-                    if (
-                        "permissions" in error_message
-                        or "administrator" in error_message
-                    ):
-                        warning_msg = f"Could not set autostart due to a permissions error (requires admin rights)."
-                        warnings.append(warning_msg)
-                        logger.warning(
-                            f"API: Skipping autostart for '{server_name}': {warning_msg}"
-                        )
-                    else:
-                        # For other errors, raise to be caught below
-                        raise BSMError(
-                            f"Failed to set autostart: {result_autostart.get('message')}"
-                        )
+            result_autostart = system_api.set_autostart(
+                server_name, str(payload.autostart).lower()
+            )
+            if result_autostart.get("status") == "success":
+                messages.append("autostart setting applied successfully.")
             else:
-                warnings.append(
-                    f"Autostart configuration ignored: unsupported OS ({current_os})."
+                # Raise to be caught by the generic error handlers below
+                raise BSMError(
+                    f"Failed to set autostart: {result_autostart.get('message')}"
                 )
 
         # Combine messages and warnings for the final response

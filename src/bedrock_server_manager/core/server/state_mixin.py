@@ -120,7 +120,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 "status": "UNKNOWN",
             },
             "settings": {
-                "autoupdate": False,  # Default to boolean
+                "autoupdate": False,
+                "autostart": False,
                 "target_version": "UNKNOWN",
             },
             "custom": {},
@@ -522,6 +523,57 @@ class ServerStateMixin(BedrockServerBaseMixin):
             key="settings.autoupdate", operation="write", value=value
         )
         self.logger.info(f"Autoupdate for '{self.server_name}' set to '{value}'.")
+
+    def get_autostart(self) -> bool:
+        """Retrieves the 'autostart' setting from the server's JSON config.
+
+        Accesses ``settings.autostart`` via :meth:`._manage_json_config`.
+
+        Returns:
+            bool: The autostart status (``True`` or ``False``). Defaults to ``False``
+            if the setting is not found or an error occurs during retrieval.
+        """
+        self.logger.debug(f"Getting autostart value for server '{self.server_name}'.")
+        try:
+            autostart_setting = self._manage_json_config(
+                key="settings.autostart", operation="read"
+            )
+            if isinstance(autostart_setting, bool):
+                return autostart_setting
+            # Handle string "true"/"false" for robustness if manually edited or from old versions
+            if isinstance(autostart_setting, str):
+                return autostart_setting.lower() == "true"
+            self.logger.warning(
+                f"autostart setting for '{self.server_name}' is not a boolean, found: {autostart_setting}. Defaulting to False."
+            )
+            return False  # Default if not found or invalid type
+        except Exception as e:
+            self.logger.error(
+                f"Error getting autostart setting for '{self.server_name}': {e}. Defaulting to False.",
+                exc_info=True,
+            )
+            return False
+
+    def set_autostart(self, value: bool) -> None:
+        """Sets the 'autostart' setting in the server's JSON config.
+
+        Updates ``settings.autostart`` via :meth:`._manage_json_config`.
+
+        Args:
+            value (bool): The boolean value to set for autostart.
+
+        Raises:
+            UserInputError: If `value` is not a boolean.
+        """
+        self.logger.debug(f"Setting autostart for '{self.server_name}' to '{value}'.")
+        if not isinstance(value, bool):
+            raise UserInputError(
+                f"autostart value for '{self.server_name}' must be a boolean, got {type(value).__name__}."
+            )
+        self._manage_json_config(
+            key="settings.autostart", operation="write", value=value
+        )
+        self.logger.info(f"autostart for '{self.server_name}' set to '{value}'.")
 
     def get_status_from_config(self) -> str:
         """Retrieves the stored 'status' from the server's JSON config.
