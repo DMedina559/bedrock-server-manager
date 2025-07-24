@@ -976,16 +976,12 @@ class PluginManager:
             logger.info("No custom plugin event listeners to clear.")
 
         # Also clear collected commands and routers on full reload
-        self.plugin_cli_commands.clear()
-        logger.debug("Cleared collected plugin CLI commands during reload.")
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared collected plugin FastAPI routers during reload.")
         self.plugin_template_paths.clear()
         logger.debug("Cleared collected plugin template paths during reload.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared collected plugin static mounts during reload.")
-        self.plugin_cli_menu_items.clear()
-        logger.debug("Cleared collected plugin CLI menu items during reload.")
 
         logger.info(
             "Re-running plugin discovery, synchronization, and loading process..."
