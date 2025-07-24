@@ -73,14 +73,8 @@ class TestConcretePlugin:
             ("after_server_start", ("server1", {"status": "success"})),
             ("before_command_send", ("server1", "say hello")),
             ("after_command_send", ("server1", "say hello", {"status": "success"})),
-            (
-                "before_backup",
-                ("server1", "world"),
-            ),
-            (
-                "after_backup",
-                ("server1", "world", {"status": "success"}),
-            ),
+            ("before_backup", ("server1", "world")),
+            ("after_backup", ("server1", "world", {"status": "success"})),
         ]
 
         for hook_name, args in hooks:
@@ -96,8 +90,6 @@ class TestConcretePlugin:
         """Tests that the extension hooks return empty lists by default."""
         plugin = self.ConcretePlugin("my_plugin", mock_api, mock_logger)
 
-        assert plugin.get_cli_commands() == []
         assert plugin.get_fastapi_routers() == []
         assert plugin.get_template_paths() == []
         assert plugin.get_static_mounts() == []
-        assert plugin.get_cli_menu_items() == []

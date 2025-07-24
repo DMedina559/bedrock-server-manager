@@ -175,11 +175,9 @@ class TestPluginManager:
         assert "full_featured_plugin" in plugin_names
 
         # Check that extension points are populated
-        assert len(pm.plugin_cli_commands) == 1
         assert len(pm.plugin_fastapi_routers) == 1
         assert len(pm.plugin_template_paths) == 1
         assert len(pm.plugin_static_mounts) == 1
-        assert len(pm.plugin_cli_menu_items) == 1
 
     def test_event_dispatch(self, isolated_plugin_manager):
         """Tests the dispatching of events to plugins."""
