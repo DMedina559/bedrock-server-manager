@@ -22,10 +22,8 @@ class AutostartServers(PluginBase):
         servers = result["servers"]
         for server in servers:
             server_name = server["name"]
-            result = self.api.get_server_setting(
-                server_name, "settings.autostart"
-            )
-            server_settings = result["value"] 
+            result = self.api.get_server_setting(server_name, "settings.autostart")
+            server_settings = result["value"]
 
             if server_settings:
                 self.logger.info(
