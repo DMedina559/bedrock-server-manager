@@ -23,27 +23,14 @@ import platform
 import shutil
 import subprocess
 
-# Guarded import for Windows-specific functionality
-if platform.system() == "Windows":
-    try:
-        import win32serviceutil
-
-        PYWIN32_AVAILABLE = True
-    except ImportError:
-        PYWIN32_AVAILABLE = False
-else:
-    PYWIN32_AVAILABLE = False
-
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
 # Local application imports.
 from ..instances import get_server_instance, get_plugin_manager_instance
-from ..config import EXPATH
 from ..config import API_COMMAND_BLACKLIST
 from ..core.system import (
-    launch_detached_process,
     get_bedrock_launcher_pid_file_path,
     remove_pid_file_if_exists,
 )
@@ -304,12 +291,7 @@ def stop_server(server_name: str) -> Dict[str, str]:
     """Stops the specified Bedrock server.
 
     Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
-    The method prioritizes stopping via the OS-native service manager (systemd on
-    Linux, Windows Services on Windows) if the server's service is active.
-    If not managed by a service or if service stop fails, it falls back to a
-    direct stop attempt using
-    :meth:`~.core.bedrock_server.BedrockServer.stop`, which involves sending
-    a "stop" command and then potentially forcefully terminating the process.
+    The method used for stopping :meth:`~.core.bedrock_server.BedrockServer.stop`, which involves gracefully shutdown, with a forceful fallback.
 
     Args:
         server_name (str): The name of the server to stop.
@@ -349,47 +331,6 @@ def stop_server(server_name: str) -> Dict[str, str]:
             }
             return result
 
-        # --- OS-Specific Service Stop (Preferred Method) ---
-        service_stop_initiated = False
-        if platform.system() == "Linux" and server.is_service_active():
-            logger.debug(f"API: Attempting to stop '{server_name}' using systemd...")
-            try:
-                systemctl_cmd_path = shutil.which("systemctl")
-                subprocess.run(
-                    [
-                        systemctl_cmd_path,
-                        "--user",
-                        "stop",
-                        server.systemd_service_name_full,
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                service_stop_initiated = True
-                result = {
-                    "status": "success",
-                    "message": f"Server '{server_name}' stop initiated via systemd.",
-                }
-            except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                logger.warning(
-                    f"API: Stopping via systemd failed: {e}. Falling back to direct stop."
-                )
-        elif platform.system() == "Windows" and server.is_service_active():
-            logger.debug(
-                f"API: Attempting to stop '{server_name}' via Windows Service..."
-            )
-            try:
-                win32serviceutil.StopService(server.windows_service_name)
-                service_stop_initiated = True
-                result = {
-                    "status": "success",
-                    "message": f"Server '{server_name}' stop initiated via Windows Service.",
-                }
-            except Exception as e:
-                logger.warning(
-                    f"API: Stopping via Windows Service failed: {e}. Falling back to direct stop."
-                )
         server.stop()
         logger.info(f"API: Server '{server_name}' stopped successfully.")
         result = {
@@ -636,7 +577,6 @@ def delete_server_data(
     - The server's main installation directory.
     - The server's JSON configuration subdirectory.
     - The server's entire backup directory.
-    - The server's systemd user service file (Linux) or Windows Service entry.
     - The server's PID file.
 
     Triggers ``before_delete_server_data`` and ``after_delete_server_data`` plugin events.
@@ -687,18 +627,6 @@ def delete_server_data(
                 return result
 
             logger.info(f"API: Server '{server_name}' stopped.")
-
-        # Attempt to remove the associated system service before deleting files.
-        if server.check_service_exists():
-            logger.info(f"API: Removing system service for '{server_name}'...")
-            try:
-                server.disable_service()
-                server.remove_service()
-                logger.info(f"API: System service for '{server_name}' removed.")
-            except BSMError as e:
-                logger.warning(
-                    f"API: Could not remove system service for '{server_name}': {e}. Continuing with data deletion."
-                )
 
         logger.debug(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
