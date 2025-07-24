@@ -321,16 +321,12 @@ def test_get_server_permissions_api_route(mock_get_permissions, client):
 @patch(
     "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate"
 )
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.system_api.create_server_service"
-)
-def test_configure_service_api_route(mock_create_service, mock_set_autoupdate, client):
+def test_configure_service_api_route(mock_set_autoupdate, client):
     """Test the configure_service_api_route with a successful response."""
     mock_set_autoupdate.return_value = {"status": "success"}
-    mock_create_service.return_value = {"status": "success"}
     response = client.post(
         "/api/server/test-server/service/update",
-        json={"autoupdate": True, "autostart": True},
+        json={"autoupdate": True},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"

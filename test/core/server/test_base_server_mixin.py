@@ -29,13 +29,11 @@ def test_initialization(base_server_mixin_fixture):
     server = BedrockServerBaseMixin(
         server_name=server_name,
         settings_instance=settings,
-        manager_expath=manager_expath,
     )
 
     assert server.server_name == server_name
     assert server.settings == settings
     assert server.logger is not None
-    assert server.manager_expath == manager_expath
     assert server.base_dir == os.path.join(temp_dir, "servers")
     assert server.server_dir == os.path.join(temp_dir, "servers", server_name)
     assert server.app_config_dir == os.path.join(temp_dir, "config")
@@ -141,7 +139,6 @@ def test_server_properties_path(base_server_mixin_fixture):
     server = BedrockServerBaseMixin(
         server_name=server_name,
         settings_instance=settings,
-        manager_expath=manager_expath,
     )
     expected_path = os.path.join(server.server_dir, "server.properties")
     assert server.server_properties_path == expected_path
@@ -152,7 +149,6 @@ def test_allowlist_json_path(base_server_mixin_fixture):
     server = BedrockServerBaseMixin(
         server_name=server_name,
         settings_instance=settings,
-        manager_expath=manager_expath,
     )
     expected_path = os.path.join(server.server_dir, "allowlist.json")
     assert server.allowlist_json_path == expected_path
@@ -163,23 +159,9 @@ def test_permissions_json_path(base_server_mixin_fixture):
     server = BedrockServerBaseMixin(
         server_name=server_name,
         settings_instance=settings,
-        manager_expath=manager_expath,
     )
     expected_path = os.path.join(server.server_dir, "permissions.json")
     assert server.permissions_json_path == expected_path
-
-
-def test_init_with_missing_manager_expath(base_server_mixin_fixture):
-    temp_dir, server_name, settings, _ = base_server_mixin_fixture
-    with patch(
-        "bedrock_server_manager.core.server.base_server_mixin.CONST_EXPATH", ""
-    ) as mock_const_expath:
-        server = BedrockServerBaseMixin(
-            server_name=server_name,
-            settings_instance=settings,
-            manager_expath=None,
-        )
-        assert server.manager_expath == ""
 
 
 def test_all_cached_properties(base_server_mixin_fixture):
@@ -187,7 +169,6 @@ def test_all_cached_properties(base_server_mixin_fixture):
     server = BedrockServerBaseMixin(
         server_name=server_name,
         settings_instance=settings,
-        manager_expath=manager_expath,
     )
 
     # bedrock_executable_name

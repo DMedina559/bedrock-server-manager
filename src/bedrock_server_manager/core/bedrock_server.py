@@ -49,8 +49,6 @@ class BedrockServer(
         server_name (str): The unique name identifying this server instance.
         settings (:class:`~bedrock_server_manager.config.settings.Settings`):
             The application's global settings object.
-        manager_expath (Optional[str]): Path to the main BSM executable/script,
-            used for tasks like service file generation.
         base_dir (str): The base directory where all server installation
             directories reside (from settings: ``paths.servers``).
         server_dir (str): The full path to this specific server's installation
@@ -129,7 +127,6 @@ class BedrockServer(
     def __init__(
         self,
         server_name: str,
-        manager_expath: Optional[str] = None,
     ) -> None:
         """Initializes a BedrockServer instance.
 
@@ -151,10 +148,6 @@ class BedrockServer(
                 An instance of the application's global :class:`~bedrock_server_manager.config.settings.Settings`
                 object. If not provided, the :class:`~.core.server.base_server_mixin.BedrockServerBaseMixin`
                 will attempt to load it.
-            manager_expath (Optional[str]): The full path to the main Bedrock Server
-                Manager script or executable. This path is used by certain features,
-                such as generating systemd service files that need to invoke the BSM
-                application.
         """
         super().__init__(
             server_name=server_name,
@@ -175,7 +168,7 @@ class BedrockServer(
         """
         return (
             f"<BedrockServer(name='{self.server_name}', os='{self.os_type}', "
-            f"dir='{self.server_dir}', manager_expath='{self.manager_expath}')>"
+            f"dir='{self.server_dir}')>"
         )
 
     def get_summary_info(self) -> Dict[str, Any]:

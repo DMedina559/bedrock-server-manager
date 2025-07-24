@@ -42,24 +42,17 @@ class BedrockServerBaseMixin:
         server_name (str): The unique name of this server instance.
         settings (Settings): The application's settings object.
         logger (logging.Logger): A logger instance for this class.
-        manager_expath (str): Path to the main application executable/script.
         base_dir (str): The root directory where all server instances are stored.
         server_dir (str): The specific directory for this server instance's files.
         app_config_dir (str): The application's main configuration directory.
         os_type (str): The current operating system type (e.g., "Windows", "Linux").
         _resource_monitor (system_base.ResourceMonitor): Singleton instance for monitoring resources.
-        _windows_popen_process (Optional[subprocess.Popen]): Stores Popen object for foreground Windows server.
-        _windows_pipe_listener_thread (Optional[threading.Thread]): Thread for Windows IPC.
-        _windows_pipe_shutdown_event (Optional[threading.Event]): Event to shut down Windows IPC.
-        _windows_stdout_handle (Optional[Any]): File handle for Windows server output.
-        _windows_pid_file_path_managed (Optional[str]): Path to PID file for Windows foreground server.
     """
 
     def __init__(
         self,
         server_name: str,
         settings_instance: Optional[Settings] = None,
-        manager_expath: Optional[str] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -73,12 +66,6 @@ class BedrockServerBaseMixin:
                 If ``None``, a new global ``Settings`` instance is used. This allows
                 for dependency injection, particularly useful for testing.
                 Defaults to ``None``.
-            manager_expath (Optional[str], optional): An optional path to the main
-                application executable or script (e.g., path to `bsm.py` or the
-                compiled executable). This is used for operations that require the
-                application to call itself as a subprocess (like creating systemd
-                services or Windows scheduled tasks). If ``None``, it defaults to
-                the value of :const:`~.config.const.EXPATH`. Defaults to ``None``.
             *args (Any): Variable length argument list, passed to `super().__init__`
                 to support cooperative multiple inheritance.
             **kwargs (Any): Arbitrary keyword arguments, passed to `super().__init__`

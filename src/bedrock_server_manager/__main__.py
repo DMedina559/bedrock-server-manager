@@ -47,7 +47,6 @@ except ImportError as e:
 from .cli import (
     cleanup,
     generate_password,
-    utils,
     web,
 )
 
@@ -85,7 +84,6 @@ def cli(ctx: click.Context):
         log_separator(logger, app_name=app_name_title, app_version=__version__)
         logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
-        bsm = get_manager_instance()
         startup_checks(app_name_title, __version__)
 
         # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
@@ -107,7 +105,7 @@ def cli(ctx: click.Context):
 
     if ctx.invoked_subcommand is None:
         logger.info("No command specified.")
-        sys.exit()
+        sys.exit(1)
 
 
 # --- Command Assembly ---
@@ -128,6 +126,7 @@ def _add_commands_to_cli():
     cli.add_command(
         generate_password.generate_password_hash_command, name="generate-password"
     )
+
 
 # Call the assembly function to build the CLI with core and plugin commands
 _add_commands_to_cli()

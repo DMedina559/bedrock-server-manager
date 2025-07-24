@@ -3,10 +3,7 @@ from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.system import (
     get_bedrock_process_info,
-    create_server_service,
     set_autoupdate,
-    enable_server_service,
-    disable_server_service,
 )
 from bedrock_server_manager.error import UserInputError
 
@@ -56,33 +53,3 @@ class TestSystemAPI:
     def test_set_autoupdate_invalid(self, mock_get_server_instance):
         with pytest.raises(UserInputError):
             set_autoupdate("test-server", "invalid")
-
-    def test_create_server_service_autostart(
-        self, mock_get_server_instance, mock_bedrock_server
-    ):
-        result = create_server_service("test-server", autostart=True)
-        assert result["status"] == "success"
-        mock_bedrock_server.create_service.assert_called_once()
-        mock_bedrock_server.enable_service.assert_called_once()
-        mock_bedrock_server.disable_service.assert_not_called()
-
-    def test_create_server_service_no_autostart(
-        self, mock_get_server_instance, mock_bedrock_server
-    ):
-        result = create_server_service("test-server", autostart=False)
-        assert result["status"] == "success"
-        mock_bedrock_server.create_service.assert_called_once()
-        mock_bedrock_server.disable_service.assert_called_once()
-        mock_bedrock_server.enable_service.assert_not_called()
-
-    def test_enable_server_service(self, mock_get_server_instance, mock_bedrock_server):
-        result = enable_server_service("test-server")
-        assert result["status"] == "success"
-        mock_bedrock_server.enable_service.assert_called_once()
-
-    def test_disable_server_service(
-        self, mock_get_server_instance, mock_bedrock_server
-    ):
-        result = disable_server_service("test-server")
-        assert result["status"] == "success"
-        mock_bedrock_server.disable_service.assert_called_once()
