@@ -14,6 +14,16 @@ async def get_task_status(
 ):
     """
     Retrieves the status of a background task.
+
+    Args:
+        task_id (str): The ID of the task to retrieve.
+        current_user (Dict[str, Any], optional): The current authenticated user. Defaults to Depends(get_current_user).
+
+    Raises:
+        HTTPException: If the task is not found.
+
+    Returns:
+        Dict[str, Any]: The status of the task.
     """
     task = tasks.get_task(task_id)
     if not task:

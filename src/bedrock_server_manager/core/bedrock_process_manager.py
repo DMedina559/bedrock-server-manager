@@ -12,6 +12,12 @@ from ..instances import get_server_instance, get_settings_instance
 
 
 class BedrockProcessManager:
+    """
+    Manages Bedrock server processes, including starting, stopping, and monitoring.
+
+    This class is a singleton to ensure only one instance manages all server processes.
+    """
+
     _instance = None
     _lock = threading.Lock()
 
@@ -23,6 +29,7 @@ class BedrockProcessManager:
         return cls._instance
 
     def __init__(self):
+        """Initializes the BedrockProcessManager."""
         if not hasattr(self, "initialized"):
             self.servers: Dict[str, subprocess.Popen] = {}
             self.intentionally_stopped: Dict[str, bool] = {}
@@ -34,6 +41,15 @@ class BedrockProcessManager:
             self.initialized = True
 
     def start_server(self, server_name: str):
+        """
+        Starts a Bedrock server.
+
+        Args:
+            server_name (str): The name of the server to start.
+
+        Raises:
+            ServerStartError: If the server is already running or fails to start.
+        """
         if server_name in self.servers and self.servers[server_name].poll() is None:
             raise ServerStartError(f"Server '{server_name}' is already running.")
 
@@ -64,6 +80,15 @@ class BedrockProcessManager:
             raise ServerStartError(f"Failed to start server '{server_name}': {e}")
 
     def stop_server(self, server_name: str):
+        """
+        Stops a Bedrock server.
+
+        Args:
+            server_name (str): The name of the server to stop.
+
+        Raises:
+            ServerNotRunningError: If the server is not running.
+        """
         if (
             server_name not in self.servers
             or self.servers[server_name].poll() is not None
@@ -84,6 +109,16 @@ class BedrockProcessManager:
         self.intentionally_stopped[server_name] = True
 
     def send_command(self, server_name: str, command: str):
+        """
+        Sends a command to a running Bedrock server.
+
+        Args:
+            server_name (str): The name of the server.
+            command (str): The command to send.
+
+        Raises:
+            ServerNotRunningError: If the server is not running.
+        """
         if (
             server_name not in self.servers
             or self.servers[server_name].poll() is not None
@@ -95,9 +130,19 @@ class BedrockProcessManager:
         process.stdin.flush()
 
     def get_server_process(self, server_name: str) -> Optional[subprocess.Popen]:
+        """
+        Gets the process object for a running server.
+
+        Args:
+            server_name (str): The name of the server.
+
+        Returns:
+            Optional[subprocess.Popen]: The server's process object, or None if not found.
+        """
         return self.servers.get(server_name)
 
     def _monitor_servers(self):
+        """Monitors server processes and restarts them if they crash."""
         monitoring_interval = get_settings_instance().get(
             "SERVER_MONITORING_INTERVAL_SEC", 10
         )
@@ -117,6 +162,12 @@ class BedrockProcessManager:
                         del self.intentionally_stopped[server_name]
 
     def _try_restart_server(self, server_name: str):
+        """
+        Tries to restart a crashed server.
+
+        Args:
+            server_name (str): The name of the server to restart.
+        """
         max_retries = get_settings_instance().get("SERVER_MAX_RESTART_RETRIES", 3)
         failure_count = self.failure_counts.get(server_name, 0)
 
@@ -131,4 +182,10 @@ class BedrockProcessManager:
 
 
 def get_bedrock_process_manager() -> BedrockProcessManager:
+    """
+    Returns the singleton instance of the BedrockProcessManager.
+
+    Returns:
+        BedrockProcessManager: The singleton instance.
+    """
     return BedrockProcessManager()

@@ -32,6 +32,12 @@ These are the backend core classes used in the Bedrock Server Manager, used by t
 
 .. toctree::
    :maxdepth: 2
+   :caption: Bedrock Process Manager Class
+
+   bedrock_process_manager
+
+.. toctree::
+   :maxdepth: 2
    :caption: Resource Monitor Class
 
    resource_monitor
