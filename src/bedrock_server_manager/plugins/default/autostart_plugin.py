@@ -22,9 +22,11 @@ class AutostartServers(PluginBase):
         servers = result["servers"]
         for server in servers:
             server_name = server["name"]
-            server_settings = self.api.get_server_setting(
+            result = self.api.get_server_setting(
                 server_name, "settings.autostart"
             )
+            server_settings = result["value"] 
+
             if server_settings:
                 self.logger.info(
                     f"Server '{server_name}' has autostart enabled, starting it now."
