@@ -34,11 +34,25 @@ class BedrockProcessManager:
             self.servers: Dict[str, subprocess.Popen] = {}
             self.intentionally_stopped: Dict[str, bool] = {}
             self.failure_counts: Dict[str, int] = {}
+            self.start_times: Dict[str, float] = {}
             self.monitoring_thread = threading.Thread(
                 target=self._monitor_servers, daemon=True
             )
             self.monitoring_thread.start()
             self.initialized = True
+
+    def add_server(self, server_name: str, process: subprocess.Popen):
+        """
+        Adds a server to be managed by the process manager.
+
+        Args:
+            server_name (str): The name of the server.
+            process (subprocess.Popen): The server's process object.
+        """
+        self.servers[server_name] = process
+        self.intentionally_stopped[server_name] = False
+        self.start_times[server_name] = time.time()
+        # Do not reset failure count here, only after a successful start
 
     def start_server(self, server_name: str):
         """
@@ -71,8 +85,7 @@ class BedrockProcessManager:
                 )
 
             core_process.write_pid_to_file(pid_file_path, process.pid)
-            self.servers[server_name] = process
-            self.intentionally_stopped[server_name] = False
+            self.add_server(server_name, process)
             return process
         except FileNotFoundError:
             raise ServerStartError(f"Executable not found for server '{server_name}'.")
@@ -176,9 +189,18 @@ class BedrockProcessManager:
 
         try:
             self.start_server(server_name)
-            self.failure_counts[server_name] = 0  # Reset on success
         except ServerStartError as e:
             time.sleep(5)
+
+    def reset_failure_count(self, server_name: str):
+        """
+        Resets the failure count for a server.
+
+        Args:
+            server_name (str): The name of the server.
+        """
+        if server_name in self.failure_counts:
+            self.failure_counts[server_name] = 0
 
 
 def get_bedrock_process_manager() -> BedrockProcessManager:
