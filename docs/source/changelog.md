@@ -28,6 +28,33 @@ Key changes to expect in **BSM 3.6.0** include:
 I understand that frequent breaking changes can be frustrating. Many of the recent updates have involved significant refactoring to evolve BSM from its simple script origins into the robust management tool it's become. This upcoming 3.6.0 release represents the final major step in this architectural overhaul. These changes will create a more stable and feature-rich foundation for the future of Bedrock Server Manager.
 ```
 
+## 3.6.0 (WIP)
+
+```{warning}
+Requires the new CLI:
+
+`pip install bedrock-server-manager[cli]`
+
+Use the `bsm-api-client` command to interact with the web server
+
+View all commands at: [BSM API Commands](https://bedrock-server-manager.readthedocs.io/en/latest/cli/api_client_commands.html)
+```
+
+```{warning}
+Stop servers before updating!
+```
+1. Moved most of the CLI commands to the `bsm-api-client` package
+2. Revamped server start methods
+    - Now uses a generic process open instead of complex platform specific named pipe methods
+    - System Services for individual servers will no longer work, is now handled by the autostart_plugin during BSM startup
+    - Requires the BSM app to always be running (A System Service for the web server is recommended `bedrock-server-manager web service configure`)
+3. Added crash restarts
+    - Bedrock servers will now restart if they crashed
+4. BREAKING CHANGE: Removed CLI Plugin support
+5. Added gracefull shutdown for BSM
+    - Shuts down all running bedrock servers
+    - Unloads all plugins
+
 ## 3.5.7
 ```{tip}
 Experience the new CLI before the 3.6.0 now:
