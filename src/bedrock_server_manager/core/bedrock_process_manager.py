@@ -229,7 +229,7 @@ class BedrockProcessManager:
         max_retries = get_settings_instance().get("SERVER_MAX_RESTART_RETRIES", 3)
         failure_count = self.failure_counts.get(server_name, 0)
 
-        if failure_count > max_retries:
+        if failure_count >= max_retries:
             self.logger.critical(
                 f"Server '{server_name}' has reached the maximum restart limit of {max_retries}. Will not attempt to restart again."
             )
