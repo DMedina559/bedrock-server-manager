@@ -8,7 +8,12 @@ import logging
 from typing import Dict, Optional
 
 from ..core.system import process as core_process
-from ..error import ServerNotRunningError, ServerStartError
+from ..error import (
+    BSMError,
+    ServerNotRunningError,
+    ServerStartError,
+    FileOperationError,
+)
 from ..instances import get_server_instance, get_settings_instance
 
 
@@ -233,6 +238,7 @@ class BedrockProcessManager:
             self.logger.critical(
                 f"Server '{server_name}' has reached the maximum restart limit of {max_retries}. Will not attempt to restart again."
             )
+            self.write_error_status(server_name)
             return
 
         self.logger.info(
@@ -245,7 +251,7 @@ class BedrockProcessManager:
             self.logger.critical(
                 f"Failed to restart server '{server_name}': {e}", exc_info=True
             )
-            time.sleep(5)  # Wait before next potential retry
+            time.sleep(5)
 
     def reset_failure_count(self, server_name: str):
         """
@@ -258,12 +264,30 @@ class BedrockProcessManager:
             self.logger.info(f"Resetting failure count for server '{server_name}'.")
             self.failure_counts[server_name] = 0
 
+    def write_error_status(self, server_name: str):
+        """
+        Wites 'ERROR' to server config status.
 
-def get_bedrock_process_manager() -> BedrockProcessManager:
-    """
-    Returns the singleton instance of the BedrockProcessManager.
+        Args:
+            server_name (str): The name of the server to start.
 
-    Returns:
-        BedrockProcessManager: The singleton instance.
-    """
-    return BedrockProcessManager()
+        Raises:
+            ServerStartError: If the server is already running or fails to start.
+        """
+
+        server = get_server_instance(server_name)
+
+        try:
+            server.set_status_in_config("ERROR")
+        except BSMError:
+            self.logger.error(f"Error writing status for server '{server_name}'.")
+            raise FileOperationError(
+                f"Failed to write status for server '{server_name}'."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to write status for server '{server_name}': {e}", exc_info=True
+            )
+            raise ServerStartError(
+                f"Failed to write status for server '{server_name}': {e}"
+            )
