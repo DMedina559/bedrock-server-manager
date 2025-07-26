@@ -1,5 +1,5 @@
 # bedrock_server_manager/core/system/linux.py
-"""Provides Linux-specific implementations for system process and service management.
+"""Provides Linux-specific implementations for system service management.
 
 This module is tailored for Linux environments and focuses on two main areas:
     1.  **Systemd User Service Management**: Functions for creating, enabling,
@@ -7,10 +7,6 @@ This module is tailored for Linux environments and focuses on two main areas:
         are typically used to manage Bedrock servers as background daemons that
         can start on user login. Operations usually involve interaction with
         ``systemctl --user``.
-    2.  **Foreground Process Management with FIFO IPC**: Functions for starting
-        a Bedrock server directly in the foreground, along with mechanisms for
-        Inter-Process Communication (IPC) using a Unix named pipe (FIFO). This
-        allows sending commands to the running foreground server.
 
 Key Functionality Groups:
 
@@ -20,16 +16,6 @@ Key Functionality Groups:
         - :func:`.create_systemd_service_file`
         - :func:`.enable_systemd_service`
         - :func:`.disable_systemd_service`
-    - **Foreground Server Management & IPC** (Linux-specific):
-        - :func:`._linux_start_server`
-        - :func:`._linux_send_command`
-        - :func:`._linux_stop_server`
-        - Internal helpers for FIFO listener threads (:func:`._main_pipe_server_listener_thread`)
-          and OS signal handling (:func:`._handle_os_signals`).
-
-Constants:
-    - :const:`.BEDROCK_EXECUTABLE_NAME`: The typical name of the Bedrock server executable on Linux.
-    - :const:`.PIPE_NAME_TEMPLATE`: Template for FIFO paths used for IPC.
 
 Global State:
     - :data:`._foreground_server_shutdown_event`: A threading event for managing

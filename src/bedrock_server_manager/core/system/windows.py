@@ -1,25 +1,14 @@
 # bedrock_server_manager/core/system/windows.py
-"""Provides Windows-specific implementations for system process and service management.
+"""Provides Windows-specific implementations for system service management.
 
 This module offers functionalities tailored for the Windows operating system,
-primarily focused on managing Bedrock server processes both in the foreground
-and as background Windows Services. It leverages the ``pywin32`` package for
+primarily focused on managing Windows Services. It leverages the ``pywin32`` package for
 many of its operations, and its availability is checked by the
 :const:`PYWIN32_AVAILABLE` flag. Some optional ``pywin32`` modules for cleanup
 are checked via :const:`PYWIN32_HAS_OPTIONAL_MODULES`.
 
 Key functionalities include:
 
-Foreground Process Management:
-
-    - Starting a Bedrock server directly in the foreground with IPC capabilities
-      (:func:`_windows_start_server`).
-    - Sending commands to this foreground server via a named pipe
-      (:func:`_windows_send_command`).
-    - Stopping the foreground server process using its PID
-      (:func:`_windows_stop_server_by_pid`).
-    - Internal mechanisms for named pipe server creation, client handling, and
-      OS signal management for graceful shutdowns.
 
 Windows Service Management (Requires Administrator Privileges):
 
@@ -30,11 +19,6 @@ Windows Service Management (Requires Administrator Privileges):
       (:func:`disable_windows_service`) a service.
     - Deleting a service, including cleanup of associated registry entries like
       performance counters and event log sources (:func:`delete_windows_service`).
-
-The module defines constants like :const:`BEDROCK_EXECUTABLE_NAME` and
-:const:`PIPE_NAME_TEMPLATE`, and uses global variables such as
-:data:`managed_bedrock_servers` and :data:`_foreground_server_shutdown_event`
-to manage the state of servers started directly.
 
 Note:
     Functions interacting with the Windows Service Control Manager (SCM)
