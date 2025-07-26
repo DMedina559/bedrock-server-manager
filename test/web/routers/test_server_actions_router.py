@@ -34,11 +34,13 @@ def client():
     app.dependency_overrides = {}
 
 
-def test_start_server_route(client):
+@patch("bedrock_server_manager.web.routers.server_actions.server_api.start_server")
+def test_start_server_route(mock_start_server, client):
     """Test the start_server_route with a successful response."""
+    mock_start_server.return_value = {"status": "success"}
     response = client.post("/api/server/test-server/start")
-    assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
 
 
 def test_stop_server_route(client):

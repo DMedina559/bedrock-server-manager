@@ -17,7 +17,6 @@ from typing import Optional, Any
 from functools import cached_property
 
 # Local application imports.
-from ...config import EXPATH as CONST_EXPATH
 from ..system import base as system_base
 from ...instances import get_settings_instance
 from ...config.settings import Settings
@@ -43,24 +42,17 @@ class BedrockServerBaseMixin:
         server_name (str): The unique name of this server instance.
         settings (Settings): The application's settings object.
         logger (logging.Logger): A logger instance for this class.
-        manager_expath (str): Path to the main application executable/script.
         base_dir (str): The root directory where all server instances are stored.
         server_dir (str): The specific directory for this server instance's files.
         app_config_dir (str): The application's main configuration directory.
         os_type (str): The current operating system type (e.g., "Windows", "Linux").
         _resource_monitor (system_base.ResourceMonitor): Singleton instance for monitoring resources.
-        _windows_popen_process (Optional[subprocess.Popen]): Stores Popen object for foreground Windows server.
-        _windows_pipe_listener_thread (Optional[threading.Thread]): Thread for Windows IPC.
-        _windows_pipe_shutdown_event (Optional[threading.Event]): Event to shut down Windows IPC.
-        _windows_stdout_handle (Optional[Any]): File handle for Windows server output.
-        _windows_pid_file_path_managed (Optional[str]): Path to PID file for Windows foreground server.
     """
 
     def __init__(
         self,
         server_name: str,
         settings_instance: Optional[Settings] = None,
-        manager_expath: Optional[str] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -74,12 +66,6 @@ class BedrockServerBaseMixin:
                 If ``None``, a new global ``Settings`` instance is used. This allows
                 for dependency injection, particularly useful for testing.
                 Defaults to ``None``.
-            manager_expath (Optional[str], optional): An optional path to the main
-                application executable or script (e.g., path to `bsm.py` or the
-                compiled executable). This is used for operations that require the
-                application to call itself as a subprocess (like creating systemd
-                services or Windows scheduled tasks). If ``None``, it defaults to
-                the value of :const:`~.config.const.EXPATH`. Defaults to ``None``.
             *args (Any): Variable length argument list, passed to `super().__init__`
                 to support cooperative multiple inheritance.
             **kwargs (Any): Arbitrary keyword arguments, passed to `super().__init__`
@@ -116,17 +102,6 @@ class BedrockServerBaseMixin:
             f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from: {self.settings.config_path}"
         )
 
-        # Determine the path to the main application executable.
-        if manager_expath:
-            self.manager_expath: str = manager_expath
-        else:
-            self.manager_expath: str = CONST_EXPATH
-            if not self.manager_expath:
-                self.logger.warning(
-                    "manager_expath not provided and const.EXPATH is not set. "
-                    "Some features (like systemd service creation) may not work."
-                )
-
         # Resolve critical paths from settings.
         _base_dir_val = self.settings.get("paths.servers")
         if not _base_dir_val:
@@ -155,13 +130,6 @@ class BedrockServerBaseMixin:
 
         # For process resource monitoring.
         self._resource_monitor = system_base.ResourceMonitor()
-
-        # For managing a server process started in the foreground on Windows (used by ProcessMixin).
-        self._windows_popen_process: Optional[subprocess.Popen] = None
-        self._windows_pipe_listener_thread: Optional[threading.Thread] = None
-        self._windows_pipe_shutdown_event: Optional[threading.Event] = None
-        self._windows_stdout_handle: Optional[Any] = None
-        self._windows_pid_file_path_managed: Optional[str] = None
 
         self.logger.debug(
             f"BedrockServerBaseMixin initialized for '{self.server_name}' "

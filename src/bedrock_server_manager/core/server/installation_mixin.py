@@ -226,8 +226,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
                 2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
                 3. The server's entire backup directory (derived from ``paths.backups`` setting).
-                4. The server's systemd user service file (on Linux systems only).
-                5. The server's PID file.
+                4. The server's PID file.
 
         The method will attempt to stop a running server (using ``self.stop()``,
         expected from :class:`~.ServerProcessMixin`) before proceeding with deletions.
@@ -271,42 +270,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             os.path.exists(p) for p in paths_to_check_existence if p
         )
 
-        systemd_service_file_path: Optional[str] = None
-        systemd_service_name = (
-            f"bedrock-{self.server_name}.service"  # Ensure .service suffix
-        )
-        if self.os_type == "Linux":
-            # Using the helper from linux.py now
-            from . import (
-                systemd_mixin,
-            )  # Assuming it's in the same package or adjust import
-
-            # This needs careful thought on how to access systemd_mixin or its functions here.
-            # For now, let's assume a way to get this path, or directly use system_linux.get_systemd_user_service_file_path
-            # For simplicity in this context, we'll re-construct it, but ideally, it would use a shared utility.
-            try:
-                from bedrock_server_manager.core.system import (
-                    linux as system_linux,
-                )  # Direct import
-
-                systemd_service_file_path = (
-                    system_linux.get_systemd_user_service_file_path(
-                        systemd_service_name
-                    )
-                )
-                if os.path.exists(systemd_service_file_path):
-                    self.logger.info(
-                        f"  - Target systemd service file: {systemd_service_file_path}"
-                    )
-                    any_primary_data_exists = True
-            except Exception as e_sysd_path:
-                self.logger.warning(
-                    f"Could not determine systemd service file path for {systemd_service_name}: {e_sysd_path}"
-                )
-
-        if not any_primary_data_exists and not (
-            systemd_service_file_path and os.path.exists(systemd_service_file_path)
-        ):
+        if not any_primary_data_exists:
             self.logger.info(
                 f"No significant data or service files found for server '{self.server_name}'. Deletion considered complete."
             )
@@ -340,99 +304,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
 
         deletion_errors: List[str] = []
 
-        # --- 1. Remove systemd service (Linux-only) ---
-        if (
-            self.os_type == "Linux" and systemd_service_file_path
-        ):  # systemd_service_file_path is now defined
-            self.logger.info(
-                f"Processing systemd user service '{systemd_service_name}'..."
-            )
-            # This part needs to call the systemd disabling/deletion logic,
-            # potentially from a SystemdMixin or system_linux directly.
-            # For now, just attempt to delete the file if systemctl interaction fails or isn't available.
-            # A more robust implementation would involve a SystemdMixin.
-            systemctl_cmd = shutil.which("systemctl")
-            service_file_existed_before_systemctl = os.path.exists(
-                systemd_service_file_path
-            )
-
-            if systemctl_cmd and service_file_existed_before_systemctl:
-                try:
-                    disable_cmds = [
-                        systemctl_cmd,
-                        "--user",
-                        "disable",
-                        "--now",
-                        systemd_service_name,
-                    ]
-                    self.logger.debug(f"Executing: {' '.join(disable_cmds)}")
-                    res_disable = subprocess.run(
-                        disable_cmds,
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                    )
-                    if res_disable.returncode != 0 and not (
-                        "doesn't exist" in res_disable.stderr.lower()
-                        or "no such file" in res_disable.stderr.lower()
-                    ):
-                        self.logger.warning(
-                            f"systemctl disable --now {systemd_service_name} failed: {res_disable.stderr.strip()}"
-                        )
-
-                    if os.path.exists(
-                        systemd_service_file_path
-                    ):  # File might still exist if disable failed or didn't remove it
-                        if not system_base.delete_path_robustly(
-                            systemd_service_file_path,
-                            f"systemd service file for '{self.server_name}'",
-                        ):
-                            deletion_errors.append(
-                                f"systemd service file '{systemd_service_file_path}'"
-                            )
-
-                    self.logger.debug(
-                        "Reloading systemd user daemon and resetting failed units..."
-                    )
-                    subprocess.run(
-                        [systemctl_cmd, "--user", "daemon-reload"],
-                        check=False,
-                        capture_output=True,
-                    )
-                    subprocess.run(
-                        [systemctl_cmd, "--user", "reset-failed"],
-                        check=False,
-                        capture_output=True,
-                    )
-                    self.logger.info(
-                        f"Systemd service '{systemd_service_name}' processing complete."
-                    )
-
-                except Exception as e_systemd:
-                    self.logger.error(
-                        f"Error managing systemd service '{systemd_service_name}': {e_systemd}",
-                        exc_info=True,
-                    )
-                    deletion_errors.append(
-                        f"systemd service interaction for '{systemd_service_name}'"
-                    )
-            elif (
-                service_file_existed_before_systemctl
-            ):  # systemctl not found but file exists
-                self.logger.warning(
-                    f"Systemd service file '{systemd_service_file_path}' exists but 'systemctl' not found. Deleting file directly."
-                )
-                if not system_base.delete_path_robustly(
-                    systemd_service_file_path,
-                    f"systemd service file (no systemctl) for '{self.server_name}'",
-                ):
-                    deletion_errors.append(
-                        f"systemd service file '{systemd_service_file_path}' (no systemctl)"
-                    )
-
-        # --- 2. Remove PID file (using the method from BaseServerMixin) ---
+        # --- Remove PID file (using the method from BaseServerMixin) ---
         # get_pid_file_path should be available from BaseServerMixin
         if hasattr(self, "get_pid_file_path"):
             pid_file_to_delete = self.get_pid_file_path()  # type: ignore
@@ -446,7 +318,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 "get_pid_file_path method not found. Cannot delete PID file by specific path."
             )
 
-        # --- 3. Remove all directories ---
+        # --- Remove all directories ---
         paths_to_delete_map: Dict[str, Optional[str]] = {
             "backup": server_backup_dir_path,
             "installation": server_install_dir,

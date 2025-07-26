@@ -13,7 +13,7 @@ Bedrock Server Manager is a comprehensive python package designed for installing
 
 ## Features
 
-Install New Servers: Quickly set up a server with customizable options like version (LATEST, PREVIEW, or specific versions).
+Install New Servers: Quickly set up a server with customizable options like version (LATEST, PREVIEW, or CUSTOM versions).
 
 Update Existing Servers: Seamlessly download and update server files while preserving critical configuration files and backups.
 
@@ -23,13 +23,7 @@ Server Configuration: Easily modify server properties, and allow-list interactiv
 
 Auto-Update supported: Automatically update the server with a simple restart.
 
-Command-Line Tools: Send game commands, start, stop, and restart servers directly from the command line.
-
-Interactive Menu: Access a user-friendly interface to manage servers without manually typing commands.
-
 Install/Update Content: Easily import .mcworld/.mcpack files into your server.
-
-Automate Various Server Task: Quickly create cron/task to automate task such as backup-server or restart-server.
 
 View Resource Usage: View how much CPU and RAM your server is using.
 
@@ -49,6 +43,15 @@ This app requires `Python 3.10` or later, and you will need `pip` installed
 ```bash
 pip install --upgrade bedrock-server-manager
 ```
+
+1.2. Install the CLI
+
+As of 3.6.0, BSM transitioned to a Web Server only application. To restore CLI functionality install the `bsm-api-client[cli]` package.
+
+```bash
+pip install --upgrade bedrock-server-manager[cli]
+```
+
 See the [Installation](../extras/installation.md) documentation for more information on installing development versions of the app.
 
 ## Configuration
@@ -102,6 +105,10 @@ The structure of the default configuration is as follows:
 ```
 
 ### Run the app:
+
+```{important}
+As of 3.6.0, BSM transitioned to a Web Server only application. To restore CLI functionality install the `bsm-api-client[cli]` package.
+```
 
 ```bash
 bedrock-server-manager <command> [options]

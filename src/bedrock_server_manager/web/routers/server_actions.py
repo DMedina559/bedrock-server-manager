@@ -55,27 +55,21 @@ class CommandPayload(BaseModel):
 @router.post(
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
     summary="Start a server instance",
     tags=["Server Actions API"],
 )
 async def start_server_route(
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
-    Initiates starting a specific Bedrock server instance in the background.
-
-    The server start operation is performed as a background task.
-    This endpoint immediately returns a 202 Accepted response indicating
-    the task has been queued.
+    Starts a specific Bedrock server instance.
 
     - **server_name**: Path parameter, validated by `validate_server_exists` dependency.
     - Requires authentication.
 
     Args:
-        background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to start. Validated by dependency.
         current_user (Dict[str, Any]): Authenticated user object.
 
@@ -84,20 +78,22 @@ async def start_server_route(
     """
     identity = current_user.get("username", "Unknown")
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
-    task_id = tasks.create_task()
-    background_tasks.add_task(
-        tasks.run_task,
-        task_id,
-        server_api.start_server,
-        server_name,
-        mode="detached",
-    )
 
-    return ActionResponse(
-        status="pending",
-        message=f"Start operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
-    )
+    try:
+        result = server_api.start_server(server_name)
+        if result.get("status") == "success":
+            return ActionResponse(
+                message=result.get("message") or "Server started successfully"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("message"),
+            )
+    except BSMError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @router.post(

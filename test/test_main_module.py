@@ -12,12 +12,10 @@ def runner():
 
 @patch("bedrock_server_manager.__main__.setup_logging")
 @patch("bedrock_server_manager.__main__.startup_checks")
-@patch("bedrock_server_manager.cli.main_menus.main_menu")
-def test_main_no_args(mock_main_menu, mock_startup_checks, mock_setup_logging, runner):
+def test_main_no_args(mock_startup_checks, mock_setup_logging, runner):
     """Test that the main function runs without arguments."""
     result = runner.invoke(cli)
-    assert result.exit_code == 0
-    mock_main_menu.assert_called_once()
+    assert result.exit_code != 0
 
 
 @patch("bedrock_server_manager.__main__.setup_logging")
@@ -44,25 +42,3 @@ def test_main_generate_password_command(
         result = runner.invoke(cli, ["generate-password"])
         assert result.exit_code == 0
         assert "Hash generated successfully" in result.output
-
-
-@patch("bedrock_server_manager.__main__.setup_logging")
-@patch("bedrock_server_manager.__main__.startup_checks")
-def test_plugin_cli_command(mock_startup_checks, mock_setup_logging, runner):
-    """Test that plugin CLI commands are added to the CLI."""
-    import click
-    from bedrock_server_manager.__main__ import cli, _add_plugin_cli_commands
-    from unittest.mock import MagicMock
-
-    @click.command("test-command")
-    def test_command():
-        print("test command")
-
-    mock_plugin_manager = MagicMock()
-    mock_plugin_manager.plugin_cli_commands = [test_command]
-
-    _add_plugin_cli_commands(cli, mock_plugin_manager)
-
-    result = runner.invoke(cli, ["test-command"])
-    assert result.exit_code == 0
-    assert "test command" in result.output

@@ -35,3 +35,9 @@ def get_server_instance(server_name: str):
 
         _servers[server_name] = BedrockServer(server_name)
     return _servers.get(server_name)
+
+
+def get_bedrock_process_manager():
+    from .core.bedrock_process_manager import BedrockProcessManager
+
+    return BedrockProcessManager()

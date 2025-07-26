@@ -24,6 +24,7 @@ class MockBedrockServer(ServerProcessMixin, BedrockServerBaseMixin):
         self.settings = MagicMock()
         self.os_type = "Linux"
         self._resource_monitor = MagicMock()
+        self.process_manager = MagicMock()
 
         # Mock methods from other mixins that are used by ServerProcessMixin
         self.is_installed = MagicMock(return_value=True)
@@ -41,78 +42,48 @@ def mock_server():
 
 
 class TestServerProcessMixin:
-    @patch("bedrock_server_manager.core.system.base.is_server_running")
-    def test_is_running(self, mock_is_server_running, mock_server):
-        mock_is_server_running.return_value = True
+    def test_is_running(self, mock_server):
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_server.process_manager.get_server_process.return_value = mock_process
         assert mock_server.is_running() is True
-        mock_is_server_running.assert_called_once_with(
-            mock_server.server_name, mock_server.server_dir, mock_server.app_config_dir
+        mock_server.process_manager.get_server_process.assert_called_once_with(
+            mock_server.server_name
         )
 
-    @patch(
-        "bedrock_server_manager.core.server.process_mixin.system_linux_proc._linux_send_command"
-    )
-    def test_send_command_linux(self, mock_send, mock_server):
+    def test_send_command(self, mock_server):
         with patch.object(mock_server, "is_running", return_value=True):
             mock_server.send_command("say hello")
-            mock_send.assert_called_once_with(mock_server.server_name, "say hello")
+            mock_server.process_manager.send_command.assert_called_once_with(
+                mock_server.server_name, "say hello"
+            )
 
     def test_send_command_not_running(self, mock_server):
         with patch.object(mock_server, "is_running", return_value=False):
             with pytest.raises(ServerNotRunningError):
                 mock_server.send_command("say hello")
 
-    @patch(
-        "bedrock_server_manager.core.server.process_mixin.system_linux_proc._linux_start_server"
-    )
-    def test_start_blocking_call(self, mock_start_server, mock_server):
-        """Tests the start method by mocking the blocking call."""
+    def test_start(self, mock_server):
+        """Tests the start method."""
         with patch.object(mock_server, "is_running", return_value=False):
-            # Simulate the start method raising an exception to ensure finally block is tested
-            mock_start_server.side_effect = Exception("Simulated server crash")
-            with pytest.raises(ServerStartError):
-                mock_server.start()
-
-            mock_start_server.assert_called_once_with(
-                mock_server.server_name,
-                mock_server.server_dir,
-                mock_server.app_config_dir,
+            mock_server.start()
+            mock_server.process_manager.start_server.assert_called_once_with(
+                mock_server.server_name
             )
             mock_server.set_status_in_config.assert_any_call("STARTING")
-            mock_server.set_status_in_config.assert_any_call("ERROR")
+            mock_server.set_status_in_config.assert_any_call("RUNNING")
 
     def test_start_already_running(self, mock_server):
         with patch.object(mock_server, "is_running", return_value=True):
             with pytest.raises(ServerStartError):
                 mock_server.start()
 
-    @patch("time.sleep")
-    @patch(
-        "bedrock_server_manager.core.system.process.is_process_running",
-        return_value=True,
-    )
-    @patch(
-        "bedrock_server_manager.core.system.process.read_pid_from_file",
-        return_value=123,
-    )
-    @patch("bedrock_server_manager.core.system.process.terminate_process_by_pid")
-    def test_stop_forceful(
-        self,
-        mock_terminate,
-        mock_read_pid,
-        mock_is_process_running,
-        mock_sleep,
-        mock_server,
-    ):
-        mock_server.settings.get.return_value = 1
-        with patch.object(
-            mock_server, "is_running", side_effect=[True, True, True, False]
-        ):
-            with patch.object(
-                mock_server, "send_command", side_effect=ServerNotRunningError
-            ):
-                mock_server.stop()
-                mock_terminate.assert_called_once_with(123)
+    def test_stop(self, mock_server):
+        with patch.object(mock_server, "is_running", return_value=True):
+            mock_server.stop()
+            mock_server.process_manager.stop_server.assert_called_once_with(
+                mock_server.server_name
+            )
 
     @patch("bedrock_server_manager.core.system.process.get_verified_bedrock_process")
     def test_get_process_info(self, mock_get_verified_process, mock_server):

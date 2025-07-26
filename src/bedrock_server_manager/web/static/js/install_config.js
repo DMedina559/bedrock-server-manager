@@ -516,20 +516,13 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
             // Decide default? Or fail? Let's proceed without it for now.
         }
 
-        if (currentOs === 'Linux' || currentOs === 'Windows') {
-            const autostartCheckbox = configSection.querySelector('#service-autostart-cb'); // The .toggle-input checkbox
-            if (autostartCheckbox) {
-                requestBody.autostart = autostartCheckbox.checked; // Boolean value
-            } else {
-                console.warn(`${functionName}: Autostart checkbox (#service-autostart-cb) not found.`);
-            }
-            console.debug(`${functionName}: Settings gathered:`, requestBody);
+        const autostartCheckbox = configSection.querySelector('#service-autostart-cb'); // The .toggle-input checkbox
+        if (autostartCheckbox) {
+            requestBody.autostart = autostartCheckbox.checked; // Boolean value
         } else {
-            const errorMsg = `Unsupported OS '${currentOs}' for service configuration.`;
-            console.error(`${functionName}: ${errorMsg}`);
-            showStatusMessage(errorMsg, "error");
-            return; // Cannot proceed
+            console.warn(`${functionName}: Autostart checkbox (#service-autostart-cb) not found.`);
         }
+        console.debug(`${functionName}: Settings gathered:`, requestBody);
 
         if (isNewInstall) {
             const startServerCheckbox = configSection.querySelector('#service-start-server'); // The .toggle-input

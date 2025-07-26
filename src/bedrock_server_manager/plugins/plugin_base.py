@@ -141,14 +141,12 @@ class PluginBase(ABC):
 
     # --- Server Lifecycle Event Hooks ---
 
-    def before_server_start(self, server_name: str, mode: str):
+    def before_server_start(self, server_name: str):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         just before a server start operation is attempted.
 
         Args:
             server_name (str): The name of the server that is about to be started.
-            mode (str): The mode in which the server is being started (e.g.,
-                "direct", "detached").
         """
         pass
 
@@ -602,31 +600,6 @@ class PluginBase(ABC):
 
     # --- Plugin Extension Hooks ---
 
-    def get_cli_commands(self) -> List[Any]:
-        """
-        Called by the PluginManager after the plugin is loaded to retrieve
-        any custom CLI commands (click.Command or click.Group instances)
-        the plugin wishes to register with the main application.
-
-        Plugins should override this method to return a list of Click objects.
-
-        Example:
-
-            import click
-
-            @click.command()
-            def my_command():
-
-                click.echo("Hello from plugin command!")
-
-            return [my_command]
-
-        Returns:
-            List[Any]: A list of click.Command or click.Group objects.
-                       Defaults to an empty list.
-        """
-        return []
-
     def get_fastapi_routers(self) -> List[Any]:
         """
         Called by the PluginManager after the plugin is loaded to retrieve
@@ -683,33 +656,5 @@ class PluginBase(ABC):
         Returns:
             List[tuple[str, Path, str]]: A list of tuples, each for a static directory mount.
                                         Defaults to an empty list.
-        """
-        return []
-
-    def get_cli_menu_items(self) -> List[Dict[str, Any]]:
-        """
-        Called by the PluginManager after the plugin is loaded to retrieve
-        a list of menu item configurations for the main CLI interactive menu.
-
-        Each configuration should be a dictionary with at least:
-
-            - "name" (str): The text to display for the menu item.
-            - "handler" (Callable): A callable (e.g., a method of the plugin instance)
-                                    that will be executed when this menu item is selected.
-                                    This handler is expected to accept a `click.Context`
-                                    object as its first argument.
-
-        Example:
-            def my_plugin_menu_handler(self, ctx: click.Context):
-                self.logger.info(f"'{self.name}' custom CLI menu item executed!")
-                ctx.invoke(some_other_click_command, foo="bar")
-                # Or use questionary for a sub-menu
-                # choice = questionary.select(...).ask() ...
-
-            return [{"name": "Run My Plugin Action", "handler": self.my_plugin_menu_handler}]
-
-        Returns:
-            List[Dict[str, Any]]: A list of menu item configuration dictionaries.
-                                  Defaults to an empty list.
         """
         return []

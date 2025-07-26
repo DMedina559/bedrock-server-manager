@@ -22,14 +22,12 @@ class AutoupdatePlugin(PluginBase):
             "Plugin loaded. Will check for updates before server starts if enabled."
         )
 
-    def before_server_start(self, server_name: str, mode: str):
+    def before_server_start(self, server_name: str):
         """
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.
         """
-        self.logger.debug(
-            f"Handling before_server_start for '{server_name}' (mode: {mode})"
-        )
+        self.logger.debug(f"Handling before_server_start for '{server_name}'.")
 
         try:
             # Create an instance for the server to access its configuration.

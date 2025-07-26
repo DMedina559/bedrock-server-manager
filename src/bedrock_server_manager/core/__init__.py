@@ -2,6 +2,7 @@
 from .bedrock_server import BedrockServer
 from .downloader import BedrockDownloader, prune_old_downloads
 from .manager import BedrockServerManager
+from .bedrock_process_manager import BedrockProcessManager
 from . import system
 from .utils import core_validate_server_name_format
 
@@ -13,6 +14,7 @@ __all__ = [
     "BedrockDownloader",
     "prune_old_downloads",
     "BedrockServerManager",
+    "BedrockProcessManager",
     "system",
     "core_validate_server_name_format",
 ]
