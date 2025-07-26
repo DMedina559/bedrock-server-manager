@@ -16,15 +16,12 @@ Bedrock Server Manager 3.4.0 features a powerful plugin system that allows you t
 
 **Managing Plugins:**
 
-You can manage your plugins directly from the command line:
+You can manage your plugins directly from the Web Server:
 
-*   List all plugins and their status: `bedrock-server-manager plugin list`
-*   Enable a plugin: `bedrock-server-manager plugin enable <plugin_name>`
-*   Disable a plugin: `bedrock_server-manager plugin disable <plugin_name>`
-*   Reload all plugins: `bedrock-server-manager plugin reload`
-*   Trigger custom events for plugins: `bedrock-server-manager plugin trigger_event <event_name> --payload-json '{...}'`
+- Enable/Disable Plugins
+- Reload Plugins
+- View Plugin Information such as version
 
-Running `bedrock-server-manager plugin` without a subcommand will launch an interactive plugin management menu.
 
 **Developing Plugins:**
 

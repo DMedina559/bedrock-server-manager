@@ -14,12 +14,8 @@ Easily import addons and worlds into your servers. The app will look in the conf
 
 Place .mcworld files in `CONTENT_DIR/worlds` or .mcpack/.mcaddon files in `CONTENT_DIR/addons`
 
-Use the interactive menu to choose which file to install or use the command:
+Navigate to the Web UI to install content to your servers.
 
-```bash
-bedrock-server-manager world install --server server_name --file '/path/to/WORLD.mcworld'
-```
-
-```bash
-bedrock-server-manager install-addon --server server_name --file '/path/to/ADDON.mcpack'
+```{tip}
+Enable the content_uploader_plugin to easily upload content to your content dir!
 ```

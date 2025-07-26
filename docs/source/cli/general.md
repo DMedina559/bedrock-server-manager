@@ -6,23 +6,22 @@
 
 For a complete list of commands, see [CLI Commands](./commands.rst).
 
->Note: If you are using a version of the app prior to 3.3.0, you must run `bedrock-server-manager --help` to see the list of commands for your version.
+>[!note]
+> As of BSM 3.6.0, CLI commands have been migrated to the [`bsm-api-client[cli]`](https://github.com/DMedina559/bsm-api-client) package.
+> Install with: 
+>
+> `pip install --upgrade bsm-api-client[cli]`
 
 ## Examples:
 
-### Open Main Menu:
+### Start the server:
 
 ```bash
-bedrock-server-manager
+bedrock-server-manager web start
 ```
 
-### Send Command:
-```bash
-bedrock-server-manager server send-command --server server_name "tell @a hello"
-```
-
-### Export World:
+### Generate password hash interactively
 
 ```bash
-bedrock-server-manager world export --server server_name
+bedrock-server-manager generate-password
 ```
