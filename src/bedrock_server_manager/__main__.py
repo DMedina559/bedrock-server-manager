@@ -22,6 +22,7 @@ try:
     from . import __version__
     from . import api
     from .config import app_name_title
+    from .db.database import engine
     from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
@@ -38,6 +39,7 @@ try:
 
         stop_all_servers()
         global_api_plugin_manager.unload_plugins()
+        engine.dispose()
 
     atexit.register(shutdown_hooks)
 except ImportError as e:
