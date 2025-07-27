@@ -19,6 +19,7 @@ from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
 )
+from ..schemas import User
 from ..dependencies import validate_server_exists
 from ...instances import get_server_instance
 from ...instances import get_settings_instance
@@ -100,7 +101,7 @@ async def serve_custom_panorama_api():
 )
 async def serve_world_icon_api(
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
 
@@ -111,7 +112,7 @@ async def serve_world_icon_api(
     Args:
         server_name (str): The name of the server, validated by `validate_server_exists`.
                            Injected by FastAPI's dependency system.
-        current_user (Dict[str, Any]): The authenticated user object, injected by
+        current_user (User): The authenticated user object, injected by
                                        `get_current_user`. Used for logging.
 
     Returns:
@@ -125,7 +126,7 @@ async def serve_world_icon_api(
               processing.
     """
     logger.debug(
-        f"Request to serve world icon for server '{server_name}' by user '{current_user.get('username', 'Unknown')}'."
+        f"Request to serve world icon for server '{server_name}' by user '{current_user.username}'."
     )
 
     try:
@@ -211,7 +212,7 @@ async def get_root_favicon():
 async def catch_all_api_route(
     request: Request,
     full_path: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Redirects any unmatched authenticated API path to the main dashboard ('/').
 
@@ -222,14 +223,14 @@ async def catch_all_api_route(
     Args:
         request (Request): The incoming request object, provided by FastAPI.
         full_path (str): The unmatched path segment captured by the route.
-        current_user (Dict[str, Any]): The authenticated user object, injected by
+        current_user (User): The authenticated user object, injected by
                                        `get_current_user`. Used for logging.
 
     Returns:
         RedirectResponse: A redirect to the main dashboard page ("/").
     """
     logger.warning(
-        f"User '{current_user.get('username', 'Unknown')}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
+        f"User '{current_user.username}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
     )
 
     index_url = "/"

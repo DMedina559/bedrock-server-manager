@@ -19,7 +19,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse
+from ..schemas import BaseApiResponse, User
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ...instances import get_settings_instance
@@ -92,7 +92,7 @@ class AddPlayersPayload(BaseModel):
 )
 async def get_server_running_status_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Checks if a specific server's process is currently running.
@@ -142,7 +142,7 @@ async def get_server_running_status_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
@@ -185,7 +185,7 @@ async def get_server_running_status_api_route(
 )
 async def get_server_config_status_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieves the last known status from a server's configuration file.
@@ -196,7 +196,7 @@ async def get_server_config_status_api_route(
 
     Args:
         server_name (str): The name of the server. Validated by dependency.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -220,7 +220,7 @@ async def get_server_config_status_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Request for config status for server '{server_name}' by user '{identity}'."
     )
@@ -265,7 +265,7 @@ async def get_server_config_status_api_route(
 )
 async def get_server_version_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieves the installed version of a specific server.
@@ -276,7 +276,7 @@ async def get_server_version_api_route(
 
     Args:
         server_name (str): The name of the server. Validated by dependency.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -300,7 +300,7 @@ async def get_server_version_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Request for installed version for server '{server_name}' by user '{identity}'."
     )
@@ -348,7 +348,7 @@ async def get_server_version_api_route(
     tags=["Server Info API"],
 )
 async def validate_server_api_route(
-    server_name: str, current_user: Dict[str, Any] = Depends(get_current_user)
+    server_name: str, current_user: User = Depends(get_current_user)
 ):
     """
     Validates if a server installation exists and is minimally correct.
@@ -358,7 +358,7 @@ async def validate_server_api_route(
 
     Args:
         server_name (str): The name of the server to validate.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -393,7 +393,7 @@ async def validate_server_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Request to validate server '{server_name}' by user '{identity}'."
     )
@@ -430,7 +430,7 @@ async def validate_server_api_route(
     tags=["Server Info API"],
 )
 async def server_process_info_api_route(
-    server_name: str, current_user: Dict[str, Any] = Depends(get_current_user)
+    server_name: str, current_user: User = Depends(get_current_user)
 ):
     """
     Retrieves resource usage information for a running server process.
@@ -446,7 +446,7 @@ async def server_process_info_api_route(
 
     Args:
         server_name (str): The name of the server.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -492,7 +492,7 @@ async def server_process_info_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.debug(f"API: Process info request for '{server_name}' by user '{identity}'.")
     try:
         result = system_api.get_bedrock_process_info(server_name)
@@ -532,7 +532,7 @@ async def server_process_info_api_route(
     "/api/players/scan", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Scans all server logs to discover and update the central player database.
@@ -541,7 +541,7 @@ async def scan_players_api_route(
     This is a global action not tied to a specific server.
 
     Args:
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -571,7 +571,7 @@ async def scan_players_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Request to scan logs for players by user '{identity}'.")
     try:
         result = player_api.scan_and_update_player_db_api()
@@ -603,7 +603,7 @@ async def scan_players_api_route(
     "/api/players/get", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def get_all_players_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieves the list of all known players from the central player database.
@@ -617,7 +617,7 @@ async def get_all_players_api_route(
         - If `players.json` is not found or empty, "players" will be an empty list.
 
     Args:
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -648,7 +648,7 @@ async def get_all_players_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Request to retrieve all players by user '{identity}'.")
 
     try:
@@ -702,7 +702,7 @@ async def get_all_players_api_route(
 )
 async def prune_downloads_api_route(
     payload: PruneDownloadsPayload,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Prunes old downloaded server archives from a specified cache subdirectory.
@@ -716,7 +716,7 @@ async def prune_downloads_api_route(
 
     Args:
         payload (PruneDownloadsPayload): Specifies directory and keep count.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -747,7 +747,7 @@ async def prune_downloads_api_route(
             "files_kept": 2
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Request to prune downloads by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
     )
@@ -819,7 +819,7 @@ async def prune_downloads_api_route(
 
 @router.get("/api/servers", response_model=GeneralApiResponse, tags=["Global Info API"])
 async def get_servers_list_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieves a list of all detected server instances with their status and version.
@@ -828,7 +828,7 @@ async def get_servers_list_api_route(
     This provides a summary for each managed server.
 
     Args:
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -864,7 +864,7 @@ async def get_servers_list_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.debug(f"API: Request for all servers list by user '{identity}'.")
     try:
         result = app_api.get_all_servers_data()
@@ -942,7 +942,7 @@ async def get_system_info_api_route():
     "/api/players/add", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def add_players_api_route(
-    payload: AddPlayersPayload, current_user: Dict[str, Any] = Depends(get_current_user)
+    payload: AddPlayersPayload, current_user: User = Depends(get_current_user)
 ):
     """
     Manually adds or updates player entries in the central player database.
@@ -956,7 +956,7 @@ async def add_players_api_route(
 
     Args:
         payload (AddPlayersPayload): List of player strings to add.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -985,7 +985,7 @@ async def add_players_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Request to add players by user '{identity}'. Payload: {payload.players}"
     )

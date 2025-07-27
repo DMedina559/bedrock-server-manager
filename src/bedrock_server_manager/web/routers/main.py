@@ -22,6 +22,7 @@ from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
 )
+from ..schemas import User
 from ..dependencies import validate_server_exists
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ router = APIRouter()
 @router.get("/", response_class=HTMLResponse, name="index", include_in_schema=False)
 async def index(
     request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Renders the main dashboard page (index).
@@ -44,7 +45,7 @@ async def index(
 
     Args:
         request (Request): The incoming FastAPI request object.
-        current_user (Optional[Dict[str, Any]]): The authenticated user object,
+        current_user (Optional[User]): The authenticated user object,
                                                  injected by `get_current_user_optional`.
                                                  If None, user is redirected.
 
@@ -59,7 +60,7 @@ async def index(
         return RedirectResponse(url="/auth/login", status_code=302)
 
     logger.info(
-        f"Dashboard route '/' accessed by user '{current_user.get('username')}'. Rendering server list."
+        f"Dashboard route '/' accessed by user '{current_user.username}'. Rendering server list."
     )
 
     # --- Dynamically get HTML rendering plugin routes ---
@@ -111,7 +112,7 @@ async def index(
 async def monitor_server_route(
     request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Renders the server-specific monitoring page.
@@ -123,14 +124,14 @@ async def monitor_server_route(
         request (Request): The incoming FastAPI request object.
         server_name (str): The name of the server to monitor, validated by
                            `validate_server_exists`. Injected by FastAPI.
-        current_user (Dict[str, Any]): The authenticated user object, injected by
+        current_user (User): The authenticated user object, injected by
                                        `get_current_user`.
 
     Returns:
         HTMLResponse: Renders the `monitor.html` template, passing the server name
                       and current user information to the template.
     """
-    username = current_user.get("username")
+    username = current_user.username
     logger.info(f"User '{username}' accessed monitor page for server '{server_name}'.")
     return templates.TemplateResponse(
         request,

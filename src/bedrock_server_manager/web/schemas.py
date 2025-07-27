@@ -12,3 +12,8 @@ class ActionResponse(BaseModel):
 class BaseApiResponse(BaseModel):
     status: str
     message: Optional[str] = None
+
+
+class User(BaseModel):
+    username: str
+    identity_type: str

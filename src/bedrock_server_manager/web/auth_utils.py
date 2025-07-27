@@ -27,6 +27,7 @@ from passlib.context import CryptContext
 from ..error import MissingArgumentError
 from ..config import env_name
 from ..instances import get_settings_instance
+from .schemas import User
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ async def get_current_user_optional(
     request: Request,
     token_header: Optional[str] = Security(oauth2_scheme),
     token_cookie: Optional[str] = Security(cookie_scheme),
-) -> Optional[Dict[str, Any]]:
+) -> Optional[User]:
     """
     FastAPI dependency to retrieve the current user if authenticated.
 
@@ -116,7 +117,7 @@ async def get_current_user_optional(
             Injected by FastAPI.
 
     Returns:
-        Optional[Dict[str, Any]]: A dictionary ``{"username": str, "identity_type": "jwt"}``
+        Optional[User]: A dictionary ``{"username": str, "identity_type": "jwt"}``
         if authentication is successful, otherwise ``None``.
     """
     token = token_header or token_cookie
@@ -127,15 +128,15 @@ async def get_current_user_optional(
         username: Optional[str] = payload.get("sub")
         if username is None:
             return None
-        return {"username": username, "identity_type": "jwt"}
+        return User(username=username, identity_type="jwt")
     except JWTError:
         return None
 
 
 async def get_current_user(
     request: Request,
-    user: Optional[Dict[str, Any]] = Security(get_current_user_optional),
-) -> Dict[str, Any]:
+    user: Optional[User] = Security(get_current_user_optional),
+) -> User:
     """
     FastAPI dependency that requires an authenticated user.
 
@@ -148,11 +149,11 @@ async def get_current_user(
 
     Args:
         request (:class:`fastapi.Request`): The incoming request object.
-        user (Optional[Dict[str, Any]]): The user data dictionary returned by
+        user (Optional[User]): The user data dictionary returned by
             :func:`~.get_current_user_optional`. Injected by FastAPI.
 
     Returns:
-        Dict[str, Any]: The user data dictionary (e.g., ``{"username": str}``)
+        User: The user data dictionary (e.g., ``{"username": str}``)
         if the user is authenticated.
 
     Raises:
