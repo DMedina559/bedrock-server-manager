@@ -73,6 +73,12 @@ content and scripts using Jinja2 blocks.
                     <span class="splash-text">{{ splash_text | default("It's Web Based!") }}</span>
                 </h1>
             </a>
+            <div class="user-info">
+                {% if request.user %}
+                    <span>Welcome, {{ request.user.username }} ({{ request.user.role }})</span>
+                    <a href="{{ url_for('logout') }}">Logout</a>
+                {% endif %}
+            </div>
         </header>
 
         {# --- Main Content Area --- #}

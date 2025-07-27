@@ -12,6 +12,9 @@ from .server_install_config import router as server_install_config_router
 from .settings import router as settings_router
 from .util import router as util_router
 from .tasks import router as tasks_router
+from .setup import router as setup_router
+from .users import router as users_router
+from .register import router as register_router
 
 __all__ = [
     "api_info_router",
@@ -25,4 +28,7 @@ __all__ = [
     "settings_router",
     "tasks_router",
     "util_router",
+    "setup_router",
+    "users_router",
+    "register_router",
 ]

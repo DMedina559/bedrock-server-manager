@@ -17,3 +17,4 @@ class BaseApiResponse(BaseModel):
 class User(BaseModel):
     username: str
     identity_type: str
+    role: str
