@@ -131,12 +131,11 @@ class TestPluginManager:
         # Test loading
         pm.plugin_config = {}
         loaded_config = pm._load_config()
-        assert loaded_config == {
-            "valid_plugin": {
-                "enabled": True,
-                "version": "1.0",
-                "description": "A valid plugin.",
-            }
+        assert "valid_plugin" in loaded_config
+        assert loaded_config["valid_plugin"] == {
+            "enabled": True,
+            "version": "1.0",
+            "description": "A valid plugin.",
         }
 
     def test_synchronize_config_with_disk(self, isolated_plugin_manager):

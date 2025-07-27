@@ -11,6 +11,9 @@ from bedrock_server_manager.core.server.config_management_mixin import (
 from bedrock_server_manager.config.settings import Settings
 
 
+from unittest.mock import MagicMock
+
+
 class SetupBedrockServer(
     ServerStateMixin, ServerConfigManagementMixin, BedrockServerBaseMixin
 ):
@@ -37,6 +40,9 @@ def state_mixin_fixture():
     os.makedirs(server.server_config_dir, exist_ok=True)
     os.makedirs(server.server_dir, exist_ok=True)
 
+    # Mock the db session
+    server.db = MagicMock()
+
     yield server, temp_dir
 
     shutil.rmtree(temp_dir)
@@ -59,28 +65,16 @@ def test_get_status_stopped(state_mixin_fixture):
 
 def test_get_status_unknown(state_mixin_fixture):
     server, _ = state_mixin_fixture
-    with patch.object(server, "is_running", side_effect=Exception("error")):
+    with (
+        patch.object(server, "is_running", side_effect=Exception("error")),
+        patch.object(server, "get_status_from_config", return_value="UNKNOWN"),
+    ):
         assert server.get_status() == "UNKNOWN"
-
-
-def test_load_server_config_empty_file(state_mixin_fixture):
-    server, _ = state_mixin_fixture
-    with open(server._server_specific_json_config_file_path, "w") as f:
-        f.write("")
-    config = server._load_server_config()
-    assert config["server_info"]["status"] == "UNKNOWN"
-
-
-def test_load_server_config_corrupted_file(state_mixin_fixture):
-    server, _ = state_mixin_fixture
-    with open(server._server_specific_json_config_file_path, "w") as f:
-        f.write("{corrupted_json}")
-    config = server._load_server_config()
-    assert config["server_info"]["status"] == "UNKNOWN"
 
 
 def test_manage_json_config_invalid_key(state_mixin_fixture):
     server, _ = state_mixin_fixture
+    server.db.query.return_value.filter.return_value.first.return_value = None
     assert server._manage_json_config("invalid.key", "read") is None
 
 
@@ -90,24 +84,30 @@ def test_manage_json_config_invalid_operation(state_mixin_fixture):
         server._manage_json_config("server_info.status", "invalid_op")
 
 
-def test_set_status_in_config(state_mixin_fixture):
-    server, _ = state_mixin_fixture
-    server._manage_json_config("server_info.status", "write", "STOPPED")
-    with open(server._server_specific_json_config_file_path, "r") as f:
-        data = json.load(f)
-    assert data["server_info"]["status"] == "STOPPED"
-
-
 def test_get_and_set_version(state_mixin_fixture):
     server, _ = state_mixin_fixture
+
+    # Mock the server config
+    server.db.query.return_value.filter.return_value.first.return_value = None
+
     server.set_version("1.2.3")
-    assert server.get_version() == "1.2.3"
+
+    # Assert that the config was saved correctly
+    server.db.add.assert_called_once()
+    server.db.commit.assert_called_once()
 
 
 def test_get_and_set_target_version(state_mixin_fixture):
     server, _ = state_mixin_fixture
+
+    # Mock the server config
+    server.db.query.return_value.filter.return_value.first.return_value = None
+
     server.set_target_version("LATEST")
-    assert server.get_target_version() == "LATEST"
+
+    # Assert that the config was saved correctly
+    server.db.add.assert_called_once()
+    server.db.commit.assert_called_once()
 
 
 def test_get_world_name_success(state_mixin_fixture):

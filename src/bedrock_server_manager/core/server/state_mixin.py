@@ -29,8 +29,12 @@ import os
 import json
 from typing import Optional, Any, Dict, TYPE_CHECKING
 
+from sqlalchemy.orm import Session
+
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
+from ...db.database import get_db
+from ...db.models import Server
 from ...error import (
     MissingArgumentError,
     UserInputError,
@@ -90,15 +94,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
-
-    @property
-    def _server_specific_json_config_file_path(self) -> str:
-        """str: The absolute path to this server's specific JSON configuration file.
-
-        The filename is typically ``<server_name>_config.json``, located within
-        the directory returned by :attr:`.BedrockServerBaseMixin.server_config_dir`.
-        """
-        return os.path.join(self.server_config_dir, f"{self.server_name}_config.json")
+        self.db: Session = next(get_db())
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
@@ -218,113 +214,68 @@ class ServerStateMixin(BedrockServerBaseMixin):
             FileOperationError: If directory creation or file reading fails due
                 to ``OSError``.
         """
-        config_file_path = self._server_specific_json_config_file_path
-        server_json_config_subdir = self.server_config_dir  # From base mixin
+        server = (
+            self.db.query(Server).filter(Server.server_name == self.server_name).first()
+        )
+        if server:
+            return server.config
 
-        try:
-            os.makedirs(server_json_config_subdir, exist_ok=True)
-        except OSError as e:
-            raise FileOperationError(
-                f"Failed to create server config directory '{server_json_config_subdir}': {e}"
-            ) from e
-
-        if not os.path.exists(config_file_path):
+        # Legacy migration from JSON file
+        config_file_path = os.path.join(
+            self.server_config_dir, f"{self.server_name}_config.json"
+        )
+        if os.path.exists(config_file_path):
             self.logger.info(
-                f"Server config file '{config_file_path}' not found. Initializing with defaults."
+                f"Migrating server config file '{config_file_path}' to database."
             )
-            default_config = self._get_default_server_config()
-            self._save_server_config(default_config)  # Save the new default config
-            return default_config
+            try:
+                with open(config_file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    if not content.strip():
+                        config = self._get_default_server_config()
+                    else:
+                        config = json.loads(content)
+                        if not isinstance(config, dict):
+                            config = self._get_default_server_config()
+            except (json.JSONDecodeError, OSError) as e:
+                self.logger.warning(
+                    f"Error reading legacy config file: {e}. Using default config."
+                )
+                config = self._get_default_server_config()
 
-        current_config: Dict[str, Any]
-        try:
-            with open(config_file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-                if not content.strip():  # Handle empty file case
-                    self.logger.warning(
-                        f"Server config file '{config_file_path}' is empty. Re-initializing with defaults."
-                    )
-                    current_config = self._get_default_server_config()
-                    self._save_server_config(current_config)
-                    return current_config
+            if "config_schema_version" not in config:
+                config = self._migrate_server_config_v1_to_v2(config)
 
-                loaded_json = json.loads(content)
-                if not isinstance(loaded_json, dict):
-                    # This case implies a severely malformed file, not just old schema.
-                    # Attempting migration might be risky. Let's log and re-initialize.
-                    self.logger.error(
-                        f"Server config file '{config_file_path}' content is not a JSON object (dictionary). "
-                        "The file is likely corrupted. Re-initializing with defaults."
-                    )
-                    current_config = self._get_default_server_config()
-                    self._save_server_config(current_config)
-                    return current_config
-                current_config = loaded_json
+            server = Server(server_name=self.server_name, config=config)
+            self.db.add(server)
+            self.db.commit()
+            self.db.refresh(server)
+            os.remove(config_file_path)  # Remove legacy file
+            return server.config
 
-        except json.JSONDecodeError as e_json:
-            self.logger.warning(
-                f"Failed to parse JSON from '{config_file_path}': {e_json}. "
-                "File might be corrupted or in an unknown format. Re-initializing with defaults."
-            )
-            current_config = self._get_default_server_config()
-            self._save_server_config(current_config)
-            return current_config
-        except OSError as e_os:
-            raise FileOperationError(
-                f"Failed to read config file '{config_file_path}': {e_os}"
-            ) from e_os
-
-        # Schema version check and migration for v1 (no version key)
-        if "config_schema_version" not in current_config:
-            self.logger.info(
-                f"Old server config format (v1, no schema version) detected in '{config_file_path}'. Migrating to v{SERVER_CONFIG_SCHEMA_VERSION}."
-            )
-            current_config = self._migrate_server_config_v1_to_v2(current_config)
-            self._save_server_config(current_config)  # Save migrated config
-        elif (
-            current_config.get("config_schema_version") != SERVER_CONFIG_SCHEMA_VERSION
-        ):
-            # Placeholder for future schema migrations (e.g., v2 to v3)
-            # For now, if it's not v1 (handled above) and not current, log a warning.
-            self.logger.warning(
-                f"Server config schema version mismatch in '{config_file_path}'. "
-                f"Found version {current_config.get('config_schema_version')}, expected {SERVER_CONFIG_SCHEMA_VERSION}. "
-                "Attempting to use as is, but data might be incompatible or migration not yet supported."
-            )
-            # Potentially, one might add specific migration paths here:
-            # if current_config.get("config_schema_version") == 2 and SERVER_CONFIG_SCHEMA_VERSION == 3:
-            #     current_config = self._migrate_server_config_v2_to_v3(current_config)
-            #     self._save_server_config(current_config)
-
-        return current_config
+        # Create new server config in DB
+        self.logger.info(
+            f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
+        )
+        default_config = self._get_default_server_config()
+        server = Server(server_name=self.server_name, config=default_config)
+        self.db.add(server)
+        self.db.commit()
+        self.db.refresh(server)
+        return server.config
 
     def _save_server_config(self, config_data: Dict[str, Any]) -> None:
-        """Saves the server configuration data to its JSON file.
-
-        The configuration is pretty-printed with an indent of 4 and sorted keys.
+        """Saves the server configuration data to the database.
 
         Args:
             config_data (Dict[str, Any]): The server configuration dictionary to save.
-
-        Raises:
-            FileOperationError: If writing the configuration file fails due to an ``OSError``.
-            ConfigParseError: If `config_data` is not JSON serializable (``TypeError``).
         """
-        config_file_path = self._server_specific_json_config_file_path
-        try:
-            with open(config_file_path, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=4, sort_keys=True)
-            self.logger.debug(
-                f"Successfully wrote server config to '{config_file_path}'."
-            )
-        except OSError as e:
-            raise FileOperationError(
-                f"Failed to write server config file '{config_file_path}': {e}"
-            ) from e
-        except TypeError as e_type:  # For non-serializable data
-            raise ConfigParseError(
-                f"Server config data for '{self.server_name}' is not JSON serializable: {e_type}"
-            ) from e_type
+        server = (
+            self.db.query(Server).filter(Server.server_name == self.server_name).first()
+        )
+        if server:
+            server.config = config_data
+            self.db.commit()
 
     def _manage_json_config(
         self,

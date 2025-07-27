@@ -26,12 +26,16 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Type, Callable, Tuple
 
+from sqlalchemy.orm import Session
+
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
 from ..config import (
     GUARD_VARIABLE,
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
 )
+from ..db.database import get_db
+from ..db.models import Plugin
 from ..instances import get_settings_instance
 from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
@@ -83,6 +87,7 @@ class PluginManager:
         self._initialized = True
 
         self.settings = get_settings_instance()
+        self.db: Session = next(get_db())
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -114,63 +119,54 @@ class PluginManager:
         logger.info("PluginManager initialized.")
 
     def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations from the ``plugins.json`` file.
+        """Loads plugin configurations from the database.
 
-        If the file doesn't exist or is malformed, it returns an empty dictionary,
-        prompting a rebuild of the configuration by methods like
-        :meth:`._synchronize_config_with_disk`.
+        If the ``plugins.json`` file exists, it will be migrated to the database.
 
         Returns:
             Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
             mapping plugin names to their configuration dictionaries.
             Returns an empty dict if loading fails or the file is not found.
         """
-        if not self.config_path.exists():
-            logger.debug(
-                f"Plugin configuration file '{self.config_path}' not found. Returning empty config."
+        if self.config_path.exists():
+            logger.info(
+                f"Migrating plugin config file '{self.config_path}' to database."
             )
-            return {}
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                config_data = json.load(f)
-                logger.debug(
-                    f"Successfully loaded plugin configuration from '{self.config_path}'."
-                )
-                return config_data
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.error(
-                f"Error decoding plugin configuration file '{self.config_path}' or its format is outdated. "
-                f"Attempting to rebuild configuration. Error: {e}",
-                exc_info=True,
-            )
-            return {}
-        except Exception as e:
-            logger.error(
-                f"An unexpected error occurred while loading plugin configuration from '{self.config_path}': {e}",
-                exc_info=True,
-            )
-            return {}
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+                for plugin_name, config in config_data.items():
+                    plugin = (
+                        self.db.query(Plugin)
+                        .filter(Plugin.plugin_name == plugin_name)
+                        .first()
+                    )
+                    if not plugin:
+                        plugin = Plugin(plugin_name=plugin_name, config=config)
+                        self.db.add(plugin)
+                self.db.commit()
+                os.remove(self.config_path)
+                logger.info("Plugin config file migrated to database.")
+            except (json.JSONDecodeError, TypeError, OSError) as e:
+                logger.error(f"Error migrating plugin config file: {e}")
+                return {}
+
+        plugins = self.db.query(Plugin).all()
+        return {plugin.plugin_name: plugin.config for plugin in plugins}
 
     def _save_config(self):
-        """Saves the current in-memory plugin configuration to ``plugins.json``.
-
-        The configuration (``self.plugin_config``) is saved in a human-readable
-        JSON format, pretty-printed with indentation and sorted keys.
-        """
-        logger.debug(
-            f"Attempting to save plugin configuration to '{self.config_path}'."
-        )
-        try:
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(self.plugin_config, f, indent=4, sort_keys=True)
-            logger.info(
-                f"Plugin configuration successfully saved to '{self.config_path}'."
+        """Saves the current in-memory plugin configuration to the database."""
+        for plugin_name, config in self.plugin_config.items():
+            plugin = (
+                self.db.query(Plugin).filter(Plugin.plugin_name == plugin_name).first()
             )
-        except Exception as e:
-            logger.error(
-                f"Failed to save plugin configuration to '{self.config_path}': {e}",
-                exc_info=True,
-            )
+            if plugin:
+                plugin.config = config
+            else:
+                plugin = Plugin(plugin_name=plugin_name, config=config)
+                self.db.add(plugin)
+        self.db.commit()
+        logger.info("Plugin configuration successfully saved to database.")
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches all configured plugin directories for a specific plugin file.

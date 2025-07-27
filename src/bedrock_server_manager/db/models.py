@@ -22,5 +22,25 @@ class Setting(Base):
     key = Column(String, index=True)
     value = Column(JSON)
     owner_id = Column(Integer, ForeignKey("users.id"))
+    server_id = Column(Integer, ForeignKey("servers.id"))
 
     owner = relationship("User", back_populates="settings")
+    server = relationship("Server", back_populates="settings")
+
+
+class Server(Base):
+    __tablename__ = "servers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_name = Column(String, unique=True, index=True)
+    config = Column(JSON)
+
+    settings = relationship("Setting", back_populates="server")
+
+
+class Plugin(Base):
+    __tablename__ = "plugins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plugin_name = Column(String, unique=True, index=True)
+    config = Column(JSON)

@@ -253,16 +253,13 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             f"!!! DESTRUCTIVE ACTION: Preparing to delete ALL data for server '{self.server_name}' !!!"
         )
         self.logger.info(f"  - Target installation directory: {server_install_dir}")
-        self.logger.info(
-            f"  - Target JSON configuration directory: {server_json_config_subdir}"
-        )
         if server_backup_dir_path:
             self.logger.info(f"  - Target backup directory: {server_backup_dir_path}")
         else:
             self.logger.info("  - No backup directory path configured or found.")
 
         # Check if any data exists to avoid unnecessary stop attempts if nothing to delete.
-        paths_to_check_existence = [server_install_dir, server_json_config_subdir]
+        paths_to_check_existence = [server_install_dir]
         if server_backup_dir_path:
             paths_to_check_existence.append(server_backup_dir_path)
 
@@ -322,7 +319,6 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         paths_to_delete_map: Dict[str, Optional[str]] = {
             "backup": server_backup_dir_path,
             "installation": server_install_dir,
-            "JSON configuration": server_json_config_subdir,  # server_config_dir from BaseServerMixin
         }
         for dir_type, dir_path_val in paths_to_delete_map.items():
             if dir_path_val and os.path.exists(
