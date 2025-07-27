@@ -1,29 +1,12 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from bedrock_server_manager.web.main import app
 from bedrock_server_manager.web.auth_utils import create_access_token
 from datetime import timedelta
-import os
 
 # Test data
 TEST_USER = "testuser"
 TEST_PASSWORD = "testpassword"
-
-from bedrock_server_manager.web.auth_utils import pwd_context
-
-
-@pytest.fixture(autouse=True)
-def setup_env_vars():
-    """Set up environment variables for testing."""
-    os.environ["BEDROCK_SERVER_MANAGER_USERNAME"] = TEST_USER
-    os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"] = pwd_context.hash(TEST_PASSWORD)
-    os.environ["BEDROCK_SERVER_MANAGER_SECRET_KEY"] = "test-secret-key"
-    yield
-    del os.environ["BEDROCK_SERVER_MANAGER_USERNAME"]
-    del os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"]
-    del os.environ["BEDROCK_SERVER_MANAGER_SECRET_KEY"]
-
 
 client = TestClient(app)
 

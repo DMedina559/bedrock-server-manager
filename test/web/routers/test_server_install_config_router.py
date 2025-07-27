@@ -1,37 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
-from bedrock_server_manager.web.main import app
-from bedrock_server_manager.web.dependencies import validate_server_exists
-from bedrock_server_manager.web.auth_utils import create_access_token
-from datetime import timedelta
-import os
-
-# Test data
-TEST_USER = "testuser"
-
-
-@pytest.fixture
-def client():
-    """Create a test client for the app, with authentication and mocked dependencies."""
-    os.environ["BEDROCK_SERVER_MANAGER_USERNAME"] = TEST_USER
-    os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"] = "testpassword"
-    os.environ["BEDROCK_SERVER_MANAGER_SECRET_KEY"] = "test-secret-key"
-
-    app.dependency_overrides[validate_server_exists] = lambda: "test-server"
-
-    access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
-    )
-    client = TestClient(app)
-    client.headers["Authorization"] = f"Bearer {access_token}"
-
-    yield client
-
-    del os.environ["BEDROCK_SERVER_MANAGER_USERNAME"]
-    del os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"]
-    del os.environ["BEDROCK_SERVER_MANAGER_SECRET_KEY"]
-    app.dependency_overrides = {}
+from unittest.mock import patch
 
 
 @patch("bedrock_server_manager.web.routers.server_install_config.get_settings_instance")
