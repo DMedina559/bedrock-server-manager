@@ -45,10 +45,6 @@ def client():
     db.refresh(user)
     db.close()
 
-    os.environ["BEDROCK_SERVER_MANAGER_USERNAME"] = TEST_USER
-    os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"] = pwd_context.hash(TEST_PASSWORD)
-    os.environ["BEDROCK_SERVER_MANAGER_SECRET_KEY"] = "test-secret-key"
-
     access_token = create_access_token(
         data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
     )
@@ -56,8 +52,4 @@ def client():
     client.headers["Authorization"] = f"Bearer {access_token}"
 
     yield client
-
-    del os.environ["BEDROCK_SERVER_MANAGER_USERNAME"]
-    del os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"]
-    del os.environ["BEDROCK_SERVER_MANAGER_SECRET_KEY"]
     Base.metadata.drop_all(bind=engine)

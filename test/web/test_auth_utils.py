@@ -1,18 +1,15 @@
 import pytest
-from unittest.mock import patch
 from jose import jwt
 from datetime import timedelta
-import os
 from bedrock_server_manager.web.auth_utils import (
     verify_password,
     pwd_context,
     create_access_token,
-    get_current_user,
     get_current_user_optional,
     JWT_SECRET_KEY,
     ALGORITHM,
 )
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 # Test data
 TEST_USER = "testuser"
