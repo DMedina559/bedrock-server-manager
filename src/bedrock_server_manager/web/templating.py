@@ -48,6 +48,7 @@ def configure_templates(template_directories: List[Path]):
 
     # Add global variables
     from ..instances import get_settings_instance
+    from .auth_utils import get_current_user_optional
 
     templates.env.globals["app_name"] = app_name_title
     templates.env.globals["app_version"] = get_installed_version()

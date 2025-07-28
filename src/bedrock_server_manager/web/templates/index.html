@@ -40,6 +40,9 @@
         <a href="#backup-restore-section" class="nav-link" data-target="backup-restore-section">Backup/Restore</a>
         <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
         <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
+        {% if current_user and current_user.role == 'admin' %}
+        <a href="{{ url_for('users_page') }}" class="nav-link">User Management</a>
+        {% endif %}
 
         {# --- Plugin Web Pages Submenu --- #}
         {% if plugin_html_pages %}
@@ -179,5 +182,10 @@
 
 {# --- Body Scripts Block --- #}
 {% block body_scripts %}
-
+<div class="user-info">
+    {% if current_user %}
+        <span>Welcome, {{ current_user.username }} ({{ current_user.role }})</span>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% endif %}
+</div>
 {% endblock %}

@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from ...db.database import get_db
 from ...db.models import User
-from ...web.templating import templates
-from ...web.auth_utils import get_current_user, pwd_context
-from ...web.schemas import User as UserSchema
+from ..templating import templates
+from ..auth_utils import get_current_user, pwd_context
+from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,19 @@ router = APIRouter(
 
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
-async def users_page(request: Request, db: Session = Depends(get_db)):
+async def users_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user),
+):
     """
     Serves the user management page.
     """
     users = db.query(User).all()
     return templates.TemplateResponse(
-        request, "users.html", {"request": request, "users": users}
+        request,
+        "users.html",
+        {"request": request, "users": users, "current_user": current_user},
     )
 
 

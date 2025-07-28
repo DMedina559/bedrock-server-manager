@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from ...db.database import get_db
 from ...db.models import User
-from ...web.templating import templates
-from ...web.auth_utils import pwd_context
+from ..templating import templates
+from ..schemas import User as UserSchema
+from ..auth_utils import pwd_context, get_current_user_optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,19 @@ router = APIRouter(
 
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
-async def setup_page(request: Request, db: Session = Depends(get_db)):
+async def setup_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user_optional),
+):
     """
     Serves the setup page if no users exist in the database.
     """
     if db.query(User).first():
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    return templates.TemplateResponse(request, "setup.html", {"request": request})
+    return templates.TemplateResponse(
+        request, "setup.html", {"request": request, "current_user": current_user}
+    )
 
 
 @router.post("", include_in_schema=False)

@@ -380,3 +380,11 @@
         color: var(--text-color);
         text-decoration: underline;
     }
+
+.user-info {
+    margin-bottom: 10px;
+}
+
+.user-info span {
+    margin-right: 10px;
+}

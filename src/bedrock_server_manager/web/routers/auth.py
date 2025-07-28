@@ -93,7 +93,7 @@ async def login_page(
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
     return templates.TemplateResponse(
-        request, "login.html", {"request": request, "form": {}}
+        request, "login.html", {"request": request, "form": {}, "current_user": user}
     )
 
 

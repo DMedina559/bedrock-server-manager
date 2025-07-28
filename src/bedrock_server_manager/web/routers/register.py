@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from ...db.database import get_db
 from ...db.models import User, RegistrationToken
-from ...web.templating import templates
-from ...web.auth_utils import pwd_context, get_current_user
-from ...web.schemas import User as UserSchema
+from ..templating import templates
+from ..auth_utils import pwd_context, get_current_user, get_current_user_optional
+from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,10 @@ async def generate_token(
 
 @router.get("/{token}", response_class=HTMLResponse, include_in_schema=False)
 async def registration_page(
-    request: Request, token: str, db: Session = Depends(get_db)
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user_optional),
 ):
     """
     Serves the registration page if the token is valid.
@@ -78,7 +81,9 @@ async def registration_page(
         )
 
     return templates.TemplateResponse(
-        request, "register.html", {"request": request, "token": token}
+        request,
+        "register.html",
+        {"request": request, "token": token, "current_user": current_user},
     )
 
 

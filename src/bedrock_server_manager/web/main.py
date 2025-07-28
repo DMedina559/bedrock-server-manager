@@ -95,7 +95,7 @@ if os.path.isdir(themes_path):
 from . import routers
 from .dependencies import needs_setup
 from starlette.middleware.authentication import AuthenticationMiddleware
-from .auth_utils import CustomAuthBackend
+from .auth_utils import CustomAuthBackend, get_current_user_optional
 
 
 @app.middleware("http")
@@ -111,6 +111,15 @@ async def setup_check_middleware(request: Request, call_next):
 
 
 app.add_middleware(AuthenticationMiddleware, backend=CustomAuthBackend())
+
+
+@app.middleware("http")
+async def add_user_to_request(request: Request, call_next):
+    user = await get_current_user_optional(request)
+    request.state.current_user = user
+    response = await call_next(request)
+    return response
+
 
 app.include_router(routers.setup_router)
 app.include_router(routers.auth_router)

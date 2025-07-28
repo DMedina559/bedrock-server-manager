@@ -6,7 +6,7 @@
 <div class="container">
     <h1>Welcome to Bedrock Server Manager</h1>
     <p>Please create an admin account to get started.</p>
-    <form action="{{ url_for('create_first_user') }}" method="post">
+    <form id="setup-form">
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text" id="username" name="username" class="form-input" required>
@@ -15,7 +15,29 @@
             <label for="password">Password</label>
             <input type="password" id="password" name="password" class="form-input" required>
         </div>
-        <button type="submit" class="start-button">Create Admin User</button>
+        <button type="button" class="start-button" onclick="submitForm()">Create Admin User</button>
     </form>
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+function submitForm() {
+    const form = document.getElementById('setup-form');
+    const formData = new FormData(form);
+
+    fetch("{{ url_for('create_first_user') }}", {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.redirected) {
+            window.location.href = response.url;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+</script>
 {% endblock %}

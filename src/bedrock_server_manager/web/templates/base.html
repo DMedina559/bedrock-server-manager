@@ -73,12 +73,7 @@ content and scripts using Jinja2 blocks.
                     <span class="splash-text">{{ splash_text | default("It's Web Based!") }}</span>
                 </h1>
             </a>
-            <div class="user-info">
-                {% if request.user %}
-                    <span>Welcome, {{ request.user.username }} ({{ request.user.role }})</span>
-                    <a href="{{ url_for('logout') }}">Logout</a>
-                {% endif %}
-            </div>
+            </a>
         </header>
 
         {# --- Main Content Area --- #}
@@ -96,6 +91,12 @@ content and scripts using Jinja2 blocks.
 
         {# --- Footer --- #}
         <footer class="footer">
+            <div class="user-info">
+                {% if current_user %}
+                    <span>Welcome, {{ current_user.username }} ({{ current_user.role }})</span>
+                    <a href="{{ url_for('logout') }}">Logout</a>
+                {% endif %}
+            </div>
             <p>
                 <a href="https://bedrock-server-manager.readthedocs.io/en/latest/" target="_none" rel="noopener">Docs</a> |
                 <a href="/docs" target="_none" rel="noopener">HTTP API</a> |
