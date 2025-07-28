@@ -9,7 +9,7 @@
     <form action="{{ url_for('generate_token') }}" method="post">
         <div class="form-group">
             <label for="role">Role</label>
-            <select id="role" name="role">
+            <select id="role" name="role" class="form-input">
                 <option value="user">User</option>
                 <option value="moderator">Moderator</option>
                 <option value="admin">Admin</option>
@@ -17,28 +17,40 @@
         </div>
         <button type="submit" class="action-button">Generate Link</button>
     </form>
+
+    {% if 'message' in request.query_params and 'Registration link generated' in request.query_params['message'] %}
+    <div class="message-box">
+        <p>{{ request.query_params['message'] }}</p>
+        <button class="action-button" onclick="copyToClipboard('{{ request.query_params['message'].split(': ')[1] }}')">Copy Link</button>
+    </div>
+    {% endif %}
     <h2>Existing Users</h2>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Username</th>
-                <th>Role</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for user in users %}
-            <tr>
-                <td>{{ user.username }}</td>
-                <td>{{ user.role }}</td>
-                <td>
-                    <form action="{{ url_for('delete_user', user_id=user.id) }}" method="post" style="display:inline;">
-                        <button type="submit" class="danger-button">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <ul class="server-card-list">
+        {% for user in users %}
+        <li class="server-card">
+            <div class="server-card-info">
+                <h3>{{ user.username }}</h3>
+                <p><span class="info-label">Role:</span> {{ user.role }}</p>
+            </div>
+            <div class="server-card-actions">
+                <form action="{{ url_for('delete_user', user_id=user.id) }}" method="post" style="display:inline;">
+                    <button type="submit" class="danger-button">Delete</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        alert('Copied to clipboard');
+    }, function(err) {
+        alert('Could not copy text: ', err);
+    });
+}
+</script>
 {% endblock %}
