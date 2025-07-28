@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+@router.get("", response_class=HTMLResponse, include_in_schema=False)
 async def setup_page(request: Request, db: Session = Depends(get_db)):
     """
     Serves the setup page if no users exist in the database.
@@ -30,7 +30,7 @@ async def setup_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "setup.html", {"request": request})
 
 
-@router.post("/", include_in_schema=False)
+@router.post("", include_in_schema=False)
 async def create_first_user(
     request: Request,
     username: str = Form(...),

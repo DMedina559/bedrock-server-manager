@@ -1,26 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bedrock Server Manager - Setup</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-    <div class="container">
-        <h1>Welcome to Bedrock Server Manager</h1>
-        <p>Please create an admin account to get started.</p>
-        <form action="/setup/" method="post">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Create Admin User</button>
-        </form>
-    </div>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Bedrock Server Manager - Setup{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Welcome to Bedrock Server Manager</h1>
+    <p>Please create an admin account to get started.</p>
+    <form action="{{ url_for('create_first_user') }}" method="post">
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="start-button">Create Admin User</button>
+    </form>
+</div>
+{% endblock %}

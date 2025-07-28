@@ -113,8 +113,9 @@ async def setup_check_middleware(request: Request, call_next):
 app.add_middleware(AuthenticationMiddleware, backend=CustomAuthBackend())
 
 app.include_router(routers.setup_router)
-app.include_router(routers.main_router)
 app.include_router(routers.auth_router)
+app.include_router(routers.users_router)
+app.include_router(routers.register_router)
 app.include_router(routers.server_actions_router)
 app.include_router(routers.server_install_config_router)
 app.include_router(routers.backup_restore_router)
@@ -123,8 +124,7 @@ app.include_router(routers.settings_router)
 app.include_router(routers.api_info_router)
 app.include_router(routers.plugin_router)
 app.include_router(routers.tasks_router)
-app.include_router(routers.users_router)
-app.include_router(routers.register_router)
+app.include_router(routers.main_router)
 
 
 # --- Dynamically include FastAPI routers from plugins ---

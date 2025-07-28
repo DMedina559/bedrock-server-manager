@@ -22,7 +22,7 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+@router.get("", response_class=HTMLResponse, include_in_schema=False)
 async def users_page(request: Request, db: Session = Depends(get_db)):
     """
     Serves the user management page.
@@ -46,7 +46,7 @@ async def create_user(
     Creates a new user.
     """
     if current_user.role != "admin":
-        return RedirectResponse(url="/users/", status_code=status.HTTP_403_FORBIDDEN)
+        return RedirectResponse(url="/users", status_code=status.HTTP_403_FORBIDDEN)
 
     hashed_password = pwd_context.hash(password)
     user = User(username=username, hashed_password=hashed_password, role=role)
@@ -56,7 +56,7 @@ async def create_user(
     logger.info(
         f"User '{username}' created with role '{role}' by '{current_user.username}'."
     )
-    return RedirectResponse(url="/users/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{user_id}/delete", include_in_schema=False)
@@ -70,7 +70,7 @@ async def delete_user(
     Deletes a user.
     """
     if current_user.role != "admin":
-        return RedirectResponse(url="/users/", status_code=status.HTTP_403_FORBIDDEN)
+        return RedirectResponse(url="/users", status_code=status.HTTP_403_FORBIDDEN)
 
     user = db.query(User).filter(User.id == user_id).first()
     if user:
@@ -78,4 +78,4 @@ async def delete_user(
         db.commit()
         logger.info(f"User '{user.username}' deleted by '{current_user.username}'.")
 
-    return RedirectResponse(url="/users/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
