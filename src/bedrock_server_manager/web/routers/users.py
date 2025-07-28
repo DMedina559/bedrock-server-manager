@@ -3,7 +3,7 @@
 FastAPI router for user management.
 """
 import logging
-from fastapi import APIRouter, Request, Depends, Form, status
+from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -39,12 +39,19 @@ async def users_page(
     )
 
 
+from pydantic import BaseModel
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
 @router.post("/create", include_in_schema=False)
 async def create_user(
     request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    role: str = Form(...),
+    data: CreateUserRequest,
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user),
 ):
@@ -52,17 +59,20 @@ async def create_user(
     Creates a new user.
     """
     if current_user.role != "admin":
-        return RedirectResponse(url="/users", status_code=status.HTTP_403_FORBIDDEN)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can create users.",
+        )
 
-    hashed_password = pwd_context.hash(password)
-    user = User(username=username, hashed_password=hashed_password, role=role)
+    hashed_password = pwd_context.hash(data.password)
+    user = User(username=data.username, hashed_password=hashed_password, role=data.role)
     db.add(user)
     db.commit()
 
     logger.info(
-        f"User '{username}' created with role '{role}' by '{current_user.username}'."
+        f"User '{data.username}' created with role '{data.role}' by '{current_user.username}'."
     )
-    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+    return {"status": "success"}
 
 
 @router.post("/{user_id}/delete", include_in_schema=False)
@@ -76,12 +86,19 @@ async def delete_user(
     Deletes a user.
     """
     if current_user.role != "admin":
-        return RedirectResponse(url="/users", status_code=status.HTTP_403_FORBIDDEN)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can delete users.",
+        )
 
     user = db.query(User).filter(User.id == user_id).first()
     if user:
         db.delete(user)
         db.commit()
         logger.info(f"User '{user.username}' deleted by '{current_user.username}'.")
+        return {"status": "success"}
 
-    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"User with id {user_id} not found.",
+    )

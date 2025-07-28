@@ -56,7 +56,7 @@ function generateToken() {
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
-    sendServerActionRequest("", "{{ url_for('generate_token') }}", 'POST', data)
+    sendServerActionRequest(null, "/register/generate-token", 'POST', data)
         .then(response => {
             if (response && response.status === 'success') {
                 window.location.href = response.redirect_url;
@@ -66,7 +66,7 @@ function generateToken() {
 
 function deleteUser(userId) {
     if (confirm('Are you sure you want to delete this user?')) {
-        sendServerActionRequest("", `/users/${userId}/delete`, 'POST')
+        sendServerActionRequest(null, `/users/${userId}/delete`, 'POST')
             .then(response => {
                 if (response && response.status === 'success') {
                     window.location.reload();

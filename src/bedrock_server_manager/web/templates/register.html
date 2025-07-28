@@ -5,16 +5,16 @@
 {% block content %}
 <div class="container">
     <h1>Register a new account</h1>
-    <form action="{{ url_for('register_user', token=token) }}" method="post">
+    <form id="register-form">
         <div class="form-group">
             <label for="username">Username</label>
-            <input type="text" id="username" name="username" class="form-input" required>
+            <input type="text" id="username" name="username" class="form-input" required autocomplete="username">
         </div>
         <div class="form-group">
             <label for="password">Password</label>
-            <input type="password" id="password" name="password" class="form-input" required>
+            <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password">
         </div>
-        <button type="submit" class="start-button">Register</button>
+        <button type="button" class="start-button" onclick="submitForm()">Register</button>
     </form>
 </div>
 {% endblock %}
