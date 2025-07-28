@@ -115,43 +115,59 @@ async def register_user(
     if not registration_token or registration_token.expires < int(time.time()):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"status": "error", "message": "Invalid or expired registration token."},
+            detail={
+                "status": "error",
+                "message": "Invalid or expired registration token.",
+            },
         )
 
     hashed_password = pwd_context.hash(data.password)
     user = User(
-        username=data.username, hashed_password=hashed_password, role=registration_token.role
+        username=data.username,
+        hashed_password=hashed_password,
+        role=registration_token.role,
     )
-    
+
     try:
         db.add(user)
-        db.delete(registration_token) # Delete token after successful registration
+        db.delete(registration_token)  # Delete token after successful registration
         db.commit()
-        db.refresh(user) # Refresh the user object to get its ID if needed later
+        db.refresh(user)  # Refresh the user object to get its ID if needed later
 
-        logger.info(f"User '{data.username}' registered with role '{registration_token.role}'.")
-        
+        logger.info(
+            f"User '{data.username}' registered with role '{registration_token.role}'."
+        )
+
         return JSONResponse(
             content={
                 "status": "success",
                 "message": "Registration successful. Please log in.",
-                "redirect_url": "/auth/login?message=Registration successful. Please log in."
+                "redirect_url": "/auth/login?message=Registration successful. Please log in.",
             },
-            status_code=status.HTTP_200_OK # Explicitly return 200 OK
+            status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
         )
 
     except IntegrityError:
-        db.rollback() # Rollback the transaction on database error
-        logger.warning(f"Registration failed: Username '{data.username}' already exists.")
+        db.rollback()  # Rollback the transaction on database error
+        logger.warning(
+            f"Registration failed: Username '{data.username}' already exists."
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"status": "error", "message": "Username already exists. Please choose a different one."}
+            detail={
+                "status": "error",
+                "message": "Username already exists. Please choose a different one.",
+            },
         )
     except Exception as e:
-        db.rollback() # Rollback for any other unexpected errors
-        logger.error(f"An unexpected error occurred during registration: {e}", exc_info=True)
+        db.rollback()  # Rollback for any other unexpected errors
+        logger.error(
+            f"An unexpected error occurred during registration: {e}", exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"status": "error", "message": "An unexpected server error occurred during registration."}
+            detail={
+                "status": "error",
+                "message": "An unexpected server error occurred during registration.",
+            },
         )
-

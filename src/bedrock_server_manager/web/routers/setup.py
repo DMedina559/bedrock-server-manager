@@ -60,41 +60,54 @@ async def create_first_user(
         # If a user already exists, prevent creating another first user
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"status": "error", "message": "Setup already completed. Users exist."}
+            detail={
+                "status": "error",
+                "message": "Setup already completed. Users exist.",
+            },
         )
 
     hashed_password = pwd_context.hash(data.password)
     user = User(username=data.username, hashed_password=hashed_password, role="admin")
-    
+
     try:
         db.add(user)
         db.commit()
-        db.refresh(user) # Refresh the user object to get its ID if needed
+        db.refresh(user)  # Refresh the user object to get its ID if needed
 
         logger.info(f"First user '{data.username}' created with admin role.")
-        
+
         # Return JSON response with redirect_url, consistent with register.py
         return JSONResponse(
             content={
                 "status": "success",
                 "message": "Admin account created successfully. Please log in.",
-                "redirect_url": "/auth/login?message=Admin account created successfully. Please log in."
+                "redirect_url": "/auth/login?message=Admin account created successfully. Please log in.",
             },
-            status_code=status.HTTP_200_OK
+            status_code=status.HTTP_200_OK,
         )
 
     except IntegrityError:
-        db.rollback() # Rollback the transaction on database error
-        logger.warning(f"Setup failed: Username '{data.username}' already exists (should not happen for first user).")
+        db.rollback()  # Rollback the transaction on database error
+        logger.warning(
+            f"Setup failed: Username '{data.username}' already exists (should not happen for first user)."
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"status": "error", "message": "Username already exists. Please choose a different one."}
+            detail={
+                "status": "error",
+                "message": "Username already exists. Please choose a different one.",
+            },
         )
     except Exception as e:
-        db.rollback() # Rollback for any other unexpected errors
-        logger.error(f"An unexpected error occurred during first user creation: {e}", exc_info=True)
+        db.rollback()  # Rollback for any other unexpected errors
+        logger.error(
+            f"An unexpected error occurred during first user creation: {e}",
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"status": "error", "message": "An unexpected server error occurred during setup."}
+            detail={
+                "status": "error",
+                "message": "An unexpected server error occurred during setup.",
+            },
         )
-
