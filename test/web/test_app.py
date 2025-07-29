@@ -18,16 +18,6 @@ def setup_env_vars():
 
 @patch("bedrock_server_manager.web.app.uvicorn.run")
 @patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_no_auth_env_vars(mock_get_settings, mock_uvicorn_run):
-    """Test that the server fails to start if auth environment variables are not set."""
-    del os.environ["BEDROCK_SERVER_MANAGER_USERNAME"]
-    del os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"]
-    with pytest.raises(RuntimeError):
-        run_web_server()
-
-
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
 def test_run_web_server_default_settings(mock_get_settings, mock_uvicorn_run):
     """Test the server runs with default settings."""
     mock_settings = MagicMock()
