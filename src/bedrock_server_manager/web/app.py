@@ -81,18 +81,6 @@ def run_web_server(
           not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
 
-    username_env = f"{env_name}_USERNAME"
-    password_env = f"{env_name}_PASSWORD"
-    if not os.environ.get(username_env) or not os.environ.get(password_env):
-        error_msg = (
-            f"Cannot start web server: Required authentication environment variables "
-            f"('{username_env}', '{password_env}') are not set."
-        )
-        logger.critical(error_msg)
-        raise RuntimeError(error_msg)
-    else:
-        logger.info("Web authentication credentials found in environment variables.")
-
     port_setting_key = "web.port"
     port_val = get_settings_instance().get(port_setting_key, 11325)
     try:
