@@ -56,7 +56,9 @@ def migrate_env_auth_to_db(env_name: str):
         user = User(username=username, hashed_password=hashed_password, role="admin")
         db.add(user)
         db.commit()
-        logger.info(f"Successfully migrated user '{username}' from environment variables to the database.")
+        logger.info(
+            f"Successfully migrated user '{username}' from environment variables to the database."
+        )
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to migrate user '{username}' to the database: {e}")
@@ -97,7 +99,9 @@ def migrate_server_config_v1_to_v2(
     return new_config
 
 
-def migrate_settings_v1_to_v2(old_config: dict, config_path: str, default_config: dict) -> dict:
+def migrate_settings_v1_to_v2(
+    old_config: dict, config_path: str, default_config: dict
+) -> dict:
     """Migrates a flat v1 configuration (no ``config_version`` key) to the nested v2 format.
 
     This method performs the following steps:
