@@ -42,6 +42,7 @@ from ...error import (
     ConfigParseError,
     AppFileNotFoundError,
 )
+from ...utils.migration import migrate_server_config_v1_to_v2
 
 # Version for the server-specific JSON config schema
 SERVER_CONFIG_SCHEMA_VERSION: int = 2
@@ -123,74 +124,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             "custom": {},
         }
 
-    def _migrate_server_config_v1_to_v2(
-        self, old_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Migrates a flat v1 server configuration to the nested v2 format.
-
-        This internal method takes an old, presumably flat dictionary
-        (`old_config`) representing a v1 server configuration and transforms
-        it into the structured v2 format defined by
-        :meth:`._get_default_server_config`. Known v1 keys like
-        "installed_version", "target_version", "status", and "autoupdate"
-        are mapped to their new locations in the "server_info" and "settings"
-        sections. Any other unrecognized keys from the old config are moved
-        into a "custom" sub-dictionary.
-
-        Args:
-            old_config (Dict[str, Any]): The dictionary loaded from an old v1
-                server configuration file.
-
-        Returns:
-            Dict[str, Any]: A new dictionary representing the server configuration
-            in the v2 schema, populated with values from the `old_config`.
-        """
-        self.logger.info(
-            f"Migrating server config for '{self.server_name}' from v1 (flat) to v2 (nested)."
-        )
-        new_config = self._get_default_server_config()  # Start with a clean v2 default
-
-        # Migrate known server_info keys
-        new_config["server_info"]["installed_version"] = old_config.get(
-            "installed_version", new_config["server_info"]["installed_version"]
-        )
-        # Note: target_version was in top-level in v1, moved to settings in v2 structure.
-        # The default config already provides a 'UNKNOWN' if not found.
-        new_config["settings"]["target_version"] = old_config.get(
-            "target_version", new_config["settings"]["target_version"]
-        )
-        new_config["server_info"]["status"] = old_config.get(
-            "status", new_config["server_info"]["status"]
-        )
-
-        # Migrate known settings keys
-        autoupdate_val = old_config.get("autoupdate")
-        if isinstance(
-            autoupdate_val, str
-        ):  # v1 might have stored as string "true"/"false"
-            new_config["settings"]["autoupdate"] = autoupdate_val.lower() == "true"
-        elif isinstance(autoupdate_val, bool):  # Or correctly as bool
-            new_config["settings"]["autoupdate"] = autoupdate_val
-        # If missing or other type, it keeps the default from _get_default_server_config()
-
-        # Migrate any other unrecognized top-level keys to the "custom" section
-        known_v1_keys_handled = {
-            "installed_version",
-            "target_version",  # Already handled for its new location
-            "status",
-            "autoupdate",
-            # config_schema_version is not a v1 key, but good to exclude if it somehow appears
-            "config_schema_version",
-        }
-        for key, value in old_config.items():
-            if key not in known_v1_keys_handled:
-                new_config["custom"][key] = value
-
-        new_config["config_schema_version"] = (
-            SERVER_CONFIG_SCHEMA_VERSION  # Ensure new version is set
-        )
-        return new_config
-
     def _load_server_config(self) -> Dict[str, Any]:
         """Loads the server-specific JSON configuration.
 
@@ -244,7 +177,9 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 config = self._get_default_server_config()
 
             if "config_schema_version" not in config:
-                config = self._migrate_server_config_v1_to_v2(config)
+                config = migrate_server_config_v1_to_v2(
+                    config, self._get_default_server_config()
+                )
 
             server = Server(server_name=self.server_name, config=config)
             self.db.add(server)

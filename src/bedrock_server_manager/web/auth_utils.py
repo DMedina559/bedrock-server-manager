@@ -13,7 +13,6 @@ including:
 
 The JWT secret key and token expiration are configurable via environment variables.
 """
-import os
 import datetime
 import logging
 from typing import Optional, Dict, Any
@@ -26,8 +25,6 @@ from passlib.context import CryptContext
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
 from ..error import MissingArgumentError
-from ..config import env_name
-from ..instances import get_settings_instance
 from .schemas import User
 from ..db.database import SessionLocal
 from ..db.models import User as UserModel
@@ -39,24 +36,24 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # --- JWT Configuration ---
-JWT_SECRET_KEY_ENV = f"{env_name}_TOKEN"
-JWT_SECRET_KEY = os.environ.get(JWT_SECRET_KEY_ENV)
+def get_jwt_secret_key() -> str:
+    from ..instances import get_settings_instance
 
-if not JWT_SECRET_KEY:
-    JWT_SECRET_KEY = secrets.token_urlsafe(32)
-    logger.warning(
-        "JWT secret key not found in environment variables. Using a randomly generated key. Tokens will not be valid across server restarts."
-    )
+    """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
+    settings = get_settings_instance()
+    jwt_secret_key = settings.get("web.jwt_secret_key")
+    if not jwt_secret_key:
+        jwt_secret_key = secrets.token_urlsafe(32)
+        settings.set("web.jwt_secret_key", jwt_secret_key)
+        logger.warning(
+            "JWT secret key not found in settings. Using a randomly generated key. Tokens will not be valid across server restarts."
+        )
+    return jwt_secret_key
+
+
+JWT_SECRET_KEY = get_jwt_secret_key()
 
 ALGORITHM = "HS256"
-try:
-    JWT_EXPIRES_WEEKS = float(
-        get_settings_instance().get("web.token_expires_weeks", 4.0)
-    )
-except (ValueError, TypeError):
-    JWT_EXPIRES_WEEKS = 4.0
-ACCESS_TOKEN_EXPIRE_MINUTES = JWT_EXPIRES_WEEKS * 7 * 24 * 60
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
@@ -83,8 +80,17 @@ def create_access_token(
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
     else:
+        from ..instances import get_settings_instance
+
+        try:
+            jwt_expires_weeks = float(
+                get_settings_instance().get("web.token_expires_weeks", 4.0)
+            )
+        except (ValueError, TypeError):
+            jwt_expires_weeks = 4.0
+        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
         expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+            minutes=access_token_expire_minutes
         )
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)

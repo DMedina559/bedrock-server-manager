@@ -17,12 +17,13 @@ from typing import Optional, List
 from pathlib import Path
 
 from ..utils import get_utils
-from ..config import get_installed_version, app_name_title
 
 templates: Optional[Jinja2Templates] = None
 
 
 def configure_templates(template_directories: List[Path]):
+    from ..config import get_installed_version, app_name_title
+
     """
     Creates and configures the global Jinja2Templates instance.
 

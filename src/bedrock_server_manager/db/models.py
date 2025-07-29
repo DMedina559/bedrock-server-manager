@@ -50,3 +50,11 @@ class RegistrationToken(Base):
     token = Column(String, unique=True, index=True)
     role = Column(String)
     expires = Column(Integer)
+
+
+class Player(Base):
+    __tablename__ = "players"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_name = Column(String, unique=True, index=True)
+    xuid = Column(String, unique=True, index=True)

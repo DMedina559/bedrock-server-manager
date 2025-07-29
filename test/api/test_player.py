@@ -13,9 +13,7 @@ from bedrock_server_manager.error import UserInputError, BSMError
 def mock_manager():
     """Fixture for a mocked BedrockServerManager."""
     manager = MagicMock()
-    manager.parse_player_cli_argument.return_value = [
-        {"name": "player1", "xuid": "123"}
-    ]
+    manager.parse_player_cli_argument.return_value = None
     manager.save_player_data.return_value = 1
     manager.get_known_players.return_value = [{"name": "player1", "xuid": "123"}]
     manager.discover_and_store_players_from_all_server_logs.return_value = {
@@ -38,10 +36,13 @@ def mock_get_manager_instance(mock_manager):
 
 
 class TestPlayerManagement:
-    def test_add_players_manually_api_success(self, mock_get_manager_instance):
+    def test_add_players_manually_api_success(
+        self, mock_get_manager_instance, mock_manager
+    ):
         result = add_players_manually_api(["player1:123"])
         assert result["status"] == "success"
         assert result["count"] == 1
+        mock_manager.parse_player_cli_argument.assert_called_once_with("player1:123")
 
     def test_add_players_manually_api_empty_list(self, mock_get_manager_instance):
         result = add_players_manually_api([])

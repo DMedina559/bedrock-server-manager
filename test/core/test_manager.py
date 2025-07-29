@@ -350,82 +350,69 @@ def test_manager_get_os_type(manager_instance, mocker):
 # --- BedrockServerManager - Player Database Management Tests ---
 
 
-def test_get_player_db_path(manager_instance, temp_manager_dirs):
-    """Test _get_player_db_path returns the correct path."""
-    expected_path = temp_manager_dirs["config"] / "players.json"
-    assert Path(manager_instance._get_player_db_path()) == expected_path
-
-
 @pytest.mark.parametrize(
-    "input_str, expected_output, raises_error, match_msg",
+    "input_str, raises_error, match_msg",
     [
-        ("Player1:123", [{"name": "Player1", "xuid": "123"}], False, None),
-        (
-            " Player One : 12345 , PlayerTwo:67890 ",
-            [
-                {"name": "Player One", "xuid": "12345"},
-                {"name": "PlayerTwo", "xuid": "67890"},
-            ],
-            False,
-            None,
-        ),
-        ("PlayerOnlyName", None, True, "Invalid player data format: 'PlayerOnlyName'."),
-        ("Player: ", None, True, "Name and XUID cannot be empty in 'Player:'."),
-        (":123", None, True, "Name and XUID cannot be empty in ':123'."),
-        ("", [], False, None),
-        (None, [], False, None),
-        (
-            "Valid:1,Invalid,Valid2:2",
-            None,
-            True,
-            "Invalid player data format: 'Invalid'.",
-        ),
+        ("Player1:123", False, None),
+        (" Player One : 12345 , PlayerTwo:67890 ", False, None),
+        ("PlayerOnlyName", True, "Invalid player data format: 'PlayerOnlyName'."),
+        ("Player: ", True, "Name and XUID cannot be empty in 'Player:'."),
+        (":123", True, "Name and XUID cannot be empty in ':123'."),
+        ("", False, None),
+        (None, False, None),
+        ("Valid:1,Invalid,Valid2:2", True, "Invalid player data format: 'Invalid'."),
     ],
 )
 def test_parse_player_cli_argument(
-    manager_instance, input_str, expected_output, raises_error, match_msg
+    manager_instance, input_str, raises_error, match_msg, mocker
 ):
     """Test parse_player_cli_argument with various inputs."""
+    mock_save = mocker.patch.object(manager_instance, "save_player_data")
     if raises_error:
         with pytest.raises(UserInputError, match=match_msg):
             manager_instance.parse_player_cli_argument(input_str)
+        mock_save.assert_not_called()
     else:
-        assert manager_instance.parse_player_cli_argument(input_str) == expected_output
+        manager_instance.parse_player_cli_argument(input_str)
+        if input_str:
+            mock_save.assert_called_once()
+        else:
+            mock_save.assert_not_called()
 
 
-def test_save_player_data_new_db(manager_instance, temp_manager_dirs):
-    """Test save_player_data creating a new players.json."""
+def test_save_player_data_new_db(manager_instance, mocker):
+    """Test save_player_data creating a new player in the database."""
     players_to_save = [
         {"name": "Gamer", "xuid": "100"},
         {"name": "Admin", "xuid": "007"},
     ]
-    player_db_path = Path(manager_instance._get_player_db_path())
 
-    # assert not player_db_path.exists()
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.filter_by.return_value.first.return_value = None
+    mocker.patch(
+        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+    )
+
     saved_count = manager_instance.save_player_data(players_to_save)
     assert saved_count == 2
-    assert player_db_path.exists()
+    assert mock_session.add.call_count == 2
+    mock_session.commit.assert_called_once()
 
-    with open(player_db_path, "r") as f:
-        data = json.load(f)
-    # Order should be Admin then Gamer due to sorting by name
-    assert data["players"] == [
-        {"name": "Admin", "xuid": "007"},
-        {"name": "Gamer", "xuid": "100"},
+
+def test_save_player_data_update_existing_db(manager_instance, mocker):
+    """Test save_player_data merging with an existing player in the database."""
+    existing_player = mocker.MagicMock()
+    existing_player.player_name = "ToUpdate"
+    existing_player.xuid = "222"
+
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.filter_by.side_effect = [
+        mocker.MagicMock(first=lambda: None),  # For NewPlayer
+        mocker.MagicMock(first=lambda: existing_player),  # For UpdatedName
     ]
-
-
-def test_save_player_data_update_existing_db(manager_instance, temp_manager_dirs):
-    """Test save_player_data merging with an existing players.json."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    initial_db_content = {
-        "players": [
-            {"name": "OldPlayer", "xuid": "111"},
-            {"name": "ToUpdate", "xuid": "222"},  # This name will change
-        ]
-    }
-    with open(player_db_path, "w") as f:
-        json.dump(initial_db_content, f)
+    mocker.patch(
+        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+    )
 
     players_to_save = [
         {"name": "NewPlayer", "xuid": "333"},
@@ -434,30 +421,9 @@ def test_save_player_data_update_existing_db(manager_instance, temp_manager_dirs
     saved_count = manager_instance.save_player_data(players_to_save)
     assert saved_count == 2  # 1 added, 1 updated
 
-    with open(player_db_path, "r") as f:
-        data = json.load(f)
-
-    # Expected: NewPlayer, OldPlayer, UpdatedName (sorted)
-    expected_players = sorted(
-        [
-            {"name": "OldPlayer", "xuid": "111"},
-            {"name": "UpdatedName", "xuid": "222"},
-            {"name": "NewPlayer", "xuid": "333"},
-        ],
-        key=lambda p: p["name"].lower(),
-    )
-    assert data["players"] == expected_players
-
-
-def test_save_player_data_no_changes(manager_instance, temp_manager_dirs):
-    """Test save_player_data when no actual changes are made to existing data."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    players_to_save = [{"name": "PlayerA", "xuid": "123"}]
-    manager_instance.save_player_data(players_to_save)  # Initial save
-
-    # Call save again with the same data
-    saved_count = manager_instance.save_player_data(players_to_save)
-    assert saved_count == 0
+    assert existing_player.player_name == "UpdatedName"
+    assert mock_session.add.call_count == 1
+    mock_session.commit.assert_called_once()
 
 
 def test_save_player_data_invalid_input(manager_instance):
@@ -472,65 +438,38 @@ def test_save_player_data_invalid_input(manager_instance):
         manager_instance.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
 
 
-def test_save_player_data_os_error_on_mkdir(manager_instance, mocker):
-    """Test save_player_data handles OSError when creating config directory."""
-    mocker.patch("os.makedirs", side_effect=OSError("Permission denied mkdir"))
-    with pytest.raises(FileOperationError, match="Could not create config directory"):
-        manager_instance.save_player_data([{"name": "A", "xuid": "1"}])
+def test_get_known_players(manager_instance, mocker):
+    """Test get_known_players with a valid database."""
+    mock_player1 = mocker.MagicMock()
+    mock_player1.player_name = "PlayerX"
+    mock_player1.xuid = "789"
+    mock_player2 = mocker.MagicMock()
+    mock_player2.player_name = "PlayerY"
+    mock_player2.xuid = "123"
 
-
-def test_save_player_data_os_error_on_write(
-    manager_instance, temp_manager_dirs, mocker
-):
-    """Test save_player_data handles OSError when writing players.json."""
-    # Ensure config dir exists
-    Path(manager_instance._get_player_db_path()).parent.mkdir(
-        parents=True, exist_ok=True
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.all.return_value = [mock_player1, mock_player2]
+    mocker.patch(
+        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
     )
-    mocker.patch("builtins.open", side_effect=OSError("Permission denied write"))
-    with pytest.raises(FileOperationError, match="Failed to write players.json"):
-        manager_instance.save_player_data([{"name": "A", "xuid": "1"}])
-
-
-def test_get_known_players_valid_db(manager_instance, temp_manager_dirs):
-    """Test get_known_players with a valid players.json."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    db_content = {"players": [{"name": "PlayerX", "xuid": "789"}]}
-    with open(player_db_path, "w") as f:
-        json.dump(db_content, f)
 
     players = manager_instance.get_known_players()
-    assert players == db_content["players"]
+    assert players == [
+        {"name": "PlayerX", "xuid": "789"},
+        {"name": "PlayerY", "xuid": "123"},
+    ]
 
 
-def test_get_known_players_db_not_exist(manager_instance, temp_manager_dirs):
-    """Test get_known_players when players.json does not exist."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    assert not player_db_path.exists()
-    assert manager_instance.get_known_players() == []
+def test_get_known_players_empty_db(manager_instance, mocker):
+    """Test get_known_players with an empty database."""
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.all.return_value = []
+    mocker.patch(
+        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+    )
 
-
-def test_get_known_players_empty_or_invalid_db(
-    manager_instance, temp_manager_dirs, caplog
-):
-    """Test get_known_players with an empty or malformed players.json."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-
-    # Empty file
-    player_db_path.write_text("")
-    assert manager_instance.get_known_players() == []
-
-    # Invalid JSON
-    player_db_path.write_text("{not_json:")
-    caplog.clear()
-    assert manager_instance.get_known_players() == []
-    assert f"Error reading player DB {str(player_db_path)}" in caplog.text
-
-    # Valid JSON, wrong structure
-    player_db_path.write_text(json.dumps({"not_players_key": []}))
-    caplog.clear()
-    assert manager_instance.get_known_players() == []
-    assert f"Player DB {str(player_db_path)} has unexpected format." in caplog.text
+    players = manager_instance.get_known_players()
+    assert players == []
 
 
 def test_discover_and_store_players_from_all_server_logs(

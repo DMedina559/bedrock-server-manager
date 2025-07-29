@@ -10,15 +10,12 @@ arguments and application settings to correctly configure Uvicorn's host, port,
 debug mode, and worker processes.
 """
 
-import os
-import sys
 import logging
 import ipaddress
 from typing import Optional, List, Union
 
 import uvicorn
 
-from ..config import env_name
 from ..instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
@@ -61,15 +58,8 @@ def run_web_server(
             Only used for Windows Service
 
     Raises:
-        RuntimeError: If the required authentication environment variables
-            (e.g., ``BSM_USERNAME``, ``BSM_PASSWORD``, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
-            are not set. The server will not start without these credentials.
         Exception: Re-raises any exception encountered during `uvicorn.run` if
             Uvicorn itself fails to start (e.g., port already in use, invalid app path).
-
-    Environment Variables:
-        - ``BSM_USERNAME``: The username for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
-        - ``BSM_PASSWORD``: The password for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
 
     Settings Interaction:
         This function reads the following keys from the global ``settings`` object:
