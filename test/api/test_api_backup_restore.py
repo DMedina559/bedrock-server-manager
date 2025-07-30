@@ -23,14 +23,6 @@ def mock_get_server_instance(mocker, mock_bedrock_server):
     )
 
 
-@pytest.fixture
-def temp_backup_file(tmp_path):
-    """Creates a temporary backup file for tests."""
-    backup_file = tmp_path / "backup.zip"
-    backup_file.touch()
-    return str(backup_file)
-
-
 class TestBackupRestore:
     def test_list_backup_files(self, mock_get_server_instance, mock_bedrock_server):
         mock_bedrock_server.list_backups.return_value = ["backup1.zip", "backup2.zip"]
@@ -92,13 +84,13 @@ class TestBackupRestore:
         mock_lifecycle,
         mock_get_server_instance,
         mock_bedrock_server,
-        temp_backup_file,
+        temp_file,
     ):
-        result = restore_world("test-server", temp_backup_file)
+        result = restore_world("test-server", temp_file)
         assert result["status"] == "success"
         mock_lifecycle.assert_called_once()
         mock_bedrock_server.import_active_world_from_mcworld.assert_called_once_with(
-            temp_backup_file
+            temp_file
         )
 
     @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
@@ -107,16 +99,16 @@ class TestBackupRestore:
         mock_lifecycle,
         mock_get_server_instance,
         mock_bedrock_server,
-        temp_backup_file,
+        temp_file,
     ):
         mock_bedrock_server._restore_config_file_internal.return_value = (
             "server.properties"
         )
-        result = restore_config_file("test-server", temp_backup_file)
+        result = restore_config_file("test-server", temp_file)
         assert result["status"] == "success"
         mock_lifecycle.assert_called_once()
         mock_bedrock_server._restore_config_file_internal.assert_called_once_with(
-            temp_backup_file
+            temp_file
         )
 
     def test_prune_old_backups(self, mock_get_server_instance, mock_bedrock_server):
@@ -136,7 +128,7 @@ class TestBackupRestore:
             assert result["status"] == "success"
             assert "No backup directory found" in result["message"]
 
-    def test_lock_skipped(self, temp_backup_file):
+    def test_lock_skipped(self, temp_file):
         with patch(
             "bedrock_server_manager.api.backup_restore._backup_restore_lock"
         ) as mock_lock:

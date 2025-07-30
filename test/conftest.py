@@ -94,3 +94,17 @@ def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
         return_value=mock_bedrock_server_manager,
         autospec=True,
     )
+
+
+@pytest.fixture
+def temp_file(tmp_path):
+    """Creates a temporary file for tests."""
+    file = tmp_path / "temp_file"
+    file.touch()
+    return str(file)
+
+
+@pytest.fixture
+def temp_dir(tmp_path):
+    """Creates a temporary directory for tests."""
+    return str(tmp_path)

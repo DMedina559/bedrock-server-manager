@@ -24,14 +24,6 @@ def mock_get_server_instance(mocker, mock_bedrock_server):
     )
 
 
-@pytest.fixture
-def temp_world_file(tmp_path):
-    """Creates a temporary world file for tests."""
-    world_file = tmp_path / "world.mcworld"
-    world_file.touch()
-    return str(world_file)
-
-
 class TestWorldAPI:
     def test_get_world_name(self, mock_get_server_instance):
         result = get_world_name("test-server")
@@ -39,9 +31,7 @@ class TestWorldAPI:
         assert result["world_name"] == "world"
 
     @patch("bedrock_server_manager.api.world.server_lifecycle_manager")
-    def test_export_world(
-        self, mock_lifecycle, mock_get_server_instance, temp_world_file
-    ):
+    def test_export_world(self, mock_lifecycle, mock_get_server_instance, temp_file):
         result = export_world("test-server", export_dir="/tmp")
         assert result["status"] == "success"
         mock_lifecycle.assert_called_once()
@@ -57,11 +47,9 @@ class TestWorldAPI:
             mock_lifecycle.assert_called_once()
 
     @patch("bedrock_server_manager.api.world.server_lifecycle_manager")
-    def test_import_world(
-        self, mock_lifecycle, mock_get_server_instance, temp_world_file
-    ):
+    def test_import_world(self, mock_lifecycle, mock_get_server_instance, temp_file):
         with patch("os.path.isfile", return_value=True):
-            result = import_world("test-server", temp_world_file)
+            result = import_world("test-server", temp_file)
             assert result["status"] == "success"
             mock_lifecycle.assert_called_once()
 
