@@ -258,3 +258,56 @@ def migrate_server_config_to_db(server_name: str, server_config_dir: str):
             db.commit()
     except (json.JSONDecodeError, OSError) as e:
         logger.error(f"Failed to migrate config for server '{server_name}': {e}")
+
+
+def migrate_services_to_db():
+    """Migrates systemd/Windows service status to the database."""
+    from ..instances import get_server_instance, get_settings_instance
+    import platform
+    import subprocess
+
+    settings = get_settings_instance()
+    server_path = settings.get("paths.servers")
+    if not server_path or not os.path.isdir(server_path):
+        return
+
+    for server_name in os.listdir(server_path):
+        server = get_server_instance(server_name)
+        if not server.is_installed():
+            continue
+
+        if platform.system() == "Linux":
+            service_name = f"bedrock-{server_name}.service"
+            service_path = os.path.join(
+                os.path.expanduser("~"), ".config", "systemd", "user", service_name
+            )
+            if os.path.exists(service_path):
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "--user", "is-enabled", service_name],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0 and result.stdout.strip() == "enabled":
+                        server.set_autostart(True)
+                    else:
+                        server.set_autostart(False)
+                except FileNotFoundError:
+                    pass
+        elif platform.system() == "Windows":
+            from ..core.system.windows import check_service_exists
+
+            service_name = f"bedrock-{server_name}"
+            try:
+                if check_service_exists(service_name):
+                    result = subprocess.run(
+                        ["sc", "qc", service_name],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if "AUTO_START" in result.stdout:
+                        server.set_autostart(True)
+                    else:
+                        server.set_autostart(False)
+            except Exception:
+                pass

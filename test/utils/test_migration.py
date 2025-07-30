@@ -12,6 +12,7 @@ from bedrock_server_manager.utils.migration import (
     migrate_env_token_to_db,
     migrate_plugin_config_to_db,
     migrate_server_config_to_db,
+    migrate_services_to_db,
 )
 from bedrock_server_manager.db.models import Player, User, Server, Setting
 from bedrock_server_manager.error import ConfigurationError
@@ -346,3 +347,76 @@ class TestMigrateServerConfigToDb:
     ):
         migrate_server_config_to_db("non_existent_server", str(tmp_path))
         mock_session_local.assert_not_called()
+
+
+class TestMigrateServicesToDb:
+    @patch("platform.system", return_value="Linux")
+    @patch("bedrock_server_manager.instances.get_settings_instance")
+    @patch("bedrock_server_manager.instances.get_server_instance")
+    def test_migrate_services_to_db_success(
+        self,
+        mock_get_server_instance,
+        mock_get_settings_instance,
+        mock_system,
+        tmp_path,
+    ):
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = str(tmp_path)
+        mock_get_settings_instance.return_value = mock_settings
+
+        server_dir = tmp_path / "test_server"
+        os.makedirs(server_dir)
+
+        mock_server = MagicMock()
+        mock_server.server_name = "test_server"
+        mock_server.is_installed.return_value = True
+        mock_get_server_instance.return_value = mock_server
+
+        service_name = f"bedrock-{mock_server.server_name}.service"
+        service_path = os.path.join(
+            os.path.expanduser("~"), ".config", "systemd", "user", service_name
+        )
+        os.makedirs(os.path.dirname(service_path), exist_ok=True)
+        with open(service_path, "w") as f:
+            f.write(
+                "[Unit]\nDescription=Test Service\n\n[Service]\nExecStart=/bin/true\n"
+            )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "enabled"
+            migrate_services_to_db()
+
+        mock_server.set_autostart.assert_called_once_with(True)
+
+        os.remove(service_path)
+
+    @patch("platform.system", return_value="Windows")
+    @patch("bedrock_server_manager.instances.get_settings_instance")
+    @patch("bedrock_server_manager.instances.get_server_instance")
+    def test_migrate_windows_services_to_db_no_admin(
+        self,
+        mock_get_server_instance,
+        mock_get_settings_instance,
+        mock_system,
+        tmp_path,
+    ):
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = str(tmp_path)
+        mock_get_settings_instance.return_value = mock_settings
+
+        server_dir = tmp_path / "test_server"
+        os.makedirs(server_dir)
+
+        mock_server = MagicMock()
+        mock_server.server_name = "test_server"
+        mock_server.is_installed.return_value = True
+        mock_get_server_instance.return_value = mock_server
+
+        with patch(
+            "bedrock_server_manager.core.system.windows.check_service_exists",
+            side_effect=Exception("Admin required"),
+        ):
+            migrate_services_to_db()
+
+        mock_server.set_autostart.assert_not_called()
