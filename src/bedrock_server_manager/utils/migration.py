@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from typing import Dict, Any
-from ..db.database import SessionLocal
+from ..db.database import db_session_manager
 from ..db.models import Player, User
 from ..error import ConfigurationError
 
@@ -19,21 +19,21 @@ def migrate_players_json_to_db(players_json_path: str):
         logger.warning(f"Could not read players.json from {players_json_path}")
         return
 
-    db = SessionLocal()
-    try:
-        for player_data in players:
-            player = Player(
-                player_name=player_data.get("name"),
-                xuid=player_data.get("xuid"),
+    with db_session_manager() as db:
+        try:
+            for player_data in players:
+                player = Player(
+                    player_name=player_data.get("name"),
+                    xuid=player_data.get("xuid"),
+                )
+                db.add(player)
+            db.commit()
+            logger.info(
+                "Successfully migrated players from players.json to the database."
             )
-            db.add(player)
-        db.commit()
-        logger.info("Successfully migrated players from players.json to the database.")
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to migrate players to the database: {e}")
-    finally:
-        db.close()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to migrate players to the database: {e}")
 
 
 def migrate_env_auth_to_db(env_name: str):
@@ -46,24 +46,24 @@ def migrate_env_auth_to_db(env_name: str):
     if not username or not password:
         return
 
-    db = SessionLocal()
-    try:
-        # Check if the user already exists
-        if db.query(User).filter_by(username=username).first():
-            return
+    with db_session_manager() as db:
+        try:
+            # Check if the user already exists
+            if db.query(User).filter_by(username=username).first():
+                return
 
-        hashed_password = pwd_context.hash(password)
-        user = User(username=username, hashed_password=hashed_password, role="admin")
-        db.add(user)
-        db.commit()
-        logger.info(
-            f"Successfully migrated user '{username}' from environment variables to the database."
-        )
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to migrate user '{username}' to the database: {e}")
-    finally:
-        db.close()
+            hashed_password = pwd_context.hash(password)
+            user = User(
+                username=username, hashed_password=hashed_password, role="admin"
+            )
+            db.add(user)
+            db.commit()
+            logger.info(
+                f"Successfully migrated user '{username}' from environment variables to the database."
+            )
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to migrate user '{username}' to the database: {e}")
 
 
 def migrate_server_config_v1_to_v2(

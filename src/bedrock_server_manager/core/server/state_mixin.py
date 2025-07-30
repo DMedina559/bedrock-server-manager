@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ...db.database import get_db
+from ...db.database import db_session_manager
 from ...db.models import Server
 from ...error import (
     MissingArgumentError,
@@ -95,7 +95,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
-        self.db: Session = next(get_db())
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
@@ -147,57 +146,58 @@ class ServerStateMixin(BedrockServerBaseMixin):
             FileOperationError: If directory creation or file reading fails due
                 to ``OSError``.
         """
-        server = (
-            self.db.query(Server).filter(Server.server_name == self.server_name).first()
-        )
-        if server:
-            return server.config
-
-        # Legacy migration from JSON file
-        config_file_path = os.path.join(
-            self.server_config_dir, f"{self.server_name}_config.json"
-        )
-        if os.path.exists(config_file_path):
-            self.logger.info(
-                f"Migrating server config file '{config_file_path}' to database."
+        with db_session_manager() as db:
+            server = (
+                db.query(Server).filter(Server.server_name == self.server_name).first()
             )
-            try:
-                with open(config_file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    if not content.strip():
-                        config = self._get_default_server_config()
-                    else:
-                        config = json.loads(content)
-                        if not isinstance(config, dict):
+            if server:
+                return server.config
+
+            # Legacy migration from JSON file
+            config_file_path = os.path.join(
+                self.server_config_dir, f"{self.server_name}_config.json"
+            )
+            if os.path.exists(config_file_path):
+                self.logger.info(
+                    f"Migrating server config file '{config_file_path}' to database."
+                )
+                try:
+                    with open(config_file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        if not content.strip():
                             config = self._get_default_server_config()
-            except (json.JSONDecodeError, OSError) as e:
-                self.logger.warning(
-                    f"Error reading legacy config file: {e}. Using default config."
-                )
-                config = self._get_default_server_config()
+                        else:
+                            config = json.loads(content)
+                            if not isinstance(config, dict):
+                                config = self._get_default_server_config()
+                except (json.JSONDecodeError, OSError) as e:
+                    self.logger.warning(
+                        f"Error reading legacy config file: {e}. Using default config."
+                    )
+                    config = self._get_default_server_config()
 
-            if "config_schema_version" not in config:
-                config = migrate_server_config_v1_to_v2(
-                    config, self._get_default_server_config()
-                )
+                if "config_schema_version" not in config:
+                    config = migrate_server_config_v1_to_v2(
+                        config, self._get_default_server_config()
+                    )
 
-            server = Server(server_name=self.server_name, config=config)
-            self.db.add(server)
-            self.db.commit()
-            self.db.refresh(server)
-            os.remove(config_file_path)  # Remove legacy file
+                server = Server(server_name=self.server_name, config=config)
+                db.add(server)
+                db.commit()
+                db.refresh(server)
+                os.remove(config_file_path)  # Remove legacy file
+                return server.config
+
+            # Create new server config in DB
+            self.logger.info(
+                f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
+            )
+            default_config = self._get_default_server_config()
+            server = Server(server_name=self.server_name, config=default_config)
+            db.add(server)
+            db.commit()
+            db.refresh(server)
             return server.config
-
-        # Create new server config in DB
-        self.logger.info(
-            f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
-        )
-        default_config = self._get_default_server_config()
-        server = Server(server_name=self.server_name, config=default_config)
-        self.db.add(server)
-        self.db.commit()
-        self.db.refresh(server)
-        return server.config
 
     def _save_server_config(self, config_data: Dict[str, Any]) -> None:
         """Saves the server configuration data to the database.
@@ -205,12 +205,13 @@ class ServerStateMixin(BedrockServerBaseMixin):
         Args:
             config_data (Dict[str, Any]): The server configuration dictionary to save.
         """
-        server = (
-            self.db.query(Server).filter(Server.server_name == self.server_name).first()
-        )
-        if server:
-            server.config = config_data
-            self.db.commit()
+        with db_session_manager() as db:
+            server = (
+                db.query(Server).filter(Server.server_name == self.server_name).first()
+            )
+            if server:
+                server.config = config_data
+                db.commit()
 
     def _manage_json_config(
         self,

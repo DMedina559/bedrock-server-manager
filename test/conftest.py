@@ -108,3 +108,13 @@ def temp_file(tmp_path):
 def temp_dir(tmp_path):
     """Creates a temporary directory for tests."""
     return str(tmp_path)
+
+
+@pytest.fixture
+def mock_db_session_manager(mocker):
+    def _mock_db_session_manager(db_session):
+        mock_session_manager = mocker.MagicMock()
+        mock_session_manager.return_value.__enter__.return_value = db_session
+        return mock_session_manager
+
+    return _mock_db_session_manager

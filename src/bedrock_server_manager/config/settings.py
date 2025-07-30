@@ -22,7 +22,7 @@ import logging
 import collections.abc
 from typing import Any, Dict
 
-from ..db.database import SessionLocal, engine
+from ..db.database import db_session_manager, engine
 from ..db.models import Setting, Base
 from ..error import ConfigurationError
 from .const import (
@@ -144,7 +144,6 @@ class Settings:
 
         # Setup database
         Base.metadata.create_all(bind=engine)
-        self.db = SessionLocal()
 
         # Load settings from the config file or create a default one.
         self._settings: Dict[str, Any] = {}
@@ -158,9 +157,6 @@ class Settings:
         from ..utils.migration import migrate_env_auth_to_db
 
         migrate_env_auth_to_db(env_name)
-
-    def __del__(self):
-        self.db.close()
 
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
@@ -300,37 +296,38 @@ class Settings:
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
 
-        # Check if the database is empty
-        if self.db.query(Setting).count() == 0:
-            logger.info(
-                "No settings found in the database. Creating with default settings."
-            )
-            self._write_config()
-        else:
-            try:
-                user_config = {}
-                for setting in self.db.query(Setting).all():
-                    user_config[setting.key] = setting.value
-
-                # Check for old config format and migrate if necessary.
-                if "config_version" not in user_config:
-                    self._settings = migrate_settings_v1_to_v2(
-                        user_config, self.config_path, self.default_config
-                    )
-                    self._write_config()
-                    # Reload config from the newly migrated file
+        with db_session_manager() as db:
+            # Check if the database is empty
+            if db.query(Setting).count() == 0:
+                logger.info(
+                    "No settings found in the database. Creating with default settings."
+                )
+                self._write_config(db)
+            else:
+                try:
                     user_config = {}
-                    for setting in self.db.query(Setting).all():
+                    for setting in db.query(Setting).all():
                         user_config[setting.key] = setting.value
 
-                # Deep merge user settings into the default settings.
-                deep_merge(user_config, self._settings)
+                    # Check for old config format and migrate if necessary.
+                    if "config_version" not in user_config:
+                        self._settings = migrate_settings_v1_to_v2(
+                            user_config, self.config_path, self.default_config
+                        )
+                        self._write_config(db)
+                        # Reload config from the newly migrated file
+                        user_config = {}
+                        for setting in db.query(Setting).all():
+                            user_config[setting.key] = setting.value
 
-            except (ValueError, OSError) as e:
-                logger.warning(
-                    f"Could not load config from database: {e}. "
-                    "Using default settings. A new config will be saved on the next settings change."
-                )
+                    # Deep merge user settings into the default settings.
+                    deep_merge(user_config, self._settings)
+
+                except (ValueError, OSError) as e:
+                    logger.warning(
+                        f"Could not load config from database: {e}. "
+                        "Using default settings. A new config will be saved on the next settings change."
+                    )
 
         self._ensure_dirs_exist()
 
@@ -363,7 +360,7 @@ class Settings:
                         f"Could not create critical directory: {dir_path}"
                     ) from e
 
-    def _write_config(self):
+    def _write_config(self, db: Any):
         """Writes the current settings dictionary to the database.
 
         Raises:
@@ -372,15 +369,15 @@ class Settings:
         """
         try:
             for key, value in self._settings.items():
-                setting = self.db.query(Setting).filter_by(key=key).first()
+                setting = db.query(Setting).filter_by(key=key).first()
                 if setting:
                     setting.value = value
                 else:
                     setting = Setting(key=key, value=value)
-                    self.db.add(setting)
-            self.db.commit()
+                    db.add(setting)
+            db.commit()
         except Exception as e:
-            self.db.rollback()
+            db.rollback()
             raise ConfigurationError(f"Failed to write configuration: {e}") from e
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -436,7 +433,8 @@ class Settings:
 
         d[keys[-1]] = value
         logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
-        self._write_config()
+        with db_session_manager() as db:
+            self._write_config(db)
 
     def reload(self):
         """Reloads the settings from the database.
@@ -447,8 +445,6 @@ class Settings:
         since the last load or save will be reflected.
         """
         logger.info("Reloading configuration from database")
-        self.db.close()
-        self.db = SessionLocal()
         self.load()
         logger.info("Configuration reloaded successfully.")
 

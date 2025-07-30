@@ -22,11 +22,13 @@ def mock_db_session():
 
 
 @pytest.fixture
-def mock_session_local(mock_db_session):
-    """Fixture to patch SessionLocal."""
+def mock_session_local(mock_db_session, mocker):
+    """Fixture to patch db_session_manager."""
+    mock_session_manager = mocker.MagicMock()
+    mock_session_manager.return_value.__enter__.return_value = mock_db_session
     with patch(
-        "bedrock_server_manager.utils.migration.SessionLocal",
-        return_value=mock_db_session,
+        "bedrock_server_manager.utils.migration.db_session_manager",
+        mock_session_manager,
     ) as mock:
         yield mock
 

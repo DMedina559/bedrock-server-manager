@@ -26,7 +26,7 @@ from starlette.authentication import AuthCredentials, AuthenticationBackend, Sim
 
 from ..error import MissingArgumentError
 from .schemas import User
-from ..db.database import SessionLocal
+from ..db.database import db_session_manager
 from ..db.models import User as UserModel
 
 logger = logging.getLogger(__name__)
@@ -140,14 +140,11 @@ async def get_current_user_optional(
         if username is None:
             return None
 
-        db = SessionLocal()
-        try:
+        with db_session_manager() as db:
             user = db.query(UserModel).filter(UserModel.username == username).first()
             if not user:
                 return None
             return User(username=user.username, identity_type="jwt", role=user.role)
-        finally:
-            db.close()
 
     except JWTError:
         return None
@@ -234,13 +231,10 @@ def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
         Optional[str]: The username if authentication is successful,
         otherwise ``None``.
     """
-    db = SessionLocal()
-    try:
+    with db_session_manager() as db:
         user = db.query(UserModel).filter(UserModel.username == username_form).first()
         if not user:
             return None
         if not verify_password(password_form, user.hashed_password):
             return None
         return user.username
-    finally:
-        db.close()

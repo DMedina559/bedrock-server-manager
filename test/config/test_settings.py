@@ -24,8 +24,11 @@ def db_session():
     Base.metadata.drop_all(engine)
 
 
+from unittest.mock import MagicMock
+
+
 @pytest.fixture(scope="function")
-def settings(db_session, monkeypatch, tmp_path):
+def settings(db_session, monkeypatch, tmp_path, mock_db_session_manager):
     # Setup for the settings instance
     test_data_dir = tmp_path / "test_app_data"
     test_data_dir.mkdir()
@@ -33,7 +36,8 @@ def settings(db_session, monkeypatch, tmp_path):
 
     # Point the settings to use the test database
     monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.SessionLocal", lambda: db_session
+        "bedrock_server_manager.config.settings.db_session_manager",
+        mock_db_session_manager(db_session),
     )
 
     # Invalidate any existing singleton instance
@@ -144,15 +148,15 @@ def test_ensure_dirs_exist(settings):
         assert os.path.exists(path)
 
 
-def test_write_config_error(settings, monkeypatch):
+def test_write_config_error(settings, db_session, monkeypatch):
     """Test that a ConfigurationError is raised if the config cannot be written."""
 
     def mock_commit():
         raise Exception("Test Exception")
 
-    monkeypatch.setattr(settings.db, "commit", mock_commit)
+    monkeypatch.setattr(db_session, "commit", mock_commit)
     with pytest.raises(Exception, match="Test Exception"):
-        settings._write_config()
+        settings._write_config(db_session)
 
 
 def test_deep_merge():

@@ -12,7 +12,7 @@ See Also:
 import logging
 from fastapi import HTTPException, status, Path
 from sqlalchemy.orm import Session
-from ..db.database import SessionLocal
+from ..db.database import db_session_manager
 from ..db.models import User
 from ..api import utils as utils_api
 from ..error import (
@@ -70,23 +70,9 @@ async def validate_server_exists(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-def get_db():
-    """
-    FastAPI dependency that provides a database session.
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 async def needs_setup():
     """
     FastAPI dependency that checks if the application needs to be set up.
     """
-    db = SessionLocal()
-    try:
+    with db_session_manager() as db:
         return db.query(User).first() is None
-    finally:
-        db.close()

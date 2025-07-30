@@ -34,7 +34,7 @@ from typing import Optional, List, Dict, Any, Union, Tuple
 from ..config import Settings
 from ..instances import get_server_instance
 from ..config import EXPATH, app_name_title, package_name
-from ..db.database import SessionLocal
+from ..db.database import db_session_manager
 from ..db.models import Player
 from ..error import (
     ConfigurationError,
@@ -321,42 +321,41 @@ class BedrockServerManager:
             ):
                 raise UserInputError(f"Invalid player entry format: {p_data}")
 
-        db = SessionLocal()
-        try:
-            updated_count = 0
-            added_count = 0
-            for player_to_add in players_data:
-                xuid = player_to_add["xuid"]
-                player = db.query(Player).filter_by(xuid=xuid).first()
-                if player:
-                    if (
-                        player.player_name != player_to_add["name"]
-                        or player.xuid != player_to_add["xuid"]
-                    ):
-                        player.player_name = player_to_add["name"]
-                        player.xuid = player_to_add["xuid"]
-                        updated_count += 1
-                else:
-                    player = Player(
-                        player_name=player_to_add["name"], xuid=player_to_add["xuid"]
+        with db_session_manager() as db:
+            try:
+                updated_count = 0
+                added_count = 0
+                for player_to_add in players_data:
+                    xuid = player_to_add["xuid"]
+                    player = db.query(Player).filter_by(xuid=xuid).first()
+                    if player:
+                        if (
+                            player.player_name != player_to_add["name"]
+                            or player.xuid != player_to_add["xuid"]
+                        ):
+                            player.player_name = player_to_add["name"]
+                            player.xuid = player_to_add["xuid"]
+                            updated_count += 1
+                    else:
+                        player = Player(
+                            player_name=player_to_add["name"],
+                            xuid=player_to_add["xuid"],
+                        )
+                        db.add(player)
+                        added_count += 1
+
+                if updated_count > 0 or added_count > 0:
+                    db.commit()
+                    logger.info(
+                        f"BSM: Saved/Updated players. Added: {added_count}, Updated: {updated_count}."
                     )
-                    db.add(player)
-                    added_count += 1
+                    return added_count + updated_count
 
-            if updated_count > 0 or added_count > 0:
-                db.commit()
-                logger.info(
-                    f"BSM: Saved/Updated players. Added: {added_count}, Updated: {updated_count}."
-                )
-                return added_count + updated_count
-
-            logger.debug("BSM: No new or updated player data to save.")
-            return 0
-        except Exception as e:
-            db.rollback()
-            raise e
-        finally:
-            db.close()
+                logger.debug("BSM: No new or updated player data to save.")
+                return 0
+            except Exception as e:
+                db.rollback()
+                raise e
 
     def get_known_players(self) -> List[Dict[str, str]]:
         """Retrieves all known players from the database.
@@ -365,14 +364,11 @@ class BedrockServerManager:
             List[Dict[str, str]]: A list of player dictionaries, where each
             dictionary typically contains ``"name"`` and ``"xuid"`` keys.
         """
-        db = SessionLocal()
-        try:
+        with db_session_manager() as db:
             players = db.query(Player).all()
             return [
                 {"name": player.player_name, "xuid": player.xuid} for player in players
             ]
-        finally:
-            db.close()
 
     def discover_and_store_players_from_all_server_logs(self) -> Dict[str, Any]:
         """Scans all server logs for player data and updates the central player database.

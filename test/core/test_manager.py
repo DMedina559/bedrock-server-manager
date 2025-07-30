@@ -353,7 +353,7 @@ def test_parse_player_cli_argument(
             mock_save.assert_not_called()
 
 
-def test_save_player_data_new_db(manager_instance, mocker):
+def test_save_player_data_new_db(manager_instance, mocker, mock_db_session_manager):
     """Test save_player_data creating a new player in the database."""
     players_to_save = [
         {"name": "Gamer", "xuid": "100"},
@@ -363,7 +363,8 @@ def test_save_player_data_new_db(manager_instance, mocker):
     mock_session = mocker.MagicMock()
     mock_session.query.return_value.filter_by.return_value.first.return_value = None
     mocker.patch(
-        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
     )
 
     saved_count = manager_instance.save_player_data(players_to_save)
@@ -372,7 +373,9 @@ def test_save_player_data_new_db(manager_instance, mocker):
     mock_session.commit.assert_called_once()
 
 
-def test_save_player_data_update_existing_db(manager_instance, mocker):
+def test_save_player_data_update_existing_db(
+    manager_instance, mocker, mock_db_session_manager
+):
     """Test save_player_data merging with an existing player in the database."""
     existing_player = mocker.MagicMock()
     existing_player.player_name = "ToUpdate"
@@ -384,7 +387,8 @@ def test_save_player_data_update_existing_db(manager_instance, mocker):
         mocker.MagicMock(first=lambda: existing_player),  # For UpdatedName
     ]
     mocker.patch(
-        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
     )
 
     players_to_save = [
@@ -411,7 +415,7 @@ def test_save_player_data_invalid_input(manager_instance):
         manager_instance.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
 
 
-def test_get_known_players(manager_instance, mocker):
+def test_get_known_players(manager_instance, mocker, mock_db_session_manager):
     """Test get_known_players with a valid database."""
     mock_player1 = mocker.MagicMock()
     mock_player1.player_name = "PlayerX"
@@ -423,7 +427,8 @@ def test_get_known_players(manager_instance, mocker):
     mock_session = mocker.MagicMock()
     mock_session.query.return_value.all.return_value = [mock_player1, mock_player2]
     mocker.patch(
-        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
     )
 
     players = manager_instance.get_known_players()
@@ -433,12 +438,13 @@ def test_get_known_players(manager_instance, mocker):
     ]
 
 
-def test_get_known_players_empty_db(manager_instance, mocker):
+def test_get_known_players_empty_db(manager_instance, mocker, mock_db_session_manager):
     """Test get_known_players with an empty database."""
     mock_session = mocker.MagicMock()
     mock_session.query.return_value.all.return_value = []
     mocker.patch(
-        "bedrock_server_manager.core.manager.SessionLocal", return_value=mock_session
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
     )
 
     players = manager_instance.get_known_players()
