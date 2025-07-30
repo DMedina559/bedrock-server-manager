@@ -63,7 +63,7 @@ def test_start_server_already_running(mock_thread):
 
 
 @patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_stop_server_success(mock_thread):
+def test_stop_server_success(mock_thread, mock_get_settings_instance):
     # Arrange
     manager = BedrockProcessManager()
     server_name = "test_server"
@@ -71,20 +71,17 @@ def test_stop_server_success(mock_thread):
     mock_process.poll.return_value = None
     manager.servers[server_name] = mock_process
 
-    with patch(
-        "bedrock_server_manager.core.bedrock_process_manager.get_settings_instance"
-    ) as mock_get_settings:
-        mock_get_settings.return_value.get.return_value = 1
+    mock_get_settings_instance.get.return_value = 1
 
-        # Act
-        manager.stop_server(server_name)
+    # Act
+    manager.stop_server(server_name)
 
-        # Assert
-        assert server_name not in manager.servers
-        assert manager.intentionally_stopped[server_name] is True
-        mock_process.stdin.write.assert_called_with(b"stop\n")
-        mock_process.stdin.flush.assert_called_once()
-        mock_process.wait.assert_called_once()
+    # Assert
+    assert server_name not in manager.servers
+    assert manager.intentionally_stopped[server_name] is True
+    mock_process.stdin.write.assert_called_with(b"stop\n")
+    mock_process.stdin.flush.assert_called_once()
+    mock_process.wait.assert_called_once()
 
 
 @patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
@@ -157,22 +154,15 @@ def test_get_server_process_not_found(mock_thread):
 
 
 @patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_server_restart_failsafe(mock_thread):
+def test_server_restart_failsafe(mock_thread, mock_get_settings_instance):
     # Arrange
     manager = BedrockProcessManager()
     server_name = "test_server"
     manager.failure_counts[server_name] = 3
 
-    mock_settings = MagicMock()
-    mock_settings.get.return_value = 3
+    mock_get_settings_instance.get.return_value = 3
 
-    with (
-        patch(
-            "bedrock_server_manager.core.bedrock_process_manager.get_settings_instance",
-            return_value=mock_settings,
-        ),
-        patch.object(manager, "start_server") as mock_start_server,
-    ):
+    with patch.object(manager, "start_server") as mock_start_server:
         # Act
         manager._try_restart_server(server_name)
 

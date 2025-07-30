@@ -1,20 +1,18 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from fastapi.responses import FileResponse
-
-
 import tempfile
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.responses import FileResponse
 
 
 @pytest.mark.skip(reason="FileResponse is causing issues")
 @patch("bedrock_server_manager.web.routers.util.FileResponse")
-@patch("bedrock_server_manager.web.routers.util.get_settings_instance")
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
 def test_serve_custom_panorama_api_custom(
-    mock_isfile, mock_get_settings, mock_file_response, client
+    mock_isfile, mock_file_response, client, mock_get_settings_instance
 ):
     """Test the serve_custom_panorama_api route with a custom panorama."""
-    mock_get_settings.return_value.config_dir = "/fake/path"
+    mock_get_settings_instance.config_dir = "/fake/path"
     mock_isfile.return_value = True
 
     async def fake_file_response(*args, **kwargs):
@@ -26,23 +24,25 @@ def test_serve_custom_panorama_api_custom(
     assert response.status_code == 200
 
 
-@patch("bedrock_server_manager.web.routers.util.get_settings_instance")
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
-def test_serve_custom_panorama_api_default(mock_isfile, mock_get_settings, client):
+def test_serve_custom_panorama_api_default(
+    mock_isfile, client, mock_get_settings_instance
+):
     """Test the serve_custom_panorama_api route with a default panorama."""
     with tempfile.NamedTemporaryFile(suffix=".jpeg") as tmp:
-        mock_get_settings.return_value.config_dir = "/fake/path"
+        mock_get_settings_instance.config_dir = "/fake/path"
         mock_isfile.side_effect = [False, True]
 
         response = client.get("/api/panorama")
         assert response.status_code == 200
 
 
-@patch("bedrock_server_manager.web.routers.util.get_settings_instance")
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
-def test_serve_custom_panorama_api_not_found(mock_isfile, mock_get_settings, client):
+def test_serve_custom_panorama_api_not_found(
+    mock_isfile, client, mock_get_settings_instance
+):
     """Test the serve_custom_panorama_api route with no panorama found."""
-    mock_get_settings.return_value.config_dir = "/fake/path"
+    mock_get_settings_instance.config_dir = "/fake/path"
     mock_isfile.return_value = False
 
     response = client.get("/api/panorama")

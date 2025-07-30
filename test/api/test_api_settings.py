@@ -12,52 +12,49 @@ from bedrock_server_manager.error import MissingArgumentError
 
 
 @pytest.fixture
-def mock_settings():
-    """Fixture for a mocked Settings object."""
-    settings = MagicMock()
-    settings.get.return_value = "test_value"
-    settings._settings = {"key": "value"}
-    return settings
-
-
-@pytest.fixture
-def mock_get_settings_instance(mock_settings):
-    """Fixture to patch get_settings_instance."""
-    with patch(
-        "bedrock_server_manager.api.settings.get_settings_instance",
-        return_value=mock_settings,
-    ) as mock:
-        yield mock
+def mock_api_settings_get_settings_instance(mocker):
+    """Fixture to patch get_settings_instance in the api.settings module."""
+    mock = MagicMock()
+    mocker.patch(
+        "bedrock_server_manager.api.settings.get_settings_instance", return_value=mock
+    )
+    return mock
 
 
 class TestSettingsAPI:
-    def test_get_global_setting(self, mock_get_settings_instance):
+    def test_get_global_setting(self, mock_api_settings_get_settings_instance):
+        mock_api_settings_get_settings_instance.get.return_value = "test_value"
         result = get_global_setting("some.key")
         assert result["status"] == "success"
         assert result["value"] == "test_value"
 
-    def test_get_all_global_settings(self, mock_get_settings_instance):
+    def test_get_all_global_settings(self, mock_api_settings_get_settings_instance):
+        mock_api_settings_get_settings_instance._settings = {"key": "value"}
         result = get_all_global_settings()
         assert result["status"] == "success"
         assert result["data"] == {"key": "value"}
 
-    def test_set_global_setting(self, mock_get_settings_instance, mock_settings):
+    def test_set_global_setting(self, mock_api_settings_get_settings_instance):
         result = set_global_setting("some.key", "new_value")
         assert result["status"] == "success"
-        mock_settings.set.assert_called_once_with("some.key", "new_value")
+        mock_api_settings_get_settings_instance.set.assert_called_once_with(
+            "some.key", "new_value"
+        )
 
-    def test_set_custom_global_setting(self, mock_get_settings_instance, mock_settings):
+    def test_set_custom_global_setting(self, mock_api_settings_get_settings_instance):
         result = set_custom_global_setting("custom_key", "custom_value")
         assert result["status"] == "success"
-        mock_settings.set.assert_called_once_with("custom.custom_key", "custom_value")
+        mock_api_settings_get_settings_instance.set.assert_called_once_with(
+            "custom.custom_key", "custom_value"
+        )
 
     @patch("bedrock_server_manager.api.settings.setup_logging")
     def test_reload_global_settings(
-        self, mock_setup_logging, mock_get_settings_instance, mock_settings
+        self, mock_setup_logging, mock_api_settings_get_settings_instance
     ):
         result = reload_global_settings()
         assert result["status"] == "success"
-        mock_settings.reload.assert_called_once()
+        mock_api_settings_get_settings_instance.reload.assert_called_once()
         mock_setup_logging.assert_called_once()
 
     def test_get_global_setting_no_key(self):

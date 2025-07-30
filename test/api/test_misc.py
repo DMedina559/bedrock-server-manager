@@ -23,11 +23,10 @@ class TestPruneDownloadCache:
         )
 
     @patch("bedrock_server_manager.api.misc.prune_old_downloads")
-    @patch("bedrock_server_manager.api.misc.get_settings_instance")
     def test_prune_download_cache_default_keep(
-        self, mock_get_settings, mock_prune, temp_download_dir
+        self, mock_prune, temp_download_dir, mock_get_settings_instance
     ):
-        mock_get_settings.return_value.get.return_value = 3
+        mock_get_settings_instance.get.return_value = 3
         result = prune_download_cache(temp_download_dir)
         assert result["status"] == "success"
         mock_prune.assert_called_once_with(

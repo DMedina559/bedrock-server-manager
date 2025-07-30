@@ -3,6 +3,7 @@ import tempfile
 import shutil
 import os
 import sys
+from unittest.mock import MagicMock
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -23,3 +24,13 @@ def isolated_settings():
             del os.environ["BEDROCK_SERVER_MANAGER_DATA_DIR"]
         else:
             os.environ["BEDROCK_SERVER_MANAGER_DATA_DIR"] = original_value
+
+
+@pytest.fixture
+def mock_get_settings_instance(monkeypatch):
+    """Fixture to patch get_settings_instance."""
+    mock = MagicMock()
+    monkeypatch.setattr(
+        "bedrock_server_manager.instances.get_settings_instance", lambda: mock
+    )
+    return mock

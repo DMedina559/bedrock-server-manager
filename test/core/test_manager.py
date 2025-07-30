@@ -37,31 +37,12 @@ from bedrock_server_manager.error import (
 
 
 @pytest.fixture
-def mock_manager_settings(mocker):
-    """Mocks the Settings object for BedrockServerManager tests."""
-    settings = mocker.MagicMock(spec=Settings)
-    settings.version = "3.5.0-test"  # Example version
-    # Default get behavior, will be updated by temp_manager_dirs
-    settings.get.side_effect = lambda key, default=None: {
-        "paths.servers": "dummy_servers_path",
-        "paths.content": "dummy_content_path",
-        # Add other settings if BedrockServerManager directly uses them via get()
-    }.get(key, default)
-
-    # Properties for app_data_dir and config_dir
-    # These will also be updated by temp_manager_dirs
-    type(settings).app_data_dir = mocker.PropertyMock(return_value="dummy_app_data_dir")
-    type(settings).config_dir = mocker.PropertyMock(return_value="dummy_config_dir")
-    settings.config_path = "dummy_config_dir/dummy_settings.json"  # Default config_path
-
-    return settings
-
-
-@pytest.fixture
-def temp_manager_dirs(tmp_path_factory, mock_manager_settings, mocker):  # Added mocker
+def temp_manager_dirs(
+    tmp_path_factory, mock_get_settings_instance, mocker
+):  # Added mocker
     """
     Creates a temporary directory structure for app_data, config, servers, content
-    and configures mock_manager_settings to use these paths.
+    and configures mock_get_settings_instance to use these paths.
     Yields a dictionary of these paths.
     """
     base_temp_dir = tmp_path_factory.mktemp("bsm_manager_data_")
@@ -79,7 +60,7 @@ def temp_manager_dirs(tmp_path_factory, mock_manager_settings, mocker):  # Added
     for path_obj in paths.values():
         path_obj.mkdir(parents=True, exist_ok=True)
 
-    # Configure mock_manager_settings to use these temporary paths
+    # Configure mock_get_settings_instance to use these temporary paths
     def settings_get_side_effect(key, default=None):
         if key == "paths.servers":
             return str(paths["servers"])
@@ -92,33 +73,28 @@ def temp_manager_dirs(tmp_path_factory, mock_manager_settings, mocker):  # Added
             # Default non-path settings
         }.get(key, default)
 
-    mock_manager_settings.get.side_effect = settings_get_side_effect
+    mock_get_settings_instance.get.side_effect = settings_get_side_effect
     # Update property mocks using the passed 'mocker'
-    type(mock_manager_settings).app_data_dir = mocker.PropertyMock(
+    type(mock_get_settings_instance).app_data_dir = mocker.PropertyMock(
         return_value=str(paths["app_data"])
     )
-    type(mock_manager_settings).config_dir = mocker.PropertyMock(
+    type(mock_get_settings_instance).config_dir = mocker.PropertyMock(
         return_value=str(paths["config"])
     )
-    mock_manager_settings.config_path = str(
+    mock_get_settings_instance.config_path = str(
         paths["config"] / "bsm_manager_test_config.json"
     )  # Set config_path
+    mock_get_settings_instance.version = "3.5.0-test"
 
     yield paths
 
 
 @pytest.fixture
-def manager_instance(mock_manager_settings, temp_manager_dirs, mocker):
+def manager_instance(mock_get_settings_instance, temp_manager_dirs, mocker):
     """
     Creates a BedrockServerManager instance with mocked settings and EXPATH.
-    temp_manager_dirs fixture ensures mock_manager_settings is correctly configured with temp paths.
+    temp_manager_dirs fixture ensures mock_get_settings_instance is correctly configured with temp paths.
     """
-    # Mock get_settings_instance to return our mocked settings
-    mocker.patch(
-        "bedrock_server_manager.instances.get_settings_instance",
-        return_value=mock_manager_settings,
-    )
-
     # Mock EXPATH from const module, as it's used by BedrockServerManager
     # Ensure this path points to where BedrockServerManager is imported from for the patch to work.
     # If BedrockServerManager imports 'from bedrock_server_manager.config.const import EXPATH',
@@ -131,21 +107,21 @@ def manager_instance(mock_manager_settings, temp_manager_dirs, mocker):
     # By default, assume commands are not found, tests can override
     mock_shutil_which = mocker.patch("shutil.which", return_value=None)
 
-    # Ensure mock_manager_settings has config_path, as temp_manager_dirs should have set it.
+    # Ensure mock_get_settings_instance has config_path, as temp_manager_dirs should have set it.
     # If manager_instance is called without temp_manager_dirs in a test (not typical),
     # this makes sure a default is present.
     if (
-        not hasattr(mock_manager_settings, "config_path")
-        or not mock_manager_settings.config_path
+        not hasattr(mock_get_settings_instance, "config_path")
+        or not mock_get_settings_instance.config_path
     ):
         # This path should ideally align with what temp_manager_dirs would set if it were used
         # For safety, ensuring it's a string path.
         dummy_cfg_path = (
             temp_manager_dirs["config"]
             if temp_manager_dirs
-            else Path(mock_manager_settings.config_dir)
+            else Path(mock_get_settings_instance.config_dir)
         )
-        mock_manager_settings.config_path = str(
+        mock_get_settings_instance.config_path = str(
             dummy_cfg_path / "fixture_default_cfg.json"
         )
 
@@ -173,7 +149,7 @@ def mock_bedrock_server_class(mocker):
 
 
 def test_manager_initialization_success(
-    manager_instance, mock_manager_settings, temp_manager_dirs, mocker
+    manager_instance, mock_get_settings_instance, temp_manager_dirs, mocker
 ):
     """Test successful initialization of BedrockServerManager."""
     assert manager_instance._app_data_dir == str(temp_manager_dirs["app_data"])
@@ -183,29 +159,29 @@ def test_manager_initialization_success(
     assert manager_instance._expath == "/dummy/bsm_executable"
     assert (
         manager_instance.settings.version == "3.5.0-test"
-    )  # From mock_manager_settings
+    )  # From mock_get_settings_instance
 
     # Check default capabilities (assuming shutil.which was mocked to return None by manager_instance fixture)
     assert not manager_instance.capabilities["scheduler"]
     assert not manager_instance.capabilities["service_manager"]
 
 
-def test_manager_get_and_set_setting(manager_instance, mock_manager_settings):
+def test_manager_get_and_set_setting(manager_instance, mock_get_settings_instance):
     """Test get_setting and set_setting proxy methods."""
     # Test get_setting
-    # manager_instance.settings is mock_manager_settings
+    # manager_instance.settings is mock_get_settings_instance
 
     result = manager_instance.get_setting("a.b.c", "default_arg")
     assert result == "default_arg"
     manager_instance.settings.get.assert_called_with("a.b.c", "default_arg")
 
-    # We reset the whole mock_manager_settings as it's the same object.
+    # We reset the whole mock_get_settings_instance as it's the same object.
     # This clears call stats for both 'get' and 'set'.
-    mock_manager_settings.reset_mock()
+    mock_get_settings_instance.reset_mock()
 
     # Test set_setting
     manager_instance.set_setting("x.y.z", "new_value")
-    # manager_instance.settings is mock_manager_settings, so assert on that
+    # manager_instance.settings is mock_get_settings_instance, so assert on that
     manager_instance.settings.set.assert_called_once_with("x.y.z", "new_value")
 
 
@@ -280,7 +256,7 @@ def test_manager_initialization_missing_critical_paths(mocker):
 )
 def test_manager_system_capabilities_check(
     mocker,
-    mock_manager_settings,
+    mock_get_settings_instance,
     os_type,
     scheduler_cmd,
     service_cmd,
@@ -291,7 +267,7 @@ def test_manager_system_capabilities_check(
     BedrockServerManager._instance = None
     caplog.set_level(logging.WARNING)
     mocker.patch("platform.system", return_value=os_type)
-    mock_manager_settings.config_path = "dummy/config.json"  # Added config_path
+    mock_get_settings_instance.config_path = "dummy/config.json"  # Added config_path
 
     def which_side_effect(cmd):
         if os_type == "Linux":

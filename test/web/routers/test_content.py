@@ -57,14 +57,13 @@ def test_list_addons_api_route_failure(mock_list_addons, client):
 
 @patch("bedrock_server_manager.web.routers.content.utils_api.validate_server_exist")
 @patch("bedrock_server_manager.web.routers.content.os.path.isfile")
-@patch("bedrock_server_manager.web.routers.content.get_settings_instance")
 def test_install_world_api_route_success(
-    mock_get_settings, mock_isfile, mock_validate_server, client
+    mock_isfile, mock_validate_server, client, mock_get_settings_instance
 ):
     """Test the install_world_api_route with a successful response."""
     mock_validate_server.return_value = True
     mock_isfile.return_value = True
-    mock_get_settings.return_value.get.return_value = "/fake/path"
+    mock_get_settings_instance.get.return_value = "/fake/path"
 
     response = client.post(
         "/api/server/test-server/world/install",
@@ -76,14 +75,13 @@ def test_install_world_api_route_success(
 
 @patch("bedrock_server_manager.web.routers.content.utils_api.validate_server_exist")
 @patch("bedrock_server_manager.web.routers.content.os.path.isfile")
-@patch("bedrock_server_manager.web.routers.content.get_settings_instance")
 def test_install_world_api_route_not_found(
-    mock_get_settings, mock_isfile, mock_validate_server, client
+    mock_isfile, mock_validate_server, client, mock_get_settings_instance
 ):
     """Test the install_world_api_route with a file not found error."""
     mock_validate_server.return_value = True
     mock_isfile.return_value = False
-    mock_get_settings.return_value.get.return_value = "/fake/path"
+    mock_get_settings_instance.get.return_value = "/fake/path"
 
     response = client.post(
         "/api/server/test-server/world/install",

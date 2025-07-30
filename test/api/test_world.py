@@ -54,12 +54,11 @@ class TestWorldAPI:
         assert result["status"] == "success"
         mock_lifecycle.assert_called_once()
 
-    @patch("bedrock_server_manager.api.world.get_settings_instance")
     @patch("bedrock_server_manager.api.world.server_lifecycle_manager")
     def test_export_world_no_dir(
-        self, mock_lifecycle, mock_get_settings, mock_get_server_instance
+        self, mock_lifecycle, mock_get_server_instance, mock_get_settings_instance
     ):
-        mock_get_settings.return_value.get.return_value = "/content"
+        mock_get_settings_instance.get.return_value = "/content"
         with patch("os.makedirs"):
             result = export_world("test-server")
             assert result["status"] == "success"

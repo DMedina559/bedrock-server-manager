@@ -115,17 +115,19 @@ class TestInstallUpdate:
         "bedrock_server_manager.api.server_install_config.validate_server_name_format"
     )
     @patch("os.path.exists", return_value=False)
-    @patch("bedrock_server_manager.api.server_install_config.get_settings_instance")
     def test_install_new_server(
         self,
-        mock_get_settings,
         mock_exists,
         mock_validate,
         mock_get_server_instance,
         mock_bedrock_server,
+        mocker,
     ):
         mock_validate.return_value = {"status": "success"}
-        mock_get_settings.return_value.get.return_value = "/servers"
+        mock_get_settings_instance = mocker.patch(
+            "bedrock_server_manager.api.server_install_config.get_settings_instance"
+        )
+        mock_get_settings_instance.return_value.get.return_value = "/servers"
         result = install_new_server("new-server")
         assert result["status"] == "success"
         mock_bedrock_server.install_or_update.assert_called_once()

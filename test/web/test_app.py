@@ -1,6 +1,8 @@
-import pytest
-from unittest.mock import patch, MagicMock
 import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from bedrock_server_manager.web.app import run_web_server
 
 
@@ -16,17 +18,19 @@ def setup_env_vars():
         del os.environ["BEDROCK_SERVER_MANAGER_PASSWORD"]
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_default_settings(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_default_settings(mocker):
     """Test the server runs with default settings."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": 11325,
-        "web.host": "127.0.0.1",
-        "web.threads": 4,
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": 11325,
+            "web.host": "127.0.0.1",
+            "web.threads": 4,
+        }.get(key, default)
+    )
 
     run_web_server()
 
@@ -43,17 +47,19 @@ def test_run_web_server_default_settings(mock_get_settings, mock_uvicorn_run):
     )
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_custom_port(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_custom_port(mocker):
     """Test the server runs with a custom port."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": 8080,
-        "web.host": "127.0.0.1",
-        "web.threads": 4,
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": 8080,
+            "web.host": "127.0.0.1",
+            "web.threads": 4,
+        }.get(key, default)
+    )
 
     run_web_server()
 
@@ -70,17 +76,19 @@ def test_run_web_server_custom_port(mock_get_settings, mock_uvicorn_run):
     )
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_invalid_port(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_invalid_port(mocker):
     """Test the server uses the default port if the custom port is invalid."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": "invalid",
-        "web.host": "127.0.0.1",
-        "web.threads": 4,
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": "invalid",
+            "web.host": "127.0.0.1",
+            "web.threads": 4,
+        }.get(key, default)
+    )
 
     run_web_server()
 
@@ -97,17 +105,19 @@ def test_run_web_server_invalid_port(mock_get_settings, mock_uvicorn_run):
     )
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_cli_host(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_cli_host(mocker):
     """Test the server uses the host provided via the command line."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": 11325,
-        "web.host": "127.0.0.1",
-        "web.threads": 4,
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": 11325,
+            "web.host": "127.0.0.1",
+            "web.threads": 4,
+        }.get(key, default)
+    )
 
     run_web_server(host="0.0.0.0")
 
@@ -124,17 +134,19 @@ def test_run_web_server_cli_host(mock_get_settings, mock_uvicorn_run):
     )
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_debug_mode(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_debug_mode(mocker):
     """Test the server runs in debug mode."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": 11325,
-        "web.host": "127.0.0.1",
-        "web.threads": 4,
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": 11325,
+            "web.host": "127.0.0.1",
+            "web.threads": 4,
+        }.get(key, default)
+    )
 
     run_web_server(debug=True)
 
@@ -151,17 +163,19 @@ def test_run_web_server_debug_mode(mock_get_settings, mock_uvicorn_run):
     )
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_custom_threads(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_custom_threads(mocker):
     """Test the server runs with a custom number of threads."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": 11325,
-        "web.host": "127.0.0.1",
-        "web.threads": 8,
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": 11325,
+            "web.host": "127.0.0.1",
+            "web.threads": 8,
+        }.get(key, default)
+    )
 
     run_web_server()
 
@@ -180,17 +194,19 @@ def test_run_web_server_custom_threads(mock_get_settings, mock_uvicorn_run):
     )
 
 
-@patch("bedrock_server_manager.web.app.uvicorn.run")
-@patch("bedrock_server_manager.web.app.get_settings_instance")
-def test_run_web_server_invalid_threads(mock_get_settings, mock_uvicorn_run):
+def test_run_web_server_invalid_threads(mocker):
     """Test the server uses the default number of threads if the custom number is invalid."""
-    mock_settings = MagicMock()
-    mock_settings.get.side_effect = lambda key, default=None: {
-        "web.port": 11325,
-        "web.host": "127.0.0.1",
-        "web.threads": "invalid",
-    }.get(key, default)
-    mock_get_settings.return_value = mock_settings
+    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.app.uvicorn.run")
+    mock_get_settings_instance = mocker.patch(
+        "bedrock_server_manager.web.app.get_settings_instance"
+    )
+    mock_get_settings_instance.return_value.get.side_effect = (
+        lambda key, default=None: {
+            "web.port": 11325,
+            "web.host": "127.0.0.1",
+            "web.threads": "invalid",
+        }.get(key, default)
+    )
 
     run_web_server()
 

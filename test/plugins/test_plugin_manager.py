@@ -85,27 +85,27 @@ def cleanup_plugin_manager():
 
 
 class TestPluginManager:
-    def test_singleton(self):
+    def test_singleton(self, isolated_plugin_manager):
         """Tests that the PluginManager is a singleton."""
-        pm1 = PluginManager()
+        pm1 = isolated_plugin_manager
         pm2 = PluginManager()
         assert pm1 is pm2
 
     @pytest.fixture
-    def isolated_plugin_manager(self, monkeypatch, temp_plugin_env):
+    def isolated_plugin_manager(self, monkeypatch, temp_plugin_env, mocker):
         """Fixture to create a PluginManager isolated from default plugins."""
-        mock_settings = MagicMock()
+        mock_settings = mocker.MagicMock()
         mock_settings.get.return_value = str(temp_plugin_env["plugins_dir"])
         mock_settings.config_dir = str(temp_plugin_env["config_dir"])
-
-        with patch(
+        mocker.patch(
             "bedrock_server_manager.plugins.plugin_manager.get_settings_instance",
             return_value=mock_settings,
-        ):
-            pm = PluginManager()
-            # Use monkeypatch to isolate the plugin directories
-            monkeypatch.setattr(pm, "plugin_dirs", [temp_plugin_env["plugins_dir"]])
-            yield pm
+        )
+
+        pm = PluginManager()
+        # Use monkeypatch to isolate the plugin directories
+        monkeypatch.setattr(pm, "plugin_dirs", [temp_plugin_env["plugins_dir"]])
+        yield pm
 
     def test_init_once(self, isolated_plugin_manager, temp_plugin_env):
         """Tests that the PluginManager initializes correctly."""
