@@ -11,21 +11,12 @@ from bedrock_server_manager.error import FileError, BSMError
 
 
 @pytest.fixture
-def mock_get_manager_instance(mocker):
+def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
     """Fixture to patch get_manager_instance for the api.application module."""
-    mock_manager = MagicMock()
-    mock_manager._app_name_title = "Bedrock Server Manager"
-    mock_manager.get_app_version.return_value = "1.0.0"
-    mock_manager.get_os_type.return_value = "Linux"
-    mock_manager._base_dir = "/servers"
-    mock_manager._content_dir = "/content"
-    mock_manager._config_dir = "/config"
-    mock_manager.list_available_worlds.return_value = ["/content/worlds/world1.mcworld"]
-    mock_manager.list_available_addons.return_value = ["/content/addons/addon1.mcpack"]
-    mock_manager.get_servers_data.return_value = ([], [])
     return mocker.patch(
         "bedrock_server_manager.api.application.get_manager_instance",
-        return_value=mock_manager,
+        return_value=mock_bedrock_server_manager,
+        autospec=True,
     )
 
 

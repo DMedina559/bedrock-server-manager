@@ -10,13 +10,14 @@ from bedrock_server_manager.error import UserInputError, BSMError
 
 
 @pytest.fixture
-def mock_get_manager_instance(mocker):
+def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
     """Fixture to patch get_manager_instance for the api.player module."""
-    mock_manager = MagicMock()
-    mock_manager.parse_player_cli_argument.return_value = None
-    mock_manager.save_player_data.return_value = 1
-    mock_manager.get_known_players.return_value = [{"name": "player1", "xuid": "123"}]
-    mock_manager.discover_and_store_players_from_all_server_logs.return_value = {
+    mock_bedrock_server_manager.parse_player_cli_argument.return_value = None
+    mock_bedrock_server_manager.save_player_data.return_value = 1
+    mock_bedrock_server_manager.get_known_players.return_value = [
+        {"name": "player1", "xuid": "123"}
+    ]
+    mock_bedrock_server_manager.discover_and_store_players_from_all_server_logs.return_value = {
         "total_entries_in_logs": 1,
         "unique_players_submitted_for_saving": 1,
         "actually_saved_or_updated_in_db": 1,
@@ -24,7 +25,8 @@ def mock_get_manager_instance(mocker):
     }
     return mocker.patch(
         "bedrock_server_manager.api.player.get_manager_instance",
-        return_value=mock_manager,
+        return_value=mock_bedrock_server_manager,
+        autospec=True,
     )
 
 

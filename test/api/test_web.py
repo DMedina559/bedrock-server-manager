@@ -15,15 +15,17 @@ from bedrock_server_manager.error import SystemError, ServerProcessError
 
 
 @pytest.fixture
-def mock_get_manager_instance(mocker):
+def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
     """Fixture to patch get_manager_instance for the api.web module."""
-    mock_manager = MagicMock()
-    mock_manager.get_web_ui_pid_path.return_value = "/tmp/web.pid"
-    mock_manager.get_web_ui_executable_path.return_value = "/usr/bin/python"
-    mock_manager.get_web_ui_expected_start_arg.return_value = "web"
-    mock_manager.can_manage_services = True
+    mock_bedrock_server_manager.get_web_ui_pid_path.return_value = "/tmp/web.pid"
+    mock_bedrock_server_manager.get_web_ui_executable_path.return_value = (
+        "/usr/bin/python"
+    )
+    mock_bedrock_server_manager.get_web_ui_expected_start_arg.return_value = "web"
     return mocker.patch(
-        "bedrock_server_manager.api.web.get_manager_instance", return_value=mock_manager
+        "bedrock_server_manager.api.web.get_manager_instance",
+        return_value=mock_bedrock_server_manager,
+        autospec=True,
     )
 
 
