@@ -12,42 +12,14 @@ from bedrock_server_manager.error import BSMError, ServerStartError
 
 
 @pytest.fixture
-def mock_bedrock_server():
-    """Fixture for a mocked BedrockServer."""
-    server = MagicMock()
-    server.is_installed.return_value = True
-    server.is_running.return_value = False
-    return server
-
-
-@pytest.fixture
-def mock_get_server_instance(mock_bedrock_server):
-    """Fixture to patch get_server_instance."""
-    with patch(
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the api.utils module."""
+    mock_bedrock_server.is_installed.return_value = True
+    mock_bedrock_server.is_running.return_value = False
+    return mocker.patch(
         "bedrock_server_manager.api.utils.get_server_instance",
         return_value=mock_bedrock_server,
-    ) as mock:
-        yield mock
-
-
-@pytest.fixture
-def mock_manager():
-    """Fixture for a mocked BedrockServerManager."""
-    manager = MagicMock()
-    manager.get_servers_data.return_value = ([], [])
-    manager.get_os_type.return_value = "Linux"
-    manager.get_app_version.return_value = "1.0.0"
-    return manager
-
-
-@pytest.fixture
-def mock_get_manager_instance(mock_manager):
-    """Fixture to patch get_manager_instance."""
-    with patch(
-        "bedrock_server_manager.api.utils.get_manager_instance",
-        return_value=mock_manager,
-    ) as mock:
-        yield mock
+    )
 
 
 class TestServerValidation:
@@ -73,16 +45,28 @@ class TestServerValidation:
 
 
 class TestStatusAndUpdate:
-    def test_update_server_statuses(self, mock_get_manager_instance, mock_manager):
+    def test_update_server_statuses(self, mocker):
+        mock_manager = MagicMock()
         mock_manager.get_servers_data.return_value = (
             [{"name": "server1"}, {"name": "server2"}],
             [],
+        )
+        mocker.patch(
+            "bedrock_server_manager.api.utils.get_manager_instance",
+            return_value=mock_manager,
         )
         result = update_server_statuses()
         assert result["status"] == "success"
         assert "2 servers" in result["message"]
 
-    def test_get_system_and_app_info(self, mock_get_manager_instance):
+    def test_get_system_and_app_info(self, mocker):
+        mock_manager = MagicMock()
+        mock_manager.get_os_type.return_value = "Linux"
+        mock_manager.get_app_version.return_value = "1.0.0"
+        mocker.patch(
+            "bedrock_server_manager.api.utils.get_manager_instance",
+            return_value=mock_manager,
+        )
         result = get_system_and_app_info()
         assert result["status"] == "success"
         assert result["data"]["os_type"] == "Linux"

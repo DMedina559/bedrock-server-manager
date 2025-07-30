@@ -17,30 +17,25 @@ from bedrock_server_manager.error import UserInputError
 
 
 @pytest.fixture
-def mock_bedrock_server():
-    """Fixture for a mocked BedrockServer."""
-    server = MagicMock()
-    server.add_to_allowlist.return_value = 1
-    server.get_allowlist.return_value = [{"name": "player1", "xuid": "123"}]
-    server.remove_from_allowlist.return_value = True
-    server.get_formatted_permissions.return_value = [
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the api.server_install_config module."""
+    mock_bedrock_server.add_to_allowlist.return_value = 1
+    mock_bedrock_server.get_allowlist.return_value = [
+        {"name": "player1", "xuid": "123"}
+    ]
+    mock_bedrock_server.remove_from_allowlist.return_value = True
+    mock_bedrock_server.get_formatted_permissions.return_value = [
         {"name": "player1", "xuid": "123", "permission_level": "operator"}
     ]
-    server.get_server_properties.return_value = {"level-name": "world"}
-    server.get_target_version.return_value = "1.0.0"
-    server.is_update_needed.return_value = True
-    server.get_version.return_value = "1.0.0"
-    return server
+    mock_bedrock_server.get_server_properties.return_value = {"level-name": "world"}
+    mock_bedrock_server.get_target_version.return_value = "1.0.0"
+    mock_bedrock_server.is_update_needed.return_value = True
+    mock_bedrock_server.get_version.return_value = "1.0.0"
 
-
-@pytest.fixture
-def mock_get_server_instance(mock_bedrock_server):
-    """Fixture to patch get_server_instance."""
-    with patch(
+    return mocker.patch(
         "bedrock_server_manager.api.server_install_config.get_server_instance",
         return_value=mock_bedrock_server,
-    ) as mock:
-        yield mock
+    )
 
 
 class TestAllowlist:

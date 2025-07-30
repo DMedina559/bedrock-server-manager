@@ -19,25 +19,12 @@ from bedrock_server_manager.error import (
 
 
 @pytest.fixture
-def mock_bedrock_server(tmp_path):
-    """Fixture for a mocked BedrockServer."""
-    server = MagicMock()
-    server.server_name = "test-server"
-    server.server_config_dir = str(tmp_path)
-    server.is_running.return_value = False
-    server.check_service_exists.return_value = False
-    server.is_service_active.return_value = False
-    return server
-
-
-@pytest.fixture
-def mock_get_server_instance(mock_bedrock_server):
-    """Fixture to patch get_server_instance."""
-    with patch(
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the api.server module."""
+    return mocker.patch(
         "bedrock_server_manager.api.server.get_server_instance",
         return_value=mock_bedrock_server,
-    ) as mock:
-        yield mock
+    )
 
 
 class TestServerSettings:

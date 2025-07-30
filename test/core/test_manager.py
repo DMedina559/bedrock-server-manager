@@ -133,16 +133,13 @@ def manager_instance(mock_get_settings_instance, temp_manager_dirs, mocker):
 
 
 @pytest.fixture
-def mock_bedrock_server_class(mocker):
-    """
-    Mocks the BedrockServer class.
-    The mock will be used when BedrockServerManager tries to instantiate BedrockServer.
-    """
-    # The target for patching is where BedrockServer is *looked up* by the code under test (manager.py)
-    mock_server_class = mocker.patch(
-        "bedrock_server_manager.core.manager.get_server_instance", autospec=True
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the core.manager module."""
+    return mocker.patch(
+        "bedrock_server_manager.core.manager.get_server_instance",
+        return_value=mock_bedrock_server,
+        autospec=True,
     )
-    return mock_server_class
 
 
 # --- BedrockServerManager - Initialization & Settings Tests ---
@@ -449,7 +446,11 @@ def test_get_known_players_empty_db(manager_instance, mocker):
 
 
 def test_discover_and_store_players_from_all_server_logs(
-    manager_instance, temp_manager_dirs, mock_bedrock_server_class, mocker
+    manager_instance,
+    temp_manager_dirs,
+    mock_get_server_instance,
+    mock_bedrock_server,
+    mocker,
 ):
     """Test discovery and storing of players from multiple server logs."""
     # Setup server directories
@@ -502,7 +503,7 @@ def test_discover_and_store_players_from_all_server_logs(
             f"Unexpected server_name '{server_name}' in mock BedrockServer"
         )
 
-    mock_bedrock_server_class.side_effect = server_class_side_effect
+    mock_get_server_instance.side_effect = server_class_side_effect
     mock_save_player_data = mocker.patch.object(
         manager_instance, "save_player_data", return_value=2
     )
@@ -1260,35 +1261,33 @@ def test_list_available_addons(manager_instance, mocker):
 # --- BedrockServerManager - Server Discovery & Data Aggregation ---
 
 
-def test_validate_server_valid(manager_instance, mock_bedrock_server_class, mocker):
+def test_validate_server_valid(
+    manager_instance, mock_get_server_instance, mock_bedrock_server, mocker
+):
     """Test validate_server for a valid server."""
-    mock_server_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server_instance.is_installed.return_value = True
-    mock_bedrock_server_class.return_value = mock_server_instance
+    mock_bedrock_server.is_installed.return_value = True
 
     assert manager_instance.validate_server("server1") is True
-    mock_bedrock_server_class.assert_called_once_with("server1")
-    mock_server_instance.is_installed.assert_called_once()
+    mock_get_server_instance.assert_called_once_with("server1")
+    mock_bedrock_server.is_installed.assert_called_once()
 
 
 def test_validate_server_not_installed(
-    manager_instance, mock_bedrock_server_class, mocker
+    manager_instance, mock_get_server_instance, mock_bedrock_server, mocker
 ):
     """Test validate_server for a server that is not installed."""
-    mock_server_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server_instance.is_installed.return_value = False
-    mock_bedrock_server_class.return_value = mock_server_instance
+    mock_bedrock_server.is_installed.return_value = False
 
     assert manager_instance.validate_server("server2") is False
-    mock_server_instance.is_installed.assert_called_once()
+    mock_bedrock_server.is_installed.assert_called_once()
 
 
 def test_validate_server_instantiation_error(
-    manager_instance, mock_bedrock_server_class, caplog
+    manager_instance, mock_get_server_instance, caplog
 ):
     """Test validate_server when BedrockServer instantiation fails."""
     caplog.set_level(logging.WARNING)
-    mock_bedrock_server_class.side_effect = InvalidServerNameError("Bad name")
+    mock_get_server_instance.side_effect = InvalidServerNameError("Bad name")
 
     assert manager_instance.validate_server("bad_server_name_format!") is False
     assert "Validation failed for server 'bad_server_name_format!'" in caplog.text
@@ -1304,7 +1303,7 @@ def test_validate_server_empty_name(manager_instance):
 
 
 def test_get_servers_data_success(
-    manager_instance, temp_manager_dirs, mock_bedrock_server_class, mocker
+    manager_instance, temp_manager_dirs, mock_get_server_instance, mocker
 ):
     """Test get_servers_data successfully retrieves data for multiple servers."""
     # Simulate server directories
@@ -1361,7 +1360,7 @@ def test_get_servers_data_success(
             f"Unexpected server_name '{server_name}' in mock BedrockServer for get_servers_data"
         )
 
-    mock_bedrock_server_class.side_effect = server_class_side_effect
+    mock_get_server_instance.side_effect = server_class_side_effect
 
     servers_data, error_messages = manager_instance.get_servers_data()
 
@@ -1385,7 +1384,7 @@ def test_get_servers_data_success(
     )
 
     # Check calls to BedrockServer constructor (excluding not_a_server_dir.txt)
-    assert mock_bedrock_server_class.call_count == 4
+    assert mock_get_server_instance.call_count == 4
 
 
 def test_get_servers_data_base_dir_not_exist(manager_instance, mocker):

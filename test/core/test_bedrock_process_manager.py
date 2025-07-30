@@ -15,21 +15,25 @@ def test_singleton_pattern(mock_thread):
     assert BedrockProcessManager() is BedrockProcessManager()
 
 
+@pytest.fixture
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the core.bedrock_process_manager module."""
+    mock_bedrock_server.server_dir = "dummy_dir"
+    mock_bedrock_server.bedrock_executable_path = "dummy_executable"
+    mock_bedrock_server.get_pid_file_path.return_value = "dummy_pid_file"
+    return mocker.patch(
+        "bedrock_server_manager.core.bedrock_process_manager.get_server_instance",
+        return_value=mock_bedrock_server,
+    )
+
+
 @patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_start_server_success(mock_thread):
+def test_start_server_success(mock_thread, mock_get_server_instance):
     # Arrange
     manager = BedrockProcessManager()
     server_name = "test_server"
-    mock_server = MagicMock()
-    mock_server.server_dir = "dummy_dir"
-    mock_server.bedrock_executable_path = "dummy_executable"
-    mock_server.get_pid_file_path.return_value = "dummy_pid_file"
 
     with (
-        patch(
-            "bedrock_server_manager.core.bedrock_process_manager.get_server_instance",
-            return_value=mock_server,
-        ),
         patch(
             "bedrock_server_manager.core.bedrock_process_manager.subprocess.Popen"
         ) as mock_popen,

@@ -15,23 +15,16 @@ from bedrock_server_manager.error import SystemError, ServerProcessError
 
 
 @pytest.fixture
-def mock_manager():
-    """Fixture for a mocked BedrockServerManager."""
-    manager = MagicMock()
-    manager.get_web_ui_pid_path.return_value = "/tmp/web.pid"
-    manager.get_web_ui_executable_path.return_value = "/usr/bin/python"
-    manager.get_web_ui_expected_start_arg.return_value = "web"
-    manager.can_manage_services = True
-    return manager
-
-
-@pytest.fixture
-def mock_get_manager_instance(mock_manager):
-    """Fixture to patch get_manager_instance."""
-    with patch(
+def mock_get_manager_instance(mocker):
+    """Fixture to patch get_manager_instance for the api.web module."""
+    mock_manager = MagicMock()
+    mock_manager.get_web_ui_pid_path.return_value = "/tmp/web.pid"
+    mock_manager.get_web_ui_executable_path.return_value = "/usr/bin/python"
+    mock_manager.get_web_ui_expected_start_arg.return_value = "web"
+    mock_manager.can_manage_services = True
+    return mocker.patch(
         "bedrock_server_manager.api.web.get_manager_instance", return_value=mock_manager
-    ) as mock:
-        yield mock
+    )
 
 
 class TestWebServerLifecycle:
@@ -74,31 +67,35 @@ class TestWebServerLifecycle:
 
 
 class TestWebServiceManagement:
-    def test_create_web_ui_service_autostart(
-        self, mock_get_manager_instance, mock_manager
-    ):
+    def test_create_web_ui_service_autostart(self, mock_get_manager_instance):
         create_web_ui_service(autostart=True)
-        mock_manager.create_web_service_file.assert_called_once()
-        mock_manager.enable_web_service.assert_called_once()
+        mock_get_manager_instance.return_value.create_web_service_file.assert_called_once()
+        mock_get_manager_instance.return_value.enable_web_service.assert_called_once()
 
-    def test_enable_web_ui_service(self, mock_get_manager_instance, mock_manager):
+    def test_enable_web_ui_service(self, mock_get_manager_instance):
         enable_web_ui_service()
-        mock_manager.enable_web_service.assert_called_once()
+        mock_get_manager_instance.return_value.enable_web_service.assert_called_once()
 
-    def test_disable_web_ui_service(self, mock_get_manager_instance, mock_manager):
+    def test_disable_web_ui_service(self, mock_get_manager_instance):
         disable_web_ui_service()
-        mock_manager.disable_web_service.assert_called_once()
+        mock_get_manager_instance.return_value.disable_web_service.assert_called_once()
 
-    def test_remove_web_ui_service(self, mock_get_manager_instance, mock_manager):
-        mock_manager.remove_web_service_file.return_value = True
+    def test_remove_web_ui_service(self, mock_get_manager_instance):
+        mock_get_manager_instance.return_value.remove_web_service_file.return_value = (
+            True
+        )
         result = remove_web_ui_service()
         assert result["status"] == "success"
-        mock_manager.remove_web_service_file.assert_called_once()
+        mock_get_manager_instance.return_value.remove_web_service_file.assert_called_once()
 
-    def test_get_web_ui_service_status(self, mock_get_manager_instance, mock_manager):
-        mock_manager.check_web_service_exists.return_value = True
-        mock_manager.is_web_service_active.return_value = True
-        mock_manager.is_web_service_enabled.return_value = True
+    def test_get_web_ui_service_status(self, mock_get_manager_instance):
+        mock_get_manager_instance.return_value.check_web_service_exists.return_value = (
+            True
+        )
+        mock_get_manager_instance.return_value.is_web_service_active.return_value = True
+        mock_get_manager_instance.return_value.is_web_service_enabled.return_value = (
+            True
+        )
         result = get_web_ui_service_status()
         assert result["status"] == "success"
         assert result["service_exists"] is True

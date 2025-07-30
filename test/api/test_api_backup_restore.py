@@ -15,21 +15,12 @@ from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentEr
 
 
 @pytest.fixture
-def mock_bedrock_server():
-    """Fixture for a mocked BedrockServer."""
-    server = MagicMock()
-    server.server_name = "test-server"
-    return server
-
-
-@pytest.fixture
-def mock_get_server_instance(mock_bedrock_server):
-    """Fixture to patch get_server_instance."""
-    with patch(
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the api.backup_restore module."""
+    return mocker.patch(
         "bedrock_server_manager.api.backup_restore.get_server_instance",
         return_value=mock_bedrock_server,
-    ) as mock:
-        yield mock
+    )
 
 
 @pytest.fixture
