@@ -130,6 +130,24 @@ class TestMigrateEnvAuthToDb:
         mock_db_session.add.assert_called_once()
         mock_db_session.rollback.assert_called_once()
 
+    @patch.dict(
+        os.environ,
+        {
+            "TEST_USERNAME": "testuser",
+            "TEST_PASSWORD": "testpass",
+        },
+    )
+    def test_migrate_env_auth_to_db_with_hashed_password(
+        self, mock_session_local, mock_db_session
+    ):
+        migrate_env_auth_to_db("TEST")
+
+        mock_db_session.add.assert_called_once()
+        added_user = mock_db_session.add.call_args[0][0]
+        assert added_user.username == "testuser"
+        assert added_user.hashed_password == "testpass"
+        mock_db_session.commit.assert_called_once()
+
 
 class TestMigrateServerConfigV1ToV2:
     def test_migrate_server_config_v1_to_v2_success(self):

@@ -52,7 +52,11 @@ def migrate_env_auth_to_db(env_name: str):
             if db.query(User).filter_by(username=username).first():
                 return
 
-            hashed_password = pwd_context.hash(password)
+            # Check if the password from env is already a hash
+            if pwd_context.identify(password):
+                hashed_password = password
+            else:
+                hashed_password = pwd_context.hash(password)
             user = User(
                 username=username, hashed_password=hashed_password, role="admin"
             )
