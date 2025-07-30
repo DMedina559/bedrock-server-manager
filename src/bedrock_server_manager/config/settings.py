@@ -33,6 +33,7 @@ from .const import (
 from ..utils.migration import (
     migrate_settings_v1_to_v2,
     migrate_players_json_to_db,
+    migrate_env_token_to_db,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ class Settings:
         from ..utils.migration import migrate_env_auth_to_db
 
         migrate_env_auth_to_db(env_name)
+        migrate_env_token_to_db(env_name)
 
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.

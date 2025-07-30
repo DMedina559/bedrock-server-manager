@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Dict, Any
 from ..db.database import db_session_manager
-from ..db.models import Player, User
+from ..db.models import Player, User, Server, Plugin
 from ..error import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,18 @@ def migrate_players_json_to_db(players_json_path: str):
             players = data.get("players", [])
     except (FileNotFoundError, json.JSONDecodeError):
         logger.warning(f"Could not read players.json from {players_json_path}")
+        return
+
+    # Back up the old file
+    backup_path = f"{players_json_path}.bak"
+    try:
+        os.rename(players_json_path, backup_path)
+        logger.info(f"Old players.json file backed up to {backup_path}")
+    except OSError as e:
+        logger.error(
+            f"Failed to back up players.json to {backup_path}. "
+            "Migration aborted. Please check file permissions."
+        )
         return
 
     with db_session_manager() as db:
@@ -168,3 +180,81 @@ def migrate_settings_v1_to_v2(
 
     logger.info("Successfully migrated configuration to the new format.")
     return new_config
+
+
+def migrate_env_token_to_db(env_name: str):
+    """Migrates the JWT token from environment variables to the database."""
+    from ..instances import get_settings_instance
+
+    token = os.environ.get(f"{env_name}_TOKEN")
+
+    if not token:
+        return
+
+    settings = get_settings_instance()
+    settings.set("web.jwt_secret_key", token)
+    logger.info(
+        "Successfully migrated JWT token from environment variables to the database."
+    )
+
+
+def migrate_plugin_config_to_db(plugin_name: str, plugin_directory: str):
+    """Migrates a plugin's configuration from a JSON file to the database."""
+    config_file_path = os.path.join(plugin_directory, f"{plugin_name}.json")
+    if not os.path.exists(config_file_path):
+        return
+
+    logger.info(f"Migrating config for plugin '{plugin_name}' from JSON to database.")
+
+    # Back up the old file
+    backup_path = f"{config_file_path}.bak"
+    try:
+        os.rename(config_file_path, backup_path)
+        logger.info(f"Old plugin config file backed up to {backup_path}")
+    except OSError as e:
+        logger.error(
+            f"Failed to back up plugin config file to {backup_path}. "
+            "Migration aborted. Please check file permissions."
+        )
+        return
+
+    try:
+        with open(backup_path, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+        with db_session_manager() as db:
+            plugin_entry = Plugin(plugin_name=plugin_name, config=config_data)
+            db.add(plugin_entry)
+            db.commit()
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Failed to migrate config for plugin '{plugin_name}': {e}")
+
+
+def migrate_server_config_to_db(server_name: str, server_config_dir: str):
+    """Migrates a server's configuration from a JSON file to the database."""
+    config_file_path = os.path.join(server_config_dir, f"{server_name}_config.json")
+    if not os.path.exists(config_file_path):
+        return
+
+    logger.info(f"Migrating config for server '{server_name}' from JSON to database.")
+
+    # Back up the old file
+    backup_path = f"{config_file_path}.bak"
+    try:
+        os.rename(config_file_path, backup_path)
+        logger.info(f"Old server config file backed up to {backup_path}")
+    except OSError as e:
+        logger.error(
+            f"Failed to back up server config file to {backup_path}. "
+            "Migration aborted. Please check file permissions."
+        )
+        return
+
+    try:
+        with open(backup_path, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+        with db_session_manager() as db:
+            server_entry = Server(server_name=server_name, config=config_data)
+            db.add(server_entry)
+            db.commit()
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Failed to migrate config for server '{server_name}': {e}")

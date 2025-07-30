@@ -42,7 +42,10 @@ from ...error import (
     ConfigParseError,
     AppFileNotFoundError,
 )
-from ...utils.migration import migrate_server_config_v1_to_v2
+from ...utils.migration import (
+    migrate_server_config_v1_to_v2,
+    migrate_server_config_to_db,
+)
 
 # Version for the server-specific JSON config schema
 SERVER_CONFIG_SCHEMA_VERSION: int = 2
@@ -147,45 +150,11 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 to ``OSError``.
         """
         with db_session_manager() as db:
+            migrate_server_config_to_db(self.server_name, self.server_config_dir)
             server = (
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )
             if server:
-                return server.config
-
-            # Legacy migration from JSON file
-            config_file_path = os.path.join(
-                self.server_config_dir, f"{self.server_name}_config.json"
-            )
-            if os.path.exists(config_file_path):
-                self.logger.info(
-                    f"Migrating server config file '{config_file_path}' to database."
-                )
-                try:
-                    with open(config_file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        if not content.strip():
-                            config = self._get_default_server_config()
-                        else:
-                            config = json.loads(content)
-                            if not isinstance(config, dict):
-                                config = self._get_default_server_config()
-                except (json.JSONDecodeError, OSError) as e:
-                    self.logger.warning(
-                        f"Error reading legacy config file: {e}. Using default config."
-                    )
-                    config = self._get_default_server_config()
-
-                if "config_schema_version" not in config:
-                    config = migrate_server_config_v1_to_v2(
-                        config, self._get_default_server_config()
-                    )
-
-                server = Server(server_name=self.server_name, config=config)
-                db.add(server)
-                db.commit()
-                db.refresh(server)
-                os.remove(config_file_path)  # Remove legacy file
                 return server.config
 
             # Create new server config in DB

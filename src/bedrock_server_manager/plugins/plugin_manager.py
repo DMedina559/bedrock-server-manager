@@ -34,6 +34,7 @@ from ..config import (
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
 )
+from ..utils.migration import migrate_plugin_config_to_db
 from ..db.database import db_session_manager
 from ..db.models import Plugin
 from ..instances import get_settings_instance
@@ -119,38 +120,12 @@ class PluginManager:
 
     def _load_config(self) -> Dict[str, Dict[str, Any]]:
         """Loads plugin configurations from the database.
-
-        If the ``plugins.json`` file exists, it will be migrated to the database.
-
         Returns:
             Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
             mapping plugin names to their configuration dictionaries.
             Returns an empty dict if loading fails or the file is not found.
         """
         with db_session_manager() as db:
-            if self.config_path.exists():
-                logger.info(
-                    f"Migrating plugin config file '{self.config_path}' to database."
-                )
-                try:
-                    with open(self.config_path, "r", encoding="utf-8") as f:
-                        config_data = json.load(f)
-                    for plugin_name, config in config_data.items():
-                        plugin = (
-                            db.query(Plugin)
-                            .filter(Plugin.plugin_name == plugin_name)
-                            .first()
-                        )
-                        if not plugin:
-                            plugin = Plugin(plugin_name=plugin_name, config=config)
-                            db.add(plugin)
-                    db.commit()
-                    os.remove(self.config_path)
-                    logger.info("Plugin config file migrated to database.")
-                except (json.JSONDecodeError, TypeError, OSError) as e:
-                    logger.error(f"Error migrating plugin config file: {e}")
-                    return {}
-
             plugins = db.query(Plugin).all()
             return {plugin.plugin_name: plugin.config for plugin in plugins}
 
@@ -393,6 +368,7 @@ class PluginManager:
         )
 
         for plugin_name, path_to_load in all_potential_plugins.items():
+            migrate_plugin_config_to_db(plugin_name, path_to_load.parent)
             logger.debug(
                 f"Processing plugin '{plugin_name}' from path: '{path_to_load}'."
             )

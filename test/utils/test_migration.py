@@ -2,12 +2,16 @@ import pytest
 from unittest.mock import patch, MagicMock
 import os
 import json
+import importlib
 
 from bedrock_server_manager.utils.migration import (
     migrate_players_json_to_db,
     migrate_env_auth_to_db,
     migrate_server_config_v1_to_v2,
     migrate_settings_v1_to_v2,
+    migrate_env_token_to_db,
+    migrate_plugin_config_to_db,
+    migrate_server_config_to_db,
 )
 from bedrock_server_manager.db.models import Player, User, Server, Setting
 from bedrock_server_manager.error import ConfigurationError
@@ -44,6 +48,7 @@ class TestMigratePlayersJsonToDb:
             ]
         }
         players_json_path = tmp_path / "players.json"
+        backup_json_path = tmp_path / "players.json.bak"
         with open(players_json_path, "w") as f:
             json.dump(players_data, f)
 
@@ -51,6 +56,7 @@ class TestMigratePlayersJsonToDb:
 
         assert mock_db_session.add.call_count == 2
         mock_db_session.commit.assert_called_once()
+        assert backup_json_path.exists()
 
     def test_migrate_players_json_to_db_file_not_found(self, mock_session_local):
         migrate_players_json_to_db("non_existent_file.json")
@@ -76,6 +82,7 @@ class TestMigratePlayersJsonToDb:
             ]
         }
         players_json_path = tmp_path / "players.json"
+        backup_json_path = tmp_path / "players.json.bak"
         with open(players_json_path, "w") as f:
             json.dump(players_data, f)
 
@@ -85,8 +92,11 @@ class TestMigratePlayersJsonToDb:
 
         assert mock_db_session.add.call_count == 2
         mock_db_session.rollback.assert_called_once()
+        assert backup_json_path.exists()
 
 
+@patch("bedrock_server_manager.web.auth_utils.JWT_SECRET_KEY", "test_secret")
+@patch("bedrock_server_manager.web.auth_utils.JWT_SECRET_KEY", "test_secret")
 class TestMigrateEnvAuthToDb:
     @patch.dict(
         os.environ,
@@ -133,8 +143,8 @@ class TestMigrateEnvAuthToDb:
     @patch.dict(
         os.environ,
         {
-            "TEST_USERNAME": "testuser",
-            "TEST_PASSWORD": "testpass",
+            "TEST_USERNAME": "testuser_hashed",
+            "TEST_PASSWORD": "$2b$12$CoDITwbHQm4rzcWNk6VbR.we8YuV4vf9zUmZ6gQvsIVwcz7BWTOAy",
         },
     )
     def test_migrate_env_auth_to_db_with_hashed_password(
@@ -144,8 +154,11 @@ class TestMigrateEnvAuthToDb:
 
         mock_db_session.add.assert_called_once()
         added_user = mock_db_session.add.call_args[0][0]
-        assert added_user.username == "testuser"
-        assert added_user.hashed_password == "testpass"
+        assert added_user.username == "testuser_hashed"
+        assert (
+            added_user.hashed_password
+            == "$2b$12$CoDITwbHQm4rzcWNk6VbR.we8YuV4vf9zUmZ6gQvsIVwcz7BWTOAy"
+        )
         mock_db_session.commit.assert_called_once()
 
 
@@ -257,3 +270,79 @@ class TestMigrateSettingsV1ToV2:
         with patch("os.rename", side_effect=OSError("Permission denied")):
             with pytest.raises(ConfigurationError):
                 migrate_settings_v1_to_v2(old_config, str(config_path), default_config)
+
+
+class TestMigrateEnvTokenToDb:
+    @patch("bedrock_server_manager.instances.get_settings_instance")
+    @patch.dict(os.environ, {"TEST_TOKEN": "test_token"})
+    def test_migrate_env_token_to_db_success(self, mock_get_settings_instance):
+        mock_settings = MagicMock()
+        mock_get_settings_instance.return_value = mock_settings
+
+        migrate_env_token_to_db("TEST")
+
+        mock_settings.set.assert_called_once_with("web.jwt_secret_key", "test_token")
+
+    @patch("bedrock_server_manager.instances.get_settings_instance")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_migrate_env_token_to_db_no_token(self, mock_get_settings_instance):
+        mock_settings = MagicMock()
+        mock_get_settings_instance.return_value = mock_settings
+
+        migrate_env_token_to_db("TEST")
+
+        mock_settings.set.assert_not_called()
+
+
+class TestMigratePluginConfigToDb:
+    def test_migrate_plugin_config_to_db_success(
+        self, tmp_path, mock_session_local, mock_db_session
+    ):
+        plugin_name = "test_plugin"
+        plugin_config_data = {"enabled": True, "version": "1.0.0"}
+        plugin_config_path = tmp_path / f"{plugin_name}.json"
+        backup_config_path = tmp_path / f"{plugin_name}.json.bak"
+        with open(plugin_config_path, "w") as f:
+            json.dump(plugin_config_data, f)
+
+        migrate_plugin_config_to_db(plugin_name, str(tmp_path))
+
+        mock_db_session.add.assert_called_once()
+        added_plugin = mock_db_session.add.call_args[0][0]
+        assert added_plugin.plugin_name == plugin_name
+        assert added_plugin.config == plugin_config_data
+        mock_db_session.commit.assert_called_once()
+        assert backup_config_path.exists()
+
+    def test_migrate_plugin_config_to_db_no_file(
+        self, tmp_path, mock_session_local, mock_db_session
+    ):
+        migrate_plugin_config_to_db("non_existent_plugin", str(tmp_path))
+        mock_session_local.assert_not_called()
+
+
+class TestMigrateServerConfigToDb:
+    def test_migrate_server_config_to_db_success(
+        self, tmp_path, mock_session_local, mock_db_session
+    ):
+        server_name = "test_server"
+        server_config_data = {"server_info": {"installed_version": "1.0.0"}}
+        server_config_path = tmp_path / f"{server_name}_config.json"
+        backup_config_path = tmp_path / f"{server_name}_config.json.bak"
+        with open(server_config_path, "w") as f:
+            json.dump(server_config_data, f)
+
+        migrate_server_config_to_db(server_name, str(tmp_path))
+
+        mock_db_session.add.assert_called_once()
+        added_server = mock_db_session.add.call_args[0][0]
+        assert added_server.server_name == server_name
+        assert added_server.config == server_config_data
+        mock_db_session.commit.assert_called_once()
+        assert backup_config_path.exists()
+
+    def test_migrate_server_config_to_db_no_file(
+        self, tmp_path, mock_session_local, mock_db_session
+    ):
+        migrate_server_config_to_db("non_existent_server", str(tmp_path))
+        mock_session_local.assert_not_called()

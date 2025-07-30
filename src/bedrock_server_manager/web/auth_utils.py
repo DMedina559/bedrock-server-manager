@@ -42,12 +42,12 @@ def get_jwt_secret_key() -> str:
     """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
     settings = get_settings_instance()
     jwt_secret_key = settings.get("web.jwt_secret_key")
+
     if not jwt_secret_key:
         jwt_secret_key = secrets.token_urlsafe(32)
         settings.set("web.jwt_secret_key", jwt_secret_key)
-        logger.warning(
-            "JWT secret key not found in settings. Using a randomly generated key. Tokens will not be valid across server restarts."
-        )
+        logger.info("JWT secret key not found in settings, generating a new one")
+
     return jwt_secret_key
 
 
