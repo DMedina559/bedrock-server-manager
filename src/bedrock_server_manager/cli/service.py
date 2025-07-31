@@ -25,7 +25,8 @@ systemd, `pywin32` for Windows Services). The commands use functions from
 
 import functools
 import logging
-from typing import Tuple, Callable, Optional
+import sys
+from typing import Callable, Optional
 
 import click
 import questionary
@@ -213,6 +214,7 @@ def service():
     """
     pass
 
+
 @service.command("configure")
 @click.option(
     "--setup-service",
@@ -393,8 +395,10 @@ def status_web_service_cli():
         click.secho(f"Failed to get Web UI service status: {e}", fg="red")
         raise click.Abort()
 
+
 # --- Windows Service Support ---
 import platform
+
 if platform.system() == "Windows":
     import win32serviceutil
     import servicemanager
@@ -402,6 +406,7 @@ if platform.system() == "Windows":
         WebServerWindowsService,
         PYWIN32_AVAILABLE,
     )
+
     @service.command(
         "_run-web",
         hidden=True,
@@ -424,7 +429,9 @@ if platform.system() == "Windows":
             _svc_display_name_ = f"Bedrock Manager Web UI ({actual_svc_name_arg})"
 
         if "debug" in ctx.args:
-            logger.info(f"Starting Web UI service '{actual_svc_name_arg}' in DEBUG mode.")
+            logger.info(
+                f"Starting Web UI service '{actual_svc_name_arg}' in DEBUG mode."
+            )
 
             win32serviceutil.DebugService(WebServiceHandler, argv=[actual_svc_name_arg])
         else:
