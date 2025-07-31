@@ -208,11 +208,14 @@ async def get_root_favicon():
 
 
 # --- Catch-all Route ---
+from typing import Optional
+
+
 @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
 async def catch_all_api_route(
     request: Request,
     full_path: str,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Redirects any unmatched authenticated API path to the main dashboard ('/').
 
@@ -229,9 +232,13 @@ async def catch_all_api_route(
     Returns:
         RedirectResponse: A redirect to the main dashboard page ("/").
     """
-    logger.warning(
-        f"User '{current_user.username}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
-    )
-
-    index_url = "/"
-    return RedirectResponse(url=index_url)
+    if current_user:
+        logger.warning(
+            f"User '{current_user.username}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
+        )
+        return RedirectResponse(url="/")
+    else:
+        logger.warning(
+            f"Unauthenticated user accessed undefined path: '/{full_path}'. Redirecting to login."
+        )
+        return RedirectResponse(url="/auth/login", status_code=302)

@@ -140,11 +140,22 @@ async def get_current_user_optional(
         if username is None:
             return None
 
-        with db_session_manager() as db:
-            user = db.query(UserModel).filter(UserModel.username == username).first()
+        def get_user_from_db(db_session):
+            user = (
+                db_session.query(UserModel)
+                .filter(UserModel.username == username)
+                .first()
+            )
             if not user:
                 return None
             return User(username=user.username, identity_type="jwt", role=user.role)
+
+        db = getattr(getattr(request, "state", None), "db", None)
+        if db:
+            return get_user_from_db(db)
+        else:
+            with db_session_manager() as db:
+                return get_user_from_db(db)
 
     except JWTError:
         return None
