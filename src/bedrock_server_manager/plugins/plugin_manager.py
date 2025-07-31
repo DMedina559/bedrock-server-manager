@@ -34,7 +34,8 @@ from ..config import (
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
 )
-from ..db.database import get_db
+from ..utils.migration import migrate_plugin_config_to_db
+from ..db.database import db_session_manager
 from ..db.models import Plugin
 from ..instances import get_settings_instance
 from .plugin_base import PluginBase
@@ -87,7 +88,6 @@ class PluginManager:
         self._initialized = True
 
         self.settings = get_settings_instance()
-        self.db: Session = next(get_db())
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -120,53 +120,29 @@ class PluginManager:
 
     def _load_config(self) -> Dict[str, Dict[str, Any]]:
         """Loads plugin configurations from the database.
-
-        If the ``plugins.json`` file exists, it will be migrated to the database.
-
         Returns:
             Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
             mapping plugin names to their configuration dictionaries.
             Returns an empty dict if loading fails or the file is not found.
         """
-        if self.config_path.exists():
-            logger.info(
-                f"Migrating plugin config file '{self.config_path}' to database."
-            )
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    config_data = json.load(f)
-                for plugin_name, config in config_data.items():
-                    plugin = (
-                        self.db.query(Plugin)
-                        .filter(Plugin.plugin_name == plugin_name)
-                        .first()
-                    )
-                    if not plugin:
-                        plugin = Plugin(plugin_name=plugin_name, config=config)
-                        self.db.add(plugin)
-                self.db.commit()
-                os.remove(self.config_path)
-                logger.info("Plugin config file migrated to database.")
-            except (json.JSONDecodeError, TypeError, OSError) as e:
-                logger.error(f"Error migrating plugin config file: {e}")
-                return {}
-
-        plugins = self.db.query(Plugin).all()
-        return {plugin.plugin_name: plugin.config for plugin in plugins}
+        with db_session_manager() as db:
+            plugins = db.query(Plugin).all()
+            return {plugin.plugin_name: plugin.config for plugin in plugins}
 
     def _save_config(self):
         """Saves the current in-memory plugin configuration to the database."""
-        for plugin_name, config in self.plugin_config.items():
-            plugin = (
-                self.db.query(Plugin).filter(Plugin.plugin_name == plugin_name).first()
-            )
-            if plugin:
-                plugin.config = config
-            else:
-                plugin = Plugin(plugin_name=plugin_name, config=config)
-                self.db.add(plugin)
-        self.db.commit()
-        logger.info("Plugin configuration successfully saved to database.")
+        with db_session_manager() as db:
+            for plugin_name, config in self.plugin_config.items():
+                plugin = (
+                    db.query(Plugin).filter(Plugin.plugin_name == plugin_name).first()
+                )
+                if plugin:
+                    plugin.config = config
+                else:
+                    plugin = Plugin(plugin_name=plugin_name, config=config)
+                    db.add(plugin)
+            db.commit()
+            logger.info("Plugin configuration successfully saved to database.")
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches all configured plugin directories for a specific plugin file.
@@ -392,6 +368,7 @@ class PluginManager:
         )
 
         for plugin_name, path_to_load in all_potential_plugins.items():
+            migrate_plugin_config_to_db(plugin_name, path_to_load.parent)
             logger.debug(
                 f"Processing plugin '{plugin_name}' from path: '{path_to_load}'."
             )

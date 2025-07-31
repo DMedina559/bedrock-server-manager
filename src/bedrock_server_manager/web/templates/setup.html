@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Bedrock Server Manager - Setup{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Welcome to Bedrock Server Manager</h1>
+    <p>Please create an admin account to get started.</p>
+    <form id="setup-form">
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" class="form-input" required autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" class="form-input" required autocomplete="new-password">
+        </div>
+        <button type="button" class="start-button" onclick="submitForm()">Create Admin User</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+function submitForm() {
+    const form = document.getElementById('setup-form');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+
+    sendServerActionRequest(null, "{{ url_for('create_first_user') }}", 'POST', data)
+        .then(response => {
+            if (response && response.status === 'success') {
+                window.location.href = response.redirect_url;
+            }
+        });
+}
+</script>
+{% endblock %}

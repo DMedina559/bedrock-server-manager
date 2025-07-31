@@ -30,12 +30,13 @@ def test_set_setting_api_route(mock_set_setting, client):
     assert response.json()["status"] == "success"
 
 
-@patch("bedrock_server_manager.web.routers.settings.get_settings_instance")
 @patch("bedrock_server_manager.web.routers.settings.os.path.isdir")
 @patch("bedrock_server_manager.web.routers.settings.os.listdir")
-def test_get_themes_api_route(mock_listdir, mock_isdir, mock_get_settings, client):
+def test_get_themes_api_route(
+    mock_listdir, mock_isdir, client, mock_get_settings_instance
+):
     """Test the get_themes_api_route with a successful response."""
-    mock_get_settings.return_value.get.return_value = "/fake/path"
+    mock_get_settings_instance.get.return_value = "/fake/path"
     mock_isdir.return_value = True
     mock_listdir.return_value = ["theme1.css", "theme2.css"]
 

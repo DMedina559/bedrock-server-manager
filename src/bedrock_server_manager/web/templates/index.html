@@ -32,22 +32,45 @@
 
     {# --- Sidebar Navigation --- #}
     <aside class="sidebar-nav">
-        {# Links use data-target to link to content section IDs #}
         <a href="#overview-section" class="nav-link active" data-target="overview-section">Overview</a>
-        <a href="#manage-section" class="nav-link" data-target="manage-section">Manage Servers</a>
-        <a href="#configure-section" class="nav-link" data-target="configure-section">Configure</a>
-        <a href="#content-section" class="nav-link" data-target="content-section">Content</a>
-        <a href="#backup-restore-section" class="nav-link" data-target="backup-restore-section">Backup/Restore</a>
-        <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
-        <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
+
+        <div class="nav-item">
+            <a href="#" class="nav-link has-submenu">Server Management</a>
+            <div class="submenu">
+                <a href="#manage-section" class="nav-link" data-target="manage-section">Manage Servers</a>
+                <a href="#configure-section" class="nav-link" data-target="configure-section">Configure</a>
+                <a href="#backup-restore-section" class="nav-link" data-target="backup-restore-section">Backup/Restore</a>
+            </div>
+        </div>
+
+        <div class="nav-item">
+            <a href="#" class="nav-link has-submenu">Configuration</a>
+            <div class="submenu">
+                <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
+                {% if current_user and current_user.role == 'admin' %}
+                <a href="{{ url_for('users_page') }}" class="nav-link">User Management</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="nav-item">
+            <a href="#" class="nav-link has-submenu">Content</a>
+            <div class="submenu">
+                <a href="#content-section" class="nav-link" data-target="content-section">Content</a>
+                <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
+            </div>
+        </div>
 
         {# --- Plugin Web Pages Submenu --- #}
         {% if plugin_html_pages %}
-        <hr class="nav-separator">
-        <div class="nav-sub-header">|  From Plugins:</div>
-        {% for page in plugin_html_pages %}
-        <a href="{{ page.path }}" class="nav-link plugin-page-link" title="{{ page.name }}">{{ page.name }}</a>
-        {% endfor %}
+        <div class="nav-item">
+            <a href="#" class="nav-link has-submenu">From Plugins</a>
+            <div class="submenu">
+                {% for page in plugin_html_pages %}
+                <a href="{{ page.path }}" class="nav-link plugin-page-link" title="{{ page.name }}">{{ page.name }}</a>
+                {% endfor %}
+            </div>
+        </div>
         {% endif %}
         {# --- End Plugin Web Pages Submenu --- #}
 
@@ -179,5 +202,4 @@
 
 {# --- Body Scripts Block --- #}
 {% block body_scripts %}
-
 {% endblock %}

@@ -11,8 +11,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-
-    settings = relationship("Setting", back_populates="owner")
+    role = Column(String, default="user")
 
 
 class Setting(Base):
@@ -21,10 +20,8 @@ class Setting(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String, index=True)
     value = Column(JSON)
-    owner_id = Column(Integer, ForeignKey("users.id"))
     server_id = Column(Integer, ForeignKey("servers.id"))
 
-    owner = relationship("User", back_populates="settings")
     server = relationship("Server", back_populates="settings")
 
 
@@ -44,3 +41,20 @@ class Plugin(Base):
     id = Column(Integer, primary_key=True, index=True)
     plugin_name = Column(String, unique=True, index=True)
     config = Column(JSON)
+
+
+class RegistrationToken(Base):
+    __tablename__ = "registration_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True)
+    role = Column(String)
+    expires = Column(Integer)
+
+
+class Player(Base):
+    __tablename__ = "players"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_name = Column(String, unique=True, index=True)
+    xuid = Column(String, unique=True, index=True)

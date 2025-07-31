@@ -11,48 +11,48 @@ from bedrock_server_manager.error import UserInputError
 
 
 @pytest.fixture
-def mock_plugin_manager():
-    """Fixture for a mocked PluginManager."""
-    manager = MagicMock()
-    manager.plugin_config = {
+def mock_get_plugin_manager_instance(mocker):
+    """Fixture to patch get_plugin_manager_instance for the api.plugins module."""
+    mock_manager = MagicMock()
+    mock_manager.plugin_config = {
         "plugin1": {"enabled": True, "version": "1.0", "description": "A test plugin."}
     }
-    return manager
-
-
-@pytest.fixture
-def mock_get_plugin_manager_instance(mock_plugin_manager):
-    """Fixture to patch get_plugin_manager_instance."""
-    with patch(
+    return mocker.patch(
         "bedrock_server_manager.api.plugins.get_plugin_manager_instance",
-        return_value=mock_plugin_manager,
-    ) as mock:
-        yield mock
+        return_value=mock_manager,
+    )
 
 
 class TestPluginAPI:
-    def test_get_plugin_statuses(
-        self, mock_get_plugin_manager_instance, mock_plugin_manager
-    ):
+    def test_get_plugin_statuses(self, mock_get_plugin_manager_instance):
         result = get_plugin_statuses()
         assert result["status"] == "success"
-        assert result["plugins"] == mock_plugin_manager.plugin_config
+        assert (
+            result["plugins"]
+            == mock_get_plugin_manager_instance.return_value.plugin_config
+        )
 
-    def test_set_plugin_status_enable(
-        self, mock_get_plugin_manager_instance, mock_plugin_manager
-    ):
+    def test_set_plugin_status_enable(self, mock_get_plugin_manager_instance):
         result = set_plugin_status("plugin1", True)
         assert result["status"] == "success"
-        assert mock_plugin_manager.plugin_config["plugin1"]["enabled"] is True
-        mock_plugin_manager._save_config.assert_called_once()
+        assert (
+            mock_get_plugin_manager_instance.return_value.plugin_config["plugin1"][
+                "enabled"
+            ]
+            is True
+        )
+        mock_get_plugin_manager_instance.return_value._save_config.assert_called_once()
 
-    def test_set_plugin_status_disable(
-        self, mock_get_plugin_manager_instance, mock_plugin_manager
-    ):
+    def test_set_plugin_status_disable(self, mock_get_plugin_manager_instance):
         result = set_plugin_status("plugin1", False)
         assert result["status"] == "success"
-        assert mock_plugin_manager.plugin_config["plugin1"]["enabled"] is False
-        mock_plugin_manager._save_config.assert_called_once()
+        assert (
+            mock_get_plugin_manager_instance.return_value.plugin_config["plugin1"][
+                "enabled"
+            ]
+            is False
+        )
+        mock_get_plugin_manager_instance.return_value._save_config.assert_called_once()
 
     def test_set_plugin_status_not_found(self, mock_get_plugin_manager_instance):
         with pytest.raises(UserInputError):
@@ -62,28 +62,24 @@ class TestPluginAPI:
         with pytest.raises(UserInputError):
             set_plugin_status("", True)
 
-    def test_reload_plugins(
-        self, mock_get_plugin_manager_instance, mock_plugin_manager
-    ):
+    def test_reload_plugins(self, mock_get_plugin_manager_instance):
         result = reload_plugins()
         assert result["status"] == "success"
-        mock_plugin_manager.reload.assert_called_once()
+        mock_get_plugin_manager_instance.return_value.reload.assert_called_once()
 
-    def test_trigger_external_plugin_event_api(
-        self, mock_get_plugin_manager_instance, mock_plugin_manager
-    ):
+    def test_trigger_external_plugin_event_api(self, mock_get_plugin_manager_instance):
         result = trigger_external_plugin_event_api("my_event:test", {"key": "value"})
         assert result["status"] == "success"
-        mock_plugin_manager.trigger_custom_plugin_event.assert_called_once_with(
+        mock_get_plugin_manager_instance.return_value.trigger_custom_plugin_event.assert_called_once_with(
             "my_event:test", "external_api_trigger", key="value"
         )
 
     def test_trigger_external_plugin_event_api_no_payload(
-        self, mock_get_plugin_manager_instance, mock_plugin_manager
+        self, mock_get_plugin_manager_instance
     ):
         result = trigger_external_plugin_event_api("my_event:test")
         assert result["status"] == "success"
-        mock_plugin_manager.trigger_custom_plugin_event.assert_called_once_with(
+        mock_get_plugin_manager_instance.return_value.trigger_custom_plugin_event.assert_called_once_with(
             "my_event:test", "external_api_trigger"
         )
 

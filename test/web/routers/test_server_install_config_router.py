@@ -1,13 +1,13 @@
-import pytest
 from unittest.mock import patch
 
+import pytest
 
-@patch("bedrock_server_manager.web.routers.server_install_config.get_settings_instance")
+
 @patch("bedrock_server_manager.web.routers.server_install_config.os.path.isdir")
 @patch("bedrock_server_manager.web.routers.server_install_config.os.listdir")
-def test_get_custom_zips(mock_listdir, mock_isdir, mock_get_settings, client):
+def test_get_custom_zips(mock_listdir, mock_isdir, client, mock_get_settings_instance):
     """Test the get_custom_zips route with a successful response."""
-    mock_get_settings.return_value.get.return_value = "/fake/path"
+    mock_get_settings_instance.get.return_value = "/fake/path"
     mock_isdir.return_value = True
     mock_listdir.return_value = ["zip1.zip", "zip2.zip"]
 

@@ -10,23 +10,15 @@ from bedrock_server_manager.error import BSMError
 
 
 @pytest.fixture
-def mock_bedrock_server():
-    """Fixture for a mocked BedrockServer."""
-    server = MagicMock()
-    server.is_running.return_value = False
-    server.get_status_from_config.return_value = "STOPPED"
-    server.get_version.return_value = "1.0.0"
-    return server
-
-
-@pytest.fixture
-def mock_get_server_instance(mock_bedrock_server):
-    """Fixture to patch get_server_instance."""
-    with patch(
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the api.info module."""
+    mock_bedrock_server.is_running.return_value = False
+    mock_bedrock_server.get_status_from_config.return_value = "STOPPED"
+    mock_bedrock_server.get_version.return_value = "1.0.0"
+    return mocker.patch(
         "bedrock_server_manager.api.info.get_server_instance",
         return_value=mock_bedrock_server,
-    ) as mock:
-        yield mock
+    )
 
 
 class TestServerInfo:

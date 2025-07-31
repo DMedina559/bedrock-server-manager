@@ -10,31 +10,24 @@ from bedrock_server_manager.error import UserInputError, BSMError
 
 
 @pytest.fixture
-def mock_manager():
-    """Fixture for a mocked BedrockServerManager."""
-    manager = MagicMock()
-    manager.parse_player_cli_argument.return_value = [
+def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
+    """Fixture to patch get_manager_instance for the api.player module."""
+    mock_bedrock_server_manager.parse_player_cli_argument.return_value = None
+    mock_bedrock_server_manager.save_player_data.return_value = 1
+    mock_bedrock_server_manager.get_known_players.return_value = [
         {"name": "player1", "xuid": "123"}
     ]
-    manager.save_player_data.return_value = 1
-    manager.get_known_players.return_value = [{"name": "player1", "xuid": "123"}]
-    manager.discover_and_store_players_from_all_server_logs.return_value = {
+    mock_bedrock_server_manager.discover_and_store_players_from_all_server_logs.return_value = {
         "total_entries_in_logs": 1,
         "unique_players_submitted_for_saving": 1,
         "actually_saved_or_updated_in_db": 1,
         "scan_errors": [],
     }
-    return manager
-
-
-@pytest.fixture
-def mock_get_manager_instance(mock_manager):
-    """Fixture to patch get_manager_instance."""
-    with patch(
+    return mocker.patch(
         "bedrock_server_manager.api.player.get_manager_instance",
-        return_value=mock_manager,
-    ) as mock:
-        yield mock
+        return_value=mock_bedrock_server_manager,
+        autospec=True,
+    )
 
 
 class TestPlayerManagement:
@@ -42,17 +35,18 @@ class TestPlayerManagement:
         result = add_players_manually_api(["player1:123"])
         assert result["status"] == "success"
         assert result["count"] == 1
+        mock_get_manager_instance.return_value.parse_player_cli_argument.assert_called_once_with(
+            "player1:123"
+        )
 
     def test_add_players_manually_api_empty_list(self, mock_get_manager_instance):
         result = add_players_manually_api([])
         assert result["status"] == "error"
         assert "non-empty list" in result["message"]
 
-    def test_add_players_manually_api_invalid_string(
-        self, mock_get_manager_instance, mock_manager
-    ):
-        mock_manager.parse_player_cli_argument.side_effect = UserInputError(
-            "Invalid format"
+    def test_add_players_manually_api_invalid_string(self, mock_get_manager_instance):
+        mock_get_manager_instance.return_value.parse_player_cli_argument.side_effect = (
+            UserInputError("Invalid format")
         )
         result = add_players_manually_api(["invalid-player"])
         assert result["status"] == "error"
@@ -70,11 +64,9 @@ class TestPlayerManagement:
         assert "Player DB update complete" in result["message"]
         assert result["details"]["actually_saved_or_updated_in_db"] == 1
 
-    def test_scan_and_update_player_db_api_bsm_error(
-        self, mock_get_manager_instance, mock_manager
-    ):
-        mock_manager.discover_and_store_players_from_all_server_logs.side_effect = (
-            BSMError("Test error")
+    def test_scan_and_update_player_db_api_bsm_error(self, mock_get_manager_instance):
+        mock_get_manager_instance.return_value.discover_and_store_players_from_all_server_logs.side_effect = BSMError(
+            "Test error"
         )
         result = scan_and_update_player_db_api()
         assert result["status"] == "error"

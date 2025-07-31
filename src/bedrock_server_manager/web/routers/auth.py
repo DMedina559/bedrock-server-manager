@@ -38,7 +38,6 @@ from ..auth_utils import (
     authenticate_user,
     get_current_user_optional,
     get_current_user,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from ..schemas import User
 from ...instances import get_settings_instance
@@ -93,7 +92,7 @@ async def login_page(
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
     return templates.TemplateResponse(
-        request, "login.html", {"request": request, "form": {}}
+        request, "login.html", {"request": request, "form": {}, "current_user": user}
     )
 
 
@@ -154,7 +153,6 @@ async def api_login_for_access_token(
         httponly=True,
         secure=cookie_secure,
         samesite=cookie_samesite,
-        max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60),
         path="/",
     )
     logger.info(f"API login successful for '{username}'. JWT created and cookie set.")

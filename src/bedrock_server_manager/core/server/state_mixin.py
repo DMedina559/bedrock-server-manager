@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ...db.database import get_db
+from ...db.database import db_session_manager
 from ...db.models import Server
 from ...error import (
     MissingArgumentError,
@@ -41,6 +41,10 @@ from ...error import (
     FileOperationError,
     ConfigParseError,
     AppFileNotFoundError,
+)
+from ...utils.migration import (
+    migrate_server_config_v1_to_v2,
+    migrate_server_config_to_db,
 )
 
 # Version for the server-specific JSON config schema
@@ -94,7 +98,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
-        self.db: Session = next(get_db())
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
@@ -123,74 +126,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             "custom": {},
         }
 
-    def _migrate_server_config_v1_to_v2(
-        self, old_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Migrates a flat v1 server configuration to the nested v2 format.
-
-        This internal method takes an old, presumably flat dictionary
-        (`old_config`) representing a v1 server configuration and transforms
-        it into the structured v2 format defined by
-        :meth:`._get_default_server_config`. Known v1 keys like
-        "installed_version", "target_version", "status", and "autoupdate"
-        are mapped to their new locations in the "server_info" and "settings"
-        sections. Any other unrecognized keys from the old config are moved
-        into a "custom" sub-dictionary.
-
-        Args:
-            old_config (Dict[str, Any]): The dictionary loaded from an old v1
-                server configuration file.
-
-        Returns:
-            Dict[str, Any]: A new dictionary representing the server configuration
-            in the v2 schema, populated with values from the `old_config`.
-        """
-        self.logger.info(
-            f"Migrating server config for '{self.server_name}' from v1 (flat) to v2 (nested)."
-        )
-        new_config = self._get_default_server_config()  # Start with a clean v2 default
-
-        # Migrate known server_info keys
-        new_config["server_info"]["installed_version"] = old_config.get(
-            "installed_version", new_config["server_info"]["installed_version"]
-        )
-        # Note: target_version was in top-level in v1, moved to settings in v2 structure.
-        # The default config already provides a 'UNKNOWN' if not found.
-        new_config["settings"]["target_version"] = old_config.get(
-            "target_version", new_config["settings"]["target_version"]
-        )
-        new_config["server_info"]["status"] = old_config.get(
-            "status", new_config["server_info"]["status"]
-        )
-
-        # Migrate known settings keys
-        autoupdate_val = old_config.get("autoupdate")
-        if isinstance(
-            autoupdate_val, str
-        ):  # v1 might have stored as string "true"/"false"
-            new_config["settings"]["autoupdate"] = autoupdate_val.lower() == "true"
-        elif isinstance(autoupdate_val, bool):  # Or correctly as bool
-            new_config["settings"]["autoupdate"] = autoupdate_val
-        # If missing or other type, it keeps the default from _get_default_server_config()
-
-        # Migrate any other unrecognized top-level keys to the "custom" section
-        known_v1_keys_handled = {
-            "installed_version",
-            "target_version",  # Already handled for its new location
-            "status",
-            "autoupdate",
-            # config_schema_version is not a v1 key, but good to exclude if it somehow appears
-            "config_schema_version",
-        }
-        for key, value in old_config.items():
-            if key not in known_v1_keys_handled:
-                new_config["custom"][key] = value
-
-        new_config["config_schema_version"] = (
-            SERVER_CONFIG_SCHEMA_VERSION  # Ensure new version is set
-        )
-        return new_config
-
     def _load_server_config(self) -> Dict[str, Any]:
         """Loads the server-specific JSON configuration.
 
@@ -214,55 +149,24 @@ class ServerStateMixin(BedrockServerBaseMixin):
             FileOperationError: If directory creation or file reading fails due
                 to ``OSError``.
         """
-        server = (
-            self.db.query(Server).filter(Server.server_name == self.server_name).first()
-        )
-        if server:
-            return server.config
-
-        # Legacy migration from JSON file
-        config_file_path = os.path.join(
-            self.server_config_dir, f"{self.server_name}_config.json"
-        )
-        if os.path.exists(config_file_path):
-            self.logger.info(
-                f"Migrating server config file '{config_file_path}' to database."
+        with db_session_manager() as db:
+            migrate_server_config_to_db(self.server_name, self.server_config_dir)
+            server = (
+                db.query(Server).filter(Server.server_name == self.server_name).first()
             )
-            try:
-                with open(config_file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    if not content.strip():
-                        config = self._get_default_server_config()
-                    else:
-                        config = json.loads(content)
-                        if not isinstance(config, dict):
-                            config = self._get_default_server_config()
-            except (json.JSONDecodeError, OSError) as e:
-                self.logger.warning(
-                    f"Error reading legacy config file: {e}. Using default config."
-                )
-                config = self._get_default_server_config()
+            if server:
+                return server.config
 
-            if "config_schema_version" not in config:
-                config = self._migrate_server_config_v1_to_v2(config)
-
-            server = Server(server_name=self.server_name, config=config)
-            self.db.add(server)
-            self.db.commit()
-            self.db.refresh(server)
-            os.remove(config_file_path)  # Remove legacy file
+            # Create new server config in DB
+            self.logger.info(
+                f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
+            )
+            default_config = self._get_default_server_config()
+            server = Server(server_name=self.server_name, config=default_config)
+            db.add(server)
+            db.commit()
+            db.refresh(server)
             return server.config
-
-        # Create new server config in DB
-        self.logger.info(
-            f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
-        )
-        default_config = self._get_default_server_config()
-        server = Server(server_name=self.server_name, config=default_config)
-        self.db.add(server)
-        self.db.commit()
-        self.db.refresh(server)
-        return server.config
 
     def _save_server_config(self, config_data: Dict[str, Any]) -> None:
         """Saves the server configuration data to the database.
@@ -270,12 +174,13 @@ class ServerStateMixin(BedrockServerBaseMixin):
         Args:
             config_data (Dict[str, Any]): The server configuration dictionary to save.
         """
-        server = (
-            self.db.query(Server).filter(Server.server_name == self.server_name).first()
-        )
-        if server:
-            server.config = config_data
-            self.db.commit()
+        with db_session_manager() as db:
+            server = (
+                db.query(Server).filter(Server.server_name == self.server_name).first()
+            )
+            if server:
+                server.config = config_data
+                db.commit()
 
     def _manage_json_config(
         self,

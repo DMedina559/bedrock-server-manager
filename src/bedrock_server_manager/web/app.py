@@ -10,15 +10,12 @@ arguments and application settings to correctly configure Uvicorn's host, port,
 debug mode, and worker processes.
 """
 
-import os
-import sys
 import logging
 import ipaddress
 from typing import Optional, List, Union
 
 import uvicorn
 
-from ..config import env_name
 from ..instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
@@ -61,15 +58,8 @@ def run_web_server(
             Only used for Windows Service
 
     Raises:
-        RuntimeError: If the required authentication environment variables
-            (e.g., ``BSM_USERNAME``, ``BSM_PASSWORD``, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
-            are not set. The server will not start without these credentials.
         Exception: Re-raises any exception encountered during `uvicorn.run` if
             Uvicorn itself fails to start (e.g., port already in use, invalid app path).
-
-    Environment Variables:
-        - ``BSM_USERNAME``: The username for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
-        - ``BSM_PASSWORD``: The password for web authentication. (Required, prefix from :data:`~bedrock_server_manager.config.const.env_name`)
 
     Settings Interaction:
         This function reads the following keys from the global ``settings`` object:
@@ -80,18 +70,6 @@ def run_web_server(
         - ``web.threads`` (int): The number of Uvicorn worker processes to use when
           not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
-
-    username_env = f"{env_name}_USERNAME"
-    password_env = f"{env_name}_PASSWORD"
-    if not os.environ.get(username_env) or not os.environ.get(password_env):
-        error_msg = (
-            f"Cannot start web server: Required authentication environment variables "
-            f"('{username_env}', '{password_env}') are not set."
-        )
-        logger.critical(error_msg)
-        raise RuntimeError(error_msg)
-    else:
-        logger.info("Web authentication credentials found in environment variables.")
 
     port_setting_key = "web.port"
     port_val = get_settings_instance().get(port_setting_key, 11325)

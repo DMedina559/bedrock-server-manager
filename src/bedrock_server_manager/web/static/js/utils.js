@@ -105,7 +105,12 @@ async function sendServerActionRequest(serverName, actionPath, method = 'POST', 
 
     // --- 2. Construct URL ---
     let apiUrl;
-    if (actionPath.startsWith('/')) {
+    const isAbsoluteUrl = /^(?:[a-z]+:)?\/\//i.test(actionPath);
+
+    if (isAbsoluteUrl) {
+        apiUrl = actionPath; // Use as absolute path
+        console.debug(`${functionName}: Using absolute URL: ${apiUrl}`);
+    } else if (actionPath.startsWith('/')) {
         apiUrl = actionPath; // Use as absolute path
         console.debug(`${functionName}: Using absolute URL: ${apiUrl}`);
     } else if (serverName && serverName.trim()) { // Check serverName is not empty/whitespace

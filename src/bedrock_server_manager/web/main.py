@@ -15,8 +15,9 @@ from sys import version
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 
 import logging
 
@@ -92,9 +93,38 @@ if os.path.isdir(themes_path):
     app.mount("/themes", StaticFiles(directory=themes_path), name="themes")
 
 from . import routers
+from .dependencies import needs_setup
+from starlette.middleware.authentication import AuthenticationMiddleware
+from .auth_utils import CustomAuthBackend, get_current_user_optional
 
-app.include_router(routers.main_router)
+
+@app.middleware("http")
+async def setup_check_middleware(request: Request, call_next):
+    if (
+        await needs_setup()
+        and not request.url.path.startswith("/setup")
+        and not request.url.path.startswith("/static")
+    ):
+        return RedirectResponse(url="/setup/")
+    response = await call_next(request)
+    return response
+
+
+app.add_middleware(AuthenticationMiddleware, backend=CustomAuthBackend())
+
+
+@app.middleware("http")
+async def add_user_to_request(request: Request, call_next):
+    user = await get_current_user_optional(request)
+    request.state.current_user = user
+    response = await call_next(request)
+    return response
+
+
+app.include_router(routers.setup_router)
 app.include_router(routers.auth_router)
+app.include_router(routers.users_router)
+app.include_router(routers.register_router)
 app.include_router(routers.server_actions_router)
 app.include_router(routers.server_install_config_router)
 app.include_router(routers.backup_restore_router)
@@ -103,6 +133,7 @@ app.include_router(routers.settings_router)
 app.include_router(routers.api_info_router)
 app.include_router(routers.plugin_router)
 app.include_router(routers.tasks_router)
+app.include_router(routers.main_router)
 
 
 # --- Dynamically include FastAPI routers from plugins ---
