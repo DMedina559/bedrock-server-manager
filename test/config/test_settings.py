@@ -121,15 +121,27 @@ from unittest.mock import patch
 from unittest.mock import patch
 
 
+@patch("bedrock_server_manager.config.settings.bcm_config.save_config")
 @patch("bedrock_server_manager.config.settings.Settings.load")
 @patch("bedrock_server_manager.config.settings.bcm_config.load_config")
 def test_determine_app_data_dir_priority(
-    mock_load_config, mock_settings_load, monkeypatch, tmp_path
+    mock_load_config,
+    mock_settings_load,
+    mock_save_config,
+    monkeypatch,
+    tmp_path,
+    db_session,
+    mock_db_session_manager,
 ):
     """Test that _determine_app_data_dir respects the priority: config > default."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.config.settings.db_session_manager",
+        mock_db_session_manager(db_session),
+    )
+    mock_load_config.return_value = {}
+
     Settings._instance = None
     settings = Settings()
-    mock_load_config.return_value = {}
 
     # 1. Test config file priority
     config_dir = str(tmp_path / "config_dir")
