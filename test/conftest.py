@@ -118,3 +118,20 @@ def mock_db_session_manager(mocker):
         return mock_session_manager
 
     return _mock_db_session_manager
+
+
+@pytest.fixture(autouse=True)
+def db_session():
+    """
+    Fixture to set up and tear down the database for each test.
+    This ensures that each test runs in a clean, isolated environment.
+    """
+    from bedrock_server_manager.db import database
+
+    # Setup: initialize the database with a test-specific URL
+    database.initialize_database("sqlite://")
+    yield
+    # Teardown: reset the database module's state
+    database.engine = None
+    database.SessionLocal = None
+    database._TABLES_CREATED = False

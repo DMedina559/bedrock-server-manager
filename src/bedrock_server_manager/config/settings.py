@@ -143,9 +143,6 @@ class Settings:
         # Get the installed package version.
         self._version_val = get_installed_version()
 
-        # Setup database
-        Base.metadata.create_all(bind=engine)
-
         # Load settings from the config file or create a default one.
         self._settings: Dict[str, Any] = {}
         self.load()
