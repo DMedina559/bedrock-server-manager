@@ -6,19 +6,21 @@ import pytest
 from bedrock_server_manager.db import database
 
 
-def test_get_database_url_with_env_var(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:password@host:port/database")
-    assert (
-        database.get_database_url() == "postgresql://user:password@host:port/database"
-    )
+@patch("bedrock_server_manager.db.database.get_settings_instance")
+@patch("bedrock_server_manager.db.database.bcm_config.load_config")
+def test_get_database_url_priority(mock_load_config, mock_get_settings, tmp_path):
+    """Test that get_database_url respects the priority: config > env > default."""
+    # 1. Test config file priority
+    mock_load_config.return_value = {"db_url": "config_db_url"}
+    assert database.get_database_url() == "config_db_url"
+    mock_load_config.return_value = {}
 
-
-def test_get_database_url_without_env_var(monkeypatch, tmp_path):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    with patch("os.environ.get") as mock_get:
-        mock_get.return_value = str(tmp_path)
-        expected_path = os.path.join(str(tmp_path), ".config", "bsm.db")
-        assert database.get_database_url() == f"sqlite:///{expected_path}"
+    # 2. Test default path
+    mock_settings = MagicMock()
+    mock_settings.app_data_dir = str(tmp_path)
+    mock_get_settings.return_value = mock_settings
+    expected_path = os.path.join(str(tmp_path), ".config", "bedrock-server-manager.db")
+    assert database.get_database_url() == f"sqlite:///{expected_path}"
 
 
 def test_engine_creation(monkeypatch):

@@ -11,21 +11,55 @@ from bedrock_server_manager.core.manager import BedrockServerManager
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 
+from appdirs import user_config_dir
+
+
 @pytest.fixture(autouse=True)
-def isolated_settings():
+def isolated_settings(monkeypatch, tmp_path):
     """
-    This fixture creates a temporary data directory and sets the
-    BEDROCK_SERVER_MANAGER_DATA_DIR environment variable to point to it.
-    This isolates the tests from the user's actual data and configuration.
+    This fixture creates a temporary data and config directory and mocks
+    appdirs.user_config_dir to ensure all configuration and data files
+    are isolated to the temporary location for the duration of the test.
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        original_value = os.environ.get("BEDROCK_SERVER_MANAGER_DATA_DIR")
-        os.environ["BEDROCK_SERVER_MANAGER_DATA_DIR"] = tmpdir
-        yield
-        if original_value is None:
-            del os.environ["BEDROCK_SERVER_MANAGER_DATA_DIR"]
-        else:
-            os.environ["BEDROCK_SERVER_MANAGER_DATA_DIR"] = original_value
+    # Create a temporary directory for the app's data
+    test_data_dir = tmp_path / "test_data"
+    test_data_dir.mkdir()
+
+    # Create a temporary directory for the app's config files
+    test_config_dir = tmp_path / "test_config"
+    test_config_dir.mkdir()
+
+    # Mock the user_config_dir function to return our temporary config directory
+    monkeypatch.setattr(
+        "appdirs.user_config_dir", lambda *args, **kwargs: str(test_config_dir)
+    )
+
+    # We also need to set the `data_dir` in the mocked config file
+    # for the `Settings` class to find it.
+    config_file = test_config_dir / "bedrock_server_manager.json"
+    config_data = {"data_dir": str(test_data_dir)}
+    with open(config_file, "w") as f:
+        import json
+
+        json.dump(config_data, f)
+
+    # The `Settings` class also checks the BSM_DATA_DIR environment variable
+    # as a fallback. It's a good practice to mock this as well to be explicit
+    # about test isolation, even though the primary path is now mocked.
+    monkeypatch.setenv("BSM_DATA_DIR", str(test_data_dir))
+
+    # Reload the bcm_config module to ensure the new mocked paths are used
+    import bedrock_server_manager.config.bcm_config as bcm_config
+    import importlib
+
+    importlib.reload(bcm_config)
+
+    yield
+
+    # Teardown: Remove the mocked environment variable
+    monkeypatch.delenv("BSM_DATA_DIR")
+    # Reset the bcm_config module to its original state
+    importlib.reload(bcm_config)
 
 
 @pytest.fixture

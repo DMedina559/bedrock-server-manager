@@ -32,7 +32,6 @@ def settings(db_session, monkeypatch, tmp_path, mock_db_session_manager):
     # Setup for the settings instance
     test_data_dir = tmp_path / "test_app_data"
     test_data_dir.mkdir()
-    monkeypatch.setenv(f"{env_name}_DATA_DIR", str(test_data_dir))
 
     # Point the settings to use the test database
     monkeypatch.setattr(
@@ -116,21 +115,32 @@ def test_set_with_new_key(settings):
     assert settings.get("new_key") == "new_value"
 
 
-def test_determine_app_data_dir(monkeypatch, tmp_path):
-    """Test that the _determine_app_data_dir method returns the correct directory."""
-    # Test with environment variable
-    test_data_dir = tmp_path / "test_app_data"
-    monkeypatch.setenv(f"{env_name}_DATA_DIR", str(test_data_dir))
-    settings = Settings()
-    assert settings._determine_app_data_dir() == str(test_data_dir)
-    Settings._instance = None
+from unittest.mock import patch
 
-    # Test without environment variable
-    monkeypatch.delenv(f"{env_name}_DATA_DIR")
+
+from unittest.mock import patch
+
+
+@patch("bedrock_server_manager.config.settings.Settings.load")
+@patch("bedrock_server_manager.config.settings.bcm_config.load_config")
+def test_determine_app_data_dir_priority(
+    mock_load_config, mock_settings_load, monkeypatch, tmp_path
+):
+    """Test that _determine_app_data_dir respects the priority: config > default."""
+    Settings._instance = None
     settings = Settings()
-    assert settings._determine_app_data_dir() == os.path.join(
-        os.path.expanduser("~"), f"{package_name}"
-    )
+    mock_load_config.return_value = {}
+
+    # 1. Test config file priority
+    config_dir = str(tmp_path / "config_dir")
+    mock_load_config.return_value = {"data_dir": config_dir}
+    assert settings._determine_app_data_dir() == config_dir
+    mock_load_config.return_value = {}
+
+    # 2. Test home directory default
+    expected_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
+    assert settings._determine_app_data_dir() == expected_dir
+
     Settings._instance = None
 
 

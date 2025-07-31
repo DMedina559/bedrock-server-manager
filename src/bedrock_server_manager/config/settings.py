@@ -28,8 +28,10 @@ from ..error import ConfigurationError
 from .const import (
     package_name,
     env_name,
+    app_author,
     get_installed_version,
 )
+from . import bcm_config
 from ..utils.migration import (
     migrate_settings_v1_to_v2,
     migrate_players_json_to_db,
@@ -133,7 +135,11 @@ class Settings:
         if self.__initialized:
             return
         self.__initialized = True
+
         logger.debug("Initializing Settings")
+        from ..utils.migration import migrate_env_vars_to_config_file
+        migrate_env_vars_to_config_file()
+
         # Determine the primary application data and config directories.
         self._app_data_dir_path = self._determine_app_data_dir()
         self._config_dir_path = self._determine_app_config_dir()
@@ -153,7 +159,6 @@ class Settings:
 
         # Migrate auth env vars to the database
         from ..utils.migration import migrate_env_auth_to_db
-
         migrate_env_auth_to_db(env_name)
         migrate_env_token_to_db(env_name)
 
@@ -169,10 +174,14 @@ class Settings:
         Returns:
             str: The absolute path to the application data directory.
         """
-        env_var_name = f"{env_name}_DATA_DIR"
-        data_dir = os.environ.get(env_var_name)
+        # 1. Check config file
+        config = bcm_config.load_config()
+        data_dir = config.get("data_dir")
+
+        # 3. Fallback to user's home directory
         if not data_dir:
             data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
+
         os.makedirs(data_dir, exist_ok=True)
         return data_dir
 

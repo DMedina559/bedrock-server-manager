@@ -5,6 +5,8 @@ from typing import Dict, Any
 from ..db.database import db_session_manager
 from ..db.models import Player, User, Server, Plugin
 from ..error import ConfigurationError
+from ..config import bcm_config
+from ..config.const import env_name
 
 logger = logging.getLogger(__name__)
 
@@ -311,3 +313,31 @@ def migrate_services_to_db():
                         server.set_autostart(False)
             except Exception:
                 pass
+
+
+def migrate_env_vars_to_config_file():
+    """
+    Migrates DATA_DIR and DB_URL from environment variables to the config file.
+
+    This function checks for the presence of BSM_DATA_DIR and DATABASE_URL
+    environment variables. If found, their values are moved into the
+    bedrock_server_manager.json configuration file. This is intended to be
+    a one-time migration to help users transition from environment variable-based
+    configuration to the centralized config file.
+    """
+    config = bcm_config.load_config()
+    made_changes = False
+
+    # Migrate DATA_DIR
+    data_dir_env_var = f"{env_name}_DATA_DIR"
+    data_dir_value = os.environ.get(data_dir_env_var)
+    if data_dir_value and "data_dir" not in config:
+        config["data_dir"] = data_dir_value
+        made_changes = True
+        logger.info(
+            f"Migrated {data_dir_env_var} from environment to config file. "
+            "You can now remove this environment variable."
+        )
+
+    if made_changes:
+        bcm_config.save_config(config)

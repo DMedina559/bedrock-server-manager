@@ -5,6 +5,7 @@ import json
 import importlib
 
 from bedrock_server_manager.utils.migration import (
+    migrate_env_vars_to_config_file,
     migrate_players_json_to_db,
     migrate_env_auth_to_db,
     migrate_server_config_v1_to_v2,
@@ -420,3 +421,29 @@ class TestMigrateServicesToDb:
             migrate_services_to_db()
 
         mock_server.set_autostart.assert_not_called()
+
+
+class TestMigrateEnvVarsToConfigFile:
+    @patch("bedrock_server_manager.utils.migration.bcm_config.save_config")
+    @patch("bedrock_server_manager.utils.migration.bcm_config.load_config")
+    def test_migrate_env_vars_to_config_file_success(
+        self, mock_load_config, mock_save_config, monkeypatch
+    ):
+        mock_load_config.return_value = {}
+        monkeypatch.setenv("BEDROCK_SERVER_MANAGER_DATA_DIR", "/test/data/dir")
+
+        migrate_env_vars_to_config_file()
+
+        mock_save_config.assert_called_once_with({"data_dir": "/test/data/dir"})
+
+    @patch("bedrock_server_manager.utils.migration.bcm_config.save_config")
+    @patch("bedrock_server_manager.utils.migration.bcm_config.load_config")
+    def test_migrate_env_vars_skips_if_present(
+        self, mock_load_config, mock_save_config, monkeypatch
+    ):
+        mock_load_config.return_value = {"data_dir": "/existing/data/dir"}
+        monkeypatch.setenv("BEDROCK_SERVER_MANAGER_DATA_DIR", "/test/data/dir")
+
+        migrate_env_vars_to_config_file()
+
+        mock_save_config.assert_not_called()
