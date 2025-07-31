@@ -1,8 +1,5 @@
 from unittest.mock import patch
 from fastapi.testclient import TestClient
-from bedrock_server_manager.web.main import app
-from bedrock_server_manager.web.auth_utils import create_access_token
-from datetime import timedelta
 
 # Test data
 TEST_USER = "testuser"
@@ -48,13 +45,9 @@ def test_login_for_access_token_empty_password(client: TestClient):
     assert response.status_code == 401
 
 
-def test_logout_success(client: TestClient):
+def test_logout_success(authenticated_client: TestClient):
     """Test the logout route with a valid token."""
-    access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
-    )
-    client.headers["Authorization"] = f"Bearer {access_token}"
-    response = client.get("/auth/logout")
+    response = authenticated_client.get("/auth/logout")
     assert response.status_code == 200
     assert len(response.history) > 0
     assert response.history[0].status_code == 302
@@ -62,6 +55,5 @@ def test_logout_success(client: TestClient):
 
 def test_logout_no_token(client: TestClient):
     """Test the logout route without a token."""
-    client.headers.pop("Authorization", None)
     response = client.get("/auth/logout")
     assert response.status_code == 401

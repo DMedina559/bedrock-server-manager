@@ -179,3 +179,7 @@ data
 
 
 *Zone.Identifier
+
+# BSM dirs
+
+test.db

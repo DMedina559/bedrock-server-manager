@@ -2,41 +2,47 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from bedrock_server_manager.web.main import app
 from bedrock_server_manager.web.dependencies import validate_server_exists
-from bedrock_server_manager.web.auth_utils import get_current_user_optional
 
 
-def test_index_authenticated(client):
+def test_index_authenticated(authenticated_client: TestClient):
     """Test the index route with an authenticated user."""
-    response = client.get("/")
+    response = authenticated_client.get("/")
     assert response.status_code == 200
     assert "Bedrock Server Manager" in response.text
 
 
-def test_index_unauthenticated(client):
+def test_index_unauthenticated(client: TestClient):
     """Test the index route with an unauthenticated user."""
-    app.dependency_overrides[get_current_user_optional] = lambda: None
-    client.headers.pop("Authorization")
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/auth/login"
-    app.dependency_overrides = {}
 
 
-def test_monitor_server_route(client):
+def test_monitor_server_route(authenticated_client: TestClient):
     """Test the monitor_server_route with an authenticated user."""
-    response = client.get("/server/test-server/monitor")
+    response = authenticated_client.get("/server/test-server/monitor")
     assert response.status_code == 200
     assert "Server Monitor" in response.text
 
 
-async def test_monitor_server_route_user_input_error(client):
+async def test_monitor_server_route_user_input_error(authenticated_client: TestClient):
     """Test the monitor_server_route with a UserInputError."""
     from fastapi import HTTPException
 
     async def mock_validation():
         raise HTTPException(status_code=404, detail="Server not found")
 
+    # This override is specific to this test case
+    original_override = app.dependency_overrides.get(validate_server_exists)
     app.dependency_overrides[validate_server_exists] = mock_validation
-    response = client.get("/server/test-server/monitor")
+
+    response = authenticated_client.get("/server/test-server/monitor")
+
+    # Restore original dependencies
+    if original_override:
+        app.dependency_overrides[validate_server_exists] = original_override
+    else:
+        del app.dependency_overrides[validate_server_exists]
+
     assert response.status_code == 404
     assert "Server not found" in response.json()["detail"]

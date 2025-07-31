@@ -10,6 +10,7 @@ from bedrock_server_manager.web.auth_utils import (
     ALGORITHM,
 )
 from fastapi import Request
+from bedrock_server_manager.db.models import User as UserModel
 
 # Test data
 TEST_USER = "testuser"
@@ -44,8 +45,17 @@ from fastapi.testclient import TestClient
 
 
 @pytest.mark.asyncio
-async def test_get_current_user(client: TestClient):
+async def test_get_current_user(test_db):
     """Test getting the current user from a valid token."""
+    user = UserModel(
+        username=TEST_USER,
+        hashed_password=pwd_context.hash(TEST_PASSWORD),
+        role="admin",
+    )
+    test_db.add(user)
+    test_db.commit()
+    test_db.refresh(user)
+
     access_token = create_access_token(
         data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
     )
@@ -55,6 +65,7 @@ async def test_get_current_user(client: TestClient):
             "headers": [(b"authorization", f"Bearer {access_token}".encode())],
         }
     )
+    request.state.db = test_db
     user = await get_current_user_optional(request)
     assert user.username == TEST_USER
 
@@ -102,8 +113,17 @@ async def test_get_current_user_no_username(client: TestClient):
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_optional(client: TestClient):
+async def test_get_current_user_optional(test_db):
     """Test getting an optional user from a valid token."""
+    user = UserModel(
+        username=TEST_USER,
+        hashed_password=pwd_context.hash(TEST_PASSWORD),
+        role="admin",
+    )
+    test_db.add(user)
+    test_db.commit()
+    test_db.refresh(user)
+
     access_token = create_access_token(
         data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
     )
@@ -113,6 +133,7 @@ async def test_get_current_user_optional(client: TestClient):
             "headers": [(b"authorization", f"Bearer {access_token}".encode())],
         }
     )
+    request.state.db = test_db
     user = await get_current_user_optional(request)
     assert user.username == TEST_USER
 
