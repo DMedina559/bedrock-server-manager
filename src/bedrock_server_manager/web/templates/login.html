@@ -62,12 +62,12 @@
 
 {# --- Optional Body Scripts Block --- #}
 {% block body_scripts %}
-{#
 <script>
-    // Example: Add focus to username field if it has errors - client-side validation might do this
-    // document.addEventListener('DOMContentLoaded', () => {
-    //     const usernameInput = document.getElementById('username');
-    //     // If client-side validation marks it as invalid, you could focus it.
-    // });
-</script> #}
+    document.getElementById('login-form').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            handleLoginAttempt(document.querySelector('.action-button'));
+        }
+    });
+</script>
 {% endblock %}

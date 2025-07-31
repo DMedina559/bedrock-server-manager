@@ -15,6 +15,10 @@
             <label for="password">Password</label>
             <input type="password" id="password" name="password" class="form-input" required autocomplete="new-password">
         </div>
+        <div class="form-group">
+            <label for="confirm_password">Confirm Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" class="form-input" required autocomplete="new-password">
+        </div>
         <button type="button" class="start-button" onclick="submitForm()">Create Admin User</button>
     </form>
 </div>
@@ -24,6 +28,20 @@
 <script>
 function submitForm() {
     const form = document.getElementById('setup-form');
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const confirm_password = document.getElementById('confirm_password').value;
+
+    if (!username || !password || !confirm_password) {
+        showStatusMessage('All fields are required.', 'error');
+        return;
+    }
+
+    if (password !== confirm_password) {
+        showStatusMessage('Passwords do not match.', 'error');
+        return;
+    }
+
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
@@ -34,5 +52,12 @@ function submitForm() {
             }
         });
 }
+
+document.getElementById('setup-form').addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        submitForm();
+    }
+});
 </script>
 {% endblock %}
