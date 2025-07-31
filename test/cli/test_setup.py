@@ -32,7 +32,7 @@ def test_setup_command_basic(
     ]
     mock_questionary.confirm.return_value.ask.return_value = False  # No advanced DB
 
-    result = runner.invoke(setup)
+    result = runner.invoke(setup, obj={"bsm": MagicMock()})
 
     assert result.exit_code == 0
     assert "Setup complete!" in result.output
@@ -67,9 +67,12 @@ def test_setup_command_advanced_db(
         "12345",
         "test_db_url",  # DB URL
     ]
-    mock_questionary.confirm.return_value.ask.return_value = True  # Yes to advanced DB
+    mock_questionary.confirm.return_value.ask.side_effect = [
+        False,
+        True,
+    ]  # No to service, Yes to advanced DB
 
-    result = runner.invoke(setup)
+    result = runner.invoke(setup, obj={"bsm": MagicMock()})
 
     assert result.exit_code == 0
     assert "Setup complete!" in result.output
