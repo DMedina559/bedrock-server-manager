@@ -123,6 +123,7 @@ def cli(ctx: click.Context):
 
     ctx.obj = {
         "cli": cli,
+        "bsm": get_manager_instance(),
     }
 
     if ctx.invoked_subcommand is None:
