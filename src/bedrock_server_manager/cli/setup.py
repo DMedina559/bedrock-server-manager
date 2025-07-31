@@ -19,6 +19,7 @@ def setup(ctx: click.Context):
     """
     try:
         from ..core import BedrockServerManager
+
         bsm: BedrockServerManager = ctx.obj["bsm"]
         click.secho(f"{app_name_title} - Setup", fg="cyan")
 
@@ -52,7 +53,9 @@ def setup(ctx: click.Context):
         if web_port:
             settings.set("web.port", int(web_port))
 
-        click.secho(f"Web UI will be hosted at: http://{web_host}:{web_port}", fg="green")
+        click.secho(
+            f"Web UI will be hosted at: http://{web_host}:{web_port}", fg="green"
+        )
 
         # --- Prompt for Service Config ---
         click.echo("\n--- Service Configuration ---")
