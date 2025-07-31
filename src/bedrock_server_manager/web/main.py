@@ -105,7 +105,7 @@ async def setup_check_middleware(request: Request, call_next):
         and not request.url.path.startswith("/setup")
         and not request.url.path.startswith("/static")
     ):
-        return RedirectResponse(url="/setup/")
+        return RedirectResponse(url="/setup")
     response = await call_next(request)
     return response
 
