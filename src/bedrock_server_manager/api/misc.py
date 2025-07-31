@@ -27,8 +27,6 @@ logger = logging.getLogger(__name__)
 # A lock to prevent race conditions during miscellaneous file operations.
 _misc_lock = threading.Lock()
 
-plugin_manager = get_plugin_manager_instance()
-
 
 @plugin_method("prune_download_cache")
 def prune_download_cache(
@@ -67,6 +65,7 @@ def prune_download_cache(
             :class:`~.error.AppFileNotFoundError` (if `download_dir` is invalid after initial checks)
             or :class:`~.error.FileOperationError`.
     """
+    plugin_manager = get_plugin_manager_instance()
     # Attempt to acquire the lock without blocking. If another operation
     # is in progress, skip this one to avoid conflicts.
     if not _misc_lock.acquire(blocking=False):

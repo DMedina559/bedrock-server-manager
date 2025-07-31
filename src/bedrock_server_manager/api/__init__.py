@@ -30,11 +30,3 @@ __all__ = [
     "web",
     "world",
 ]
-
-# --- LOAD PLUGINS AND FIRE STARTUP EVENT ---
-from ..instances import get_plugin_manager_instance
-
-plugin_manager = get_plugin_manager_instance()
-
-# Now that all APIs are registered, we can safely load the plugins.
-plugin_manager.load_plugins()

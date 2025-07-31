@@ -32,8 +32,6 @@ from ..error import (
 
 logger = logging.getLogger(__name__)
 
-plugin_manager = get_plugin_manager_instance()
-
 
 @plugin_method("add_players_manually_api")
 def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
@@ -63,6 +61,7 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
             (propagated from ``parse_player_cli_argument``).
         BSMError: If saving to the database fails.
     """
+    plugin_manager = get_plugin_manager_instance()
     logger.info(f"API: Adding players manually: {player_strings}")
     # --- Input Validation ---
     if (
@@ -165,6 +164,7 @@ def scan_and_update_player_db_api() -> Dict[str, Any]:
             final save to the database fails. Individual server scan errors
             are reported within the "details" part of a successful response.
     """
+    plugin_manager = get_plugin_manager_instance()
     logger.info("API: Request to scan all server logs and update player DB.")
 
     # --- Plugin Hook: Before Scan ---

@@ -48,8 +48,6 @@ logger = logging.getLogger(__name__)
 # the entire module, preventing race conditions and potential data corruption.
 _backup_restore_lock = threading.Lock()
 
-plugin_manager = get_plugin_manager_instance()
-
 
 @plugin_method("list_backup_files")
 def list_backup_files(server_name: str, backup_type: str) -> Dict[str, Any]:
@@ -129,6 +127,7 @@ def backup_world(server_name: str, stop_start_server: bool = True) -> Dict[str, 
             :class:`~.error.BackupRestoreError` (export/pruning issues),
             or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world backup."
@@ -232,6 +231,7 @@ def backup_config_file(
             :class:`~.error.FileOperationError` (file copy/pruning issues),
             or errors from server stop/start if `stop_start_server` is true.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config backup."
@@ -332,6 +332,7 @@ def backup_all(server_name: str, stop_start_server: bool = True) -> Dict[str, An
             :class:`~.error.BackupRestoreError` (if critical world backup fails),
             or errors from server stop if `stop_start_server` is true.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent full backup."
@@ -433,6 +434,7 @@ def restore_all(server_name: str, stop_start_server: bool = True) -> Dict[str, A
             :class:`~.error.BackupRestoreError` (if any component fails to restore),
             or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent restore."
@@ -544,6 +546,7 @@ def restore_world(
             :class:`~.error.BackupRestoreError`, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world restore."
@@ -656,6 +659,7 @@ def restore_config_file(
         BSMError: Propagates errors from underlying operations like
             :class:`~.error.FileOperationError` or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config restore."
@@ -759,6 +763,7 @@ def prune_old_backups(server_name: str) -> Dict[str, str]:
             Individual :class:`~.error.FileOperationError` for components are
             typically aggregated into the error message.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent prune."

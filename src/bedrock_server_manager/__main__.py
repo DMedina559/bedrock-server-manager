@@ -20,9 +20,8 @@ import atexit
 
 try:
     from . import __version__
-    from . import api
     from .config import app_name_title
-    from .db.database import engine
+    from .db import database
     from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
@@ -39,7 +38,8 @@ try:
 
         stop_all_servers()
         global_api_plugin_manager.unload_plugins()
-        engine.dispose()
+        if database.engine:
+            database.engine.dispose()
 
     atexit.register(shutdown_hooks)
 except ImportError as e:
@@ -97,6 +97,14 @@ def cli(ctx: click.Context):
         logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
         startup_checks(app_name_title, __version__)
+
+        # --- LOAD PLUGINS AND FIRE STARTUP EVENT ---
+        from . import api
+
+        plugin_manager = get_plugin_manager_instance()
+
+        # Now that all APIs are registered, we can safely load the plugins.
+        plugin_manager.load_plugins()
 
         # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
         # This ensures plugin_manager.load_plugins() has been called.

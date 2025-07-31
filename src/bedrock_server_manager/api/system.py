@@ -36,8 +36,6 @@ from ..error import (
 
 logger = logging.getLogger(__name__)
 
-plugin_manager = get_plugin_manager_instance()
-
 
 @plugin_method("get_bedrock_process_info")
 def get_bedrock_process_info(server_name: str) -> Dict[str, Any]:
@@ -123,6 +121,7 @@ def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
         FileOperationError: If writing the server's JSON configuration file fails.
         ConfigParseError: If the server's JSON configuration is malformed during load/save.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     if autoupdate_value is None:
@@ -198,6 +197,7 @@ def set_autostart(server_name: str, autostart_value: str) -> Dict[str, str]:
         FileOperationError: If writing the server's JSON configuration file fails.
         ConfigParseError: If the server's JSON configuration is malformed during load/save.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     if autostart_value is None:

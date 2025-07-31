@@ -43,8 +43,6 @@ logger = logging.getLogger(__name__)
 # preventing potential file corruption.
 _addon_lock = threading.Lock()
 
-plugin_manager = get_plugin_manager_instance()
-
 
 @plugin_method("import_addon")
 def import_addon(
@@ -92,6 +90,7 @@ def import_addon(
             :class:`~.error.ExtractError`, :class:`~.error.FileOperationError`,
             or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
     if not _addon_lock.acquire(blocking=False):
