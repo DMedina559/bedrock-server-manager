@@ -61,6 +61,7 @@ from .cli import (
     generate_password,
     web,
     setup,
+    service,
 )
 
 
@@ -136,20 +137,13 @@ def cli(ctx: click.Context):
 def _add_commands_to_cli():
     """Attaches all core command groups/standalone commands AND plugin commands to the main CLI group."""
 
-    # Core Command Groups
     cli.add_command(web.web)
-
-    if platform.system() == "Windows":
-        from .cli import windows_service
-
-        cli.add_command(windows_service.service)
-
-    # Standalone Commands
     cli.add_command(cleanup.cleanup)
     cli.add_command(setup.setup)
     cli.add_command(
         generate_password.generate_password_hash_command, name="generate-password"
     )
+    cli.add_command(service.service)
 
 
 # Call the assembly function to build the CLI with core and plugin commands
