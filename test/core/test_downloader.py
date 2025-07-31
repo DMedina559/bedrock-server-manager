@@ -5,7 +5,8 @@ import json
 import zipfile
 import shutil
 import logging
-import platform  # Added platform import
+import platform
+import re
 from pathlib import Path
 from unittest import (
     mock,
@@ -878,10 +879,13 @@ def test_download_server_zip_file_os_error_on_write(
 
     mocker.patch("builtins.open", side_effect=OSError("Cannot write to disk"))
 
-    with pytest.raises(
-        FileOperationError,
-        match="Cannot write to file '.*/write_fail.zip': Cannot write to disk",
-    ):
+    # Make regex platform-agnostic for path separators
+    match_str = (
+        re.escape("Cannot write to file '")
+        + ".*"
+        + re.escape("write_fail.zip': Cannot write to disk")
+    )
+    with pytest.raises(FileOperationError, match=match_str):
         downloader_instance._download_server_zip_file()
 
 
@@ -1210,7 +1214,10 @@ def test_prepare_download_assets_custom_zip_success(
 
 def test_prepare_download_assets_custom_zip_not_found(downloader_instance):
     """Test prepare_download_assets with a non-existent custom ZIP file."""
-    non_existent_zip_path = "/path/to/non_existent.zip"
+    if os.name == "nt":
+        non_existent_zip_path = "C:/path/to/non_existent.zip"
+    else:
+        non_existent_zip_path = "/path/to/non_existent.zip"
 
     with pytest.raises(
         AppFileNotFoundError,
