@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from ..schemas import BaseApiResponse, User
 from ..templating import templates
 from ..auth_utils import get_current_user
+from ..auth_utils import get_admin_user
 from ...api import settings as settings_api
 from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError, MissingArgumentError
@@ -69,7 +70,7 @@ class SettingsResponse(BaseApiResponse):
     include_in_schema=False,
 )
 async def manage_settings_page_route(
-    request: Request, current_user: User = Depends(get_current_user)
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Serves the HTML page for managing global application settings.
@@ -93,7 +94,7 @@ async def manage_settings_page_route(
 # --- API Route: Get All Global Settings ---
 @router.get("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
 async def get_all_settings_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Retrieves all global application settings.
@@ -168,7 +169,7 @@ async def get_all_settings_api_route(
 @router.post("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
 async def set_setting_api_route(
     payload: SettingItem,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Sets a specific global application setting.
@@ -301,7 +302,7 @@ async def get_themes_api_route(
     "/api/settings/reload", response_model=SettingsResponse, tags=["Settings API"]
 )
 async def reload_settings_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Forces a reload of global application settings and logging configuration.

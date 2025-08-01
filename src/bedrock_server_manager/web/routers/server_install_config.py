@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from ..templating import templates
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
+from ..auth_utils import get_admin_user, get_moderator_user
 from ..schemas import User
 from ...api import (
     server_install_config,
@@ -160,7 +161,7 @@ class ServiceUpdatePayload(BaseModel):
     "/api/downloads/list",
     tags=["Server Installation API"],
 )
-async def get_custom_zips(current_user: User = Depends(get_current_user)):
+async def get_custom_zips(current_user: User = Depends(get_moderator_user)):
     """
     Retrieves a list of available custom server ZIP files.
     """
@@ -189,7 +190,7 @@ async def get_custom_zips(current_user: User = Depends(get_current_user)):
     include_in_schema=False,
 )
 async def install_server_page(
-    request: Request, current_user: User = Depends(get_current_user)
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Serves the HTML page for installing a new Bedrock server.
@@ -220,7 +221,7 @@ async def install_server_page(
 async def install_server_api_route(
     payload: InstallServerPayload,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Handles the installation of a new Bedrock server instance.
@@ -351,7 +352,7 @@ async def configure_properties_page(
     request: Request,
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Serves the HTML page for configuring a server's ``server.properties`` file.
@@ -392,7 +393,7 @@ async def configure_allowlist_page(
     request: Request,
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Serves the HTML page for configuring a server's ``allowlist.json`` file.
@@ -433,7 +434,7 @@ async def configure_permissions_page(
     request: Request,
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Serves the HTML page for configuring player permissions (``permissions.json``).
@@ -474,7 +475,7 @@ async def configure_service_page(
     request: Request,
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """Serves the HTML page for configuring server-specific service settings (autoupdate/autostart).
 
@@ -518,7 +519,7 @@ async def configure_service_page(
 async def configure_properties_api_route(
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_moderator_user),
 ):
     """
     Modifies properties in the server.properties file for a specific server.
@@ -618,7 +619,7 @@ async def configure_properties_api_route(
 )
 async def get_server_properties_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Retrieves the server.properties for a specific server as a dictionary.
@@ -680,7 +681,7 @@ async def get_server_properties_api_route(
 async def add_to_allowlist_api_route(
     payload: AllowlistAddPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Adds one or more players to the server's allowlist.
@@ -766,7 +767,7 @@ async def add_to_allowlist_api_route(
 )
 async def get_allowlist_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Retrieves the allowlist for a specific server.
@@ -833,7 +834,7 @@ async def get_allowlist_api_route(
 async def remove_allowlist_players_api_route(
     payload: AllowlistRemovePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_moderator_user),
 ):
     """
     Removes one or more players from the server's allowlist by name.
@@ -924,7 +925,7 @@ async def remove_allowlist_players_api_route(
 async def configure_permissions_api_route(
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Sets permission levels for multiple players on a specific server.
@@ -1068,7 +1069,7 @@ async def configure_permissions_api_route(
 )
 async def get_server_permissions_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Retrieves processed and formatted permissions data for a specific server.
@@ -1141,7 +1142,7 @@ async def get_server_permissions_api_route(
 async def configure_service_api_route(
     server_name: str = Depends(validate_server_exists),
     payload: ServiceUpdatePayload = Body(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Updates server-specific service settings like autoupdate and autostart.

@@ -140,6 +140,7 @@ class Settings:
 
         # Migrations before db initialization
         from ..utils.migration import migrate_env_vars_to_config_file
+
         migrate_env_vars_to_config_file()
 
         # Determine the primary application data and config directories.
@@ -161,6 +162,7 @@ class Settings:
 
         # Migrations after db initialization
         from ..utils.migration import migrate_env_auth_to_db
+
         migrate_env_auth_to_db(env_name)
         migrate_env_token_to_db(env_name)
 

@@ -24,6 +24,7 @@
 </div>
 
     {# --- Settings Configuration Section (Initially hidden, populated by JS) --- #}
+{% if current_user.role == 'admin' %}
 <section id="settings-form-section" class="properties-config-section" style="display: none;">
     {# Header inside the section to contain the reload button #}
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -38,6 +39,7 @@
     </div>
 
 </section>
+{% endif %}
 
     {# The page-actions div should be outside the section, at the end of the content block #}
 <div class="page-actions">

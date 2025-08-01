@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from ..schemas import ActionResponse, User
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
+from ..auth_utils import get_admin_user, get_moderator_user
 from ...api import server as server_api, server_install_config
 from ...error import (
     BSMError,
@@ -61,7 +62,7 @@ class CommandPayload(BaseModel):
 )
 async def start_server_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Starts a specific Bedrock server instance.
@@ -106,7 +107,7 @@ async def start_server_route(
 async def stop_server_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates stopping a specific Bedrock server instance in the background.
@@ -149,7 +150,7 @@ async def stop_server_route(
 async def restart_server_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates restarting a specific Bedrock server instance in the background.
@@ -196,7 +197,7 @@ async def restart_server_route(
 async def send_command_route(
     server_name: str,
     payload: CommandPayload,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Sends a command to a specific running Bedrock server instance.
@@ -315,7 +316,7 @@ async def send_command_route(
 async def update_server_route(
     server_name: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates updating a specific Bedrock server instance in the background.
@@ -358,7 +359,7 @@ async def update_server_route(
 async def delete_server_route(
     server_name: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates deleting a specific Bedrock server instance and its data in the background.

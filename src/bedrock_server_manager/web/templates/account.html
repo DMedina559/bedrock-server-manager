@@ -15,6 +15,26 @@
             </select>
         </div>
     </div>
+
+    {# --- Change Password --- #}
+    <div style="margin-top: 40px;">
+        <h3>Change Password</h3>
+        <form id="change-password-form">
+            <div class="form-group">
+                <label for="current_password">Current Password</label>
+                <input type="password" id="current_password" name="current_password" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="new_password">New Password</label>
+                <input type="password" id="new_password" name="new_password" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="confirm_new_password">Confirm New Password</label>
+                <input type="password" id="confirm_new_password" name="confirm_new_password" class="form-input" required>
+            </div>
+            <button type="button" class="action-button" onclick="changePassword()">Change Password</button>
+        </form>
+    </div>
 </div>
 {% endblock %}
 

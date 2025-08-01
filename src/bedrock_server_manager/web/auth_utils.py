@@ -20,7 +20,7 @@ from typing import Optional, Dict, Any
 import secrets
 
 from jose import JWTError, jwt
-from fastapi import HTTPException, Security, Request
+from fastapi import HTTPException, Security, Request, status
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from passlib.context import CryptContext
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
@@ -259,3 +259,27 @@ def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
         if not verify_password(password_form, user.hashed_password):
             return None
         return user.username
+
+
+async def get_admin_user(current_user: User = Security(get_current_user)):
+    """
+    FastAPI dependency that requires the current user to be an admin.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this resource.",
+        )
+    return current_user
+
+
+async def get_moderator_user(current_user: User = Security(get_current_user)):
+    """
+    FastAPI dependency that requires the current user to be a moderator or an admin.
+    """
+    if current_user.role not in ["admin", "moderator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this resource.",
+        )
+    return current_user

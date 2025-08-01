@@ -5,6 +5,7 @@
 {% block content %}
 <div class="container">
     <h1>User Management</h1>
+    {% if current_user.role == 'admin' %}
     <h2>Generate Registration Link</h2>
     <form id="generate-token-form">
         <div class="form-group">
@@ -24,6 +25,7 @@
         <button class="action-button" onclick="copyToClipboard('{{ request.query_params['message'].split(': ')[1] }}')">Copy Link</button>
     </div>
     {% endif %}
+    {% endif %}
     <h2>Existing Users</h2>
     <ul class="server-card-list">
         {% for user in users %}
@@ -36,7 +38,9 @@
                 {% endif %}
             </div>
             <div class="server-card-actions">
+                {% if current_user.role == 'admin' %}
                 <button type="button" class="danger-button" onclick="deleteUser('{{ user.id }}')">Delete</button>
+                {% endif %}
             </div>
         </li>
         {% endfor %}

@@ -44,3 +44,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+function changePassword() {
+    const form = document.getElementById('change-password-form');
+    const currentPassword = form.elements['current_password'].value;
+    const newPassword = form.elements['new_password'].value;
+    const confirmNewPassword = form.elements['confirm_new_password'].value;
+
+    if (newPassword !== confirmNewPassword) {
+        showStatusMessage('New passwords do not match.', 'error');
+        return;
+    }
+
+    const data = {
+        current_password: currentPassword,
+        new_password: newPassword,
+    };
+
+    sendServerActionRequest(null, '/api/account/change-password', 'POST', data)
+        .then(response => {
+            if (response && response.status === 'success') {
+                form.reset();
+            }
+        });
+}
