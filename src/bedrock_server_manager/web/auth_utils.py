@@ -148,6 +148,9 @@ async def get_current_user_optional(
             )
             if not user:
                 return None
+
+            user.last_seen = datetime.datetime.now(datetime.timezone.utc)
+
             return User(username=user.username, identity_type="jwt", role=user.role)
 
         db = getattr(getattr(request, "state", None), "db", None)
