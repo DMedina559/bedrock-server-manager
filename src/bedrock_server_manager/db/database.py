@@ -31,8 +31,12 @@ def get_database_url():
     settings = get_settings_instance()
     config_dir = os.path.join(settings.app_data_dir, ".config")
     os.makedirs(config_dir, exist_ok=True)
+    default_db_url = (
+        f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
+    )
+    bcm_config.set_config_value("db_url", default_db_url)
 
-    return f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
+    return default_db_url
 
 
 def _ensure_tables_created():
