@@ -62,6 +62,7 @@ from .cli import (
     web,
     setup,
     service,
+    migrate,
 )
 
 
@@ -144,6 +145,7 @@ def _add_commands_to_cli():
         generate_password.generate_password_hash_command, name="generate-password"
     )
     cli.add_command(service.service)
+    cli.add_command(migrate.migrate)
 
 
 # Call the assembly function to build the CLI with core and plugin commands
