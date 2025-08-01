@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import ActionResponse, BaseApiResponse, User
 from ..templating import templates
-from ..auth_utils import get_current_user
+from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
 from ..dependencies import validate_server_exists
 from ...api import (
     world as world_api,
@@ -58,7 +58,7 @@ class ContentListResponse(BaseApiResponse):
 async def install_world_page(
     request: Request,
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Serves the HTML page for selecting a world file to install on a server.
@@ -122,7 +122,7 @@ async def install_world_page(
 async def install_addon_page(
     request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Serves the HTML page for selecting an addon file to install on a server.
@@ -184,7 +184,7 @@ async def install_addon_page(
     tags=["Content API"],
 )
 async def list_worlds_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Retrieves a list of available .mcworld template files.
@@ -242,7 +242,7 @@ async def list_worlds_api_route(
     tags=["Content API"],
 )
 async def list_addons_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Retrieves a list of available .mcaddon or .mcpack template files.
@@ -304,7 +304,7 @@ async def install_world_api_route(
     payload: FileNamePayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates a background task to install a world from a .mcworld file to a server.
@@ -408,7 +408,7 @@ async def install_world_api_route(
 async def export_world_api_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates a background task to export the active world of a server to a .mcworld file.
@@ -475,7 +475,7 @@ async def export_world_api_route(
 async def reset_world_api_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates a background task to reset a server's world.
@@ -543,7 +543,7 @@ async def install_addon_api_route(
     payload: FileNamePayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates a background task to install an addon from a .mcaddon or .mcpack file to a server.

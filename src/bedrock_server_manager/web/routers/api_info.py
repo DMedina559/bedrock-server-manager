@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse, User
-from ..auth_utils import get_current_user
+from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
 from ..dependencies import validate_server_exists
 from ...instances import get_settings_instance
 from ...api import (
@@ -532,7 +532,7 @@ async def server_process_info_api_route(
     "/api/players/scan", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Scans all server logs to discover and update the central player database.
@@ -603,7 +603,7 @@ async def scan_players_api_route(
     "/api/players/get", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def get_all_players_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Retrieves the list of all known players from the central player database.
@@ -702,7 +702,7 @@ async def get_all_players_api_route(
 )
 async def prune_downloads_api_route(
     payload: PruneDownloadsPayload,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Prunes old downloaded server archives from a specified cache subdirectory.
@@ -942,7 +942,7 @@ async def get_system_info_api_route():
     "/api/players/add", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def add_players_api_route(
-    payload: AddPlayersPayload, current_user: User = Depends(get_current_user)
+    payload: AddPlayersPayload, current_user: User = Depends(get_moderator_user)
 ):
     """
     Manually adds or updates player entries in the central player database.

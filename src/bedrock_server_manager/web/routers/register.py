@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from ...db.database import get_db
 from ...db.models import User, RegistrationToken
 from ..templating import templates
-from ..auth_utils import pwd_context, get_current_user, get_current_user_optional
+from ..auth_utils import pwd_context, get_current_user, get_current_user_optional, get_admin_user
 from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
@@ -36,16 +36,11 @@ async def generate_token(
     request: Request,
     data: GenerateTokenRequest,
     db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_user),
+    current_user: UserSchema = Depends(get_admin_user),
 ):
     """
     Generates a new registration token.
     """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can generate registration tokens.",
-        )
 
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours

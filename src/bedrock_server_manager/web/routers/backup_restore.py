@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse, User
 from ..templating import templates
-from ..auth_utils import get_current_user
+from ..auth_utils import get_current_user, get_moderator_user
 from ..dependencies import validate_server_exists
 from ...api import backup_restore as backup_restore_api
 from ...instances import get_settings_instance
@@ -110,7 +110,7 @@ class BackupRestoreResponse(BaseApiResponse):
 async def backup_menu_page(
     request: Request,
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Displays the backup menu page for a specific server.
@@ -144,7 +144,7 @@ async def backup_menu_page(
 async def backup_config_select_page(
     request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Displays the page for selecting specific configuration files to back up.
@@ -178,7 +178,7 @@ async def backup_config_select_page(
 async def restore_menu_page(
     request: Request,
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Displays the restore menu page for a specific server.
@@ -213,7 +213,7 @@ async def show_select_backup_file_page(
     request: Request,
     restore_type: str,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Displays the page for selecting a specific backup file for restoration.
@@ -320,7 +320,7 @@ async def handle_restore_select_backup_type_api(
     request: Request,
     payload: RestoreTypePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Handles the API request for selecting a restore type and redirects to file selection.
@@ -412,7 +412,7 @@ async def handle_restore_select_backup_type_api(
 async def prune_backups_api_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates a background task to prune old backups for a specific server.
@@ -460,7 +460,7 @@ async def prune_backups_api_route(
 async def list_server_backups_api_route(
     backup_type: str,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Lists available backup files for a specific server and backup type.
@@ -600,7 +600,7 @@ async def backup_action_api_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates a background task to perform a backup action for a specific server.
@@ -667,7 +667,7 @@ async def restore_action_api_route(
     payload: RestoreActionPayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates a background task to perform a restore action for a specific server.

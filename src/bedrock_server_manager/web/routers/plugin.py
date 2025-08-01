@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse, User
 from ..templating import templates
-from ..auth_utils import get_current_user
+from ..auth_utils import get_current_user, get_admin_user
 from ...api import plugins as plugins_api
 from ...error import BSMError, UserInputError
 
@@ -80,7 +80,7 @@ class PluginApiResponse(BaseApiResponse):
     include_in_schema=False,
 )
 async def manage_plugins_page_route(
-    request: Request, current_user: User = Depends(get_current_user)
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Serves the HTML page for managing installed plugins.
@@ -108,7 +108,7 @@ async def manage_plugins_page_route(
 # --- API Route ---
 @router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Retrieves the statuses and metadata of all discovered plugins.
@@ -176,7 +176,7 @@ async def get_plugins_status_api_route(
 )
 async def trigger_event_api_route(
     payload: TriggerEventPayload,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Allows an external source to trigger a custom plugin event within the system.
@@ -265,7 +265,7 @@ async def trigger_event_api_route(
 async def set_plugin_status_api_route(
     plugin_name: str,
     payload: PluginStatusSetPayload,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Sets the enabled or disabled status for a specific plugin.
@@ -357,7 +357,7 @@ async def set_plugin_status_api_route(
     "/api/plugins/reload", response_model=PluginApiResponse, tags=["Plugin API"]
 )
 async def reload_plugins_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Triggers a full reload of the plugin system.
