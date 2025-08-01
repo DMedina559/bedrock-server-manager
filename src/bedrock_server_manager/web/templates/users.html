@@ -31,6 +31,9 @@
             <div class="server-card-info">
                 <h3>{{ user.username }}</h3>
                 <p><span class="info-label">Role:</span> {{ user.role }}</p>
+                {% if user.last_seen %}
+                <p><span class="info-label">Last Seen:</span> {{ user.last_seen.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+                {% endif %}
             </div>
             <div class="server-card-actions">
                 <button type="button" class="danger-button" onclick="deleteUser('{{ user.id }}')">Delete</button>
