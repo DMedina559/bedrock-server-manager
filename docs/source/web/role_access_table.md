@@ -1,7 +1,7 @@
 | Endpoint | Type | Admin | Moderator | User |
 |---|---|---|---|---|
 | `GET /` | HTML | Full Access | Full Access | Full Access |
-| `GET /server/{server_name}/monitor` | HTML | Full Access | Full Access | No Access |
+| `GET /server/{server_name}/monitor` | HTML | Full Access | Full Access | Full Access |
 | `GET /auth/login` | HTML | Public | Public | Public |
 | `POST /auth/token` | API | Public | Public | Public |
 | `GET /auth/logout` | API | Full Access | Full Access | Full Access |
@@ -29,7 +29,7 @@
 | `GET /api/server/{server_name}/config_status` | API | Full Access | Full Access | Full Access |
 | `GET /api/server/{server_name}/version` | API | Full Access | Full Access | Full Access |
 | `GET /api/server/{server_name}/validate` | API | Full Access | Full Access | Full Access |
-| `GET /api/server/{server_name}/process_info` | API | Full Access | Full Access | No Access |
+| `GET /api/server/{server_name}/process_info` | API | Full Access | Full Access | Full Access |
 | `POST /api/players/scan` | API | Full Access | Full Access | No Access |
 | `GET /api/players/get` | API | Full Access | Full Access | No Access |
 | `POST /api/downloads/prune` | API | Full Access | No Access | No Access |
