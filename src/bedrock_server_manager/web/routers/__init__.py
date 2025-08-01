@@ -13,6 +13,7 @@ from .settings import router as settings_router
 from .util import router as util_router
 from .tasks import router as tasks_router
 from .setup import router as setup_router
+from .account_router import router as account_router
 from .users import router as users_router
 from .register import router as register_router
 

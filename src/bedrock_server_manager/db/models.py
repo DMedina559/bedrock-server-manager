@@ -18,6 +18,7 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    theme = Column(String, default="default")
 
 
 class Setting(Base):

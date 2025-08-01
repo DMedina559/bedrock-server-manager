@@ -18,3 +18,4 @@ class User(BaseModel):
     username: str
     identity_type: str
     role: str
+    theme: str = "default"

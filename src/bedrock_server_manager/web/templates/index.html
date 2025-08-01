@@ -47,6 +47,7 @@
             <a href="#" class="nav-link has-submenu">Configuration</a>
             <div class="submenu">
                 <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
+                <a href="{{ url_for('account_page') }}" class="nav-link">Account Management</a>
                 {% if current_user and current_user.role == 'admin' %}
                 <a href="{{ url_for('users_page') }}" class="nav-link">User Management</a>
                 {% endif %}

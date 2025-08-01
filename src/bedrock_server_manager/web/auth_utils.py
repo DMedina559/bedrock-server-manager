@@ -153,7 +153,12 @@ async def get_current_user_optional(
             user.last_seen = datetime.datetime.now(timezone.utc)
             db_session.commit()
 
-            return User(username=user.username, identity_type="jwt", role=user.role)
+            return User(
+                username=user.username,
+                identity_type="jwt",
+                role=user.role,
+                theme=user.theme,
+            )
 
         db = getattr(getattr(request, "state", None), "db", None)
         if db:
