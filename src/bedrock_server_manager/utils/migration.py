@@ -341,3 +341,30 @@ def migrate_env_vars_to_config_file():
 
     if made_changes:
         bcm_config.save_config(config)
+
+
+def migrate_global_theme_to_admin_user():
+    """Migrates the global theme setting to the first admin user."""
+    from ..instances import get_settings_instance
+
+    settings = get_settings_instance()
+    global_theme = settings.get("web.theme")
+
+    if not global_theme:
+        return
+
+    with db_session_manager() as db:
+        try:
+            admin_user = db.query(User).filter_by(role="admin").first()
+            if admin_user:
+                admin_user.theme = global_theme
+                db.commit()
+                logger.info(
+                    f"Successfully migrated global theme '{global_theme}' to admin user '{admin_user.username}'."
+                )
+
+                # Remove the global theme setting
+                settings.set("web.theme", None)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to migrate global theme to admin user: {e}")

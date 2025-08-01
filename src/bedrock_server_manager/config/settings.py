@@ -137,8 +137,9 @@ class Settings:
         self.__initialized = True
 
         logger.debug("Initializing Settings")
-        from ..utils.migration import migrate_env_vars_to_config_file
 
+        # Migrations before db initialization
+        from ..utils.migration import migrate_env_vars_to_config_file
         migrate_env_vars_to_config_file()
 
         # Determine the primary application data and config directories.
@@ -158,9 +159,8 @@ class Settings:
         players_json_path = os.path.join(self.config_dir, "players.json")
         migrate_players_json_to_db(players_json_path)
 
-        # Migrate auth env vars to the database
+        # Migrations after db initialization
         from ..utils.migration import migrate_env_auth_to_db
-
         migrate_env_auth_to_db(env_name)
         migrate_env_token_to_db(env_name)
 
@@ -240,7 +240,6 @@ class Settings:
                     "port": 11325,
                     "token_expires_weeks": 4,
                     "threads": 4,
-                    "theme": "dark",
                 },
                 "custom": {}
             }
@@ -273,7 +272,6 @@ class Settings:
                 "host": "127.0.0.1",
                 "port": 11325,
                 "token_expires_weeks": 4,
-                "theme": "dark",
                 "threads": 4,
             },
             "custom": {},

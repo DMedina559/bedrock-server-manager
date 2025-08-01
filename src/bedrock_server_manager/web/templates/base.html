@@ -39,7 +39,8 @@ content and scripts using Jinja2 blocks.
     <link rel="stylesheet" href="{{ url_for('static', path='css/layout.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/controls.css') }}">
 
-    <link id="theme-stylesheet" rel="stylesheet" href="{{ url_for('static', path='css/themes/' + settings.get('web.theme', 'dark') + '.css') if settings.get('web.theme', 'dark') in ['dark', 'light', 'gradient', 'black', 'red', 'green', 'blue', 'yellow', 'pink'] else url_for('themes', path=settings.get('web.theme', 'dark') + '.css') }}">
+    {% set theme = current_user.theme if current_user and current_user.theme else 'default' %}
+    <link id="theme-stylesheet" rel="stylesheet" href="{{ url_for('static', path='css/themes/' + theme + '.css') if theme in ['default', 'light', 'gradient', 'black', 'red', 'green', 'blue', 'yellow', 'pink'] else url_for('themes', path=theme + '.css') }}">
 
     {# Page-specific CSS Block - Child templates can add extra stylesheets here #}
     {% block head_styles %}{% endblock %}

@@ -204,39 +204,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initial Load ---
     loadAndRenderSettings();
-
-    // --- Theme Selector Logic ---
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        // Populate theme options
-        sendServerActionRequest(null, '/api/themes', 'GET', null, null).then(themes => {
-            if (themes) {
-                Object.keys(themes).forEach(themeName => {
-                    const option = document.createElement('option');
-                    option.value = themeName;
-                    option.textContent = themeName.charAt(0).toUpperCase() + themeName.slice(1);
-                    themeSelect.appendChild(option);
-                });
-            }
-
-            // Set initial value from settings
-            sendServerActionRequest(null, '/api/settings', 'GET', null, null).then(result => {
-                if (result && result.status === 'success' && result.settings && result.settings.web && result.settings.web.theme) {
-                    themeSelect.value = result.settings.web.theme;
-                }
-            });
-        });
-
-        themeSelect.addEventListener('change', async (event) => {
-            const newTheme = event.target.value;
-            const themeStylesheet = document.getElementById('theme-stylesheet');
-            if (themeStylesheet) {
-                const themePath = await sendServerActionRequest(null, `/api/themes`, 'GET', null, null);
-                themeStylesheet.href = themePath[newTheme];
-            }
-
-            // Save the new theme setting
-            await sendServerActionRequest(null, '/api/settings', 'POST', { key: 'web.theme', value: newTheme }, null);
-        });
-    }
 });
