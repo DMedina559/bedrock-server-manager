@@ -1,6 +1,6 @@
 """Database models for Bedrock Server Manager."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -13,7 +13,11 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String, default="user")
-    last_seen = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_seen = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
 
 class Setting(Base):

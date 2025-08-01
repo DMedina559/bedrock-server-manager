@@ -14,6 +14,7 @@ including:
 The JWT secret key and token expiration are configurable via environment variables.
 """
 import datetime
+from datetime import timezone
 import logging
 from typing import Optional, Dict, Any
 import secrets
@@ -149,7 +150,8 @@ async def get_current_user_optional(
             if not user:
                 return None
 
-            user.last_seen = datetime.datetime.now(datetime.timezone.utc)
+            user.last_seen = datetime.datetime.now(timezone.utc)
+            db_session.commit()
 
             return User(username=user.username, identity_type="jwt", role=user.role)
 
