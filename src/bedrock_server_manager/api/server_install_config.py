@@ -53,8 +53,6 @@ from ..error import (
 
 logger = logging.getLogger(__name__)
 
-plugin_manager = get_plugin_manager_instance()
-
 
 # --- Allowlist ---
 @plugin_method("add_players_to_allowlist_api")
@@ -88,6 +86,7 @@ def add_players_to_allowlist_api(
         ConfigParseError: If the existing ``allowlist.json`` is malformed.
         FileOperationError: If reading/writing ``allowlist.json`` fails.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
     if not isinstance(new_players_data, list):
@@ -212,6 +211,7 @@ def remove_players_from_allowlist(
         ConfigParseError: If the existing ``allowlist.json`` is malformed.
         FileOperationError: If reading/writing ``allowlist.json`` fails during the process.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 
@@ -304,6 +304,7 @@ def configure_player_permission(
         FileOperationError: If reading/writing ``permissions.json`` fails.
         ConfigParseError: If existing ``permissions.json`` is malformed.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
@@ -574,6 +575,7 @@ def modify_server_properties(
         FileOperationError: If reading/writing ``server.properties`` fails.
         ServerStopError/ServerStartError: If server stop/start fails during lifecycle management.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name required.")
     if not isinstance(properties_to_update, dict):
@@ -667,6 +669,7 @@ def install_new_server(
         PermissionsError: If filesystem permissions cannot be set.
         BSMError: For other application-specific errors.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 
@@ -764,6 +767,7 @@ def update_server(server_name: str, send_message: bool = True) -> Dict[str, Any]
         FileOperationError: For other file I/O issues.
         BSMError: For other application-specific errors.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 

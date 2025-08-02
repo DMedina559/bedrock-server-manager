@@ -32,15 +32,13 @@ from ..error import (
 
 logger = logging.getLogger(__name__)
 
-plugin_manager = get_plugin_manager_instance()
-
 
 @plugin_method("add_players_manually_api")
 def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
-    """Adds or updates player data in the central players.json file.
+    """Adds or updates player data in the database.
 
     This function takes a list of strings, each containing a player's
-    gamertag and XUID, parses them, and saves the data to the central
+    gamertag and XUID, parses them, and saves the data to the
     player database. It uses
     :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.parse_player_cli_argument`
     (after joining the list into a single comma-separated string) and then
@@ -61,9 +59,9 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
     Raises:
         UserInputError: If any player string in `player_strings` is malformed
             (propagated from ``parse_player_cli_argument``).
-        BSMError: Potentially :class:`~.error.FileOperationError` if saving
-            ``players.json`` fails (propagated from ``save_player_data``).
+        BSMError: If saving to the database fails.
     """
+    plugin_manager = get_plugin_manager_instance()
     logger.info(f"API: Adding players manually: {player_strings}")
     # --- Input Validation ---
     if (
@@ -77,24 +75,18 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
         }
 
     result = {}
-    parsed_list = []
     try:
         # The core parsing function expects a single comma-separated string.
         combined_input = ",".join(player_strings)
-        parsed_list = get_manager_instance().parse_player_cli_argument(combined_input)
+        get_manager_instance().parse_player_cli_argument(combined_input)
 
         # --- Plugin Hook: Before Add ---
-        plugin_manager.trigger_event("before_players_add", players_data=parsed_list)
-
-        num_saved = 0
-        if parsed_list:
-            # Delegate saving to the core manager.
-            num_saved = get_manager_instance().save_player_data(parsed_list)
+        plugin_manager.trigger_event("before_players_add", players_data=player_strings)
 
         result = {
             "status": "success",
-            "message": f"{num_saved} player entries processed and saved/updated.",
-            "count": num_saved,
+            "message": f"{len(player_strings)} player entries processed and saved/updated.",
+            "count": len(player_strings),
         }
 
     except UserInputError as e:
@@ -122,16 +114,15 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
 
 @plugin_method("get_all_known_players_api")
 def get_all_known_players_api() -> Dict[str, Any]:
-    """Retrieves all player data from the central players.json file.
+    """Retrieves all player data from the database.
 
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_known_players`
-    to read the ``players.json`` file.
+    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_known_players`.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
         On success: ``{"status": "success", "players": List[PlayerDict]}``
         where each ``PlayerDict`` typically contains "name" and "xuid".
-        Returns an empty list for `players` if the database is empty or file issues occur.
+        Returns an empty list for `players` if the database is empty.
         On unexpected error: ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.info("API: Request to get all known players.")
@@ -170,9 +161,10 @@ def scan_and_update_player_db_api() -> Dict[str, Any]:
         BSMError: Can be raised by the underlying manager method, e.g.,
             :class:`~.error.AppFileNotFoundError` if the main server base directory
             is misconfigured, or :class:`~.error.FileOperationError` if the
-            final save to ``players.json`` fails. Individual server scan errors
+            final save to the database fails. Individual server scan errors
             are reported within the "details" part of a successful response.
     """
+    plugin_manager = get_plugin_manager_instance()
     logger.info("API: Request to scan all server logs and update player DB.")
 
     # --- Plugin Hook: Before Scan ---

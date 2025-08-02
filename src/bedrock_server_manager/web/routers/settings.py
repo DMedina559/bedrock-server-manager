@@ -26,9 +26,10 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse
+from ..schemas import BaseApiResponse, User
 from ..templating import templates
 from ..auth_utils import get_current_user
+from ..auth_utils import get_admin_user
 from ...api import settings as settings_api
 from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError, MissingArgumentError
@@ -69,7 +70,7 @@ class SettingsResponse(BaseApiResponse):
     include_in_schema=False,
 )
 async def manage_settings_page_route(
-    request: Request, current_user: Dict[str, Any] = Depends(get_current_user)
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Serves the HTML page for managing global application settings.
@@ -79,9 +80,9 @@ async def manage_settings_page_route(
 
     Args:
         request (:class:`fastapi.Request`): FastAPI request object.
-        current_user (Dict[str, Any]): Authenticated user (from dependency).
+        current_user (User): Authenticated user (from dependency).
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"User '{identity}' accessed global settings page.")
     return templates.TemplateResponse(
         request,
@@ -93,7 +94,7 @@ async def manage_settings_page_route(
 # --- API Route: Get All Global Settings ---
 @router.get("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
 async def get_all_settings_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Retrieves all global application settings.
@@ -140,7 +141,7 @@ async def get_all_settings_api_route(
             "setting": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Get global settings request by '{identity}'.")
     try:
         result = settings_api.get_all_global_settings()
@@ -168,7 +169,7 @@ async def get_all_settings_api_route(
 @router.post("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
 async def set_setting_api_route(
     payload: SettingItem,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Sets a specific global application setting.
@@ -202,7 +203,7 @@ async def set_setting_api_route(
             }
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Set global setting request for key '{payload.key}' by '{identity}'."
     )
@@ -255,7 +256,7 @@ async def set_setting_api_route(
 # --- API Route: Get Available Themes ---
 @router.get("/api/themes", response_model=Dict[str, str], tags=["Settings API"])
 async def get_themes_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieves a list of available themes.
@@ -265,7 +266,7 @@ async def get_themes_api_route(
     - Requires authentication.
     - Returns a dictionary of theme names to their paths.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Get themes request by '{identity}'.")
     try:
         themes = {}
@@ -301,7 +302,7 @@ async def get_themes_api_route(
     "/api/settings/reload", response_model=SettingsResponse, tags=["Settings API"]
 )
 async def reload_settings_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Forces a reload of global application settings and logging configuration.
@@ -323,7 +324,7 @@ async def reload_settings_api_route(
             "setting": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Reload global settings request by '{identity}'.")
     try:
         result = settings_api.reload_global_settings()

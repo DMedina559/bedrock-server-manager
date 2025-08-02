@@ -25,9 +25,10 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 
-from ..schemas import ActionResponse
+from ..schemas import ActionResponse, User
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
+from ..auth_utils import get_admin_user, get_moderator_user
 from ...api import server as server_api, server_install_config
 from ...error import (
     BSMError,
@@ -61,7 +62,7 @@ class CommandPayload(BaseModel):
 )
 async def start_server_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Starts a specific Bedrock server instance.
@@ -71,12 +72,12 @@ async def start_server_route(
 
     Args:
         server_name (str): The name of the server to start. Validated by dependency.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the start operation has been initiated.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
 
     try:
@@ -106,7 +107,7 @@ async def start_server_route(
 async def stop_server_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates stopping a specific Bedrock server instance in the background.
@@ -117,12 +118,12 @@ async def stop_server_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to stop. Validated by dependency.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the stop operation has been initiated.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
     task_id = tasks.create_task()
     background_tasks.add_task(
@@ -149,7 +150,7 @@ async def stop_server_route(
 async def restart_server_route(
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Initiates restarting a specific Bedrock server instance in the background.
@@ -163,12 +164,12 @@ async def restart_server_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to restart. Validated by dependency.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the restart operation has been initiated.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Restart server request for '{server_name}' by user '{identity}'."
     )
@@ -196,7 +197,7 @@ async def restart_server_route(
 async def send_command_route(
     server_name: str,
     payload: CommandPayload,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_moderator_user),
 ):
     """
     Sends a command to a specific running Bedrock server instance.
@@ -207,7 +208,7 @@ async def send_command_route(
     Args:
         server_name (str): The name of the server to send the command to.
         payload (CommandPayload): Contains the ``command`` string.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         ActionResponse:
@@ -239,7 +240,7 @@ async def send_command_route(
             "details": "There are 0/10 players online:\\n"
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Send command request for '{server_name}' by user '{identity}'. Command: {payload.command}"
     )
@@ -315,7 +316,7 @@ async def send_command_route(
 async def update_server_route(
     server_name: str,
     background_tasks: BackgroundTasks,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates updating a specific Bedrock server instance in the background.
@@ -326,12 +327,12 @@ async def update_server_route(
     Args:
         server_name (str): The name of the server to update.
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the update operation has been initiated.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
     task_id = tasks.create_task()
     background_tasks.add_task(
@@ -358,7 +359,7 @@ async def update_server_route(
 async def delete_server_route(
     server_name: str,
     background_tasks: BackgroundTasks,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Initiates deleting a specific Bedrock server instance and its data in the background.
@@ -369,12 +370,12 @@ async def delete_server_route(
     Args:
         server_name (str): The name of the server to delete.
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the delete operation has been initiated.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.warning(
         f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
     )

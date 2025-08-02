@@ -48,8 +48,6 @@ from bedrock_server_manager.utils.general import get_timestamp
 
 logger = logging.getLogger(__name__)
 
-plugin_manager = get_plugin_manager_instance()
-
 # A unified lock to prevent race conditions during any world file operation
 # (export, import, reset). This ensures data integrity.
 _world_lock = threading.Lock()
@@ -146,6 +144,7 @@ def export_world(
             :class:`~.error.AppFileNotFoundError` if world directory is missing,
             :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _world_lock.acquire(blocking=False):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
@@ -273,6 +272,7 @@ def import_world(
             :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _world_lock.acquire(blocking=False):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
@@ -381,6 +381,7 @@ def reset_world(server_name: str) -> Dict[str, str]:
             :class:`~.error.FileOperationError` from deletion, errors determining
             the world name, or errors from server stop/start.
     """
+    plugin_manager = get_plugin_manager_instance()
     if not _world_lock.acquire(blocking=False):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."

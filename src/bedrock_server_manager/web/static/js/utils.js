@@ -105,7 +105,12 @@ async function sendServerActionRequest(serverName, actionPath, method = 'POST', 
 
     // --- 2. Construct URL ---
     let apiUrl;
-    if (actionPath.startsWith('/')) {
+    const isAbsoluteUrl = /^(?:[a-z]+:)?\/\//i.test(actionPath);
+
+    if (isAbsoluteUrl) {
+        apiUrl = actionPath; // Use as absolute path
+        console.debug(`${functionName}: Using absolute URL: ${apiUrl}`);
+    } else if (actionPath.startsWith('/')) {
         apiUrl = actionPath; // Use as absolute path
         console.debug(`${functionName}: Using absolute URL: ${apiUrl}`);
     } else if (serverName && serverName.trim()) { // Check serverName is not empty/whitespace
@@ -262,11 +267,13 @@ async function sendServerActionRequest(serverName, actionPath, method = 'POST', 
                 // Message usually shown by caller based on responseData.message
                 // Button is handled in finally block (remains disabled)
             } else {
-                // HTTP success (2xx), but application status is 'error' or missing/unexpected
-                const appStatus = responseData?.status || 'unknown';
-                const appMessage = responseData?.message || `Action at ${apiUrl} reported status: ${appStatus}.`;
-                console.warn(`${functionName}: HTTP success but application status is '${appStatus}'. Message: ${appMessage}`);
-                showStatusMessage(appMessage, 'warning'); // Use warning or error depending on severity preference
+                if (actionPath !== '/api/account' && actionPath !== '/api/themes') {
+                    // HTTP success (2xx), but application status is 'error' or missing/unexpected
+                    const appStatus = responseData?.status || 'unknown';
+                    const appMessage = responseData?.message || `Action at ${apiUrl} reported status: ${appStatus}.`;
+                    console.warn(`${functionName}: HTTP success but application status is '${appStatus}'. Message: ${appMessage}`);
+                    showStatusMessage(appMessage, 'warning'); // Use warning or error depending on severity preference
+                }
             }
         }
 

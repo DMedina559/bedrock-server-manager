@@ -38,8 +38,8 @@ from ..auth_utils import (
     authenticate_user,
     get_current_user_optional,
     get_current_user,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
+from ..schemas import User
 from ...instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class UserLogin(BaseModel):
 @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_page(
     request: Request,
-    user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Serves the HTML login page.
 
@@ -81,7 +81,7 @@ async def login_page(
 
     Args:
         request (Request): The FastAPI request object.
-        user (Optional[Dict[str, Any]]): The authenticated user object, if any.
+        user (Optional[User]): The authenticated user object, if any.
                                          Injected by `get_current_user_optional`.
 
     Returns:
@@ -92,7 +92,7 @@ async def login_page(
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
     return templates.TemplateResponse(
-        request, "login.html", {"request": request, "form": {}}
+        request, "login.html", {"request": request, "form": {}, "current_user": user}
     )
 
 
@@ -153,7 +153,6 @@ async def api_login_for_access_token(
         httponly=True,
         secure=cookie_secure,
         samesite=cookie_samesite,
-        max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60),
         path="/",
     )
     logger.info(f"API login successful for '{username}'. JWT created and cookie set.")
@@ -168,7 +167,7 @@ async def api_login_for_access_token(
 @router.get("/logout")
 async def logout(
     response: FastAPIResponse,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Logs the current user out by clearing the JWT authentication cookie.
@@ -181,7 +180,7 @@ async def logout(
     Args:
         response (:class:`fastapi.FastAPIResponse`): FastAPI response object. While available,
             cookie deletion is performed on the new `RedirectResponse` object.
-        current_user (Dict[str, Any]): The authenticated user object, injected by dependency.
+        current_user (User): The authenticated user object, injected by dependency.
             Ensures only authenticated users can logout.
 
     Returns:
@@ -189,7 +188,7 @@ async def logout(
             (``/auth/login``) with a success message in the query parameters.
             The ``access_token_cookie`` is cleared.
     """
-    username = current_user.get("username", "Unknown user")
+    username = current_user.username
     logger.info(f"User '{username}' logging out. Clearing JWT cookie.")
 
     # Create the redirect response first, then operate on it for cookie deletion

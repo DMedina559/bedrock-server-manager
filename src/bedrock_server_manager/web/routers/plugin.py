@@ -28,9 +28,9 @@ from fastapi import (
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse
+from ..schemas import BaseApiResponse, User
 from ..templating import templates
-from ..auth_utils import get_current_user
+from ..auth_utils import get_current_user, get_admin_user
 from ...api import plugins as plugins_api
 from ...error import BSMError, UserInputError
 
@@ -80,7 +80,7 @@ class PluginApiResponse(BaseApiResponse):
     include_in_schema=False,
 )
 async def manage_plugins_page_route(
-    request: Request, current_user: Dict[str, Any] = Depends(get_current_user)
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Serves the HTML page for managing installed plugins.
@@ -91,12 +91,12 @@ async def manage_plugins_page_route(
 
     Args:
         request (Request): The FastAPI request object.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``manage_plugins.html`` template.
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"User '{identity}' accessed plugin management page.")
     return templates.TemplateResponse(
         request,
@@ -108,7 +108,7 @@ async def manage_plugins_page_route(
 # --- API Route ---
 @router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Retrieves the statuses and metadata of all discovered plugins.
@@ -119,7 +119,7 @@ async def get_plugins_status_api_route(
     and version.
 
     Args:
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         PluginApiResponse:
@@ -149,7 +149,7 @@ async def get_plugins_status_api_route(
             }
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Get plugin statuses request by '{identity}'.")
     try:
         result = plugins_api.get_plugin_statuses()
@@ -176,7 +176,7 @@ async def get_plugins_status_api_route(
 )
 async def trigger_event_api_route(
     payload: TriggerEventPayload,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Allows an external source to trigger a custom plugin event within the system.
@@ -190,7 +190,7 @@ async def trigger_event_api_route(
 
     Args:
         payload (TriggerEventPayload): The event name and optional payload.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         PluginApiResponse:
@@ -215,7 +215,7 @@ async def trigger_event_api_route(
             "data": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(
         f"API: Custom plugin event '{payload.event_name}' trigger request by '{identity}'."
     )
@@ -265,7 +265,7 @@ async def trigger_event_api_route(
 async def set_plugin_status_api_route(
     plugin_name: str,
     payload: PluginStatusSetPayload,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Sets the enabled or disabled status for a specific plugin.
@@ -281,7 +281,7 @@ async def set_plugin_status_api_route(
     Args:
         plugin_name (str): The name of the plugin to enable/disable.
         payload (PluginStatusSetPayload): Contains the `enabled` status.
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         PluginApiResponse:
@@ -304,7 +304,7 @@ async def set_plugin_status_api_route(
             "data": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     action = "enable" if payload.enabled else "disable"
     logger.info(
         f"API: Request to {action} plugin '{plugin_name}' by user '{identity}'."
@@ -357,7 +357,7 @@ async def set_plugin_status_api_route(
     "/api/plugins/reload", response_model=PluginApiResponse, tags=["Plugin API"]
 )
 async def reload_plugins_api_route(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Triggers a full reload of the plugin system.
@@ -368,7 +368,7 @@ async def reload_plugins_api_route(
     based on their current configuration and files on disk.
 
     Args:
-        current_user (Dict[str, Any]): Authenticated user object.
+        current_user (User): Authenticated user object.
 
     Returns:
         PluginApiResponse:
@@ -384,7 +384,7 @@ async def reload_plugins_api_route(
             "data": null
         }
     """
-    identity = current_user.get("username", "Unknown")
+    identity = current_user.username
     logger.info(f"API: Reload plugins request by '{identity}'.")
 
     try:

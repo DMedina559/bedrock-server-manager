@@ -11,7 +11,9 @@ See Also:
 """
 import logging
 from fastapi import HTTPException, status, Path
-
+from sqlalchemy.orm import Session
+from ..db.database import db_session_manager
+from ..db.models import User
 from ..api import utils as utils_api
 from ..error import (
     InvalidServerNameError,
@@ -66,3 +68,11 @@ async def validate_server_exists(
             f"Dependency: Invalid server name format for '{server_name}': {e}"
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+async def needs_setup():
+    """
+    FastAPI dependency that checks if the application needs to be set up.
+    """
+    with db_session_manager() as db:
+        return db.query(User).first() is None

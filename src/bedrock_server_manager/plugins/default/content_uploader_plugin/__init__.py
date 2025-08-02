@@ -11,7 +11,7 @@ from fastapi import APIRouter, Request, File, UploadFile, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase
-from bedrock_server_manager.web import get_current_user
+from bedrock_server_manager.web.auth_utils import get_admin_user
 from bedrock_server_manager.web import get_templates
 
 # Define allowed extensions
@@ -20,7 +20,7 @@ MODULE_CONTENT_DIR_PATH: Optional[Path] = None
 
 
 class ContentUploaderPlugin(PluginBase):
-    version = "1.0.1"
+    version = "1.1.0"
 
     def on_load(self):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
@@ -88,7 +88,7 @@ class ContentUploaderPlugin(PluginBase):
         )
         async def get_upload_page_method(
             request: Request,
-            current_user: Dict[str, Any] = Depends(get_current_user),
+            current_user: Dict[str, Any] = Depends(get_admin_user),
         ):
             self.logger.debug("Serving content upload page using TemplateResponse.")
 
@@ -101,7 +101,7 @@ class ContentUploaderPlugin(PluginBase):
         async def handle_file_upload_method(
             request: Request,
             file: UploadFile = File(...),
-            current_user: Dict[str, Any] = Depends(get_current_user),
+            current_user: Dict[str, Any] = Depends(get_admin_user),
         ):
             filename = file.filename
             file_content_type = file.content_type

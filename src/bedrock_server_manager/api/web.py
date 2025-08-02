@@ -42,8 +42,6 @@ from ..error import (
 
 logger = logging.getLogger(__name__)
 
-plugin_manager = get_plugin_manager_instance()
-
 
 def start_web_server_api(
     host: Optional[Union[str, List[str]]] = None,
@@ -88,6 +86,7 @@ def start_web_server_api(
         ServerProcessError: If the web server is already running in detached mode.
         BSMError: For other application-specific errors during startup.
     """
+    plugin_manager = get_plugin_manager_instance()
     mode = mode.lower()
 
     plugin_manager.trigger_guarded_event("before_web_server_start", mode=mode)
@@ -205,6 +204,7 @@ def stop_web_server_api() -> Dict[str, str]:
             :class:`~.error.ServerStopError` (termination failure),
             :class:`~.error.ConfigurationError` (if web UI paths not configured in BSM).
     """
+    plugin_manager = get_plugin_manager_instance()
     plugin_manager.trigger_guarded_event("before_web_server_stop")
 
     result = {}
@@ -389,7 +389,7 @@ def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
             such as :class:`~.error.SystemError`, :class:`~.error.PermissionsError`,
             :class:`~.error.CommandNotFoundError`, or :class:`~.error.FileOperationError`.
     """
-
+    plugin_manager = get_plugin_manager_instance()
     plugin_manager.trigger_event(
         "before_web_service_change", action="create", autostart=autostart
     )
@@ -457,6 +457,7 @@ def enable_web_ui_service() -> Dict[str, str]:
             :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
+    plugin_manager = get_plugin_manager_instance()
     plugin_manager.trigger_event("before_web_service_change", action="enable")
     result = {}
     try:
@@ -510,6 +511,7 @@ def disable_web_ui_service() -> Dict[str, str]:
             :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
+    plugin_manager = get_plugin_manager_instance()
     plugin_manager.trigger_event("before_web_service_change", action="disable")
     result = {}
     try:
@@ -574,6 +576,7 @@ def remove_web_ui_service() -> Dict[str, str]:
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`,
             :class:`~.error.FileOperationError`).
     """
+    plugin_manager = get_plugin_manager_instance()
     plugin_manager.trigger_event("before_web_service_change", action="remove")
     result = {}
     try:

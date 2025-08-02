@@ -11,15 +11,14 @@ from bedrock_server_manager.error import MissingArgumentError, ConfigurationErro
 
 
 @pytest.fixture
-def base_server_mixin_fixture():
+def base_server_mixin_fixture(mock_get_settings_instance):
     temp_dir = tempfile.mkdtemp()
     server_name = "test_server"
-    settings = Settings()
-    settings.set("paths.servers", os.path.join(temp_dir, "servers"))
-    settings._config_dir_path = os.path.join(temp_dir, "config")
+    mock_get_settings_instance.get.return_value = os.path.join(temp_dir, "servers")
+    mock_get_settings_instance.config_dir = os.path.join(temp_dir, "config")
     manager_expath = "/path/to/manager"
 
-    yield temp_dir, server_name, settings, manager_expath
+    yield temp_dir, server_name, mock_get_settings_instance, manager_expath
 
     shutil.rmtree(temp_dir)
 
@@ -46,23 +45,20 @@ def test_missing_server_name(base_server_mixin_fixture):
         BedrockServerBaseMixin(server_name="", settings_instance=settings)
 
 
-def test_missing_base_dir_setting(base_server_mixin_fixture):
-    _, server_name, settings, _ = base_server_mixin_fixture
+def test_missing_base_dir_setting():
+    settings = Settings()
     settings.set("paths.servers", None)
     with pytest.raises(ConfigurationError):
-        BedrockServerBaseMixin(server_name=server_name, settings_instance=settings)
+        BedrockServerBaseMixin(server_name="test_server", settings_instance=settings)
 
 
-def test_missing_config_dir_setting(monkeypatch):
-    mock_settings = MagicMock()
-    mock_settings.config_dir = None
-    monkeypatch.setattr(
-        "bedrock_server_manager.core.server.base_server_mixin.get_settings_instance",
-        lambda: mock_settings,
-    )
+def test_missing_config_dir_setting(mock_get_settings_instance):
+    mock_get_settings_instance.config_dir = None
 
     with pytest.raises(ConfigurationError):
-        BedrockServerBaseMixin(server_name="test_server")
+        BedrockServerBaseMixin(
+            server_name="test_server", settings_instance=mock_get_settings_instance
+        )
 
 
 def test_bedrock_executable_name(base_server_mixin_fixture):
@@ -112,26 +108,24 @@ from unittest.mock import patch
 
 
 def test_init_no_settings():
-    with patch(
-        "bedrock_server_manager.core.server.base_server_mixin.get_settings_instance"
-    ) as mock_get_settings:
-        mock_get_settings.return_value = None
-        with pytest.raises(ConfigurationError):
-            BedrockServerBaseMixin(server_name="test_server", settings_instance=None)
-
-
-def test_init_no_base_dir():
-    settings = Settings()
-    settings.set("paths.servers", None)
     with pytest.raises(ConfigurationError):
-        BedrockServerBaseMixin(server_name="test_server", settings_instance=settings)
+        BedrockServerBaseMixin(server_name="test_server", settings_instance=None)
 
 
-def test_init_no_app_config_dir():
-    settings = Settings()
-    settings._config_dir_path = None
+def test_init_no_base_dir(mock_get_settings_instance):
+    mock_get_settings_instance.get.return_value = None
     with pytest.raises(ConfigurationError):
-        BedrockServerBaseMixin(server_name="test_server", settings_instance=settings)
+        BedrockServerBaseMixin(
+            server_name="test_server", settings_instance=mock_get_settings_instance
+        )
+
+
+def test_init_no_app_config_dir(mock_get_settings_instance):
+    mock_get_settings_instance.config_dir = None
+    with pytest.raises(ConfigurationError):
+        BedrockServerBaseMixin(
+            server_name="test_server", settings_instance=mock_get_settings_instance
+        )
 
 
 def test_server_properties_path(base_server_mixin_fixture):

@@ -34,6 +34,8 @@ from typing import Optional, List, Dict, Any, Union, Tuple
 from ..config import Settings
 from ..instances import get_server_instance
 from ..config import EXPATH, app_name_title, package_name
+from ..db.database import db_session_manager
+from ..db.models import Player
 from ..error import (
     ConfigurationError,
     FileOperationError,
@@ -239,19 +241,8 @@ class BedrockServerManager:
         self.settings.set(key, value)
 
     # --- Player Database Management ---
-    def _get_player_db_path(self) -> str:
-        """Returns the absolute path to the central ``players.json`` file.
-
-        The path is constructed by joining the application's configuration directory
-        (:attr:`._config_dir`) with the filename "players.json".
-
-        Returns:
-            str: The absolute path to where the ``players.json`` file is expected to be.
-        """
-        return os.path.join(self._config_dir, "players.json")
-
-    def parse_player_cli_argument(self, player_string: str) -> List[Dict[str, str]]:
-        """Parses a comma-separated string of 'player_name:xuid' pairs.
+    def parse_player_cli_argument(self, player_string: str) -> None:
+        """Parses a comma-separated string of 'player_name:xuid' pairs and saves them to the database.
 
         This utility method is designed to process player data provided as a
         single string, typically from a command-line argument. Each player entry
@@ -266,21 +257,12 @@ class BedrockServerManager:
             player_string (str): The comma-separated string of player data.
                 If empty or not a string, an empty list is returned.
 
-        Returns:
-            List[Dict[str, str]]: A list of dictionaries. Each dictionary
-            represents a player and contains two keys:
-
-                - ``"name"`` (str): The player's name.
-                - ``"xuid"`` (str): The player's XUID.
-
-            Returns an empty list if the input ``player_string`` is empty or invalid.
-
         Raises:
             UserInputError: If any player pair within the string does not conform
                 to the "name:xuid" format, or if a name or XUID is empty after stripping.
         """
         if not player_string or not isinstance(player_string, str):
-            return []
+            return
         logger.debug(f"BSM: Parsing player argument string: '{player_string}'")
         player_list: List[Dict[str, str]] = []
         player_pairs = [
@@ -296,23 +278,20 @@ class BedrockServerManager:
             if not player_name or not player_id:
                 raise UserInputError(f"Name and XUID cannot be empty in '{pair}'.")
             player_list.append({"name": player_name.strip(), "xuid": player_id.strip()})
-        return player_list
+
+        self.save_player_data(player_list)
 
     def save_player_data(self, players_data: List[Dict[str, str]]) -> int:
-        """Saves or updates player data in the central ``players.json`` file.
+        """Saves or updates player data in the database.
 
         This method merges the provided ``players_data`` with any existing player
-        data in the ``players.json`` file located in the application's configuration
-        directory (see :meth:`._get_player_db_path`).
+        data in the database.
 
         The merging logic is as follows:
 
             - If a player's XUID from ``players_data`` already exists in the database,
               their entry (name and XUID) is updated if different.
             - If a player's XUID is new, their entry is added to the database.
-
-        The final list of players is sorted alphabetically by name before being
-        written to the file. The configuration directory is created if it doesn't exist.
 
         Args:
             players_data (List[Dict[str, str]]): A list of player dictionaries.
@@ -327,9 +306,6 @@ class BedrockServerManager:
             UserInputError: If ``players_data`` is not a list, or if any dictionary
                 within it does not conform to the required format (missing keys,
                 non-string values, or empty name/XUID).
-            FileOperationError: If creating the configuration directory fails or
-                if writing to the ``players.json`` file fails (e.g., due to
-                permission issues).
         """
         if not isinstance(players_data, list):
             raise UserInputError("players_data must be a list.")
@@ -345,105 +321,54 @@ class BedrockServerManager:
             ):
                 raise UserInputError(f"Invalid player entry format: {p_data}")
 
-        player_db_path = self._get_player_db_path()
-        try:
-            os.makedirs(self._config_dir, exist_ok=True)
-        except OSError as e:
-            raise FileOperationError(
-                f"Could not create config directory {self._config_dir}: {e}"
-            ) from e
-
-        # Load existing player data into a map for efficient lookup.
-        existing_players_map: Dict[str, Dict[str, str]] = {}
-        if os.path.exists(player_db_path):
+        with db_session_manager() as db:
             try:
-                with open(player_db_path, "r", encoding="utf-8") as f:
-                    loaded_json = json.load(f)
-                    if (
-                        isinstance(loaded_json, dict)
-                        and "players" in loaded_json
-                        and isinstance(loaded_json["players"], list)
-                    ):
-                        for p_entry in loaded_json["players"]:
-                            if isinstance(p_entry, dict) and "xuid" in p_entry:
-                                existing_players_map[p_entry["xuid"]] = p_entry
-            except (ValueError, OSError) as e:
-                logger.warning(
-                    f"BSM: Could not load/parse existing players.json, will overwrite: {e}"
-                )
+                updated_count = 0
+                added_count = 0
+                for player_to_add in players_data:
+                    xuid = player_to_add["xuid"]
+                    player = db.query(Player).filter_by(xuid=xuid).first()
+                    if player:
+                        if (
+                            player.player_name != player_to_add["name"]
+                            or player.xuid != player_to_add["xuid"]
+                        ):
+                            player.player_name = player_to_add["name"]
+                            player.xuid = player_to_add["xuid"]
+                            updated_count += 1
+                    else:
+                        player = Player(
+                            player_name=player_to_add["name"],
+                            xuid=player_to_add["xuid"],
+                        )
+                        db.add(player)
+                        added_count += 1
 
-        updated_count = 0
-        added_count = 0
-        # Merge new data with existing data.
-        for player_to_add in players_data:
-            xuid = player_to_add["xuid"]
-            if xuid in existing_players_map:
-                if existing_players_map[xuid] != player_to_add:
-                    existing_players_map[xuid] = player_to_add
-                    updated_count += 1
-            else:
-                existing_players_map[xuid] = player_to_add
-                added_count += 1
+                if updated_count > 0 or added_count > 0:
+                    db.commit()
+                    logger.info(
+                        f"BSM: Saved/Updated players. Added: {added_count}, Updated: {updated_count}."
+                    )
+                    return added_count + updated_count
 
-        if updated_count > 0 or added_count > 0:
-            # Sort the final list alphabetically by name before saving.
-            updated_players_list = sorted(
-                list(existing_players_map.values()),
-                key=lambda p: p.get("name", "").lower(),
-            )
-            try:
-                with open(player_db_path, "w", encoding="utf-8") as f:
-                    json.dump({"players": updated_players_list}, f, indent=4)
-                logger.info(
-                    f"BSM: Saved/Updated players. Added: {added_count}, Updated: {updated_count}. Total in DB: {len(updated_players_list)}"
-                )
-                return added_count + updated_count
-            except OSError as e:
-                raise FileOperationError(f"Failed to write players.json: {e}") from e
-
-        logger.debug("BSM: No new or updated player data to save.")
-        return 0
+                logger.debug("BSM: No new or updated player data to save.")
+                return 0
+            except Exception as e:
+                db.rollback()
+                raise e
 
     def get_known_players(self) -> List[Dict[str, str]]:
-        """Retrieves all known players from the central ``players.json`` file.
-
-        This method reads the ``players.json`` file from the application's
-        configuration directory (obtained via :meth:`._get_player_db_path`).
-        It expects the file to contain a JSON object with a "players" key,
-        which holds a list of player dictionaries.
-
-        Args:
-            None
+        """Retrieves all known players from the database.
 
         Returns:
             List[Dict[str, str]]: A list of player dictionaries, where each
             dictionary typically contains ``"name"`` and ``"xuid"`` keys.
-            Returns an empty list if the ``players.json`` file does not exist,
-            is empty, contains invalid JSON, or does not have the expected
-            structure (e.g., missing "players" list). Errors during reading or
-            parsing are logged.
         """
-        player_db_path = self._get_player_db_path()
-        if not os.path.exists(player_db_path):
-            return []
-        try:
-            with open(player_db_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if not content:
-                    return []
-                data = json.loads(content)
-                if (
-                    isinstance(data, dict)
-                    and "players" in data
-                    and isinstance(data["players"], list)
-                ):
-                    return data["players"]
-                logger.warning(
-                    f"BSM: Player DB {player_db_path} has unexpected format."
-                )
-        except (ValueError, OSError) as e:
-            logger.error(f"BSM: Error reading player DB {player_db_path}: {e}")
-        return []
+        with db_session_manager() as db:
+            players = db.query(Player).all()
+            return [
+                {"name": player.player_name, "xuid": player.xuid} for player in players
+            ]
 
     def discover_and_store_players_from_all_server_logs(self) -> Dict[str, Any]:
         """Scans all server logs for player data and updates the central player database.
@@ -458,8 +383,8 @@ class BedrockServerManager:
                :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
                method to extract player names and XUIDs from its logs.
             4. All player data discovered from all server logs is aggregated.
-            5. Unique player entries (based on XUID) are then saved to the central
-               ``players.json`` file using :meth:`.save_player_data`.
+            5. Unique player entries (based on XUID) are then saved to the database
+               using :meth:`.save_player_data`.
 
         Args:
             None
@@ -473,7 +398,7 @@ class BedrockServerManager:
                 - ``"unique_players_submitted_for_saving"`` (int): The number of unique
                   player entries (by XUID) that were attempted to be saved.
                 - ``"actually_saved_or_updated_in_db"`` (int): The number of players
-                  that were newly added or updated in the central ``players.json``
+                  that were newly added or updated in the database
                   by the :meth:`.save_player_data` call.
                 - ``"scan_errors"`` (List[Dict[str, str]]): A list of dictionaries,
                   where each entry represents an error encountered while scanning a
@@ -484,8 +409,8 @@ class BedrockServerManager:
         Raises:
             AppFileNotFoundError: If the main server base directory
                 (``settings['paths.servers']``) is not configured or does not exist.
-            FileOperationError: If the final save operation to the central
-                ``players.json`` (via :meth:`.save_player_data`) fails due to I/O issues.
+            FileOperationError: If the final save operation to the database
+                (via :meth:`.save_player_data`) fails.
                 Note that errors during individual server log scans are caught and
                 reported in the ``"scan_errors"`` part of the return value.
         """

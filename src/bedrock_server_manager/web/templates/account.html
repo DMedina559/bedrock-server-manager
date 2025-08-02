@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Bedrock Server Manager - Account{% endblock %}
+
+{% block content %}
+<div class="page-layout">
+    <aside class="sidebar-nav">
+        <a href="#profile-section" class="nav-link active" data-target="profile-section">Info</a>
+        <a href="#password-section" class="nav-link" data-target="password-section">Change Password</a>
+        <a href="#theme-section" class="nav-link" data-target="theme-section">Theme</a>
+        <hr class="nav-separator">
+        <a href="{{ url_for('index') }}" class="nav-link">Dashboard</a>
+        <a href="{{ request.url_for('logout') if request else '/auth/logout' }}" class="nav-link nav-action-button danger-button">Logout</a>
+    </aside>
+
+    <main class="main-content">
+        <section id="profile-section" class="content-section active">
+            <h2>Profile</h2>
+            <form id="profile-form">
+                <div class="form-group">
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" class="form-input" value="{{ current_user.full_name | default('') }}">
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" class="form-input" value="{{ current_user.email | default('') }}">
+                </div>
+                <button type="button" class="action-button" onclick="updateProfile()">Save Profile</button>
+            </form>
+        </section>
+
+        <section id="theme-section" class="content-section">
+            <h2>Theme</h2>
+            <div class="form-group">
+                <label for="theme">Theme</label>
+                <select id="theme-select" name="theme" class="form-input" data-current-theme="{{ current_user.theme | default('default') }}">
+                </select>
+            </div>
+        </section>
+
+        <section id="password-section" class="content-section">
+            <h2>Change Password</h2>
+            <form id="change-password-form">
+                <div class="form-group">
+                    <label for="current_password">Current Password</label>
+                <input type="password" id="current_password" name="current_password" class="form-input" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                <input type="password" id="new_password" name="new_password" class="form-input" required autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="confirm_new_password">Confirm New Password</label>
+                <input type="password" id="confirm_new_password" name="confirm_new_password" class="form-input" required autocomplete="new-password">
+                </div>
+                <button type="button" class="action-button" onclick="changePassword()">Change Password</button>
+            </form>
+        </section>
+    </main>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ request.url_for('static', path='js/account.js') }}" defer></script>
+{% endblock %}

@@ -16,6 +16,9 @@ from ..utils import package_finder
 package_name: str = "bedrock-server-manager"
 """The official package name on PyPI."""
 
+app_author: str = "bedrock-server-manager"
+"""The author name used by `appdirs` to construct config paths."""
+
 executable_name: str = package_name
 """The name of the main executable script for the application."""
 

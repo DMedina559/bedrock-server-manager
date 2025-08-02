@@ -37,31 +37,12 @@ from bedrock_server_manager.error import (
 
 
 @pytest.fixture
-def mock_manager_settings(mocker):
-    """Mocks the Settings object for BedrockServerManager tests."""
-    settings = mocker.MagicMock(spec=Settings)
-    settings.version = "3.5.0-test"  # Example version
-    # Default get behavior, will be updated by temp_manager_dirs
-    settings.get.side_effect = lambda key, default=None: {
-        "paths.servers": "dummy_servers_path",
-        "paths.content": "dummy_content_path",
-        # Add other settings if BedrockServerManager directly uses them via get()
-    }.get(key, default)
-
-    # Properties for app_data_dir and config_dir
-    # These will also be updated by temp_manager_dirs
-    type(settings).app_data_dir = mocker.PropertyMock(return_value="dummy_app_data_dir")
-    type(settings).config_dir = mocker.PropertyMock(return_value="dummy_config_dir")
-    settings.config_path = "dummy_config_dir/dummy_settings.json"  # Default config_path
-
-    return settings
-
-
-@pytest.fixture
-def temp_manager_dirs(tmp_path_factory, mock_manager_settings, mocker):  # Added mocker
+def temp_manager_dirs(
+    tmp_path_factory, mock_get_settings_instance, mocker
+):  # Added mocker
     """
     Creates a temporary directory structure for app_data, config, servers, content
-    and configures mock_manager_settings to use these paths.
+    and configures mock_get_settings_instance to use these paths.
     Yields a dictionary of these paths.
     """
     base_temp_dir = tmp_path_factory.mktemp("bsm_manager_data_")
@@ -79,7 +60,7 @@ def temp_manager_dirs(tmp_path_factory, mock_manager_settings, mocker):  # Added
     for path_obj in paths.values():
         path_obj.mkdir(parents=True, exist_ok=True)
 
-    # Configure mock_manager_settings to use these temporary paths
+    # Configure mock_get_settings_instance to use these temporary paths
     def settings_get_side_effect(key, default=None):
         if key == "paths.servers":
             return str(paths["servers"])
@@ -92,33 +73,28 @@ def temp_manager_dirs(tmp_path_factory, mock_manager_settings, mocker):  # Added
             # Default non-path settings
         }.get(key, default)
 
-    mock_manager_settings.get.side_effect = settings_get_side_effect
+    mock_get_settings_instance.get.side_effect = settings_get_side_effect
     # Update property mocks using the passed 'mocker'
-    type(mock_manager_settings).app_data_dir = mocker.PropertyMock(
+    type(mock_get_settings_instance).app_data_dir = mocker.PropertyMock(
         return_value=str(paths["app_data"])
     )
-    type(mock_manager_settings).config_dir = mocker.PropertyMock(
+    type(mock_get_settings_instance).config_dir = mocker.PropertyMock(
         return_value=str(paths["config"])
     )
-    mock_manager_settings.config_path = str(
+    mock_get_settings_instance.config_path = str(
         paths["config"] / "bsm_manager_test_config.json"
     )  # Set config_path
+    mock_get_settings_instance.version = "3.5.0-test"
 
     yield paths
 
 
 @pytest.fixture
-def manager_instance(mock_manager_settings, temp_manager_dirs, mocker):
+def manager_instance(mock_get_settings_instance, temp_manager_dirs, mocker):
     """
     Creates a BedrockServerManager instance with mocked settings and EXPATH.
-    temp_manager_dirs fixture ensures mock_manager_settings is correctly configured with temp paths.
+    temp_manager_dirs fixture ensures mock_get_settings_instance is correctly configured with temp paths.
     """
-    # Mock get_settings_instance to return our mocked settings
-    mocker.patch(
-        "bedrock_server_manager.instances.get_settings_instance",
-        return_value=mock_manager_settings,
-    )
-
     # Mock EXPATH from const module, as it's used by BedrockServerManager
     # Ensure this path points to where BedrockServerManager is imported from for the patch to work.
     # If BedrockServerManager imports 'from bedrock_server_manager.config.const import EXPATH',
@@ -131,21 +107,21 @@ def manager_instance(mock_manager_settings, temp_manager_dirs, mocker):
     # By default, assume commands are not found, tests can override
     mock_shutil_which = mocker.patch("shutil.which", return_value=None)
 
-    # Ensure mock_manager_settings has config_path, as temp_manager_dirs should have set it.
+    # Ensure mock_get_settings_instance has config_path, as temp_manager_dirs should have set it.
     # If manager_instance is called without temp_manager_dirs in a test (not typical),
     # this makes sure a default is present.
     if (
-        not hasattr(mock_manager_settings, "config_path")
-        or not mock_manager_settings.config_path
+        not hasattr(mock_get_settings_instance, "config_path")
+        or not mock_get_settings_instance.config_path
     ):
         # This path should ideally align with what temp_manager_dirs would set if it were used
         # For safety, ensuring it's a string path.
         dummy_cfg_path = (
             temp_manager_dirs["config"]
             if temp_manager_dirs
-            else Path(mock_manager_settings.config_dir)
+            else Path(mock_get_settings_instance.config_dir)
         )
-        mock_manager_settings.config_path = str(
+        mock_get_settings_instance.config_path = str(
             dummy_cfg_path / "fixture_default_cfg.json"
         )
 
@@ -157,23 +133,20 @@ def manager_instance(mock_manager_settings, temp_manager_dirs, mocker):
 
 
 @pytest.fixture
-def mock_bedrock_server_class(mocker):
-    """
-    Mocks the BedrockServer class.
-    The mock will be used when BedrockServerManager tries to instantiate BedrockServer.
-    """
-    # The target for patching is where BedrockServer is *looked up* by the code under test (manager.py)
-    mock_server_class = mocker.patch(
-        "bedrock_server_manager.core.manager.get_server_instance", autospec=True
+def mock_get_server_instance(mocker, mock_bedrock_server):
+    """Fixture to patch get_server_instance for the core.manager module."""
+    return mocker.patch(
+        "bedrock_server_manager.core.manager.get_server_instance",
+        return_value=mock_bedrock_server,
+        autospec=True,
     )
-    return mock_server_class
 
 
 # --- BedrockServerManager - Initialization & Settings Tests ---
 
 
 def test_manager_initialization_success(
-    manager_instance, mock_manager_settings, temp_manager_dirs, mocker
+    manager_instance, mock_get_settings_instance, temp_manager_dirs, mocker
 ):
     """Test successful initialization of BedrockServerManager."""
     assert manager_instance._app_data_dir == str(temp_manager_dirs["app_data"])
@@ -183,29 +156,29 @@ def test_manager_initialization_success(
     assert manager_instance._expath == "/dummy/bsm_executable"
     assert (
         manager_instance.settings.version == "3.5.0-test"
-    )  # From mock_manager_settings
+    )  # From mock_get_settings_instance
 
     # Check default capabilities (assuming shutil.which was mocked to return None by manager_instance fixture)
     assert not manager_instance.capabilities["scheduler"]
     assert not manager_instance.capabilities["service_manager"]
 
 
-def test_manager_get_and_set_setting(manager_instance, mock_manager_settings):
+def test_manager_get_and_set_setting(manager_instance, mock_get_settings_instance):
     """Test get_setting and set_setting proxy methods."""
     # Test get_setting
-    # manager_instance.settings is mock_manager_settings
+    # manager_instance.settings is mock_get_settings_instance
 
     result = manager_instance.get_setting("a.b.c", "default_arg")
     assert result == "default_arg"
     manager_instance.settings.get.assert_called_with("a.b.c", "default_arg")
 
-    # We reset the whole mock_manager_settings as it's the same object.
+    # We reset the whole mock_get_settings_instance as it's the same object.
     # This clears call stats for both 'get' and 'set'.
-    mock_manager_settings.reset_mock()
+    mock_get_settings_instance.reset_mock()
 
     # Test set_setting
     manager_instance.set_setting("x.y.z", "new_value")
-    # manager_instance.settings is mock_manager_settings, so assert on that
+    # manager_instance.settings is mock_get_settings_instance, so assert on that
     manager_instance.settings.set.assert_called_once_with("x.y.z", "new_value")
 
 
@@ -280,7 +253,7 @@ def test_manager_initialization_missing_critical_paths(mocker):
 )
 def test_manager_system_capabilities_check(
     mocker,
-    mock_manager_settings,
+    mock_get_settings_instance,
     os_type,
     scheduler_cmd,
     service_cmd,
@@ -291,7 +264,7 @@ def test_manager_system_capabilities_check(
     BedrockServerManager._instance = None
     caplog.set_level(logging.WARNING)
     mocker.patch("platform.system", return_value=os_type)
-    mock_manager_settings.config_path = "dummy/config.json"  # Added config_path
+    mock_get_settings_instance.config_path = "dummy/config.json"  # Added config_path
 
     def which_side_effect(cmd):
         if os_type == "Linux":
@@ -350,82 +323,73 @@ def test_manager_get_os_type(manager_instance, mocker):
 # --- BedrockServerManager - Player Database Management Tests ---
 
 
-def test_get_player_db_path(manager_instance, temp_manager_dirs):
-    """Test _get_player_db_path returns the correct path."""
-    expected_path = temp_manager_dirs["config"] / "players.json"
-    assert Path(manager_instance._get_player_db_path()) == expected_path
-
-
 @pytest.mark.parametrize(
-    "input_str, expected_output, raises_error, match_msg",
+    "input_str, raises_error, match_msg",
     [
-        ("Player1:123", [{"name": "Player1", "xuid": "123"}], False, None),
-        (
-            " Player One : 12345 , PlayerTwo:67890 ",
-            [
-                {"name": "Player One", "xuid": "12345"},
-                {"name": "PlayerTwo", "xuid": "67890"},
-            ],
-            False,
-            None,
-        ),
-        ("PlayerOnlyName", None, True, "Invalid player data format: 'PlayerOnlyName'."),
-        ("Player: ", None, True, "Name and XUID cannot be empty in 'Player:'."),
-        (":123", None, True, "Name and XUID cannot be empty in ':123'."),
-        ("", [], False, None),
-        (None, [], False, None),
-        (
-            "Valid:1,Invalid,Valid2:2",
-            None,
-            True,
-            "Invalid player data format: 'Invalid'.",
-        ),
+        ("Player1:123", False, None),
+        (" Player One : 12345 , PlayerTwo:67890 ", False, None),
+        ("PlayerOnlyName", True, "Invalid player data format: 'PlayerOnlyName'."),
+        ("Player: ", True, "Name and XUID cannot be empty in 'Player:'."),
+        (":123", True, "Name and XUID cannot be empty in ':123'."),
+        ("", False, None),
+        (None, False, None),
+        ("Valid:1,Invalid,Valid2:2", True, "Invalid player data format: 'Invalid'."),
     ],
 )
 def test_parse_player_cli_argument(
-    manager_instance, input_str, expected_output, raises_error, match_msg
+    manager_instance, input_str, raises_error, match_msg, mocker
 ):
     """Test parse_player_cli_argument with various inputs."""
+    mock_save = mocker.patch.object(manager_instance, "save_player_data")
     if raises_error:
         with pytest.raises(UserInputError, match=match_msg):
             manager_instance.parse_player_cli_argument(input_str)
+        mock_save.assert_not_called()
     else:
-        assert manager_instance.parse_player_cli_argument(input_str) == expected_output
+        manager_instance.parse_player_cli_argument(input_str)
+        if input_str:
+            mock_save.assert_called_once()
+        else:
+            mock_save.assert_not_called()
 
 
-def test_save_player_data_new_db(manager_instance, temp_manager_dirs):
-    """Test save_player_data creating a new players.json."""
+def test_save_player_data_new_db(manager_instance, mocker, mock_db_session_manager):
+    """Test save_player_data creating a new player in the database."""
     players_to_save = [
         {"name": "Gamer", "xuid": "100"},
         {"name": "Admin", "xuid": "007"},
     ]
-    player_db_path = Path(manager_instance._get_player_db_path())
 
-    # assert not player_db_path.exists()
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.filter_by.return_value.first.return_value = None
+    mocker.patch(
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
+    )
+
     saved_count = manager_instance.save_player_data(players_to_save)
     assert saved_count == 2
-    assert player_db_path.exists()
+    assert mock_session.add.call_count == 2
+    mock_session.commit.assert_called_once()
 
-    with open(player_db_path, "r") as f:
-        data = json.load(f)
-    # Order should be Admin then Gamer due to sorting by name
-    assert data["players"] == [
-        {"name": "Admin", "xuid": "007"},
-        {"name": "Gamer", "xuid": "100"},
+
+def test_save_player_data_update_existing_db(
+    manager_instance, mocker, mock_db_session_manager
+):
+    """Test save_player_data merging with an existing player in the database."""
+    existing_player = mocker.MagicMock()
+    existing_player.player_name = "ToUpdate"
+    existing_player.xuid = "222"
+
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.filter_by.side_effect = [
+        mocker.MagicMock(first=lambda: None),  # For NewPlayer
+        mocker.MagicMock(first=lambda: existing_player),  # For UpdatedName
     ]
-
-
-def test_save_player_data_update_existing_db(manager_instance, temp_manager_dirs):
-    """Test save_player_data merging with an existing players.json."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    initial_db_content = {
-        "players": [
-            {"name": "OldPlayer", "xuid": "111"},
-            {"name": "ToUpdate", "xuid": "222"},  # This name will change
-        ]
-    }
-    with open(player_db_path, "w") as f:
-        json.dump(initial_db_content, f)
+    mocker.patch(
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
+    )
 
     players_to_save = [
         {"name": "NewPlayer", "xuid": "333"},
@@ -434,30 +398,9 @@ def test_save_player_data_update_existing_db(manager_instance, temp_manager_dirs
     saved_count = manager_instance.save_player_data(players_to_save)
     assert saved_count == 2  # 1 added, 1 updated
 
-    with open(player_db_path, "r") as f:
-        data = json.load(f)
-
-    # Expected: NewPlayer, OldPlayer, UpdatedName (sorted)
-    expected_players = sorted(
-        [
-            {"name": "OldPlayer", "xuid": "111"},
-            {"name": "UpdatedName", "xuid": "222"},
-            {"name": "NewPlayer", "xuid": "333"},
-        ],
-        key=lambda p: p["name"].lower(),
-    )
-    assert data["players"] == expected_players
-
-
-def test_save_player_data_no_changes(manager_instance, temp_manager_dirs):
-    """Test save_player_data when no actual changes are made to existing data."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    players_to_save = [{"name": "PlayerA", "xuid": "123"}]
-    manager_instance.save_player_data(players_to_save)  # Initial save
-
-    # Call save again with the same data
-    saved_count = manager_instance.save_player_data(players_to_save)
-    assert saved_count == 0
+    assert existing_player.player_name == "UpdatedName"
+    assert mock_session.add.call_count == 1
+    mock_session.commit.assert_called_once()
 
 
 def test_save_player_data_invalid_input(manager_instance):
@@ -472,69 +415,48 @@ def test_save_player_data_invalid_input(manager_instance):
         manager_instance.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
 
 
-def test_save_player_data_os_error_on_mkdir(manager_instance, mocker):
-    """Test save_player_data handles OSError when creating config directory."""
-    mocker.patch("os.makedirs", side_effect=OSError("Permission denied mkdir"))
-    with pytest.raises(FileOperationError, match="Could not create config directory"):
-        manager_instance.save_player_data([{"name": "A", "xuid": "1"}])
+def test_get_known_players(manager_instance, mocker, mock_db_session_manager):
+    """Test get_known_players with a valid database."""
+    mock_player1 = mocker.MagicMock()
+    mock_player1.player_name = "PlayerX"
+    mock_player1.xuid = "789"
+    mock_player2 = mocker.MagicMock()
+    mock_player2.player_name = "PlayerY"
+    mock_player2.xuid = "123"
 
-
-def test_save_player_data_os_error_on_write(
-    manager_instance, temp_manager_dirs, mocker
-):
-    """Test save_player_data handles OSError when writing players.json."""
-    # Ensure config dir exists
-    Path(manager_instance._get_player_db_path()).parent.mkdir(
-        parents=True, exist_ok=True
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.all.return_value = [mock_player1, mock_player2]
+    mocker.patch(
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
     )
-    mocker.patch("builtins.open", side_effect=OSError("Permission denied write"))
-    with pytest.raises(FileOperationError, match="Failed to write players.json"):
-        manager_instance.save_player_data([{"name": "A", "xuid": "1"}])
-
-
-def test_get_known_players_valid_db(manager_instance, temp_manager_dirs):
-    """Test get_known_players with a valid players.json."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    db_content = {"players": [{"name": "PlayerX", "xuid": "789"}]}
-    with open(player_db_path, "w") as f:
-        json.dump(db_content, f)
 
     players = manager_instance.get_known_players()
-    assert players == db_content["players"]
+    assert players == [
+        {"name": "PlayerX", "xuid": "789"},
+        {"name": "PlayerY", "xuid": "123"},
+    ]
 
 
-def test_get_known_players_db_not_exist(manager_instance, temp_manager_dirs):
-    """Test get_known_players when players.json does not exist."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-    assert not player_db_path.exists()
-    assert manager_instance.get_known_players() == []
+def test_get_known_players_empty_db(manager_instance, mocker, mock_db_session_manager):
+    """Test get_known_players with an empty database."""
+    mock_session = mocker.MagicMock()
+    mock_session.query.return_value.all.return_value = []
+    mocker.patch(
+        "bedrock_server_manager.core.manager.db_session_manager",
+        mock_db_session_manager(mock_session),
+    )
 
-
-def test_get_known_players_empty_or_invalid_db(
-    manager_instance, temp_manager_dirs, caplog
-):
-    """Test get_known_players with an empty or malformed players.json."""
-    player_db_path = Path(manager_instance._get_player_db_path())
-
-    # Empty file
-    player_db_path.write_text("")
-    assert manager_instance.get_known_players() == []
-
-    # Invalid JSON
-    player_db_path.write_text("{not_json:")
-    caplog.clear()
-    assert manager_instance.get_known_players() == []
-    assert f"Error reading player DB {str(player_db_path)}" in caplog.text
-
-    # Valid JSON, wrong structure
-    player_db_path.write_text(json.dumps({"not_players_key": []}))
-    caplog.clear()
-    assert manager_instance.get_known_players() == []
-    assert f"Player DB {str(player_db_path)} has unexpected format." in caplog.text
+    players = manager_instance.get_known_players()
+    assert players == []
 
 
 def test_discover_and_store_players_from_all_server_logs(
-    manager_instance, temp_manager_dirs, mock_bedrock_server_class, mocker
+    manager_instance,
+    temp_manager_dirs,
+    mock_get_server_instance,
+    mock_bedrock_server,
+    mocker,
 ):
     """Test discovery and storing of players from multiple server logs."""
     # Setup server directories
@@ -587,7 +509,7 @@ def test_discover_and_store_players_from_all_server_logs(
             f"Unexpected server_name '{server_name}' in mock BedrockServer"
         )
 
-    mock_bedrock_server_class.side_effect = server_class_side_effect
+    mock_get_server_instance.side_effect = server_class_side_effect
     mock_save_player_data = mocker.patch.object(
         manager_instance, "save_player_data", return_value=2
     )
@@ -1345,35 +1267,33 @@ def test_list_available_addons(manager_instance, mocker):
 # --- BedrockServerManager - Server Discovery & Data Aggregation ---
 
 
-def test_validate_server_valid(manager_instance, mock_bedrock_server_class, mocker):
+def test_validate_server_valid(
+    manager_instance, mock_get_server_instance, mock_bedrock_server, mocker
+):
     """Test validate_server for a valid server."""
-    mock_server_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server_instance.is_installed.return_value = True
-    mock_bedrock_server_class.return_value = mock_server_instance
+    mock_bedrock_server.is_installed.return_value = True
 
     assert manager_instance.validate_server("server1") is True
-    mock_bedrock_server_class.assert_called_once_with("server1")
-    mock_server_instance.is_installed.assert_called_once()
+    mock_get_server_instance.assert_called_once_with("server1")
+    mock_bedrock_server.is_installed.assert_called_once()
 
 
 def test_validate_server_not_installed(
-    manager_instance, mock_bedrock_server_class, mocker
+    manager_instance, mock_get_server_instance, mock_bedrock_server, mocker
 ):
     """Test validate_server for a server that is not installed."""
-    mock_server_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server_instance.is_installed.return_value = False
-    mock_bedrock_server_class.return_value = mock_server_instance
+    mock_bedrock_server.is_installed.return_value = False
 
     assert manager_instance.validate_server("server2") is False
-    mock_server_instance.is_installed.assert_called_once()
+    mock_bedrock_server.is_installed.assert_called_once()
 
 
 def test_validate_server_instantiation_error(
-    manager_instance, mock_bedrock_server_class, caplog
+    manager_instance, mock_get_server_instance, caplog
 ):
     """Test validate_server when BedrockServer instantiation fails."""
     caplog.set_level(logging.WARNING)
-    mock_bedrock_server_class.side_effect = InvalidServerNameError("Bad name")
+    mock_get_server_instance.side_effect = InvalidServerNameError("Bad name")
 
     assert manager_instance.validate_server("bad_server_name_format!") is False
     assert "Validation failed for server 'bad_server_name_format!'" in caplog.text
@@ -1389,7 +1309,7 @@ def test_validate_server_empty_name(manager_instance):
 
 
 def test_get_servers_data_success(
-    manager_instance, temp_manager_dirs, mock_bedrock_server_class, mocker
+    manager_instance, temp_manager_dirs, mock_get_server_instance, mocker
 ):
     """Test get_servers_data successfully retrieves data for multiple servers."""
     # Simulate server directories
@@ -1446,7 +1366,7 @@ def test_get_servers_data_success(
             f"Unexpected server_name '{server_name}' in mock BedrockServer for get_servers_data"
         )
 
-    mock_bedrock_server_class.side_effect = server_class_side_effect
+    mock_get_server_instance.side_effect = server_class_side_effect
 
     servers_data, error_messages = manager_instance.get_servers_data()
 
@@ -1470,7 +1390,7 @@ def test_get_servers_data_success(
     )
 
     # Check calls to BedrockServer constructor (excluding not_a_server_dir.txt)
-    assert mock_bedrock_server_class.call_count == 4
+    assert mock_get_server_instance.call_count == 4
 
 
 def test_get_servers_data_base_dir_not_exist(manager_instance, mocker):

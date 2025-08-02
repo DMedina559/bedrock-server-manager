@@ -7,11 +7,13 @@ from collections import namedtuple
 from bedrock_server_manager.utils.general import startup_checks, get_timestamp
 
 
+from bedrock_server_manager.config.settings import Settings
+
+
 @pytest.fixture
-def mock_settings(tmp_path):
-    """Fixture for a mocked Settings object."""
-    settings = MagicMock()
-    settings.get.side_effect = lambda key, default=None: {
+def setup_settings_paths(mock_get_settings_instance, tmp_path):
+    """Set up the settings mock for path-related tests."""
+    mock_get_settings_instance.get.side_effect = lambda key, default=None: {
         "paths.servers": str(tmp_path / "servers"),
         "paths.content": str(tmp_path / "content"),
         "paths.downloads": str(tmp_path / "downloads"),
@@ -19,21 +21,10 @@ def mock_settings(tmp_path):
         "paths.backups": str(tmp_path / "backups"),
         "paths.logs": str(tmp_path / "logs"),
     }.get(key, default)
-    return settings
-
-
-@pytest.fixture
-def mock_get_settings_instance(mock_settings):
-    """Fixture to patch get_settings_instance."""
-    with patch(
-        "bedrock_server_manager.instances.get_settings_instance",
-        return_value=mock_settings,
-    ) as mock:
-        yield mock
 
 
 class TestStartupChecks:
-    def test_startup_checks_create_dirs(self, mock_get_settings_instance, tmp_path):
+    def test_startup_checks_create_dirs(self, setup_settings_paths, tmp_path):
         """Tests that startup_checks creates the necessary directories."""
         startup_checks()
         assert os.path.isdir(tmp_path / "servers")
@@ -45,7 +36,7 @@ class TestStartupChecks:
         assert os.path.isdir(tmp_path / "backups")
         assert os.path.isdir(tmp_path / "logs")
 
-    def test_startup_checks_dirs_exist(self, mock_get_settings_instance, tmp_path):
+    def test_startup_checks_dirs_exist(self, setup_settings_paths, tmp_path):
         """Tests that startup_checks doesn't fail if directories already exist."""
         (tmp_path / "servers").mkdir()
         startup_checks()

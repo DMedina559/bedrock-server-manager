@@ -24,6 +24,7 @@
 </div>
 
     {# --- Settings Configuration Section (Initially hidden, populated by JS) --- #}
+{% if current_user.role == 'admin' %}
 <section id="settings-form-section" class="properties-config-section" style="display: none;">
     {# Header inside the section to contain the reload button #}
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -37,16 +38,8 @@
         {# The dynamically generated fieldsets and form groups will be injected here #}
     </div>
 
-    {# --- Theme Selection --- #}
-    <div style="margin-top: 20px;">
-        <h3>Theme</h3>
-        <div class="form-group">
-            <label for="theme-select">Select Theme:</label>
-            <select id="theme-select" name="theme">
-            </select>
-        </div>
-    </div>
 </section>
+{% endif %}
 
     {# The page-actions div should be outside the section, at the end of the content block #}
 <div class="page-actions">

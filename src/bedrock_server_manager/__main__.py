@@ -20,8 +20,8 @@ import atexit
 
 try:
     from . import __version__
-    from . import api
     from .config import app_name_title
+    from .db import database
     from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
@@ -38,6 +38,8 @@ try:
 
         stop_all_servers()
         global_api_plugin_manager.unload_plugins()
+        if database.engine:
+            database.engine.dispose()
 
     atexit.register(shutdown_hooks)
 except ImportError as e:
@@ -58,6 +60,9 @@ from .cli import (
     cleanup,
     generate_password,
     web,
+    setup,
+    service,
+    migrate,
 )
 
 
@@ -79,6 +84,7 @@ def cli(ctx: click.Context):
     If run without any arguments, it launches a user-friendly interactive
     menu to guide you through all available actions.
     """
+
     try:
         # --- Initial Application Setup ---
         log_dir = get_settings_instance().get("paths.logs")
@@ -96,6 +102,14 @@ def cli(ctx: click.Context):
 
         startup_checks(app_name_title, __version__)
 
+        # --- LOAD PLUGINS AND FIRE STARTUP EVENT ---
+        from . import api
+
+        plugin_manager = get_plugin_manager_instance()
+
+        # Now that all APIs are registered, we can safely load the plugins.
+        plugin_manager.load_plugins()
+
         # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
         # This ensures plugin_manager.load_plugins() has been called.
         global_api_plugin_manager.trigger_guarded_event("on_manager_startup")
@@ -111,6 +125,7 @@ def cli(ctx: click.Context):
 
     ctx.obj = {
         "cli": cli,
+        "bsm": get_manager_instance(),
     }
 
     if ctx.invoked_subcommand is None:
@@ -123,19 +138,14 @@ def cli(ctx: click.Context):
 def _add_commands_to_cli():
     """Attaches all core command groups/standalone commands AND plugin commands to the main CLI group."""
 
-    # Core Command Groups
     cli.add_command(web.web)
-
-    if platform.system() == "Windows":
-        from .cli import windows_service
-
-        cli.add_command(windows_service.service)
-
-    # Standalone Commands
     cli.add_command(cleanup.cleanup)
+    cli.add_command(setup.setup)
     cli.add_command(
         generate_password.generate_password_hash_command, name="generate-password"
     )
+    cli.add_command(service.service)
+    cli.add_command(migrate.migrate)
 
 
 # Call the assembly function to build the CLI with core and plugin commands
