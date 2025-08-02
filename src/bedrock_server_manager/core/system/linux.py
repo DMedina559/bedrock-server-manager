@@ -46,8 +46,8 @@ logger = logging.getLogger(__name__)
 
 
 # --- Systemd Service Management ---
-def get_systemd_user_service_file_path(service_name_full: str) -> str:
-    """Generates the standard path for a systemd user service file on Linux.
+def get_systemd_service_file_path(service_name_full: str, system: bool = False) -> str:
+    """Generates the standard path for a systemd service file on Linux.
 
     Systemd user service files are typically located in the user's
     ``~/.config/systemd/user/`` directory. This function constructs that path.
@@ -58,6 +58,8 @@ def get_systemd_user_service_file_path(service_name_full: str) -> str:
         service_name_full (str): The full name of the service unit.
             It can be provided with or without the ``.service`` suffix
             (e.g., "my-app.service" or "my-app").
+        system (bool, optional): If ``True``, returns the path for a system-wide
+            service. Defaults to ``False``.
 
     Returns:
         str: The absolute path to where the systemd user service file should
@@ -76,22 +78,28 @@ def get_systemd_user_service_file_path(service_name_full: str) -> str:
         if service_name_full.endswith(".service")
         else f"{service_name_full}.service"
     )
-    # User service files are typically located in ~/.config/systemd/user/
-    return os.path.join(
-        os.path.expanduser("~"), ".config", "systemd", "user", name_to_use
-    )
+
+    if system:
+        return os.path.join("/etc/systemd/system", name_to_use)
+    else:
+        # User service files are typically located in ~/.config/systemd/user/
+        return os.path.join(
+            os.path.expanduser("~"), ".config", "systemd", "user", name_to_use
+        )
 
 
-def check_service_exists(service_name_full: str) -> bool:
+def check_service_exists(service_name_full: str, system: bool = False) -> bool:
     """Checks if a systemd user service file exists on Linux.
 
     This function determines if a service is defined by checking for the
     presence of its service unit file in the standard systemd user directory
-    (obtained via :func:`.get_systemd_user_service_file_path`).
+    (obtained via :func:`.get_systemd_service_file_path`).
 
     Args:
         service_name_full (str): The full name of the service unit to check
             (e.g., "my-app.service" or "my-app").
+        system (bool, optional): If ``True``, checks for a system-wide service.
+            Defaults to ``False``.
 
     Returns:
         bool: ``True`` if the service file exists, ``False`` otherwise.
@@ -110,10 +118,8 @@ def check_service_exists(service_name_full: str) -> bool:
             "Full service name cannot be empty and must be a string for service file check."
         )
 
-    service_file_path = get_systemd_user_service_file_path(service_name_full)
-    logger.debug(
-        f"Checking for systemd user service file existence: '{service_file_path}'"
-    )
+    service_file_path = get_systemd_service_file_path(service_name_full, system=system)
+    logger.debug(f"Checking for systemd service file existence: '{service_file_path}'")
     exists = os.path.isfile(service_file_path)
     logger.debug(f"Service file '{service_file_path}' exists: {exists}")
     return exists
@@ -130,6 +136,7 @@ def create_systemd_service_file(
     restart_policy: str = "on-failure",
     restart_sec: int = 10,
     after_targets: str = "network.target",
+    system: bool = False,
 ) -> None:
     """Creates or updates a systemd user service file on Linux and reloads the daemon.
 
@@ -164,6 +171,8 @@ def create_systemd_service_file(
         after_targets (str, optional): Specifies other systemd units that this
             service should start after. Used for ``After=``.
             Defaults to "network.target".
+        system (bool, optional): If ``True``, creates a system-wide service.
+            Defaults to ``False``.
 
     Raises:
         MissingArgumentError: If any of `service_name_full`, `description`,
@@ -188,25 +197,18 @@ def create_systemd_service_file(
     if not os.path.isdir(working_directory):
         raise AppFileNotFoundError(working_directory, "WorkingDirectory")
 
-    name_to_use = (
-        service_name_full
-        if service_name_full.endswith(".service")
-        else f"{service_name_full}.service"
-    )
-    systemd_user_dir = os.path.join(
-        os.path.expanduser("~"), ".config", "systemd", "user"
-    )
-    service_file_path = os.path.join(systemd_user_dir, name_to_use)
+    service_file_path = get_systemd_service_file_path(service_name_full, system=system)
+    service_dir = os.path.dirname(service_file_path)
 
     logger.info(
-        f"Creating/Updating generic systemd user service file: '{service_file_path}'"
+        f"Creating/Updating generic systemd service file: '{service_file_path}'"
     )
 
     try:
-        os.makedirs(systemd_user_dir, exist_ok=True)
+        os.makedirs(service_dir, exist_ok=True)
     except OSError as e:
         raise FileOperationError(
-            f"Failed to create systemd user directory '{systemd_user_dir}': {e}"
+            f"Failed to create systemd directory '{service_dir}': {e}"
         ) from e
 
     # Build the service file content.
@@ -214,12 +216,14 @@ def create_systemd_service_file(
         f"ExecStartPre={exec_start_pre_command}" if exec_start_pre_command else ""
     )
     exec_stop_line = f"ExecStop={exec_stop_command}" if exec_stop_command else ""
+    user_line = f"User={os.getlogin()}" if system else ""
 
     service_content = f"""[Unit]
 Description={description}
 After={after_targets}
 
 [Service]
+{user_line}
 Type={service_type}
 WorkingDirectory={working_directory}
 {exec_start_pre_line}
@@ -252,22 +256,26 @@ WantedBy=default.target
     if not systemctl_cmd:
         raise CommandNotFoundError("systemctl")
     try:
+        # Conditionally build the command to avoid empty strings for system-wide services.
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.append("daemon-reload")
+
         subprocess.run(
-            [systemctl_cmd, "--user", "daemon-reload"],
+            command,
             check=True,
             capture_output=True,
             text=True,
         )
         logger.info(
-            f"Systemd user daemon reloaded successfully for service '{name_to_use}'."
+            f"Systemd daemon reloaded successfully for service '{service_name_full}'."
         )
     except subprocess.CalledProcessError as e:
-        raise SystemError(
-            f"Failed to reload systemd user daemon. Error: {e.stderr}"
-        ) from e
+        raise SystemError(f"Failed to reload systemd daemon. Error: {e.stderr}") from e
 
 
-def enable_systemd_service(service_name_full: str) -> None:
+def enable_systemd_service(service_name_full: str, system: bool = False) -> None:
     """Enables a systemd user service on Linux to start on user login.
 
     This function uses ``systemctl --user enable <service_name>`` to enable
@@ -279,6 +287,8 @@ def enable_systemd_service(service_name_full: str) -> None:
     Args:
         service_name_full (str): The full name of the service unit to enable
             (e.g., "my-app.service" or "my-app").
+        system (bool, optional): If ``True``, enables a system-wide service.
+            Defaults to ``False``.
 
     Raises:
         MissingArgumentError: If `service_name_full` is empty or not a string.
@@ -301,13 +311,13 @@ def enable_systemd_service(service_name_full: str) -> None:
         if service_name_full.endswith(".service")
         else f"{service_name_full}.service"
     )
-    logger.info(f"Attempting to enable systemd user service '{name_to_use}'...")
+    logger.info(f"Attempting to enable systemd service '{name_to_use}'...")
 
     systemctl_cmd = shutil.which("systemctl")
     if not systemctl_cmd:
         raise CommandNotFoundError("systemctl")
 
-    if not check_service_exists(name_to_use):
+    if not check_service_exists(name_to_use, system=system):
         raise SystemError(
             f"Cannot enable: Systemd service file for '{name_to_use}' does not exist. "
             "Ensure the service file has been created and daemon-reloaded."
@@ -315,15 +325,19 @@ def enable_systemd_service(service_name_full: str) -> None:
 
     # Check if already enabled to avoid unnecessary calls.
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["is-enabled", name_to_use])
         process = subprocess.run(
-            [systemctl_cmd, "--user", "is-enabled", name_to_use],
+            command,
             capture_output=True,
             text=True,
             check=False,  # Don't raise for non-zero exit if not enabled
         )
         status_output = process.stdout.strip().lower()
         logger.debug(
-            f"'systemctl --user is-enabled {name_to_use}' output: '{status_output}', return code: {process.returncode}"
+            f"'systemctl is-enabled {name_to_use}' output: '{status_output}', return code: {process.returncode}"
         )
         # "enabled" means it's enabled. Other statuses like "disabled", "static", "masked"
         # or an empty output with non-zero exit code mean it's not actively enabled.
@@ -338,8 +352,12 @@ def enable_systemd_service(service_name_full: str) -> None:
         )
 
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["enable", name_to_use])
         subprocess.run(
-            [systemctl_cmd, "--user", "enable", name_to_use],
+            command,
             check=True,
             capture_output=True,
             text=True,
@@ -351,7 +369,7 @@ def enable_systemd_service(service_name_full: str) -> None:
         ) from e
 
 
-def disable_systemd_service(service_name_full: str) -> None:
+def disable_systemd_service(service_name_full: str, system: bool = False) -> None:
     """Disables a systemd user service on Linux from starting on user login.
 
     This function uses ``systemctl --user disable <service_name>`` to disable
@@ -365,6 +383,8 @@ def disable_systemd_service(service_name_full: str) -> None:
     Args:
         service_name_full (str): The full name of the service unit to disable
             (e.g., "my-app.service" or "my-app").
+        system (bool, optional): If ``True``, disables a system-wide service.
+            Defaults to ``False``.
 
     Raises:
         MissingArgumentError: If `service_name_full` is empty or not a string.
@@ -387,13 +407,13 @@ def disable_systemd_service(service_name_full: str) -> None:
         if service_name_full.endswith(".service")
         else f"{service_name_full}.service"
     )
-    logger.info(f"Attempting to disable systemd user service '{name_to_use}'...")
+    logger.info(f"Attempting to disable systemd service '{name_to_use}'...")
 
     systemctl_cmd = shutil.which("systemctl")
     if not systemctl_cmd:
         raise CommandNotFoundError("systemctl")
 
-    if not check_service_exists(name_to_use):
+    if not check_service_exists(name_to_use, system=system):
         logger.info(  # Changed from debug to info for more visibility on this common case
             f"Service file for '{name_to_use}' does not exist. Assuming already disabled or removed."
         )
@@ -401,15 +421,19 @@ def disable_systemd_service(service_name_full: str) -> None:
 
     # Check if already disabled or not in an "enabled" state.
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["is-enabled", name_to_use])
         process = subprocess.run(
-            [systemctl_cmd, "--user", "is-enabled", name_to_use],
+            command,
             capture_output=True,
             text=True,
             check=False,  # Don't raise for non-zero exit
         )
         status_output = process.stdout.strip().lower()
         logger.debug(
-            f"'systemctl --user is-enabled {name_to_use}' output: '{status_output}', return code: {process.returncode}"
+            f"'systemctl is-enabled {name_to_use}' output: '{status_output}', return code: {process.returncode}"
         )
         # If not "enabled", it's effectively disabled for auto-start or in a state
         # where 'disable' might not apply or is redundant.
@@ -426,8 +450,12 @@ def disable_systemd_service(service_name_full: str) -> None:
         )
 
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["disable", name_to_use])
         subprocess.run(
-            [systemctl_cmd, "--user", "disable", name_to_use],
+            command,
             check=True,
             capture_output=True,
             text=True,

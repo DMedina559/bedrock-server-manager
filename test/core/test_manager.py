@@ -700,6 +700,7 @@ def test_create_web_service_file_linux(linux_manager, mocker, temp_manager_dirs)
         restart_policy="on-failure",
         restart_sec=10,
         after_targets="network.target",
+        system=False,
     )
 
 
@@ -728,7 +729,9 @@ def test_check_web_service_exists_linux(linux_manager, mocker):
         return_value=True,
     )
     assert linux_manager.check_web_service_exists() is True
-    mock_check_exists.assert_called_once_with(linux_manager._WEB_SERVICE_SYSTEMD_NAME)
+    mock_check_exists.assert_called_once_with(
+        linux_manager._WEB_SERVICE_SYSTEMD_NAME, system=False
+    )
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
@@ -738,7 +741,9 @@ def test_enable_web_service_linux(linux_manager, mocker):
         "bedrock_server_manager.core.system.linux.enable_systemd_service"
     )
     linux_manager.enable_web_service()
-    mock_enable_systemd.assert_called_once_with(linux_manager._WEB_SERVICE_SYSTEMD_NAME)
+    mock_enable_systemd.assert_called_once_with(
+        linux_manager._WEB_SERVICE_SYSTEMD_NAME, system=False
+    )
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
@@ -749,7 +754,7 @@ def test_disable_web_service_linux(linux_manager, mocker):
     )
     linux_manager.disable_web_service()
     mock_disable_systemd.assert_called_once_with(
-        linux_manager._WEB_SERVICE_SYSTEMD_NAME
+        linux_manager._WEB_SERVICE_SYSTEMD_NAME, system=False
     )
 
 
@@ -757,7 +762,7 @@ def test_disable_web_service_linux(linux_manager, mocker):
 def test_remove_web_service_file_linux_exists(linux_manager, mocker):
     """Test remove_web_service_file on Linux when file exists."""
     mock_get_path = mocker.patch(
-        "bedrock_server_manager.core.system.linux.get_systemd_user_service_file_path",
+        "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
         return_value="/fake/service.file",
     )
     mocker.patch("os.path.isfile", return_value=True)  # Service file exists
@@ -765,7 +770,9 @@ def test_remove_web_service_file_linux_exists(linux_manager, mocker):
     mock_subprocess_run = mocker.patch("subprocess.run")
 
     assert linux_manager.remove_web_service_file() is True
-    mock_get_path.assert_called_once_with(linux_manager._WEB_SERVICE_SYSTEMD_NAME)
+    mock_get_path.assert_called_once_with(
+        linux_manager._WEB_SERVICE_SYSTEMD_NAME, system=False
+    )
     mock_os_remove.assert_called_once_with("/fake/service.file")
     mock_subprocess_run.assert_called_once_with(
         ["/usr/bin/systemctl", "--user", "daemon-reload"],
@@ -778,7 +785,7 @@ def test_remove_web_service_file_linux_exists(linux_manager, mocker):
 def test_remove_web_service_file_linux_not_exists(linux_manager, mocker):
     """Test remove_web_service_file on Linux when file does not exist."""
     mock_get_path = mocker.patch(
-        "bedrock_server_manager.core.system.linux.get_systemd_user_service_file_path",
+        "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
         return_value="/fake/service.file",
     )
     mocker.patch("os.path.isfile", return_value=False)  # Service file does NOT exist
@@ -872,7 +879,7 @@ def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog):
 
     # remove_web_service_file might still try os.remove but skip daemon-reload
     mock_get_path = mocker.patch(
-        "bedrock_server_manager.core.system.linux.get_systemd_user_service_file_path",
+        "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
         return_value="/fake/service.file",
     )
     mocker.patch("os.path.isfile", return_value=True)

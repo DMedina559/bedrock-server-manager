@@ -655,7 +655,12 @@ class BedrockServerManager:
 
         return " ".join(command_parts)
 
-    def create_web_service_file(self) -> None:
+    def create_web_service_file(
+        self,
+        system: bool = False,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> None:
         """Creates or updates the system service file/entry for the Web UI.
 
         This method handles the OS-specific logic for creating a system service
@@ -721,6 +726,7 @@ class BedrockServerManager:
                 system_linux_utils.create_systemd_service_file(
                     service_name_full=self._WEB_SERVICE_SYSTEMD_NAME,
                     description=description,
+                    system=system,
                     working_directory=working_dir,
                     exec_start_command=start_command,
                     exec_stop_command=stop_command,
@@ -787,6 +793,8 @@ class BedrockServerManager:
                     display_name=self._WEB_SERVICE_WINDOWS_DISPLAY_NAME,
                     description=description,
                     command=windows_service_binpath_command,
+                    username=username,
+                    password=password,
                 )
                 logger.info(
                     f"Windows service '{self._WEB_SERVICE_WINDOWS_NAME_INTERNAL}' created/updated successfully."
@@ -806,7 +814,7 @@ class BedrockServerManager:
                 f"Web UI service creation is not supported on OS: {os_type}"
             )
 
-    def check_web_service_exists(self) -> bool:
+    def check_web_service_exists(self, system: bool = False) -> bool:
         """Checks if the system service for the Web UI has been created.
 
         Delegates to OS-specific checks:
@@ -821,7 +829,7 @@ class BedrockServerManager:
         if os_type == "Linux":
             self._ensure_linux_for_web_service("check_web_service_exists")
             return system_linux_utils.check_service_exists(
-                self._WEB_SERVICE_SYSTEMD_NAME
+                self._WEB_SERVICE_SYSTEMD_NAME, system=system
             )
         elif os_type == "Windows":
             self._ensure_windows_for_web_service("check_web_service_exists")
@@ -832,7 +840,7 @@ class BedrockServerManager:
             logger.debug(f"Web service existence check not supported on OS: {os_type}")
             return False
 
-    def enable_web_service(self) -> None:
+    def enable_web_service(self, system: bool = False) -> None:
         """Enables the Web UI system service to start automatically.
 
         On Linux, this typically means enabling the systemd service to start on boot or user login.
@@ -852,7 +860,9 @@ class BedrockServerManager:
             logger.info(
                 f"Enabling systemd service '{self._WEB_SERVICE_SYSTEMD_NAME}' for Web UI."
             )
-            system_linux_utils.enable_systemd_service(self._WEB_SERVICE_SYSTEMD_NAME)
+            system_linux_utils.enable_systemd_service(
+                self._WEB_SERVICE_SYSTEMD_NAME, system=system
+            )
             logger.info(f"Systemd service '{self._WEB_SERVICE_SYSTEMD_NAME}' enabled.")
         elif os_type == "Windows":
             self._ensure_windows_for_web_service("enable_web_service")
@@ -870,7 +880,7 @@ class BedrockServerManager:
                 f"Web UI service enabling is not supported on OS: {os_type}"
             )
 
-    def disable_web_service(self) -> None:
+    def disable_web_service(self, system: bool = False) -> None:
         """Disables the Web UI system service from starting automatically.
 
         On Linux, this typically means disabling the systemd service.
@@ -890,7 +900,9 @@ class BedrockServerManager:
             logger.info(
                 f"Disabling systemd service '{self._WEB_SERVICE_SYSTEMD_NAME}' for Web UI."
             )
-            system_linux_utils.disable_systemd_service(self._WEB_SERVICE_SYSTEMD_NAME)
+            system_linux_utils.disable_systemd_service(
+                self._WEB_SERVICE_SYSTEMD_NAME, system=system
+            )
             logger.info(f"Systemd service '{self._WEB_SERVICE_SYSTEMD_NAME}' disabled.")
         elif os_type == "Windows":
             self._ensure_windows_for_web_service("disable_web_service")
@@ -908,7 +920,7 @@ class BedrockServerManager:
                 f"Web UI service disabling is not supported on OS: {os_type}"
             )
 
-    def remove_web_service_file(self) -> bool:
+    def remove_web_service_file(self, system: bool = False) -> bool:
         """Removes the Web UI system service definition.
 
         .. warning::
@@ -943,8 +955,8 @@ class BedrockServerManager:
         os_type = self.get_os_type()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("remove_web_service_file")
-            service_file_path = system_linux_utils.get_systemd_user_service_file_path(
-                self._WEB_SERVICE_SYSTEMD_NAME
+            service_file_path = system_linux_utils.get_systemd_service_file_path(
+                self._WEB_SERVICE_SYSTEMD_NAME, system=system
             )
             if os.path.isfile(service_file_path):
                 logger.info(f"Removing systemd service file: {service_file_path}")
@@ -989,7 +1001,7 @@ class BedrockServerManager:
                 f"Web UI service removal is not supported on OS: {os_type}"
             )
 
-    def is_web_service_active(self) -> bool:
+    def is_web_service_active(self, system: bool = False) -> bool:
         """Checks if the Web UI system service is currently active (running).
 
         Delegates to OS-specific checks:
@@ -1020,7 +1032,7 @@ class BedrockServerManager:
                 process = subprocess.run(
                     [
                         systemctl_cmd,
-                        "--user",
+                        "--user" if not system else "",
                         "is-active",
                         self._WEB_SERVICE_SYSTEMD_NAME,
                     ],
@@ -1085,7 +1097,7 @@ class BedrockServerManager:
             logger.debug(f"Web UI service active check not supported on OS: {os_type}")
             return False
 
-    def is_web_service_enabled(self) -> bool:
+    def is_web_service_enabled(self, system: bool = False) -> bool:
         """Checks if the Web UI system service is enabled for automatic startup.
 
         Delegates to OS-specific checks:
@@ -1117,7 +1129,7 @@ class BedrockServerManager:
                 process = subprocess.run(
                     [
                         systemctl_cmd,
-                        "--user",
+                        "--user" if not system else "",
                         "is-enabled",
                         self._WEB_SERVICE_SYSTEMD_NAME,
                     ],

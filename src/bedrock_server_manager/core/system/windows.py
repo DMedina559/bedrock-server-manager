@@ -27,6 +27,7 @@ Note:
     where appropriate.
 """
 import logging
+from typing import Optional
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
@@ -138,6 +139,8 @@ def create_windows_service(
     display_name: str,
     description: str,
     command: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ) -> None:
     """Creates a new Windows service or updates an existing one.
 
@@ -158,6 +161,10 @@ def create_windows_service(
         command (str): The full command line to execute for the service,
             including the path to the executable and any arguments.
             Example: ``"C:\\path\\to\\python.exe C:\\path\\to\\script.py --run-as-service"``
+        username (Optional[str], optional): The username to run the service as.
+            If ``None``, the service runs as ``LocalSystem``. Defaults to ``None``.
+        password (Optional[str], optional): The password for the user.
+            Required if `username` is provided. Defaults to ``None``.
 
     Raises:
         SystemError: If ``pywin32`` is not available, or for other unexpected
@@ -200,8 +207,8 @@ def create_windows_service(
                 None,
                 0,
                 None,
-                None,
-                None,
+                f".\\{username}" if username else None,
+                password,
             )
             logger.info(f"Service '{service_name}' created successfully.")
         else:
@@ -219,8 +226,8 @@ def create_windows_service(
                 None,  # LoadOrderGroup
                 0,  # TagId
                 None,  # Dependencies
-                None,  # ServiceStartName
-                None,  # Password
+                f".\\{username}" if username else None,  # ServiceStartName
+                password,  # Password
                 display_name,  # DisplayName
             )
             logger.info(f"Service '{service_name}' command and display name updated.")

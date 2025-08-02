@@ -172,7 +172,6 @@ async def get_custom_zips(current_user: User = Depends(get_moderator_user)):
             return {"status": "success", "custom_zips": []}
 
         custom_zips = [f for f in os.listdir(custom_dir) if f.endswith(".zip")]
-        print(f"Custom zips found: {custom_zips}")
         return {"status": "success", "custom_zips": custom_zips}
     except Exception as e:
         logger.error(f"Failed to get custom zips: {e}", exc_info=True)

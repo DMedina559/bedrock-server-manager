@@ -33,7 +33,8 @@ def mock_ctx(mock_bsm):
     ctx.obj = {"bsm": mock_bsm}
     return ctx
 
-@pytest.mark.skip(reason= "Failing in github actions but passes in other envs")
+
+@pytest.mark.skip(reason="Failing in github actions but passes in other envs")
 @patch("bedrock_server_manager.cli.service.interactive_web_service_workflow")
 def test_configure_web_service_interactive(mock_interactive_workflow, runner, mock_bsm):
     result = runner.invoke(configure_web_service, obj={"bsm": mock_bsm})
@@ -55,6 +56,9 @@ def test_configure_web_service_non_interactive(mock_perform_config, runner, mock
         bsm=mock_bsm,
         setup_service=True,
         enable_autostart=True,
+        system=False,
+        username=None,
+        password=None,
     )
 
 
