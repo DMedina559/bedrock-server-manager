@@ -45,6 +45,16 @@
             </div>
         </div>
 
+        {% if current_user.role == 'admin' %}
+        <div class="nav-item">
+            <a href="#" class="nav-link has-submenu">Extras</a>
+            <div class="submenu">
+                <a href="#content-section" class="nav-link" data-target="content-section">Manage Content</a>
+                <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="nav-item">
             <a href="#" class="nav-link has-submenu">Settings</a>
             <div class="submenu">
@@ -57,16 +67,6 @@
                 {% endif %}
             </div>
         </div>
-
-        {% if current_user.role == 'admin' %}
-        <div class="nav-item">
-            <a href="#" class="nav-link has-submenu">Content</a>
-            <div class="submenu">
-                <a href="#content-section" class="nav-link" data-target="content-section">Content</a>
-                <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
-            </div>
-        </div>
-        {% endif %}
 
         {# --- Plugin Web Pages Submenu --- #}
         {% if plugin_html_pages %}
