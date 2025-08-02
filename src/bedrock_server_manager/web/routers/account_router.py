@@ -19,6 +19,11 @@ class ThemeUpdate(BaseModel):
     theme: str
 
 
+class ProfileUpdate(BaseModel):
+    full_name: str
+    email: str
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
@@ -49,6 +54,24 @@ async def update_theme(
             db.commit()
             return BaseApiResponse(
                 status="success", message="Theme updated successfully"
+            )
+    return JSONResponse(status_code=404, content={"message": "User not found"})
+
+
+@router.post("/api/account/profile", response_model=BaseApiResponse)
+async def update_profile(
+    profile_update: ProfileUpdate, user: UserSchema = Depends(get_current_user)
+):
+    with db_session_manager() as db:
+        db_user = (
+            db.query(UserModel).filter(UserModel.username == user.username).first()
+        )
+        if db_user:
+            db_user.full_name = profile_update.full_name
+            db_user.email = profile_update.email
+            db.commit()
+            return BaseApiResponse(
+                status="success", message="Profile updated successfully"
             )
     return JSONResponse(status_code=404, content={"message": "User not found"})
 

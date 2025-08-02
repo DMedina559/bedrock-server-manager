@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Bedrock Server Manager - Audit Log{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Audit Log</h1>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td>
+                <td>{{ log.user.username }}</td>
+                <td>{{ log.action }}</td>
+                <td>{{ log.details | tojson }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

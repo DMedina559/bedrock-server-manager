@@ -13,7 +13,12 @@ from sqlalchemy.exc import IntegrityError
 from ...db.database import get_db
 from ...db.models import User, RegistrationToken
 from ..templating import templates
-from ..auth_utils import pwd_context, get_current_user, get_current_user_optional, get_admin_user
+from ..auth_utils import (
+    pwd_context,
+    get_current_user,
+    get_current_user_optional,
+    get_admin_user,
+)
 from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)

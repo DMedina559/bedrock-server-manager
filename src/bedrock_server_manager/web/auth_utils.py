@@ -147,7 +147,7 @@ async def get_current_user_optional(
                 .filter(UserModel.username == username)
                 .first()
             )
-            if not user:
+            if not user or not user.is_active:
                 return None
 
             user.last_seen = datetime.datetime.now(timezone.utc)

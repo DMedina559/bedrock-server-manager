@@ -267,11 +267,13 @@ async function sendServerActionRequest(serverName, actionPath, method = 'POST', 
                 // Message usually shown by caller based on responseData.message
                 // Button is handled in finally block (remains disabled)
             } else {
-                // HTTP success (2xx), but application status is 'error' or missing/unexpected
-                const appStatus = responseData?.status || 'unknown';
-                const appMessage = responseData?.message || `Action at ${apiUrl} reported status: ${appStatus}.`;
-                console.warn(`${functionName}: HTTP success but application status is '${appStatus}'. Message: ${appMessage}`);
-                showStatusMessage(appMessage, 'warning'); // Use warning or error depending on severity preference
+                if (actionPath !== '/api/account' && actionPath !== '/api/themes') {
+                    // HTTP success (2xx), but application status is 'error' or missing/unexpected
+                    const appStatus = responseData?.status || 'unknown';
+                    const appMessage = responseData?.message || `Action at ${apiUrl} reported status: ${appStatus}.`;
+                    console.warn(`${functionName}: HTTP success but application status is '${appStatus}'. Message: ${appMessage}`);
+                    showStatusMessage(appMessage, 'warning'); // Use warning or error depending on severity preference
+                }
             }
         }
 

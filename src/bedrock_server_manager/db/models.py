@@ -1,7 +1,7 @@
 """Database models for Bedrock Server Manager."""
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -19,6 +19,9 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
     theme = Column(String, default="default")
+    is_active = Column(Boolean, default=True)
+    full_name = Column(String, nullable=True)
+    email = Column(String, nullable=True)
 
 
 class Setting(Base):
@@ -65,3 +68,15 @@ class Player(Base):
     id = Column(Integer, primary_key=True, index=True)
     player_name = Column(String, unique=True, index=True)
     xuid = Column(String, unique=True, index=True)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    action = Column(String)
+    details = Column(JSON)
+
+    user = relationship("User")

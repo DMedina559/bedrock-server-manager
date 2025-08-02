@@ -10,6 +10,7 @@ if (typeof sendServerActionRequest === 'undefined' || typeof showStatusMessage =
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadUserProfile();
     // --- Theme Selector Logic ---
     const themeSelect = document.getElementById('theme-select');
     if (themeSelect) {
@@ -35,14 +36,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const newTheme = event.target.value;
             const themeStylesheet = document.getElementById('theme-stylesheet');
             if (themeStylesheet) {
-                const themePath = await sendServerActionRequest(null, `/api/themes`, 'GET', null, null, true);
-                themeStylesheet.href = themePath[newTheme];
+                const themes = await sendServerActionRequest(null, `/api/themes`, 'GET', null, null, true);
+                if (themes) {
+                    themeStylesheet.href = themes[newTheme];
+                }
             }
 
             // Save the new theme setting for the user
             await sendServerActionRequest(null, '/api/account/theme', 'POST', { theme: newTheme }, null);
         });
     }
+
+    // --- Sidebar Navigation ---
+    const navLinks = document.querySelectorAll('.sidebar-nav .nav-link');
+    const contentSections = document.querySelectorAll('.main-content .content-section');
+
+    navLinks.forEach(link => {
+        link.addEventListener('click', (event) => {
+            // Check if it's a link to another page
+            if (!link.getAttribute('data-target')) {
+                return;
+            }
+
+            event.preventDefault();
+            const targetId = link.getAttribute('data-target');
+
+            // Deactivate all links and sections
+            navLinks.forEach(navLink => navLink.classList.remove('active'));
+            contentSections.forEach(section => section.classList.remove('active'));
+
+            // Activate the clicked link and target section
+            link.classList.add('active');
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) {
+                targetSection.classList.add('active');
+            }
+        });
+    });
 });
 
 function changePassword() {
@@ -65,6 +95,29 @@ function changePassword() {
         .then(response => {
             if (response && response.status === 'success') {
                 form.reset();
+            }
+        });
+}
+
+function updateProfile() {
+    const form = document.getElementById('profile-form');
+    const fullName = form.elements['full_name'].value;
+    const email = form.elements['email'].value;
+
+    const data = {
+        full_name: fullName,
+        email: email,
+    };
+
+    sendServerActionRequest(null, '/api/account/profile', 'POST', data);
+}
+
+function loadUserProfile() {
+    sendServerActionRequest(null, '/api/account', 'GET', null, null, true)
+        .then(response => {
+            if (response) {
+                document.getElementById('full_name').value = response.full_name || '';
+                document.getElementById('email').value = response.email || '';
             }
         });
 }
