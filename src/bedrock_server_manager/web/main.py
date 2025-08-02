@@ -107,11 +107,15 @@ async def setup_check_middleware(request: Request, call_next):
         and not request.url.path.startswith("/static")
     ):
         return RedirectResponse(url="/setup")
+
+    # Manually handle authentication to bypass it for static files
+    if not request.url.path.startswith("/static"):
+        auth_backend = CustomAuthBackend()
+        user, _ = await auth_backend.authenticate(request)
+        request.state.user = user
+
     response = await call_next(request)
     return response
-
-
-app.add_middleware(AuthenticationMiddleware, backend=CustomAuthBackend())
 
 
 @app.middleware("http")

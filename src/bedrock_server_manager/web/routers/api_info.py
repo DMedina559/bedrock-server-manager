@@ -306,7 +306,6 @@ async def get_server_version_api_route(
     )
     try:
         result = info_api.get_server_installed_version(server_name)
-        print(f"Result: {result}")
         if result.get("status") == "success":
             return GeneralApiResponse(
                 status="success",
