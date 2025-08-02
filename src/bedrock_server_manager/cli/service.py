@@ -82,6 +82,9 @@ def _perform_web_service_configuration(
     bsm: BedrockServerManager,
     setup_service: Optional[bool],
     enable_autostart: Optional[bool],
+    system: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ):
     """
     Internal helper to apply Web UI service configurations via API calls.
@@ -125,7 +128,9 @@ def _perform_web_service_configuration(
         click.secho(
             f"\n--- Configuring Web UI System Service ({os_type}) ---", bold=True
         )
-        response = web_api.create_web_ui_service(autostart=enable_flag)
+        response = web_api.create_web_ui_service(
+            autostart=enable_flag, system=system, username=username, password=password
+        )
         _handle_api_response(response, "Web UI system service configured successfully.")
     elif (
         enable_autostart is not None
@@ -154,6 +159,9 @@ def interactive_web_service_workflow(bsm: Optional[BedrockServerManager]):
     click.secho("\n--- Interactive Web UI Service Configuration ---", bold=True)
     setup_service_choice = None
     enable_autostart_choice = None
+    system_choice = False
+    username = None
+    password = None
 
     if bsm.can_manage_services:
         os_type = bsm.get_os_type()
@@ -171,9 +179,21 @@ def interactive_web_service_workflow(bsm: Optional[BedrockServerManager]):
             f"Create or update the {service_type_str} for the Web UI?", default=True
         ).ask():
             setup_service_choice = True
+
+            if os_type == "Linux":
+                system_choice = questionary.confirm(
+                    "Configure as a system-wide service? (Requires sudo)", default=False
+                ).ask()
+            elif os_type == "Windows":
+                if questionary.confirm(
+                    "Run the service as a specific user?", default=True
+                ).ask():
+                    username = questionary.text("Enter the username:").ask()
+                    password = questionary.password("Enter the password:").ask()
+
             autostart_prompt = (
                 "Enable the Web UI service to start automatically when you log in?"
-                if os_type == "Linux"
+                if os_type == "Linux" and not system_choice
                 else "Enable the Web UI service to start automatically when the system boots?"
             )
             enable_autostart_choice = questionary.confirm(
@@ -196,6 +216,9 @@ def interactive_web_service_workflow(bsm: Optional[BedrockServerManager]):
             bsm=bsm,
             setup_service=setup_service_choice,
             enable_autostart=enable_autostart_choice,
+            system=system_choice,
+            username=username,
+            password=password,
         )
         click.secho("\nWeb UI service configuration complete.", fg="green", bold=True)
     except BSMError as e:
@@ -228,11 +251,25 @@ def service():
     show_default=False,
     help="Enable or disable Web UI service autostart.",
 )
+@click.option(
+    "-s",
+    "--system",
+    "system_flag",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Configure as a system-wide service (Linux only, requires sudo).",
+)
+@click.option("--username", help="Username to run the Windows service as.")
+@click.option("--password", help="Password for the user.", prompt=True, hide_input=True)
 @click.pass_context
 def configure_web_service(
     ctx: click.Context,
     setup_service: bool,
     autostart_flag: Optional[bool],
+    system_flag: bool,
+    username: Optional[str],
+    password: Optional[str],
 ):
     """
     Configures the OS-level system service for the Web UI application.
@@ -278,6 +315,9 @@ def configure_web_service(
             bsm=bsm,
             setup_service=setup_service,
             enable_autostart=autostart_flag,
+            system=system_flag,
+            username=username,
+            password=password,
         )
         click.secho("\nWeb UI configuration applied successfully.", fg="green")
     except MissingArgumentError as e:
@@ -289,8 +329,17 @@ def configure_web_service(
 
 
 @service.command("enable")
+@click.option(
+    "-s",
+    "--system",
+    "system_flag",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Enable a system-wide service (Linux only, requires sudo).",
+)
 @requires_web_service_manager
-def enable_web_service_cli():
+def enable_web_service_cli(system_flag: bool):
     """
     Enables the Web UI system service for automatic startup.
 
@@ -303,7 +352,7 @@ def enable_web_service_cli():
     """
     click.echo("Attempting to enable Web UI system service...")
     try:
-        response = web_api.enable_web_ui_service()
+        response = web_api.enable_web_ui_service(system=system_flag)
         _handle_api_response(response, "Web UI service enabled successfully.")
     except BSMError as e:
         click.secho(f"Failed to enable Web UI service: {e}", fg="red")
@@ -311,8 +360,17 @@ def enable_web_service_cli():
 
 
 @service.command("disable")
+@click.option(
+    "-s",
+    "--system",
+    "system_flag",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Disable a system-wide service (Linux only, requires sudo).",
+)
 @requires_web_service_manager
-def disable_web_service_cli():
+def disable_web_service_cli(system_flag: bool):
     """
     Disables the Web UI system service from starting automatically.
 
@@ -324,7 +382,7 @@ def disable_web_service_cli():
     """
     click.echo("Attempting to disable Web UI system service...")
     try:
-        response = web_api.disable_web_ui_service()
+        response = web_api.disable_web_ui_service(system=system_flag)
         _handle_api_response(response, "Web UI service disabled successfully.")
     except BSMError as e:
         click.secho(f"Failed to disable Web UI service: {e}", fg="red")
@@ -332,8 +390,17 @@ def disable_web_service_cli():
 
 
 @service.command("remove")
+@click.option(
+    "-s",
+    "--system",
+    "system_flag",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Remove a system-wide service (Linux only, requires sudo).",
+)
 @requires_web_service_manager
-def remove_web_service_cli():
+def remove_web_service_cli(system_flag: bool):
     """
     Removes the Web UI system service definition from the OS.
 
@@ -353,7 +420,7 @@ def remove_web_service_cli():
         return
     click.echo("Attempting to remove Web UI system service...")
     try:
-        response = web_api.remove_web_ui_service()
+        response = web_api.remove_web_ui_service(system=system_flag)
         _handle_api_response(response, "Web UI service removed successfully.")
     except BSMError as e:
         click.secho(f"Failed to remove Web UI service: {e}", fg="red")
@@ -361,8 +428,17 @@ def remove_web_service_cli():
 
 
 @service.command("status")
+@click.option(
+    "-s",
+    "--system",
+    "system_flag",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Check status of a system-wide service (Linux only, requires sudo).",
+)
 @requires_web_service_manager
-def status_web_service_cli():
+def status_web_service_cli(system_flag: bool):
     """
     Checks and displays the status of the Web UI system service.
 
@@ -375,7 +451,7 @@ def status_web_service_cli():
     """
     click.echo("Checking Web UI system service status...")
     try:
-        response = web_api.get_web_ui_service_status()
+        response = web_api.get_web_ui_service_status(system=system_flag)
         if response.get("status") == "success":
             click.secho("Web UI Service Status:", bold=True)
             click.echo(

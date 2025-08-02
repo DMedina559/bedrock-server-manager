@@ -361,7 +361,12 @@ def get_web_server_status_api() -> Dict[str, Any]:
         }
 
 
-def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
+def create_web_ui_service(
+    autostart: bool = False,
+    system: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+) -> Dict[str, str]:
     """Creates (or updates) a system service for the Web UI.
 
     On Linux, this creates a systemd user service. On Windows, this creates a
@@ -378,6 +383,12 @@ def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
         autostart (bool, optional): If ``True``, the service will be enabled
             to start automatically on system boot/login. If ``False``, it will be
             created but left disabled. Defaults to ``False``.
+        system (bool, optional): If ``True``, creates a system-wide service on
+            Linux. This option is ignored on other operating systems. Defaults to ``False``.
+        username (Optional[str], optional): The username to run the service as on
+            Windows. This option is ignored on other operating systems. Defaults to ``None``.
+        password (Optional[str], optional): The password for the user on Windows.
+            This option is ignored on other operating systems. Defaults to ``None``.
 
     Returns:
         Dict[str, str]: A dictionary with the operation result.
@@ -403,10 +414,12 @@ def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        get_manager_instance().create_web_service_file()
+        get_manager_instance().create_web_service_file(
+            system=system, username=username, password=password
+        )
 
         if autostart:
-            get_manager_instance().enable_web_service()
+            get_manager_instance().enable_web_service(system=system)
             action_done = "created and enabled"
         else:
             get_manager_instance().disable_web_service()
@@ -436,7 +449,7 @@ def create_web_ui_service(autostart: bool = False) -> Dict[str, str]:
     return result
 
 
-def enable_web_ui_service() -> Dict[str, str]:
+def enable_web_ui_service(system: bool = False) -> Dict[str, str]:
     """Enables the Web UI system service for autostart.
 
     On Linux, this enables the systemd user service. On Windows, this sets the
@@ -444,6 +457,10 @@ def enable_web_ui_service() -> Dict[str, str]:
     privileges). It calls
     :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Args:
+        system (bool, optional): If ``True``, enables a system-wide service on
+            Linux. This option is ignored on other operating systems. Defaults to ``False``.
 
     Returns:
         Dict[str, str]: A dictionary with the operation result.
@@ -467,7 +484,7 @@ def enable_web_ui_service() -> Dict[str, str]:
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        get_manager_instance().enable_web_service()
+        get_manager_instance().enable_web_service(system=system)
         result = {
             "status": "success",
             "message": "Web UI service enabled successfully.",
@@ -490,7 +507,7 @@ def enable_web_ui_service() -> Dict[str, str]:
     return result
 
 
-def disable_web_ui_service() -> Dict[str, str]:
+def disable_web_ui_service(system: bool = False) -> Dict[str, str]:
     """Disables the Web UI system service from autostarting.
 
     On Linux, this disables the systemd user service. On Windows, this sets the
@@ -498,6 +515,10 @@ def disable_web_ui_service() -> Dict[str, str]:
     Administrator privileges). It calls
     :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Args:
+        system (bool, optional): If ``True``, disables a system-wide service on
+            Linux. This option is ignored on other operating systems. Defaults to ``False``.
 
     Returns:
         Dict[str, str]: A dictionary with the operation result.
@@ -521,7 +542,7 @@ def disable_web_ui_service() -> Dict[str, str]:
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        get_manager_instance().disable_web_service()
+        get_manager_instance().disable_web_service(system=system)
         result = {
             "status": "success",
             "message": "Web UI service disabled successfully.",
@@ -549,7 +570,7 @@ def disable_web_ui_service() -> Dict[str, str]:
     return result
 
 
-def remove_web_ui_service() -> Dict[str, str]:
+def remove_web_ui_service(system: bool = False) -> Dict[str, str]:
     """Removes the Web UI system service.
 
     The service should ideally be stopped and disabled before removal.
@@ -561,6 +582,10 @@ def remove_web_ui_service() -> Dict[str, str]:
         from the system.
 
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
+
+    Args:
+        system (bool, optional): If ``True``, removes a system-wide service on
+            Linux. This option is ignored on other operating systems. Defaults to ``False``.
 
     Returns:
         Dict[str, str]: A dictionary with the operation result.
@@ -587,7 +612,7 @@ def remove_web_ui_service() -> Dict[str, str]:
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        removed = get_manager_instance().remove_web_service_file()
+        removed = get_manager_instance().remove_web_service_file(system=system)
         if removed:
             result = {
                 "status": "success",
@@ -618,7 +643,7 @@ def remove_web_ui_service() -> Dict[str, str]:
     return result
 
 
-def get_web_ui_service_status() -> Dict[str, Any]:
+def get_web_ui_service_status(system: bool = False) -> Dict[str, Any]:
     """Gets the current status of the Web UI system service.
 
     This function calls several methods on the
@@ -626,6 +651,10 @@ def get_web_ui_service_status() -> Dict[str, Any]:
     :meth:`~.check_web_service_exists`,
     :meth:`~.is_web_service_active`, and
     :meth:`~.is_web_service_enabled`.
+
+    Args:
+        system (bool, optional): If ``True``, checks a system-wide service on
+            Linux. This option is ignored on other operating systems. Defaults to ``False``.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -650,12 +679,14 @@ def get_web_ui_service_status() -> Dict[str, Any]:
             }
 
         response_data["service_exists"] = (
-            get_manager_instance().check_web_service_exists()
+            get_manager_instance().check_web_service_exists(system=system)
         )
         if response_data["service_exists"]:
-            response_data["is_active"] = get_manager_instance().is_web_service_active()
-            response_data["is_enabled"] = (
-                get_manager_instance().is_web_service_enabled()
+            response_data["is_active"] = get_manager_instance().is_web_service_active(
+                system=system
+            )
+            response_data["is_enabled"] = get_manager_instance().is_web_service_enabled(
+                system=system
             )
 
         return {"status": "success", **response_data}
