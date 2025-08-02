@@ -56,6 +56,9 @@ def test_configure_web_service_non_interactive(mock_perform_config, runner, mock
         bsm=mock_bsm,
         setup_service=True,
         enable_autostart=True,
+        system=False,
+        username=None,
+        password=None,
     )
 
 

@@ -261,7 +261,7 @@ def service():
     help="Configure as a system-wide service (Linux only, requires sudo).",
 )
 @click.option("--username", help="Username to run the Windows service as.")
-@click.option("--password", help="Password for the user.", prompt=True, hide_input=True)
+@click.option("--password", help="Password for the user.")
 @click.pass_context
 def configure_web_service(
     ctx: click.Context,
@@ -300,6 +300,14 @@ def configure_web_service(
         raise click.Abort()
 
     try:
+        if (
+            bsm.get_os_type() == "Windows"
+            and username
+            and not password
+            and (setup_service or autostart_flag is not None)
+        ):
+            password = click.prompt("Password for the user", hide_input=True)
+
         no_flags_used = not setup_service and autostart_flag is None
 
         if no_flags_used:
