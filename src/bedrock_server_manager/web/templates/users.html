@@ -2,36 +2,57 @@
 
 {% block title %}Bedrock Server Manager - Users{% endblock %}
 
-{% block content %}
-<div class="container">
-    <h1>User Management</h1>
-    {% if current_user.role == 'admin' %}
-    <h2>Generate Registration Link</h2>
-    <form id="generate-token-form">
-        <div class="form-group">
-            <label for="role">Role</label>
-            <select id="role" name="role" class="form-input">
-                <option value="user">User</option>
-                <option value="moderator">Moderator</option>
-                <option value="admin">Admin</option>
-            </select>
-        </div>
-        <button type="button" class="action-button" onclick="generateToken()">Generate Link</button>
-    </form>
+{% block head_scripts %}
+    <script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/sidebar_nav.js') }}" defer></script>
+{% endblock %}
 
-    {% if 'message' in request.query_params and 'Registration link generated' in request.query_params['message'] %}
-    <div class="message-box">
-        <p>{{ request.query_params['message'] }}</p>
-        <button class="action-button" onclick="copyToClipboard('{{ request.query_params['message'].split(': ')[1] }}')">Copy Link</button>
-    </div>
-    {% endif %}
-    {% endif %}
-    <h2>Existing Users</h2>
-    <ul class="server-card-list">
+{% block content %}
+<div class="page-layout">
+    <aside class="sidebar-nav">
+        <a href="#user-management-section" class="nav-link active" data-target="user-management-section">User Management</a>
+        <div class="nav-item">
+            <a href="#" class="nav-link has-submenu">Users</a>
+            <div class="submenu">
+                {% for user in users %}
+                    <a href="#user-{{ user.id }}-section" class="nav-link" data-target="user-{{ user.id }}-section">{{ user.username }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        <hr class="nav-separator">
+        <a href="{{ url_for('index') }}" class="nav-link nav-action-button">Dashboard</a>
+    </aside>
+
+    <main class="main-content">
+        <section id="user-management-section" class="content-section active">
+            <h2>User Management</h2>
+            {% if current_user.role == 'admin' %}
+            <h3>Generate Registration Link</h3>
+            <form id="generate-token-form">
+                <div class="form-group">
+                    <label for="role">Role</label>
+                    <select id="role" name="role" class="form-input">
+                        <option value="user">User</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="button" class="action-button" onclick="generateToken()">Generate Link</button>
+            </form>
+
+            {% if 'message' in request.query_params and 'Registration link generated' in request.query_params['message'] %}
+            <div class="message-box">
+                <p>{{ request.query_params['message'] }}</p>
+                <button class="action-button" onclick="copyToClipboard('{{ request.query_params['message'].split(': ')[1] }}')">Copy Link</button>
+            </div>
+            {% endif %}
+            {% endif %}
+        </section>
+
         {% for user in users %}
-        <li class="server-card">
+        <section id="user-{{ user.id }}-section" class="content-section">
+            <h2>{{ user.username }}</h2>
             <div class="server-card-info">
-                <h3>{{ user.username }}</h3>
                 <p><span class="info-label">Role:</span> {{ user.role }}</p>
                 {% if user.last_seen %}
                 <p><span class="info-label">Last Seen:</span> {{ user.last_seen.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
@@ -56,9 +77,9 @@
                 <button type="button" class="danger-button" onclick="deleteUser('{{ user.id }}')">Delete</button>
                 {% endif %}
             </div>
-        </li>
+        </section>
         {% endfor %}
-    </ul>
+    </main>
 </div>
 {% endblock %}
 
