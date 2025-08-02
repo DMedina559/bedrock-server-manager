@@ -308,9 +308,16 @@ def configure_web_service(
         ):
             password = click.prompt("Password for the user", hide_input=True)
 
-        no_flags_used = not setup_service and autostart_flag is None
+        # Determine if any flags were passed that would override interactive mode.
+        any_flags_provided = (
+            setup_service
+            or autostart_flag is not None
+            or system_flag
+            or username is not None
+            or password is not None
+        )
 
-        if no_flags_used:
+        if not any_flags_provided:
             click.secho(
                 "No flags provided; starting interactive Web UI service setup...",
                 fg="yellow",

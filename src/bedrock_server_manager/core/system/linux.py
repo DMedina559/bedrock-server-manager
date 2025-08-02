@@ -256,8 +256,14 @@ WantedBy=default.target
     if not systemctl_cmd:
         raise CommandNotFoundError("systemctl")
     try:
+        # Conditionally build the command to avoid empty strings for system-wide services.
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.append("daemon-reload")
+
         subprocess.run(
-            [systemctl_cmd, "--user" if not system else "", "daemon-reload"],
+            command,
             check=True,
             capture_output=True,
             text=True,
@@ -319,8 +325,12 @@ def enable_systemd_service(service_name_full: str, system: bool = False) -> None
 
     # Check if already enabled to avoid unnecessary calls.
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["is-enabled", name_to_use])
         process = subprocess.run(
-            [systemctl_cmd, "--user" if not system else "", "is-enabled", name_to_use],
+            command,
             capture_output=True,
             text=True,
             check=False,  # Don't raise for non-zero exit if not enabled
@@ -342,8 +352,12 @@ def enable_systemd_service(service_name_full: str, system: bool = False) -> None
         )
 
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["enable", name_to_use])
         subprocess.run(
-            [systemctl_cmd, "--user" if not system else "", "enable", name_to_use],
+            command,
             check=True,
             capture_output=True,
             text=True,
@@ -407,8 +421,12 @@ def disable_systemd_service(service_name_full: str, system: bool = False) -> Non
 
     # Check if already disabled or not in an "enabled" state.
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["is-enabled", name_to_use])
         process = subprocess.run(
-            [systemctl_cmd, "--user" if not system else "", "is-enabled", name_to_use],
+            command,
             capture_output=True,
             text=True,
             check=False,  # Don't raise for non-zero exit
@@ -432,8 +450,12 @@ def disable_systemd_service(service_name_full: str, system: bool = False) -> Non
         )
 
     try:
+        command = [systemctl_cmd]
+        if not system:
+            command.append("--user")
+        command.extend(["disable", name_to_use])
         subprocess.run(
-            [systemctl_cmd, "--user" if not system else "", "disable", name_to_use],
+            command,
             check=True,
             capture_output=True,
             text=True,
