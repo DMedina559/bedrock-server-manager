@@ -183,3 +183,4 @@ data
 # BSM dirs
 
 test.db
+test.db-journal
