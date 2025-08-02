@@ -225,6 +225,7 @@ def service():
     "--enable-autostart/--no-enable-autostart",
     "autostart_flag",
     default=None,
+    show_default=False,
     help="Enable or disable Web UI service autostart.",
 )
 @click.pass_context
