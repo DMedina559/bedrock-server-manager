@@ -111,8 +111,12 @@ async def setup_check_middleware(request: Request, call_next):
     # Manually handle authentication to bypass it for static files
     if not request.url.path.startswith("/static"):
         auth_backend = CustomAuthBackend()
-        user, _ = await auth_backend.authenticate(request)
-        request.state.user = user
+        auth_result = await auth_backend.authenticate(request)
+        if auth_result:
+            creds, user = auth_result
+            request.state.user = user
+        else:
+            request.state.user = None
 
     response = await call_next(request)
     return response
