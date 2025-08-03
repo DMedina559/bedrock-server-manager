@@ -8,14 +8,13 @@
 
 ## 3.6.0 (WIP)
 
-```{warning}
-Requires the new CLI:
-
-`pip install bedrock-server-manager[cli]`
-
-Use the `bsm-api-client` command to interact with the web server
-
-View all commands at: [BSM API Commands](https://bedrock-server-manager.readthedocs.io/en/latest/cli/api_client_commands.html)
+```{tip}
+With version 3.6.0, the web server is now a required component and acts as the central management point for all Bedrock servers. This change simplifies process management and improves stability.
+Key improvements include:
+All server processes are now managed directly by the web server.
+Configuration data has been migrated from JSON files to a database for better performance and reliability.
+The previous backend CLI has been removed. All actions are now handled via the web interface.
+These changes create a more robust and efficient platform for managing your servers.
 ```
 
 ```{warning}
@@ -24,7 +23,7 @@ Stop servers before updating!
 1. Moved most of the CLI commands to the `bsm-api-client` package
 2. Revamped server start methods
     - Now uses a generic process open instead of complex platform specific named pipe methods
-    - System Services for individual servers will no longer work, is now handled by the autostart_plugin during BSM startup
+    - System Services for individual servers will no longer work, is now handled by the `autostart_plugin` during BSM startup
     - Requires the BSM app to always be running (A System Service for the web server is recommended `bedrock-server-manager web service configure`)
 3. Added crash restarts
     - Bedrock servers will now restart if they crashed
@@ -32,6 +31,43 @@ Stop servers before updating!
 5. Added gracefull shutdown for BSM
     - Shuts down all running bedrock servers
     - Unloads all plugins
+6. Database migrations
+    ```{note} 
+    Using the default database has been observed to cause slow loadding times for the web server on some systems, if you experience this issue, consider using an external database such as MySQL or PostgreSQL.
+    ```
+    - Migrated BSM from a JSON based config to a SQLite database
+    - Use default included `bedrock_server_manager.db` or use your own external database
+    - Automatically migrates from the old JSON config to the new database
+    - All json config files are now stored in the database
+        - This includes the global config, server configs, and plugin configs, player configs
+    - All environment variables are now stored in the database
+        - Web server environment variables are now stored in the database and are auto migrated to the database
+        - App Data Directory is now stored in a seperate json file in the users `%APPDATA%` directory (`.congig/bedrock-server-manager` on linux, `AppData/local/bedrock-server-manager` on Windows)
+            - Database URL is also stored in this file
+   - Added migrate command to support future database migrations
+   - Added setup command to setup App config
+        - Sets up the App Data Directory and database URL, Web Host and Port, system service
+        - Its recommended to run this command after updating to 3.6.0 to ensure smooth migration
+7. Added Multi user support with Access Control
+        - Admins can now create and manage users with different access levels
+            - Current access levels:
+                - Admin: Full access to full application
+                - Moderator: Limited to basic server management not including updates, installs, or content magement
+                - User: Limited to view privlages, can only view basic data
+        - Admins can create a registration link for users to register
+            - Link is valid for 24 hours
+        - Admins can enable/disable user accounts, and change their roles
+        - If you're a plugin developer with FASTAPI plugins, you should update your plugins to use the new `get_current_user`, `get_admin_user`, `get_moderator_user` dependency to ensure proper access control
+8. Improved system service support
+    - On Windows you can now enter account credentials to run the service as a specific user
+    - Added `--system` flag for linux to create a systemd service for the web server on the system level
+9. Themes are now user specific
+    - Each user can now have their own theme
+10. Various backend changes such as:
+    - Object based authentication
+    - Lazy load plugin manager in api layer
+    - Changes routers to use the new `get_current_user`, `get_admin_user`, `get_moderator_user` dependencies
+    - Web server now starts without needing any setup
 
 ## 3.5.7
 ```{tip}
