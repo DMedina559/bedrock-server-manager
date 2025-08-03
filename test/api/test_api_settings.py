@@ -58,7 +58,9 @@ class TestSettingsAPI:
 
     @patch("bedrock_server_manager.api.settings.setup_logging")
     def test_reload_global_settings(self, mock_setup_logging, isolated_settings):
-        with patch("bedrock_server_manager.config.settings.Settings.reload") as mock_reload:
+        with patch(
+            "bedrock_server_manager.config.settings.Settings.reload"
+        ) as mock_reload:
             result = reload_global_settings()
             assert result["status"] == "success"
             mock_reload.assert_called_once()

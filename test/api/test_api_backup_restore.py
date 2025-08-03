@@ -30,9 +30,7 @@ from pathlib import Path
 class TestBackupRestore:
     def test_list_backup_files(self, real_bedrock_server):
         backup_dir = real_bedrock_server.settings.get("paths.backups")
-        server_backup_dir = os.path.join(
-            backup_dir, real_bedrock_server.server_name
-        )
+        server_backup_dir = os.path.join(backup_dir, real_bedrock_server.server_name)
         os.makedirs(server_backup_dir, exist_ok=True)
 
         (Path(server_backup_dir) / "backup1.mcworld").touch()
@@ -148,9 +146,7 @@ class TestBackupRestore:
 
     def test_prune_old_backups(self, real_bedrock_server):
         backup_dir = real_bedrock_server.settings.get("paths.backups")
-        server_backup_dir = os.path.join(
-            backup_dir, real_bedrock_server.server_name
-        )
+        server_backup_dir = os.path.join(backup_dir, real_bedrock_server.server_name)
         os.makedirs(server_backup_dir, exist_ok=True)
 
         with patch.object(real_bedrock_server, "prune_server_backups") as mock_prune:

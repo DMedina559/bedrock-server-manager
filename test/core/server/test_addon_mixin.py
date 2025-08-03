@@ -4,44 +4,23 @@ import shutil
 import zipfile
 import tempfile
 import json
+from unittest.mock import patch
+
 from bedrock_server_manager.core.server.addon_mixin import ServerAddonMixin
 from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
 from bedrock_server_manager.config.settings import Settings
+from bedrock_server_manager.error import (
+    UserInputError,
+    ExtractError,
+    AppFileNotFoundError,
+)
 
 
-class SetupBedrockServer(ServerAddonMixin, BedrockServerBaseMixin):
-    def get_world_name(self):
-        return "Bedrock level"
-
-
-@pytest.fixture
-def addon_mixin_fixture():
-    temp_dir = tempfile.mkdtemp()
-    server_name = "test_server"
-    settings = Settings()
-    settings.set("paths.servers", os.path.join(temp_dir, "servers"))
-
-    server = SetupBedrockServer(server_name=server_name, settings_instance=settings)
-    os.makedirs(server.server_dir, exist_ok=True)
-    os.makedirs(
-        os.path.join(server.server_dir, "development_resource_packs"), exist_ok=True
-    )
-    os.makedirs(
-        os.path.join(server.server_dir, "development_behavior_packs"), exist_ok=True
-    )
-    os.makedirs(os.path.join(server.server_dir, "resource_packs"), exist_ok=True)
-    os.makedirs(os.path.join(server.server_dir, "behavior_packs"), exist_ok=True)
-
-    yield server, temp_dir
-
-    shutil.rmtree(temp_dir)
-
-
-def test_list_world_addons(addon_mixin_fixture):
-    server, _ = addon_mixin_fixture
+def test_list_world_addons(real_bedrock_server):
+    server = real_bedrock_server
 
     # Create dummy addons
-    world_dir = os.path.join(server.server_dir, "worlds", "Bedrock level")
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
     os.makedirs(os.path.join(world_dir, "resource_packs", "rp1_folder"), exist_ok=True)
     with open(
         os.path.join(world_dir, "resource_packs", "rp1_folder", "manifest.json"), "w"
@@ -64,80 +43,71 @@ def test_list_world_addons(addon_mixin_fixture):
     assert addons["resource_packs"][0]["status"] == "ACTIVE"
 
 
-from unittest.mock import patch
-
-
-from bedrock_server_manager.error import (
-    UserInputError,
-    ExtractError,
-    AppFileNotFoundError,
-)
-
-
-def test_process_addon_file(addon_mixin_fixture):
-    server, temp_dir = addon_mixin_fixture
+def test_process_addon_file(real_bedrock_server, tmp_path):
+    server = real_bedrock_server
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
+    os.makedirs(world_dir, exist_ok=True)
 
     # Create a dummy addon file
-    addon_path = os.path.join(temp_dir, "test_addon.mcpack")
+    addon_path = tmp_path / "test_addon.mcpack"
     with zipfile.ZipFile(addon_path, "w") as zf:
         zf.writestr(
             "manifest.json",
             '{"header": {"name": "test addon", "uuid": "rp1", "version": [1,0,0]}, "modules": [{"type": "resources"}]}',
         )
 
-    with patch.object(server, "get_world_name", return_value="Bedrock level"):
-        server.process_addon_file(addon_path)
+    server.process_addon_file(str(addon_path))
 
     assert len(server.list_world_addons()["resource_packs"]) == 1
 
 
-def test_process_addon_file_unsupported_type(addon_mixin_fixture):
-    server, temp_dir = addon_mixin_fixture
-    unsupported_path = os.path.join(temp_dir, "test.txt")
-    with open(unsupported_path, "w") as f:
-        f.write("test")
+def test_process_addon_file_unsupported_type(real_bedrock_server, tmp_path):
+    server = real_bedrock_server
+    unsupported_path = tmp_path / "test.txt"
+    unsupported_path.write_text("test")
     with pytest.raises(UserInputError):
-        server.process_addon_file(unsupported_path)
+        server.process_addon_file(str(unsupported_path))
 
 
-def test_process_mcaddon_archive_invalid_zip(addon_mixin_fixture):
-    server, temp_dir = addon_mixin_fixture
-    invalid_zip_path = os.path.join(temp_dir, "invalid.mcaddon")
-    with open(invalid_zip_path, "w") as f:
-        f.write("not a zip")
+def test_process_mcaddon_archive_invalid_zip(real_bedrock_server, tmp_path):
+    server = real_bedrock_server
+    invalid_zip_path = tmp_path / "invalid.mcaddon"
+    invalid_zip_path.write_text("not a zip")
     with pytest.raises(ExtractError):
-        server._process_mcaddon_archive(invalid_zip_path)
+        server._process_mcaddon_archive(str(invalid_zip_path))
 
 
-def test_install_pack_from_extracted_data_missing_manifest(addon_mixin_fixture):
-    server, temp_dir = addon_mixin_fixture
-    pack_dir = os.path.join(temp_dir, "pack")
-    os.makedirs(pack_dir)
+def test_install_pack_from_extracted_data_missing_manifest(
+    real_bedrock_server, tmp_path
+):
+    server = real_bedrock_server
+    pack_dir = tmp_path / "pack"
+    pack_dir.mkdir()
     with pytest.raises(AppFileNotFoundError):
-        server._install_pack_from_extracted_data(pack_dir, "dummy.mcpack")
+        server._install_pack_from_extracted_data(str(pack_dir), "dummy.mcpack")
 
 
-def test_remove_addon_not_found(addon_mixin_fixture):
-    server, _ = addon_mixin_fixture
-    world_dir = os.path.join(server.server_dir, "worlds", "Bedrock level")
+def test_remove_addon_not_found(real_bedrock_server):
+    server = real_bedrock_server
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
     os.makedirs(world_dir, exist_ok=True)
     # No exception should be raised
     server.remove_addon("non_existent_uuid", "resource")
 
 
-def test_export_addon_not_found(addon_mixin_fixture):
-    server, temp_dir = addon_mixin_fixture
-    world_dir = os.path.join(server.server_dir, "worlds", "Bedrock level")
+def test_export_addon_not_found(real_bedrock_server, tmp_path):
+    server = real_bedrock_server
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
     os.makedirs(world_dir, exist_ok=True)
     with pytest.raises(AppFileNotFoundError):
-        server.export_addon("non_existent_uuid", "resource", temp_dir)
+        server.export_addon("non_existent_uuid", "resource", str(tmp_path))
 
 
-def test_remove_addon(addon_mixin_fixture):
-    server, _ = addon_mixin_fixture
+def test_remove_addon(real_bedrock_server):
+    server = real_bedrock_server
 
     # Create dummy addons
-    world_dir = os.path.join(server.server_dir, "worlds", "Bedrock level")
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
     os.makedirs(world_dir, exist_ok=True)
     with open(os.path.join(world_dir, "world_resource_packs.json"), "w") as f:
         json.dump([{"pack_id": "rp1", "version": [1, 0, 0]}], f)
@@ -145,7 +115,7 @@ def test_remove_addon(addon_mixin_fixture):
     addon_dir = os.path.join(
         server.server_dir,
         "worlds",
-        "Bedrock level",
+        "world",
         "resource_packs",
         "test_addon_1.0.0",
     )

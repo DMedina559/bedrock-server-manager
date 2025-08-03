@@ -58,9 +58,7 @@ class TestServerSettings:
 
             with db_session_manager() as db_session:
                 server = (
-                    db_session.query(Server)
-                    .filter_by(server_name="test_server")
-                    .one()
+                    db_session.query(Server).filter_by(server_name="test_server").one()
                 )
                 config = server.config
                 assert config["custom"]["some_key"] == "new_value"
@@ -78,9 +76,7 @@ class TestServerSettings:
 
             with db_session_manager() as db_session:
                 server = (
-                    db_session.query(Server)
-                    .filter_by(server_name="test_server")
-                    .one()
+                    db_session.query(Server).filter_by(server_name="test_server").one()
                 )
                 config = server.config
                 assert config["custom"]["some_key"] == "custom_value"

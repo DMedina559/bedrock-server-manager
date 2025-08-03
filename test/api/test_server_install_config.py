@@ -127,9 +127,7 @@ class TestPermissions:
             real_bedrock_server.server_dir, "permissions.json"
         )
         with open(permissions_path, "w") as f:
-            json.dump(
-                [{"xuid": "123", "permission": "operator", "name": "player1"}], f
-            )
+            json.dump([{"xuid": "123", "permission": "operator", "name": "player1"}], f)
 
         with patch(
             "bedrock_server_manager.api.server_install_config.get_server_instance",
@@ -198,9 +196,7 @@ class TestInstallUpdate:
             "bedrock_server_manager.api.server_install_config.get_settings_instance"
         )
         mock_get_settings_instance.return_value.get.return_value = "/servers"
-        with patch.object(
-            real_bedrock_server, "install_or_update"
-        ) as mock_install:
+        with patch.object(real_bedrock_server, "install_or_update") as mock_install:
             with patch(
                 "bedrock_server_manager.api.server_install_config.get_server_instance",
                 return_value=real_bedrock_server,
