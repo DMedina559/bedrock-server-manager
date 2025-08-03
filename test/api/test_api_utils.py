@@ -34,17 +34,26 @@ def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
 
 
 class TestServerValidation:
-    def test_validate_server_exist_success(self, mock_get_server_instance):
-        result = validate_server_exist("test-server")
-        assert result["status"] == "success"
+    def test_validate_server_exist_success(self, real_bedrock_server):
+        with patch(
+            "bedrock_server_manager.api.utils.get_server_instance",
+            return_value=real_bedrock_server,
+        ):
+            result = validate_server_exist("test-server")
+            assert result["status"] == "success"
 
-    def test_validate_server_exist_not_installed(
-        self, mock_get_server_instance, mock_bedrock_server
-    ):
-        mock_bedrock_server.is_installed.return_value = False
-        result = validate_server_exist("test-server")
-        assert result["status"] == "error"
-        assert "not installed" in result["message"]
+    def test_validate_server_exist_not_installed(self, real_bedrock_server):
+        import os
+
+        # To simulate not installed, we can remove the executable
+        os.remove(real_bedrock_server.bedrock_executable_path)
+        with patch(
+            "bedrock_server_manager.api.utils.get_server_instance",
+            return_value=real_bedrock_server,
+        ):
+            result = validate_server_exist("test-server")
+            assert result["status"] == "error"
+            assert "not installed" in result["message"]
 
     def test_validate_server_name_format_success(self):
         result = validate_server_name_format("valid-name")

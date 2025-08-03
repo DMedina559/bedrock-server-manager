@@ -967,6 +967,8 @@ def test_create_web_service_file_windows(windows_manager, mocker):
         display_name=windows_manager._WEB_SERVICE_WINDOWS_DISPLAY_NAME,
         description=mocker.ANY,
         command=expected_binpath_command,
+        username=None,
+        password=None,
     )
 
 

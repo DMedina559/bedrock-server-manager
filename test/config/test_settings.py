@@ -57,19 +57,31 @@ def test_initialization_with_defaults(settings):
     assert settings.get("web.port") == 11325
 
 
-def test_setting_and_getting_values(settings):
+def test_setting_and_getting_values(settings, db_session):
     """Test that setting a value is persisted and retrievable."""
     settings.set("web.port", 8000)
     assert settings.get("web.port") == 8000
 
+    # Check the database directly
+    setting_in_db = db_session.query(Setting).filter_by(key="web").one()
+    assert setting_in_db.value["port"] == 8000
+
     settings.set("retention.logs", 10)
     assert settings.get("retention.logs") == 10
 
+    # Check the database directly
+    setting_in_db = db_session.query(Setting).filter_by(key="retention").one()
+    assert setting_in_db.value["logs"] == 10
 
-def test_nested_setting_and_getting(settings):
+
+def test_nested_setting_and_getting(settings, db_session):
     """Test that nested values can be set and retrieved."""
     settings.set("paths.servers", "/new/server/path")
     assert settings.get("paths.servers") == "/new/server/path"
+
+    # Check the database directly
+    setting_in_db = db_session.query(Setting).filter_by(key="paths").one()
+    assert setting_in_db.value["servers"] == "/new/server/path"
 
     # Ensure other nested values are not affected
     assert settings.get("paths.backups") is not None

@@ -169,3 +169,59 @@ def db_session():
     database.engine = None
     database.SessionLocal = None
     database._TABLES_CREATED = False
+
+
+@pytest.fixture(autouse=True)
+def reset_settings_singleton():
+    """Fixture to reset the Settings singleton before each test."""
+    from bedrock_server_manager.config import settings
+
+    settings.Settings._instance = None
+    yield
+    settings.Settings._instance = None
+
+
+@pytest.fixture
+def real_bedrock_server(isolated_settings):
+    """Fixture for a real BedrockServer instance."""
+    from bedrock_server_manager.config.settings import Settings
+    import os
+
+    settings = Settings()
+    app_data_dir = settings.app_data_dir
+    config_dir = settings.config_dir
+
+    print(f"app_data_dir: {app_data_dir}")
+    print(f"config_dir: {config_dir}")
+
+    server_name = "test_server"
+
+    # Create the server's main directory
+    server_dir = os.path.join(app_data_dir, "servers", server_name)
+    os.makedirs(server_dir, exist_ok=True)
+    print(f"server_dir: {server_dir}, exists: {os.path.exists(server_dir)}")
+
+    # Create the server-specific config directory
+    server_config_dir = os.path.join(config_dir, server_name)
+    os.makedirs(server_config_dir, exist_ok=True)
+    print(
+        f"server_config_dir: {server_config_dir}, exists: {os.path.exists(server_config_dir)}"
+    )
+
+    properties_file = os.path.join(server_dir, "server.properties")
+    with open(properties_file, "w") as f:
+        f.write("server-name=test-server\nmax-players=5\nlevel-name=world\n")
+
+    import platform
+
+    # Create a dummy executable
+    executable_name = "bedrock_server"
+    if platform.system() == "Windows":
+        executable_name += ".exe"
+    executable_path = os.path.join(server_dir, executable_name)
+    with open(executable_path, "w") as f:
+        f.write("#!/bin/bash\necho 'dummy server'")
+    os.chmod(executable_path, 0o755)
+
+    server = BedrockServer(server_name)
+    return server

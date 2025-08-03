@@ -319,6 +319,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         paths_to_delete_map: Dict[str, Optional[str]] = {
             "backup": server_backup_dir_path,
             "installation": server_install_dir,
+            "config": server_json_config_subdir,
         }
         for dir_type, dir_path_val in paths_to_delete_map.items():
             if dir_path_val and os.path.exists(

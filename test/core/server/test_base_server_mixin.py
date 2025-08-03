@@ -107,7 +107,15 @@ def test_init_no_server_name():
 from unittest.mock import patch
 
 
-def test_init_no_settings():
+def test_init_no_settings(monkeypatch):
+    from bedrock_server_manager.core.server.base_server_mixin import (
+        BedrockServerBaseMixin,
+    )
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.core.server.base_server_mixin.get_settings_instance",
+        lambda: None,
+    )
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(server_name="test_server", settings_instance=None)
 
