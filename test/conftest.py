@@ -225,3 +225,66 @@ def real_bedrock_server(isolated_settings):
 
     server = BedrockServer(server_name)
     return server
+
+
+@pytest.fixture
+def real_manager(tmp_path):
+    """Fixture for a real BedrockServerManager instance."""
+    from bedrock_server_manager.core.manager import BedrockServerManager
+    from unittest.mock import patch
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    config_dir = data_dir / ".config"
+    config_dir.mkdir()
+    servers_dir = data_dir / "servers"
+    servers_dir.mkdir()
+    content_dir = data_dir / "content"
+    content_dir.mkdir()
+
+    with patch("appdirs.user_config_dir", return_value=str(config_dir)):
+        with patch(
+            "bedrock_server_manager.config.bcm_config.load_config",
+            return_value={"data_dir": str(data_dir)},
+        ):
+            manager = BedrockServerManager()
+            # Create a dummy web ui pid file
+            web_ui_pid_path = manager.get_web_ui_pid_path()
+            with open(web_ui_pid_path, "w") as f:
+                f.write("12345")
+            return manager
+
+
+@pytest.fixture
+def real_plugin_manager(tmp_path):
+    """Fixture for a real PluginManager instance."""
+    from bedrock_server_manager.plugins.plugin_manager import PluginManager
+    from unittest.mock import patch
+
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+
+    # Create a dummy plugin
+    plugin1_dir = plugins_dir / "plugin1"
+    plugin1_dir.mkdir()
+    with open(plugin1_dir / "__init__.py", "w") as f:
+        f.write(
+            """
+from bedrock_server_manager.plugins.plugin_base import PluginBase
+
+class Plugin(PluginBase):
+    def __init__(self):
+        super().__init__()
+        self.name = "plugin1"
+        self.version = "1.0"
+        self.description = "A test plugin."
+"""
+        )
+
+    with patch("appdirs.user_config_dir", return_value=str(config_dir)):
+        manager = PluginManager()
+        manager.plugin_dirs = [plugins_dir]
+        manager.load_plugins()
+        return manager
