@@ -197,9 +197,13 @@ class BedrockProcessManager:
 
     def _monitor_servers(self):
         """Monitors server processes and restarts them if they crash."""
-        monitoring_interval = get_settings_instance().get(
-            "SERVER_MONITORING_INTERVAL_SEC", 10
-        )
+        try:
+            monitoring_interval = get_settings_instance().get(
+                "SERVER_MONITORING_INTERVAL_SEC", 10
+            )
+        except Exception:
+            monitoring_interval = 10
+
         self.logger.info(
             f"Server monitoring thread started with a {monitoring_interval} second interval."
         )

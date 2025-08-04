@@ -220,7 +220,15 @@ def real_bedrock_server(isolated_settings):
         executable_name += ".exe"
     executable_path = os.path.join(server_dir, executable_name)
     with open(executable_path, "w") as f:
-        f.write("#!/bin/bash\necho 'dummy server'")
+        f.write(
+            """#!/bin/bash
+while read line; do
+  if [[ "$line" == "stop" ]]; then
+    exit 0
+  fi
+done
+"""
+        )
     os.chmod(executable_path, 0o755)
 
     server = BedrockServer(server_name)
