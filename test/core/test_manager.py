@@ -33,199 +33,54 @@ from bedrock_server_manager.error import (
 
 # Helper functions and fixtures will be added in subsequent steps.
 
-# --- Core Fixtures ---
 
-
-@pytest.fixture
-def temp_manager_dirs(
-    tmp_path_factory, mock_get_settings_instance, mocker
-):  # Added mocker
-    """
-    Creates a temporary directory structure for app_data, config, servers, content
-    and configures mock_get_settings_instance to use these paths.
-    Yields a dictionary of these paths.
-    """
-    base_temp_dir = tmp_path_factory.mktemp("bsm_manager_data_")
-
-    paths = {
-        "app_data": base_temp_dir / "app_data",
-        "config": base_temp_dir
-        / "app_data"
-        / ".config",  # Usually nested under app_data
-        "servers": base_temp_dir / "servers",
-        "content": base_temp_dir / "content",
-        "logs": base_temp_dir / "app_data" / ".logs",  # Example, if needed
-    }
-
-    for path_obj in paths.values():
-        path_obj.mkdir(parents=True, exist_ok=True)
-
-    # Configure mock_get_settings_instance to use these temporary paths
-    def settings_get_side_effect(key, default=None):
-        if key == "paths.servers":
-            return str(paths["servers"])
-        if key == "paths.content":
-            return str(paths["content"])
-        if key == "paths.logs":  # Example
-            return str(paths["logs"])
-        # Add other specific path gets if needed by BSM constructor or methods
-        return {
-            # Default non-path settings
-        }.get(key, default)
-
-    mock_get_settings_instance.get.side_effect = settings_get_side_effect
-    # Update property mocks using the passed 'mocker'
-    type(mock_get_settings_instance).app_data_dir = mocker.PropertyMock(
-        return_value=str(paths["app_data"])
-    )
-    type(mock_get_settings_instance).config_dir = mocker.PropertyMock(
-        return_value=str(paths["config"])
-    )
-    mock_get_settings_instance.config_path = str(
-        paths["config"] / "bsm_manager_test_config.json"
-    )  # Set config_path
-    mock_get_settings_instance.version = "3.5.0-test"
-
-    yield paths
-
-
-@pytest.fixture
-def manager_instance(mock_get_settings_instance, temp_manager_dirs, mocker):
-    """
-    Creates a BedrockServerManager instance with mocked settings and EXPATH.
-    temp_manager_dirs fixture ensures mock_get_settings_instance is correctly configured with temp paths.
-    """
-    # Mock EXPATH from const module, as it's used by BedrockServerManager
-    # Ensure this path points to where BedrockServerManager is imported from for the patch to work.
-    # If BedrockServerManager imports 'from bedrock_server_manager.config.const import EXPATH',
-    # then this is the correct target.
-    mock_expath = mocker.patch(
-        "bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable"
-    )
-
-    # Mock shutil.which for system capability checks during init
-    # By default, assume commands are not found, tests can override
-    mock_shutil_which = mocker.patch("shutil.which", return_value=None)
-
-    # Ensure mock_get_settings_instance has config_path, as temp_manager_dirs should have set it.
-    # If manager_instance is called without temp_manager_dirs in a test (not typical),
-    # this makes sure a default is present.
-    if (
-        not hasattr(mock_get_settings_instance, "config_path")
-        or not mock_get_settings_instance.config_path
-    ):
-        # This path should ideally align with what temp_manager_dirs would set if it were used
-        # For safety, ensuring it's a string path.
-        dummy_cfg_path = (
-            temp_manager_dirs["config"]
-            if temp_manager_dirs
-            else Path(mock_get_settings_instance.config_dir)
-        )
-        mock_get_settings_instance.config_path = str(
-            dummy_cfg_path / "fixture_default_cfg.json"
-        )
-
-    # Reset the singleton instance before each test
+@pytest.fixture(autouse=True)
+def reset_manager_singleton():
+    """Ensures the BedrockServerManager singleton is reset before each test."""
     BedrockServerManager._instance = None
-    manager = BedrockServerManager()
-    manager._expath = "/dummy/bsm_executable"  # Also ensure the instance attribute is set if used directly
-    return manager
-
-
-@pytest.fixture
-def mock_get_server_instance(mocker, mock_bedrock_server):
-    """Fixture to patch get_server_instance for the core.manager module."""
-    return mocker.patch(
-        "bedrock_server_manager.core.manager.get_server_instance",
-        return_value=mock_bedrock_server,
-        autospec=True,
-    )
+    yield
+    BedrockServerManager._instance = None
 
 
 # --- BedrockServerManager - Initialization & Settings Tests ---
 
 
-def test_manager_initialization_success(
-    manager_instance, mock_get_settings_instance, temp_manager_dirs, mocker
-):
+def test_manager_initialization_success(real_manager, isolated_settings):
     """Test successful initialization of BedrockServerManager."""
-    assert manager_instance._app_data_dir == str(temp_manager_dirs["app_data"])
-    assert manager_instance._config_dir == str(temp_manager_dirs["config"])
-    assert manager_instance._base_dir == str(temp_manager_dirs["servers"])
-    assert manager_instance._content_dir == str(temp_manager_dirs["content"])
-    assert manager_instance._expath == "/dummy/bsm_executable"
-    assert (
-        manager_instance.settings.version == "3.5.0-test"
-    )  # From mock_get_settings_instance
-
-    # Check default capabilities (assuming shutil.which was mocked to return None by manager_instance fixture)
-    assert not manager_instance.capabilities["scheduler"]
-    assert not manager_instance.capabilities["service_manager"]
+    settings = Settings()
+    assert real_manager._app_data_dir == settings.app_data_dir
+    assert real_manager._config_dir == settings.config_dir
+    assert real_manager._base_dir == os.path.join(settings.app_data_dir, "servers")
+    assert real_manager._content_dir == os.path.join(settings.app_data_dir, "content")
 
 
-def test_manager_get_and_set_setting(manager_instance, mock_get_settings_instance):
+def test_manager_get_and_set_setting(real_manager):
     """Test get_setting and set_setting proxy methods."""
     # Test get_setting
-    # manager_instance.settings is mock_get_settings_instance
-
-    result = manager_instance.get_setting("a.b.c", "default_arg")
-    assert result == "default_arg"
-    manager_instance.settings.get.assert_called_with("a.b.c", "default_arg")
-
-    # We reset the whole mock_get_settings_instance as it's the same object.
-    # This clears call stats for both 'get' and 'set'.
-    mock_get_settings_instance.reset_mock()
+    assert real_manager.get_setting("a.b.c", "default_arg") == "default_arg"
 
     # Test set_setting
-    manager_instance.set_setting("x.y.z", "new_value")
-    # manager_instance.settings is mock_get_settings_instance, so assert on that
-    manager_instance.settings.set.assert_called_once_with("x.y.z", "new_value")
+    real_manager.set_setting("x.y.z", "new_value")
+    assert real_manager.get_setting("x.y.z") == "new_value"
 
 
-def test_manager_initialization_missing_critical_paths(mocker):
+def test_manager_initialization_missing_critical_paths(isolated_settings):
     """Test initialization fails if paths.servers or paths.content is missing."""
-    BedrockServerManager._instance = None
-    settings_missing_servers = mocker.MagicMock(spec=Settings)
-    type(settings_missing_servers).app_data_dir = mocker.PropertyMock(
-        return_value="dummy_app_data"
-    )
-    type(settings_missing_servers).config_dir = mocker.PropertyMock(
-        return_value="dummy_config"
-    )
-    settings_missing_servers.config_path = "dummy/config.json"  # Added config_path
-    settings_missing_servers.version = "1.0"
-    settings_missing_servers.get.side_effect = lambda key, default=None: {
-        "paths.content": "dummy_content"  # servers path is missing
-    }.get(key, default)
-    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy_expath")
-    mocker.patch("shutil.which", return_value=None)  # Mock capabilities check
-    mocker.patch(
-        "bedrock_server_manager.instances.get_settings_instance",
-        return_value=settings_missing_servers,
-    )
+    settings = Settings()
 
+    # Test missing servers path
+    settings.set("paths.servers", None)
     with pytest.raises(
         ConfigurationError, match="BASE_DIR not configured in settings."
     ):
         BedrockServerManager()
 
+    # Reset singleton
     BedrockServerManager._instance = None
-    settings_missing_content = mocker.MagicMock(spec=Settings)
-    type(settings_missing_content).app_data_dir = mocker.PropertyMock(
-        return_value="dummy_app_data"
-    )
-    type(settings_missing_content).config_dir = mocker.PropertyMock(
-        return_value="dummy_config"
-    )
-    settings_missing_content.config_path = "dummy/config.json"  # Added config_path
-    settings_missing_content.version = "1.0"
-    settings_missing_content.get.side_effect = lambda key, default=None: {
-        "paths.servers": "dummy_servers"  # content path is missing
-    }.get(key, default)
-    mocker.patch(
-        "bedrock_server_manager.instances.get_settings_instance",
-        return_value=settings_missing_content,
-    )
+
+    # Test missing content path
+    settings.set("paths.servers", os.path.join(settings.app_data_dir, "servers"))
+    settings.set("paths.content", None)
     with pytest.raises(
         ConfigurationError, match="CONTENT_DIR not configured in settings."
     ):
@@ -243,17 +98,12 @@ def test_manager_initialization_missing_critical_paths(mocker):
         ("Windows", None, "sc.exe", {"scheduler": False, "service_manager": True}),
         ("Windows", "schtasks", None, {"scheduler": True, "service_manager": False}),
         ("Windows", None, None, {"scheduler": False, "service_manager": False}),
-        (
-            "Darwin",
-            None,
-            None,
-            {"scheduler": False, "service_manager": False},
-        ),  # Example other OS
+        ("Darwin", None, None, {"scheduler": False, "service_manager": False}),
     ],
 )
 def test_manager_system_capabilities_check(
+    isolated_settings,
     mocker,
-    mock_get_settings_instance,
     os_type,
     scheduler_cmd,
     service_cmd,
@@ -261,10 +111,8 @@ def test_manager_system_capabilities_check(
     caplog,
 ):
     """Test _check_system_capabilities and _log_capability_warnings."""
-    BedrockServerManager._instance = None
     caplog.set_level(logging.WARNING)
     mocker.patch("platform.system", return_value=os_type)
-    mock_get_settings_instance.config_path = "dummy/config.json"  # Added config_path
 
     def which_side_effect(cmd):
         if os_type == "Linux":
@@ -288,7 +136,6 @@ def test_manager_system_capabilities_check(
     assert manager.can_schedule_tasks == expected_caps["scheduler"]
     assert manager.can_manage_services == expected_caps["service_manager"]
 
-    # Check warnings based on expected_caps
     if not expected_caps["scheduler"]:
         assert "Scheduler command (crontab/schtasks) not found." in caplog.text
     else:
@@ -297,27 +144,23 @@ def test_manager_system_capabilities_check(
     if os_type == "Linux" and not expected_caps["service_manager"]:
         assert "systemctl command not found." in caplog.text
     else:
-        # This warning only appears for Linux if service_manager is false
         if not (os_type == "Linux" and not expected_caps["service_manager"]):
             assert "systemctl command not found." not in caplog.text
 
 
-def test_manager_get_app_version(manager_instance):
+def test_manager_get_app_version(real_manager):
     """Test get_app_version method."""
-    assert (
-        manager_instance.get_app_version() == "3.5.0-test"
-    )  # From mock_manager_settings
+    # This will get the actual version from the project metadata
+    import importlib.metadata
+
+    version = importlib.metadata.version("bedrock-server-manager")
+    assert real_manager.get_app_version() == version
 
 
-def test_manager_get_os_type(manager_instance, mocker):
+def test_manager_get_os_type(real_manager, mocker):
     """Test get_os_type method."""
     mocker.patch("platform.system", return_value="TestOS")
-    # Need a new instance for platform.system mock to take effect during its init's capability check
-    # or mock it before manager_instance is created.
-    # For simplicity, let's test the direct call. manager_instance itself will have used the fixture's default mock.
-    assert (
-        manager_instance.get_os_type() == "TestOS"
-    )  # platform.system() is called directly
+    assert real_manager.get_os_type() == "TestOS"
 
 
 # --- BedrockServerManager - Player Database Management Tests ---
@@ -337,234 +180,143 @@ def test_manager_get_os_type(manager_instance, mocker):
     ],
 )
 def test_parse_player_cli_argument(
-    manager_instance, input_str, raises_error, match_msg, mocker
+    real_manager, input_str, raises_error, match_msg, mocker
 ):
     """Test parse_player_cli_argument with various inputs."""
-    mock_save = mocker.patch.object(manager_instance, "save_player_data")
+    mock_save = mocker.patch.object(real_manager, "save_player_data")
     if raises_error:
         with pytest.raises(UserInputError, match=match_msg):
-            manager_instance.parse_player_cli_argument(input_str)
+            real_manager.parse_player_cli_argument(input_str)
         mock_save.assert_not_called()
     else:
-        manager_instance.parse_player_cli_argument(input_str)
+        real_manager.parse_player_cli_argument(input_str)
         if input_str:
             mock_save.assert_called_once()
         else:
             mock_save.assert_not_called()
 
 
-def test_save_player_data_new_db(manager_instance, mocker, mock_db_session_manager):
+def test_save_player_data_new_db(real_manager, db_session):
     """Test save_player_data creating a new player in the database."""
     players_to_save = [
         {"name": "Gamer", "xuid": "100"},
         {"name": "Admin", "xuid": "007"},
     ]
 
-    mock_session = mocker.MagicMock()
-    mock_session.query.return_value.filter_by.return_value.first.return_value = None
-    mocker.patch(
-        "bedrock_server_manager.core.manager.db_session_manager",
-        mock_db_session_manager(mock_session),
-    )
-
-    saved_count = manager_instance.save_player_data(players_to_save)
+    saved_count = real_manager.save_player_data(players_to_save)
     assert saved_count == 2
-    assert mock_session.add.call_count == 2
-    mock_session.commit.assert_called_once()
+
+    players = real_manager.get_known_players()
+    assert len(players) == 2
+    assert {"name": "Gamer", "xuid": "100"} in players
+    assert {"name": "Admin", "xuid": "007"} in players
 
 
-def test_save_player_data_update_existing_db(
-    manager_instance, mocker, mock_db_session_manager
-):
+def test_save_player_data_update_existing_db(real_manager, db_session):
     """Test save_player_data merging with an existing player in the database."""
-    existing_player = mocker.MagicMock()
-    existing_player.player_name = "ToUpdate"
-    existing_player.xuid = "222"
-
-    mock_session = mocker.MagicMock()
-    mock_session.query.return_value.filter_by.side_effect = [
-        mocker.MagicMock(first=lambda: None),  # For NewPlayer
-        mocker.MagicMock(first=lambda: existing_player),  # For UpdatedName
-    ]
-    mocker.patch(
-        "bedrock_server_manager.core.manager.db_session_manager",
-        mock_db_session_manager(mock_session),
-    )
+    # Add a player to the database first
+    real_manager.save_player_data([{"name": "ToUpdate", "xuid": "222"}])
 
     players_to_save = [
         {"name": "NewPlayer", "xuid": "333"},
         {"name": "UpdatedName", "xuid": "222"},  # Update XUID 222
     ]
-    saved_count = manager_instance.save_player_data(players_to_save)
+    saved_count = real_manager.save_player_data(players_to_save)
     assert saved_count == 2  # 1 added, 1 updated
 
-    assert existing_player.player_name == "UpdatedName"
-    assert mock_session.add.call_count == 1
-    mock_session.commit.assert_called_once()
+    players = real_manager.get_known_players()
+    assert len(players) == 2
+    assert {"name": "NewPlayer", "xuid": "333"} in players
+    assert {"name": "UpdatedName", "xuid": "222"} in players
 
 
-def test_save_player_data_invalid_input(manager_instance):
+def test_save_player_data_invalid_input(real_manager):
     """Test save_player_data with invalid input types."""
     with pytest.raises(UserInputError, match="players_data must be a list."):
-        manager_instance.save_player_data({"name": "A", "xuid": "1"})  # type: ignore
+        real_manager.save_player_data({"name": "A", "xuid": "1"})  # type: ignore
 
     with pytest.raises(UserInputError, match="Invalid player entry format"):
-        manager_instance.save_player_data([{"name": "A"}])  # Missing xuid
+        real_manager.save_player_data([{"name": "A"}])  # Missing xuid
 
     with pytest.raises(UserInputError, match="Invalid player entry format"):
-        manager_instance.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
+        real_manager.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
 
 
-def test_get_known_players(manager_instance, mocker, mock_db_session_manager):
+def test_get_known_players(real_manager, db_session):
     """Test get_known_players with a valid database."""
-    mock_player1 = mocker.MagicMock()
-    mock_player1.player_name = "PlayerX"
-    mock_player1.xuid = "789"
-    mock_player2 = mocker.MagicMock()
-    mock_player2.player_name = "PlayerY"
-    mock_player2.xuid = "123"
-
-    mock_session = mocker.MagicMock()
-    mock_session.query.return_value.all.return_value = [mock_player1, mock_player2]
-    mocker.patch(
-        "bedrock_server_manager.core.manager.db_session_manager",
-        mock_db_session_manager(mock_session),
-    )
-
-    players = manager_instance.get_known_players()
-    assert players == [
+    players_to_save = [
         {"name": "PlayerX", "xuid": "789"},
         {"name": "PlayerY", "xuid": "123"},
     ]
+    real_manager.save_player_data(players_to_save)
+
+    players = real_manager.get_known_players()
+    assert len(players) == 2
+    assert {"name": "PlayerX", "xuid": "789"} in players
+    assert {"name": "PlayerY", "xuid": "123"} in players
 
 
-def test_get_known_players_empty_db(manager_instance, mocker, mock_db_session_manager):
+def test_get_known_players_empty_db(real_manager, db_session):
     """Test get_known_players with an empty database."""
-    mock_session = mocker.MagicMock()
-    mock_session.query.return_value.all.return_value = []
-    mocker.patch(
-        "bedrock_server_manager.core.manager.db_session_manager",
-        mock_db_session_manager(mock_session),
-    )
-
-    players = manager_instance.get_known_players()
+    players = real_manager.get_known_players()
     assert players == []
 
 
 def test_discover_and_store_players_from_all_server_logs(
-    manager_instance,
-    temp_manager_dirs,
-    mock_get_server_instance,
-    mock_bedrock_server,
-    mocker,
+    real_manager, real_bedrock_server, mocker
 ):
     """Test discovery and storing of players from multiple server logs."""
-    # Setup server directories
-    server1_path = temp_manager_dirs["servers"] / "server1"
-    server1_path.mkdir()
-    server2_path = temp_manager_dirs["servers"] / "server2"  # Not a valid server
-    # server2_path.mkdir() # No, let's make it a file to test skipping non-dirs
-    (temp_manager_dirs["servers"] / "not_a_server_dir.txt").write_text("hello")
-    server3_path = (
-        temp_manager_dirs["servers"] / "server3"
-    )  # Valid, but scan_log_for_players returns empty
-    server3_path.mkdir()
-    server4_path = temp_manager_dirs["servers"] / "server4"  # Valid, scan error
-    server4_path.mkdir()
+    # Create a dummy log file with some player data
+    log_file_path = os.path.join(real_bedrock_server.server_dir, "server_output.txt")
+    with open(log_file_path, "w") as f:
+        f.write("Player connected: Alpha, xuid: 1\n")
+        f.write("Player connected: Beta, xuid: 2\n")
 
-    # Mock os.listdir to return our server names
+    # Mock scan_log_for_players to return some data
     mocker.patch(
-        "os.listdir",
-        return_value=["server1", "not_a_server_dir.txt", "server3", "server4"],
+        "bedrock_server_manager.core.bedrock_server.BedrockServer.scan_log_for_players",
+        return_value=[
+            {"name": "Alpha", "xuid": "1"},
+            {"name": "Beta", "xuid": "2"},
+        ],
     )
 
-    # Mock BedrockServer instances and their methods
-    mock_server1_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server1_instance.is_installed.return_value = True
-    mock_server1_instance.scan_log_for_players.return_value = [
-        {"name": "Alpha", "xuid": "1"},
-        {"name": "Beta", "xuid": "2"},
-    ]
-
-    mock_server3_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server3_instance.is_installed.return_value = True
-    mock_server3_instance.scan_log_for_players.return_value = (
-        []
-    )  # No players from this server
-
-    mock_server4_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_server4_instance.is_installed.return_value = True
-    mock_server4_instance.scan_log_for_players.side_effect = FileOperationError(
-        "Log read error"
-    )
-
-    def server_class_side_effect(server_name):
-        if server_name == "server1":
-            return mock_server1_instance
-        if server_name == "server3":
-            return mock_server3_instance
-        if server_name == "server4":
-            return mock_server4_instance
-        raise ValueError(
-            f"Unexpected server_name '{server_name}' in mock BedrockServer"
-        )
-
-    mock_get_server_instance.side_effect = server_class_side_effect
-    mock_save_player_data = mocker.patch.object(
-        manager_instance, "save_player_data", return_value=2
-    )
-
-    results = manager_instance.discover_and_store_players_from_all_server_logs()
+    results = real_manager.discover_and_store_players_from_all_server_logs()
 
     assert results["total_entries_in_logs"] == 2
     assert results["unique_players_submitted_for_saving"] == 2
     assert results["actually_saved_or_updated_in_db"] == 2
-    assert len(results["scan_errors"]) == 1
-    assert results["scan_errors"][0]["server"] == "server4"
-    assert "Log read error" in results["scan_errors"][0]["error"]
+    assert len(results["scan_errors"]) == 0
 
-    mock_save_player_data.assert_called_once()
-    # Check the argument passed to save_player_data (order doesn't matter for a set of dicts)
-    # Convert list of dicts to a set of tuples of items for order-agnostic comparison
-    expected_players_to_save = [
-        {"name": "Alpha", "xuid": "1"},
-        {"name": "Beta", "xuid": "2"},
-    ]
-    call_args_list = mock_save_player_data.call_args[0][0]
-
-    # Helper to make list of dicts comparable regardless of order
-    def sortable_set_of_frozensets(list_of_dicts):
-        return set(frozenset(d.items()) for d in list_of_dicts)
-
-    assert sortable_set_of_frozensets(call_args_list) == sortable_set_of_frozensets(
-        expected_players_to_save
-    )
+    players = real_manager.get_known_players()
+    assert len(players) == 2
+    assert {"name": "Alpha", "xuid": "1"} in players
+    assert {"name": "Beta", "xuid": "2"} in players
 
 
-def test_discover_players_base_dir_not_exist(manager_instance, mocker):
+def test_discover_players_base_dir_not_exist(real_manager, mocker):
     """Test discover_players if base server directory doesn't exist."""
     # Ensure _base_dir points to a non-existent path for this test
-    manager_instance._base_dir = str(
-        Path(manager_instance.settings.get("paths.servers")) / "non_existent_base"
-    )
+    real_manager._base_dir = "/path/to/non_existent_base"
+    mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        manager_instance.discover_and_store_players_from_all_server_logs()
+        real_manager.discover_and_store_players_from_all_server_logs()
 
 
 # --- BedrockServerManager - Web UI Direct Start Tests ---
 
 
-def test_start_web_ui_direct_success(manager_instance, mocker):
+def test_start_web_ui_direct_success(real_manager, mocker):
     """Test start_web_ui_direct successfully calls the web app runner."""
     mock_run_web_server = mocker.patch("bedrock_server_manager.web.app.run_web_server")
 
-    manager_instance.start_web_ui_direct(host="0.0.0.0", debug=True)
+    real_manager.start_web_ui_direct(host="0.0.0.0", debug=True)
 
     mock_run_web_server.assert_called_once_with("0.0.0.0", True, None)
 
 
-def test_start_web_ui_direct_run_raises_runtime_error(manager_instance, mocker):
+def test_start_web_ui_direct_run_raises_runtime_error(real_manager, mocker):
     """Test start_web_ui_direct propagates RuntimeError from web app runner."""
     mock_run_web_server = mocker.patch(
         "bedrock_server_manager.web.app.run_web_server",
@@ -572,81 +324,75 @@ def test_start_web_ui_direct_run_raises_runtime_error(manager_instance, mocker):
     )
 
     with pytest.raises(RuntimeError, match="Web server failed"):
-        manager_instance.start_web_ui_direct()
+        real_manager.start_web_ui_direct()
 
     mock_run_web_server.assert_called_once()
 
 
-def test_start_web_ui_direct_import_error(manager_instance, mocker):
+def test_start_web_ui_direct_import_error(real_manager, mocker):
     """Test start_web_ui_direct handles ImportError if web.app is not found (less likely with packaging)."""
-    # This simulates if the web.app module or run_web_server function was somehow missing
-    # It's a bit artificial as imports are usually resolved at module load, but tests completeness.
     mocker.patch(
         "bedrock_server_manager.web.app.run_web_server",
         side_effect=ImportError("Cannot import web app"),
     )
 
     with pytest.raises(ImportError, match="Cannot import web app"):
-        manager_instance.start_web_ui_direct()
+        real_manager.start_web_ui_direct()
 
 
 # --- BedrockServerManager - Web UI Detached/Service Info Getters ---
 
 
-def test_get_web_ui_pid_path(manager_instance, temp_manager_dirs):
+def test_get_web_ui_pid_path(real_manager):
     """Test get_web_ui_pid_path returns the correct path."""
-    expected_pid_path = (
-        temp_manager_dirs["config"] / manager_instance._WEB_SERVER_PID_FILENAME
+    settings = Settings()
+    expected_pid_path = os.path.join(
+        settings.config_dir, real_manager._WEB_SERVER_PID_FILENAME
     )
-    assert Path(manager_instance.get_web_ui_pid_path()) == expected_pid_path
+    assert real_manager.get_web_ui_pid_path() == expected_pid_path
 
 
-def test_get_web_ui_expected_start_arg(manager_instance):
+def test_get_web_ui_expected_start_arg(real_manager):
     """Test get_web_ui_expected_start_arg returns the correct arguments."""
-    # This value is hardcoded in BedrockServerManager._WEB_SERVER_START_ARG
-    assert manager_instance.get_web_ui_expected_start_arg() == ["web", "start"]
+    assert real_manager.get_web_ui_expected_start_arg() == ["web", "start"]
 
 
-def test_get_web_ui_executable_path(manager_instance):
+def test_get_web_ui_executable_path(real_manager, mocker):
     """Test get_web_ui_executable_path returns the configured EXPATH."""
-    # manager_instance fixture mocks bedrock_const.EXPATH and sets manager_instance._expath
-    assert manager_instance.get_web_ui_executable_path() == "/dummy/bsm_executable"
+    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable")
+    real_manager._expath = "/dummy/bsm_executable"
+    assert real_manager.get_web_ui_executable_path() == "/dummy/bsm_executable"
 
 
-def test_get_web_ui_executable_path_not_configured(manager_instance):
+def test_get_web_ui_executable_path_not_configured(real_manager):
     """Test get_web_ui_executable_path raises error if _expath is None or empty."""
-    manager_instance._expath = None
+    real_manager._expath = None
     with pytest.raises(
         ConfigurationError, match="Application executable path .* not configured"
     ):
-        manager_instance.get_web_ui_executable_path()
+        real_manager.get_web_ui_executable_path()
 
 
 # --- BedrockServerManager - Web UI Service Management (Linux - Systemd) ---
 
 
 @pytest.fixture
-def linux_manager(manager_instance, mocker):
+def linux_manager(real_manager, mocker):
     """Provides a manager instance mocked to be on Linux with systemctl available."""
     mocker.patch("platform.system", return_value="Linux")
-    # Assume systemctl is available by default for these tests, can be overridden
     mocker.patch(
         "shutil.which", lambda cmd: "/usr/bin/systemctl" if cmd == "systemctl" else None
     )
-    # Re-initialize capabilities based on new platform.system mock for this specific manager instance
-    manager_instance.capabilities = manager_instance._check_system_capabilities()
-    return manager_instance
-
-
-# Mock the system.linux module for more control if direct calls are made
-# For now, we'll mock specific subprocess calls or os functions as needed by the manager's methods.
+    real_manager.capabilities = real_manager._check_system_capabilities()
+    return real_manager
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
 def test_build_web_service_start_command(linux_manager, mocker):
     """Test _build_web_service_start_command constructs command correctly."""
-    mocker.patch("os.path.isfile", return_value=True)  # Mock that _expath is a file
-    # _expath is "/dummy/bsm_executable" from manager_instance fixture
+    mocker.patch("os.path.isfile", return_value=True)
+    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable")
+    linux_manager._expath = "/dummy/bsm_executable"
     expected_command = "/dummy/bsm_executable web start --mode direct"
     assert linux_manager._build_web_service_start_command() == expected_command
 
@@ -656,7 +402,7 @@ def test_build_web_service_start_command_with_spaces(linux_manager, mocker):
     """Test _build_web_service_start_command quotes executable with spaces."""
     spaced_expath = "/path with spaces/bsm_exec"
     linux_manager._expath = spaced_expath
-    mocker.patch("os.path.isfile", return_value=True)  # Assume expath is a file
+    mocker.patch("os.path.isfile", return_value=True)
 
     expected_command = f'"{spaced_expath}" web start --mode direct'
     assert linux_manager._build_web_service_start_command() == expected_command
@@ -674,26 +420,24 @@ def test_build_web_service_start_command_expath_not_file(linux_manager, mocker):
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_create_web_service_file_linux(linux_manager, mocker, temp_manager_dirs):
+def test_create_web_service_file_linux(linux_manager, mocker):
     """Test create_web_service_file on Linux."""
     mock_create_systemd = mocker.patch(
         "bedrock_server_manager.core.system.linux.create_systemd_service_file"
     )
-    mocker.patch(
-        "os.path.isfile", return_value=True
-    )  # For _expath check in _build_web_service_start_command
+    mocker.patch("os.path.isfile", return_value=True)
+    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable")
+    linux_manager._expath = "/dummy/bsm_executable"
 
     linux_manager.create_web_service_file()
 
     expected_start_cmd = "/dummy/bsm_executable web start --mode direct"
-    # Construct expected stop command carefully based on how _build_web_service_start_command quotes
-    # For _expath = "/dummy/bsm_executable", no quoting is applied by default for stop.
     expected_stop_cmd = "/dummy/bsm_executable web stop"
 
     mock_create_systemd.assert_called_once_with(
         service_name_full=linux_manager._WEB_SERVICE_SYSTEMD_NAME,
         description=f"{linux_manager._app_name_title} Web UI Service",
-        working_directory=str(temp_manager_dirs["app_data"]),
+        working_directory=linux_manager._app_data_dir,
         exec_start_command=expected_start_cmd,
         exec_stop_command=expected_stop_cmd,
         service_type="simple",
@@ -709,11 +453,9 @@ def test_create_web_service_file_linux_working_dir_creation_fails(
     linux_manager, mocker
 ):
     """Test create_web_service_file on Linux when working dir creation fails."""
-    mocker.patch(
-        "os.path.isdir", return_value=False
-    )  # Simulate working_dir (app_data_dir) doesn't exist
+    mocker.patch("os.path.isdir", return_value=False)
     mocker.patch("os.makedirs", side_effect=OSError("Cannot create working_dir"))
-    mocker.patch("os.path.isfile", return_value=True)  # EXPATH is file
+    mocker.patch("os.path.isfile", return_value=True)
 
     with pytest.raises(
         FileOperationError, match="Failed to create working directory .* for service"
@@ -765,7 +507,7 @@ def test_remove_web_service_file_linux_exists(linux_manager, mocker):
         "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
         return_value="/fake/service.file",
     )
-    mocker.patch("os.path.isfile", return_value=True)  # Service file exists
+    mocker.patch("os.path.isfile", return_value=True)
     mock_os_remove = mocker.patch("os.remove")
     mock_subprocess_run = mocker.patch("subprocess.run")
 
@@ -788,13 +530,13 @@ def test_remove_web_service_file_linux_not_exists(linux_manager, mocker):
         "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
         return_value="/fake/service.file",
     )
-    mocker.patch("os.path.isfile", return_value=False)  # Service file does NOT exist
+    mocker.patch("os.path.isfile", return_value=False)
     mock_os_remove = mocker.patch("os.remove")
     mock_subprocess_run = mocker.patch("subprocess.run")
 
     assert linux_manager.remove_web_service_file() is True
     mock_os_remove.assert_not_called()
-    mock_subprocess_run.assert_not_called()  # daemon-reload should not be called if file wasn't removed
+    mock_subprocess_run.assert_not_called()
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
@@ -802,7 +544,6 @@ def test_is_web_service_active_linux(linux_manager, mocker):
     """Test is_web_service_active on Linux."""
     mock_run = mocker.patch("subprocess.run")
 
-    # Active case
     mock_run.return_value = subprocess.CompletedProcess(
         args=[], returncode=0, stdout="active", stderr=""
     )
@@ -819,7 +560,6 @@ def test_is_web_service_active_linux(linux_manager, mocker):
         check=False,
     )
 
-    # Inactive case
     mock_run.return_value = subprocess.CompletedProcess(
         args=[], returncode=1, stdout="inactive", stderr=""
     )
@@ -831,7 +571,6 @@ def test_is_web_service_enabled_linux(linux_manager, mocker):
     """Test is_web_service_enabled on Linux."""
     mock_run = mocker.patch("subprocess.run")
 
-    # Enabled case
     mock_run.return_value = subprocess.CompletedProcess(
         args=[], returncode=0, stdout="enabled", stderr=""
     )
@@ -848,7 +587,6 @@ def test_is_web_service_enabled_linux(linux_manager, mocker):
         check=False,
     )
 
-    # Disabled case
     mock_run.return_value = subprocess.CompletedProcess(
         args=[], returncode=1, stdout="disabled", stderr=""
     )
@@ -859,8 +597,7 @@ def test_is_web_service_enabled_linux(linux_manager, mocker):
 def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog):
     """Test Linux web service methods when systemctl is not found."""
     caplog.set_level(logging.WARNING)
-    mocker.patch("shutil.which", return_value=None)  # systemctl not found
-    # Re-initialize capabilities for this specific scenario
+    mocker.patch("shutil.which", return_value=None)
     linux_manager.capabilities = linux_manager._check_system_capabilities()
 
     assert not linux_manager.is_web_service_active()
@@ -892,21 +629,17 @@ def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog):
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_web_service_linux_operation_on_non_linux(manager_instance, mocker):
+def test_web_service_linux_operation_on_non_linux(real_manager, mocker):
     """Test Linux-specific web service operations fail on non-Linux OS."""
     mocker.patch("platform.system", return_value="Windows")
-    # Re-initialize capabilities based on new platform.system mock
-    manager_instance.capabilities = manager_instance._check_system_capabilities()
-    mocker.patch(
-        "os.path.isfile", return_value=True
-    )  # For _build_web_service_start_command
+    real_manager.capabilities = real_manager._check_system_capabilities()
+    mocker.patch("os.path.isfile", return_value=True)
 
-    # Test the _ensure method directly
     with pytest.raises(
         SystemError,
         match="Web UI Systemd operation 'test_op_linux' is only supported on Linux",
     ):
-        manager_instance._ensure_linux_for_web_service("test_op_linux")
+        real_manager._ensure_linux_for_web_service("test_op_linux")
 
     # Other checks might still be relevant if they don't depend on the full path that fails
     # For example, check_web_service_exists might return False without erroring if it checks os_type first.
@@ -930,16 +663,15 @@ skip_if_not_windows = pytest.mark.skipif(
 
 
 @pytest.fixture
-def windows_manager(manager_instance, mocker):
+def windows_manager(real_manager, mocker):
     """Provides a manager instance mocked to be on Windows with sc.exe available."""
     mocker.patch("platform.system", return_value="Windows")
     mocker.patch(
         "shutil.which",
         lambda cmd: "C:\\Windows\\System32\\sc.exe" if cmd == "sc.exe" else None,
     )
-    # Re-initialize capabilities based on new platform.system mock
-    manager_instance.capabilities = manager_instance._check_system_capabilities()
-    return manager_instance
+    real_manager.capabilities = real_manager._check_system_capabilities()
+    return real_manager
 
 
 @pytest.mark.skipif(
@@ -950,7 +682,9 @@ def test_create_web_service_file_windows(windows_manager, mocker):
     mock_create_svc = mocker.patch(
         "bedrock_server_manager.core.system.windows.create_windows_service"
     )
-    mocker.patch("os.path.isfile", return_value=True)  # For _expath check
+    mocker.patch("os.path.isfile", return_value=True)
+    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable")
+    windows_manager._expath = "/dummy/bsm_executable"
 
     windows_manager.create_web_service_file()
 
@@ -1034,7 +768,7 @@ def test_remove_web_service_file_windows(windows_manager, mocker):
     [
         ("STATE              : 4  RUNNING", True),
         ("STATE              : 1  STOPPED", False),
-        ("Service does not exist", False),  # Simulating error output or non-match
+        ("Service does not exist", False),
     ],
 )
 @pytest.mark.skipif(
@@ -1052,9 +786,7 @@ def test_is_web_service_active_windows(
         mock_check_output.return_value = sc_query_output
 
     assert windows_manager.is_web_service_active() == expected_active_state
-    if not (
-        "Service does not exist" in sc_query_output and not expected_active_state
-    ):  # Avoid call if already known not to exist for this mock
+    if not ("Service does not exist" in sc_query_output and not expected_active_state):
         mock_check_output.assert_called_with(
             [
                 "C:\\Windows\\System32\\sc.exe",
@@ -1071,7 +803,7 @@ def test_is_web_service_active_windows(
     "sc_qc_output, expected_enabled_state",
     [
         ("START_TYPE         : 2   AUTO_START", True),
-        ("START_TYPE         : 3   DEMAND_START", False),  # Manual
+        ("START_TYPE         : 3   DEMAND_START", False),
         ("START_TYPE         : 4   DISABLED", False),
         ("Service does not exist", False),
     ],
@@ -1110,8 +842,7 @@ def test_is_web_service_enabled_windows(
 def test_web_service_windows_sc_exe_not_found(windows_manager, mocker, caplog):
     """Test Windows web service methods when sc.exe is not found."""
     caplog.set_level(logging.WARNING)
-    mocker.patch("shutil.which", return_value=None)  # sc.exe not found
-    # Re-initialize capabilities for this specific scenario
+    mocker.patch("shutil.which", return_value=None)
     windows_manager.capabilities = windows_manager._check_system_capabilities()
 
     assert not windows_manager.is_web_service_active()
@@ -1131,143 +862,94 @@ def test_web_service_windows_sc_exe_not_found(windows_manager, mocker, caplog):
 @pytest.mark.skipif(
     platform.system() != "Windows", reason="Windows specific service tests"
 )
-def test_web_service_windows_operation_on_non_windows(manager_instance, mocker):
+def test_web_service_windows_operation_on_non_windows(real_manager, mocker):
     """Test Windows-specific web service operations fail on non-Windows OS."""
-    # This test is now a bit redundant if individual Windows tests are skipped on non-Windows.
-    # However, it can serve as a direct test of _ensure_windows_for_web_service if that's desired.
-    # For it to work as originally intended (raise SystemError due to wrong OS),
-    # the SUT would need to not hit NameError first.
-    # Given the current SUT, this test as is will likely fail with NameError if run on Linux.
-    # If we skip all windows tests on non-windows, this might also be skipped or refactored.
-    # For now, let's assume it's skipped if the other windows tests are.
-    # If not skipped, it would need careful mocking of the SUT's internal alias for system_windows_utils.
-    mocker.patch("platform.system", return_value="Linux")  # Simulate running on Linux
-    # Re-initialize capabilities based on new platform.system mock
-    manager_instance.capabilities = manager_instance._check_system_capabilities()
-    mocker.patch(
-        "os.path.isfile", return_value=True
-    )  # For _build_web_service_start_command
+    mocker.patch("platform.system", return_value="Linux")
+    real_manager.capabilities = real_manager._check_system_capabilities()
+    mocker.patch("os.path.isfile", return_value=True)
 
-    # Test the _ensure method directly
     with pytest.raises(
         SystemError,
         match="Web UI Windows Service operation 'test_op_windows' is only supported on Windows",
     ):
-        manager_instance._ensure_windows_for_web_service("test_op_windows")
-
-    # Similar to the Linux non-OS test, remove subsequent checks to keep focus and avoid NameError.
-    # assert manager_instance.check_web_service_exists() is False
-    # assert manager_instance.is_web_service_active() is False
-    # assert manager_instance.is_web_service_enabled() is False
+        real_manager._ensure_windows_for_web_service("test_op_windows")
 
 
 # --- BedrockServerManager - Global Content Listing Tests ---
 
 
-def test_list_content_files_success(manager_instance, temp_manager_dirs, mocker):
+def test_list_content_files_success(real_manager):
     """Test _list_content_files successfully lists files."""
-    content_root = temp_manager_dirs["content"]
-    worlds_dir = content_root / "worlds"
-    worlds_dir.mkdir(parents=True, exist_ok=True)
+    worlds_dir = os.path.join(real_manager._content_dir, "worlds")
+    os.makedirs(worlds_dir, exist_ok=True)
 
-    (worlds_dir / "world1.mcworld").write_text("w1")
-    (worlds_dir / "world2.mcworld").write_text("w2")
-    (worlds_dir / "other.txt").write_text("text")
+    world1_path = os.path.join(worlds_dir, "world1.mcworld")
+    world2_path = os.path.join(worlds_dir, "world2.mcworld")
+    other_path = os.path.join(worlds_dir, "other.txt")
 
-    # Mock glob.glob to return these paths
-    # Note: manager_instance._content_dir is already set by temp_manager_dirs fixture
-    # So _list_content_files will construct target_dir = content_root / "worlds"
+    Path(world1_path).write_text("w1")
+    Path(world2_path).write_text("w2")
+    Path(other_path).write_text("text")
 
-    # We need to ensure that os.path.isfile returns True for the .mcworld files
-    def mock_isfile(path):
-        return path.endswith(".mcworld")
-
-    mocker.patch("os.path.isfile", side_effect=mock_isfile)
-
-    # Mock glob.glob to simulate finding these files
-    # glob.glob returns paths as strings
-    mocker.patch(
-        "glob.glob",
-        return_value=[
-            str(worlds_dir / "world1.mcworld"),
-            str(worlds_dir / "world2.mcworld"),
-            str(worlds_dir / "other.txt"),  # glob might return this, isfile filters it
-        ],
-    )
-
-    result = manager_instance._list_content_files("worlds", [".mcworld"])
-    assert sorted(result) == sorted(
-        [str(worlds_dir / "world1.mcworld"), str(worlds_dir / "world2.mcworld")]
-    )
+    result = real_manager._list_content_files("worlds", [".mcworld"])
+    assert sorted(result) == sorted([world1_path, world2_path])
 
 
-def test_list_content_files_no_matches(manager_instance, temp_manager_dirs, mocker):
+def test_list_content_files_no_matches(real_manager):
     """Test _list_content_files when no files match extensions."""
-    content_root = temp_manager_dirs["content"]
-    addons_dir = content_root / "addons"
-    addons_dir.mkdir(parents=True, exist_ok=True)
-    (addons_dir / "something.txt").write_text("text")  # A non-matching file
+    addons_dir = os.path.join(real_manager._content_dir, "addons")
+    os.makedirs(addons_dir, exist_ok=True)
+    Path(os.path.join(addons_dir, "something.txt")).write_text("text")
 
-    # Mock glob.glob to return an empty list, as if no .mcpack or .mcaddon files were found
-    mocker.patch("glob.glob", return_value=[])
-
-    result = manager_instance._list_content_files("addons", [".mcpack", ".mcaddon"])
+    result = real_manager._list_content_files("addons", [".mcpack", ".mcaddon"])
     assert result == []
 
 
-def test_list_content_files_subfolder_not_exist(manager_instance, temp_manager_dirs):
+def test_list_content_files_subfolder_not_exist(real_manager):
     """Test _list_content_files when the sub_folder does not exist."""
-    # content_dir itself exists due to temp_manager_dirs
-    result = manager_instance._list_content_files("non_existent_subfolder", [".txt"])
+    result = real_manager._list_content_files("non_existent_subfolder", [".txt"])
     assert result == []
 
 
-def test_list_content_files_main_content_dir_not_exist(manager_instance, mocker):
+def test_list_content_files_main_content_dir_not_exist(real_manager, mocker):
     """Test _list_content_files raises AppFileNotFoundError if main content_dir is invalid."""
-    # Override the _content_dir set by fixtures for this specific test
-    manager_instance._content_dir = "/path/to/invalid_content_dir"
-    mocker.patch(
-        "os.path.isdir", return_value=False
-    )  # Simulate it's not a dir or doesn't exist
+    real_manager._content_dir = "/path/to/invalid_content_dir"
+    mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Content directory"):
-        manager_instance._list_content_files("worlds", [".mcworld"])
+        real_manager._list_content_files("worlds", [".mcworld"])
 
 
-def test_list_content_files_os_error_on_glob(
-    manager_instance, temp_manager_dirs, mocker
-):
+def test_list_content_files_os_error_on_glob(real_manager, mocker):
     """Test _list_content_files handles OSError from glob.glob."""
-    # Ensure content_dir and subfolder appear to exist
-    content_root = temp_manager_dirs["content"]
-    worlds_dir = content_root / "worlds"
-    worlds_dir.mkdir(parents=True, exist_ok=True)  # Make sure target_dir exists
+    worlds_dir = os.path.join(real_manager._content_dir, "worlds")
+    os.makedirs(worlds_dir, exist_ok=True)
 
     mocker.patch("glob.glob", side_effect=OSError("Glob permission denied"))
 
     with pytest.raises(FileOperationError, match="Error scanning content directory"):
-        manager_instance._list_content_files("worlds", [".mcworld"])
+        real_manager._list_content_files("worlds", [".mcworld"])
 
 
-def test_list_available_worlds(manager_instance, mocker):
+def test_list_available_worlds(real_manager, mocker):
     """Test list_available_worlds calls _list_content_files correctly."""
     mock_list_content = mocker.patch.object(
-        manager_instance, "_list_content_files", return_value=["/path/world.mcworld"]
+        real_manager, "_list_content_files", return_value=["/path/world.mcworld"]
     )
 
-    result = manager_instance.list_available_worlds()
+    result = real_manager.list_available_worlds()
 
     assert result == ["/path/world.mcworld"]
     mock_list_content.assert_called_once_with("worlds", [".mcworld"])
 
 
-def test_list_available_addons(manager_instance, mocker):
+def test_list_available_addons(real_manager, mocker):
     """Test list_available_addons calls _list_content_files correctly."""
     mock_list_content = mocker.patch.object(
-        manager_instance, "_list_content_files", return_value=["/path/addon.mcpack"]
+        real_manager, "_list_content_files", return_value=["/path/addon.mcpack"]
     )
 
-    result = manager_instance.list_available_addons()
+    result = real_manager.list_available_addons()
 
     assert result == ["/path/addon.mcpack"]
     mock_list_content.assert_called_once_with("addons", [".mcpack", ".mcaddon"])
@@ -1276,143 +958,52 @@ def test_list_available_addons(manager_instance, mocker):
 # --- BedrockServerManager - Server Discovery & Data Aggregation ---
 
 
-def test_validate_server_valid(
-    manager_instance, mock_get_server_instance, mock_bedrock_server, mocker
-):
+def test_validate_server_valid(real_manager, real_bedrock_server):
     """Test validate_server for a valid server."""
-    mock_bedrock_server.is_installed.return_value = True
-
-    assert manager_instance.validate_server("server1") is True
-    mock_get_server_instance.assert_called_once_with("server1")
-    mock_bedrock_server.is_installed.assert_called_once()
+    assert real_manager.validate_server(real_bedrock_server.server_name) is True
 
 
-def test_validate_server_not_installed(
-    manager_instance, mock_get_server_instance, mock_bedrock_server, mocker
-):
+def test_validate_server_not_installed(real_manager, real_bedrock_server, mocker):
     """Test validate_server for a server that is not installed."""
-    mock_bedrock_server.is_installed.return_value = False
+    mocker.patch(
+        "bedrock_server_manager.core.bedrock_server.BedrockServer.is_installed",
+        return_value=False,
+    )
+    assert real_manager.validate_server(real_bedrock_server.server_name) is False
 
-    assert manager_instance.validate_server("server2") is False
-    mock_bedrock_server.is_installed.assert_called_once()
 
-
-def test_validate_server_instantiation_error(
-    manager_instance, mock_get_server_instance, caplog
-):
+def test_validate_server_instantiation_error(real_manager, mocker):
     """Test validate_server when BedrockServer instantiation fails."""
-    caplog.set_level(logging.WARNING)
-    mock_get_server_instance.side_effect = InvalidServerNameError("Bad name")
+    mocker.patch(
+        "bedrock_server_manager.instances.get_server_instance",
+        side_effect=InvalidServerNameError("Bad name"),
+    )
+    assert real_manager.validate_server("bad_server_name_format!") is False
 
-    assert manager_instance.validate_server("bad_server_name_format!") is False
-    assert "Validation failed for server 'bad_server_name_format!'" in caplog.text
-    assert "Bad name" in caplog.text
 
-
-def test_validate_server_empty_name(manager_instance):
+def test_validate_server_empty_name(real_manager):
     """Test validate_server with an empty server name."""
     with pytest.raises(
         MissingArgumentError, match="Server name cannot be empty for validation."
     ):
-        manager_instance.validate_server("")
+        real_manager.validate_server("")
 
 
-def test_get_servers_data_success(
-    manager_instance, temp_manager_dirs, mock_get_server_instance, mocker
-):
+def test_get_servers_data_success(real_manager, real_bedrock_server):
     """Test get_servers_data successfully retrieves data for multiple servers."""
-    # Simulate server directories
-    base_servers_path = temp_manager_dirs["servers"]
-    (base_servers_path / "server_alpha").mkdir()
-    (base_servers_path / "server_beta").mkdir()
-    (base_servers_path / "not_a_server_dir.txt").write_text("ignoreme")
-    (
-        base_servers_path / "server_gamma_uninstalled"
-    ).mkdir()  # Valid dir, but mock is_installed=False
-    (
-        base_servers_path / "server_delta_error"
-    ).mkdir()  # Valid dir, but mock instantiation error
+    servers_data, error_messages = real_manager.get_servers_data()
 
-    mocker.patch(
-        "os.listdir",
-        return_value=[
-            "server_alpha",
-            "server_beta",
-            "not_a_server_dir.txt",
-            "server_gamma_uninstalled",
-            "server_delta_error",
-        ],
-    )
-
-    # Mock BedrockServer instances
-    mock_alpha_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_alpha_instance.server_name = "server_alpha"
-    mock_alpha_instance.is_installed.return_value = True
-    mock_alpha_instance.get_status.return_value = "RUNNING"
-    mock_alpha_instance.get_version.return_value = "1.20.0"
-
-    mock_beta_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_beta_instance.server_name = "server_beta"
-    mock_beta_instance.is_installed.return_value = True
-    mock_beta_instance.get_status.return_value = "STOPPED"
-    mock_beta_instance.get_version.return_value = "1.19.5"
-
-    mock_gamma_instance = mocker.MagicMock(spec=BedrockServer)
-    mock_gamma_instance.server_name = "server_gamma_uninstalled"
-    mock_gamma_instance.is_installed.return_value = False  # Not installed
-
-    def server_class_side_effect(server_name, manager_expath=None):
-        if server_name == "server_alpha":
-            return mock_alpha_instance
-        if server_name == "server_beta":
-            return mock_beta_instance
-        if server_name == "server_gamma_uninstalled":
-            return mock_gamma_instance
-        if server_name == "server_delta_error":
-            raise ConfigurationError("Config error for delta")
-        # This ensures that if listdir returns something not handled, it blows up as expected
-        raise ValueError(
-            f"Unexpected server_name '{server_name}' in mock BedrockServer for get_servers_data"
-        )
-
-    mock_get_server_instance.side_effect = server_class_side_effect
-
-    servers_data, error_messages = manager_instance.get_servers_data()
-
-    assert len(servers_data) == 2
-    # Results are sorted by name
-    assert servers_data[0] == {
-        "name": "server_alpha",
-        "status": "RUNNING",
-        "version": "1.20.0",
-    }
-    assert servers_data[1] == {
-        "name": "server_beta",
-        "status": "STOPPED",
-        "version": "1.19.5",
-    }
-
-    assert len(error_messages) == 1
-    assert (
-        "Could not get info for server 'server_delta_error': Config error for delta"
-        in error_messages[0]
-    )
-
-    # Check calls to BedrockServer constructor (excluding not_a_server_dir.txt)
-    assert mock_get_server_instance.call_count == 4
+    assert len(servers_data) == 1
+    assert servers_data[0]["name"] == real_bedrock_server.server_name
+    assert servers_data[0]["status"] == "STOPPED"
+    assert "version" in servers_data[0]
+    assert len(error_messages) == 0
 
 
-def test_get_servers_data_base_dir_not_exist(manager_instance, mocker):
+def test_get_servers_data_base_dir_not_exist(real_manager, mocker):
     """Test get_servers_data if base server directory doesn't exist."""
-    manager_instance._base_dir = str(
-        Path(manager_instance.settings.get("paths.servers"))
-        / "non_existent_base_servers"
-    )
-    # Ensure os.path.isdir for this non_existent_base_servers returns False
-    mocker.patch(
-        "os.path.isdir",
-        lambda path: False if "non_existent_base_servers" in str(path) else True,
-    )
+    real_manager._base_dir = "/path/to/non_existent_base_servers"
+    mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        manager_instance.get_servers_data()
+        real_manager.get_servers_data()

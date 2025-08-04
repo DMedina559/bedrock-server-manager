@@ -271,14 +271,14 @@ def real_plugin_manager(tmp_path):
     plugin1_dir.mkdir()
     with open(plugin1_dir / "__init__.py", "w") as f:
         f.write(
-            '''
+            """
 from bedrock_server_manager.plugins.plugin_base import PluginBase
 
 class Plugin(PluginBase):
     version = "1.0"
     def on_load(self):
         pass
-'''
+"""
         )
 
     with patch("appdirs.user_config_dir", return_value=str(config_dir)):
