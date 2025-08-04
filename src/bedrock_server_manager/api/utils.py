@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance, get_manager_instance
+from ..instances import get_server_instance, get_manager_instance, get_settings_instance
 from ..core import utils as core_utils
 from .server import (
     start_server as api_start_server,
@@ -137,7 +137,7 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
-def update_server_statuses() -> Dict[str, Any]:
+def update_server_statuses(settings=None) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
     This function calls
@@ -165,7 +165,9 @@ def update_server_statuses() -> Dict[str, Any]:
     try:
         # get_servers_data() from the manager now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = get_manager_instance().get_servers_data()
+        all_servers_data, discovery_errors = get_manager_instance(
+            settings
+        ).get_servers_data()
         if discovery_errors:
             error_messages.extend(discovery_errors)
 
@@ -206,7 +208,7 @@ def update_server_statuses() -> Dict[str, Any]:
 
 
 @plugin_method("get_system_and_app_info")
-def get_system_and_app_info() -> Dict[str, Any]:
+def get_system_and_app_info(settings=None) -> Dict[str, Any]:
     """Retrieves basic system and application information.
 
     Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
@@ -217,9 +219,10 @@ def get_system_and_app_info() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting system and app info.")
     try:
+        manager = get_manager_instance(settings)
         data = {
-            "os_type": get_manager_instance().get_os_type(),
-            "app_version": get_manager_instance().get_app_version(),
+            "os_type": manager.get_os_type(),
+            "app_version": manager.get_app_version(),
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
         return {"status": "success", "data": data}
@@ -228,10 +231,10 @@ def get_system_and_app_info() -> Dict[str, Any]:
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
-def stop_all_servers():
+def stop_all_servers(settings=None):
     """Stops all running servers."""
     logger.info("API: Stopping all servers...")
-    servers_data, _ = get_manager_instance().get_servers_data()
+    servers_data, _ = get_manager_instance(settings).get_servers_data()
     for server_data in servers_data:
         server_name = server_data.get("name")
         if server_name and server_data.get("status") == "running":

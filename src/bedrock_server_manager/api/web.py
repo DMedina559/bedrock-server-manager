@@ -30,7 +30,11 @@ except ImportError:
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_manager_instance, get_plugin_manager_instance
+from ..instances import (
+    get_manager_instance,
+    get_plugin_manager_instance,
+    get_settings_instance,
+)
 from ..core.system import process as system_process_utils
 from ..error import (
     BSMError,
@@ -48,6 +52,7 @@ def start_web_server_api(
     debug: bool = False,
     mode: str = "direct",
     threads: Optional[int] = None,
+    settings=None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
 
@@ -99,7 +104,7 @@ def start_web_server_api(
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            get_manager_instance().start_web_ui_direct(host, debug, threads)
+            get_manager_instance(settings).start_web_ui_direct(host, debug, threads)
             result = {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",
@@ -113,9 +118,10 @@ def start_web_server_api(
                 )
 
             logger.info("API: Starting web server in detached mode...")
-            pid_file_path = get_manager_instance().get_web_ui_pid_path()
-            expected_exe = get_manager_instance().get_web_ui_executable_path()
-            expected_arg = get_manager_instance().get_web_ui_expected_start_arg()
+            manager = get_manager_instance(settings)
+            pid_file_path = manager.get_web_ui_pid_path()
+            expected_exe = manager.get_web_ui_executable_path()
+            expected_arg = manager.get_web_ui_expected_start_arg()
 
             # Check for an existing, valid PID file.
             existing_pid = None
@@ -177,7 +183,7 @@ def start_web_server_api(
     return result
 
 
-def stop_web_server_api() -> Dict[str, str]:
+def stop_web_server_api(settings=None) -> Dict[str, str]:
     """Stops the detached web server process.
 
     This function reads the PID from the web server's PID file (path obtained
@@ -213,9 +219,10 @@ def stop_web_server_api() -> Dict[str, str]:
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        pid_file_path = get_manager_instance().get_web_ui_pid_path()
-        expected_exe = get_manager_instance().get_web_ui_executable_path()
-        expected_arg = get_manager_instance().get_web_ui_expected_start_arg()
+        manager = get_manager_instance(settings)
+        pid_file_path = manager.get_web_ui_pid_path()
+        expected_exe = manager.get_web_ui_executable_path()
+        expected_arg = manager.get_web_ui_expected_start_arg()
 
         # Read the PID from the file.
         pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -243,7 +250,7 @@ def stop_web_server_api() -> Dict[str, str]:
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
         system_process_utils.remove_pid_file_if_exists(
-            get_manager_instance().get_web_ui_pid_path()
+            get_manager_instance(settings).get_web_ui_pid_path()
         )
         error_type = (
             "PID file error"
@@ -263,7 +270,7 @@ def stop_web_server_api() -> Dict[str, str]:
 
 
 @plugin_method("get_web_server_status")
-def get_web_server_status_api() -> Dict[str, Any]:
+def get_web_server_status_api(settings=None) -> Dict[str, Any]:
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
@@ -297,9 +304,10 @@ def get_web_server_status_api() -> Dict[str, Any]:
         }
     pid = None
     try:
-        pid_file_path = get_manager_instance().get_web_ui_pid_path()
-        expected_exe = get_manager_instance().get_web_ui_executable_path()
-        expected_arg = get_manager_instance().get_web_ui_expected_start_arg()
+        manager = get_manager_instance(settings)
+        pid_file_path = manager.get_web_ui_pid_path()
+        expected_exe = manager.get_web_ui_executable_path()
+        expected_arg = manager.get_web_ui_expected_start_arg()
 
         try:
             pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -366,6 +374,7 @@ def create_web_ui_service(
     system: bool = False,
     username: Optional[str] = None,
     password: Optional[str] = None,
+    settings=None,
 ) -> Dict[str, str]:
     """Creates (or updates) a system service for the Web UI.
 
@@ -407,22 +416,22 @@ def create_web_ui_service(
 
     result = {}
     try:
-
-        if not get_manager_instance().can_manage_services:
+        manager = get_manager_instance(settings)
+        if not manager.can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        get_manager_instance().create_web_service_file(
+        manager.create_web_service_file(
             system=system, username=username, password=password
         )
 
         if autostart:
-            get_manager_instance().enable_web_service(system=system)
+            manager.enable_web_service(system=system)
             action_done = "created and enabled"
         else:
-            get_manager_instance().disable_web_service()
+            manager.disable_web_service()
             action_done = "created and disabled"
 
         result = {
@@ -449,7 +458,7 @@ def create_web_ui_service(
     return result
 
 
-def enable_web_ui_service(system: bool = False) -> Dict[str, str]:
+def enable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]:
     """Enables the Web UI system service for autostart.
 
     On Linux, this enables the systemd user service. On Windows, this sets the
@@ -478,13 +487,13 @@ def enable_web_ui_service(system: bool = False) -> Dict[str, str]:
     plugin_manager.trigger_event("before_web_service_change", action="enable")
     result = {}
     try:
-
-        if not get_manager_instance().can_manage_services:
+        manager = get_manager_instance(settings)
+        if not manager.can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        get_manager_instance().enable_web_service(system=system)
+        manager.enable_web_service(system=system)
         result = {
             "status": "success",
             "message": "Web UI service enabled successfully.",
@@ -507,7 +516,7 @@ def enable_web_ui_service(system: bool = False) -> Dict[str, str]:
     return result
 
 
-def disable_web_ui_service(system: bool = False) -> Dict[str, str]:
+def disable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]:
     """Disables the Web UI system service from autostarting.
 
     On Linux, this disables the systemd user service. On Windows, this sets the
@@ -536,13 +545,13 @@ def disable_web_ui_service(system: bool = False) -> Dict[str, str]:
     plugin_manager.trigger_event("before_web_service_change", action="disable")
     result = {}
     try:
-
-        if not get_manager_instance().can_manage_services:
+        manager = get_manager_instance(settings)
+        if not manager.can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        get_manager_instance().disable_web_service(system=system)
+        manager.disable_web_service(system=system)
         result = {
             "status": "success",
             "message": "Web UI service disabled successfully.",
@@ -570,7 +579,7 @@ def disable_web_ui_service(system: bool = False) -> Dict[str, str]:
     return result
 
 
-def remove_web_ui_service(system: bool = False) -> Dict[str, str]:
+def remove_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]:
     """Removes the Web UI system service.
 
     The service should ideally be stopped and disabled before removal.
@@ -605,14 +614,14 @@ def remove_web_ui_service(system: bool = False) -> Dict[str, str]:
     plugin_manager.trigger_event("before_web_service_change", action="remove")
     result = {}
     try:
-
-        if not get_manager_instance().can_manage_services:
+        manager = get_manager_instance(settings)
+        if not manager.can_manage_services:
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        removed = get_manager_instance().remove_web_service_file(system=system)
+        removed = manager.remove_web_service_file(system=system)
         if removed:
             result = {
                 "status": "success",
@@ -643,7 +652,7 @@ def remove_web_ui_service(system: bool = False) -> Dict[str, str]:
     return result
 
 
-def get_web_ui_service_status(system: bool = False) -> Dict[str, Any]:
+def get_web_ui_service_status(system: bool = False, settings=None) -> Dict[str, Any]:
     """Gets the current status of the Web UI system service.
 
     This function calls several methods on the
@@ -671,23 +680,20 @@ def get_web_ui_service_status(system: bool = False) -> Dict[str, Any]:
         "is_enabled": False,
     }
     try:
-        if not get_manager_instance().can_manage_services:
+        manager = get_manager_instance(settings)
+        if not manager.can_manage_services:
             return {
                 "status": "success",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot determine Web UI service status.",
                 **response_data,
             }
 
-        response_data["service_exists"] = (
-            get_manager_instance().check_web_service_exists(system=system)
+        response_data["service_exists"] = manager.check_web_service_exists(
+            system=system
         )
         if response_data["service_exists"]:
-            response_data["is_active"] = get_manager_instance().is_web_service_active(
-                system=system
-            )
-            response_data["is_enabled"] = get_manager_instance().is_web_service_enabled(
-                system=system
-            )
+            response_data["is_active"] = manager.is_web_service_active(system=system)
+            response_data["is_enabled"] = manager.is_web_service_enabled(system=system)
 
         return {"status": "success", **response_data}
 

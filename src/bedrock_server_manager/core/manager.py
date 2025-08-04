@@ -106,21 +106,13 @@ class BedrockServerManager:
         _WEB_SERVICE_WINDOWS_DISPLAY_NAME (str): Display name for the Web UI Windows service.
     """
 
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(BedrockServerManager, cls).__new__(cls)
-            cls._instance._init_once()
-        return cls._instance
-
-    def _init_once(self) -> None:
+    def __init__(self, settings: Settings) -> None:
         """
-        Initializes the BedrockServerManager instance. This method is called only once.
+        Initializes the BedrockServerManager instance.
 
         This constructor sets up the manager by:
 
-            1. Initializing or accepting an instance of the :class:`~.config.settings.Settings`
+            1. Accepting an instance of the :class:`~.config.settings.Settings`
                class, which provides access to all application configurations.
             2. Performing a check for system capabilities (e.g., availability of
                ``crontab``, ``systemctl``) via :meth:`._check_system_capabilities`
@@ -135,20 +127,16 @@ class BedrockServerManager:
                :class:`~.error.ConfigurationError` if not.
 
         Args:
+            settings (Settings): An instance of the application's
+                :class:`~.config.settings.Settings` object.
 
         Raises:
-            ConfigurationError: If the provided or loaded :class:`~.config.settings.Settings`
+            ConfigurationError: If the provided :class:`~.config.settings.Settings`
                 object is misconfigured (e.g., missing critical path definitions like
                 ``paths.servers`` or ``paths.content``), or if core application
                 constants cannot be accessed.
         """
-        from ..instances import get_settings_instance
-
-        if hasattr(self, "_initialized") and self._initialized:
-            return
-        self._initialized = True
-
-        self.settings = get_settings_instance()
+        self.settings = settings
         logger.debug(
             f"BedrockServerManager initialized using settings from: {self.settings.config_path}"
         )

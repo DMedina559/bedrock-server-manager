@@ -45,23 +45,26 @@ def reset_manager_singleton():
 # --- BedrockServerManager - Initialization & Settings Tests ---
 
 
-def test_manager_initialization_success(real_manager, isolated_settings):
+def test_manager_initialization_success(isolated_settings):
     """Test successful initialization of BedrockServerManager."""
     settings = Settings()
-    assert real_manager._app_data_dir == settings.app_data_dir
-    assert real_manager._config_dir == settings.config_dir
-    assert real_manager._base_dir == os.path.join(settings.app_data_dir, "servers")
-    assert real_manager._content_dir == os.path.join(settings.app_data_dir, "content")
+    manager = BedrockServerManager(settings)
+    assert manager._app_data_dir == settings.app_data_dir
+    assert manager._config_dir == settings.config_dir
+    assert manager._base_dir == os.path.join(settings.app_data_dir, "servers")
+    assert manager._content_dir == os.path.join(settings.app_data_dir, "content")
 
 
-def test_manager_get_and_set_setting(real_manager):
+def test_manager_get_and_set_setting():
     """Test get_setting and set_setting proxy methods."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     # Test get_setting
-    assert real_manager.get_setting("a.b.c", "default_arg") == "default_arg"
+    assert manager.get_setting("a.b.c", "default_arg") == "default_arg"
 
     # Test set_setting
-    real_manager.set_setting("x.y.z", "new_value")
-    assert real_manager.get_setting("x.y.z") == "new_value"
+    manager.set_setting("x.y.z", "new_value")
+    assert manager.get_setting("x.y.z") == "new_value"
 
 
 def test_manager_initialization_missing_critical_paths(isolated_settings):
@@ -73,10 +76,7 @@ def test_manager_initialization_missing_critical_paths(isolated_settings):
     with pytest.raises(
         ConfigurationError, match="BASE_DIR not configured in settings."
     ):
-        BedrockServerManager()
-
-    # Reset singleton
-    BedrockServerManager._instance = None
+        BedrockServerManager(settings)
 
     # Test missing content path
     settings.set("paths.servers", os.path.join(settings.app_data_dir, "servers"))
@@ -84,7 +84,7 @@ def test_manager_initialization_missing_critical_paths(isolated_settings):
     with pytest.raises(
         ConfigurationError, match="CONTENT_DIR not configured in settings."
     ):
-        BedrockServerManager()
+        BedrockServerManager(settings)
 
 
 @pytest.mark.parametrize(
@@ -129,8 +129,8 @@ def test_manager_system_capabilities_check(
 
     mocker.patch("shutil.which", side_effect=which_side_effect)
     mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy_expath")
-
-    manager = BedrockServerManager()
+    settings = Settings()
+    manager = BedrockServerManager(settings)
 
     assert manager.capabilities == expected_caps
     assert manager.can_schedule_tasks == expected_caps["scheduler"]
@@ -148,19 +148,23 @@ def test_manager_system_capabilities_check(
             assert "systemctl command not found." not in caplog.text
 
 
-def test_manager_get_app_version(real_manager):
+def test_manager_get_app_version():
     """Test get_app_version method."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     # This will get the actual version from the project metadata
     import importlib.metadata
 
     version = importlib.metadata.version("bedrock-server-manager")
-    assert real_manager.get_app_version() == version
+    assert manager.get_app_version() == version
 
 
-def test_manager_get_os_type(real_manager, mocker):
+def test_manager_get_os_type(mocker):
     """Test get_os_type method."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     mocker.patch("platform.system", return_value="TestOS")
-    assert real_manager.get_os_type() == "TestOS"
+    assert manager.get_os_type() == "TestOS"
 
 
 # --- BedrockServerManager - Player Database Management Tests ---
@@ -179,92 +183,100 @@ def test_manager_get_os_type(real_manager, mocker):
         ("Valid:1,Invalid,Valid2:2", True, "Invalid player data format: 'Invalid'."),
     ],
 )
-def test_parse_player_cli_argument(
-    real_manager, input_str, raises_error, match_msg, mocker
-):
+def test_parse_player_cli_argument(input_str, raises_error, match_msg, mocker):
     """Test parse_player_cli_argument with various inputs."""
-    mock_save = mocker.patch.object(real_manager, "save_player_data")
+    settings = Settings()
+    manager = BedrockServerManager(settings)
+    mock_save = mocker.patch.object(manager, "save_player_data")
     if raises_error:
         with pytest.raises(UserInputError, match=match_msg):
-            real_manager.parse_player_cli_argument(input_str)
+            manager.parse_player_cli_argument(input_str)
         mock_save.assert_not_called()
     else:
-        real_manager.parse_player_cli_argument(input_str)
+        manager.parse_player_cli_argument(input_str)
         if input_str:
             mock_save.assert_called_once()
         else:
             mock_save.assert_not_called()
 
 
-def test_save_player_data_new_db(real_manager, db_session):
+def test_save_player_data_new_db(db_session):
     """Test save_player_data creating a new player in the database."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     players_to_save = [
         {"name": "Gamer", "xuid": "100"},
         {"name": "Admin", "xuid": "007"},
     ]
 
-    saved_count = real_manager.save_player_data(players_to_save)
+    saved_count = manager.save_player_data(players_to_save)
     assert saved_count == 2
 
-    players = real_manager.get_known_players()
+    players = manager.get_known_players()
     assert len(players) == 2
     assert {"name": "Gamer", "xuid": "100"} in players
     assert {"name": "Admin", "xuid": "007"} in players
 
 
-def test_save_player_data_update_existing_db(real_manager, db_session):
+def test_save_player_data_update_existing_db(db_session):
     """Test save_player_data merging with an existing player in the database."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     # Add a player to the database first
-    real_manager.save_player_data([{"name": "ToUpdate", "xuid": "222"}])
+    manager.save_player_data([{"name": "ToUpdate", "xuid": "222"}])
 
     players_to_save = [
         {"name": "NewPlayer", "xuid": "333"},
         {"name": "UpdatedName", "xuid": "222"},  # Update XUID 222
     ]
-    saved_count = real_manager.save_player_data(players_to_save)
+    saved_count = manager.save_player_data(players_to_save)
     assert saved_count == 2  # 1 added, 1 updated
 
-    players = real_manager.get_known_players()
+    players = manager.get_known_players()
     assert len(players) == 2
     assert {"name": "NewPlayer", "xuid": "333"} in players
     assert {"name": "UpdatedName", "xuid": "222"} in players
 
 
-def test_save_player_data_invalid_input(real_manager):
+def test_save_player_data_invalid_input():
     """Test save_player_data with invalid input types."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     with pytest.raises(UserInputError, match="players_data must be a list."):
-        real_manager.save_player_data({"name": "A", "xuid": "1"})  # type: ignore
+        manager.save_player_data({"name": "A", "xuid": "1"})  # type: ignore
 
     with pytest.raises(UserInputError, match="Invalid player entry format"):
-        real_manager.save_player_data([{"name": "A"}])  # Missing xuid
+        manager.save_player_data([{"name": "A"}])  # Missing xuid
 
     with pytest.raises(UserInputError, match="Invalid player entry format"):
-        real_manager.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
+        manager.save_player_data([{"name": "", "xuid": "1"}])  # Empty name
 
 
-def test_get_known_players(real_manager, db_session):
+def test_get_known_players(db_session):
     """Test get_known_players with a valid database."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     players_to_save = [
         {"name": "PlayerX", "xuid": "789"},
         {"name": "PlayerY", "xuid": "123"},
     ]
-    real_manager.save_player_data(players_to_save)
+    manager.save_player_data(players_to_save)
 
-    players = real_manager.get_known_players()
+    players = manager.get_known_players()
     assert len(players) == 2
     assert {"name": "PlayerX", "xuid": "789"} in players
     assert {"name": "PlayerY", "xuid": "123"} in players
 
 
-def test_get_known_players_empty_db(real_manager, db_session):
+def test_get_known_players_empty_db(db_session):
     """Test get_known_players with an empty database."""
-    players = real_manager.get_known_players()
+    settings = Settings()
+    manager = BedrockServerManager(settings)
+    players = manager.get_known_players()
     assert players == []
 
 
-def test_discover_and_store_players_from_all_server_logs(
-    real_manager, real_bedrock_server, mocker
-):
+def test_discover_and_store_players_from_all_server_logs(real_bedrock_server, mocker):
     """Test discovery and storing of players from multiple server logs."""
     # Create a dummy log file with some player data
     log_file_path = os.path.join(real_bedrock_server.server_dir, "server_output.txt")
@@ -280,111 +292,129 @@ def test_discover_and_store_players_from_all_server_logs(
             {"name": "Beta", "xuid": "2"},
         ],
     )
-
-    results = real_manager.discover_and_store_players_from_all_server_logs()
+    settings = Settings()
+    manager = BedrockServerManager(settings)
+    results = manager.discover_and_store_players_from_all_server_logs()
 
     assert results["total_entries_in_logs"] == 2
     assert results["unique_players_submitted_for_saving"] == 2
     assert results["actually_saved_or_updated_in_db"] == 2
     assert len(results["scan_errors"]) == 0
 
-    players = real_manager.get_known_players()
+    players = manager.get_known_players()
     assert len(players) == 2
     assert {"name": "Alpha", "xuid": "1"} in players
     assert {"name": "Beta", "xuid": "2"} in players
 
 
-def test_discover_players_base_dir_not_exist(real_manager, mocker):
+def test_discover_players_base_dir_not_exist(mocker):
     """Test discover_players if base server directory doesn't exist."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     # Ensure _base_dir points to a non-existent path for this test
-    real_manager._base_dir = "/path/to/non_existent_base"
+    manager._base_dir = "/path/to/non_existent_base"
     mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        real_manager.discover_and_store_players_from_all_server_logs()
+        manager.discover_and_store_players_from_all_server_logs()
 
 
 # --- BedrockServerManager - Web UI Direct Start Tests ---
 
 
-def test_start_web_ui_direct_success(real_manager, mocker):
+def test_start_web_ui_direct_success(mocker):
     """Test start_web_ui_direct successfully calls the web app runner."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     mock_run_web_server = mocker.patch("bedrock_server_manager.web.app.run_web_server")
 
-    real_manager.start_web_ui_direct(host="0.0.0.0", debug=True)
+    manager.start_web_ui_direct(host="0.0.0.0", debug=True)
 
     mock_run_web_server.assert_called_once_with("0.0.0.0", True, None)
 
 
-def test_start_web_ui_direct_run_raises_runtime_error(real_manager, mocker):
+def test_start_web_ui_direct_run_raises_runtime_error(mocker):
     """Test start_web_ui_direct propagates RuntimeError from web app runner."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     mock_run_web_server = mocker.patch(
         "bedrock_server_manager.web.app.run_web_server",
         side_effect=RuntimeError("Web server failed"),
     )
 
     with pytest.raises(RuntimeError, match="Web server failed"):
-        real_manager.start_web_ui_direct()
+        manager.start_web_ui_direct()
 
     mock_run_web_server.assert_called_once()
 
 
-def test_start_web_ui_direct_import_error(real_manager, mocker):
+def test_start_web_ui_direct_import_error(mocker):
     """Test start_web_ui_direct handles ImportError if web.app is not found (less likely with packaging)."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     mocker.patch(
         "bedrock_server_manager.web.app.run_web_server",
         side_effect=ImportError("Cannot import web app"),
     )
 
     with pytest.raises(ImportError, match="Cannot import web app"):
-        real_manager.start_web_ui_direct()
+        manager.start_web_ui_direct()
 
 
 # --- BedrockServerManager - Web UI Detached/Service Info Getters ---
 
 
-def test_get_web_ui_pid_path(real_manager):
+def test_get_web_ui_pid_path():
     """Test get_web_ui_pid_path returns the correct path."""
     settings = Settings()
+    manager = BedrockServerManager(settings)
     expected_pid_path = os.path.join(
-        settings.config_dir, real_manager._WEB_SERVER_PID_FILENAME
+        settings.config_dir, manager._WEB_SERVER_PID_FILENAME
     )
-    assert real_manager.get_web_ui_pid_path() == expected_pid_path
+    assert manager.get_web_ui_pid_path() == expected_pid_path
 
 
-def test_get_web_ui_expected_start_arg(real_manager):
+def test_get_web_ui_expected_start_arg():
     """Test get_web_ui_expected_start_arg returns the correct arguments."""
-    assert real_manager.get_web_ui_expected_start_arg() == ["web", "start"]
+    settings = Settings()
+    manager = BedrockServerManager(settings)
+    assert manager.get_web_ui_expected_start_arg() == ["web", "start"]
 
 
-def test_get_web_ui_executable_path(real_manager, mocker):
+def test_get_web_ui_executable_path(mocker):
     """Test get_web_ui_executable_path returns the configured EXPATH."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable")
-    real_manager._expath = "/dummy/bsm_executable"
-    assert real_manager.get_web_ui_executable_path() == "/dummy/bsm_executable"
+    manager._expath = "/dummy/bsm_executable"
+    assert manager.get_web_ui_executable_path() == "/dummy/bsm_executable"
 
 
-def test_get_web_ui_executable_path_not_configured(real_manager):
+def test_get_web_ui_executable_path_not_configured():
     """Test get_web_ui_executable_path raises error if _expath is None or empty."""
-    real_manager._expath = None
+    settings = Settings()
+    manager = BedrockServerManager(settings)
+    manager._expath = None
     with pytest.raises(
         ConfigurationError, match="Application executable path .* not configured"
     ):
-        real_manager.get_web_ui_executable_path()
+        manager.get_web_ui_executable_path()
 
 
 # --- BedrockServerManager - Web UI Service Management (Linux - Systemd) ---
 
 
 @pytest.fixture
-def linux_manager(real_manager, mocker):
+def linux_manager(mocker):
     """Provides a manager instance mocked to be on Linux with systemctl available."""
+    settings = Settings()
+    manager = BedrockServerManager(settings)
     mocker.patch("platform.system", return_value="Linux")
     mocker.patch(
         "shutil.which", lambda cmd: "/usr/bin/systemctl" if cmd == "systemctl" else None
     )
-    real_manager.capabilities = real_manager._check_system_capabilities()
-    return real_manager
+    manager.capabilities = manager._check_system_capabilities()
+    return manager
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")

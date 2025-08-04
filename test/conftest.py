@@ -248,6 +248,7 @@ done
 def real_manager(tmp_path):
     """Fixture for a real BedrockServerManager instance."""
     from bedrock_server_manager.core.manager import BedrockServerManager
+    from bedrock_server_manager.config.settings import Settings
     from unittest.mock import patch
 
     data_dir = tmp_path / "data"
@@ -264,7 +265,8 @@ def real_manager(tmp_path):
             "bedrock_server_manager.config.bcm_config.load_config",
             return_value={"data_dir": str(data_dir)},
         ):
-            manager = BedrockServerManager()
+            settings = Settings()
+            manager = BedrockServerManager(settings)
             # Create a dummy web ui pid file
             web_ui_pid_path = manager.get_web_ui_pid_path()
             with open(web_ui_pid_path, "w") as f:

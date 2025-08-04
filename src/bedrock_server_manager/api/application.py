@@ -26,16 +26,14 @@ from typing import Dict, Any
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_manager_instance
+from ..instances import get_manager_instance, get_settings_instance
 from ..error import BSMError, FileError
 
 logger = logging.getLogger(__name__)
 
-# Instantiate the core manager to be used by the API functions.
-
 
 @plugin_method("get_application_info_api")
-def get_application_info_api() -> Dict[str, Any]:
+def get_application_info_api(settings=None) -> Dict[str, Any]:
     """Retrieves general information about the application.
 
     Accesses properties from the global
@@ -53,13 +51,14 @@ def get_application_info_api() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting application info.")
     try:
+        manager = get_manager_instance(settings)
         info = {
-            "application_name": get_manager_instance()._app_name_title,
-            "version": get_manager_instance().get_app_version(),
-            "os_type": get_manager_instance().get_os_type(),
-            "base_directory": get_manager_instance()._base_dir,
-            "content_directory": get_manager_instance()._content_dir,
-            "config_directory": get_manager_instance()._config_dir,
+            "application_name": manager._app_name_title,
+            "version": manager.get_app_version(),
+            "os_type": manager.get_os_type(),
+            "base_directory": manager._base_dir,
+            "content_directory": manager._content_dir,
+            "config_directory": manager._config_dir,
         }
         return {"status": "success", "data": info}
     except Exception as e:
@@ -68,7 +67,7 @@ def get_application_info_api() -> Dict[str, Any]:
 
 
 @plugin_method("list_available_worlds_api")
-def list_available_worlds_api() -> Dict[str, Any]:
+def list_available_worlds_api(settings=None) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
     Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_worlds`
@@ -85,7 +84,7 @@ def list_available_worlds_api() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
-        worlds = get_manager_instance().list_available_worlds()
+        worlds = get_manager_instance(settings).list_available_worlds()
         return {"status": "success", "files": worlds}
     except FileError as e:
         # Handle specific file-related errors from the core manager.
@@ -96,7 +95,7 @@ def list_available_worlds_api() -> Dict[str, Any]:
 
 
 @plugin_method("list_available_addons_api")
-def list_available_addons_api() -> Dict[str, Any]:
+def list_available_addons_api(settings=None) -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
     Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_addons`
@@ -113,7 +112,7 @@ def list_available_addons_api() -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available addons.")
     try:
-        addons = get_manager_instance().list_available_addons()
+        addons = get_manager_instance(settings).list_available_addons()
         return {"status": "success", "files": addons}
     except FileError as e:
         # Handle specific file-related errors from the core manager.
@@ -124,7 +123,7 @@ def list_available_addons_api() -> Dict[str, Any]:
 
 
 @plugin_method("get_all_servers_data")
-def get_all_servers_data() -> Dict[str, Any]:
+def get_all_servers_data(settings=None) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
     This function acts as an API orchestrator, calling the core
@@ -155,7 +154,9 @@ def get_all_servers_data() -> Dict[str, Any]:
 
     try:
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = get_manager_instance().get_servers_data()
+        servers_data, bsm_error_messages = get_manager_instance(
+            settings
+        ).get_servers_data()
 
         # Check if the core layer collected any individual server errors.
         if bsm_error_messages:

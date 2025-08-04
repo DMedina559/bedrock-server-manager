@@ -43,11 +43,12 @@ class TestInstances:
         instance2 = get_settings_instance()
         assert instance1 is instance2
 
-    def test_get_manager_instance_singleton(self):
-        """Tests that get_manager_instance returns the same instance."""
-        instance1 = get_manager_instance()
-        instance2 = get_manager_instance()
-        assert instance1 is instance2
+    def test_get_manager_instance_returns_instance(self, mock_settings):
+        """Tests that get_manager_instance returns a BedrockServerManager instance."""
+        from bedrock_server_manager.core.manager import BedrockServerManager
+
+        instance = get_manager_instance(mock_settings)
+        assert isinstance(instance, BedrockServerManager)
 
     def test_get_plugin_manager_instance_singleton(self):
         """Tests that get_plugin_manager_instance returns the same instance."""

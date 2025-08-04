@@ -34,7 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("add_players_manually_api")
-def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
+def add_players_manually_api(
+    player_strings: List[str], settings=None
+) -> Dict[str, Any]:
     """Adds or updates player data in the database.
 
     This function takes a list of strings, each containing a player's
@@ -78,7 +80,7 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
     try:
         # The core parsing function expects a single comma-separated string.
         combined_input = ",".join(player_strings)
-        get_manager_instance().parse_player_cli_argument(combined_input)
+        get_manager_instance(settings).parse_player_cli_argument(combined_input)
 
         # --- Plugin Hook: Before Add ---
         plugin_manager.trigger_event("before_players_add", players_data=player_strings)
@@ -113,7 +115,7 @@ def add_players_manually_api(player_strings: List[str]) -> Dict[str, Any]:
 
 
 @plugin_method("get_all_known_players_api")
-def get_all_known_players_api() -> Dict[str, Any]:
+def get_all_known_players_api(settings=None) -> Dict[str, Any]:
     """Retrieves all player data from the database.
 
     Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_known_players`.
@@ -127,7 +129,7 @@ def get_all_known_players_api() -> Dict[str, Any]:
     """
     logger.info("API: Request to get all known players.")
     try:
-        players = get_manager_instance().get_known_players()
+        players = get_manager_instance(settings).get_known_players()
         return {"status": "success", "players": players}
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
@@ -138,7 +140,7 @@ def get_all_known_players_api() -> Dict[str, Any]:
 
 
 @plugin_method("scan_and_update_player_db_api")
-def scan_and_update_player_db_api() -> Dict[str, Any]:
+def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
     """Scans all server logs to discover and save player data.
 
     This function iterates through the log files of all managed servers,
@@ -173,9 +175,9 @@ def scan_and_update_player_db_api() -> Dict[str, Any]:
     result = {}
     try:
         # Delegate the entire discovery and saving process to the core manager.
-        scan_result = (
-            get_manager_instance().discover_and_store_players_from_all_server_logs()
-        )
+        scan_result = get_manager_instance(
+            settings
+        ).discover_and_store_players_from_all_server_logs()
 
         # Format a comprehensive success message from the scan results.
         message = (

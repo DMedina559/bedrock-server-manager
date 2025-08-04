@@ -125,7 +125,7 @@ def cli(ctx: click.Context):
 
     ctx.obj = {
         "cli": cli,
-        "bsm": get_manager_instance(),
+        "bsm": get_manager_instance(get_settings_instance()),
     }
 
     if ctx.invoked_subcommand is None:

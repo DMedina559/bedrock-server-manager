@@ -10,10 +10,13 @@ def get_settings_instance():
     return Settings()
 
 
-def get_manager_instance():
+def get_manager_instance(settings_instance=None):
     from .core import BedrockServerManager
 
-    return BedrockServerManager()
+    if settings_instance is None:
+        settings_instance = get_settings_instance()
+
+    return BedrockServerManager(settings_instance)
 
 
 def get_plugin_manager_instance():
