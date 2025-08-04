@@ -25,16 +25,24 @@ def get_plugin_manager_instance():
     return PluginManager()
 
 
-def get_server_instance(server_name: str):
+def get_server_instance(server_name: str, settings_instance=None):
     # global _servers
     if _servers.get(server_name) is None:
         from .core import BedrockServer
 
-        _servers[server_name] = BedrockServer(server_name)
+        if settings_instance is None:
+            settings_instance = get_settings_instance()
+
+        _servers[server_name] = BedrockServer(
+            server_name, settings_instance=settings_instance
+        )
     return _servers.get(server_name)
 
 
-def get_bedrock_process_manager():
+def get_bedrock_process_manager(settings_instance=None):
     from .core.bedrock_process_manager import BedrockProcessManager
 
-    return BedrockProcessManager()
+    if settings_instance is None:
+        settings_instance = get_settings_instance()
+
+    return BedrockProcessManager(settings_instance=settings_instance)

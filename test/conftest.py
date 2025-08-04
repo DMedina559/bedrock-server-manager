@@ -73,6 +73,15 @@ def mock_get_settings_instance(monkeypatch):
 
 
 @pytest.fixture
+def mock_settings(mocker):
+    """Fixture for a mocked Settings object."""
+    settings = MagicMock()
+    settings.get.return_value = "/tmp"
+    settings.config_dir = "/tmp/config"
+    return settings
+
+
+@pytest.fixture
 def mock_bedrock_server(tmp_path):
     """Fixture for a mocked BedrockServer."""
     # Create a mock object with the same interface as BedrockServer
@@ -231,7 +240,7 @@ done
         )
     os.chmod(executable_path, 0o755)
 
-    server = BedrockServer(server_name)
+    server = BedrockServer(server_name, settings_instance=settings)
     return server
 
 

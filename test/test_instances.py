@@ -55,14 +55,14 @@ class TestInstances:
         instance2 = get_plugin_manager_instance()
         assert instance1 is instance2
 
-    def test_get_server_instance_singleton(self):
+    def test_get_server_instance_singleton(self, mock_settings):
         """Tests that get_server_instance returns the same instance for the same server."""
-        instance1 = get_server_instance("server1")
-        instance2 = get_server_instance("server1")
+        instance1 = get_server_instance("server1", mock_settings)
+        instance2 = get_server_instance("server1", mock_settings)
         assert instance1 is instance2
 
-    def test_get_server_instance_different_servers(self):
+    def test_get_server_instance_different_servers(self, mock_settings):
         """Tests that get_server_instance returns different instances for different servers."""
-        instance1 = get_server_instance("server1")
-        instance2 = get_server_instance("server2")
+        instance1 = get_server_instance("server1", mock_settings)
+        instance2 = get_server_instance("server2", mock_settings)
         assert instance1 is not instance2

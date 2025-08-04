@@ -434,6 +434,7 @@ class BedrockServerManager:
                 # Instantiate a BedrockServer to use its encapsulated logic.
                 server_instance = get_server_instance(
                     server_name=server_name_candidate,
+                    settings_instance=self.settings,
                 )
 
                 # Validate it's a real server before trying to scan its logs.
@@ -1434,6 +1435,7 @@ class BedrockServerManager:
         try:
             server_instance = get_server_instance(
                 server_name=server_name,
+                settings_instance=self.settings,
             )
             is_valid = server_instance.is_installed()
             if is_valid:
@@ -1506,6 +1508,7 @@ class BedrockServerManager:
                 # Instantiate a BedrockServer to leverage its encapsulated logic.
                 server = get_server_instance(
                     server_name=server_name_candidate,
+                    settings_instance=self.settings,
                 )
 
                 # Use the instance's own method to validate its installation.

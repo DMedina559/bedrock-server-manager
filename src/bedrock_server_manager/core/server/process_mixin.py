@@ -90,7 +90,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        self.process_manager = get_bedrock_process_manager()
+        self.process_manager = get_bedrock_process_manager(self.settings)
 
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""
