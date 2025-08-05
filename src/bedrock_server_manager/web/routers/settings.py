@@ -27,7 +27,7 @@ from fastapi.responses import (
 from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse, User
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import get_current_user
 from ..auth_utils import get_admin_user
 from ...api import settings as settings_api
@@ -84,7 +84,7 @@ async def manage_settings_page_route(
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed global settings page.")
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "manage_settings.html",
         {"request": request, "current_user": current_user},

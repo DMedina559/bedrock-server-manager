@@ -35,7 +35,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, Field
 
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ..auth_utils import get_admin_user, get_moderator_user
@@ -206,7 +206,7 @@ async def install_server_page(
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed new server install page.")
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request, "install.html", {"request": request, "current_user": current_user}
     )
 
@@ -369,7 +369,7 @@ async def configure_properties_page(
     logger.info(
         f"User '{identity}' accessed configure properties for server '{server_name}'. New install: {new_install}"
     )
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "configure_properties.html",
         {
@@ -410,7 +410,7 @@ async def configure_allowlist_page(
     logger.info(
         f"User '{identity}' accessed configure allowlist for server '{server_name}'. New install: {new_install}"
     )
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "configure_allowlist.html",
         {
@@ -451,7 +451,7 @@ async def configure_permissions_page(
     logger.info(
         f"User '{identity}' accessed configure permissions for server '{server_name}'. New install: {new_install}"
     )
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "configure_permissions.html",
         {
@@ -506,7 +506,9 @@ async def configure_service_page(
         "autostart_enabled": False,
         "autoupdate_enabled": False,
     }
-    return templates.TemplateResponse(request, "configure_service.html", template_data)
+    return get_templates().TemplateResponse(
+        request, "configure_service.html", template_data
+    )
 
 
 # --- API Route: /api/server/{server_name}/properties/set ---

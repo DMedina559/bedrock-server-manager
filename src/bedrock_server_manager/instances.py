@@ -1,3 +1,5 @@
+import warnings
+
 _settings = None
 _manager = None
 _plugin_manager = None
@@ -5,12 +7,24 @@ _servers = {}
 
 
 def get_settings_instance():
+    warnings.warn(
+        "get_settings_instance is deprecated and will be removed in a future version. "
+        "Use the application context instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from .config.settings import Settings
 
     return Settings()
 
 
 def get_manager_instance(settings_instance=None):
+    warnings.warn(
+        "get_manager_instance is deprecated and will be removed in a future version. "
+        "Use the application context instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from .core import BedrockServerManager
 
     if settings_instance is None:
@@ -23,12 +37,24 @@ def get_plugin_manager_instance():
     """
     Returns the singleton instance of the PluginManager.
     """
+    warnings.warn(
+        "get_plugin_manager_instance is deprecated and will be removed in a future version. "
+        "Use the application context instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from .plugins import PluginManager
 
     return PluginManager()
 
 
 def get_server_instance(server_name: str, settings_instance=None):
+    warnings.warn(
+        "get_server_instance is deprecated and will be removed in a future version. "
+        "Use the application context instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     # global _servers
     if _servers.get(server_name) is None:
         from .core import BedrockServer
@@ -43,6 +69,12 @@ def get_server_instance(server_name: str, settings_instance=None):
 
 
 def get_bedrock_process_manager(settings_instance=None):
+    warnings.warn(
+        "get_bedrock_process_manager is deprecated and will be removed in a future version. "
+        "Use the application context instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from .core.bedrock_process_manager import BedrockProcessManager
 
     if settings_instance is None:

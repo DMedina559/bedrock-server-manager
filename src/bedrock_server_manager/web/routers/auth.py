@@ -32,7 +32,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import (
     create_access_token,
     authenticate_user,
@@ -91,7 +91,7 @@ async def login_page(
     if user:
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request, "login.html", {"request": request, "form": {}, "current_user": user}
     )
 

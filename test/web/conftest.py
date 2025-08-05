@@ -52,7 +52,9 @@ def mock_dependencies(monkeypatch):
     async def mock_needs_setup():
         return False
 
-    monkeypatch.setattr("bedrock_server_manager.web.main.needs_setup", mock_needs_setup)
+    monkeypatch.setattr(
+        "bedrock_server_manager.app_context.needs_setup", mock_needs_setup
+    )
     app.dependency_overrides[validate_server_exists] = lambda: "test-server"
     yield
     app.dependency_overrides = {}

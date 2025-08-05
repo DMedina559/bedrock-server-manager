@@ -8,7 +8,7 @@ from bedrock_server_manager.web.auth_utils import (
 )
 from bedrock_server_manager.db.models import User as UserModel
 from bedrock_server_manager.db.database import db_session_manager
-from ..templating import templates
+from ..templating import get_templates
 from pydantic import BaseModel
 from ..schemas import User as UserSchema, BaseApiResponse
 
@@ -31,7 +31,7 @@ class ChangePasswordRequest(BaseModel):
 
 @router.get("/account", response_class=HTMLResponse)
 async def account_page(request: Request, user: UserSchema = Depends(get_current_user)):
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         "account.html", {"request": request, "current_user": user}
     )
 

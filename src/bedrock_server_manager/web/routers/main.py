@@ -17,7 +17,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
@@ -92,7 +92,7 @@ async def index(
     except Exception as e:
         logger.error(f"Error getting plugin HTML pages: {e}", exc_info=True)
 
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "index.html",
         {
@@ -133,7 +133,7 @@ async def monitor_server_route(
     """
     username = current_user.username
     logger.info(f"User '{username}' accessed monitor page for server '{server_name}'.")
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "monitor.html",
         {"request": request, "server_name": server_name, "current_user": current_user},

@@ -29,7 +29,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse, User
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import get_current_user, get_admin_user
 from ...api import plugins as plugins_api
 from ...error import BSMError, UserInputError
@@ -98,7 +98,7 @@ async def manage_plugins_page_route(
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed plugin management page.")
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "manage_plugins.html",
         {"request": request, "current_user": current_user},
