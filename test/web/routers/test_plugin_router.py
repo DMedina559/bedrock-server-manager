@@ -94,12 +94,11 @@ def test_set_plugin_status_api_route_disable_success(
 @patch("bedrock_server_manager.web.routers.plugin.plugins_api.set_plugin_status")
 def test_set_plugin_status_api_route_not_found(mock_set_status, authenticated_client):
     """Test setting the status of a plugin that does not exist."""
-    mock_set_status.return_value = {
-        "status": "error",
-        "message": "Plugin not found",
-    }
+    from bedrock_server_manager.error import UserInputError
+
+    mock_set_status.side_effect = UserInputError("Plugin not found")
     response = authenticated_client.post("/api/plugins/plugin1", json={"enabled": True})
-    assert response.status_code == 404
+    assert response.status_code == 400
     assert "Plugin not found" in response.json()["detail"]
 
 

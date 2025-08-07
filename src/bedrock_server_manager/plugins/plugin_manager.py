@@ -36,8 +36,8 @@ from ..config import (
 )
 from ..utils.migration import migrate_plugin_config_to_db
 from ..db.database import db_session_manager
+from ..config.settings import Settings
 from ..db.models import Plugin
-from ..instances import get_settings_instance
 from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
 
@@ -64,30 +64,17 @@ class PluginManager:
     and dispatches various events to them.
     """
 
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(PluginManager, cls).__new__(cls)
-            # Initialization logic moved to a separate method
-            # to avoid re-running it on every "call" to the singleton.
-            cls._instance._init_once()
-        return cls._instance
-
-    def _init_once(self):
+    def __init__(self, settings: Settings):
         """
-        Initializes the PluginManager. This method is called only once.
+        Initializes the PluginManager.
 
         Sets up plugin directories (user and default), determines the path for
         ``plugins.json``, initializes internal state for plugin configurations,
         loaded plugin instances, and custom event listeners. It also ensures
         that the configured plugin directories exist on the filesystem.
         """
-        if hasattr(self, "_initialized") and self._initialized:
-            return
-        self._initialized = True
 
-        self.settings = get_settings_instance()
+        self.settings = settings
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 

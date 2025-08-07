@@ -33,6 +33,8 @@ from ..templating import get_templates
 from ..auth_utils import get_current_user, get_admin_user
 from ...api import plugins as plugins_api
 from ...error import BSMError, UserInputError
+from ..dependencies import get_plugin_manager
+from ...plugins.plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +111,7 @@ async def manage_plugins_page_route(
 @router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
     current_user: User = Depends(get_admin_user),
+    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Retrieves the statuses and metadata of all discovered plugins.
@@ -120,6 +123,7 @@ async def get_plugins_status_api_route(
 
     Args:
         current_user (User): Authenticated user object.
+        plugin_manager (PluginManager): The plugin manager instance.
 
     Returns:
         PluginApiResponse:
@@ -128,31 +132,11 @@ async def get_plugins_status_api_route(
               dictionaries containing "enabled" (bool), "description" (str),
               and "version" (str) for each plugin.
             - ``message``: (Optional) Message, especially on error.
-
-    Example Response:
-    .. code-block:: json
-
-        {
-            "status": "success",
-            "message": null,
-            "data": {
-                "MyPlugin1": {
-                    "enabled": true,
-                    "description": "Does cool stuff.",
-                    "version": "1.0.0"
-                },
-                "AnotherPlugin": {
-                    "enabled": false,
-                    "description": "Does other things.",
-                    "version": "0.1.0"
-                }
-            }
-        }
     """
     identity = current_user.username
     logger.info(f"API: Get plugin statuses request by '{identity}'.")
     try:
-        result = plugins_api.get_plugin_statuses()
+        result = plugins_api.get_plugin_statuses(plugin_manager)
         if result.get("status") == "success":
             return PluginApiResponse(status="success", data=result.get("plugins"))
         else:
@@ -168,7 +152,6 @@ async def get_plugins_status_api_route(
         )
 
 
-# --- API Route ---
 @router.post(
     "/api/plugins/trigger_event",
     response_model=PluginApiResponse,
@@ -177,43 +160,20 @@ async def get_plugins_status_api_route(
 async def trigger_event_api_route(
     payload: TriggerEventPayload,
     current_user: User = Depends(get_admin_user),
+    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Allows an external source to trigger a custom plugin event within the system.
 
     Calls :func:`~bedrock_server_manager.api.plugins.trigger_external_plugin_event_api`.
-    This can be used for integrations or advanced control flows.
-
-    - **Request body**: Expects a :class:`.TriggerEventPayload` specifying the
-      `event_name` and an optional `payload` dictionary for the event.
-    - Requires authentication.
 
     Args:
         payload (TriggerEventPayload): The event name and optional payload.
         current_user (User): Authenticated user object.
+        plugin_manager (PluginManager): The plugin manager instance.
 
     Returns:
-        PluginApiResponse:
-            - ``status``: "success" or "error"
-            - ``message``: Confirmation or error message.
-            - ``data``: Contains details from the event trigger result if provided by the API.
-
-    Example Request Body:
-    .. code-block:: json
-
-        {
-            "event_name": "myplugin:custom_action",
-            "payload": {"value": 42}
-        }
-
-    Example Response:
-    .. code-block:: json
-
-        {
-            "status": "success",
-            "message": "Event 'myplugin:custom_action' triggered.",
-            "data": null
-        }
+        PluginApiResponse: Standard API response.
     """
     identity = current_user.username
     logger.info(
@@ -222,19 +182,17 @@ async def trigger_event_api_route(
 
     try:
         result = plugins_api.trigger_external_plugin_event_api(
-            payload.event_name, payload.payload
+            plugin_manager, payload.event_name, payload.payload
         )
         if result.get("status") == "success":
-
             return PluginApiResponse(
                 status="success",
                 message=result.get("message"),
-                data=result.get("details"),  # API returns 'details', model has 'data'
+                data=result.get("details"),
             )
         else:
-
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,  # Or map from result if possible
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to trigger event."),
             )
     except UserInputError as e:
@@ -266,43 +224,21 @@ async def set_plugin_status_api_route(
     plugin_name: str,
     payload: PluginStatusSetPayload,
     current_user: User = Depends(get_admin_user),
+    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Sets the enabled or disabled status for a specific plugin.
 
     Calls :func:`~bedrock_server_manager.api.plugins.set_plugin_status`.
-    A plugin reload via :func:`~.reload_plugins_api_route` is typically
-    required for the change to take full effect.
-
-    - **plugin_name**: Path parameter specifying the plugin to configure.
-    - **Request body**: Expects a :class:`.PluginStatusSetPayload` with the boolean `enabled` field.
-    - Requires authentication.
 
     Args:
         plugin_name (str): The name of the plugin to enable/disable.
         payload (PluginStatusSetPayload): Contains the `enabled` status.
         current_user (User): Authenticated user object.
+        plugin_manager (PluginManager): The plugin manager instance.
 
     Returns:
-        PluginApiResponse:
-            - ``status``: "success" or "error"
-            - ``message``: Confirmation or error message.
-
-    Example Request Body (Enable):
-    .. code-block:: json
-
-        {
-            "enabled": true
-        }
-
-    Example Response (Success):
-    .. code-block:: json
-
-        {
-            "status": "success",
-            "message": "Plugin 'MyPlugin1' has been enabled. Reload plugins for changes to take full effect.",
-            "data": null
-        }
+        PluginApiResponse: Standard API response.
     """
     identity = current_user.username
     action = "enable" if payload.enabled else "disable"
@@ -311,7 +247,9 @@ async def set_plugin_status_api_route(
     )
 
     try:
-        result = plugins_api.set_plugin_status(plugin_name, payload.enabled)
+        result = plugins_api.set_plugin_status(
+            plugin_manager, plugin_name, payload.enabled
+        )
         if result.get("status") == "success":
             return PluginApiResponse(status="success", message=result.get("message"))
         else:
@@ -320,23 +258,12 @@ async def set_plugin_status_api_route(
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail=detail
                 )
-            # Other errors from set_plugin_status might be 400 or 500
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=detail,  # Defaulting to 500
+                detail=detail,
             )
 
-    except HTTPException as e:
-        if e.status_code == 404:
-            raise
-        logger.error(
-            f"API Set Plugin '{plugin_name}': HTTPException: {e.detail}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred while trying to {action} the plugin.",
-        )
-    except UserInputError as e:  # Raised by API if plugin_name is empty or not found
+    except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except BSMError as e:
         logger.error(f"API Set Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
@@ -358,37 +285,25 @@ async def set_plugin_status_api_route(
 )
 async def reload_plugins_api_route(
     current_user: User = Depends(get_admin_user),
+    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Triggers a full reload of the plugin system.
 
     Calls :func:`~bedrock_server_manager.api.plugins.reload_plugins`.
-    This involves unloading all current plugins (triggering their `on_unload`
-    hooks) and then re-scanning, re-validating, and re-loading all plugins
-    based on their current configuration and files on disk.
 
     Args:
         current_user (User): Authenticated user object.
+        plugin_manager (PluginManager): The plugin manager instance.
 
     Returns:
-        PluginApiResponse:
-            - ``status``: "success" or "error"
-            - ``message``: Confirmation or error message.
-
-    Example Response:
-    .. code-block:: json
-
-        {
-            "status": "success",
-            "message": "Plugins have been reloaded successfully.",
-            "data": null
-        }
+        PluginApiResponse: Standard API response.
     """
     identity = current_user.username
     logger.info(f"API: Reload plugins request by '{identity}'.")
 
     try:
-        result = plugins_api.reload_plugins()
+        result = plugins_api.reload_plugins(plugin_manager)
         if result.get("status") == "success":
             return PluginApiResponse(status="success", message=result.get("message"))
         else:
@@ -396,7 +311,7 @@ async def reload_plugins_api_route(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to reload plugins."),
             )
-    except BSMError as e:  # reload_plugins might raise BSMError for deeper issues
+    except BSMError as e:
         logger.error(f"API Reload Plugins: BSMError: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)

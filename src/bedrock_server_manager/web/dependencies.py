@@ -15,11 +15,26 @@ from sqlalchemy.orm import Session
 from ..db.database import db_session_manager
 from ..db.models import User
 from ..api import utils as utils_api
-from ..error import (
-    InvalidServerNameError,
-)
+from ..error import InvalidServerNameError
+from ..plugins.plugin_manager import PluginManager
+from ..config.settings import Settings
+from fastapi import Request
 
 logger = logging.getLogger(__name__)
+
+
+def get_settings(request: Request) -> Settings:
+    """
+    FastAPI dependency to get the application settings object.
+    """
+    return request.app.state.settings
+
+
+def get_plugin_manager(request: Request) -> PluginManager:
+    """
+    FastAPI dependency to get the PluginManager instance.
+    """
+    return request.app.state.plugin_manager
 
 
 async def validate_server_exists(

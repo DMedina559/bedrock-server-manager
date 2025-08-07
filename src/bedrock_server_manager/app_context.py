@@ -21,21 +21,7 @@ try:
     from .utils.general import startup_checks
     from .config.settings import Settings
     from .core.manager import BedrockServerManager
-    from .instances import (
-        get_plugin_manager_instance,
-    )
-
-    global_api_plugin_manager = get_plugin_manager_instance()
-
-    def shutdown_hooks():
-        from .api.utils import stop_all_servers
-
-        stop_all_servers()
-        global_api_plugin_manager.unload_plugins()
-        if database.engine:
-            database.engine.dispose()
-
-    atexit.register(shutdown_hooks)
+    from .plugins import PluginManager
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -66,71 +52,65 @@ from pathlib import Path
 import os
 from .web import templating
 from .config import get_installed_version
-from .instances import get_plugin_manager_instance
 from .web import routers
 from .web.dependencies import needs_setup
 from starlette.middleware.authentication import AuthenticationMiddleware
 from .web.auth_utils import CustomAuthBackend, get_current_user_optional
 
 
-def create_web_app(settings):
+def create_web_app(settings: Settings) -> FastAPI:
     """Creates and configures the web application."""
-    import logging
+    logger = logging.getLogger(__name__)
     from .web import main as web_main
+    from .api.utils import stop_all_servers
+
+    # --- Application Context Setup ---
+    plugin_manager = PluginManager(settings)
+    plugin_manager.load_plugins()
+
+    # Define shutdown hooks here to capture the plugin_manager instance
+    def shutdown_web_app():
+        logger.info("Running web app shutdown hooks...")
+        stop_all_servers()
+        plugin_manager.unload_plugins()
+        if database.engine:
+            database.engine.dispose()
+        logger.info("Web app shutdown hooks complete.")
+
+    atexit.register(shutdown_web_app)
 
     APP_ROOT = os.path.dirname(os.path.abspath(web_main.__file__))
-    TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")  # This is a string path
+    TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")
     STATIC_DIR = os.path.join(APP_ROOT, "static")
     version = get_installed_version()
 
-    # --- Setup Template Directories ---
-    # Start with the main application's template directory
+    # --- Template Directories Setup ---
     all_template_dirs = [Path(TEMPLATES_DIR)]
-
-    web_main_templating_logger = logging.getLogger("bsm_web_main_templating_setup")
-
-    global_api_plugin_manager = get_plugin_manager_instance()
-
-    if global_api_plugin_manager and hasattr(
-        global_api_plugin_manager, "plugin_template_paths"
-    ):
-        if global_api_plugin_manager.plugin_template_paths:
-            web_main_templating_logger.info(
-                f"Adding {len(global_api_plugin_manager.plugin_template_paths)} template paths from plugins."
-            )
-            # Ensure paths are unique and are Path objects
-            unique_plugin_paths = {
-                p
-                for p in global_api_plugin_manager.plugin_template_paths
-                if isinstance(p, Path)
-            }
-            all_template_dirs.extend(list(unique_plugin_paths))
-        else:
-            web_main_templating_logger.info(
-                "No additional template paths found from plugins."
-            )
-    else:
-        web_main_templating_logger.warning(
-            "global_api_plugin_manager or its plugin_template_paths attribute is unavailable. "
-            "Only main app templates will be loaded."
+    if plugin_manager.plugin_template_paths:
+        logger.info(
+            f"Adding {len(plugin_manager.plugin_template_paths)} template paths from plugins."
         )
-
-    web_main_templating_logger.info(
-        f"Configuring Jinja2 environment with directories: {all_template_dirs}"
-    )
+        unique_plugin_paths = {
+            p for p in plugin_manager.plugin_template_paths if isinstance(p, Path)
+        }
+        all_template_dirs.extend(list(unique_plugin_paths))
+    logger.info(f"Configuring Jinja2 with directories: {all_template_dirs}")
     templating.configure_templates(all_template_dirs)
 
+    # --- FastAPI App Initialization ---
     app = FastAPI(
         title="Bedrock Server Manager",
         version=version,
         redoc_url=None,
         openapi_url="/api/openapi.json",
         swagger_ui_parameters={
-            "defaultModelsExpandDepth": -1,  # Hide models section by default
-            "filter": True,  # Enable filtering for operations
-            "deepLinking": True,  # Enable deep linking for tags and operations
+            "defaultModelsExpandDepth": -1,
+            "filter": True,
+            "deepLinking": True,
         },
     )
+    app.state.settings = settings
+    app.state.plugin_manager = plugin_manager
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     # Mount custom themes directory
@@ -184,106 +164,49 @@ def create_web_app(settings):
     app.include_router(routers.audit_log_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
-
-    import logging  # Use standard logging
-
-    web_main_plugin_logger = logging.getLogger(
-        "bsm_web_main_plugin_loader"
-    )  # Specific logger
-
-    if (
-        global_api_plugin_manager
-        and hasattr(global_api_plugin_manager, "plugin_fastapi_routers")
-        and global_api_plugin_manager.plugin_fastapi_routers
-    ):
-        web_main_plugin_logger.info(
-            f"Found {len(global_api_plugin_manager.plugin_fastapi_routers)} FastAPI router(s) "
-            "from plugins via bedrock_server_manager.api.plugin_manager. Attempting to include them."
+    if plugin_manager.plugin_fastapi_routers:
+        logger.info(
+            f"Found {len(plugin_manager.plugin_fastapi_routers)} FastAPI router(s) from plugins. Attempting to include them."
         )
-        for router_idx, router_obj in enumerate(
-            global_api_plugin_manager.plugin_fastapi_routers
-        ):
+        for i, router in enumerate(plugin_manager.plugin_fastapi_routers):
             try:
-                # Basic check if it's an APIRouter (can be made more robust)
-                if hasattr(router_obj, "routes") and callable(
-                    getattr(router_obj, "include_router", None)
-                ):  # Heuristic check
-                    app.include_router(router_obj)
-                    router_prefix = getattr(
-                        router_obj, "prefix", f"N/A_idx_{router_idx}"
-                    )
-                    web_main_plugin_logger.info(
-                        f"Successfully included FastAPI router with prefix '{router_prefix}' from a plugin."
+                if hasattr(router, "routes"):
+                    app.include_router(router)
+                    logger.info(
+                        f"Successfully included FastAPI router (prefix: '{router.prefix}') from a plugin."
                     )
                 else:
-                    web_main_plugin_logger.warning(
-                        f"Plugin provided an object that does not appear to be a valid FastAPI APIRouter at index {router_idx}. Object type: {type(router_obj)}"
+                    logger.warning(
+                        f"Plugin provided an object at index {i} that is not a valid FastAPI APIRouter."
                     )
-            except Exception as e_router:
-                web_main_plugin_logger.error(
-                    f"Failed to include a FastAPI router (index {router_idx}) from a plugin: {e_router}",
+            except Exception as e:
+                logger.error(
+                    f"Failed to include a FastAPI router from a plugin: {e}",
                     exc_info=True,
                 )
-    elif global_api_plugin_manager:
-        web_main_plugin_logger.info(
-            "No additional FastAPI routers found from plugins via bedrock_server_manager.api.plugin_manager."
-        )
     else:
-        # This case implies global_api_plugin_manager import failed or it's None.
-        web_main_plugin_logger.error(
-            "global_api_plugin_manager is None or unavailable. Cannot include FastAPI routers from plugins. "
-            "Check logs for import errors related to 'bedrock_server_manager.api.plugin_manager'."
-        )
+        logger.info("No additional FastAPI routers found from plugins.")
 
     # --- Dynamically mount static directories from plugins ---
-    if (
-        global_api_plugin_manager
-        and hasattr(global_api_plugin_manager, "plugin_static_mounts")
-        and global_api_plugin_manager.plugin_static_mounts
-    ):
-        web_main_plugin_logger.info(
-            f"Found {len(global_api_plugin_manager.plugin_static_mounts)} static mount configurations "
-            "from plugins. Attempting to mount them."
+    if plugin_manager.plugin_static_mounts:
+        logger.info(
+            f"Found {len(plugin_manager.plugin_static_mounts)} static mount configurations from plugins."
         )
-        for (
-            mount_path,
-            dir_path,
-            name,
-        ) in global_api_plugin_manager.plugin_static_mounts:
+        for mount_path, dir_path, name in plugin_manager.plugin_static_mounts:
             try:
                 app.mount(mount_path, StaticFiles(directory=dir_path), name=name)
-                web_main_plugin_logger.info(
-                    f"Successfully mounted static directory '{dir_path}' at '{mount_path}' with name '{name}' from a plugin."
+                logger.info(
+                    f"Mounted static directory '{dir_path}' at '{mount_path}' (name: '{name}')."
                 )
-            except Exception as e_static_mount:
-                web_main_plugin_logger.error(
-                    f"Failed to mount static directory '{dir_path}' at '{mount_path}' (name: '{name}') from a plugin: {e_static_mount}",
+            except Exception as e:
+                logger.error(
+                    f"Failed to mount static directory '{dir_path}' at '{mount_path}': {e}",
                     exc_info=True,
                 )
-    elif global_api_plugin_manager:
-        web_main_plugin_logger.info("No additional static mounts found from plugins.")
-    # No else here, as the error for global_api_plugin_manager being unavailable is already logged above.
 
     app.include_router(routers.util_router)
 
     return app
-
-
-import functools
-
-
-def with_app_context(func):
-    """
-    A decorator that creates an application context and passes it to the decorated function.
-    """
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        settings = Settings()
-        with BedrockServerManager(settings) as manager:
-            return func(manager, *args, **kwargs)
-
-    return wrapper
 
 
 def create_cli_app():
@@ -327,18 +250,27 @@ def create_cli_app():
 
             startup_checks(app_name_title, __version__)
 
-            # --- LOAD PLUGINS AND FIRE STARTUP EVENT ---
-            from . import api
-
-            plugin_manager = get_plugin_manager_instance()
-
-            # Now that all APIs are registered, we can safely load the plugins.
+            # --- Plugin and Application Context Setup ---
+            plugin_manager = PluginManager(settings)
             plugin_manager.load_plugins()
 
-            # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
-            # This ensures plugin_manager.load_plugins() has been called.
-            global_api_plugin_manager.trigger_guarded_event("on_manager_startup")
-            api.utils.update_server_statuses()
+            # --- Event Handling and Shutdown ---
+            def shutdown_cli_app():
+                logger.info("Running CLI app shutdown hooks...")
+                from .api.utils import stop_all_servers
+
+                stop_all_servers()
+                plugin_manager.unload_plugins()
+                if database.engine:
+                    database.engine.dispose()
+                logger.info("CLI app shutdown hooks complete.")
+
+            atexit.register(shutdown_cli_app)
+
+            plugin_manager.trigger_guarded_event("on_manager_startup")
+            from .api import utils as api_utils
+
+            api_utils.update_server_statuses()
 
         except Exception as setup_e:
             logging.getLogger("bsm_critical_setup").critical(
@@ -348,10 +280,7 @@ def create_cli_app():
             click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
             sys.exit(1)
 
-        ctx.obj = {
-            "cli": cli,
-            "bsm": manager,
-        }
+        ctx.obj = {"cli": cli, "bsm": manager, "plugin_manager": plugin_manager}
 
         if ctx.invoked_subcommand is None:
             logger.info("No command specified.")

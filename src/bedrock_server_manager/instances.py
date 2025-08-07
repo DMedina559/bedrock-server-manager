@@ -35,7 +35,13 @@ def get_manager_instance(settings_instance=None):
 
 def get_plugin_manager_instance():
     """
-    Returns the singleton instance of the PluginManager.
+    Returns a new instance of the PluginManager.
+
+    .. deprecated:: 3.6.0
+        This function is deprecated and will be removed in a future version.
+        The PluginManager should be accessed from the application context
+        (e.g., FastAPI request state or Click context) instead of being
+        instantiated globally.
     """
     warnings.warn(
         "get_plugin_manager_instance is deprecated and will be removed in a future version. "
@@ -44,8 +50,10 @@ def get_plugin_manager_instance():
         stacklevel=2,
     )
     from .plugins import PluginManager
+    from .config import Settings
 
-    return PluginManager()
+    settings = Settings()
+    return PluginManager(settings)
 
 
 def get_server_instance(server_name: str, settings_instance=None):

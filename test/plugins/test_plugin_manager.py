@@ -3,20 +3,12 @@ from unittest.mock import MagicMock, patch
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
-@pytest.fixture(autouse=True)
-def cleanup_plugin_manager():
-    """Fixture to reset the PluginManager singleton before and after each test."""
-    PluginManager._instance = None
-    yield
-    PluginManager._instance = None
-
-
 class TestPluginManager:
-    def test_singleton(self, real_plugin_manager):
-        """Tests that the PluginManager is a singleton."""
+    def test_not_singleton(self, real_plugin_manager):
+        """Tests that the PluginManager is NOT a singleton."""
         pm1 = real_plugin_manager
-        pm2 = PluginManager()
-        assert pm1 is pm2
+        pm2 = PluginManager(real_plugin_manager.settings)
+        assert pm1 is not pm2
 
     def test_init_once(self, real_plugin_manager):
         """Tests that the PluginManager initializes correctly."""

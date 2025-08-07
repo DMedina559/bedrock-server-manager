@@ -278,6 +278,7 @@ def real_manager(tmp_path):
 def real_plugin_manager(tmp_path):
     """Fixture for a real PluginManager instance."""
     from bedrock_server_manager.plugins.plugin_manager import PluginManager
+    from bedrock_server_manager.config.settings import Settings
     from unittest.mock import patch
 
     plugins_dir = tmp_path / "plugins"
@@ -301,7 +302,9 @@ class Plugin(PluginBase):
         )
 
     with patch("appdirs.user_config_dir", return_value=str(config_dir)):
-        manager = PluginManager()
+        settings = Settings()
+        settings.set("paths.plugins", str(plugins_dir))
+        manager = PluginManager(settings)
         manager.plugin_dirs = [plugins_dir]
         manager.load_plugins()
         return manager
