@@ -28,8 +28,9 @@ import subprocess
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance, get_plugin_manager_instance
+from ..instances import get_server_instance
 from ..config import API_COMMAND_BLACKLIST
+from ..plugins.event_trigger import trigger_plugin_event
 from ..core.system import (
     get_bedrock_launcher_pid_file_path,
     remove_pid_file_if_exists,
@@ -231,17 +232,13 @@ def get_all_server_settings(server_name: str) -> Dict[str, Any]:
 
 
 @plugin_method("start_server")
+@trigger_plugin_event(before="before_server_start", after="after_server_start")
 def start_server(server_name: str) -> Dict[str, Any]:
     """Starts the specified Bedrock server."""
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
-    # --- Plugin Hook ---
-    plugin_manager.trigger_guarded_event("before_server_start", server_name=server_name)
-
     logger.info(f"API: Attempting to start server '{server_name}'...")
-    result = {}
     try:
         server = get_server_instance(server_name)
 
@@ -256,36 +253,29 @@ def start_server(server_name: str) -> Dict[str, Any]:
 
         server.start()
         logger.info(f"API: Start for server '{server_name}' completed.")
-        result = {
+        return {
             "status": "success",
             "message": f"Server '{server_name}' process started.",
         }
-        return result
 
     except BSMError as e:
         logger.error(f"API: Failed to start server '{server_name}': {e}", exc_info=True)
-        result = {
+        return {
             "status": "error",
             "message": f"Failed to start server '{server_name}': {e}",
         }
-        return result
     except Exception as e:
         logger.error(
             f"API: Unexpected error starting server '{server_name}': {e}", exc_info=True
         )
-        result = {
+        return {
             "status": "error",
             "message": f"Unexpected error starting server '{server_name}': {e}",
         }
-        return result
-    finally:
-        # --- Plugin Hook ---
-        plugin_manager.trigger_guarded_event(
-            "after_server_start", server_name=server_name, result=result
-        )
 
 
 @plugin_method("stop_server")
+@trigger_plugin_event(before="before_server_stop", after="after_server_stop")
 def stop_server(server_name: str) -> Dict[str, str]:
     """Stops the specified Bedrock server.
 
@@ -308,15 +298,10 @@ def stop_server(server_name: str) -> Dict[str, str]:
         ServerStopError: If the server fails to stop after all attempts.
         BSMError: For other application-specific errors during shutdown.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
-    # --- Plugin Hook ---
-    plugin_manager.trigger_guarded_event("before_server_stop", server_name=server_name)
-
     logger.info(f"API: Attempting to stop server '{server_name}'...")
-    result = {}
     try:
         server = get_server_instance(server_name)
 
@@ -325,11 +310,10 @@ def stop_server(server_name: str) -> Dict[str, str]:
                 f"API: Server '{server_name}' is not running. Stop request ignored."
             )
             server.set_status_in_config("STOPPED")
-            result = {
+            return {
                 "status": "error",
                 "message": f"Server '{server_name}' was already stopped.",
             }
-            return result
 
         server.stop()
         logger.info(f"API: Server '{server_name}' stopped successfully.")
@@ -352,25 +336,18 @@ def stop_server(server_name: str) -> Dict[str, str]:
 
     except BSMError as e:
         logger.error(f"API: Failed to stop server '{server_name}': {e}", exc_info=True)
-        result = {
+        return {
             "status": "error",
             "message": f"Failed to stop server '{server_name}': {e}",
         }
-        return result
     except Exception as e:
         logger.error(
             f"API: Unexpected error stopping server '{server_name}': {e}", exc_info=True
         )
-        result = {
+        return {
             "status": "error",
             "message": f"Unexpected error stopping server '{server_name}': {e}",
         }
-        return result
-    finally:
-        # --- Plugin Hook ---
-        plugin_manager.trigger_guarded_event(
-            "after_server_stop", server_name=server_name, result=result
-        )
 
 
 @plugin_method("restart_server")
@@ -404,7 +381,6 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
         ServerStopError: If the stop phase fails (from :func:`~.stop_server`).
         BSMError: For other application-specific errors.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
@@ -473,6 +449,7 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
 
 
 @plugin_method("send_command")
+@trigger_plugin_event(before="before_command_send", after="after_command_send")
 def send_command(server_name: str, command: str) -> Dict[str, str]:
     """Sends a command to a running Bedrock server.
 
@@ -500,7 +477,6 @@ def send_command(server_name: str, command: str) -> Dict[str, str]:
         SendCommandError: For underlying issues during command transmission (e.g., pipe errors).
         ServerError: For other unexpected errors during the operation.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     if not command or not command.strip():
@@ -508,15 +484,9 @@ def send_command(server_name: str, command: str) -> Dict[str, str]:
 
     command_clean = command.strip()
 
-    # --- Plugin Hook ---
-    plugin_manager.trigger_event(
-        "before_command_send", server_name=server_name, command=command_clean
-    )
-
     logger.info(
         f"API: Attempting to send command to server '{server_name}': '{command_clean}'"
     )
-    result = {}
     try:
         # Check command against the configured blacklist.
         blacklist = API_COMMAND_BLACKLIST or []
@@ -537,11 +507,10 @@ def send_command(server_name: str, command: str) -> Dict[str, str]:
         logger.info(
             f"API: Command '{command_clean}' sent successfully to server '{server_name}'."
         )
-        result = {
+        return {
             "status": "success",
             "message": f"Command '{command_clean}' sent successfully.",
         }
-        return result
 
     except BSMError as e:
         logger.error(
@@ -556,16 +525,11 @@ def send_command(server_name: str, command: str) -> Dict[str, str]:
         )
         # Wrap unexpected errors in a generic ServerError.
         raise ServerError(f"Unexpected error sending command: {e}") from e
-    finally:
-        # --- Plugin Hook ---
-        plugin_manager.trigger_event(
-            "after_command_send",
-            server_name=server_name,
-            command=command_clean,
-            result=result,
-        )
 
 
+@trigger_plugin_event(
+    before="before_delete_server_data", after="after_delete_server_data"
+)
 def delete_server_data(
     server_name: str, stop_if_running: bool = True
 ) -> Dict[str, str]:
@@ -601,18 +565,13 @@ def delete_server_data(
         FileOperationError: If deleting one or more essential directories or files fails.
         BSMError: For other application-specific errors.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
-
-    # --- Plugin Hook ---
-    plugin_manager.trigger_event("before_delete_server_data", server_name=server_name)
 
     # High-visibility warning for a destructive operation.
     logger.warning(
         f"API: !!! Initiating deletion of ALL data for server '{server_name}'. Stop if running: {stop_if_running} !!!"
     )
-    result = {}
     try:
         server = get_server_instance(server_name)
 
@@ -626,8 +585,7 @@ def delete_server_data(
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}' before deletion: {stop_result.get('message')}. Deletion aborted."
                 logger.error(error_msg)
-                result = {"status": "error", "message": error_msg}
-                return result
+                return {"status": "error", "message": error_msg}
 
             logger.info(f"API: Server '{server_name}' stopped.")
 
@@ -636,30 +594,22 @@ def delete_server_data(
         )
         server.delete_all_data()
         logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
-        result = {
+        return {
             "status": "success",
             "message": f"All data for server '{server_name}' deleted successfully.",
         }
-        return result
 
     except BSMError as e:
         logger.error(
             f"API: Failed to delete server data for '{server_name}': {e}", exc_info=True
         )
-        result = {"status": "error", "message": f"Failed to delete server data: {e}"}
-        return result
+        return {"status": "error", "message": f"Failed to delete server data: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error deleting server data for '{server_name}': {e}",
             exc_info=True,
         )
-        result = {
+        return {
             "status": "error",
             "message": f"Unexpected error deleting server data: {e}",
         }
-        return result
-    finally:
-        # --- Plugin Hook ---
-        plugin_manager.trigger_event(
-            "after_delete_server_data", server_name=server_name, result=result
-        )

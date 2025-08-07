@@ -24,16 +24,18 @@ from typing import Dict, List, Any
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_manager_instance, get_plugin_manager_instance
+from ..instances import get_manager_instance
 from ..error import (
     BSMError,
     UserInputError,
 )
+from ..plugins.event_trigger import trigger_plugin_event
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("add_players_manually_api")
+@trigger_plugin_event(before="before_players_add", after="after_players_add")
 def add_players_manually_api(
     player_strings: List[str], settings=None
 ) -> Dict[str, Any]:
@@ -63,7 +65,6 @@ def add_players_manually_api(
             (propagated from ``parse_player_cli_argument``).
         BSMError: If saving to the database fails.
     """
-    plugin_manager = get_plugin_manager_instance()
     logger.info(f"API: Adding players manually: {player_strings}")
     # --- Input Validation ---
     if (
@@ -76,16 +77,12 @@ def add_players_manually_api(
             "message": "Input must be a non-empty list of player strings.",
         }
 
-    result = {}
     try:
         # The core parsing function expects a single comma-separated string.
         combined_input = ",".join(player_strings)
         get_manager_instance(settings).parse_player_cli_argument(combined_input)
 
-        # --- Plugin Hook: Before Add ---
-        plugin_manager.trigger_event("before_players_add", players_data=player_strings)
-
-        result = {
+        return {
             "status": "success",
             "message": f"{len(player_strings)} player entries processed and saved/updated.",
             "count": len(player_strings),
@@ -93,25 +90,19 @@ def add_players_manually_api(
 
     except UserInputError as e:
         # Handle errors related to invalid player string formats.
-        result = {"status": "error", "message": f"Invalid player data: {str(e)}"}
+        return {"status": "error", "message": f"Invalid player data: {str(e)}"}
 
     except BSMError as e:
         # Handle errors during the file-saving process.
-        result = {"status": "error", "message": f"Error saving player data: {str(e)}"}
+        return {"status": "error", "message": f"Error saving player data: {str(e)}"}
 
     except Exception as e:
         # Handle any other unexpected errors.
         logger.error(f"API: Unexpected error adding players: {e}", exc_info=True)
-        result = {
+        return {
             "status": "error",
             "message": f"An unexpected error occurred: {str(e)}",
         }
-
-    finally:
-        # --- Plugin Hook: After Add ---
-        plugin_manager.trigger_event("after_players_add", result=result)
-
-    return result
 
 
 @plugin_method("get_all_known_players_api")
@@ -140,6 +131,7 @@ def get_all_known_players_api(settings=None) -> Dict[str, Any]:
 
 
 @plugin_method("scan_and_update_player_db_api")
+@trigger_plugin_event(before="before_player_db_scan", after="after_player_db_scan")
 def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
     """Scans all server logs to discover and save player data.
 
@@ -166,13 +158,8 @@ def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
             final save to the database fails. Individual server scan errors
             are reported within the "details" part of a successful response.
     """
-    plugin_manager = get_plugin_manager_instance()
     logger.info("API: Request to scan all server logs and update player DB.")
 
-    # --- Plugin Hook: Before Scan ---
-    plugin_manager.trigger_event("before_player_db_scan")
-
-    result = {}
     try:
         # Delegate the entire discovery and saving process to the core manager.
         scan_result = get_manager_instance(
@@ -189,11 +176,11 @@ def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
         if scan_result["scan_errors"]:
             message += f" Scan errors encountered for: {scan_result['scan_errors']}"
 
-        result = {"status": "success", "message": message, "details": scan_result}
+        return {"status": "success", "message": message, "details": scan_result}
 
     except BSMError as e:
         # Handle application-specific errors during the scan.
-        result = {
+        return {
             "status": "error",
             "message": f"An error occurred during player scan: {str(e)}",
         }
@@ -201,13 +188,7 @@ def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
     except Exception as e:
         # Handle any other unexpected errors.
         logger.error(f"API: Unexpected error scanning for players: {e}", exc_info=True)
-        result = {
+        return {
             "status": "error",
             "message": f"An unexpected error occurred during player scan: {str(e)}",
         }
-
-    finally:
-        # --- Plugin Hook: After Scan ---
-        plugin_manager.trigger_event("after_player_db_scan", result=result)
-
-    return result

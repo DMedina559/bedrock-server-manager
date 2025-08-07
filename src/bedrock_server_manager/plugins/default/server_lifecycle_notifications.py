@@ -3,6 +3,7 @@
 Plugin to send in-game messages and manage delays during server lifecycle events.
 """
 import time
+from typing import Any
 from bedrock_server_manager import PluginBase
 
 
@@ -101,8 +102,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             "data deletion warning",
         )
 
-    def before_server_update(self, server_name: str, target_version: str):
+    def before_server_update(self, **kwargs: Any):
         """Notifies players before a server update begins."""
+        server_name = kwargs.get("server_name")
+        target_version = kwargs.get("target_version")
         self.logger.debug(
             f"Handling before_server_update for '{server_name}' to v{target_version}."
         )

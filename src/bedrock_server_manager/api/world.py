@@ -35,7 +35,6 @@ from ..plugins import plugin_method
 from ..instances import (
     get_settings_instance,
     get_server_instance,
-    get_plugin_manager_instance,
 )
 from .utils import server_lifecycle_manager
 from ..error import (
@@ -104,7 +103,11 @@ def get_world_name(server_name: str) -> Dict[str, Any]:
         }
 
 
+from ..plugins.event_trigger import trigger_plugin_event
+
+
 @plugin_method("export_world")
+@trigger_plugin_event(before="before_world_export", after="after_world_export")
 def export_world(
     server_name: str,
     export_dir: Optional[str] = None,
@@ -144,7 +147,6 @@ def export_world(
             :class:`~.error.AppFileNotFoundError` if world directory is missing,
             :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _world_lock.acquire(blocking=False):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
@@ -154,7 +156,6 @@ def export_world(
             "message": "A world operation is already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise InvalidServerNameError("Server name cannot be empty.")
@@ -170,11 +171,6 @@ def export_world(
                 )
             effective_export_dir = os.path.join(content_base_dir, "worlds")
 
-        plugin_manager.trigger_event(
-            "before_world_export",
-            server_name=server_name,
-            export_dir=effective_export_dir,
-        )
         logger.info(
             f"API: Initiating world export for '{server_name}' (Stop/Start: {stop_start_server})"
         )
@@ -200,7 +196,7 @@ def export_world(
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."
             )
-            result = {
+            return {
                 "status": "success",
                 "export_file": export_file_path,
                 "message": f"World '{world_name_str}' exported successfully to {export_filename}.",
@@ -210,28 +206,23 @@ def export_world(
             logger.error(
                 f"API: Failed to export world for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"Failed to export world: {e}"}
+            return {"status": "error", "message": f"Failed to export world: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error exporting world for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error exporting world: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_world_export", server_name=server_name, result=result
-            )
 
     finally:
         _world_lock.release()
 
-    return result
-
 
 @plugin_method("import_world")
+@trigger_plugin_event(before="before_world_import", after="after_world_import")
 def import_world(
     server_name: str,
     selected_file_path: str,
@@ -272,7 +263,6 @@ def import_world(
             :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _world_lock.acquire(blocking=False):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
@@ -282,16 +272,12 @@ def import_world(
             "message": "A world operation is already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise InvalidServerNameError("Server name cannot be empty.")
         if not selected_file_path:
             raise MissingArgumentError(".mcworld file path cannot be empty.")
 
-        plugin_manager.trigger_event(
-            "before_world_import", server_name=server_name, file_path=selected_file_path
-        )
         selected_filename = os.path.basename(selected_file_path)
         logger.info(
             f"API: Initiating world import for '{server_name}' from '{selected_filename}' (Stop/Start: {stop_start_server})"
@@ -317,7 +303,7 @@ def import_world(
             logger.info(
                 f"API: World import from '{selected_filename}' for server '{server_name}' completed."
             )
-            result = {
+            return {
                 "status": "success",
                 "message": f"World '{imported_world_name or 'Unknown'}' imported successfully from {selected_filename}.",
             }
@@ -326,28 +312,23 @@ def import_world(
             logger.error(
                 f"API: Failed to import world for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"Failed to import world: {e}"}
+            return {"status": "error", "message": f"Failed to import world: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error importing world for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error importing world: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_world_import", server_name=server_name, result=result
-            )
 
     finally:
         _world_lock.release()
 
-    return result
-
 
 @plugin_method("reset_world")
+@trigger_plugin_event(before="before_world_reset", after="after_world_reset")
 def reset_world(server_name: str) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 
@@ -381,7 +362,6 @@ def reset_world(server_name: str) -> Dict[str, str]:
             :class:`~.error.FileOperationError` from deletion, errors determining
             the world name, or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _world_lock.acquire(blocking=False):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."
@@ -391,12 +371,10 @@ def reset_world(server_name: str) -> Dict[str, str]:
             "message": "A world operation is already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise InvalidServerNameError("Server name cannot be empty for API request.")
 
-        plugin_manager.trigger_event("before_world_reset", server_name=server_name)
         logger.info(f"API: Initiating world reset for server '{server_name}'...")
 
         try:
@@ -419,7 +397,7 @@ def reset_world(server_name: str) -> Dict[str, str]:
             logger.info(
                 f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."
             )
-            result = {
+            return {
                 "status": "success",
                 "message": f"World '{world_name_for_msg}' reset successfully.",
             }
@@ -428,22 +406,16 @@ def reset_world(server_name: str) -> Dict[str, str]:
             logger.error(
                 f"API: Failed to reset world for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"Failed to reset world: {e}"}
+            return {"status": "error", "message": f"Failed to reset world: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error resetting world for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"An unexpected error occurred while resetting the world: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_world_reset", server_name=server_name, result=result
-            )
 
     finally:
         _world_lock.release()
-
-    return result
