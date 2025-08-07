@@ -92,11 +92,11 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"  5. Expect to see 'before_server_start' logs from this plugin for BOTH '{SERVER_A_NAME_TRIGGER}' AND '{SERVER_B_NAME_NESTED}'."
         )
 
-    def before_server_start(self, server_name: str, mode: str):
+    def before_server_start(self, server_name: str, **kwargs):
         global _server_b_triggered_by_this_plugin
 
         self.logger.info(
-            f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}' (mode: {mode})."
+            f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}'."
         )
 
         if (
@@ -111,7 +111,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
-                self.api.start_server(server_name=SERVER_B_NAME_NESTED, mode="detached")
+                self.api.start_server(server_name=SERVER_B_NAME_NESTED)
                 self.logger.info(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
                 )
