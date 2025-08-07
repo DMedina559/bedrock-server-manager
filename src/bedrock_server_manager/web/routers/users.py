@@ -63,6 +63,14 @@ async def create_user(
     """
     Creates a new user.
     """
+    # Check for existing user
+    existing_user = db.query(User).filter(User.username == data.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User with username '{data.username}' already exists.",
+        )
+
     hashed_password = pwd_context.hash(data.password)
     user = User(username=data.username, hashed_password=hashed_password, role=data.role)
     db.add(user)

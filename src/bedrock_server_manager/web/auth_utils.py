@@ -154,9 +154,11 @@ async def get_current_user_optional(
             db_session.commit()
 
             return User(
+                id=user.id,
                 username=user.username,
                 identity_type="jwt",
                 role=user.role,
+                is_active=user.is_active,
                 theme=user.theme,
             )
 

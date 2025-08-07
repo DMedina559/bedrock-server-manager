@@ -15,7 +15,9 @@ class BaseApiResponse(BaseModel):
 
 
 class User(BaseModel):
+    id: int
     username: str
     identity_type: str
     role: str
+    is_active: bool
     theme: str = "default"
