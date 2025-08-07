@@ -67,7 +67,8 @@ async def index(
     plugin_html_pages = []
     try:
         # Import the shared plugin_manager from the main web app module
-        from ...web.main import global_api_plugin_manager
+        from ...instances import get_plugin_manager_instance
+        global_api_plugin_manager = get_plugin_manager_instance()
 
         if global_api_plugin_manager and hasattr(
             global_api_plugin_manager, "get_html_render_routes"
