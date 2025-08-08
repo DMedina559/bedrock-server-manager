@@ -203,6 +203,11 @@ class TestInstallUpdate:
             ):
                 result = install_new_server("new-server")
                 assert result["status"] == "success"
+                assert "next_step_url" in result
+                assert (
+                    result["next_step_url"]
+                    == "/server/new-server/configure_properties?new_install=true"
+                )
                 mock_install.assert_called_once()
 
     @patch("bedrock_server_manager.api.server_install_config.server_lifecycle_manager")

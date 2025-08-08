@@ -647,6 +647,7 @@ def install_new_server(
             "status": "success",
             "version": server.get_version(),
             "message": f"Server '{server_name}' installed successfully to version {server.get_version()}.",
+            "next_step_url": f"/server/{server_name}/configure_properties?new_install=true",
         }
 
     except BSMError as e:
