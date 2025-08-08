@@ -1,6 +1,6 @@
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from click.testing import CliRunner
@@ -13,7 +13,8 @@ def test_cleanup_no_options(mocker):
     runner = CliRunner()
     mock_app_context = mocker.MagicMock()
     result = runner.invoke(
-        cleanup.cleanup, obj={"bedrock_server_manager": mock_app_context}
+        cleanup.cleanup,
+        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
     )
     assert result.exit_code == 0
     assert "No cleanup options specified" in result.output
@@ -24,7 +25,9 @@ def test_cleanup_cache(mock_cleanup_pycache, mocker):
     runner = CliRunner()
     mock_app_context = mocker.MagicMock()
     result = runner.invoke(
-        cleanup.cleanup, ["--cache"], obj={"bedrock_server_manager": mock_app_context}
+        cleanup.cleanup,
+        ["--cache"],
+        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
     )
     assert result.exit_code == 0
     mock_cleanup_pycache.assert_called_once()
@@ -45,7 +48,11 @@ def test_cleanup_logs(mocker):
         result = runner.invoke(
             cleanup.cleanup,
             ["--logs"],
-            obj={"bedrock_server_manager": mock_app_context},
+            obj={
+                "app_context": mock_app_context,
+                "bsm": MagicMock(),
+                "cli": MagicMock(),
+            },
         )
 
         assert result.exit_code == 0
@@ -69,7 +76,11 @@ def test_cleanup_all(mock_cleanup_pycache, mocker):
         result = runner.invoke(
             cleanup.cleanup,
             ["--cache", "--logs"],
-            obj={"bedrock_server_manager": mock_app_context},
+            obj={
+                "app_context": mock_app_context,
+                "bsm": MagicMock(),
+                "cli": MagicMock(),
+            },
         )
 
         assert result.exit_code == 0
@@ -92,7 +103,11 @@ def test_cleanup_log_dir_override(mocker):
         result = runner.invoke(
             cleanup.cleanup,
             ["--logs", "--log-dir", str(log_dir)],
-            obj={"bedrock_server_manager": mock_app_context},
+            obj={
+                "app_context": mock_app_context,
+                "bsm": MagicMock(),
+                "cli": MagicMock(),
+            },
         )
 
         assert result.exit_code == 0

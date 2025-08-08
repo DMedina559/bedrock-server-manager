@@ -146,7 +146,7 @@ async def api_login_for_access_token(
         )
 
     access_token = create_access_token(
-        data={"sub": authenticated_username}, app_context=request.app.state
+        data={"sub": authenticated_username}, app_context=request.app.state.app_context
     )
 
     cookie_secure = request.app.state.settings.get("web.jwt_cookie_secure", False)

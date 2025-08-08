@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 # Test data
@@ -9,6 +9,9 @@ TEST_PASSWORD = "testpassword"
 @patch("bedrock_server_manager.web.routers.auth.authenticate_user")
 def test_login_for_access_token_success(mock_authenticate_user, client: TestClient):
     """Test the login for access token route with valid credentials."""
+    app_context = MagicMock()
+    app_context.settings.get.return_value = 4.0
+    client.app.state.app_context = app_context
     mock_authenticate_user.return_value = TEST_USER
     response = client.post(
         "/auth/token", data={"username": TEST_USER, "password": TEST_PASSWORD}
@@ -23,6 +26,9 @@ def test_login_for_access_token_invalid_credentials(
     mock_authenticate_user, client: TestClient
 ):
     """Test the login for access token route with invalid credentials."""
+    app_context = MagicMock()
+    app_context.settings.get.return_value = 4.0
+    client.app.state.app_context = app_context
     mock_authenticate_user.return_value = None
     response = client.post(
         "/auth/token", data={"username": TEST_USER, "password": "wrongpassword"}
@@ -33,6 +39,9 @@ def test_login_for_access_token_invalid_credentials(
 
 def test_login_for_access_token_empty_username(client: TestClient):
     """Test the login for access token route with an empty username."""
+    app_context = MagicMock()
+    app_context.settings.get.return_value = 4.0
+    client.app.state.app_context = app_context
     response = client.post(
         "/auth/token", data={"username": "", "password": TEST_PASSWORD}
     )
@@ -41,6 +50,9 @@ def test_login_for_access_token_empty_username(client: TestClient):
 
 def test_login_for_access_token_empty_password(client: TestClient):
     """Test the login for access token route with an empty password."""
+    app_context = MagicMock()
+    app_context.settings.get.return_value = 4.0
+    client.app.state.app_context = app_context
     response = client.post("/auth/token", data={"username": TEST_USER, "password": ""})
     assert response.status_code == 401
 

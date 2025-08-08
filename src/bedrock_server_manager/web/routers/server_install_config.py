@@ -161,12 +161,15 @@ class ServiceUpdatePayload(BaseModel):
     "/api/downloads/list",
     tags=["Server Installation API"],
 )
-async def get_custom_zips(current_user: User = Depends(get_moderator_user)):
+async def get_custom_zips(
+    request: Request, current_user: User = Depends(get_moderator_user)
+):
     """
     Retrieves a list of available custom server ZIP files.
     """
+    app_context = request.app.state.app_context
     try:
-        download_dir = get_settings_instance().get("paths.downloads")
+        download_dir = app_context.settings.get("paths.downloads")
         custom_dir = os.path.join(download_dir, "custom")
         if not os.path.isdir(custom_dir):
             return {"status": "success", "custom_zips": []}
@@ -218,6 +221,7 @@ async def install_server_page(
     tags=["Server Installation API"],
 )
 async def install_server_api_route(
+    request: Request,
     payload: InstallServerPayload,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_admin_user),
@@ -247,7 +251,7 @@ async def install_server_api_route(
     logger.info(
         f"API: New server install request from user '{identity}' for server '{payload.server_name}'."
     )
-
+    app_context = request.app.state.app_context
     validation_result = utils_api.validate_server_name_format(payload.server_name)
     if validation_result.get("status") == "error":
         raise HTTPException(
@@ -256,7 +260,9 @@ async def install_server_api_route(
         )
 
     try:
-        server_exists_result = utils_api.validate_server_exist(payload.server_name)
+        server_exists_result = utils_api.validate_server_exist(
+            payload.server_name, app_context=app_context
+        )
         server_exists = server_exists_result.get("status") == "success"
 
         if not payload.overwrite and server_exists:
@@ -274,7 +280,9 @@ async def install_server_api_route(
             logger.info(
                 f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
             )
-            delete_result = server_api.delete_server_data(payload.server_name)
+            delete_result = server_api.delete_server_data(
+                server_name=payload.server_name, app_context=app_context
+            )
             if delete_result.get("status") == "error":
                 logger.error(
                     f"Failed to delete existing server '{payload.server_name}': {delete_result['message']}"
@@ -294,7 +302,7 @@ async def install_server_api_route(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="server_zip_path is required for CUSTOM version.",
                 )
-            download_dir = get_settings_instance().get("paths.downloads")
+            download_dir = app_context.settings.get("paths.downloads")
             custom_dir = os.path.join(download_dir, "custom")
             server_zip_path = os.path.abspath(
                 os.path.join(custom_dir, payload.server_zip_path)
@@ -305,9 +313,10 @@ async def install_server_api_route(
             tasks.run_task,
             task_id,
             server_install_config.install_new_server,
-            payload.server_name,
-            payload.server_version,
+            server_name=payload.server_name,
+            target_version=payload.server_version,
             server_zip_path=server_zip_path,
+            app_context=app_context,
         )
 
         return InstallServerResponse(
@@ -518,6 +527,7 @@ async def configure_service_page(
     tags=["Server Configuration API"],
 )
 async def configure_properties_api_route(
+    request: Request,
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_moderator_user),
@@ -569,7 +579,7 @@ async def configure_properties_api_route(
     logger.info(
         f"API: Configure properties request for '{server_name}' by user '{identity}'."
     )
-
+    app_context = request.app.state.app_context
     properties_data = payload.properties
     if not isinstance(properties_data, dict):
         raise HTTPException(
@@ -579,7 +589,9 @@ async def configure_properties_api_route(
 
     try:
         result = server_install_config.modify_server_properties(
-            server_name, properties_data
+            server_name=server_name,
+            properties_to_update=properties_data,
+            app_context=app_context,
         )
         if result.get("status") == "success":
             return result
@@ -619,6 +631,7 @@ async def configure_properties_api_route(
     "/api/server/{server_name}/properties/get", tags=["Server Configuration API"]
 )
 async def get_server_properties_api_route(
+    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
 ):
@@ -657,8 +670,10 @@ async def get_server_properties_api_route(
     logger.info(
         f"API: Get properties request for '{server_name}' by user '{identity}'."
     )
-
-    result = server_install_config.get_server_properties_api(server_name)
+    app_context = request.app.state.app_context
+    result = server_install_config.get_server_properties_api(
+        server_name=server_name, app_context=app_context
+    )
 
     if result.get("status") == "success":
         return result
@@ -680,6 +695,7 @@ async def get_server_properties_api_route(
     tags=["Server Configuration API"],
 )
 async def add_to_allowlist_api_route(
+    request: Request,
     payload: AllowlistAddPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -728,7 +744,7 @@ async def add_to_allowlist_api_route(
     logger.info(
         f"API: Add to allowlist request for '{server_name}' by user '{identity}'. Players: {payload.players}"
     )
-
+    app_context = request.app.state.app_context
     new_players_data = [
         {"name": player_name, "ignoresPlayerLimit": payload.ignoresPlayerLimit}
         for player_name in payload.players
@@ -736,7 +752,9 @@ async def add_to_allowlist_api_route(
 
     try:
         result = server_install_config.add_players_to_allowlist_api(
-            server_name, new_players_data
+            server_name=server_name,
+            new_players_data=new_players_data,
+            app_context=app_context,
         )
         if result.get("status") == "success":
             return result
@@ -767,6 +785,7 @@ async def add_to_allowlist_api_route(
     "/api/server/{server_name}/allowlist/get", tags=["Server Configuration API"]
 )
 async def get_allowlist_api_route(
+    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
 ):
@@ -810,8 +829,10 @@ async def get_allowlist_api_route(
     """
     identity = current_user.username
     logger.info(f"API: Get allowlist request for '{server_name}' by user '{identity}'.")
-
-    result = server_install_config.get_server_allowlist_api(server_name)
+    app_context = request.app.state.app_context
+    result = server_install_config.get_server_allowlist_api(
+        server_name=server_name, app_context=app_context
+    )
 
     if result.get("status") == "success":
         return result
@@ -833,6 +854,7 @@ async def get_allowlist_api_route(
     tags=["Server Configuration API"],
 )
 async def remove_allowlist_players_api_route(
+    request: Request,
     payload: AllowlistRemovePayload,
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_moderator_user),
@@ -882,10 +904,12 @@ async def remove_allowlist_players_api_route(
     logger.info(
         f"API: Remove from allowlist request for '{server_name}' by user '{identity}'. Players: {payload.players}"
     )
-
+    app_context = request.app.state.app_context
     try:
         result = server_install_config.remove_players_from_allowlist(
-            server_name, payload.players
+            server_name=server_name,
+            player_names=payload.players,
+            app_context=app_context,
         )
         if result.get("status") == "success":
             return result
@@ -924,6 +948,7 @@ async def remove_allowlist_players_api_route(
     tags=["Server Configuration API"],
 )
 async def configure_permissions_api_route(
+    request: Request,
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -986,7 +1011,7 @@ async def configure_permissions_api_route(
     logger.info(
         f"API: Configure permissions request for '{server_name}' by user '{identity}'."
     )
-
+    app_context = request.app.state.app_context
     permission_entries = payload.permissions
     errors: Dict[str, str] = {}  # Store errors by XUID
     success_count = 0
@@ -995,7 +1020,11 @@ async def configure_permissions_api_route(
         try:
             # Pass item.name to the underlying function
             result = server_install_config.configure_player_permission(
-                server_name, item.xuid, item.name, item.permission_level
+                server_name=server_name,
+                xuid=item.xuid,
+                player_name=item.name,
+                permission=item.permission_level,
+                app_context=app_context,
             )
             if result.get("status") == "success":
                 success_count += 1
@@ -1069,6 +1098,7 @@ async def configure_permissions_api_route(
     "/api/server/{server_name}/permissions/get", tags=["Server Configuration API"]
 )
 async def get_server_permissions_api_route(
+    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
 ):
@@ -1118,8 +1148,10 @@ async def get_server_permissions_api_route(
     logger.info(
         f"API: Get permissions request for '{server_name}' by user '{identity}'."
     )
-
-    result = server_install_config.get_server_permissions_api(server_name)
+    app_context = request.app.state.app_context
+    result = server_install_config.get_server_permissions_api(
+        server_name=server_name, app_context=app_context
+    )
 
     if result.get("status") == "success":
         return result
@@ -1141,6 +1173,7 @@ async def get_server_permissions_api_route(
     tags=["Server Configuration API"],
 )
 async def configure_service_api_route(
+    request: Request,
     server_name: str = Depends(validate_server_exists),
     payload: ServiceUpdatePayload = Body(...),
     current_user: User = Depends(get_admin_user),
@@ -1191,7 +1224,7 @@ async def configure_service_api_route(
     logger.info(
         f"API: Configure service request for '{server_name}' by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
     )
-
+    app_context = request.app.state.app_context
     current_os = platform.system()
 
     if payload.autoupdate is None and payload.autostart is None:
@@ -1207,7 +1240,9 @@ async def configure_service_api_route(
         # Handle autoupdate first
         if payload.autoupdate is not None:
             result_autoupdate = system_api.set_autoupdate(
-                server_name, str(payload.autoupdate).lower()
+                server_name=server_name,
+                autoupdate_value=str(payload.autoupdate).lower(),
+                app_context=app_context,
             )
             if result_autoupdate.get("status") == "success":
                 messages.append("Autoupdate setting applied successfully.")
@@ -1220,7 +1255,9 @@ async def configure_service_api_route(
         # Handle autostart
         if payload.autostart is not None:
             result_autostart = system_api.set_autostart(
-                server_name, str(payload.autostart).lower()
+                server_name=server_name,
+                autostart_value=str(payload.autostart).lower(),
+                app_context=app_context,
             )
             if result_autostart.get("status") == "success":
                 messages.append("autostart setting applied successfully.")

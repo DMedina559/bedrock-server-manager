@@ -28,12 +28,13 @@ from fastapi import (
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from bedrock_server_manager import app_context
+
 from ..schemas import BaseApiResponse, User
 from ..templating import get_templates
 from ..auth_utils import get_current_user, get_admin_user
 from ...api import plugins as plugins_api
 from ...error import BSMError, UserInputError
-from ..dependencies import get_plugin_manager
 from ...plugins.plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
@@ -110,8 +111,8 @@ async def manage_plugins_page_route(
 # --- API Route ---
 @router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
+    request: Request,
     current_user: User = Depends(get_admin_user),
-    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Retrieves the statuses and metadata of all discovered plugins.
@@ -136,7 +137,8 @@ async def get_plugins_status_api_route(
     identity = current_user.username
     logger.info(f"API: Get plugin statuses request by '{identity}'.")
     try:
-        result = plugins_api.get_plugin_statuses(plugin_manager)
+        app_context = request.app.state.app_context
+        result = plugins_api.get_plugin_statuses(app_context=app_context)
         if result.get("status") == "success":
             return PluginApiResponse(status="success", data=result.get("plugins"))
         else:
@@ -158,9 +160,9 @@ async def get_plugins_status_api_route(
     tags=["Plugin API"],
 )
 async def trigger_event_api_route(
+    request: Request,
     payload: TriggerEventPayload,
     current_user: User = Depends(get_admin_user),
-    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Allows an external source to trigger a custom plugin event within the system.
@@ -181,8 +183,11 @@ async def trigger_event_api_route(
     )
 
     try:
+        app_context = request.app.state.app_context
         result = plugins_api.trigger_external_plugin_event_api(
-            plugin_manager, payload.event_name, payload.payload
+            app_context=app_context,
+            event_name=payload.event_name,
+            payload=payload.payload,
         )
         if result.get("status") == "success":
             return PluginApiResponse(
@@ -221,10 +226,10 @@ async def trigger_event_api_route(
     tags=["Plugin API"],
 )
 async def set_plugin_status_api_route(
+    request: Request,
     plugin_name: str,
     payload: PluginStatusSetPayload,
     current_user: User = Depends(get_admin_user),
-    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Sets the enabled or disabled status for a specific plugin.
@@ -247,8 +252,9 @@ async def set_plugin_status_api_route(
     )
 
     try:
+        app_context = request.app.state.app_context
         result = plugins_api.set_plugin_status(
-            plugin_manager, plugin_name, payload.enabled
+            app_context=app_context, plugin_name=plugin_name, enabled=payload.enabled
         )
         if result.get("status") == "success":
             return PluginApiResponse(status="success", message=result.get("message"))
@@ -284,8 +290,8 @@ async def set_plugin_status_api_route(
     "/api/plugins/reload", response_model=PluginApiResponse, tags=["Plugin API"]
 )
 async def reload_plugins_api_route(
+    request: Request,
     current_user: User = Depends(get_admin_user),
-    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Triggers a full reload of the plugin system.
@@ -303,7 +309,8 @@ async def reload_plugins_api_route(
     logger.info(f"API: Reload plugins request by '{identity}'.")
 
     try:
-        result = plugins_api.reload_plugins(plugin_manager)
+        app_context = request.app.state.app_context
+        result = plugins_api.reload_plugins(app_context=app_context)
         if result.get("status") == "success":
             return PluginApiResponse(status="success", message=result.get("message"))
         else:

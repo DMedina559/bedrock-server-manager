@@ -16,29 +16,14 @@ from ..db.database import db_session_manager
 from ..db.models import User
 from ..api import utils as utils_api
 from ..error import InvalidServerNameError
-from ..plugins.plugin_manager import PluginManager
-from ..config.settings import Settings
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
 
 
-def get_settings(request: Request) -> Settings:
-    """
-    FastAPI dependency to get the application settings object.
-    """
-    return request.app.state.settings
-
-
-def get_plugin_manager(request: Request) -> PluginManager:
-    """
-    FastAPI dependency to get the PluginManager instance.
-    """
-    return request.app.state.plugin_manager
-
-
 async def validate_server_exists(
-    server_name: str = Path(..., title="The name of the server", min_length=1)
+    request: Request,
+    server_name: str = Path(..., title="The name of the server", min_length=1),
 ) -> str:
     """
     FastAPI dependency to validate if a server identified by `server_name` exists.
@@ -62,8 +47,11 @@ async def validate_server_exists(
             has an invalid format.
     """
     logger.debug(f"Dependency: Validating existence of server '{server_name}'.")
+    app_context = request.app.state.app_context
     try:
-        validation_result = utils_api.validate_server_exist(server_name)
+        validation_result = utils_api.validate_server_exist(
+            server_name=server_name, app_context=app_context
+        )
         if validation_result.get("status") != "success":
             logger.warning(
                 f"Dependency: Server '{server_name}' not found or invalid. Message: {validation_result.get('message')}"

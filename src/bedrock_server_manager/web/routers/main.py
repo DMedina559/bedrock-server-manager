@@ -23,7 +23,7 @@ from ..auth_utils import (
     get_current_user_optional,
 )
 from ..schemas import User
-from ..dependencies import validate_server_exists, get_plugin_manager
+from ..dependencies import validate_server_exists
 from ...plugins.plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ router = APIRouter()
 async def index(
     request: Request,
     current_user: Optional[User] = Depends(get_current_user_optional),
-    plugin_manager: PluginManager = Depends(get_plugin_manager),
 ):
     """
     Renders the main dashboard page (index).
@@ -62,6 +61,8 @@ async def index(
     )
 
     try:
+        app_context = request.app.state.app_context
+        plugin_manager: PluginManager = app_context.plugin_manager
         plugin_html_pages = plugin_manager.get_html_render_routes()
     except Exception as e:
         logger.error(f"Error getting plugin HTML pages: {e}", exc_info=True)

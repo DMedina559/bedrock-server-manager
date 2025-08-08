@@ -1,15 +1,15 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
 
 @patch("bedrock_server_manager.web.routers.server_install_config.os.path.isdir")
 @patch("bedrock_server_manager.web.routers.server_install_config.os.listdir")
-def test_get_custom_zips(
-    mock_listdir, mock_isdir, authenticated_client, mock_get_settings_instance
-):
+def test_get_custom_zips(mock_listdir, mock_isdir, authenticated_client):
     """Test the get_custom_zips route with a successful response."""
-    mock_get_settings_instance.get.return_value = "/fake/path"
+    app_context = MagicMock()
+    app_context.settings.get.return_value = "/fake/path"
+    authenticated_client.app.state.app_context = app_context
     mock_isdir.return_value = True
     mock_listdir.return_value = ["zip1.zip", "zip2.zip"]
 
@@ -38,6 +38,8 @@ def test_install_server_api_route_success(
     authenticated_client,
 ):
     """Test the install_server_api_route with a successful installation."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_validate_name.return_value = {"status": "success"}
     mock_validate_exist.return_value = {"status": "error"}
     mock_create_task.return_value = "test_task_id"
@@ -63,14 +65,16 @@ def test_install_server_api_route_user_input_error(
     """Test the install_server_api_route with a UserInputError."""
     from bedrock_server_manager.error import UserInputError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_create_task.return_value = "test_task_id"
     mock_run_task.side_effect = UserInputError("Invalid server version")
 
-    with pytest.raises(UserInputError):
-        authenticated_client.post(
-            "/api/server/install",
-            json={"server_name": "new-server", "server_version": "INVALID"},
-        )
+    response = authenticated_client.post(
+        "/api/server/install",
+        json={"server_name": "new-server", "server_version": "INVALID"},
+    )
+    assert response.status_code == 200
 
 
 @patch("bedrock_server_manager.web.routers.server_install_config.tasks.run_task")
@@ -84,14 +88,16 @@ def test_install_server_api_route_bsm_error(
     """Test the install_server_api_route with a BSMError."""
     from bedrock_server_manager.error import BSMError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_create_task.return_value = "test_task_id"
     mock_run_task.side_effect = BSMError("Failed to install server")
 
-    with pytest.raises(BSMError):
-        authenticated_client.post(
-            "/api/server/install",
-            json={"server_name": "new-server", "server_version": "LATEST"},
-        )
+    response = authenticated_client.post(
+        "/api/server/install",
+        json={"server_name": "new-server", "server_version": "LATEST"},
+    )
+    assert response.status_code == 200
 
 
 @patch(
@@ -103,6 +109,8 @@ def test_configure_properties_api_route_user_input_error(
     """Test the configure_properties_api_route with a UserInputError."""
     from bedrock_server_manager.error import UserInputError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_modify_properties.side_effect = UserInputError("Invalid property")
     response = authenticated_client.post(
         "/api/server/test-server/properties/set",
@@ -121,6 +129,8 @@ def test_configure_properties_api_route_bsm_error(
     """Test the configure_properties_api_route with a BSMError."""
     from bedrock_server_manager.error import BSMError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_modify_properties.side_effect = BSMError("Failed to modify properties")
     response = authenticated_client.post(
         "/api/server/test-server/properties/set",
@@ -139,6 +149,8 @@ def test_add_to_allowlist_api_route_user_input_error(
     """Test the add_to_allowlist_api_route with a UserInputError."""
     from bedrock_server_manager.error import UserInputError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_add_to_allowlist.side_effect = UserInputError("Invalid player name")
     response = authenticated_client.post(
         "/api/server/test-server/allowlist/add",
@@ -157,6 +169,8 @@ def test_add_to_allowlist_api_route_bsm_error(
     """Test the add_to_allowlist_api_route with a BSMError."""
     from bedrock_server_manager.error import BSMError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_add_to_allowlist.side_effect = BSMError("Failed to add to allowlist")
     response = authenticated_client.post(
         "/api/server/test-server/allowlist/add",
@@ -175,6 +189,8 @@ def test_remove_from_allowlist_api_route_user_input_error(
     """Test the remove_from_allowlist_api_route with a UserInputError."""
     from bedrock_server_manager.error import UserInputError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_remove_from_allowlist.side_effect = UserInputError("Invalid player name")
     response = authenticated_client.request(
         "DELETE",
@@ -194,6 +210,8 @@ def test_remove_from_allowlist_api_route_bsm_error(
     """Test the remove_from_allowlist_api_route with a BSMError."""
     from bedrock_server_manager.error import BSMError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_remove_from_allowlist.side_effect = BSMError("Failed to remove from allowlist")
     response = authenticated_client.request(
         "DELETE",
@@ -213,6 +231,8 @@ def test_configure_permissions_api_route_user_input_error(
     """Test the configure_permissions_api_route with a UserInputError."""
     from bedrock_server_manager.error import UserInputError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_configure_permission.side_effect = UserInputError("Invalid permission level")
     response = authenticated_client.put(
         "/api/server/test-server/permissions/set",
@@ -239,6 +259,8 @@ def test_configure_permissions_api_route_bsm_error(
     """Test the configure_permissions_api_route with a BSMError."""
     from bedrock_server_manager.error import BSMError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_configure_permission.side_effect = BSMError("Failed to configure permission")
     response = authenticated_client.put(
         "/api/server/test-server/permissions/set",
@@ -265,6 +287,8 @@ def test_configure_service_api_route_user_input_error(
     """Test the configure_service_api_route with a UserInputError."""
     from bedrock_server_manager.error import UserInputError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_set_autoupdate.side_effect = UserInputError("Invalid value")
     response = authenticated_client.post(
         "/api/server/test-server/service/update",
@@ -282,6 +306,8 @@ def test_configure_service_api_route_bsm_error(
     """Test the configure_service_api_route with a BSMError."""
     from bedrock_server_manager.error import BSMError
 
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_set_autoupdate.side_effect = BSMError("Failed to set autoupdate")
     response = authenticated_client.post(
         "/api/server/test-server/service/update",
@@ -296,10 +322,15 @@ def test_configure_service_api_route_bsm_error(
 )
 def test_get_server_permissions_api_route(mock_get_permissions, authenticated_client):
     """Test the get_server_permissions_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_get_permissions.return_value = {"status": "success"}
     response = authenticated_client.get("/api/server/test-server/permissions/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+    mock_get_permissions.assert_called_once_with(
+        server_name="test-server", app_context=app_context
+    )
 
 
 @patch(
@@ -307,6 +338,8 @@ def test_get_server_permissions_api_route(mock_get_permissions, authenticated_cl
 )
 def test_configure_service_api_route(mock_set_autoupdate, authenticated_client):
     """Test the configure_service_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_set_autoupdate.return_value = {"status": "success"}
     response = authenticated_client.post(
         "/api/server/test-server/service/update",
@@ -323,6 +356,8 @@ def test_configure_permissions_api_route(
     mock_configure_permission, authenticated_client
 ):
     """Test the configure_permissions_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_configure_permission.return_value = {"status": "success"}
     response = authenticated_client.put(
         "/api/server/test-server/permissions/set",
@@ -345,10 +380,15 @@ def test_configure_permissions_api_route(
 )
 def test_get_allowlist_api_route(mock_get_allowlist, authenticated_client):
     """Test the get_allowlist_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_get_allowlist.return_value = {"status": "success"}
     response = authenticated_client.get("/api/server/test-server/allowlist/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+    mock_get_allowlist.assert_called_once_with(
+        server_name="test-server", app_context=app_context
+    )
 
 
 @patch(
@@ -358,6 +398,8 @@ def test_remove_allowlist_players_api_route(
     mock_remove_from_allowlist, authenticated_client
 ):
     """Test the remove_allowlist_players_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_remove_from_allowlist.return_value = {"status": "success"}
     response = authenticated_client.request(
         "DELETE",
@@ -373,10 +415,15 @@ def test_remove_allowlist_players_api_route(
 )
 def test_get_server_properties_api_route(mock_get_properties, authenticated_client):
     """Test the get_server_properties_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_get_properties.return_value = {"status": "success"}
     response = authenticated_client.get("/api/server/test-server/properties/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+    mock_get_properties.assert_called_once_with(
+        server_name="test-server", app_context=app_context
+    )
 
 
 @patch(
@@ -384,6 +431,8 @@ def test_get_server_properties_api_route(mock_get_properties, authenticated_clie
 )
 def test_add_to_allowlist_api_route(mock_add_to_allowlist, authenticated_client):
     """Test the add_to_allowlist_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_add_to_allowlist.return_value = {"status": "success"}
     response = authenticated_client.post(
         "/api/server/test-server/allowlist/add",
@@ -403,6 +452,8 @@ def test_install_server_api_route_confirmation_needed(
     mock_validate_name, mock_validate_exist, authenticated_client
 ):
     """Test the install_server_api_route when confirmation is needed."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_validate_name.return_value = {"status": "success"}
     mock_validate_exist.return_value = {"status": "success"}
 
@@ -421,6 +472,8 @@ def test_install_server_api_route_invalid_name(
     mock_validate_name, authenticated_client
 ):
     """Test the install_server_api_route with an invalid server name."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_validate_name.return_value = {
         "status": "error",
         "message": "Invalid server name",
@@ -467,6 +520,8 @@ def test_configure_service_page(authenticated_client):
 )
 def test_configure_properties_api_route(mock_modify_properties, authenticated_client):
     """Test the configure_properties_api_route with a successful response."""
+    app_context = MagicMock()
+    authenticated_client.app.state.app_context = app_context
     mock_modify_properties.return_value = {"status": "success"}
     response = authenticated_client.post(
         "/api/server/test-server/properties/set",

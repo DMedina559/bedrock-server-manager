@@ -110,6 +110,11 @@ def create_web_app(settings: Settings) -> FastAPI:
             "deepLinking": True,
         },
     )
+    manager = BedrockServerManager(settings)
+    app_context = AppContext(
+        settings=settings, plugin_manager=plugin_manager, manager=manager
+    )
+    app.state.app_context = app_context
     app.state.settings = settings
     app.state.plugin_manager = plugin_manager
 

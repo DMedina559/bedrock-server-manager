@@ -31,9 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_plugin_statuses")
-def get_plugin_statuses(
-    plugin_manager: PluginManager = None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
     """
     Retrieves the statuses and metadata of all discovered plugins.
 
@@ -57,8 +55,6 @@ def get_plugin_statuses(
     try:
         if app_context:
             pm = app_context.plugin_manager
-        elif plugin_manager:
-            pm = plugin_manager
         else:
             pm = get_plugin_manager_instance()
         pm._synchronize_config_with_disk()
@@ -71,7 +67,6 @@ def get_plugin_statuses(
 
 
 def set_plugin_status(
-    plugin_manager: PluginManager = None,
     plugin_name: str = None,
     enabled: bool = None,
     app_context: Optional[AppContext] = None,
@@ -110,8 +105,6 @@ def set_plugin_status(
     try:
         if app_context:
             pm = app_context.plugin_manager
-        elif plugin_manager:
-            pm = plugin_manager
         else:
             pm = get_plugin_manager_instance()
         pm._synchronize_config_with_disk()
@@ -148,9 +141,7 @@ def set_plugin_status(
         }
 
 
-def reload_plugins(
-    plugin_manager: PluginManager = None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
     """
     Triggers the plugin manager to unload all active plugins and
     then reload all plugins based on the current configuration.
@@ -170,8 +161,6 @@ def reload_plugins(
     try:
         if app_context:
             pm = app_context.plugin_manager
-        elif plugin_manager:
-            pm = plugin_manager
         else:
             pm = get_plugin_manager_instance()
         pm.reload()
@@ -189,7 +178,6 @@ def reload_plugins(
 
 
 def trigger_external_plugin_event_api(
-    plugin_manager: PluginManager = None,
     event_name: str = None,
     payload: Dict[str, Any] = None,
     app_context: Optional[AppContext] = None,
@@ -229,8 +217,6 @@ def trigger_external_plugin_event_api(
     try:
         if app_context:
             pm = app_context.plugin_manager
-        elif plugin_manager:
-            pm = plugin_manager
         else:
             pm = get_plugin_manager_instance()
         actual_payload = payload if payload is not None else {}

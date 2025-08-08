@@ -248,8 +248,13 @@ async def show_select_backup_file_page(
             url=str(redirect_url), status_code=status.HTTP_302_FOUND
         )
 
+    app_context = request.app.state.app_context
     try:
-        api_result = backup_restore_api.list_backup_files(server_name, restore_type)
+        api_result = backup_restore_api.list_backup_files(
+            server_name=server_name,
+            backup_type=restore_type,
+            app_context=app_context,
+        )
         if api_result.get("status") == "success":
             full_paths = api_result.get("backups", [])
             if not full_paths:
@@ -410,6 +415,7 @@ async def handle_restore_select_backup_type_api(
     tags=["Backup & Restore API"],
 )
 async def prune_backups_api_route(
+    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -437,12 +443,14 @@ async def prune_backups_api_route(
     logger.info(
         f"API: Request to prune backups for server '{server_name}' by user '{identity}'."
     )
+    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         backup_restore_api.prune_old_backups,
-        server_name,
+        server_name=server_name,
+        app_context=app_context,
     )
 
     return BackupRestoreResponse(
@@ -458,6 +466,7 @@ async def prune_backups_api_route(
     tags=["Backup & Restore API"],
 )
 async def list_server_backups_api_route(
+    request: Request,
     backup_type: str,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -520,10 +529,10 @@ async def list_server_backups_api_route(
     logger.info(
         f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
     )
-
+    app_context = request.app.state.app_context
     try:
         api_result = backup_restore_api.list_backup_files(
-            server_name=server_name, backup_type=backup_type
+            server_name=server_name, backup_type=backup_type, app_context=app_context
         )
         if api_result.get("status") == "success":
             backup_data = api_result.get("backups", [])
@@ -597,6 +606,7 @@ async def list_server_backups_api_route(
     tags=["Backup & Restore API"],
 )
 async def backup_action_api_route(
+    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
@@ -616,7 +626,7 @@ async def backup_action_api_route(
     logger.info(
         f"API: Backup action '{payload.backup_type}' requested for server '{server_name}' by user '{identity}'."
     )
-
+    app_context = request.app.state.app_context
     valid_types = ["world", "config", "all"]
     if payload.backup_type.lower() not in valid_types:
         raise HTTPException(
@@ -634,12 +644,12 @@ async def backup_action_api_route(
 
     task_id = tasks.create_task()
     target_func = None
-    args = [server_name]
+    kwargs = {"server_name": server_name, "app_context": app_context}
     if payload.backup_type.lower() == "world":
         target_func = backup_restore_api.backup_world
     elif payload.backup_type.lower() == "config":
         target_func = backup_restore_api.backup_config_file
-        args.append(payload.file_to_backup.strip())
+        kwargs["file_to_backup"] = payload.file_to_backup.strip()
     elif payload.backup_type.lower() == "all":
         target_func = backup_restore_api.backup_all
 
@@ -647,7 +657,7 @@ async def backup_action_api_route(
         tasks.run_task,
         task_id,
         target_func,
-        *args,
+        **kwargs,
     )
 
     return BackupRestoreResponse(
@@ -664,6 +674,7 @@ async def backup_action_api_route(
     tags=["Backup & Restore API"],
 )
 async def restore_action_api_route(
+    request: Request,
     payload: RestoreActionPayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
@@ -684,7 +695,7 @@ async def restore_action_api_route(
     logger.info(
         f"API: Restore action '{payload.restore_type}' requested for server '{server_name}' by user '{identity}'."
     )
-
+    app_context = request.app.state.app_context
     valid_types = ["world", "properties", "allowlist", "permissions", "all"]
     restore_type_lower = payload.restore_type.lower()
 
@@ -712,12 +723,12 @@ async def restore_action_api_route(
 
     task_id = tasks.create_task()
     target_func = None
-    args = [server_name]
+    kwargs = {"server_name": server_name, "app_context": app_context}
 
     if restore_type_lower == "all":
         target_func = backup_restore_api.restore_all
     else:
-        backup_base_dir = get_settings_instance().get("paths.backups")
+        backup_base_dir = app_context.settings.get("paths.backups")
         if not backup_base_dir:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -745,16 +756,16 @@ async def restore_action_api_route(
 
         if restore_type_lower == "world":
             target_func = backup_restore_api.restore_world
-            args.append(full_backup_path)
+            kwargs["backup_file_path"] = full_backup_path
         elif restore_type_lower in ["properties", "allowlist", "permissions"]:
             target_func = backup_restore_api.restore_config_file
-            args.append(full_backup_path)
+            kwargs["backup_file_path"] = full_backup_path
 
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         target_func,
-        *args,
+        **kwargs,
     )
 
     return BackupRestoreResponse(
