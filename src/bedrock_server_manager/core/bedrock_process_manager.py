@@ -15,6 +15,7 @@ from ..error import (
     FileOperationError,
 )
 from ..config.settings import Settings
+from ..context import AppContext
 from ..instances import get_server_instance, get_settings_instance
 
 
@@ -28,14 +29,22 @@ class BedrockProcessManager:
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls, settings_instance: Optional[Settings] = None):
+    def __new__(
+        cls,
+        settings_instance: Optional[Settings] = None,
+        app_context: Optional[AppContext] = None,
+    ):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super(BedrockProcessManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, settings_instance: Optional[Settings] = None):
+    def __init__(
+        self,
+        settings_instance: Optional[Settings] = None,
+        app_context: Optional[AppContext] = None,
+    ):
         """Initializes the BedrockProcessManager."""
         if not hasattr(self, "initialized"):
             self.servers: Dict[str, subprocess.Popen] = {}
@@ -43,11 +52,14 @@ class BedrockProcessManager:
             self.failure_counts: Dict[str, int] = {}
             self.start_times: Dict[str, float] = {}
             self.logger = logging.getLogger(__name__)
+            self.app_context = app_context
 
-            if settings_instance is None:
-                self.settings = get_settings_instance()
-            else:
+            if self.app_context:
+                self.settings = self.app_context.settings
+            elif settings_instance:
                 self.settings = settings_instance
+            else:
+                self.settings = get_settings_instance()
 
             self.monitoring_thread = threading.Thread(
                 target=self._monitor_servers, daemon=True
@@ -85,7 +97,10 @@ class BedrockProcessManager:
             self.logger.warning(f"Server '{server_name}' is already running.")
             raise ServerStartError(f"Server '{server_name}' is already running.")
 
-        server = get_server_instance(server_name, self.settings)
+        if self.app_context:
+            server = self.app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name, self.settings)
         output_file = os.path.join(server.server_dir, "server_output.txt")
         pid_file_path = server.get_pid_file_path()
 
@@ -285,8 +300,10 @@ class BedrockProcessManager:
         Raises:
             ServerStartError: If the server is already running or fails to start.
         """
-
-        server = get_server_instance(server_name, self.settings)
+        if self.app_context:
+            server = self.app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name, self.settings)
 
         try:
             server.set_status_in_config("ERROR")

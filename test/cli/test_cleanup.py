@@ -8,22 +8,29 @@ from click.testing import CliRunner
 from bedrock_server_manager.cli import cleanup
 
 
-def test_cleanup_no_options():
+@patch("bedrock_server_manager.cli.cleanup._cleanup_pycache")
+def test_cleanup_no_options(mocker):
     runner = CliRunner()
-    result = runner.invoke(cleanup.cleanup)
+    mock_app_context = mocker.MagicMock()
+    result = runner.invoke(
+        cleanup.cleanup, obj={"bedrock_server_manager": mock_app_context}
+    )
+    assert result.exit_code == 0
     assert "No cleanup options specified" in result.output
 
 
 @patch("bedrock_server_manager.cli.cleanup._cleanup_pycache", return_value=1)
-def test_cleanup_cache(mock_cleanup_pycache):
+def test_cleanup_cache(mock_cleanup_pycache, mocker):
     runner = CliRunner()
-    result = runner.invoke(cleanup.cleanup, ["--cache"])
+    mock_app_context = mocker.MagicMock()
+    result = runner.invoke(
+        cleanup.cleanup, ["--cache"], obj={"bedrock_server_manager": mock_app_context}
+    )
     assert result.exit_code == 0
     mock_cleanup_pycache.assert_called_once()
 
 
-@patch("bedrock_server_manager.cli.cleanup.get_settings_instance")
-def test_cleanup_logs(mock_get_settings_instance):
+def test_cleanup_logs(mocker):
     runner = CliRunner()
     with runner.isolated_filesystem():
         log_dir = Path("logs")
@@ -32,9 +39,14 @@ def test_cleanup_logs(mock_get_settings_instance):
         time.sleep(0.1)
         (log_dir / "log2.log.2").touch()
 
-        mock_get_settings_instance.return_value.get.return_value = str(log_dir)
+        mock_app_context = mocker.MagicMock()
+        mock_app_context.settings.get.return_value = str(log_dir)
 
-        result = runner.invoke(cleanup.cleanup, ["--logs"])
+        result = runner.invoke(
+            cleanup.cleanup,
+            ["--logs"],
+            obj={"bedrock_server_manager": mock_app_context},
+        )
 
         assert result.exit_code == 0
         assert (log_dir / "log2.log.2").exists()
@@ -42,8 +54,7 @@ def test_cleanup_logs(mock_get_settings_instance):
 
 
 @patch("bedrock_server_manager.cli.cleanup._cleanup_pycache", return_value=1)
-@patch("bedrock_server_manager.cli.cleanup.get_settings_instance")
-def test_cleanup_all(mock_get_settings_instance, mock_cleanup_pycache):
+def test_cleanup_all(mock_cleanup_pycache, mocker):
     runner = CliRunner()
     with runner.isolated_filesystem():
         log_dir = Path("logs")
@@ -51,9 +62,15 @@ def test_cleanup_all(mock_get_settings_instance, mock_cleanup_pycache):
         (log_dir / "log1.log.1").touch()
         time.sleep(0.1)
         (log_dir / "log2.log.2").touch()
-        mock_get_settings_instance.return_value.get.return_value = str(log_dir)
 
-        result = runner.invoke(cleanup.cleanup, ["--cache", "--logs"])
+        mock_app_context = mocker.MagicMock()
+        mock_app_context.settings.get.return_value = str(log_dir)
+
+        result = runner.invoke(
+            cleanup.cleanup,
+            ["--cache", "--logs"],
+            obj={"bedrock_server_manager": mock_app_context},
+        )
 
         assert result.exit_code == 0
         mock_cleanup_pycache.assert_called_once()
@@ -61,7 +78,7 @@ def test_cleanup_all(mock_get_settings_instance, mock_cleanup_pycache):
         assert (log_dir / "log2.log.2").exists()
 
 
-def test_cleanup_log_dir_override():
+def test_cleanup_log_dir_override(mocker):
     runner = CliRunner()
     with runner.isolated_filesystem():
         log_dir = Path("custom_logs")
@@ -70,7 +87,13 @@ def test_cleanup_log_dir_override():
         time.sleep(0.1)
         (log_dir / "log2.log.2").touch()
 
-        result = runner.invoke(cleanup.cleanup, ["--logs", "--log-dir", str(log_dir)])
+        mock_app_context = mocker.MagicMock()
+
+        result = runner.invoke(
+            cleanup.cleanup,
+            ["--logs", "--log-dir", str(log_dir)],
+            obj={"bedrock_server_manager": mock_app_context},
+        )
 
         assert result.exit_code == 0
         assert (log_dir / "log2.log.2").exists()

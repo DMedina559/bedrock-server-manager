@@ -29,6 +29,7 @@ from ..error import MissingArgumentError
 from .schemas import User
 from ..db.database import db_session_manager
 from ..db.models import User as UserModel
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,9 @@ cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 # --- Token Creation ---
 def create_access_token(
-    data: dict, expires_delta: Optional[datetime.timedelta] = None
+    data: dict,
+    expires_delta: Optional[datetime.timedelta] = None,
+    app_context: Optional[AppContext] = None,
 ) -> str:
     """Creates a JSON Web Token (JWT) for access.
 
@@ -81,12 +84,15 @@ def create_access_token(
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
     else:
-        from ..instances import get_settings_instance
+        if app_context:
+            settings = app_context.settings
+        else:
+            from ..instances import get_settings_instance
+
+            settings = get_settings_instance()
 
         try:
-            jwt_expires_weeks = float(
-                get_settings_instance().get("web.token_expires_weeks", 4.0)
-            )
+            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
         except (ValueError, TypeError):
             jwt_expires_weeks = 4.0
         access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60

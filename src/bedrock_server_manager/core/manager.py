@@ -372,7 +372,9 @@ class BedrockServerManager:
                 {"name": player.player_name, "xuid": player.xuid} for player in players
             ]
 
-    def discover_and_store_players_from_all_server_logs(self) -> Dict[str, Any]:
+    def discover_and_store_players_from_all_server_logs(
+        self, app_context: Optional[AppContext] = None
+    ) -> Dict[str, Any]:
         """Scans all server logs for player data and updates the central player database.
 
         This comprehensive method performs the following actions:
@@ -434,10 +436,13 @@ class BedrockServerManager:
             logger.debug(f"BSM: Processing potential server '{server_name_candidate}'.")
             try:
                 # Instantiate a BedrockServer to use its encapsulated logic.
-                server_instance = get_server_instance(
-                    server_name=server_name_candidate,
-                    settings_instance=self.settings,
-                )
+                if app_context:
+                    server_instance = app_context.get_server(server_name_candidate)
+                else:
+                    server_instance = get_server_instance(
+                        server_name=server_name_candidate,
+                        settings_instance=self.settings,
+                    )
 
                 # Validate it's a real server before trying to scan its logs.
                 if not server_instance.is_installed():
@@ -509,6 +514,7 @@ class BedrockServerManager:
         host: Optional[Union[str, List[str]]] = None,
         debug: bool = False,
         threads: Optional[int] = None,
+        app_context: Optional[AppContext] = None,
     ) -> None:
         """Starts the Web UI application directly in the current process (blocking).
 
@@ -546,7 +552,7 @@ class BedrockServerManager:
                 run_web_server as run_bsm_web_application,
             )
 
-            run_bsm_web_application(host, debug, threads)
+            run_bsm_web_application(host, debug, threads, app_context=app_context)
             logger.info("BSM: Web application (direct mode) shut down.")
         except (RuntimeError, ImportError) as e:
             logger.critical(
@@ -1404,7 +1410,9 @@ class BedrockServerManager:
         return self.capabilities["service_manager"]
 
     # --- Server Discovery ---
-    def validate_server(self, server_name: str) -> bool:
+    def validate_server(
+        self, server_name: str, app_context: Optional[AppContext] = None
+    ) -> bool:
         """Validates if a given server name corresponds to a valid installation.
 
         This method checks for the existence and basic integrity of a server
@@ -1435,10 +1443,13 @@ class BedrockServerManager:
             f"BSM: Validating server '{server_name}' using BedrockServer class."
         )
         try:
-            server_instance = get_server_instance(
-                server_name=server_name,
-                settings_instance=self.settings,
-            )
+            if app_context:
+                server_instance = app_context.get_server(server_name)
+            else:
+                server_instance = get_server_instance(
+                    server_name=server_name,
+                    settings_instance=self.settings,
+                )
             is_valid = server_instance.is_installed()
             if is_valid:
                 logger.debug(f"BSM: Server '{server_name}' validation successful.")

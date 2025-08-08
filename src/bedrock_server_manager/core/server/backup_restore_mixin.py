@@ -268,9 +268,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         if not isinstance(file_extension, str) or not file_extension.strip():
             raise MissingArgumentError("file_extension must be a non-empty string.")
 
-        backup_keep_count = self.settings.get(
-            "retention.backups", 3
-        )  # Default to 3
+        backup_keep_count = self.settings.get("retention.backups", 3)  # Default to 3
 
         self.logger.info(
             f"Server '{self.server_name}': Pruning backups in '{server_bck_dir}' for prefix '{component_prefix}', "

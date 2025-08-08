@@ -99,7 +99,10 @@ async def login_page(
 # --- API Login Route ---
 @router.post("/token", response_model=Token)
 async def api_login_for_access_token(
-    response: FastAPIResponse, username: str = Form(...), password: str = Form(...)
+    request: Request,
+    response: FastAPIResponse,
+    username: str = Form(...),
+    password: str = Form(...),
 ):
     """
     Handles API user login, creates a JWT, and sets it as an HTTP-only cookie.
@@ -142,10 +145,12 @@ async def api_login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(data={"sub": authenticated_username})
+    access_token = create_access_token(
+        data={"sub": authenticated_username}, app_context=request.app.state
+    )
 
-    cookie_secure = get_settings_instance().get("web.jwt_cookie_secure", False)
-    cookie_samesite = get_settings_instance().get("web.jwt_cookie_samesite", "Lax")
+    cookie_secure = request.app.state.settings.get("web.jwt_cookie_secure", False)
+    cookie_samesite = request.app.state.settings.get("web.jwt_cookie_samesite", "Lax")
 
     response.set_cookie(
         key="access_token_cookie",

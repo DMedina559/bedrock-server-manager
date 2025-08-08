@@ -108,7 +108,7 @@ def start_web_server_api(
             manager = get_manager_instance(settings)
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            manager.start_web_ui_direct(host, debug, threads)
+            manager.start_web_ui_direct(host, debug, threads, app_context=app_context)
             return {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",

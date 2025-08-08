@@ -17,6 +17,7 @@ from typing import Optional, List, Union
 import uvicorn
 
 from ..instances import get_settings_instance
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ def run_web_server(
     host: Optional[Union[str, List[str]]] = None,
     debug: bool = False,
     threads: Optional[int] = None,
+    app_context: Optional[AppContext] = None,
 ) -> None:
     """
     Configures and starts the Uvicorn web server to serve the FastAPI application.
@@ -70,9 +72,13 @@ def run_web_server(
         - ``web.threads`` (int): The number of Uvicorn worker processes to use when
           not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
+    if app_context:
+        settings = app_context.settings
+    else:
+        settings = get_settings_instance()
 
     port_setting_key = "web.port"
-    port_val = get_settings_instance().get(port_setting_key, 11325)
+    port_val = settings.get(port_setting_key, 11325)
     try:
         port = int(port_val)
         if not (0 < port < 65536):
@@ -102,7 +108,7 @@ def run_web_server(
             )
     else:
         logger.info("No host via command-line, using settings.")
-        settings_host = get_settings_instance().get("web.host")
+        settings_host = settings.get("web.host")
         if isinstance(settings_host, list) and settings_host:
             final_host_to_bind = settings_host[0]
             if len(settings_host) > 1:
@@ -134,7 +140,7 @@ def run_web_server(
         threads_setting_key = "web.threads"
         try:
             if threads is None:
-                workers_val = int(get_settings_instance().get(threads_setting_key, 4))
+                workers_val = int(settings.get(threads_setting_key, 4))
                 if workers_val > 0:
                     workers = workers_val
                 else:

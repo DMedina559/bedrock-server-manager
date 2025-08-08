@@ -327,10 +327,15 @@ def test_start_web_ui_direct_success(mocker):
     settings = Settings()
     manager = BedrockServerManager(settings)
     mock_run_web_server = mocker.patch("bedrock_server_manager.web.app.run_web_server")
+    mock_app_context = mocker.MagicMock()
 
-    manager.start_web_ui_direct(host="0.0.0.0", debug=True)
+    manager.start_web_ui_direct(
+        host="0.0.0.0", debug=True, app_context=mock_app_context
+    )
 
-    mock_run_web_server.assert_called_once_with("0.0.0.0", True, None)
+    mock_run_web_server.assert_called_once_with(
+        "0.0.0.0", True, None, app_context=mock_app_context
+    )
 
 
 def test_start_web_ui_direct_run_raises_runtime_error(mocker):

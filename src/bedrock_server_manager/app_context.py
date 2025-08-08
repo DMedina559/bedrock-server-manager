@@ -21,6 +21,7 @@ try:
     from .utils.general import startup_checks
     from .config.settings import Settings
     from .core.manager import BedrockServerManager
+    from .context import AppContext
     from .plugins import PluginManager
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
@@ -95,7 +96,7 @@ def create_web_app(settings: Settings) -> FastAPI:
         }
         all_template_dirs.extend(list(unique_plugin_paths))
     logger.info(f"Configuring Jinja2 with directories: {all_template_dirs}")
-    templating.configure_templates(all_template_dirs)
+    templating.configure_templates(all_template_dirs, settings)
 
     # --- FastAPI App Initialization ---
     app = FastAPI(
@@ -254,6 +255,10 @@ def create_cli_app():
             plugin_manager = PluginManager(settings)
             plugin_manager.load_plugins()
 
+            app_context = AppContext(
+                settings=settings, plugin_manager=plugin_manager, manager=manager
+            )
+
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():
                 logger.info("Running CLI app shutdown hooks...")
@@ -280,7 +285,7 @@ def create_cli_app():
             click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
             sys.exit(1)
 
-        ctx.obj = {"cli": cli, "bsm": manager, "plugin_manager": plugin_manager}
+        ctx.obj = {"cli": cli, "bsm": manager, "app_context": app_context}
 
         if ctx.invoked_subcommand is None:
             logger.info("No command specified.")

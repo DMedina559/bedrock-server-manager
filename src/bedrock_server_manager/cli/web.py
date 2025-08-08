@@ -61,7 +61,8 @@ def web():
     show_default=True,
     help="Run mode: 'direct' blocks the terminal, 'detached' runs in the background.",
 )
-def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
+@click.pass_context
+def start_web_server(ctx: click.Context, hosts: Tuple[str], debug: bool, mode: str):
     """
     Starts the Bedrock Server Manager web UI.
 
@@ -84,7 +85,9 @@ def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
         host_list = (
             list(hosts) if hosts else None
         )  # Pass None if no hosts are provided, API handles default
-        response = web_api.start_web_server_api(host_list, debug, mode)
+        response = web_api.start_web_server_api(
+            host=host_list, debug=debug, mode=mode, app_context=ctx.obj["app_context"]
+        )
 
         # In 'direct' mode, start_web_server_api (which calls bsm.start_web_ui_direct)
         # is blocking. So, we'll only reach here after it stops or if mode is 'detached'.
