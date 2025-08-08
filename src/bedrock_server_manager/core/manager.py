@@ -1459,7 +1459,9 @@ class BedrockServerManager:
             )
             return False
 
-    def get_servers_data(self) -> Tuple[List[Dict[str, Any]], List[str]]:
+    def get_servers_data(
+        self, app_context: Optional["AppContext"] = None
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Discovers and retrieves status data for all valid server instances.
 
         This method scans the main server base directory (defined by
@@ -1507,10 +1509,13 @@ class BedrockServerManager:
 
             try:
                 # Instantiate a BedrockServer to leverage its encapsulated logic.
-                server = get_server_instance(
-                    server_name=server_name_candidate,
-                    settings_instance=self.settings,
-                )
+                if app_context:
+                    server = app_context.get_server(server_name_candidate)
+                else:
+                    server = get_server_instance(
+                        server_name=server_name_candidate,
+                        settings_instance=self.settings,
+                    )
 
                 # Use the instance's own method to validate its installation.
                 if not server.is_installed():

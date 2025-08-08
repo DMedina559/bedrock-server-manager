@@ -18,7 +18,7 @@ and by triggering various plugin events during server operations.
 
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import platform
 import shutil
 import subprocess
@@ -43,12 +43,15 @@ from ..error import (
     BlockedCommandError,
     MissingArgumentError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_server_setting")
-def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
+def get_server_setting(
+    server_name: str, key: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Reads any value from a server's specific JSON configuration file
     (e.g., ``<server_name>_config.json``) using dot-notation for keys.
 
@@ -75,7 +78,10 @@ def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
 
     logger.debug(f"API: Reading server setting for '{server_name}': Key='{key}'")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         # Use the internal method to access any key
         value = server._manage_json_config(key, "read")
         return {"status": "success", "value": value}
@@ -92,7 +98,9 @@ def get_server_setting(server_name: str, key: str) -> Dict[str, Any]:
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
-def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]:
+def set_server_setting(
+    server_name: str, key: str, value: Any, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Writes any value to a server's specific JSON configuration file
     (e.g., ``<server_name>_config.json``) using dot-notation for keys.
     Intermediate dictionaries will be created if they don't exist along the key path.
@@ -124,7 +132,10 @@ def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]
         f"API: Writing server setting for '{server_name}': Key='{key}', Value='{value}'"
     )
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         # Use the internal method to write to any key
         server._manage_json_config(key, "write", value)
         return {
@@ -143,7 +154,9 @@ def set_server_setting(server_name: str, key: str, value: Any) -> Dict[str, Any]
 
 
 @plugin_method("set_server_custom_value")
-def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str, Any]:
+def set_server_custom_value(
+    server_name: str, key: str, value: Any, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Writes a key-value pair to the 'custom' section of a server's specific
     JSON configuration file (e.g., ``<server_name>_config.json``).
     This is a sandboxed way for plugins or users to store arbitrary data
@@ -172,7 +185,10 @@ def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str,
 
     logger.info(f"API (Plugin): Writing custom value for '{server_name}': Key='{key}'")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         # This method is sandboxed to the 'custom' section
         server.set_custom_config_value(key, value)
         return {
@@ -193,7 +209,9 @@ def set_server_custom_value(server_name: str, key: str, value: Any) -> Dict[str,
 
 
 @plugin_method("get_all_server_settings")
-def get_all_server_settings(server_name: str) -> Dict[str, Any]:
+def get_all_server_settings(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Reads the entire JSON configuration for a specific server from its
     dedicated configuration file (e.g., ``<server_name>_config.json``).
     If the file doesn't exist, it will be created with default values.
@@ -216,7 +234,10 @@ def get_all_server_settings(server_name: str) -> Dict[str, Any]:
 
     logger.debug(f"API: Reading all settings for server '{server_name}'.")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         # _load_server_config handles loading and migration
         all_settings = server._load_server_config()
         return {"status": "success", "data": all_settings}
@@ -233,14 +254,19 @@ def get_all_server_settings(server_name: str) -> Dict[str, Any]:
 
 @plugin_method("start_server")
 @trigger_plugin_event(before="before_server_start", after="after_server_start")
-def start_server(server_name: str) -> Dict[str, Any]:
+def start_server(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
     logger.info(f"API: Attempting to start server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
 
         if server.is_running():
             logger.warning(
@@ -276,7 +302,9 @@ def start_server(server_name: str) -> Dict[str, Any]:
 
 @plugin_method("stop_server")
 @trigger_plugin_event(before="before_server_stop", after="after_server_stop")
-def stop_server(server_name: str) -> Dict[str, str]:
+def stop_server(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Stops the specified Bedrock server.
 
     Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
@@ -303,7 +331,10 @@ def stop_server(server_name: str) -> Dict[str, str]:
 
     logger.info(f"API: Attempting to stop server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
 
         if not server.is_running():
             logger.warning(
@@ -351,7 +382,11 @@ def stop_server(server_name: str) -> Dict[str, str]:
 
 
 @plugin_method("restart_server")
-def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str]:
+def restart_server(
+    server_name: str,
+    send_message: bool = True,
+    app_context: Optional[AppContext] = None,
+) -> Dict[str, str]:
     """Restarts the specified Bedrock server by orchestrating stop and start.
 
     This function internally calls :func:`~.stop_server` and then
@@ -388,7 +423,10 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
         f"API: Initiating restart for server '{server_name}'. Send message: {send_message}"
     )
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         is_running = server.is_running()
 
         # If server is not running, just start it.
@@ -396,7 +434,7 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
             logger.info(
                 f"API: Server '{server_name}' was not running. Attempting to start..."
             )
-            start_result = start_server(server_name)
+            start_result = start_server(server_name, app_context=app_context)
             if start_result.get("status") == "success":
                 start_result["message"] = (
                     f"Server '{server_name}' was not running and has been started."
@@ -415,14 +453,14 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
                     f"API: Failed to send restart warning to '{server_name}': {e}"
                 )
 
-        stop_result = stop_server(server_name)
+        stop_result = stop_server(server_name, app_context=app_context)
         if stop_result.get("status") == "error":
             stop_result["message"] = (
                 f"Restart failed during stop phase: {stop_result.get('message')}"
             )
             return stop_result
 
-        start_result = start_server(server_name)
+        start_result = start_server(server_name, app_context=app_context)
         if start_result.get("status") == "error":
             start_result["message"] = (
                 f"Restart failed during start phase: {start_result.get('message')}"
@@ -450,7 +488,9 @@ def restart_server(server_name: str, send_message: bool = True) -> Dict[str, str
 
 @plugin_method("send_command")
 @trigger_plugin_event(before="before_command_send", after="after_command_send")
-def send_command(server_name: str, command: str) -> Dict[str, str]:
+def send_command(
+    server_name: str, command: str, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Sends a command to a running Bedrock server.
 
     The command is checked against a blacklist (defined by
@@ -501,7 +541,10 @@ def send_command(server_name: str, command: str) -> Dict[str, str]:
                 )
                 raise BlockedCommandError(error_msg)
 
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         server.send_command(command_clean)
 
         logger.info(
@@ -531,7 +574,9 @@ def send_command(server_name: str, command: str) -> Dict[str, str]:
     before="before_delete_server_data", after="after_delete_server_data"
 )
 def delete_server_data(
-    server_name: str, stop_if_running: bool = True
+    server_name: str,
+    stop_if_running: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Deletes all data associated with a Bedrock server.
 
@@ -573,7 +618,10 @@ def delete_server_data(
         f"API: !!! Initiating deletion of ALL data for server '{server_name}'. Stop if running: {stop_if_running} !!!"
     )
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
 
         # Stop the server first if requested and it's running.
         if stop_if_running and server.is_running():
@@ -581,7 +629,7 @@ def delete_server_data(
                 f"API: Server '{server_name}' is running. Stopping before deletion..."
             )
 
-            stop_result = stop_server(server_name)
+            stop_result = stop_server(server_name, app_context=app_context)
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}' before deletion: {stop_result.get('message')}. Deletion aborted."
                 logger.error(error_msg)

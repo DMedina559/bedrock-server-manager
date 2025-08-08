@@ -33,12 +33,12 @@ class TestImportAddon:
                 result = import_addon("test-server", str(addon_file))
                 assert result["status"] == "success"
                 assert "installed successfully" in result["message"]
-                mock_lifecycle_manager.assert_called_once_with(
-                    "test-server",
-                    stop_before=True,
-                    start_after=True,
-                    restart_on_success_only=True,
-                )
+                mock_lifecycle_manager.assert_called_once()
+                args, kwargs = mock_lifecycle_manager.call_args
+                assert args[0] == "test-server"
+                assert kwargs["stop_before"] is True
+                assert kwargs["start_after"] is True
+                assert kwargs["restart_on_success_only"] is True
                 mock_process_addon.assert_called_once_with(str(addon_file))
 
     @patch("bedrock_server_manager.api.addon.server_lifecycle_manager")
@@ -59,12 +59,12 @@ class TestImportAddon:
                     "test-server", str(addon_file), stop_start_server=False
                 )
                 assert result["status"] == "success"
-                mock_lifecycle_manager.assert_called_once_with(
-                    "test-server",
-                    stop_before=False,
-                    start_after=False,
-                    restart_on_success_only=True,
-                )
+                mock_lifecycle_manager.assert_called_once()
+                args, kwargs = mock_lifecycle_manager.call_args
+                assert args[0] == "test-server"
+                assert kwargs["stop_before"] is False
+                assert kwargs["start_after"] is False
+                assert kwargs["restart_on_success_only"] is True
                 mock_process_addon.assert_called_once_with(str(addon_file))
 
     def test_import_addon_file_not_found(self):

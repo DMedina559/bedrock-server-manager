@@ -20,7 +20,7 @@ plugin system.
 import os
 import logging
 import threading
-from typing import Dict
+from typing import Dict, Optional
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
@@ -35,6 +35,7 @@ from ..error import (
     SendCommandError,
     ServerNotRunningError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def import_addon(
     addon_file_path: str,
     stop_start_server: bool = True,
     restart_only_on_success: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Installs an addon to a specified Bedrock server.
 
@@ -121,7 +123,10 @@ def import_addon(
             raise AppFileNotFoundError(addon_file_path, "Addon file")
 
         try:
-            server = get_server_instance(server_name)
+            if app_context:
+                server = app_context.get_server(server_name)
+            else:
+                server = get_server_instance(server_name)
 
             # If the server is running, send a warning message to players.
             if server.is_running():
@@ -138,6 +143,7 @@ def import_addon(
                 stop_before=stop_start_server,
                 start_after=stop_start_server,
                 restart_on_success_only=restart_only_on_success,
+                app_context=app_context,
             ):
                 logger.info(
                     f"API: Processing addon file '{addon_filename}' for server '{server_name}'..."

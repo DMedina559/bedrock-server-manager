@@ -32,7 +32,6 @@ from ..plugins import plugin_method
 # Local application imports.
 from ..instances import (
     get_manager_instance,
-    get_settings_instance,
 )
 from ..core.system import process as system_process_utils
 from ..error import (
@@ -42,6 +41,7 @@ from ..error import (
     SystemError,
     UserInputError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ def start_web_server_api(
     mode: str = "direct",
     threads: Optional[int] = None,
     settings=None,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
 
@@ -101,9 +102,13 @@ def start_web_server_api(
             raise UserInputError("Invalid mode. Must be 'direct' or 'detached'.")
 
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            get_manager_instance(settings).start_web_ui_direct(host, debug, threads)
+            manager.start_web_ui_direct(host, debug, threads)
             return {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",
@@ -117,7 +122,6 @@ def start_web_server_api(
                 )
 
             logger.info("API: Starting web server in detached mode...")
-            manager = get_manager_instance(settings)
             pid_file_path = manager.get_web_ui_pid_path()
             expected_exe = manager.get_web_ui_executable_path()
             expected_arg = manager.get_web_ui_expected_start_arg()
@@ -181,7 +185,9 @@ def start_web_server_api(
 
 
 @trigger_plugin_event(before="before_web_server_stop", after="after_web_server_stop")
-def stop_web_server_api(settings=None) -> Dict[str, str]:
+def stop_web_server_api(
+    settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Stops the detached web server process.
 
     This function reads the PID from the web server's PID file (path obtained
@@ -213,7 +219,10 @@ def stop_web_server_api(settings=None) -> Dict[str, str]:
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         pid_file_path = manager.get_web_ui_pid_path()
         expected_exe = manager.get_web_ui_executable_path()
         expected_arg = manager.get_web_ui_expected_start_arg()
@@ -243,9 +252,11 @@ def stop_web_server_api(settings=None) -> Dict[str, str]:
 
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
-        system_process_utils.remove_pid_file_if_exists(
-            get_manager_instance(settings).get_web_ui_pid_path()
-        )
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
+        system_process_utils.remove_pid_file_if_exists(manager.get_web_ui_pid_path())
         error_type = (
             "PID file error"
             if isinstance(e, FileOperationError)
@@ -260,7 +271,9 @@ def stop_web_server_api(settings=None) -> Dict[str, str]:
 
 
 @plugin_method("get_web_server_status")
-def get_web_server_status_api(settings=None) -> Dict[str, Any]:
+def get_web_server_status_api(
+    settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
@@ -294,7 +307,10 @@ def get_web_server_status_api(settings=None) -> Dict[str, Any]:
         }
     pid = None
     try:
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         pid_file_path = manager.get_web_ui_pid_path()
         expected_exe = manager.get_web_ui_executable_path()
         expected_arg = manager.get_web_ui_expected_start_arg()
@@ -368,6 +384,7 @@ def create_web_ui_service(
     username: Optional[str] = None,
     password: Optional[str] = None,
     settings=None,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Creates (or updates) a system service for the Web UI.
 
@@ -403,7 +420,10 @@ def create_web_ui_service(
             :class:`~.error.CommandNotFoundError`, or :class:`~.error.FileOperationError`.
     """
     try:
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -442,7 +462,9 @@ def create_web_ui_service(
 @trigger_plugin_event(
     before="before_web_service_change", after="after_web_service_change"
 )
-def enable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]:
+def enable_web_ui_service(
+    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Enables the Web UI system service for autostart.
 
     On Linux, this enables the systemd user service. On Windows, this sets the
@@ -468,7 +490,10 @@ def enable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -495,7 +520,9 @@ def enable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]
 @trigger_plugin_event(
     before="before_web_service_change", after="after_web_service_change"
 )
-def disable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]:
+def disable_web_ui_service(
+    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Disables the Web UI system service from autostarting.
 
     On Linux, this disables the systemd user service. On Windows, this sets the
@@ -521,7 +548,10 @@ def disable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -553,7 +583,9 @@ def disable_web_ui_service(system: bool = False, settings=None) -> Dict[str, str
 @trigger_plugin_event(
     before="before_web_service_change", after="after_web_service_change"
 )
-def remove_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]:
+def remove_web_ui_service(
+    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Removes the Web UI system service.
 
     The service should ideally be stopped and disabled before removal.
@@ -585,7 +617,10 @@ def remove_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]
             :class:`~.error.FileOperationError`).
     """
     try:
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -618,7 +653,9 @@ def remove_web_ui_service(system: bool = False, settings=None) -> Dict[str, str]
         }
 
 
-def get_web_ui_service_status(system: bool = False, settings=None) -> Dict[str, Any]:
+def get_web_ui_service_status(
+    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Gets the current status of the Web UI system service.
 
     This function calls several methods on the
@@ -646,7 +683,10 @@ def get_web_ui_service_status(system: bool = False, settings=None) -> Dict[str, 
         "is_enabled": False,
     }
     try:
-        manager = get_manager_instance(settings)
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         if not manager.can_manage_services:
             return {
                 "status": "success",

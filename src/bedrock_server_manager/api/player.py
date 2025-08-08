@@ -18,7 +18,7 @@ to manage player data globally across all server instances.
 """
 
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
@@ -30,6 +30,7 @@ from ..error import (
     UserInputError,
 )
 from ..plugins.event_trigger import trigger_plugin_event
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,9 @@ logger = logging.getLogger(__name__)
 @plugin_method("add_players_manually_api")
 @trigger_plugin_event(before="before_players_add", after="after_players_add")
 def add_players_manually_api(
-    player_strings: List[str], settings=None
+    player_strings: List[str],
+    settings=None,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Adds or updates player data in the database.
 
@@ -78,9 +81,13 @@ def add_players_manually_api(
         }
 
     try:
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         # The core parsing function expects a single comma-separated string.
         combined_input = ",".join(player_strings)
-        get_manager_instance(settings).parse_player_cli_argument(combined_input)
+        manager.parse_player_cli_argument(combined_input)
 
         return {
             "status": "success",
@@ -106,7 +113,9 @@ def add_players_manually_api(
 
 
 @plugin_method("get_all_known_players_api")
-def get_all_known_players_api(settings=None) -> Dict[str, Any]:
+def get_all_known_players_api(
+    settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Retrieves all player data from the database.
 
     Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_known_players`.
@@ -120,7 +129,11 @@ def get_all_known_players_api(settings=None) -> Dict[str, Any]:
     """
     logger.info("API: Request to get all known players.")
     try:
-        players = get_manager_instance(settings).get_known_players()
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
+        players = manager.get_known_players()
         return {"status": "success", "players": players}
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
@@ -132,7 +145,9 @@ def get_all_known_players_api(settings=None) -> Dict[str, Any]:
 
 @plugin_method("scan_and_update_player_db_api")
 @trigger_plugin_event(before="before_player_db_scan", after="after_player_db_scan")
-def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
+def scan_and_update_player_db_api(
+    settings=None, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Scans all server logs to discover and save player data.
 
     This function iterates through the log files of all managed servers,
@@ -161,10 +176,12 @@ def scan_and_update_player_db_api(settings=None) -> Dict[str, Any]:
     logger.info("API: Request to scan all server logs and update player DB.")
 
     try:
+        if app_context:
+            manager = app_context.manager
+        else:
+            manager = get_manager_instance(settings)
         # Delegate the entire discovery and saving process to the core manager.
-        scan_result = get_manager_instance(
-            settings
-        ).discover_and_store_players_from_all_server_logs()
+        scan_result = manager.discover_and_store_players_from_all_server_logs()
 
         # Format a comprehensive success message from the scan results.
         message = (

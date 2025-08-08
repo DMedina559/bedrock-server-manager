@@ -44,6 +44,7 @@ from ..error import (
     MissingArgumentError,
 )
 from bedrock_server_manager.utils.general import get_timestamp
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,9 @@ _world_lock = threading.Lock()
 
 
 @plugin_method("get_world_name")
-def get_world_name(server_name: str) -> Dict[str, Any]:
+def get_world_name(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
     This function reads the `server.properties` file to get the name of the
@@ -81,7 +84,10 @@ def get_world_name(server_name: str) -> Dict[str, Any]:
 
     logger.debug(f"API: Attempting to get world name for server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         world_name_str = server.get_world_name()
         logger.info(
             f"API: Retrieved world name for '{server_name}': '{world_name_str}'"
@@ -112,6 +118,7 @@ def export_world(
     server_name: str,
     export_dir: Optional[str] = None,
     stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Exports the server's currently active world to a .mcworld archive.
 
@@ -164,7 +171,11 @@ def export_world(
         if export_dir:
             effective_export_dir = export_dir
         else:
-            content_base_dir = get_settings_instance().get("paths.content")
+            if app_context:
+                settings = app_context.settings
+            else:
+                settings = get_settings_instance()
+            content_base_dir = settings.get("paths.content")
             if not content_base_dir:
                 raise FileOperationError(
                     "CONTENT_DIR setting missing for default export directory."
@@ -176,7 +187,10 @@ def export_world(
         )
 
         try:
-            server = get_server_instance(server_name)
+            if app_context:
+                server = app_context.get_server(server_name)
+            else:
+                server = get_server_instance(server_name)
 
             os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = server.get_world_name()
@@ -185,7 +199,9 @@ def export_world(
             export_file_path = os.path.join(effective_export_dir, export_filename)
 
             # Use the lifecycle manager to handle stopping and starting the server.
-            with server_lifecycle_manager(server_name, stop_before=stop_start_server):
+            with server_lifecycle_manager(
+                server_name, stop_before=stop_start_server, app_context=app_context
+            ):
                 logger.info(
                     f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
                 )
@@ -227,6 +243,7 @@ def import_world(
     server_name: str,
     selected_file_path: str,
     stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Imports a world from a .mcworld file, replacing the active world.
 
@@ -284,7 +301,10 @@ def import_world(
         )
 
         try:
-            server = get_server_instance(server_name)
+            if app_context:
+                server = app_context.get_server(server_name)
+            else:
+                server = get_server_instance(server_name)
             if not os.path.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
@@ -292,7 +312,9 @@ def import_world(
 
             imported_world_name: Optional[str] = None
             # Use the lifecycle manager to ensure the server is stopped during the import.
-            with server_lifecycle_manager(server_name, stop_before=stop_start_server):
+            with server_lifecycle_manager(
+                server_name, stop_before=stop_start_server, app_context=app_context
+            ):
                 logger.info(
                     f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
                 )
@@ -329,7 +351,9 @@ def import_world(
 
 @plugin_method("reset_world")
 @trigger_plugin_event(before="before_world_reset", after="after_world_reset")
-def reset_world(server_name: str) -> Dict[str, str]:
+def reset_world(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 
     This is a destructive action. Upon next start, the server will generate
@@ -378,7 +402,10 @@ def reset_world(server_name: str) -> Dict[str, str]:
         logger.info(f"API: Initiating world reset for server '{server_name}'...")
 
         try:
-            server = get_server_instance(server_name)
+            if app_context:
+                server = app_context.get_server(server_name)
+            else:
+                server = get_server_instance(server_name)
             world_name_for_msg = server.get_world_name()
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,
@@ -388,6 +415,7 @@ def reset_world(server_name: str) -> Dict[str, str]:
                 stop_before=True,
                 start_after=True,
                 restart_on_success_only=True,
+                app_context=app_context,
             ):
                 logger.info(
                     f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."

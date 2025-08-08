@@ -153,8 +153,10 @@ class TestServerLifecycle:
 
                 result = restart_server("test-server")
                 assert result["status"] == "success"
-                mock_stop.assert_called_once_with("test-server")
-                mock_start.assert_called_once_with("test-server")
+                mock_stop.assert_called_once()
+                assert mock_stop.call_args[0][0] == "test-server"
+                mock_start.assert_called_once()
+                assert mock_start.call_args[0][0] == "test-server"
 
 
 class TestSendCommand:
@@ -202,5 +204,6 @@ class TestDeleteServer:
         mock_stop.return_value = {"status": "success"}
         result = delete_server_data("test-server", stop_if_running=True)
         assert result["status"] == "success"
-        mock_stop.assert_called_once_with("test-server")
+        mock_stop.assert_called_once()
+        assert mock_stop.call_args[0][0] == "test-server"
         mock_bedrock_server.delete_all_data.assert_called_once()

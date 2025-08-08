@@ -22,6 +22,7 @@ from ..error import (
     MissingArgumentError,
 )
 from ..plugins.event_trigger import trigger_plugin_event
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,9 @@ _misc_lock = threading.Lock()
     before="before_prune_download_cache", after="after_prune_download_cache"
 )
 def prune_download_cache(
-    download_dir: str, keep_count: Optional[int] = None
+    download_dir: str,
+    keep_count: Optional[int] = None,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Prunes old downloaded server archives (.zip) in a directory.
 
@@ -89,7 +92,11 @@ def prune_download_cache(
             # Determine the number of files to keep, prioritizing the function
             # argument over the global setting.
             if keep_count is None:
-                keep_setting = get_settings_instance().get("retention.downloads", 3)
+                if app_context:
+                    settings = app_context.settings
+                else:
+                    settings = get_settings_instance()
+                keep_setting = settings.get("retention.downloads", 3)
                 effective_keep = int(keep_setting)
             else:
                 effective_keep = int(keep_count)

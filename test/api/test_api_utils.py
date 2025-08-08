@@ -94,8 +94,11 @@ class TestServerLifecycleManager:
         with server_lifecycle_manager("test-server", stop_before=True):
             pass
 
-        mock_stop.assert_called_once_with("test-server")
-        mock_start.assert_called_once_with("test-server", mode="detached")
+        mock_stop.assert_called_once()
+        assert mock_stop.call_args[0][0] == "test-server"
+        mock_start.assert_called_once()
+        assert mock_start.call_args[0][0] == "test-server"
+        assert mock_start.call_args[1]["mode"] == "detached"
 
     @patch("bedrock_server_manager.api.utils.api_stop_server")
     @patch("bedrock_server_manager.api.utils.api_start_server")
@@ -110,8 +113,11 @@ class TestServerLifecycleManager:
             with server_lifecycle_manager("test-server", stop_before=True):
                 raise ValueError("Test exception")
 
-        mock_stop.assert_called_once_with("test-server")
-        mock_start.assert_called_once_with("test-server", mode="detached")
+        mock_stop.assert_called_once()
+        assert mock_stop.call_args[0][0] == "test-server"
+        mock_start.assert_called_once()
+        assert mock_start.call_args[0][0] == "test-server"
+        assert mock_start.call_args[1]["mode"] == "detached"
 
     @patch("bedrock_server_manager.api.utils.api_stop_server")
     @patch("bedrock_server_manager.api.utils.api_start_server")
@@ -127,5 +133,6 @@ class TestServerLifecycleManager:
             ):
                 raise ValueError("Test exception")
 
-        mock_stop.assert_called_once_with("test-server")
+        mock_stop.assert_called_once()
+        assert mock_stop.call_args[0][0] == "test-server"
         mock_start.assert_not_called()
