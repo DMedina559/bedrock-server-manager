@@ -50,7 +50,6 @@ from ...error import (
     SystemError,
     BSMError,
 )
-from ...instances import get_bedrock_process_manager
 
 
 class ServerProcessMixin(BedrockServerBaseMixin):
@@ -90,7 +89,15 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        self.process_manager = get_bedrock_process_manager(self.settings)
+
+    @property
+    def process_manager(self):
+        """Gets the bedrock process manager from the app context."""
+        if self.app_context:
+            return self.app_context.bedrock_process_manager
+        raise ConfigurationError(
+            "Application context not available on the server instance."
+        )
 
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""

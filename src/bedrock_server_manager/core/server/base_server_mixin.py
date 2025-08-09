@@ -53,6 +53,7 @@ class BedrockServerBaseMixin:
         self,
         server_name: str,
         settings_instance: Optional[Settings] = None,
+        app_context: Optional[Any] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -88,9 +89,12 @@ class BedrockServerBaseMixin:
         self.logger: logging.Logger = logging.getLogger(__name__)
 
         self.server_name: str = server_name
+        self.app_context = app_context
 
         # Use the provided settings instance or create a new one.
-        if settings_instance:
+        if app_context:
+            self.settings = app_context.settings
+        elif settings_instance:
             self.settings = settings_instance
         else:
             self.settings = get_settings_instance()

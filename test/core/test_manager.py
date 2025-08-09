@@ -276,10 +276,11 @@ def test_get_known_players_empty_db(db_session):
     assert players == []
 
 
-def test_discover_and_store_players_from_all_server_logs(real_bedrock_server, mocker):
+def test_discover_and_store_players_from_all_server_logs(app_context, mocker):
     """Test discovery and storing of players from multiple server logs."""
     # Create a dummy log file with some player data
-    log_file_path = os.path.join(real_bedrock_server.server_dir, "server_output.txt")
+    server = app_context.get_server("test_server")
+    log_file_path = os.path.join(server.server_dir, "server_output.txt")
     with open(log_file_path, "w") as f:
         f.write("Player connected: Alpha, xuid: 1\n")
         f.write("Player connected: Beta, xuid: 2\n")
@@ -292,8 +293,7 @@ def test_discover_and_store_players_from_all_server_logs(real_bedrock_server, mo
             {"name": "Beta", "xuid": "2"},
         ],
     )
-    settings = Settings()
-    manager = BedrockServerManager(settings)
+    manager = app_context.manager
     results = manager.discover_and_store_players_from_all_server_logs()
 
     assert results["total_entries_in_logs"] == 2
@@ -993,52 +993,54 @@ def test_list_available_addons(real_manager, mocker):
 # --- BedrockServerManager - Server Discovery & Data Aggregation ---
 
 
-def test_validate_server_valid(real_manager, real_bedrock_server):
+def test_validate_server_valid(app_context):
     """Test validate_server for a valid server."""
-    assert real_manager.validate_server(real_bedrock_server.server_name) is True
+    assert app_context.manager.validate_server("test_server") is True
 
 
-def test_validate_server_not_installed(real_manager, real_bedrock_server, mocker):
+def test_validate_server_not_installed(app_context, mocker):
     """Test validate_server for a server that is not installed."""
     mocker.patch(
         "bedrock_server_manager.core.bedrock_server.BedrockServer.is_installed",
         return_value=False,
     )
-    assert real_manager.validate_server(real_bedrock_server.server_name) is False
+    assert app_context.manager.validate_server("test_server") is False
 
 
-def test_validate_server_instantiation_error(real_manager, mocker):
+def test_validate_server_instantiation_error(app_context, mocker):
     """Test validate_server when BedrockServer instantiation fails."""
     mocker.patch(
-        "bedrock_server_manager.instances.get_server_instance",
+        "bedrock_server_manager.context.AppContext.get_server",
         side_effect=InvalidServerNameError("Bad name"),
     )
-    assert real_manager.validate_server("bad_server_name_format!") is False
+    assert app_context.manager.validate_server("bad_server_name_format!") is False
 
 
-def test_validate_server_empty_name(real_manager):
+def test_validate_server_empty_name(app_context):
     """Test validate_server with an empty server name."""
     with pytest.raises(
         MissingArgumentError, match="Server name cannot be empty for validation."
     ):
-        real_manager.validate_server("")
+        app_context.manager.validate_server("")
 
 
-def test_get_servers_data_success(real_manager, real_bedrock_server):
+def test_get_servers_data_success(app_context):
     """Test get_servers_data successfully retrieves data for multiple servers."""
-    servers_data, error_messages = real_manager.get_servers_data()
+    servers_data, error_messages = app_context.manager.get_servers_data(
+        app_context=app_context
+    )
 
     assert len(servers_data) == 1
-    assert servers_data[0]["name"] == real_bedrock_server.server_name
+    assert servers_data[0]["name"] == "test_server"
     assert servers_data[0]["status"] == "STOPPED"
     assert "version" in servers_data[0]
     assert len(error_messages) == 0
 
 
-def test_get_servers_data_base_dir_not_exist(real_manager, mocker):
+def test_get_servers_data_base_dir_not_exist(app_context, mocker):
     """Test get_servers_data if base server directory doesn't exist."""
-    real_manager._base_dir = "/path/to/non_existent_base_servers"
+    app_context.manager._base_dir = "/path/to/non_existent_base_servers"
     mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        real_manager.get_servers_data()
+        app_context.manager.get_servers_data()

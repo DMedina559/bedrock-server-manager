@@ -22,23 +22,7 @@ from ..instances import get_server_instance, get_settings_instance
 class BedrockProcessManager:
     """
     Manages Bedrock server processes, including starting, stopping, and monitoring.
-
-    This class is a singleton to ensure only one instance manages all server processes.
     """
-
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(
-        cls,
-        settings_instance: Optional[Settings] = None,
-        app_context: Optional[AppContext] = None,
-    ):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super(BedrockProcessManager, cls).__new__(cls)
-        return cls._instance
 
     def __init__(
         self,
@@ -46,27 +30,25 @@ class BedrockProcessManager:
         app_context: Optional[AppContext] = None,
     ):
         """Initializes the BedrockProcessManager."""
-        if not hasattr(self, "initialized"):
-            self.servers: Dict[str, subprocess.Popen] = {}
-            self.intentionally_stopped: Dict[str, bool] = {}
-            self.failure_counts: Dict[str, int] = {}
-            self.start_times: Dict[str, float] = {}
-            self.logger = logging.getLogger(__name__)
-            self.app_context = app_context
+        self.servers: Dict[str, subprocess.Popen] = {}
+        self.intentionally_stopped: Dict[str, bool] = {}
+        self.failure_counts: Dict[str, int] = {}
+        self.start_times: Dict[str, float] = {}
+        self.logger = logging.getLogger(__name__)
+        self.app_context = app_context
 
-            if self.app_context:
-                self.settings = self.app_context.settings
-            elif settings_instance:
-                self.settings = settings_instance
-            else:
-                self.settings = get_settings_instance()
+        if self.app_context:
+            self.settings = self.app_context.settings
+        elif settings_instance:
+            self.settings = settings_instance
+        else:
+            self.settings = get_settings_instance()
 
-            self.monitoring_thread = threading.Thread(
-                target=self._monitor_servers, daemon=True
-            )
-            self.monitoring_thread.start()
-            self.initialized = True
-            self.logger.info("BedrockProcessManager initialized.")
+        self.monitoring_thread = threading.Thread(
+            target=self._monitor_servers, daemon=True
+        )
+        self.monitoring_thread.start()
+        self.logger.info("BedrockProcessManager initialized.")
 
     def add_server(self, server_name: str, process: subprocess.Popen):
         """

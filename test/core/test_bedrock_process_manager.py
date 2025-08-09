@@ -7,23 +7,12 @@ from bedrock_server_manager.core.bedrock_process_manager import BedrockProcessMa
 from bedrock_server_manager.error import ServerNotRunningError, ServerStartError
 
 
-@pytest.fixture(autouse=True)
-def reset_singleton():
-    BedrockProcessManager._instance = None
-    yield
-    BedrockProcessManager._instance = None
-
-
-def test_singleton_pattern():
-    assert BedrockProcessManager() is BedrockProcessManager()
-
-
 @pytest.fixture
 def manager(real_bedrock_server):
     """Fixture to get a BedrockProcessManager instance and cleanup servers."""
     # The real_bedrock_server fixture is included to ensure the server files are created
     # before the manager is instantiated.
-    manager = BedrockProcessManager()
+    manager = BedrockProcessManager(settings_instance=real_bedrock_server.settings)
     yield manager
     # Cleanup: stop any running servers after the test
     for server_name in list(manager.servers.keys()):

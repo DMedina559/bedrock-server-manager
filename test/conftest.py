@@ -308,3 +308,41 @@ class Plugin(PluginBase):
         manager.plugin_dirs = [plugins_dir]
         manager.load_plugins()
         return manager
+
+
+@pytest.fixture
+def app_context(real_manager, real_plugin_manager):
+    """Fixture for a real AppContext instance."""
+    from bedrock_server_manager.context import AppContext
+    from bedrock_server_manager.config.settings import Settings
+    import os
+    import platform
+
+    settings = Settings()
+    app_data_dir = settings.app_data_dir
+    config_dir = settings.config_dir
+    server_name = "test_server"
+    server_dir = os.path.join(app_data_dir, "servers", server_name)
+    os.makedirs(server_dir, exist_ok=True)
+    server_config_dir = os.path.join(config_dir, server_name)
+    os.makedirs(server_config_dir, exist_ok=True)
+    properties_file = os.path.join(server_dir, "server.properties")
+    with open(properties_file, "w") as f:
+        f.write("server-name=test-server\nmax-players=5\nlevel-name=world\n")
+    executable_name = "bedrock_server"
+    if platform.system() == "Windows":
+        executable_name += ".exe"
+    executable_path = os.path.join(server_dir, executable_name)
+    with open(executable_path, "w") as f:
+        f.write(
+            """#!/bin/bash
+while read line; do
+  if [[ "$line" == "stop" ]]; then
+    exit 0
+  fi
+done
+"""
+        )
+    os.chmod(executable_path, 0o755)
+
+    return AppContext(settings, real_manager, real_plugin_manager)

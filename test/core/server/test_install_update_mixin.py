@@ -32,8 +32,8 @@ from bedrock_server_manager.error import (
 @patch(
     "bedrock_server_manager.core.server.install_update_mixin.ServerInstallUpdateMixin._perform_server_files_setup"
 )
-def test_install_or_update_install(mock_setup, mock_downloader, real_bedrock_server):
-    server = real_bedrock_server
+def test_install_or_update_install(mock_setup, mock_downloader, app_context):
+    server = app_context.get_server("test_server")
     mock_downloader_instance = mock_downloader.return_value
     mock_downloader_instance.prepare_download_assets.return_value = (
         "1.20.0",
@@ -60,9 +60,9 @@ def test_install_or_update_install(mock_setup, mock_downloader, real_bedrock_ser
     return_value=True,
 )
 def test_install_or_update_update(
-    mock_is_update_needed, mock_setup, mock_downloader, real_bedrock_server
+    mock_is_update_needed, mock_setup, mock_downloader, app_context
 ):
-    server = real_bedrock_server
+    server = app_context.get_server("test_server")
     mock_downloader_instance = mock_downloader.return_value
     mock_downloader_instance.prepare_download_assets.return_value = (
         "1.20.0",
@@ -82,8 +82,8 @@ def test_install_or_update_update(
 
 
 @patch("bedrock_server_manager.core.server.install_update_mixin.BedrockDownloader")
-def test_is_update_needed_specific_version(mock_downloader, real_bedrock_server):
-    server = real_bedrock_server
+def test_is_update_needed_specific_version(mock_downloader, app_context):
+    server = app_context.get_server("test_server")
     mock_downloader.return_value._custom_version_number = "1.20.0"
     with patch.object(server, "get_version", return_value="1.19.0"):
         assert server.is_update_needed("1.20.0") is True
@@ -93,8 +93,8 @@ def test_is_update_needed_specific_version(mock_downloader, real_bedrock_server)
 
 
 @patch("bedrock_server_manager.core.server.install_update_mixin.BedrockDownloader")
-def test_is_update_needed_latest(mock_downloader, real_bedrock_server):
-    server = real_bedrock_server
+def test_is_update_needed_latest(mock_downloader, app_context):
+    server = app_context.get_server("test_server")
     mock_downloader.return_value.get_version_for_target_spec.return_value = "1.20.0"
     with patch.object(server, "get_version", return_value="1.19.0"):
         assert server.is_update_needed("LATEST") is True
@@ -103,8 +103,8 @@ def test_is_update_needed_latest(mock_downloader, real_bedrock_server):
 
 
 @patch("bedrock_server_manager.core.server.install_update_mixin.BedrockDownloader")
-def test_is_update_needed_preview(mock_downloader, real_bedrock_server):
-    server = real_bedrock_server
+def test_is_update_needed_preview(mock_downloader, app_context):
+    server = app_context.get_server("test_server")
     mock_downloader.return_value.get_version_for_target_spec.return_value = (
         "1.20.0-preview"
     )
@@ -114,8 +114,8 @@ def test_is_update_needed_preview(mock_downloader, real_bedrock_server):
         assert server.is_update_needed("PREVIEW") is False
 
 
-def test_install_or_update_server_stop_error(real_bedrock_server):
-    server = real_bedrock_server
+def test_install_or_update_server_stop_error(app_context):
+    server = app_context.get_server("test_server")
     with patch.object(server, "is_running", return_value=True):
         with patch.object(server, "stop", side_effect=ServerStopError):
             with pytest.raises(ServerStopError):
@@ -126,8 +126,8 @@ def test_install_or_update_server_stop_error(real_bedrock_server):
     "bedrock_server_manager.core.server.install_update_mixin.BedrockDownloader.prepare_download_assets",
     side_effect=DownloadError,
 )
-def test_install_or_update_download_error(mock_prepare, real_bedrock_server):
-    server = real_bedrock_server
+def test_install_or_update_download_error(mock_prepare, app_context):
+    server = app_context.get_server("test_server")
     with pytest.raises(DownloadError):
         server.install_or_update("LATEST")
 
@@ -139,8 +139,8 @@ def test_install_or_update_download_error(mock_prepare, real_bedrock_server):
     "bedrock_server_manager.core.server.install_update_mixin.ServerInstallUpdateMixin._perform_server_files_setup",
     side_effect=ExtractError,
 )
-def test_install_or_update_extract_error(mock_setup, mock_prepare, real_bedrock_server):
-    server = real_bedrock_server
+def test_install_or_update_extract_error(mock_setup, mock_prepare, app_context):
+    server = app_context.get_server("test_server")
     mock_prepare.return_value = ("1.20.0", "/path/to/zip", "/path/to/downloads")
     with pytest.raises(ExtractError):
         server.install_or_update("LATEST")
@@ -153,20 +153,16 @@ def test_install_or_update_extract_error(mock_setup, mock_prepare, real_bedrock_
     "bedrock_server_manager.core.server.install_update_mixin.ServerInstallUpdateMixin._perform_server_files_setup",
     side_effect=PermissionsError,
 )
-def test_install_or_update_permissions_error(
-    mock_setup, mock_prepare, real_bedrock_server
-):
-    server = real_bedrock_server
+def test_install_or_update_permissions_error(mock_setup, mock_prepare, app_context):
+    server = app_context.get_server("test_server")
     mock_prepare.return_value = ("1.20.0", "/path/to/zip", "/path/to/downloads")
     with pytest.raises(PermissionsError):
         server.install_or_update("LATEST")
 
 
 @patch("bedrock_server_manager.core.downloader.BedrockDownloader.extract_server_files")
-def test_perform_server_files_setup_permissions_error(
-    mock_extract, real_bedrock_server
-):
-    server = real_bedrock_server
+def test_perform_server_files_setup_permissions_error(mock_extract, app_context):
+    server = app_context.get_server("test_server")
     downloader = BedrockDownloader(server.server_dir, "LATEST")
     with patch.object(downloader, "get_zip_file_path", return_value="/path/to/zip"):
         with patch.object(

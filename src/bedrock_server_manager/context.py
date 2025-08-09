@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from .config.settings import Settings
     from .core.bedrock_server import BedrockServer
+    from .core.bedrock_process_manager import BedrockProcessManager
     from .core.manager import BedrockServerManager
     from .plugins.plugin_manager import PluginManager
 
@@ -28,9 +29,12 @@ class AppContext:
             manager (BedrockServerManager): The BedrockServerManager instance.
             plugin_manager (PluginManager): The PluginManager instance.
         """
+        from .core.bedrock_process_manager import BedrockProcessManager
+
         self.settings = settings
         self.manager = manager
         self.plugin_manager = plugin_manager
+        self.bedrock_process_manager = BedrockProcessManager(app_context=self)
         self._servers: Dict[str, "BedrockServer"] = {}
 
     def get_server(self, server_name: str) -> "BedrockServer":
@@ -46,7 +50,5 @@ class AppContext:
         from .core.bedrock_server import BedrockServer
 
         if server_name not in self._servers:
-            self._servers[server_name] = BedrockServer(
-                server_name, settings_instance=self.settings
-            )
+            self._servers[server_name] = BedrockServer(server_name, app_context=self)
         return self._servers[server_name]
