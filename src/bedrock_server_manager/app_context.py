@@ -63,16 +63,15 @@ def create_web_app(settings: Settings) -> FastAPI:
     """Creates and configures the web application."""
     logger = logging.getLogger(__name__)
     from .web import main as web_main
-    from .api.utils import stop_all_servers
+    from . import api
 
     # --- Application Context Setup ---
     plugin_manager = PluginManager(settings)
-    plugin_manager.load_plugins()
 
     # Define shutdown hooks here to capture the plugin_manager instance
     def shutdown_web_app():
         logger.info("Running web app shutdown hooks...")
-        stop_all_servers()
+        api.utils.stop_all_servers(app_context=app_context)
         plugin_manager.unload_plugins()
         if database.engine:
             database.engine.dispose()
@@ -114,10 +113,14 @@ def create_web_app(settings: Settings) -> FastAPI:
     app_context = AppContext(
         settings=settings, plugin_manager=plugin_manager, manager=manager
     )
-    plugin_manager.set_app_context(app_context)
     app.state.app_context = app_context
-    app.state.settings = settings
-    app.state.plugin_manager = plugin_manager
+
+    app_context.plugin_manager.set_app_context(app_context)
+    app_context.plugin_manager.load_plugins()
+
+    app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+
+    api.utils.update_server_statuses(app_context=app_context)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     # Mount custom themes directory
@@ -259,7 +262,6 @@ def create_cli_app():
 
             # --- Plugin and Application Context Setup ---
             plugin_manager = PluginManager(settings)
-            plugin_manager.load_plugins()
 
             app_context = AppContext(
                 settings=settings, plugin_manager=plugin_manager, manager=manager
@@ -269,20 +271,11 @@ def create_cli_app():
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():
                 logger.info("Running CLI app shutdown hooks...")
-                from .api.utils import stop_all_servers
-
-                stop_all_servers()
-                plugin_manager.unload_plugins()
                 if database.engine:
                     database.engine.dispose()
                 logger.info("CLI app shutdown hooks complete.")
 
             atexit.register(shutdown_cli_app)
-
-            plugin_manager.trigger_guarded_event("on_manager_startup")
-            from .api import utils as api_utils
-
-            api_utils.update_server_statuses()
 
         except Exception as setup_e:
             logging.getLogger("bsm_critical_setup").critical(
