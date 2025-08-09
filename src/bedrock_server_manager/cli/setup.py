@@ -62,7 +62,7 @@ def setup(ctx: click.Context):
             f"Do you want to configure a system service for {app_name_title}?",
             default=False,
         ).ask():
-            interactive_web_service_workflow(bsm)
+            interactive_web_service_workflow(app_context.manager)
         else:
             click.echo(
                 "Skipping service configuration. You can set it up later using the 'service' command."
