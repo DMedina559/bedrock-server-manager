@@ -191,19 +191,6 @@ class BedrockServerManager:
         if not self._content_dir:
             raise ConfigurationError("CONTENT_DIR not configured in settings.")
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        from ..api.utils import stop_all_servers
-        from ..instances import get_plugin_manager_instance
-        from ..db import database
-
-        stop_all_servers()
-        get_plugin_manager_instance().unload_plugins()
-        if database.engine:
-            database.engine.dispose()
-
     # --- Settings Related ---
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Retrieves a configuration value by its key from the global settings.

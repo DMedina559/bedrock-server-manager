@@ -114,6 +114,7 @@ def create_web_app(settings: Settings) -> FastAPI:
     app_context = AppContext(
         settings=settings, plugin_manager=plugin_manager, manager=manager
     )
+    plugin_manager.set_app_context(app_context)
     app.state.app_context = app_context
     app.state.settings = settings
     app.state.plugin_manager = plugin_manager
@@ -263,6 +264,7 @@ def create_cli_app():
             app_context = AppContext(
                 settings=settings, plugin_manager=plugin_manager, manager=manager
             )
+            plugin_manager.set_app_context(app_context)
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():
