@@ -72,7 +72,7 @@ def create_web_app(settings: Settings) -> FastAPI:
     def shutdown_web_app():
         logger.info("Running web app shutdown hooks...")
         api.utils.stop_all_servers(app_context=app_context)
-        plugin_manager.unload_plugins()
+        app_context.plugin_manager.unload_plugins()
         if database.engine:
             database.engine.dispose()
         logger.info("Web app shutdown hooks complete.")
@@ -111,11 +111,10 @@ def create_web_app(settings: Settings) -> FastAPI:
     )
     manager = BedrockServerManager(settings)
     app_context = AppContext(
-        settings=settings, plugin_manager=plugin_manager, manager=manager
+        settings=settings, manager=manager
     )
     app.state.app_context = app_context
 
-    app_context.plugin_manager.set_app_context(app_context)
     app_context.plugin_manager.load_plugins()
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
@@ -261,12 +260,9 @@ def create_cli_app():
             startup_checks(app_name_title, __version__)
 
             # --- Plugin and Application Context Setup ---
-            plugin_manager = PluginManager(settings)
-
             app_context = AppContext(
-                settings=settings, plugin_manager=plugin_manager, manager=manager
+                settings=settings, manager=manager
             )
-            plugin_manager.set_app_context(app_context)
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():

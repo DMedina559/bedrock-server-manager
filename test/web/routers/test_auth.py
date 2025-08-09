@@ -10,7 +10,15 @@ TEST_PASSWORD = "testpassword"
 def test_login_for_access_token_success(mock_authenticate_user, client: TestClient):
     """Test the login for access token route with valid credentials."""
     app_context = MagicMock()
-    app_context.settings.get.return_value = 4.0
+
+    def settings_get_side_effect(key, default=None):
+        if key == "web.jwt_cookie_samesite":
+            return "lax"
+        if key == "web.jwt_cookie_secure":
+            return False
+        return 4.0
+
+    app_context.settings.get.side_effect = settings_get_side_effect
     client.app.state.app_context = app_context
     mock_authenticate_user.return_value = TEST_USER
     response = client.post(

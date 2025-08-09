@@ -345,4 +345,4 @@ done
         )
     os.chmod(executable_path, 0o755)
 
-    return AppContext(settings, real_manager, real_plugin_manager)
+    return AppContext(settings, real_manager)

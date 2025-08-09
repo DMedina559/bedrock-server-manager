@@ -19,7 +19,6 @@ class AppContext:
         self,
         settings: "Settings",
         manager: "BedrockServerManager",
-        plugin_manager: "PluginManager",
     ):
         """
         Initializes the AppContext.
@@ -27,15 +26,26 @@ class AppContext:
         Args:
             settings (Settings): The application settings instance.
             manager (BedrockServerManager): The BedrockServerManager instance.
-            plugin_manager (PluginManager): The PluginManager instance.
         """
         from .core.bedrock_process_manager import BedrockProcessManager
 
         self.settings = settings
         self.manager = manager
-        self.plugin_manager = plugin_manager
+        self._plugin_manager: "PluginManager" | None = None
         self.bedrock_process_manager = BedrockProcessManager(app_context=self)
         self._servers: Dict[str, "BedrockServer"] = {}
+
+    @property
+    def plugin_manager(self) -> "PluginManager":
+        """
+        Lazily loads and returns the PluginManager instance.
+        """
+        if self._plugin_manager is None:
+            from .plugins.plugin_manager import PluginManager
+
+            self._plugin_manager = PluginManager(self.settings)
+            self._plugin_manager.set_app_context(self)
+        return self._plugin_manager
 
     def get_server(self, server_name: str) -> "BedrockServer":
         """
