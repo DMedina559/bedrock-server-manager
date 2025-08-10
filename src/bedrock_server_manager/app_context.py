@@ -3,7 +3,6 @@ Provides application factory functions for creating and configuring the CLI and 
 """
 
 import logging
-import platform
 import sys
 
 import click
@@ -59,11 +58,12 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 from .web.auth_utils import CustomAuthBackend, get_current_user_optional
 
 
-def create_web_app(settings: Settings) -> FastAPI:
+def create_web_app(app_context: AppContext) -> FastAPI:
     """Creates and configures the web application."""
     logger = logging.getLogger(__name__)
-    from .web import main as web_main
     from . import api
+
+    settings = app_context.settings
 
     # --- Application Context Setup ---
     plugin_manager = PluginManager(settings)
@@ -79,7 +79,10 @@ def create_web_app(settings: Settings) -> FastAPI:
 
     atexit.register(shutdown_web_app)
 
-    APP_ROOT = os.path.dirname(os.path.abspath(web_main.__file__))
+    from .config import SCRIPT_DIR
+
+    app_path = os.path.join(SCRIPT_DIR, "web", "app.py")
+    APP_ROOT = os.path.dirname(os.path.abspath(app_path))
     TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")
     STATIC_DIR = os.path.join(APP_ROOT, "static")
     version = get_installed_version()
@@ -109,8 +112,6 @@ def create_web_app(settings: Settings) -> FastAPI:
             "deepLinking": True,
         },
     )
-    manager = BedrockServerManager(settings)
-    app_context = AppContext(settings=settings, manager=manager)
     app.state.app_context = app_context
 
     app_context.plugin_manager.load_plugins()
@@ -260,7 +261,7 @@ def create_cli_app():
             log_separator(logger, app_name=app_name_title, app_version=__version__)
             logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
-            startup_checks(app_name_title, __version__)
+            startup_checks(app_context, app_name_title, __version__)
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():

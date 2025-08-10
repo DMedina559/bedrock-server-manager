@@ -55,7 +55,6 @@ def start_web_server_api(
     debug: bool = False,
     mode: str = "direct",
     threads: Optional[int] = None,
-    settings=None,
     app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
@@ -105,10 +104,10 @@ def start_web_server_api(
         if app_context:
             manager = app_context.manager
         else:
-            manager = get_manager_instance(settings)
+            manager = get_manager_instance(None)
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            manager.start_web_ui_direct(host, debug, threads, app_context=app_context)
+            manager.start_web_ui_direct(app_context, host, debug, threads)
             return {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",

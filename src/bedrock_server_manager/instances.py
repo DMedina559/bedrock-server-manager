@@ -30,18 +30,18 @@ def get_app_context() -> AppContext:
     Raises:
         RuntimeError: If the application context has not been set.
     """
-    #if _app_context is None:
-    #    raise RuntimeError("Application context has not been set.")
-    #return _app_context
-    global _app_context
     if _app_context is None:
-        from .context import AppContext
-        from .config.settings import Settings
-        from .core.manager import BedrockServerManager
-        settings = Settings()
-        manager = BedrockServerManager(settings)
-        _app_context = AppContext(settings=settings, manager=manager)
+        raise RuntimeError("Application context has not been set.")
     return _app_context
+    # global _app_context
+    # if _app_context is None:
+    #    from .context import AppContext
+    #    from .config.settings import Settings
+    #    from .core.manager import BedrockServerManager
+    #    settings = Settings()
+    #    manager = BedrockServerManager(settings)
+    #    _app_context = AppContext(settings=settings, manager=manager)
+    # return _app_context
 
 
 _settings = None

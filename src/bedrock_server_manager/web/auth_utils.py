@@ -53,8 +53,6 @@ def get_jwt_secret_key() -> str:
     return jwt_secret_key
 
 
-JWT_SECRET_KEY = get_jwt_secret_key()
-
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
@@ -80,6 +78,7 @@ def create_access_token(
     Returns:
         str: The encoded JWT string.
     """
+    JWT_SECRET_KEY = get_jwt_secret_key()
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
@@ -130,6 +129,7 @@ async def get_current_user_optional(
         Optional[User]: A dictionary ``{"username": str, "identity_type": "jwt"}``
         if authentication is successful, otherwise ``None``.
     """
+    JWT_SECRET_KEY = get_jwt_secret_key()
     token = request.cookies.get("access_token_cookie")
     if not token:
         auth_header = request.headers.get("Authorization")

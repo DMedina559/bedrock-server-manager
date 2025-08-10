@@ -33,6 +33,7 @@ import questionary
 
 from ..api import web as web_api
 from .utils import handle_api_response as _handle_api_response
+from ..context import AppContext
 from ..core import BedrockServerManager
 from ..error import (
     BSMError,
@@ -64,7 +65,8 @@ def requires_web_service_manager(func: Callable) -> Callable:
     @functools.wraps(func)
     @click.pass_context
     def wrapper(ctx: click.Context, *args, **kwargs):
-        bsm: BedrockServerManager = ctx.obj["bsm"]
+        app_context: AppContext = ctx.obj["app_context"]
+        bsm = app_context.manager
         if not bsm.can_manage_services:
             os_type = bsm.get_os_type()
             if os_type == "Windows":
@@ -291,7 +293,8 @@ def configure_web_service(
         - :func:`~._perform_web_service_configuration` (if flags are present)
 
     """
-    bsm: BedrockServerManager = ctx.obj["bsm"]
+    app_context: AppContext = ctx.obj["app_context"]
+    bsm = app_context.manager
     if setup_service and not bsm.can_manage_services:
         click.secho(
             "Error: --setup-service is not available (service manager not found).",

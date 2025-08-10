@@ -16,17 +16,16 @@ from typing import Optional, List, Union
 
 import uvicorn
 
-from ..instances import get_settings_instance
 from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 
 def run_web_server(
+    app_context: "AppContext",
     host: Optional[Union[str, List[str]]] = None,
     debug: bool = False,
     threads: Optional[int] = None,
-    app_context: Optional[AppContext] = None,
 ) -> None:
     """
     Configures and starts the Uvicorn web server to serve the FastAPI application.
@@ -72,10 +71,7 @@ def run_web_server(
         - ``web.threads`` (int): The number of Uvicorn worker processes to use when
           not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
-    if app_context:
-        settings = app_context.settings
-    else:
-        settings = get_settings_instance()
+    settings = app_context.settings
 
     port_setting_key = "web.port"
     port_val = settings.get(port_setting_key, 11325)
@@ -182,8 +178,13 @@ def run_web_server(
         # More info: https://github.com/encode/uvicorn/issues/1285
         LOGGING_CONFIG["loggers"]["uvicorn"]["propagate"] = True
 
+        from ..app_context import create_web_app
+
+        # Create the FastAPI app
+        app = create_web_app(app_context)
+
         uvicorn.run(
-            "bedrock_server_manager.web.main:app",  # Path to the FastAPI app instance as a string
+            app,
             host=final_host_to_bind,
             port=port,
             log_config=LOGGING_CONFIG,

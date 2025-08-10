@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from .config.settings import Settings
     from .core.bedrock_server import BedrockServer
-    from .core.bedrock_process_manager import BedrockProcessManager
     from .core.manager import BedrockServerManager
     from .plugins.plugin_manager import PluginManager
 

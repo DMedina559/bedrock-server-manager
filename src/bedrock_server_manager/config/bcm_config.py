@@ -70,13 +70,13 @@ def load_config() -> Dict[str, Any]:
         config_dir = os.path.join(config.get("data_dir"), ".config")
         os.makedirs(config_dir, exist_ok=True)
         default_db_url = (
-        f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
+            f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
         )
         config["db_url"] = default_db_url
         logger.info(f"Configuration 'db_url' not set. Defaulting to {default_db_url}.")
         config_changed = True
 
-    if config_changed:  
+    if config_changed:
         save_config(config)
 
     return config

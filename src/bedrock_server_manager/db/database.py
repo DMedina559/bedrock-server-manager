@@ -28,6 +28,8 @@ def get_database_url():
             f"Database URL not found in config. Please set 'db_url' in {package_name} config."
         )
 
+    return db_url
+
 
 def _ensure_tables_created():
     """

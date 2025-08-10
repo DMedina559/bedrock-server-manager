@@ -498,10 +498,10 @@ class BedrockServerManager:
     # --- Web UI Process Management ---
     def start_web_ui_direct(
         self,
+        app_context: AppContext,
         host: Optional[Union[str, List[str]]] = None,
         debug: bool = False,
         threads: Optional[int] = None,
-        app_context: Optional[AppContext] = None,
     ) -> None:
         """Starts the Web UI application directly in the current process (blocking).
 
@@ -534,12 +534,16 @@ class BedrockServerManager:
                 if Uvicorn fails to start.
         """
         logger.info("BSM: Starting web application in direct mode (blocking)...")
+        if not app_context:
+            raise ConfigurationError(
+                "AppContext is required to start the Web UI in direct mode."
+            )
         try:
             from bedrock_server_manager.web.app import (
                 run_web_server as run_bsm_web_application,
             )
 
-            run_bsm_web_application(host, debug, threads, app_context=app_context)
+            run_bsm_web_application(app_context, host, debug, threads)
             logger.info("BSM: Web application (direct mode) shut down.")
         except (RuntimeError, ImportError) as e:
             logger.critical(

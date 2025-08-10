@@ -144,13 +144,13 @@ async def api_login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    app_context= request.app.state.app_context
     access_token = create_access_token(
-        data={"sub": authenticated_username}, app_context=request.app.state.app_context
+        data={"sub": authenticated_username}, app_context=app_context
     )
-
-    cookie_secure = request.app.state.settings.get("web.jwt_cookie_secure", False)
-    cookie_samesite = request.app.state.settings.get("web.jwt_cookie_samesite", "Lax")
+    settings = app_context.settings
+    cookie_secure = settings.get("web.jwt_cookie_secure", False)
+    cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
 
     response.set_cookie(
         key="access_token_cookie",

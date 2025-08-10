@@ -18,6 +18,8 @@ from typing import Tuple
 import click
 import questionary
 
+from bedrock_server_manager import app_context
+
 from ..api import web as web_api
 from .utils import handle_api_response as _handle_api_response
 from ..error import (
@@ -75,6 +77,7 @@ def start_web_server(ctx: click.Context, hosts: Tuple[str], debug: bool, mode: s
 
     Calls API: :func:`~bedrock_server_manager.api.web.start_web_server_api`.
     """
+    app_context = ctx.obj["app_context"]
     click.echo(f"Attempting to start web server in '{mode}' mode...")
     if mode == "direct":
         click.secho(
@@ -86,7 +89,7 @@ def start_web_server(ctx: click.Context, hosts: Tuple[str], debug: bool, mode: s
             list(hosts) if hosts else None
         )  # Pass None if no hosts are provided, API handles default
         response = web_api.start_web_server_api(
-            host=host_list, debug=debug, mode=mode, app_context=ctx.obj["app_context"]
+            host=host_list, debug=debug, mode=mode, app_context=app_context
         )
 
         # In 'direct' mode, start_web_server_api (which calls bsm.start_web_ui_direct)

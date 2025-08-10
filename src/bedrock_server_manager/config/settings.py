@@ -32,11 +32,6 @@ from .const import (
     get_installed_version,
 )
 from . import bcm_config
-from ..utils.migration import (
-    migrate_settings_v1_to_v2,
-    migrate_players_json_to_db,
-    migrate_env_token_to_db,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +133,6 @@ class Settings:
 
         logger.debug("Initializing Settings")
 
-        # Migrations before db initialization
-        from ..utils.migration import migrate_env_vars_to_config_file
-
-        migrate_env_vars_to_config_file()
-
         # Determine the primary application data and config directories.
         self._app_data_dir_path = self._determine_app_data_dir()
         self._config_dir_path = self._determine_app_config_dir()
@@ -155,16 +145,6 @@ class Settings:
         # Load settings from the config file or create a default one.
         self._settings: Dict[str, Any] = {}
         self.load()
-
-        # Migrate players.json to the database
-        players_json_path = os.path.join(self.config_dir, "players.json")
-        migrate_players_json_to_db(players_json_path)
-
-        # Migrations after db initialization
-        from ..utils.migration import migrate_env_auth_to_db
-
-        migrate_env_auth_to_db(env_name)
-        migrate_env_token_to_db(env_name)
 
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
