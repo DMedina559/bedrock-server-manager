@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 import os
-from ..config.const import package_name, env_name
+from ..config.const import package_name
 from ..config import bcm_config
 
 
@@ -18,23 +18,15 @@ _TABLES_CREATED = False
 
 
 def get_database_url():
-    """Gets the database url from config, or returns a default."""
+    """Gets the database url from config."""
     # 1. Check config file
     config = bcm_config.load_config()
     db_url = config.get("db_url")
-    if db_url:
-        return db_url
 
-    # 2. Fallback to default SQLite path
-    # Use the settings instance to get the app_data_dir consistently
-    config_dir = os.path.join(config.get("data_dir"), ".config")
-    os.makedirs(config_dir, exist_ok=True)
-    default_db_url = (
-        f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
-    )
-    bcm_config.set_config_value("db_url", default_db_url)
-
-    return default_db_url
+    if not db_url:
+        raise RuntimeError(
+            f"Database URL not found in config. Please set 'db_url' in {package_name} config."
+        )
 
 
 def _ensure_tables_created():

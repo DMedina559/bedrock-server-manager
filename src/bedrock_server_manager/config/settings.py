@@ -169,7 +169,7 @@ class Settings:
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
 
-        It prioritizes the ``BSM_DATA_DIR`` environment variable if set.
+        It prioritizes the ``data_dir`` from bcm_config if set.
         Otherwise, it defaults to a ``bedrock-server-manager`` directory in the
         user's home folder (e.g., ``~/.bedrock-server-manager`` on Linux/macOS or
         ``%USERPROFILE%\\bedrock-server-manager`` on Windows).
@@ -180,11 +180,7 @@ class Settings:
         """
         # 1. Check config file
         config = bcm_config.load_config()
-        data_dir = config.get("data_dir")
-
-        # 3. Fallback to user's home directory
-        if not data_dir:
-            data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
+        data_dir = config["data_dir"]
 
         os.makedirs(data_dir, exist_ok=True)
         return data_dir

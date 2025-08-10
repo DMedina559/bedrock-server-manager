@@ -36,22 +36,50 @@ def get_config_path() -> str:
 
 def load_config() -> Dict[str, Any]:
     """
-    Loads the JSON configuration file.
+    Loads the JSON configuration file, ensuring essential defaults are set.
 
-    If the file does not exist, it returns an empty dictionary.
-    If the file is malformed, it logs an error and returns an empty dictionary.
+    - If the file doesn't exist, it is created with default values.
+    - If the file exists but lacks `data_dir` or `db_url`, the missing
+      values are added and the file is saved.
+    - The default `data_dir` is a user-specific data directory.
 
     Returns:
-        Dict[str, Any]: The loaded configuration data.
+        Dict[str, Any]: The loaded and validated configuration data.
     """
-    if not os.path.exists(_config_path):
-        return {}
-    try:
-        with open(_config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error(f"Failed to load configuration file at {_config_path}: {e}")
-        return {}
+    config = {}
+    if os.path.exists(_config_path):
+        try:
+            with open(_config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(f"Failed to load configuration file at {_config_path}: {e}")
+            # Continue with an empty config, the defaults will be applied.
+            config = {}
+
+    config_changed = False
+
+    if "data_dir" not in config or not config["data_dir"]:
+        # Fallback to a bedrock-server-manager folder in the user's home directory
+        data_dir = os.path.join(os.path.expanduser("~"), f".{package_name}")
+        config["data_dir"] = data_dir
+        logger.info(f"Configuration 'data_dir' not set. Defaulting to {data_dir}.")
+        config_changed = True
+
+    if "db_url" not in config or not config["db_url"]:
+        # Fallback to the defult database URL
+        config_dir = os.path.join(config.get("data_dir"), ".config")
+        os.makedirs(config_dir, exist_ok=True)
+        default_db_url = (
+        f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
+        )
+        config["db_url"] = default_db_url
+        logger.info(f"Configuration 'db_url' not set. Defaulting to {default_db_url}.")
+        config_changed = True
+
+    if config_changed:  
+        save_config(config)
+
+    return config
 
 
 def save_config(data: Dict[str, Any]):
