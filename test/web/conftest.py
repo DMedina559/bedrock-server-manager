@@ -1,6 +1,5 @@
 import pytest
 from fastapi.testclient import TestClient
-from bedrock_server_manager.web import app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from typing import Generator
@@ -46,8 +45,17 @@ def test_db(db_engine):
     connection.close()
 
 
+@pytest.fixture
+def app(app_context):
+    """Create a FastAPI app instance for testing."""
+    # The app_context fixture is defined in the root conftest.py
+    # and is available to all tests.
+    _app = create_web_app(app_context)
+    return _app
+
+
 @pytest.fixture(autouse=True)
-def mock_dependencies(monkeypatch):
+def mock_dependencies(monkeypatch, app):
     """Mock dependencies for tests."""
 
     async def mock_needs_setup():
@@ -62,16 +70,7 @@ def mock_dependencies(monkeypatch):
 
 
 @pytest.fixture
-def app(app_context):
-    """Create a FastAPI app instance for testing."""
-    # The app_context fixture is defined in the root conftest.py
-    # and is available to all tests.
-    _app = create_web_app(app_context)
-    return _app
-
-
-@pytest.fixture
-def client(test_db):
+def client(app, test_db):
     """Create a test client for the app, with mocked dependencies."""
     app.dependency_overrides[get_db] = lambda: test_db
     with TestClient(app) as client:
@@ -93,7 +92,7 @@ def authenticated_user(test_db):
 
 
 @pytest.fixture
-def authenticated_client(client, authenticated_user):
+def authenticated_client(client, authenticated_user, app):
     async def mock_get_current_user():
         return authenticated_user
 

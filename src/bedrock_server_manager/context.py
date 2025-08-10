@@ -46,6 +46,13 @@ class AppContext:
             self._plugin_manager.set_app_context(self)
         return self._plugin_manager
 
+    @plugin_manager.setter
+    def plugin_manager(self, value: "PluginManager"):
+        """
+        Sets the PluginManager instance.
+        """
+        self._plugin_manager = value
+
     def get_server(self, server_name: str) -> "BedrockServer":
         """
         Retrieves or creates a BedrockServer instance.

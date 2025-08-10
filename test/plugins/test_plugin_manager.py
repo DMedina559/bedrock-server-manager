@@ -4,22 +4,22 @@ from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
 class TestPluginManager:
-    def test_not_singleton(self, real_plugin_manager):
+    def test_not_singleton(self, app_context):
         """Tests that the PluginManager is NOT a singleton."""
-        pm1 = real_plugin_manager
-        pm2 = PluginManager(real_plugin_manager.settings)
+        pm1 = app_context.plugin_manager
+        pm2 = PluginManager(app_context.settings)
         assert pm1 is not pm2
 
-    def test_init_once(self, real_plugin_manager):
+    def test_init_once(self, app_context):
         """Tests that the PluginManager initializes correctly."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
         assert pm.settings is not None
         assert any("plugins" in str(path) for path in pm.plugin_dirs)
         assert "plugins.json" in str(pm.config_path)
 
-    def test_load_and_save_config(self, real_plugin_manager):
+    def test_load_and_save_config(self, app_context):
         """Tests loading and saving of the plugins.json file."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
 
         # Test saving
         pm.plugin_config = {
@@ -39,18 +39,18 @@ class TestPluginManager:
         assert loaded_config["plugin1"]["version"] == "1.0"
         assert loaded_config["plugin1"]["description"] == "A test plugin."
 
-    def test_synchronize_config_with_disk(self, real_plugin_manager):
+    def test_synchronize_config_with_disk(self, app_context):
         """Tests the synchronization of the config file with the plugins on disk."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
         pm._synchronize_config_with_disk()
 
         # Check that valid plugins are in the config
         assert "plugin1" in pm.plugin_config
         assert pm.plugin_config["plugin1"]["version"] == "1.0"
 
-    def test_load_plugins(self, real_plugin_manager):
+    def test_load_plugins(self, app_context):
         """Tests the loading of enabled plugins."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
         pm.plugin_config = {
             "plugin1": {"enabled": True, "version": "1.0"},
         }
@@ -63,9 +63,9 @@ class TestPluginManager:
         plugin_names = [p.name for p in pm.plugins]
         assert "plugin1" in plugin_names
 
-    def test_event_dispatch(self, real_plugin_manager):
+    def test_event_dispatch(self, app_context):
         """Tests the dispatching of events to plugins."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
         pm.plugin_config = {"plugin1": {"enabled": True, "version": "1.0"}}
 
         with patch.object(pm, "_synchronize_config_with_disk"):
@@ -80,9 +80,9 @@ class TestPluginManager:
         pm.trigger_event("on_unload")
         mock_plugin.on_unload.assert_called_once()
 
-    def test_custom_event_system(self, real_plugin_manager):
+    def test_custom_event_system(self, app_context):
         """Tests the custom inter-plugin event system."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
 
         callback = MagicMock()
         callback.__name__ = "my_callback"  # Add __name__ attribute to the mock
@@ -95,9 +95,9 @@ class TestPluginManager:
             "arg1", kwarg1="value1", _triggering_plugin="another_plugin"
         )
 
-    def test_reload_plugins(self, real_plugin_manager):
+    def test_reload_plugins(self, app_context):
         """Tests the reloading of plugins."""
-        pm = real_plugin_manager
+        pm = app_context.plugin_manager
         pm.plugin_config = {"plugin1": {"enabled": True, "version": "1.0"}}
         with patch.object(pm, "_synchronize_config_with_disk"):
             pm.load_plugins()

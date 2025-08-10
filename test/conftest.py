@@ -275,11 +275,15 @@ def real_manager(tmp_path):
 
 
 @pytest.fixture
-def real_plugin_manager(tmp_path):
-    """Fixture for a real PluginManager instance."""
-    from bedrock_server_manager.plugins.plugin_manager import PluginManager
+def app_context(real_manager, tmp_path):
+    """Fixture for a real AppContext instance."""
+    from bedrock_server_manager.context import AppContext
     from bedrock_server_manager.config.settings import Settings
+    from bedrock_server_manager.instances import set_app_context
+    from bedrock_server_manager.plugins.plugin_manager import PluginManager
     from unittest.mock import patch
+    import os
+    import platform
 
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir()
@@ -304,21 +308,10 @@ class Plugin(PluginBase):
     with patch("appdirs.user_config_dir", return_value=str(config_dir)):
         settings = Settings()
         settings.set("paths.plugins", str(plugins_dir))
-        manager = PluginManager(settings)
-        manager.plugin_dirs = [plugins_dir]
-        manager.load_plugins()
-        return manager
+        plugin_manager = PluginManager(settings)
+        plugin_manager.plugin_dirs = [plugins_dir]
+        plugin_manager.load_plugins()
 
-
-@pytest.fixture
-def app_context(real_manager, real_plugin_manager):
-    """Fixture for a real AppContext instance."""
-    from bedrock_server_manager.context import AppContext
-    from bedrock_server_manager.config.settings import Settings
-    import os
-    import platform
-
-    settings = Settings()
     app_data_dir = settings.app_data_dir
     config_dir = settings.config_dir
     server_name = "test_server"
@@ -345,4 +338,7 @@ done
         )
     os.chmod(executable_path, 0o755)
 
-    return AppContext(settings, real_manager)
+    context = AppContext(settings, real_manager)
+    context.plugin_manager = plugin_manager
+    set_app_context(context)
+    return context
