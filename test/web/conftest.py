@@ -1,10 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
+from bedrock_server_manager.web import app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from typing import Generator
 from bedrock_server_manager.db.database import Base, get_db
-from bedrock_server_manager.web.main import app
 from bedrock_server_manager.web.dependencies import validate_server_exists, needs_setup
 from bedrock_server_manager.web.auth_utils import (
     create_access_token,
@@ -14,6 +14,7 @@ from bedrock_server_manager.web.auth_utils import (
 from datetime import timedelta
 from bedrock_server_manager.db.models import User as UserModel
 from unittest.mock import MagicMock
+from bedrock_server_manager.app_context import create_web_app
 
 TEST_USER = "testuser"
 TEST_PASSWORD = "testpassword"
@@ -58,6 +59,15 @@ def mock_dependencies(monkeypatch):
     app.dependency_overrides[validate_server_exists] = lambda: "test-server"
     yield
     app.dependency_overrides = {}
+
+
+@pytest.fixture
+def app(app_context):
+    """Create a FastAPI app instance for testing."""
+    # The app_context fixture is defined in the root conftest.py
+    # and is available to all tests.
+    _app = create_web_app(app_context)
+    return _app
 
 
 @pytest.fixture

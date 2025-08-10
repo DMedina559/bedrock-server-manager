@@ -6,7 +6,6 @@ from bedrock_server_manager.web.auth_utils import (
     pwd_context,
     create_access_token,
     get_current_user_optional,
-    JWT_SECRET_KEY,
     ALGORITHM,
 )
 from fastapi import Request
