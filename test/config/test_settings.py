@@ -33,6 +33,13 @@ def settings(db_session, monkeypatch, tmp_path, mock_db_session_manager):
     test_data_dir = tmp_path / "test_app_data"
     test_data_dir.mkdir()
 
+    # Mock bcm_config.load_config to provide a data_dir
+    mock_load_config = MagicMock(return_value={"data_dir": str(test_data_dir)})
+    monkeypatch.setattr(
+        "bedrock_server_manager.config.settings.bcm_config.load_config",
+        mock_load_config,
+    )
+
     # Point the settings to use the test database
     monkeypatch.setattr(
         "bedrock_server_manager.config.settings.db_session_manager",

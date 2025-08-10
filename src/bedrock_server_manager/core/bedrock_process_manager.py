@@ -86,6 +86,12 @@ class BedrockProcessManager:
         output_file = os.path.join(server.server_dir, "server_output.txt")
         pid_file_path = server.get_pid_file_path()
 
+        if os.path.exists(pid_file_path):
+            self.logger.error(
+                f"Attempted to start server '{server_name}', but a PID file already exists at '{pid_file_path}'."
+            )
+            raise ServerStartError(f"Server '{server_name}' has a stale PID file.")
+
         try:
             with open(output_file, "ab") as f:
                 process = subprocess.Popen(

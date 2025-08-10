@@ -97,8 +97,6 @@ class TestMigratePlayersJsonToDb:
         assert backup_json_path.exists()
 
 
-@patch("bedrock_server_manager.web.auth_utils.JWT_SECRET_KEY", "test_secret")
-@patch("bedrock_server_manager.web.auth_utils.JWT_SECRET_KEY", "test_secret")
 class TestMigrateEnvAuthToDb:
     @patch.dict(
         os.environ,

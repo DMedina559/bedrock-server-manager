@@ -12,7 +12,13 @@ def manager(real_bedrock_server):
     """Fixture to get a BedrockProcessManager instance and cleanup servers."""
     # The real_bedrock_server fixture is included to ensure the server files are created
     # before the manager is instantiated.
-    manager = BedrockProcessManager(settings_instance=real_bedrock_server.settings)
+
+    # Create a mock AppContext
+    app_context = MagicMock()
+    app_context.settings = real_bedrock_server.settings
+    app_context.get_server.return_value = real_bedrock_server
+
+    manager = BedrockProcessManager(app_context=app_context)
     yield manager
     # Cleanup: stop any running servers after the test
     for server_name in list(manager.servers.keys()):
@@ -137,3 +143,22 @@ def test_server_restart_failsafe(
 
         # Assert
         mock_start_server.assert_not_called()
+
+
+def test_start_server_already_running_with_pid_file(manager, real_bedrock_server):
+    # Arrange
+    server_name = real_bedrock_server.server_name
+    pid_file_path = real_bedrock_server.get_pid_file_path()
+
+    # Create a dummy PID file to simulate a stale process
+    with open(pid_file_path, "w") as f:
+        f.write("12345")
+
+    # Act & Assert
+    with pytest.raises(
+        ServerStartError, match=f"Server '{server_name}' has a stale PID file."
+    ):
+        manager.start_server(server_name)
+
+    # Cleanup
+    os.remove(pid_file_path)

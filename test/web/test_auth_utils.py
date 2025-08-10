@@ -30,12 +30,16 @@ def test_get_password_hash():
     assert hashed_password != TEST_PASSWORD
 
 
-def test_create_access_token():
+def test_create_access_token(app_context):
     """Test access token creation."""
+    from bedrock_server_manager.web.auth_utils import get_jwt_secret_key
+
     access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
+        data={"sub": TEST_USER},
+        expires_delta=timedelta(minutes=15),
+        app_context=app_context,
     )
-    decoded_token = jwt.decode(access_token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    decoded_token = jwt.decode(access_token, get_jwt_secret_key(), algorithms=[ALGORITHM])
     assert decoded_token["sub"] == TEST_USER
 
 

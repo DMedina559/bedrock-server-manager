@@ -330,11 +330,11 @@ def test_start_web_ui_direct_success(mocker):
     mock_app_context = mocker.MagicMock()
 
     manager.start_web_ui_direct(
-        host="0.0.0.0", debug=True, app_context=mock_app_context
+        app_context=mock_app_context, host="0.0.0.0", debug=True
     )
 
     mock_run_web_server.assert_called_once_with(
-        "0.0.0.0", True, None, app_context=mock_app_context
+        mock_app_context, "0.0.0.0", True, None
     )
 
 
@@ -346,9 +346,10 @@ def test_start_web_ui_direct_run_raises_runtime_error(mocker):
         "bedrock_server_manager.web.app.run_web_server",
         side_effect=RuntimeError("Web server failed"),
     )
+    mock_app_context = mocker.MagicMock()
 
     with pytest.raises(RuntimeError, match="Web server failed"):
-        manager.start_web_ui_direct()
+        manager.start_web_ui_direct(mock_app_context)
 
     mock_run_web_server.assert_called_once()
 
@@ -361,9 +362,10 @@ def test_start_web_ui_direct_import_error(mocker):
         "bedrock_server_manager.web.app.run_web_server",
         side_effect=ImportError("Cannot import web app"),
     )
+    mock_app_context = mocker.MagicMock()
 
     with pytest.raises(ImportError, match="Cannot import web app"):
-        manager.start_web_ui_direct()
+        manager.start_web_ui_direct(mock_app_context)
 
 
 # --- BedrockServerManager - Web UI Detached/Service Info Getters ---
@@ -1044,3 +1046,20 @@ def test_get_servers_data_base_dir_not_exist(app_context, mocker):
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
         app_context.manager.get_servers_data()
+
+
+def test_get_servers_data_with_non_installed_server(app_context, mocker):
+    """Test get_servers_data ignores directories that are not valid server installations."""
+    # The app_context fixture creates one valid server.
+    # We can mock its is_installed method to return False.
+    mocker.patch(
+        "bedrock_server_manager.core.bedrock_server.BedrockServer.is_installed",
+        return_value=False,
+    )
+
+    servers_data, error_messages = app_context.manager.get_servers_data(
+        app_context=app_context
+    )
+
+    assert len(servers_data) == 0
+    assert len(error_messages) == 0

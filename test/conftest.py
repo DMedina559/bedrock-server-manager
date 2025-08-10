@@ -173,6 +173,7 @@ def db_session():
 
     # Setup: initialize the database with a test-specific URL
     database.initialize_database("sqlite://")
+    database._ensure_tables_created()
     yield
     # Teardown: reset the database module's state
     database.engine = None
