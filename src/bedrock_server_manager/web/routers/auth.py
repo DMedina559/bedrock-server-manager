@@ -144,7 +144,7 @@ async def api_login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    app_context= request.app.state.app_context
+    app_context = request.app.state.app_context
     access_token = create_access_token(
         data={"sub": authenticated_username}, app_context=app_context
     )
