@@ -8,7 +8,6 @@ from sqlalchemy.ext.declarative import declarative_base
 import os
 from ..config.const import package_name, env_name
 from ..config import bcm_config
-from ..instances import get_settings_instance
 
 
 # These will be initialized by initialize_database()
@@ -28,8 +27,7 @@ def get_database_url():
 
     # 2. Fallback to default SQLite path
     # Use the settings instance to get the app_data_dir consistently
-    settings = get_settings_instance()
-    config_dir = os.path.join(settings.app_data_dir, ".config")
+    config_dir = os.path.join(config.get("data_dir"), ".config")
     os.makedirs(config_dir, exist_ok=True)
     default_db_url = (
         f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
