@@ -110,9 +110,7 @@ def create_web_app(settings: Settings) -> FastAPI:
         },
     )
     manager = BedrockServerManager(settings)
-    app_context = AppContext(
-        settings=settings, manager=manager
-    )
+    app_context = AppContext(settings=settings, manager=manager)
     app.state.app_context = app_context
 
     app_context.plugin_manager.load_plugins()
@@ -244,6 +242,11 @@ def create_cli_app():
             settings = Settings()
             manager = BedrockServerManager(settings)
 
+            app_context = AppContext(settings=settings, manager=manager)
+            from .instances import set_app_context
+
+            set_app_context(app_context)
+
             log_dir = settings.get("paths.logs")
 
             logger = setup_logging(
@@ -258,11 +261,6 @@ def create_cli_app():
             logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
             startup_checks(app_name_title, __version__)
-
-            # --- Plugin and Application Context Setup ---
-            app_context = AppContext(
-                settings=settings, manager=manager
-            )
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():

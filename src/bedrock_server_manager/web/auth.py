@@ -149,8 +149,12 @@ async def api_login_for_access_token(
         data={"sub": authenticated_username}, app_context=request.app.state.app_context
     )
 
-    cookie_secure = request.app.state.app_context.settings.get("web.jwt_cookie_secure", False)
-    cookie_samesite = request.app.state.app_context.settings.get("web.jwt_cookie_samesite", "Lax")
+    cookie_secure = request.app.state.app_context.settings.get(
+        "web.jwt_cookie_secure", False
+    )
+    cookie_samesite = request.app.state.app_context.settings.get(
+        "web.jwt_cookie_samesite", "Lax"
+    )
 
     response.set_cookie(
         key="access_token_cookie",
