@@ -295,17 +295,6 @@ class Settings:
                     for setting in db.query(Setting).all():
                         user_config[setting.key] = setting.value
 
-                    # Check for old config format and migrate if necessary.
-                    if "config_version" not in user_config:
-                        self._settings = migrate_settings_v1_to_v2(
-                            user_config, self.config_path, self.default_config
-                        )
-                        self._write_config(db)
-                        # Reload config from the newly migrated file
-                        user_config = {}
-                        for setting in db.query(Setting).all():
-                            user_config[setting.key] = setting.value
-
                     # Deep merge user settings into the default settings.
                     deep_merge(user_config, self._settings)
 
