@@ -39,7 +39,9 @@ def test_create_access_token(app_context):
         expires_delta=timedelta(minutes=15),
         app_context=app_context,
     )
-    decoded_token = jwt.decode(access_token, get_jwt_secret_key(), algorithms=[ALGORITHM])
+    decoded_token = jwt.decode(
+        access_token, get_jwt_secret_key(), algorithms=[ALGORITHM]
+    )
     assert decoded_token["sub"] == TEST_USER
 
 

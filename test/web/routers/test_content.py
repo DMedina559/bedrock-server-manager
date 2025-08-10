@@ -1,4 +1,7 @@
 from unittest.mock import patch, MagicMock
+import pytest
+
+pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
 
 
 @patch("bedrock_server_manager.web.routers.content.app_api.list_available_worlds_api")

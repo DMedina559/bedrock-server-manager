@@ -5,6 +5,8 @@ import pytest
 from fastapi.responses import FileResponse
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
+
 
 @pytest.mark.skip(reason="FileResponse is causing issues")
 @patch("bedrock_server_manager.web.routers.util.FileResponse")

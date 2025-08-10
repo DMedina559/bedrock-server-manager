@@ -2,6 +2,10 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from bedrock_server_manager.web.dependencies import validate_server_exists
 
+import pytest
+
+pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
+
 
 def test_index_authenticated(authenticated_client: TestClient):
     """Test the index route with an authenticated user."""

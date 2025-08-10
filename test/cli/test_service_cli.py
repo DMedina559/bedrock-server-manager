@@ -96,7 +96,9 @@ def test_disable_web_service(mock_disable_api, runner, mock_ctx):
 def test_remove_web_service(mock_remove_api, mock_confirm, runner, mock_app_context):
     mock_confirm.return_value.ask.return_value = True
     mock_remove_api.return_value = {"status": "success"}
-    result = runner.invoke(remove_web_service_cli, obj={"app_context": mock_app_context})
+    result = runner.invoke(
+        remove_web_service_cli, obj={"app_context": mock_app_context}
+    )
 
     assert result.exit_code == 0
     assert "Web UI service removed successfully" in result.output
@@ -111,7 +113,9 @@ def test_status_web_service(mock_status_api, runner, mock_app_context):
         "is_active": True,
         "is_enabled": True,
     }
-    result = runner.invoke(status_web_service_cli, obj={"app_context": mock_app_context})
+    result = runner.invoke(
+        status_web_service_cli, obj={"app_context": mock_app_context}
+    )
 
     assert result.exit_code == 0
     assert "Service Defined: True" in result.output

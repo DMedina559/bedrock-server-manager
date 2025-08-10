@@ -333,9 +333,7 @@ def test_start_web_ui_direct_success(mocker):
         app_context=mock_app_context, host="0.0.0.0", debug=True
     )
 
-    mock_run_web_server.assert_called_once_with(
-        mock_app_context, "0.0.0.0", True, None
-    )
+    mock_run_web_server.assert_called_once_with(mock_app_context, "0.0.0.0", True, None)
 
 
 def test_start_web_ui_direct_run_raises_runtime_error(mocker):
