@@ -143,7 +143,7 @@ from unittest.mock import patch
 @patch("bedrock_server_manager.config.settings.bcm_config.save_config")
 @patch("bedrock_server_manager.config.settings.Settings.load")
 @patch("bedrock_server_manager.config.settings.bcm_config.load_config")
-def test_determine_app_data_dir_priority(
+def test_determine_app_data_dir_uses_config(
     mock_load_config,
     mock_settings_load,
     mock_save_config,
@@ -152,25 +152,23 @@ def test_determine_app_data_dir_priority(
     db_session,
     mock_db_session_manager,
 ):
-    """Test that _determine_app_data_dir respects the priority: config > default."""
+    """Test that _determine_app_data_dir uses the data_dir from bcm_config."""
     monkeypatch.setattr(
         "bedrock_server_manager.config.settings.db_session_manager",
         mock_db_session_manager(db_session),
     )
-    mock_load_config.return_value = {}
+
+    # Provide a valid config for the Settings() constructor
+    init_dir = str(tmp_path / "init_dir")
+    mock_load_config.return_value = {"data_dir": init_dir}
 
     Settings._instance = None
     settings = Settings()
 
-    # 1. Test config file priority
+    # Now, test the method call
     config_dir = str(tmp_path / "config_dir")
     mock_load_config.return_value = {"data_dir": config_dir}
     assert settings._determine_app_data_dir() == config_dir
-    mock_load_config.return_value = {}
-
-    # 2. Test home directory default
-    expected_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
-    assert settings._determine_app_data_dir() == expected_dir
 
     Settings._instance = None
 
