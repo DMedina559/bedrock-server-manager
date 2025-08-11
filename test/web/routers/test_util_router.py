@@ -128,7 +128,7 @@ def test_get_root_favicon(mock_exists, client: TestClient):
     assert response.status_code == 200
 
 
-@patch("bedrock_server_manager.web.dependencies.needs_setup", return_value=False)
+@patch("bedrock_server_manager.web.app.needs_setup", return_value=False)
 @patch("bedrock_server_manager.web.routers.util.os.path.exists")
 def test_get_root_favicon_not_found(mock_exists, mock_needs_setup, client: TestClient):
     """Test the get_root_favicon route with no favicon found."""
@@ -145,7 +145,7 @@ def test_catch_all_api_route_authenticated(authenticated_client: TestClient):
     assert "Bedrock Server Manager" in response.text
 
 
-@patch("bedrock_server_manager.web.dependencies.needs_setup", return_value=False)
+@patch("bedrock_server_manager.web.app.needs_setup", return_value=False)
 def test_catch_all_api_route_unauthenticated(mock_needs_setup, client: TestClient):
     """Test the catch_all_api_route with an unauthenticated user."""
     response = client.get("/invalid/path", follow_redirects=False)
