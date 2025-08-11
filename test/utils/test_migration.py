@@ -273,25 +273,16 @@ class TestMigrateSettingsV1ToV2:
 
 
 class TestMigrateEnvTokenToDb:
-    @patch("bedrock_server_manager.instances.get_settings_instance")
     @patch.dict(os.environ, {"TEST_TOKEN": "test_token"})
-    def test_migrate_env_token_to_db_success(self, mock_get_settings_instance):
-        mock_settings = MagicMock()
-        mock_get_settings_instance.return_value = mock_settings
+    def test_migrate_env_token_to_db_success(self, app_context):
+        migrate_env_token_to_db("TEST", app_context=app_context)
+        assert app_context.settings.get("web.jwt_secret_key") == "test_token"
 
-        migrate_env_token_to_db("TEST")
-
-        mock_settings.set.assert_called_once_with("web.jwt_secret_key", "test_token")
-
-    @patch("bedrock_server_manager.instances.get_settings_instance")
     @patch.dict(os.environ, {}, clear=True)
-    def test_migrate_env_token_to_db_no_token(self, mock_get_settings_instance):
-        mock_settings = MagicMock()
-        mock_get_settings_instance.return_value = mock_settings
-
-        migrate_env_token_to_db("TEST")
-
-        mock_settings.set.assert_not_called()
+    def test_migrate_env_token_to_db_no_token(self, app_context):
+        initial_token = app_context.settings.get("web.jwt_secret_key")
+        migrate_env_token_to_db("TEST", app_context=app_context)
+        assert app_context.settings.get("web.jwt_secret_key") == initial_token
 
 
 class TestMigratePluginConfigToDb:
@@ -350,75 +341,57 @@ class TestMigrateServerConfigToDb:
 
 class TestMigrateServicesToDb:
     @patch("platform.system", return_value="Linux")
-    @patch("bedrock_server_manager.instances.get_settings_instance")
-    @patch("bedrock_server_manager.instances.get_server_instance")
-    def test_migrate_services_to_db_success(
-        self,
-        mock_get_server_instance,
-        mock_get_settings_instance,
-        mock_system,
-        tmp_path,
-    ):
-        mock_settings = MagicMock()
-        mock_settings.get.return_value = str(tmp_path)
-        mock_get_settings_instance.return_value = mock_settings
+    def test_migrate_services_to_db_success(self, mock_system, app_context, tmp_path):
+        app_context.settings.set("paths.servers", str(tmp_path))
 
         server_dir = tmp_path / "test_server"
         os.makedirs(server_dir)
 
-        mock_server = MagicMock()
-        mock_server.server_name = "test_server"
-        mock_server.is_installed.return_value = True
-        mock_get_server_instance.return_value = mock_server
-
-        service_name = f"bedrock-{mock_server.server_name}.service"
-        service_path = os.path.join(
-            os.path.expanduser("~"), ".config", "systemd", "user", service_name
-        )
-        os.makedirs(os.path.dirname(service_path), exist_ok=True)
-        with open(service_path, "w") as f:
-            f.write(
-                "[Unit]\nDescription=Test Service\n\n[Service]\nExecStart=/bin/true\n"
+        server = app_context.get_server("test_server")
+        with (
+            patch.object(server, "is_installed", return_value=True),
+            patch.object(server, "set_autostart") as mock_set_autostart,
+        ):
+            service_name = f"bedrock-{server.server_name}.service"
+            service_path = os.path.join(
+                os.path.expanduser("~"), ".config", "systemd", "user", service_name
             )
+            os.makedirs(os.path.dirname(service_path), exist_ok=True)
+            with open(service_path, "w") as f:
+                f.write(
+                    "[Unit]\nDescription=Test Service\n\n[Service]\nExecStart=/bin/true\n"
+                )
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = "enabled"
-            migrate_services_to_db()
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
+                mock_run.return_value.stdout = "enabled"
+                migrate_services_to_db(app_context=app_context)
 
-        mock_server.set_autostart.assert_called_once_with(True)
+            mock_set_autostart.assert_called_once_with(True)
 
-        os.remove(service_path)
+            os.remove(service_path)
 
     @patch("platform.system", return_value="Windows")
-    @patch("bedrock_server_manager.instances.get_settings_instance")
-    @patch("bedrock_server_manager.instances.get_server_instance")
     def test_migrate_windows_services_to_db_no_admin(
-        self,
-        mock_get_server_instance,
-        mock_get_settings_instance,
-        mock_system,
-        tmp_path,
+        self, mock_system, app_context, tmp_path
     ):
-        mock_settings = MagicMock()
-        mock_settings.get.return_value = str(tmp_path)
-        mock_get_settings_instance.return_value = mock_settings
+        app_context.settings.set("paths.servers", str(tmp_path))
 
         server_dir = tmp_path / "test_server"
         os.makedirs(server_dir)
 
-        mock_server = MagicMock()
-        mock_server.server_name = "test_server"
-        mock_server.is_installed.return_value = True
-        mock_get_server_instance.return_value = mock_server
-
-        with patch(
-            "bedrock_server_manager.core.system.windows.check_service_exists",
-            side_effect=Exception("Admin required"),
+        server = app_context.get_server("test_server")
+        with (
+            patch.object(server, "is_installed", return_value=True),
+            patch.object(server, "set_autostart") as mock_set_autostart,
         ):
-            migrate_services_to_db()
+            with patch(
+                "bedrock_server_manager.core.system.windows.check_service_exists",
+                side_effect=Exception("Admin required"),
+            ):
+                migrate_services_to_db(app_context=app_context)
 
-        mock_server.set_autostart.assert_not_called()
+            mock_set_autostart.assert_not_called()
 
 
 class TestMigrateEnvVarsToConfigFile:

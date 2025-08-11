@@ -7,17 +7,15 @@ from bedrock_server_manager.error import MissingArgumentError, UserInputError
 
 class TestPruneDownloadCache:
     @patch("bedrock_server_manager.api.misc.prune_old_downloads")
-    def test_prune_download_cache_success(self, mock_prune, temp_dir):
-        result = prune_download_cache(temp_dir, keep_count=2)
+    def test_prune_download_cache_success(self, mock_prune, temp_dir, app_context):
+        result = prune_download_cache(temp_dir, keep_count=2, app_context=app_context)
         assert result["status"] == "success"
         mock_prune.assert_called_once_with(download_dir=temp_dir, download_keep=2)
 
     @patch("bedrock_server_manager.api.misc.prune_old_downloads")
-    def test_prune_download_cache_default_keep(
-        self, mock_prune, temp_dir, mock_get_settings_instance
-    ):
-        mock_get_settings_instance.get.return_value = 3
-        result = prune_download_cache(temp_dir)
+    def test_prune_download_cache_default_keep(self, mock_prune, temp_dir, app_context):
+        app_context.settings.set("retention.downloads", 3)
+        result = prune_download_cache(temp_dir, app_context=app_context)
         assert result["status"] == "success"
         mock_prune.assert_called_once_with(download_dir=temp_dir, download_keep=3)
 

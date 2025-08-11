@@ -63,16 +63,6 @@ def isolated_settings(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def mock_get_settings_instance(monkeypatch):
-    """Fixture to patch get_settings_instance."""
-    mock = MagicMock()
-    monkeypatch.setattr(
-        "bedrock_server_manager.instances.get_settings_instance", lambda: mock
-    )
-    return mock
-
-
-@pytest.fixture
 def mock_settings(mocker):
     """Fixture for a mocked Settings object."""
     settings = MagicMock()
@@ -99,16 +89,6 @@ def mock_bedrock_server(tmp_path):
 
 
 @pytest.fixture
-def mock_get_server_instance(mocker, mock_bedrock_server):
-    """Fixture to patch get_server_instance to return a consistent mock BedrockServer."""
-    return mocker.patch(
-        "bedrock_server_manager.instances.get_server_instance",
-        return_value=mock_bedrock_server,
-        autospec=True,
-    )
-
-
-@pytest.fixture
 def mock_bedrock_server_manager(mocker):
     """Fixture for a mocked BedrockServerManager."""
     # Create a mock object with the same interface as BedrockServerManager
@@ -127,16 +107,6 @@ def mock_bedrock_server_manager(mocker):
     manager.can_manage_services = True
 
     return manager
-
-
-@pytest.fixture
-def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
-    """Fixture to patch get_manager_instance to return a consistent mock BedrockServerManager."""
-    return mocker.patch(
-        "bedrock_server_manager.instances.get_manager_instance",
-        return_value=mock_bedrock_server_manager,
-        autospec=True,
-    )
 
 
 @pytest.fixture

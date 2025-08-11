@@ -8,16 +8,8 @@ from bedrock_server_manager.error import ServerNotRunningError, ServerStartError
 
 
 @pytest.fixture
-def manager(real_bedrock_server):
+def manager(app_context):
     """Fixture to get a BedrockProcessManager instance and cleanup servers."""
-    # The real_bedrock_server fixture is included to ensure the server files are created
-    # before the manager is instantiated.
-
-    # Create a mock AppContext
-    app_context = MagicMock()
-    app_context.settings = real_bedrock_server.settings
-    app_context.get_server.return_value = real_bedrock_server
-
     manager = BedrockProcessManager(app_context=app_context)
     yield manager
     # Cleanup: stop any running servers after the test
@@ -28,9 +20,10 @@ def manager(real_bedrock_server):
             continue
 
 
-def test_start_server_success(manager, real_bedrock_server):
+def test_start_server_success(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server = manager.app_context.get_server("test_server")
+    server_name = server.server_name
 
     # Act
     manager.start_server(server_name)
@@ -41,16 +34,16 @@ def test_start_server_success(manager, real_bedrock_server):
     assert process.poll() is None  # Check if the process is running
 
     # Verify PID file is created
-    pid_file_path = real_bedrock_server.get_pid_file_path()
+    pid_file_path = server.get_pid_file_path()
     assert os.path.exists(pid_file_path)
     with open(pid_file_path, "r") as f:
         pid = int(f.read())
         assert pid == process.pid
 
 
-def test_start_server_already_running(manager, real_bedrock_server):
+def test_start_server_already_running(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
     manager.start_server(server_name)  # Start the server once
 
     # Assert
@@ -58,9 +51,9 @@ def test_start_server_already_running(manager, real_bedrock_server):
         manager.start_server(server_name)  # Try to start it again
 
 
-def test_stop_server_success(manager, real_bedrock_server):
+def test_stop_server_success(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
     manager.start_server(server_name)
     assert server_name in manager.servers
 
@@ -72,18 +65,18 @@ def test_stop_server_success(manager, real_bedrock_server):
     assert manager.intentionally_stopped[server_name] is True
 
 
-def test_stop_server_not_running(manager, real_bedrock_server):
+def test_stop_server_not_running(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
 
     # Assert
     with pytest.raises(ServerNotRunningError):
         manager.stop_server(server_name)
 
 
-def test_send_command_success(manager, real_bedrock_server):
+def test_send_command_success(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
     command = "say Hello"
     manager.start_server(server_name)
 
@@ -95,9 +88,9 @@ def test_send_command_success(manager, real_bedrock_server):
     pass
 
 
-def test_send_command_server_not_running(manager, real_bedrock_server):
+def test_send_command_server_not_running(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
     command = "say Hello"
 
     # Assert
@@ -105,9 +98,9 @@ def test_send_command_server_not_running(manager, real_bedrock_server):
         manager.send_command(server_name, command)
 
 
-def test_get_server_process(manager, real_bedrock_server):
+def test_get_server_process(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
     manager.start_server(server_name)
     expected_process = manager.servers[server_name]
 
@@ -118,9 +111,9 @@ def test_get_server_process(manager, real_bedrock_server):
     assert process is expected_process
 
 
-def test_get_server_process_not_found(manager, real_bedrock_server):
+def test_get_server_process_not_found(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
 
     # Act
     process = manager.get_server_process(server_name)
@@ -129,13 +122,11 @@ def test_get_server_process_not_found(manager, real_bedrock_server):
     assert process is None
 
 
-def test_server_restart_failsafe(
-    manager, mock_get_settings_instance, real_bedrock_server
-):
+def test_server_restart_failsafe(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
+    server_name = "test_server"
     manager.failure_counts[server_name] = 3
-    mock_get_settings_instance.get.return_value = 3
+    manager.app_context.settings.set("server.max_restarts", 3)
 
     with patch.object(manager, "start_server") as mock_start_server:
         # Act
@@ -145,10 +136,11 @@ def test_server_restart_failsafe(
         mock_start_server.assert_not_called()
 
 
-def test_start_server_already_running_with_pid_file(manager, real_bedrock_server):
+def test_start_server_already_running_with_pid_file(manager):
     # Arrange
-    server_name = real_bedrock_server.server_name
-    pid_file_path = real_bedrock_server.get_pid_file_path()
+    server = manager.app_context.get_server("test_server")
+    server_name = server.server_name
+    pid_file_path = server.get_pid_file_path()
 
     # Create a dummy PID file to simulate a stale process
     with open(pid_file_path, "w") as f:

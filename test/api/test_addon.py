@@ -5,16 +5,6 @@ from bedrock_server_manager.api.addon import import_addon
 from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentError
 
 
-@pytest.fixture
-def mock_get_server_instance(mocker, mock_bedrock_server):
-    """Fixture to patch get_server_instance for the api.addon module."""
-    mock_bedrock_server.is_running.return_value = False
-    return mocker.patch(
-        "bedrock_server_manager.api.addon.get_server_instance",
-        return_value=mock_bedrock_server,
-    )
-
-
 class TestImportAddon:
     @patch("bedrock_server_manager.api.addon.server_lifecycle_manager")
     def test_import_addon_success_with_stop_start(

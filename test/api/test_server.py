@@ -20,15 +20,6 @@ from bedrock_server_manager.error import (
 )
 
 
-@pytest.fixture
-def mock_get_server_instance(mocker, mock_bedrock_server):
-    """Fixture to patch get_server_instance for the api.server module."""
-    return mocker.patch(
-        "bedrock_server_manager.api.server.get_server_instance",
-        return_value=mock_bedrock_server,
-    )
-
-
 class TestServerSettings:
     def test_get_server_setting(self, app_context):
         from bedrock_server_manager.db.models import Server
@@ -152,19 +143,47 @@ class TestSendCommand:
 
 
 class TestDeleteServer:
-    def test_delete_server_data(self, mock_get_server_instance, mock_bedrock_server):
-        result = delete_server_data("test-server")
-        assert result["status"] == "success"
-        mock_bedrock_server.delete_all_data.assert_called_once()
+    def test_delete_server_data(self, app_context):
+        server = app_context.get_server("test_server")
+        server_dir = server.server_dir
+        config_dir = server.server_config_dir
+        backup_dir = server.server_backup_directory
 
-    @patch("bedrock_server_manager.api.server.stop_server")
-    def test_delete_server_data_running(
-        self, mock_stop, mock_get_server_instance, mock_bedrock_server
-    ):
-        mock_bedrock_server.is_running.return_value = True
-        mock_stop.return_value = {"status": "success"}
-        result = delete_server_data("test-server", stop_if_running=True)
+        # Ensure directories exist before deletion
+        os.makedirs(server_dir, exist_ok=True)
+        os.makedirs(config_dir, exist_ok=True)
+        os.makedirs(backup_dir, exist_ok=True)
+
+        result = delete_server_data("test_server", app_context=app_context)
         assert result["status"] == "success"
-        mock_stop.assert_called_once()
-        assert mock_stop.call_args[0][0] == "test-server"
-        mock_bedrock_server.delete_all_data.assert_called_once()
+
+        # Verify that directories are deleted
+        assert not os.path.exists(server_dir)
+        assert not os.path.exists(config_dir)
+        assert not os.path.exists(backup_dir)
+
+    def test_delete_server_data_running(self, app_context):
+        server = app_context.get_server("test_server")
+        server_dir = server.server_dir
+        config_dir = server.server_config_dir
+        backup_dir = server.server_backup_directory
+
+        # Ensure directories exist before deletion
+        os.makedirs(server_dir, exist_ok=True)
+        os.makedirs(config_dir, exist_ok=True)
+        os.makedirs(backup_dir, exist_ok=True)
+
+        with (
+            patch.object(server, "is_running", return_value=True),
+            patch.object(server, "stop") as mock_server_stop,
+        ):
+            result = delete_server_data(
+                "test_server", stop_if_running=True, app_context=app_context
+            )
+            assert result["status"] == "success"
+            assert mock_server_stop.call_count >= 1
+
+        # Verify that directories are deleted
+        assert not os.path.exists(server_dir)
+        assert not os.path.exists(config_dir)
+        assert not os.path.exists(backup_dir)
