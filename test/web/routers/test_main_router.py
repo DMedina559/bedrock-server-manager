@@ -12,7 +12,7 @@ def test_index_authenticated(authenticated_client: TestClient):
     assert "Bedrock Server Manager" in response.text
 
 
-@patch("bedrock_server_manager.app_context.needs_setup", return_value=False)
+@patch("bedrock_server_manager.web.dependencies.needs_setup", return_value=False)
 def test_index_unauthenticated(mock_needs_setup, client: TestClient):
     """Test the index route with an unauthenticated user."""
     response = client.get("/", follow_redirects=False)
