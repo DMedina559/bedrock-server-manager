@@ -1,8 +1,6 @@
 from unittest.mock import patch, MagicMock
 import pytest
 
-pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
-
 
 @patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_running_status")
 def test_get_server_running_status_api_route_success(

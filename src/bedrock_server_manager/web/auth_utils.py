@@ -77,18 +77,19 @@ def create_access_token(
         str: The encoded JWT string.
     """
     to_encode = data.copy()
+
+    if app_context:
+        settings = app_context.settings
+    else:
+        from ..instances import get_settings_instance
+
+        settings = get_settings_instance()
+
+    JWT_SECRET_KEY = get_jwt_secret_key(settings)
+
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
     else:
-        if app_context:
-            settings = app_context.settings
-        else:
-            from ..instances import get_settings_instance
-
-            settings = get_settings_instance()
-
-        JWT_SECRET_KEY = get_jwt_secret_key(settings)
-
         try:
             jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
         except (ValueError, TypeError):
