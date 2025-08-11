@@ -185,12 +185,6 @@ class BedrockServerManager:
         except Exception:
             self._app_version = "0.0.0"
 
-        # Validate that essential directory settings are present.
-        if not self._base_dir:
-            raise ConfigurationError("BASE_DIR not configured in settings.")
-        if not self._content_dir:
-            raise ConfigurationError("CONTENT_DIR not configured in settings.")
-
     # --- Settings Related ---
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Retrieves a configuration value by its key from the global settings.

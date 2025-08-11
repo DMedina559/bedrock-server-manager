@@ -27,34 +27,9 @@ def db_session():
 from unittest.mock import MagicMock
 
 
-@pytest.fixture(scope="function")
-def settings(db_session, monkeypatch, tmp_path, mock_db_session_manager):
-    # Setup for the settings instance
-    test_data_dir = tmp_path / "test_app_data"
-    test_data_dir.mkdir()
-
-    # Mock bcm_config.load_config to provide a data_dir
-    mock_load_config = MagicMock(return_value={"data_dir": str(test_data_dir)})
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.bcm_config.load_config",
-        mock_load_config,
-    )
-
-    # Point the settings to use the test database
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.db_session_manager",
-        mock_db_session_manager(db_session),
-    )
-
-    # Invalidate any existing singleton instance
-    Settings._instance = None
-
-    settings_instance = Settings()
-
-    yield settings_instance
-
-    # Teardown
-    Settings._instance = None
+@pytest.fixture
+def settings(app_context):
+    return app_context.settings
 
 
 def test_initialization_with_defaults(settings):
@@ -81,14 +56,15 @@ def test_setting_and_getting_values(settings, db_session):
     assert setting_in_db.value["logs"] == 10
 
 
-def test_nested_setting_and_getting(settings, db_session):
+def test_nested_setting_and_getting(settings, db_session, tmp_path):
     """Test that nested values can be set and retrieved."""
-    settings.set("paths.servers", "/new/server/path")
-    assert settings.get("paths.servers") == "/new/server/path"
+    new_path = tmp_path / "new_server_path"
+    settings.set("paths.servers", str(new_path))
+    assert settings.get("paths.servers") == str(new_path)
 
     # Check the database directly
     setting_in_db = db_session.query(Setting).filter_by(key="paths").one()
-    assert setting_in_db.value["servers"] == "/new/server/path"
+    assert setting_in_db.value["servers"] == str(new_path)
 
     # Ensure other nested values are not affected
     assert settings.get("paths.backups") is not None
@@ -114,15 +90,6 @@ def test_reload_settings(settings, db_session):
     assert settings.get("web.port") == 54321
 
 
-def test_singleton_behavior(settings):
-    """Test that the Settings class behaves as a singleton."""
-    new_settings_instance = Settings()
-    assert new_settings_instance is settings
-
-    settings.set("custom.test_singleton", True)
-    assert new_settings_instance.get("custom.test_singleton") is True
-
-
 def test_get_with_default_value(settings):
     """Test that the get method returns the default value if the key does not exist."""
     assert settings.get("non_existent_key", "default_value") == "default_value"
@@ -140,37 +107,14 @@ from unittest.mock import patch
 from unittest.mock import patch
 
 
-@patch("bedrock_server_manager.config.settings.bcm_config.save_config")
-@patch("bedrock_server_manager.config.settings.Settings.load")
-@patch("bedrock_server_manager.config.settings.bcm_config.load_config")
-def test_determine_app_data_dir_uses_config(
-    mock_load_config,
-    mock_settings_load,
-    mock_save_config,
-    monkeypatch,
-    tmp_path,
-    db_session,
-    mock_db_session_manager,
-):
+def test_determine_app_data_dir_uses_config(settings, monkeypatch, tmp_path):
     """Test that _determine_app_data_dir uses the data_dir from bcm_config."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.db_session_manager",
-        mock_db_session_manager(db_session),
-    )
-
-    # Provide a valid config for the Settings() constructor
-    init_dir = str(tmp_path / "init_dir")
-    mock_load_config.return_value = {"data_dir": init_dir}
-
-    Settings._instance = None
-    settings = Settings()
-
-    # Now, test the method call
-    config_dir = str(tmp_path / "config_dir")
-    mock_load_config.return_value = {"data_dir": config_dir}
-    assert settings._determine_app_data_dir() == config_dir
-
-    Settings._instance = None
+    with patch(
+        "bedrock_server_manager.config.settings.bcm_config.load_config"
+    ) as mock_load_config:
+        config_dir = str(tmp_path / "config_dir")
+        mock_load_config.return_value = {"data_dir": config_dir}
+        assert settings._determine_app_data_dir() == config_dir
 
 
 def test_determine_app_config_dir(settings):

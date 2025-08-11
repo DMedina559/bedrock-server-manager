@@ -172,167 +172,91 @@ def db_session(tmp_path):
     database._TABLES_CREATED = False
 
 
-@pytest.fixture(autouse=True)
-def reset_settings_singleton():
-    """Fixture to reset the Settings singleton before each test."""
-    from bedrock_server_manager.config import settings
-
-    settings.Settings._instance = None
-    yield
-    settings.Settings._instance = None
-
-
 @pytest.fixture
-def real_bedrock_server(isolated_settings):
+def real_bedrock_server(app_context):
     """Fixture for a real BedrockServer instance."""
-    from bedrock_server_manager.config.settings import Settings
-    import os
-
-    settings = Settings()
-    app_data_dir = settings.app_data_dir
-    config_dir = settings.config_dir
-
-    print(f"app_data_dir: {app_data_dir}")
-    print(f"config_dir: {config_dir}")
-
-    server_name = "test_server"
-
-    # Create the server's main directory
-    server_dir = os.path.join(app_data_dir, "servers", server_name)
-    os.makedirs(server_dir, exist_ok=True)
-    print(f"server_dir: {server_dir}, exists: {os.path.exists(server_dir)}")
-
-    # Create the server-specific config directory
-    server_config_dir = os.path.join(config_dir, server_name)
-    os.makedirs(server_config_dir, exist_ok=True)
-    print(
-        f"server_config_dir: {server_config_dir}, exists: {os.path.exists(server_config_dir)}"
-    )
-
-    properties_file = os.path.join(server_dir, "server.properties")
-    with open(properties_file, "w") as f:
-        f.write("server-name=test-server\nmax-players=5\nlevel-name=world\n")
-
-    import platform
-
-    # Create a dummy executable
-    executable_name = "bedrock_server"
-    if platform.system() == "Windows":
-        executable_name += ".exe"
-    executable_path = os.path.join(server_dir, executable_name)
-    with open(executable_path, "w") as f:
-        f.write(
-            """#!/bin/bash
-while read line; do
-  if [[ "$line" == "stop" ]]; then
-    exit 0
-  fi
-done
-"""
-        )
-    os.chmod(executable_path, 0o755)
-
-    server = BedrockServer(server_name, settings_instance=settings)
+    server = app_context.get_server("test_server")
     return server
 
 
 @pytest.fixture
-def real_manager(tmp_path):
+def real_manager(app_context):
     """Fixture for a real BedrockServerManager instance."""
-    from bedrock_server_manager.core.manager import BedrockServerManager
-    from bedrock_server_manager.config.settings import Settings
-    from unittest.mock import patch
-
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    config_dir = data_dir / ".config"
-    config_dir.mkdir()
-    servers_dir = data_dir / "servers"
-    servers_dir.mkdir()
-    content_dir = data_dir / "content"
-    content_dir.mkdir()
-
-    with patch("appdirs.user_config_dir", return_value=str(config_dir)):
-        with patch(
-            "bedrock_server_manager.config.bcm_config.load_config",
-            return_value={"data_dir": str(data_dir)},
-        ):
-            settings = Settings()
-            manager = BedrockServerManager(settings)
-            # Create a dummy web ui pid file
-            web_ui_pid_path = manager.get_web_ui_pid_path()
-            with open(web_ui_pid_path, "w") as f:
-                f.write("12345")
-            return manager
+    return app_context.manager
 
 
 @pytest.fixture
-def app_context(real_manager, tmp_path):
+def app_context(
+    isolated_settings, tmp_path, db_session, mock_db_session_manager, monkeypatch
+):
     """Fixture for a real AppContext instance."""
     from bedrock_server_manager.context import AppContext
     from bedrock_server_manager.config.settings import Settings
+    from bedrock_server_manager.core.manager import BedrockServerManager
     from bedrock_server_manager.instances import set_app_context
     from bedrock_server_manager.plugins.plugin_manager import PluginManager
-    from unittest.mock import patch
     import os
     import platform
 
+    # Point the settings to use the test database
+    monkeypatch.setattr(
+        "bedrock_server_manager.config.settings.db_session_manager",
+        mock_db_session_manager(db_session),
+    )
+
+    # Create dummy plugin
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir()
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-
-    # Create a dummy plugin
     plugin1_dir = plugins_dir / "plugin1"
     plugin1_dir.mkdir()
     with open(plugin1_dir / "__init__.py", "w") as f:
         f.write(
-            """
-from bedrock_server_manager.plugins.plugin_base import PluginBase
-
-class Plugin(PluginBase):
-    version = "1.0"
-    def on_load(self):
-        pass
-"""
+            "from bedrock_server_manager.plugins.plugin_base import PluginBase\n"
+            "class Plugin(PluginBase):\n"
+            '    version = "1.0"\n'
+            "    def on_load(self):\n"
+            "        pass\n"
         )
 
-    with patch("appdirs.user_config_dir", return_value=str(config_dir)):
-        settings = Settings()
-        settings.set("paths.plugins", str(plugins_dir))
-        plugin_manager = PluginManager(settings)
-        plugin_manager.plugin_dirs = [plugins_dir]
-        plugin_manager.load_plugins()
+    settings = Settings()
+    settings.set("paths.plugins", str(plugins_dir))
 
-    app_data_dir = settings.app_data_dir
-    config_dir = settings.config_dir
+    manager = BedrockServerManager(settings)
+
+    # Create dummy server files
     server_name = "test_server"
-    server_dir = os.path.join(app_data_dir, "servers", server_name)
+    server_dir = os.path.join(settings.get("paths.servers"), server_name)
     os.makedirs(server_dir, exist_ok=True)
-    server_config_dir = os.path.join(config_dir, server_name)
+
+    server_config_dir = os.path.join(settings.config_dir, server_name)
     os.makedirs(server_config_dir, exist_ok=True)
+
     properties_file = os.path.join(server_dir, "server.properties")
     with open(properties_file, "w") as f:
         f.write("server-name=test-server\nmax-players=5\nlevel-name=world\n")
+
     executable_name = "bedrock_server"
     if platform.system() == "Windows":
         executable_name += ".exe"
     executable_path = os.path.join(server_dir, executable_name)
     with open(executable_path, "w") as f:
         f.write(
-            """#!/bin/bash
-while read line; do
-  if [[ "$line" == "stop" ]]; then
-    exit 0
-  fi
-done
-"""
+            "#!/bin/bash\n"
+            "while read line; do\n"
+            '  if [[ "$line" == "stop" ]]; then\n'
+            "    exit 0\n"
+            "  fi\n"
+            "done\n"
         )
     os.chmod(executable_path, 0o755)
 
-    context = AppContext(settings, real_manager)
-    context.plugin_manager = plugin_manager
+    context = AppContext(settings=settings, manager=manager)
     set_app_context(context)
+
+    # Load plugins
+    context.plugin_manager.plugin_dirs = [plugins_dir]
+    context.plugin_manager.load_plugins()
+
     return context
 
 
