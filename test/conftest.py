@@ -148,7 +148,7 @@ def mock_db_session_manager(mocker):
 
 
 @pytest.fixture(autouse=True)
-def db_session():
+def db_session(tmp_path):
     """
     Fixture to set up and tear down the database for each test.
     This ensures that each test runs in a clean, isolated environment.
@@ -156,9 +156,16 @@ def db_session():
     from bedrock_server_manager.db import database
 
     # Setup: initialize the database with a test-specific URL
-    database.initialize_database("sqlite://")
+    db_path = tmp_path / "test.db"
+    database.initialize_database(f"sqlite:///{db_path}")
     database._ensure_tables_created()
-    yield
+
+    db = database.SessionLocal()
+
+    yield db
+
+    db.close()
+
     # Teardown: reset the database module's state
     database.engine = None
     database.SessionLocal = None
@@ -331,32 +338,6 @@ done
 
 TEST_USER = "testuser"
 TEST_PASSWORD = "testpassword"
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-@pytest.fixture(scope="session")
-def db_engine():
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture(scope="function")
-def test_db(db_engine):
-    connection = db_engine.connect()
-    transaction = connection.begin()
-    db = TestingSessionLocal(bind=connection)
-
-    yield db
-
-    db.close()
-    transaction.rollback()
-    connection.close()
 
 
 @pytest.fixture
@@ -384,24 +365,24 @@ def mock_dependencies(monkeypatch, app):
 
 
 @pytest.fixture
-def client(app, test_db):
+def client(app, db_session):
     """Create a test client for the app, with mocked dependencies."""
-    app.dependency_overrides[get_db] = lambda: test_db
+    app.dependency_overrides[get_db] = lambda: db_session
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def authenticated_user(test_db):
+def authenticated_user(db_session):
     user = UserModel(
         username=TEST_USER,
         hashed_password=pwd_context.hash(TEST_PASSWORD),
         role="admin",
     )
-    test_db.add(user)
-    test_db.commit()
-    test_db.refresh(user)
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
     return user
 
 
