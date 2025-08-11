@@ -64,9 +64,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     from . import api
 
     settings = app_context.settings
-
-    # --- Application Context Setup ---
-    plugin_manager = PluginManager(settings)
+    plugin_manager = app_context.plugin_manager
 
     # Define shutdown hooks here to capture the plugin_manager instance
     def shutdown_web_app():
@@ -78,6 +76,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         logger.info("Web app shutdown hooks complete.")
 
     atexit.register(shutdown_web_app)
+    plugin_manager.load_plugins()
 
     from .config import SCRIPT_DIR
 
@@ -113,8 +112,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         },
     )
     app.state.app_context = app_context
-
-    app_context.plugin_manager.load_plugins()
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
 
