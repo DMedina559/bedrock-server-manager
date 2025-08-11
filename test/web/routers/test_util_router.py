@@ -5,35 +5,36 @@ import pytest
 from fastapi.responses import FileResponse
 from fastapi.testclient import TestClient
 
-pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
 
-
-@pytest.mark.skip(reason="FileResponse is causing issues")
-@patch("bedrock_server_manager.web.routers.util.FileResponse")
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
 def test_serve_custom_panorama_api_custom(
-    mock_isfile, mock_file_response, authenticated_client, mock_get_settings_instance
+    mock_isfile, authenticated_client, app_context, tmp_path, mocker
 ):
     """Test the serve_custom_panorama_api route with a custom panorama."""
-    mock_get_settings_instance.config_dir = "/fake/path"
+    mocker.patch.object(
+        type(app_context.settings),
+        "config_dir",
+        new_callable=mocker.PropertyMock(return_value=str(tmp_path)),
+    )
     mock_isfile.return_value = True
 
-    async def fake_file_response(*args, **kwargs):
-        return MagicMock(status_code=200)
-
-    mock_file_response.side_effect = fake_file_response
+    # Create a fake panorama file
+    panorama_file = tmp_path / "panorama.jpeg"
+    panorama_file.write_text("fake image data")
 
     response = authenticated_client.get("/api/panorama")
     assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.text == "fake image data"
 
 
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
 def test_serve_custom_panorama_api_default(
-    mock_isfile, authenticated_client, mock_get_settings_instance
+    mock_isfile, authenticated_client, app_context
 ):
     """Test the serve_custom_panorama_api route with a default panorama."""
     with tempfile.NamedTemporaryFile(suffix=".jpeg") as tmp:
-        mock_get_settings_instance.config_dir = "/fake/path"
+        app_context.config_dir = "/fake/path"
         mock_isfile.side_effect = [False, True]
 
         response = authenticated_client.get("/api/panorama")
@@ -42,44 +43,66 @@ def test_serve_custom_panorama_api_default(
 
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
 def test_serve_custom_panorama_api_not_found(
-    mock_isfile, authenticated_client, mock_get_settings_instance
+    mock_isfile, authenticated_client, app_context
 ):
     """Test the serve_custom_panorama_api route with no panorama found."""
-    mock_get_settings_instance.config_dir = "/fake/path"
+    app_context.config_dir = "/fake/path"
     mock_isfile.return_value = False
 
     response = authenticated_client.get("/api/panorama")
     assert response.status_code == 404
 
 
-@pytest.mark.skip(reason="FileResponse is causing issues")
-@pytest.mark.skip(reason="FileResponse is causing issues")
-def test_serve_world_icon_api_default(authenticated_client):
+@patch("bedrock_server_manager.web.routers.util.os.path.isfile")
+def test_serve_world_icon_api_custom(
+    mock_isfile, authenticated_client, app_context, tmp_path, mocker
+):
     """Test the serve_world_icon_api route with a custom icon."""
-    mock_get_server.return_value.world_icon_filesystem_path = "/fake/path"
-    mock_get_server.return_value.has_world_icon.return_value = True
+    # Setup mock server and paths
+    mock_server = MagicMock()
+    icon_path = tmp_path / "world_icon.jpeg"
+    icon_path.write_text("fake icon data")
+
+    mock_server.world_icon_filesystem_path = str(icon_path)
+    mock_server.has_world_icon.return_value = True
+    mocker.patch.object(app_context, "get_server", return_value=mock_server)
     mock_isfile.return_value = True
 
-    async def fake_file_response(*args, **kwargs):
-        return MagicMock(status_code=200)
-
-    mock_file_response.side_effect = fake_file_response
-
+    # Make the request
     response = authenticated_client.get("/api/server/test-server/world/icon")
+
+    # Assert the response
     assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.text == "fake icon data"
 
 
-@pytest.mark.skip(reason="FileResponse is causing issues")
-def test_serve_world_icon_api_default(authenticated_client):
+@patch("bedrock_server_manager.web.routers.util.os.path.isfile")
+def test_serve_world_icon_api_default(
+    mock_isfile, authenticated_client, app_context, tmp_path, mocker
+):
     """Test the serve_world_icon_api route with a default icon."""
-    mock_get_server.return_value.world_icon_filesystem_path = "/fake/path"
-    mock_get_server.return_value.has_world_icon.return_value = False
-    mock_isfile.side_effect = [False, True]
-    mock_file_response.return_value = MagicMock(spec=FileResponse, background=None)
-    mock_file_response.return_value.status_code = 200
+    # Setup mock server to fallback to default
+    mock_server = MagicMock()
+    mock_server.has_world_icon.return_value = False
+    mocker.patch.object(app_context, "get_server", return_value=mock_server)
+    mocker.patch("bedrock_server_manager.web.routers.util.STATIC_DIR", str(tmp_path))
 
+    # Create the fake default icon file
+    default_icon_dir = tmp_path / "image" / "icon"
+    default_icon_dir.mkdir(parents=True)
+    (default_icon_dir / "favicon.ico").write_text("fake default icon")
+
+    # Mock isfile to check for custom then default
+    mock_isfile.return_value = True
+
+    # Make the request
     response = authenticated_client.get("/api/server/test-server/world/icon")
+
+    # Assert the response
     assert response.status_code == 200
+    assert response.headers["content-type"] == "image/vnd.microsoft.icon"
+    assert response.text == "fake default icon"
 
 
 @patch("bedrock_server_manager.web.routers.util.get_server_instance")
@@ -105,12 +128,13 @@ def test_get_root_favicon(mock_exists, client: TestClient):
     assert response.status_code == 200
 
 
+@patch("bedrock_server_manager.app_context.needs_setup", return_value=False)
 @patch("bedrock_server_manager.web.routers.util.os.path.exists")
-def test_get_root_favicon_not_found(mock_exists, client: TestClient):
+def test_get_root_favicon_not_found(mock_exists, mock_needs_setup, client: TestClient):
     """Test the get_root_favicon route with no favicon found."""
     mock_exists.return_value = False
 
-    response = client.get("/favicon.ico")
+    response = client.get("/favicon.ico", follow_redirects=False)
     assert response.status_code == 404
 
 
@@ -121,7 +145,8 @@ def test_catch_all_api_route_authenticated(authenticated_client: TestClient):
     assert "Bedrock Server Manager" in response.text
 
 
-def test_catch_all_api_route_unauthenticated(client: TestClient):
+@patch("bedrock_server_manager.app_context.needs_setup", return_value=False)
+def test_catch_all_api_route_unauthenticated(mock_needs_setup, client: TestClient):
     """Test the catch_all_api_route with an unauthenticated user."""
     response = client.get("/invalid/path", follow_redirects=False)
     assert response.status_code == 302

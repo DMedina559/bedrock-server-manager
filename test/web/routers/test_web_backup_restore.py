@@ -1,8 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
-
 
 @patch("bedrock_server_manager.web.routers.backup_restore.tasks.run_task")
 @patch("bedrock_server_manager.web.routers.backup_restore.tasks.create_task")

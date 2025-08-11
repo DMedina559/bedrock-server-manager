@@ -1,8 +1,6 @@
 from unittest.mock import patch, MagicMock
 import pytest
 
-pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
-
 
 def test_manage_settings_page_route(authenticated_client):
     """Test the manage_settings_page_route with a successful response."""

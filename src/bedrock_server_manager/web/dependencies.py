@@ -52,15 +52,11 @@ async def validate_server_exists(
         validation_result = utils_api.validate_server_exist(
             server_name=server_name, app_context=app_context
         )
-        if validation_result.get("status") != "success":
-            logger.warning(
-                f"Dependency: Server '{server_name}' not found or invalid. Message: {validation_result.get('message')}"
-            )
+        if not validation_result:
+            logger.warning(f"Dependency: Server '{server_name}' not found or invalid.")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=validation_result.get(
-                    "message", f"Server '{server_name}' not found or is invalid."
-                ),
+                detail=f"Server '{server_name}' not found or is invalid.",
             )
         # If server exists, the dependency does nothing and request proceeds.
         logger.debug(f"Dependency: Server '{server_name}' validated successfully.")

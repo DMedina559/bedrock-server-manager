@@ -1,8 +1,6 @@
 from unittest.mock import patch, MagicMock
 import pytest
 
-pytestmark = pytest.mark.skip(reason="WEB Test need refactoring")
-
 
 @patch("bedrock_server_manager.web.routers.content.app_api.list_available_worlds_api")
 def test_list_worlds_api_route_success(mock_list_worlds, authenticated_client):
@@ -77,7 +75,7 @@ def test_install_world_api_route_success(
     app_context = MagicMock()
     app_context.settings.get.return_value = "/fake/path"
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = True
+    mock_validate_server.return_value = {"status": "success"}
     mock_isfile.return_value = True
 
     response = authenticated_client.post(
@@ -97,7 +95,7 @@ def test_install_world_api_route_not_found(
     app_context = MagicMock()
     app_context.settings.get.return_value = "/fake/path"
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = True
+    mock_validate_server.return_value = {"status": "success"}
     mock_isfile.return_value = False
 
     response = authenticated_client.post(
@@ -253,7 +251,7 @@ def test_export_world_api_route_success(mock_validate_server, authenticated_clie
     """Test the export_world_api_route with a successful response."""
     app_context = MagicMock()
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = True
+    mock_validate_server.return_value = {"status": "success"}
 
     response = authenticated_client.post("/api/server/test-server/world/export")
     assert response.status_code == 202
@@ -265,7 +263,7 @@ def test_reset_world_api_route_success(mock_validate_server, authenticated_clien
     """Test the reset_world_api_route with a successful response."""
     app_context = MagicMock()
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = True
+    mock_validate_server.return_value = {"status": "success"}
 
     response = authenticated_client.delete("/api/server/test-server/world/reset")
     assert response.status_code == 202
@@ -281,7 +279,7 @@ def test_install_addon_api_route_success(
     app_context = MagicMock()
     app_context.settings.get.return_value = "/fake/path"
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = True
+    mock_validate_server.return_value = {"status": "success"}
     mock_isfile.return_value = True
 
     response = authenticated_client.post(
@@ -301,7 +299,7 @@ def test_install_addon_api_route_not_found(
     app_context = MagicMock()
     app_context.settings.get.return_value = "/fake/path"
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = True
+    mock_validate_server.return_value = {"status": "success"}
     mock_isfile.return_value = False
 
     response = authenticated_client.post(
