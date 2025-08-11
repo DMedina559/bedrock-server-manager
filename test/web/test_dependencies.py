@@ -27,13 +27,14 @@ async def test_validate_server_exists(mock_validate):
 @patch("bedrock_server_manager.api.utils.validate_server_exist")
 async def test_validate_server_not_found(mock_validate):
     """Test that a non-existent server raises an HTTPException."""
-    mock_validate.return_value = None
+    mock_validate.return_value = {"status": "error", "message": "Server not found"}
     request = MagicMock()
     app_context = MagicMock()
     request.app.state.app_context = app_context
     with pytest.raises(HTTPException) as excinfo:
         await validate_server_exists(request, TEST_SERVER_NAME)
     assert excinfo.value.status_code == 404
+    assert "Server not found" in excinfo.value.detail
 
 
 @pytest.mark.asyncio
