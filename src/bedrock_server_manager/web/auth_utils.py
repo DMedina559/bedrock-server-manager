@@ -30,6 +30,7 @@ from .schemas import User
 from ..db.database import db_session_manager
 from ..db.models import User as UserModel
 from ..context import AppContext
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +39,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # --- JWT Configuration ---
-def get_jwt_secret_key() -> str:
-    from ..instances import get_settings_instance
-
+def get_jwt_secret_key(settings: Settings) -> str:
     """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
-    settings = get_settings_instance()
     jwt_secret_key = settings.get("web.jwt_secret_key")
 
     if not jwt_secret_key:
@@ -78,7 +76,6 @@ def create_access_token(
     Returns:
         str: The encoded JWT string.
     """
-    JWT_SECRET_KEY = get_jwt_secret_key()
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
@@ -89,6 +86,8 @@ def create_access_token(
             from ..instances import get_settings_instance
 
             settings = get_settings_instance()
+
+        JWT_SECRET_KEY = get_jwt_secret_key(settings)
 
         try:
             jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
@@ -129,7 +128,6 @@ async def get_current_user_optional(
         Optional[User]: A dictionary ``{"username": str, "identity_type": "jwt"}``
         if authentication is successful, otherwise ``None``.
     """
-    JWT_SECRET_KEY = get_jwt_secret_key()
     token = request.cookies.get("access_token_cookie")
     if not token:
         auth_header = request.headers.get("Authorization")
@@ -142,6 +140,9 @@ async def get_current_user_optional(
         return None
 
     try:
+        app_context = request.app.state.app_context
+        settings = app_context.settings
+        JWT_SECRET_KEY = get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
         if username is None:
