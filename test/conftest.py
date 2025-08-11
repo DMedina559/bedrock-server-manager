@@ -19,7 +19,7 @@ from bedrock_server_manager.web.auth_utils import (
 )
 from datetime import timedelta
 from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.app_context import create_web_app
+from bedrock_server_manager.web.app import create_web_app
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -356,9 +356,7 @@ def mock_dependencies(monkeypatch, app):
     async def mock_needs_setup():
         return False
 
-    monkeypatch.setattr(
-        "bedrock_server_manager.app_context.needs_setup", mock_needs_setup
-    )
+    monkeypatch.setattr("bedrock_server_manager.web.app.needs_setup", mock_needs_setup)
     app.dependency_overrides[validate_server_exists] = lambda: "test-server"
     yield
     app.dependency_overrides = {}

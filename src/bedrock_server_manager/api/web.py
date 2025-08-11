@@ -184,9 +184,7 @@ def start_web_server_api(
 
 
 @trigger_plugin_event(before="before_web_server_stop", after="after_web_server_stop")
-def stop_web_server_api(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, str]:
+def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
     """Stops the detached web server process.
 
     This function reads the PID from the web server's PID file (path obtained
@@ -218,10 +216,7 @@ def stop_web_server_api(
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         pid_file_path = manager.get_web_ui_pid_path()
         expected_exe = manager.get_web_ui_executable_path()
         expected_arg = manager.get_web_ui_expected_start_arg()
@@ -251,10 +246,7 @@ def stop_web_server_api(
 
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         system_process_utils.remove_pid_file_if_exists(manager.get_web_ui_pid_path())
         error_type = (
             "PID file error"
@@ -270,9 +262,7 @@ def stop_web_server_api(
 
 
 @plugin_method("get_web_server_status")
-def get_web_server_status_api(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_web_server_status_api(app_context: AppContext) -> Dict[str, Any]:
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
@@ -306,10 +296,7 @@ def get_web_server_status_api(
         }
     pid = None
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         pid_file_path = manager.get_web_ui_pid_path()
         expected_exe = manager.get_web_ui_executable_path()
         expected_arg = manager.get_web_ui_expected_start_arg()
@@ -378,12 +365,11 @@ def get_web_server_status_api(
     before="before_web_service_change", after="after_web_service_change"
 )
 def create_web_ui_service(
+    app_context: AppContext,
     autostart: bool = False,
     system: bool = False,
     username: Optional[str] = None,
     password: Optional[str] = None,
-    settings=None,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Creates (or updates) a system service for the Web UI.
 
@@ -419,10 +405,7 @@ def create_web_ui_service(
             :class:`~.error.CommandNotFoundError`, or :class:`~.error.FileOperationError`.
     """
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -462,7 +445,7 @@ def create_web_ui_service(
     before="before_web_service_change", after="after_web_service_change"
 )
 def enable_web_ui_service(
-    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+    app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
     """Enables the Web UI system service for autostart.
 
@@ -489,10 +472,7 @@ def enable_web_ui_service(
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -520,7 +500,7 @@ def enable_web_ui_service(
     before="before_web_service_change", after="after_web_service_change"
 )
 def disable_web_ui_service(
-    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+    app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
     """Disables the Web UI system service from autostarting.
 
@@ -547,10 +527,7 @@ def disable_web_ui_service(
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -583,7 +560,7 @@ def disable_web_ui_service(
     before="before_web_service_change", after="after_web_service_change"
 )
 def remove_web_ui_service(
-    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+    app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
     """Removes the Web UI system service.
 
@@ -616,10 +593,7 @@ def remove_web_ui_service(
             :class:`~.error.FileOperationError`).
     """
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         if not manager.can_manage_services:
             return {
                 "status": "error",
@@ -653,7 +627,7 @@ def remove_web_ui_service(
 
 
 def get_web_ui_service_status(
-    system: bool = False, settings=None, app_context: Optional[AppContext] = None
+    app_context: AppContext, system: bool = False
 ) -> Dict[str, Any]:
     """Gets the current status of the Web UI system service.
 
@@ -682,10 +656,7 @@ def get_web_ui_service_status(
         "is_enabled": False,
     }
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         if not manager.can_manage_services:
             return {
                 "status": "success",

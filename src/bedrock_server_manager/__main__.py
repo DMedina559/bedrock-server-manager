@@ -10,10 +10,131 @@ the interactive menu system.
 
 import logging
 import sys
-
+import atexit
 import click
 
-from .app_context import create_cli_app
+try:
+    from . import __version__
+    from .config import app_name_title
+    from .db import database
+    from .error import UserExitError
+    from .logging import log_separator, setup_logging
+    from .utils.general import startup_checks
+    from .config.settings import Settings
+    from .core.manager import BedrockServerManager
+    from .context import AppContext
+    from .plugins import PluginManager
+except ImportError as e:
+    # Use basic logging as a fallback if our custom logger isn't available.
+    logging.basicConfig(level=logging.CRITICAL)
+    logger = logging.getLogger("bsm_critical_setup")
+    logger.critical(f"A critical module could not be imported: {e}", exc_info=True)
+    print(
+        f"CRITICAL ERROR: A required module could not be found: {e}.\n"
+        "Please ensure the package is installed correctly.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+# --- Import all Click command modules ---
+# These are grouped logically for clarity.
+from .cli import (
+    cleanup,
+    generate_password,
+    web,
+    setup,
+    service,
+    migrate,
+)
+
+
+def create_cli_app():
+    """Creates and configures the CLI application."""
+
+    @click.group(
+        invoke_without_command=True,
+        context_settings=dict(help_option_names=["-h", "--help"]),
+    )
+    @click.version_option(
+        __version__, "-v", "--version", message=f"{app_name_title} %(version)s"
+    )
+    @click.pass_context
+    def cli(ctx: click.Context):
+        """A comprehensive CLI for managing Minecraft Bedrock servers.
+
+        This tool provides a full suite of commands to install, configure,
+        manage, and monitor Bedrock dedicated server instances.
+
+        If run without any arguments, it launches a user-friendly interactive
+        menu to guide you through all available actions.
+        """
+
+        try:
+            # --- Initial Application Setup ---
+            settings = Settings()
+            manager = BedrockServerManager(settings)
+
+            app_context = AppContext(settings=settings, manager=manager)
+            from .instances import set_app_context
+
+            set_app_context(app_context)
+
+            log_dir = settings.get("paths.logs")
+
+            logger = setup_logging(
+                log_dir=log_dir,
+                log_keep=settings.get("retention.logs"),
+                file_log_level=settings.get("logging.file_level"),
+                cli_log_level=settings.get("logging.cli_level"),
+                force_reconfigure=True,
+                plugin_dir=settings.get("paths.plugins"),
+            )
+            log_separator(logger, app_name=app_name_title, app_version=__version__)
+            logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
+
+            startup_checks(app_context, app_name_title, __version__)
+
+            # --- Event Handling and Shutdown ---
+            def shutdown_cli_app():
+                logger.info("Running CLI app shutdown hooks...")
+                if database.engine:
+                    database.engine.dispose()
+                logger.info("CLI app shutdown hooks complete.")
+
+            atexit.register(shutdown_cli_app)
+
+        except Exception as setup_e:
+            logging.getLogger("bsm_critical_setup").critical(
+                f"An unrecoverable error occurred during CLI application startup: {setup_e}",
+                exc_info=True,
+            )
+            click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
+            sys.exit(1)
+
+        ctx.obj = {"cli": cli, "bsm": manager, "app_context": app_context}
+
+        if ctx.invoked_subcommand is None:
+            logger.info("No command specified.")
+            sys.exit(1)
+
+    # --- Command Assembly ---
+    # A structured way to add all commands to the main `cli` group.
+    def _add_commands_to_cli():
+        """Attaches all core command groups/standalone commands AND plugin commands to the main CLI group."""
+
+        cli.add_command(web.web)
+        cli.add_command(cleanup.cleanup)
+        cli.add_command(setup.setup)
+        cli.add_command(
+            generate_password.generate_password_hash_command, name="generate-password"
+        )
+        cli.add_command(service.service)
+        cli.add_command(migrate.migrate)
+
+    # Call the assembly function to build the CLI with core and plugin commands
+    _add_commands_to_cli()
+
+    return cli
 
 
 def main():

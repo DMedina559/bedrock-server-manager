@@ -28,8 +28,6 @@ from fastapi import (
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from bedrock_server_manager import app_context
-
 from ..schemas import BaseApiResponse, User
 from ..templating import get_templates
 from ..auth_utils import get_current_user, get_admin_user

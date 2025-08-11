@@ -61,10 +61,10 @@ def test_start_web_server_detached(mock_start_api, runner, mock_ctx):
 
 
 @patch("bedrock_server_manager.api.web.stop_web_server_api")
-def test_stop_web_server(mock_stop_api, runner):
+def test_stop_web_server(mock_stop_api, runner, mock_ctx):
     mock_stop_api.return_value = {"status": "success"}
-    result = runner.invoke(stop_web_server)
+    result = runner.invoke(stop_web_server, obj=mock_ctx.obj)
 
     assert result.exit_code == 0
     assert "Web server stopped successfully" in result.output
-    mock_stop_api.assert_called_once()
+    mock_stop_api.assert_called_once_with(app_context=mock_ctx.obj["app_context"])

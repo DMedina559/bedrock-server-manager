@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
 from click.testing import CliRunner
-from bedrock_server_manager.app_context import create_cli_app
+from bedrock_server_manager.__main__ import create_cli_app
 
 cli = create_cli_app()
 
@@ -12,16 +12,16 @@ def runner():
     return CliRunner()
 
 
-@patch("bedrock_server_manager.app_context.setup_logging")
-@patch("bedrock_server_manager.app_context.startup_checks")
+@patch("bedrock_server_manager.__main__.setup_logging")
+@patch("bedrock_server_manager.__main__.startup_checks")
 def test_main_no_args(mock_startup_checks, mock_setup_logging, runner):
     """Test that the main function runs without arguments."""
     result = runner.invoke(cli)
     assert result.exit_code != 0
 
 
-@patch("bedrock_server_manager.app_context.setup_logging")
-@patch("bedrock_server_manager.app_context.startup_checks")
+@patch("bedrock_server_manager.__main__.setup_logging")
+@patch("bedrock_server_manager.__main__.startup_checks")
 @patch("bedrock_server_manager.api.web.start_web_server_api")
 def test_main_web_command(
     mock_start_web_server, mock_startup_checks, mock_setup_logging, runner
@@ -31,8 +31,8 @@ def test_main_web_command(
     mock_start_web_server.assert_called_once()
 
 
-@patch("bedrock_server_manager.app_context.setup_logging")
-@patch("bedrock_server_manager.app_context.startup_checks")
+@patch("bedrock_server_manager.__main__.setup_logging")
+@patch("bedrock_server_manager.__main__.startup_checks")
 def test_main_generate_password_command(
     mock_startup_checks, mock_setup_logging, runner
 ):

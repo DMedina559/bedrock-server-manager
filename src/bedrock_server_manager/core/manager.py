@@ -539,7 +539,7 @@ class BedrockServerManager:
                 "AppContext is required to start the Web UI in direct mode."
             )
         try:
-            from bedrock_server_manager.web.app import (
+            from bedrock_server_manager.web.main import (
                 run_web_server as run_bsm_web_application,
             )
 

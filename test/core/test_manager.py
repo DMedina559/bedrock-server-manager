@@ -326,7 +326,7 @@ def test_start_web_ui_direct_success(mocker):
     """Test start_web_ui_direct successfully calls the web app runner."""
     settings = Settings()
     manager = BedrockServerManager(settings)
-    mock_run_web_server = mocker.patch("bedrock_server_manager.web.app.run_web_server")
+    mock_run_web_server = mocker.patch("bedrock_server_manager.web.main.run_web_server")
     mock_app_context = mocker.MagicMock()
 
     manager.start_web_ui_direct(
@@ -341,7 +341,7 @@ def test_start_web_ui_direct_run_raises_runtime_error(mocker):
     settings = Settings()
     manager = BedrockServerManager(settings)
     mock_run_web_server = mocker.patch(
-        "bedrock_server_manager.web.app.run_web_server",
+        "bedrock_server_manager.web.main.run_web_server",
         side_effect=RuntimeError("Web server failed"),
     )
     mock_app_context = mocker.MagicMock()
@@ -357,7 +357,7 @@ def test_start_web_ui_direct_import_error(mocker):
     settings = Settings()
     manager = BedrockServerManager(settings)
     mocker.patch(
-        "bedrock_server_manager.web.app.run_web_server",
+        "bedrock_server_manager.web.main.run_web_server",
         side_effect=ImportError("Cannot import web app"),
     )
     mock_app_context = mocker.MagicMock()

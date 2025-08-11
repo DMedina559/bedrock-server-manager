@@ -18,8 +18,6 @@ from typing import Tuple
 import click
 import questionary
 
-from bedrock_server_manager import app_context
-
 from ..api import web as web_api
 from .utils import handle_api_response as _handle_api_response
 from ..error import (
@@ -121,7 +119,8 @@ def start_web_server(ctx: click.Context, hosts: Tuple[str], debug: bool, mode: s
 
 
 @web.command("stop")
-def stop_web_server():
+@click.pass_context
+def stop_web_server(ctx: click.Context):
     """
     Stops a detached Bedrock Server Manager web UI process.
 
@@ -134,9 +133,10 @@ def stop_web_server():
 
     Calls API: :func:`~bedrock_server_manager.api.web.stop_web_server_api`.
     """
+    app_context = ctx.obj["app_context"]
     click.echo("Attempting to stop the web server...")
     try:
-        response = web_api.stop_web_server_api()
+        response = web_api.stop_web_server_api(app_context=app_context)
         _handle_api_response(response, "Web server stopped successfully.")
     except BSMError as e:
         click.secho(f"An error occurred: {e}", fg="red")
