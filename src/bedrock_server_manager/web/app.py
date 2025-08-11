@@ -1,3 +1,4 @@
+# bedrock_server_manager/web/app.py
 import logging
 import sys
 import atexit

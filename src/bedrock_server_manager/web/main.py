@@ -1,4 +1,4 @@
-# bedrock_server_manager/web/app.py
+# bedrock_server_manager/web/main.py
 """
 Provides the main function for configuring and running the Uvicorn web server.
 
