@@ -25,7 +25,7 @@ class APIDocsGenerator(PluginBase):
         This is the perfect time to inspect and document the API.
         """
         self.logger.info("Generating API documentation...")
-        self.settings = Settings()
+        self.settings = self.api.app_context.settings
 
         try:
             # 1. Get the detailed API list
