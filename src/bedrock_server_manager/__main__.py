@@ -111,7 +111,7 @@ def create_cli_app():
             click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
             sys.exit(1)
 
-        ctx.obj = {"cli": cli, "bsm": manager, "app_context": app_context}
+        ctx.obj = {"cli": cli, "app_context": app_context}
 
         if ctx.invoked_subcommand is None:
             logger.info("No command specified.")

@@ -16,7 +16,9 @@ from bedrock_server_manager.api.web import (
 @pytest.fixture
 def mock_system_linux_utils(mocker):
     """Fixture to patch system_linux_utils."""
-    return mocker.patch("bedrock_server_manager.core.manager.system_linux_utils")
+    return mocker.patch(
+        "bedrock_server_manager.core.manager_mixins.web_service_mixin.system_linux_utils"
+    )
 
 
 class TestWebServerLifecycle:
