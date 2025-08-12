@@ -17,7 +17,7 @@ class PongPlugin(PluginBase):
 
     version = "1.0.0"
 
-    def on_load(self):
+    def on_load(self, **kwargs):
         """
         Called by the PluginManager when this plugin is loaded.
 
@@ -78,7 +78,7 @@ class PongPlugin(PluginBase):
         )
         # Add any further processing of the event data here.
 
-    def on_unload(self):
+    def on_unload(self, **kwargs):
         """
         Called by the PluginManager when this plugin is being unloaded
         (e.g., during a reload or application shutdown).

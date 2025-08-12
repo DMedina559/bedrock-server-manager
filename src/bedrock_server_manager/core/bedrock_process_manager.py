@@ -16,7 +16,6 @@ from ..error import (
 )
 from ..config.settings import Settings
 from ..context import AppContext
-from ..instances import get_server_instance, get_settings_instance
 
 
 class BedrockProcessManager:
@@ -26,8 +25,7 @@ class BedrockProcessManager:
 
     def __init__(
         self,
-        settings_instance: Optional[Settings] = None,
-        app_context: Optional[AppContext] = None,
+        app_context: AppContext,
     ):
         """Initializes the BedrockProcessManager."""
         self.servers: Dict[str, subprocess.Popen] = {}
@@ -37,12 +35,7 @@ class BedrockProcessManager:
         self.logger = logging.getLogger(__name__)
         self.app_context = app_context
 
-        if self.app_context:
-            self.settings = self.app_context.settings
-        elif settings_instance:
-            self.settings = settings_instance
-        else:
-            self.settings = get_settings_instance()
+        self.settings = self.app_context.settings
 
         self.monitoring_thread = threading.Thread(
             target=self._monitor_servers, daemon=True
@@ -79,10 +72,8 @@ class BedrockProcessManager:
             self.logger.warning(f"Server '{server_name}' is already running.")
             raise ServerStartError(f"Server '{server_name}' is already running.")
 
-        if self.app_context:
-            server = self.app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name, self.settings)
+        server = self.app_context.get_server(server_name)
+
         output_file = os.path.join(server.server_dir, "server_output.txt")
         pid_file_path = server.get_pid_file_path()
 
@@ -288,10 +279,7 @@ class BedrockProcessManager:
         Raises:
             ServerStartError: If the server is already running or fails to start.
         """
-        if self.app_context:
-            server = self.app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name, self.settings)
+        server = self.app_context.get_server(server_name)
 
         try:
             server.set_status_in_config("ERROR")

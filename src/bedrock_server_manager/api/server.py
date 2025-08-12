@@ -338,8 +338,11 @@ def stop_server(
             )
             server.set_status_in_config("STOPPED")
             pid_file_path = server.get_pid_file_path()
-            if os.path.isfile(pid_file_path):
-                remove_pid_file_if_exists(pid_file_path)
+            try:
+                if os.path.isfile(pid_file_path):
+                    remove_pid_file_if_exists(pid_file_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove stale PID file: {e}")
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' was already stopped.",
@@ -353,10 +356,9 @@ def stop_server(
         }
 
         try:
-            launcher_pid_file = get_bedrock_launcher_pid_file_path(
-                server.server_name, server.server_config_dir
-            )
-            remove_pid_file_if_exists(launcher_pid_file)
+            pid_file_path = server.get_pid_file_path()
+            if os.path.isfile(pid_file_path):
+                remove_pid_file_if_exists(pid_file_path)
         except Exception as e_launcher_cleanup:
             logger.debug(
                 f"Error during launcher PID cleanup for '{server_name}': {e_launcher_cleanup}"
