@@ -22,7 +22,7 @@ MODULE_CONTENT_DIR_PATH: Optional[Path] = None
 class ContentUploaderPlugin(PluginBase):
     version = "1.1.0"
 
-    def on_load(self):
+    def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
         self._define_routes()
         self.logger.info(
@@ -202,13 +202,13 @@ class ContentUploaderPlugin(PluginBase):
             )
             return RedirectResponse(url=str(redirect_url), status_code=303)
 
-    def on_unload(self):
+    def on_unload(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
-    def get_fastapi_routers(self):
+    def get_fastapi_routers(self, **kwargs):
         self.logger.debug(f"Providing FastAPI router for {self.name}")
         return [self.router]
 
-    def get_template_paths(self) -> list[Path]:
+    def get_template_paths(self, **kwargs) -> list[Path]:
         plugin_dir = Path(__file__).parent
         return [plugin_dir / "templates"]

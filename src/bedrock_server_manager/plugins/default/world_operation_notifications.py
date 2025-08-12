@@ -13,7 +13,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     version = "1.0.0"
 
-    def on_load(self):
+    def on_load(self, **kwargs):
         """Logs a message when the plugin is loaded."""
         self.logger.info("Plugin loaded. Will send notifications for world operations.")
 
@@ -60,7 +60,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} warning."
             )
 
-    def before_world_export(self, server_name: str, export_dir: str):
+    def before_world_export(self, server_name: str, export_dir: str, **kwargs):
         """Notifies players before a world export begins."""
         self.logger.debug(
             f"Handling before_world_export for '{server_name}' to '{export_dir}'."
@@ -69,7 +69,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             server_name, "World export starting...", "world export"
         )
 
-    def before_world_import(self, server_name: str, file_path: str):
+    def before_world_import(self, server_name: str, file_path: str, **kwargs):
         """Notifies players before a world import begins."""
         self.logger.debug(
             f"Handling before_world_import for '{server_name}' from '{file_path}'."
@@ -80,7 +80,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "world import",
         )
 
-    def before_world_reset(self, server_name: str):
+    def before_world_reset(self, server_name: str, **kwargs):
         """Sends a critical warning before a world reset operation."""
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
         self.logger.warning(

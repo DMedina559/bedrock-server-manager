@@ -59,7 +59,7 @@ class CustomEventLoopTestPlugin(PluginBase):
 
     version = "1.0.0"
 
-    def on_load(self):
+    def on_load(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
         self.logger.warning(
             f"'{self.name}': This plugin will intentionally attempt to create a "
@@ -165,6 +165,6 @@ class CustomEventLoopTestPlugin(PluginBase):
             f"--- CUSTOM LOOP TEST (HANDLER Y): Finished handling '{EVENT_Y_NAME}'."
         )
 
-    def on_unload(self):
+    def on_unload(self, **kwargs):
         """Called when the plugin is unloaded."""
         self.logger.info(f"Plugin '{self.name}' v{self.version} is unloading.")

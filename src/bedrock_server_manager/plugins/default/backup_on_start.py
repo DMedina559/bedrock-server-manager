@@ -20,7 +20,7 @@ class AutoBackupOnStart(PluginBase):
             "Plugin loaded. Will perform a full backup before any server starts."
         )
 
-    def before_server_start(self, server_name: str):
+    def before_server_start(self, server_name: str, **kwargs):
         """
         Triggers a full backup of the server before it starts.
         """

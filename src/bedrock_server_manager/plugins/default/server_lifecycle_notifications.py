@@ -113,7 +113,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             server_name, "Server is updating now, please wait...", "update notification"
         )
 
-    def after_server_start(self, server_name: str, result: dict):
+    def after_server_start(self, server_name: str, result: dict, **kwargs):
         """Waits for a short period after a server starts to allow initialization."""
         self.logger.debug(f"Handling after_server_start for '{server_name}'.")
         if result.get("status") == "success":

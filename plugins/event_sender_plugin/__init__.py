@@ -16,7 +16,7 @@ from bedrock_server_manager import PluginBase
 class EventSenderPlugin(PluginBase):
     version = "1.0.1"
 
-    def on_load(self):
+    def on_load(self, **kwargs):
         self.logger.info(
             f"Plugin '{self.name}' v{self.version} loaded. Event sender page available at /event_sender/page"
         )
@@ -46,14 +46,14 @@ class EventSenderPlugin(PluginBase):
                 request, "event_sender_page.html", {"request": request}
             )
 
-    def on_unload(self):
+    def on_unload(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
-    def get_fastapi_routers(self):
+    def get_fastapi_routers(self, **kwargs):
         self.logger.debug(f"Providing FastAPI router for {self.name}")
         return [self.router]
 
-    def get_template_paths(self) -> list[Path]:
+    def get_template_paths(self, **kwargs) -> list[Path]:
         """Returns the path to this plugin's templates directory."""
         plugin_root_dir = Path(__file__).parent
         template_dir = plugin_root_dir / "templates"
@@ -127,7 +127,7 @@ class EventSenderPlugin(PluginBase):
         else:
             click.secho("Error: Plugin API not available. Cannot send event.", fg="red")
 
-    def get_cli_menu_items(self) -> list[dict[str, any]]:
+    def get_cli_menu_items(self, **kwargs) -> list[dict[str, any]]:
         self.logger.debug(f"Providing CLI menu items for {self.name}")
         return [
             {
