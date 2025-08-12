@@ -15,13 +15,9 @@ integrates with the plugin system by exposing many of its functions as callable
 APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`)
 and by triggering various plugin events during server operations.
 """
-
-import os
 import logging
 from typing import Dict, Any, Optional
-import platform
-import shutil
-import subprocess
+import os
 
 
 # Plugin system imports to bridge API functionality.
@@ -341,6 +337,9 @@ def stop_server(
                 f"API: Server '{server_name}' is not running. Stop request ignored."
             )
             server.set_status_in_config("STOPPED")
+            pid_file_path = server.get_pid_file_path()
+            if os.path.isfile(pid_file_path):
+                remove_pid_file_if_exists(pid_file_path)
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' was already stopped.",
