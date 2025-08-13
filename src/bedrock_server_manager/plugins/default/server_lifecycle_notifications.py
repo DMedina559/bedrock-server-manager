@@ -70,8 +70,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} message."
             )
 
-    def before_server_stop(self, server_name: str):
+    def before_server_stop(self, **kwargs: Any):
         """Sends a shutdown warning and waits before the server stops."""
+        server_name = kwargs.get("server_name")
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
         if self._is_server_running(server_name):
             warning_message = (
@@ -84,8 +85,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
             time.sleep(self.stop_warning_delay)
 
-    def after_server_stop(self, server_name: str, result: dict):
+    def after_server_stop(self, **kwargs: Any):
         """Waits for a short period after a server stops, e.g., for port release."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_server_stop for '{server_name}'.")
         if result.get("status") == "success":
             self.logger.info(
@@ -93,8 +96,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
             time.sleep(self.post_stop_settle_delay)
 
-    def before_delete_server_data(self, server_name: str):
+    def before_delete_server_data(self, **kwargs: Any):
         """Sends a final warning before server data is deleted if the server is running."""
+        server_name = kwargs.get("server_name")
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
         self._send_ingame_message(
             server_name,
@@ -113,8 +117,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             server_name, "Server is updating now, please wait...", "update notification"
         )
 
-    def after_server_start(self, server_name: str, result: dict, **kwargs):
+    def after_server_start(self, **kwargs: Any):
         """Waits for a short period after a server starts to allow initialization."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_server_start for '{server_name}'.")
         if result.get("status") == "success":
             self.logger.info(

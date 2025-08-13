@@ -9,7 +9,7 @@ class AutostartServers(PluginBase):
 
     version = "1.0.0"
 
-    def on_load(self, **kwargs):
+    def on_load(self):
         """
         This event is called when the plugin is loaded by the manager.
         """
@@ -17,7 +17,7 @@ class AutostartServers(PluginBase):
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
-    def on_manager_startup(self, **kwargs):
+    def on_manager_startup(self, **kwargs: Any):
         result = self.api.get_all_servers_data()
         servers = result["servers"]
         for server in servers:

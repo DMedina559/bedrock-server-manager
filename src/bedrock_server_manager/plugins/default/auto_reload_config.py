@@ -14,7 +14,7 @@ class AutoReloadPlugin(PluginBase):
 
     version = "1.0.0"
 
-    def on_load(self, **kwargs):
+    def on_load(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will send reload commands after config changes if server is running."
@@ -58,8 +58,10 @@ class AutoReloadPlugin(PluginBase):
                 f"Server '{server_name}' is not running, skipping reload after {context} change."
             )
 
-    def after_allowlist_change(self, server_name: str, result: dict, **kwargs):
+    def after_allowlist_change(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
 
         if result.get("status") == "success":
@@ -78,10 +80,10 @@ class AutoReloadPlugin(PluginBase):
                 f"Allowlist change for '{server_name}' was not successful, skipping reload."
             )
 
-    def after_permission_change(
-        self, server_name: str, xuid: str, result: dict, **kwargs
-    ):
+    def after_permission_change(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
         if result.get("status") == "success":

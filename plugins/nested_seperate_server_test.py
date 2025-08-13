@@ -92,8 +92,9 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"  5. Expect to see 'before_server_start' logs from this plugin for BOTH '{SERVER_A_NAME_TRIGGER}' AND '{SERVER_B_NAME_NESTED}'."
         )
 
-    def before_server_start(self, server_name: str, **kwargs):
+    def before_server_start(self, **kwargs: Any):
         global _server_b_triggered_by_this_plugin
+        server_name = kwargs.get("server_name")
 
         self.logger.info(
             f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}'."

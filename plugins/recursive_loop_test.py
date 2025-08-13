@@ -57,8 +57,9 @@ class RecursiveLoopPlugin(PluginBase):
             "A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop."
         )
 
-    def before_server_start(self, server_name: str, **kwargs):
+    def before_server_start(self, **kwargs: Any):
         """This is EVENT A in the A -> B -> A' loop."""
+        server_name = kwargs.get("server_name")
         self.logger.info(
             f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}'."
         )
@@ -78,8 +79,9 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (EVENT A - Handler Call): Finished 'before_server_start' handler execution."
         )
 
-    def before_backup(self, server_name: str, **kwargs):
+    def before_backup(self, **kwargs: Any):
         """This is EVENT B in the A -> B -> A' loop."""
+        server_name = kwargs.get("server_name")
         self.logger.info(
             f"--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '{server_name}'."
         )

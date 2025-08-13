@@ -19,7 +19,7 @@ class APIDocsGenerator(PluginBase):
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
-    def on_manager_startup(self, **kwargs):
+    def on_manager_startup(self, **kwargs: Any):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API.
