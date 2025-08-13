@@ -4,6 +4,7 @@ import sys
 import atexit
 from pathlib import Path
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -27,17 +28,19 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
 
-    # Define shutdown hooks here to capture the plugin_manager instance
-    def shutdown_web_app():
+    plugin_manager.load_plugins()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup logic goes here
+        yield
+        # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
         api.utils.stop_all_servers(app_context=app_context)
         app_context.plugin_manager.unload_plugins()
         if database.engine:
             database.engine.dispose()
         logger.info("Web app shutdown hooks complete.")
-
-    atexit.register(shutdown_web_app)
-    plugin_manager.load_plugins()
 
     from ..config import SCRIPT_DIR
 
@@ -71,6 +74,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
             "filter": True,
             "deepLinking": True,
         },
+        lifespan=lifespan,
     )
     app.state.app_context = app_context
 
