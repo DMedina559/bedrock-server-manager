@@ -3,6 +3,7 @@
 Plugin to send in-game notifications before world operations like export, import, or reset.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -11,7 +12,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
     are performed on a running server, providing a heads-up for potential disruptions.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""

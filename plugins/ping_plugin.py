@@ -16,7 +16,7 @@ class PingPlugin(PluginBase):
     It sends a 'pingplugin:ping' event after a server successfully starts.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """

@@ -9,12 +9,12 @@ from fastapi import APIRouter, Request, Depends
 import click  # For prompts and colored output
 import json  # For parsing JSON payload
 
-from bedrock_server_manager.web import get_templates, get_current_user
+from bedrock_server_manager.web import get_templates, get_admin_user
 from bedrock_server_manager import PluginBase
 
 
 class EventSenderPlugin(PluginBase):
-    version = "1.0.1"
+    version = "1.1.0"
 
     def on_load(self):
         self.logger.info(
@@ -36,7 +36,7 @@ class EventSenderPlugin(PluginBase):
         )
         async def get_event_sender_page(
             request: Request,
-            current_user: Dict[str, Any] = Depends(get_current_user),
+            current_user: Dict[str, Any] = Depends(get_admin_user),
         ):
             self.logger.debug(f"Serving event sender page for plugin: {self.name}")
             templates_env = get_templates()

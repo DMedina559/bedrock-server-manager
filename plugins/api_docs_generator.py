@@ -12,7 +12,7 @@ class APIDocsGenerator(PluginBase):
     for all registered plugin API functions.
     """
 
-    version = "1.0.2"
+    version = "1.1.0"
 
     def on_load(self):
         self.logger.info(

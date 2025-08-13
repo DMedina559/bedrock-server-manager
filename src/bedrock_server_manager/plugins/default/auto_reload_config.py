@@ -3,6 +3,7 @@
 Plugin that automatically reloads server configurations after changes.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class AutoReloadPlugin(PluginBase):
@@ -12,7 +13,7 @@ class AutoReloadPlugin(PluginBase):
     ensuring changes take effect immediately without manual intervention.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""

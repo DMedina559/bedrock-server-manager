@@ -3,6 +3,7 @@
 Plugin to automatically back up a server before it starts.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class AutoBackupOnStart(PluginBase):

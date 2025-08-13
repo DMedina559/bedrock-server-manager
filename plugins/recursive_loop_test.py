@@ -35,6 +35,7 @@ What to look for in the logs:
   indicating the API call didn't crash due to an event stack overflow.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class RecursiveLoopPlugin(PluginBase):
@@ -43,7 +44,7 @@ class RecursiveLoopPlugin(PluginBase):
     'before_server_start' -> 'before_backup' -> 'before_server_start' event chain.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         self.logger.info(

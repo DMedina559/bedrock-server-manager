@@ -47,6 +47,7 @@ What to Look For in the Logs:
   - Crucially, NO "Skipping recursive trigger..." message for the "server2" event.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 # --- Configuration for the test ---
 # These should be names of actual, configured servers in your BSM setup.
@@ -68,7 +69,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
     for the same event type but different identifying parameters (e.g., different server names).
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         global _server_b_triggered_by_this_plugin

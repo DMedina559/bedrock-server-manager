@@ -14,7 +14,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     This gives players warnings and can help ensure smoother transitions.
     """
 
-    version = "1.0.1"
+    version = "1.1.0"
 
     def on_load(self):
         """Initializes default delays and logs plugin activation."""
