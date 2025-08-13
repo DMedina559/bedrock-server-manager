@@ -326,6 +326,7 @@ def stop_server(
         raise InvalidServerNameError("Server name cannot be empty.")
 
     logger.info(f"API: Attempting to stop server '{server_name}'...")
+    server = None
     try:
         if app_context:
             server = app_context.get_server(server_name)
@@ -337,12 +338,6 @@ def stop_server(
                 f"API: Server '{server_name}' is not running. Stop request ignored."
             )
             server.set_status_in_config("STOPPED")
-            pid_file_path = server.get_pid_file_path()
-            try:
-                if os.path.isfile(pid_file_path):
-                    remove_pid_file_if_exists(pid_file_path)
-            except Exception as e:
-                logger.warning(f"Failed to remove stale PID file: {e}")
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' was already stopped.",
@@ -350,22 +345,10 @@ def stop_server(
 
         server.stop()
         logger.info(f"API: Server '{server_name}' stopped successfully.")
-        result = {
+        return {
             "status": "success",
             "message": f"Server '{server_name}' stopped successfully.",
         }
-
-        try:
-            pid_file_path = server.get_pid_file_path()
-            if os.path.isfile(pid_file_path):
-                remove_pid_file_if_exists(pid_file_path)
-        except Exception as e_launcher_cleanup:
-            logger.debug(
-                f"Error during launcher PID cleanup for '{server_name}': {e_launcher_cleanup}"
-            )
-
-        return result
-
     except BSMError as e:
         logger.error(f"API: Failed to stop server '{server_name}': {e}", exc_info=True)
         return {
@@ -380,6 +363,17 @@ def stop_server(
             "status": "error",
             "message": f"Unexpected error stopping server '{server_name}': {e}",
         }
+    finally:
+        # Always attempt to clean up the PID file as a final step.
+        if server:
+            try:
+                pid_file_path = server.get_pid_file_path()
+                if os.path.isfile(pid_file_path):
+                    remove_pid_file_if_exists(pid_file_path)
+            except Exception as e_cleanup:
+                logger.warning(
+                    f"Error during PID file cleanup for '{server_name}': {e_cleanup}"
+                )
 
 
 @plugin_method("restart_server")
