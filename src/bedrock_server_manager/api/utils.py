@@ -262,6 +262,7 @@ def stop_all_servers(settings=None, app_context: Optional[AppContext] = None):
             api_stop_server(server_name, app_context=app_context)
 
 
+@plugin_method("server_lifecycle_manager")
 @contextmanager
 def server_lifecycle_manager(
     server_name: str,
@@ -363,7 +364,7 @@ def server_lifecycle_manager(
                 try:
                     # Use the API function to ensure detached mode and proper handling.
                     start_result = api_start_server(
-                        server_name, mode="detached", app_context=app_context
+                        server_name, app_context=app_context
                     )
                     if start_result.get("status") == "error":
                         raise ServerStartError(
