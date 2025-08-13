@@ -12,12 +12,22 @@ from bedrock_server_manager.error import (
 
 def test_is_running(app_context):
     server = app_context.get_server("test_server")
-    with patch.object(server.process_manager, "get_server_process") as mock_get_process:
-        mock_process = MagicMock()
-        mock_process.poll.return_value = None
-        mock_get_process.return_value = mock_process
+    with patch("bedrock_server_manager.core.system.base.is_server_running") as mock_is_server_running:
+        mock_is_server_running.return_value = True
         assert server.is_running() is True
-        mock_get_process.assert_called_once_with(server.server_name)
+        mock_is_server_running.assert_called_once_with(
+            server.server_name, server.server_dir, server.app_config_dir
+        )
+
+
+def test_is_not_running(app_context):
+    server = app_context.get_server("test_server")
+    with patch("bedrock_server_manager.core.system.base.is_server_running") as mock_is_server_running:
+        mock_is_server_running.return_value = False
+        assert server.is_running() is False
+        mock_is_server_running.assert_called_once_with(
+            server.server_name, server.server_dir, server.app_config_dir
+        )
 
 
 def test_send_command(app_context):

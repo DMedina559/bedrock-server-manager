@@ -155,6 +155,11 @@ class BedrockProcessManager:
 
         del self.servers[server_name]
         self.intentionally_stopped[server_name] = True
+
+        server = self.app_context.get_server(server_name)
+        pid_file_path = server.get_pid_file_path()
+        core_process.remove_pid_file_if_exists(pid_file_path)
+
         self.logger.info(
             f"Server '{server_name}' has been marked as intentionally stopped."
         )
