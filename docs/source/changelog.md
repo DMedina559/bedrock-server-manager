@@ -63,11 +63,20 @@ Stop servers before updating!
     - Added `--system` flag for linux to create a systemd service for the web server on the system level
 9. Themes are now user specific
     - Each user can now have their own theme
-10. Various backend changes such as:
+10. Refactored most of the app away from global singletons to a passed around `AppContext` object
+11. Added the `server_lifecycle_manager` as a Plugin Method
+    - A context manager usefull for plugins that need to perform actions on servers the requires the server to be stopped
+12. Various backend changes such as:
     - Object based authentication
-    - Lazy load plugin manager in api layer
     - Changes routers to use the new `get_current_user`, `get_admin_user`, `get_moderator_user` dependencies
     - Web server now starts without needing any setup
+    - Most API modules have been refactored to use the new AppContext object
+    - The `get_*_instance` functions in `instances.py` have been deprecated (will be removed in 3.7.0)
+        - Instead the AppContext object (created in the CLI app) is passed around to all functions
+        - FastAPI plugins can access the `AppContext` object via `app.state.app_context`
+    - Added `app_context` to the `PluginAPI` class, plugins can now access the AppContext object to access the current app state with `self.api.app_context`
+        - AppContext will be automatically passed to all plugin methods
+    - Plugins are now only loaded durring the web server startup, no longer during the CLI app startup
 
 ## 3.5.7
 ```{tip}
