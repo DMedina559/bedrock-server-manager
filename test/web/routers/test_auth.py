@@ -8,11 +8,8 @@ TEST_USER = "testuser"
 TEST_PASSWORD = "testpassword"
 
 
-@pytest.mark.skip(reason="Failing with 422 Unprocessable Entity")
-@patch("bedrock_server_manager.web.routers.auth.authenticate_user")
-def test_login_for_access_token_success(mock_authenticate_user, client: TestClient):
+def test_login_for_access_token_success(client: TestClient, authenticated_user):
     """Test the login for access token route with valid credentials."""
-    mock_authenticate_user.return_value = TEST_USER
     response = client.post(
         "/auth/token",
         data={"username": TEST_USER, "password": TEST_PASSWORD},
@@ -22,13 +19,10 @@ def test_login_for_access_token_success(mock_authenticate_user, client: TestClie
     assert response.json()["token_type"] == "bearer"
 
 
-@pytest.mark.skip(reason="Failing with 422 Unprocessable Entity")
-@patch("bedrock_server_manager.web.routers.auth.authenticate_user")
 def test_login_for_access_token_invalid_credentials(
-    mock_authenticate_user, client: TestClient
+    client: TestClient, authenticated_user
 ):
     """Test the login for access token route with invalid credentials."""
-    mock_authenticate_user.return_value = None
     response = client.post(
         "/auth/token",
         data={"username": TEST_USER, "password": "wrongpassword"},

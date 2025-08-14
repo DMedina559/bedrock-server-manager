@@ -49,6 +49,10 @@ async def validate_server_exists(
     logger.debug(f"Dependency: Validating existence of server '{server_name}'.")
     app_context = request.app.state.app_context
     try:
+        name_validation_result = utils_api.validate_server_name_format(server_name)
+        if name_validation_result.get("status") != "success":
+            raise InvalidServerNameError(name_validation_result.get("message"))
+
         validation_result = utils_api.validate_server_exist(
             server_name=server_name, app_context=app_context
         )

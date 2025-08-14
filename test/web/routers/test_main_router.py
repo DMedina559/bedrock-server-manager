@@ -12,23 +12,20 @@ def test_index_authenticated(authenticated_client: TestClient):
     assert "Bedrock Server Manager" in response.text
 
 
-@patch("bedrock_server_manager.web.app.needs_setup", return_value=False)
-def test_index_unauthenticated(mock_needs_setup, client: TestClient):
+def test_index_unauthenticated(client: TestClient, authenticated_user):
     """Test the index route with an unauthenticated user."""
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/auth/login"
 
 
-def test_monitor_server_route(authenticated_client: TestClient):
+def test_monitor_server_route(
+    authenticated_client: TestClient, real_bedrock_server
+):
     """Test the monitor_server_route with an authenticated user."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    response = authenticated_client.get("/server/test-server/monitor")
+    response = authenticated_client.get("/server/test_server/monitor")
     assert response.status_code == 200
     assert "Server Monitor" in response.text
-    authenticated_client.app.dependency_overrides.clear()
 
 
 def test_monitor_server_route_user_input_error(authenticated_client: TestClient):

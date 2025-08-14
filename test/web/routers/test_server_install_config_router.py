@@ -4,50 +4,34 @@ import pytest
 from bedrock_server_manager.web.dependencies import validate_server_exists
 
 
-@patch("bedrock_server_manager.web.routers.server_install_config.os.path.isdir")
-@patch("bedrock_server_manager.web.routers.server_install_config.os.listdir")
-def test_get_custom_zips(mock_listdir, mock_isdir, authenticated_client):
+import os
+
+
+def test_get_custom_zips(authenticated_client, app_context):
     """Test the get_custom_zips route with a successful response."""
-    mock_isdir.return_value = True
-    mock_listdir.return_value = ["zip1.zip", "zip2.zip"]
+    custom_dir = os.path.join(app_context.settings.get("paths.downloads"), "custom")
+    os.makedirs(custom_dir, exist_ok=True)
+    zip_file = os.path.join(custom_dir, "zip1.zip")
+    with open(zip_file, "w") as f:
+        f.write("test")
 
     response = authenticated_client.get("/api/downloads/list")
     assert response.status_code == 200
-    assert response.json()["custom_zips"] == ["zip1.zip", "zip2.zip"]
+    assert "zip1.zip" in response.json()["custom_zips"]
 
 
-@patch("bedrock_server_manager.web.routers.server_install_config.tasks.run_task")
-@patch("bedrock_server_manager.web.routers.server_install_config.tasks.create_task")
 @patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.install_new_server"
+    "bedrock_server_manager.web.routers.server_install_config.server_install_config.install_new_server",
+    return_value={"status": "success"},
 )
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_exist"
-)
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_name_format"
-)
-def test_install_server_api_route_success(
-    mock_validate_name,
-    mock_validate_exist,
-    mock_install,
-    mock_create_task,
-    mock_run_task,
-    authenticated_client,
-):
+def test_install_server_api_route_success(mock_install, authenticated_client):
     """Test the install_server_api_route with a successful installation."""
-    mock_validate_name.return_value = {"status": "success"}
-    mock_validate_exist.return_value = {"status": "error"}
-    mock_create_task.return_value = "test_task_id"
-    mock_install.return_value = {"status": "success"}
-
     response = authenticated_client.post(
         "/api/server/install",
         json={"server_name": "new-server", "server_version": "LATEST"},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "pending"
-    assert response.json()["task_id"] == "test_task_id"
 
 
 @patch("bedrock_server_manager.web.routers.server_install_config.tasks.create_task")
@@ -357,56 +341,33 @@ def test_configure_service_api_route_bsm_error(
     authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.get_server_permissions_api"
-)
-def test_get_server_permissions_api_route(mock_get_permissions, authenticated_client):
+def test_get_server_permissions_api_route(authenticated_client, real_bedrock_server):
     """Test the get_server_permissions_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/api/server/{real_bedrock_server.server_name}/permissions/get"
     )
-    mock_get_permissions.return_value = {"status": "success"}
-    response = authenticated_client.get("/api/server/test-server/permissions/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    mock_get_permissions.assert_called_once_with(
-        server_name="test-server",
-        app_context=authenticated_client.app.state.app_context,
-    )
-    authenticated_client.app.dependency_overrides.clear()
 
 
 @patch(
-    "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate"
+    "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate",
+    return_value={"status": "success"},
 )
-def test_configure_service_api_route(mock_set_autoupdate, authenticated_client):
+def test_configure_service_api_route(mock_set_autoupdate, authenticated_client, real_bedrock_server):
     """Test the configure_service_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_set_autoupdate.return_value = {"status": "success"}
     response = authenticated_client.post(
-        "/api/server/test-server/service/update",
+        f"/api/server/{real_bedrock_server.server_name}/service/update",
         json={"autoupdate": True},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.configure_player_permission"
-)
-def test_configure_permissions_api_route(
-    mock_configure_permission, authenticated_client
-):
+def test_configure_permissions_api_route(authenticated_client, real_bedrock_server):
     """Test the configure_permissions_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_configure_permission.return_value = {"status": "success"}
     response = authenticated_client.put(
-        "/api/server/test-server/permissions/set",
+        f"/api/server/{real_bedrock_server.server_name}/permissions/set",
         json={
             "permissions": [
                 {
@@ -419,84 +380,45 @@ def test_configure_permissions_api_route(
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.get_server_allowlist_api"
-)
-def test_get_allowlist_api_route(mock_get_allowlist, authenticated_client):
+def test_get_allowlist_api_route(authenticated_client, real_bedrock_server):
     """Test the get_allowlist_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
     )
-    mock_get_allowlist.return_value = {"status": "success"}
-    response = authenticated_client.get("/api/server/test-server/allowlist/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    mock_get_allowlist.assert_called_once_with(
-        server_name="test-server",
-        app_context=authenticated_client.app.state.app_context,
-    )
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.remove_players_from_allowlist"
-)
-def test_remove_allowlist_players_api_route(
-    mock_remove_from_allowlist, authenticated_client
-):
+def test_remove_allowlist_players_api_route(authenticated_client, real_bedrock_server):
     """Test the remove_allowlist_players_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_remove_from_allowlist.return_value = {"status": "success"}
     response = authenticated_client.request(
         "DELETE",
-        "/api/server/test-server/allowlist/remove",
+        f"/api/server/{real_bedrock_server.server_name}/allowlist/remove",
         json={"players": ["player1"]},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.get_server_properties_api"
-)
-def test_get_server_properties_api_route(mock_get_properties, authenticated_client):
+def test_get_server_properties_api_route(authenticated_client, real_bedrock_server):
     """Test the get_server_properties_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/api/server/{real_bedrock_server.server_name}/properties/get"
     )
-    mock_get_properties.return_value = {"status": "success"}
-    response = authenticated_client.get("/api/server/test-server/properties/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    mock_get_properties.assert_called_once_with(
-        server_name="test-server",
-        app_context=authenticated_client.app.state.app_context,
-    )
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.add_players_to_allowlist_api"
-)
-def test_add_to_allowlist_api_route(mock_add_to_allowlist, authenticated_client):
+def test_add_to_allowlist_api_route(authenticated_client, real_bedrock_server):
     """Test the add_to_allowlist_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_add_to_allowlist.return_value = {"status": "success"}
     response = authenticated_client.post(
-        "/api/server/test-server/allowlist/add",
+        f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
         json={"players": ["player1"], "ignoresPlayerLimit": False},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    authenticated_client.app.dependency_overrides.clear()
 
 
 @patch(
@@ -540,63 +462,47 @@ def test_install_server_api_route_invalid_name(
     assert "Invalid server name" in response.json()["detail"]
 
 
-def test_configure_properties_page(authenticated_client):
+def test_configure_properties_page(authenticated_client, real_bedrock_server):
     """Test the configure_properties_page route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/server/{real_bedrock_server.server_name}/configure_properties"
     )
-    response = authenticated_client.get("/server/test-server/configure_properties")
     assert response.status_code == 200
     assert "Server Properties" in response.text
-    authenticated_client.app.dependency_overrides.clear()
 
 
-def test_configure_allowlist_page(authenticated_client):
+def test_configure_allowlist_page(authenticated_client, real_bedrock_server):
     """Test the configure_allowlist_page route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/server/{real_bedrock_server.server_name}/configure_allowlist"
     )
-    response = authenticated_client.get("/server/test-server/configure_allowlist")
     assert response.status_code == 200
     assert "Allowlist" in response.text
-    authenticated_client.app.dependency_overrides.clear()
 
 
-def test_configure_permissions_page(authenticated_client):
+def test_configure_permissions_page(authenticated_client, real_bedrock_server):
     """Test the configure_permissions_page route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/server/{real_bedrock_server.server_name}/configure_permissions"
     )
-    response = authenticated_client.get("/server/test-server/configure_permissions")
     assert response.status_code == 200
     assert "Permissions" in response.text
-    authenticated_client.app.dependency_overrides.clear()
 
 
-def test_configure_service_page(authenticated_client):
+def test_configure_service_page(authenticated_client, real_bedrock_server):
     """Test the configure_service_page route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.get(
+        f"/server/{real_bedrock_server.server_name}/configure_service"
     )
-    response = authenticated_client.get("/server/test-server/configure_service")
     assert response.status_code == 200
     assert "Service" in response.text
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.modify_server_properties"
-)
-def test_configure_properties_api_route(mock_modify_properties, authenticated_client):
+def test_configure_properties_api_route(authenticated_client, real_bedrock_server):
     """Test the configure_properties_api_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_modify_properties.return_value = {"status": "success"}
     response = authenticated_client.post(
-        "/api/server/test-server/properties/set",
+        f"/api/server/{real_bedrock_server.server_name}/properties/set",
         json={"properties": {"level-name": "test"}},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    authenticated_client.app.dependency_overrides.clear()

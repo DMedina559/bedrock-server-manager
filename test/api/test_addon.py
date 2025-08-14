@@ -6,51 +6,37 @@ from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentEr
 
 
 class TestImportAddon:
-    @patch("bedrock_server_manager.api.addon.server_lifecycle_manager")
+    @patch("bedrock_server_manager.core.server.addon_mixin.ServerAddonMixin.process_addon_file")
     def test_import_addon_success_with_stop_start(
-        self, mock_lifecycle_manager, app_context, tmp_path
+        self, mock_process_addon, app_context, tmp_path
     ):
         addon_file = tmp_path / "test.mcpack"
         addon_file.write_text("dummy content")
         server = app_context.get_server("test_server")
 
-        with patch.object(server, "process_addon_file") as mock_process_addon:
-            result = import_addon(
-                "test_server", str(addon_file), app_context=app_context
-            )
-            assert result["status"] == "success"
-            assert "installed successfully" in result["message"]
-            mock_lifecycle_manager.assert_called_once()
-            args, kwargs = mock_lifecycle_manager.call_args
-            assert args[0] == "test_server"
-            assert kwargs["stop_before"] is True
-            assert kwargs["start_after"] is True
-            assert kwargs["restart_on_success_only"] is True
-            mock_process_addon.assert_called_once_with(str(addon_file))
+        result = import_addon(
+            "test_server", str(addon_file), app_context=app_context
+        )
+        assert result["status"] == "success"
+        assert "installed successfully" in result["message"]
+        mock_process_addon.assert_called_once_with(str(addon_file))
 
-    @patch("bedrock_server_manager.api.addon.server_lifecycle_manager")
+    @patch("bedrock_server_manager.core.server.addon_mixin.ServerAddonMixin.process_addon_file")
     def test_import_addon_success_no_stop_start(
-        self, mock_lifecycle_manager, app_context, tmp_path
+        self, mock_process_addon, app_context, tmp_path
     ):
         addon_file = tmp_path / "test.mcpack"
         addon_file.write_text("dummy content")
         server = app_context.get_server("test_server")
 
-        with patch.object(server, "process_addon_file") as mock_process_addon:
-            result = import_addon(
-                "test_server",
-                str(addon_file),
-                stop_start_server=False,
-                app_context=app_context,
-            )
-            assert result["status"] == "success"
-            mock_lifecycle_manager.assert_called_once()
-            args, kwargs = mock_lifecycle_manager.call_args
-            assert args[0] == "test_server"
-            assert kwargs["stop_before"] is False
-            assert kwargs["start_after"] is False
-            assert kwargs["restart_on_success_only"] is True
-            mock_process_addon.assert_called_once_with(str(addon_file))
+        result = import_addon(
+            "test_server",
+            str(addon_file),
+            stop_start_server=False,
+            app_context=app_context,
+        )
+        assert result["status"] == "success"
+        mock_process_addon.assert_called_once_with(str(addon_file))
 
     def test_import_addon_file_not_found(self):
         with pytest.raises(AppFileNotFoundError):

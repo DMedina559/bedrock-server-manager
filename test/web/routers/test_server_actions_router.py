@@ -3,65 +3,47 @@ import pytest
 from bedrock_server_manager.web.dependencies import validate_server_exists
 
 
-@patch("bedrock_server_manager.web.routers.server_actions.server_api.start_server")
-def test_start_server_route(mock_start_server, authenticated_client):
+def test_start_server_route(authenticated_client, real_bedrock_server):
     """Test the start_server_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_start_server.return_value = {"status": "success"}
-    response = authenticated_client.post("/api/server/test-server/start")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    mock_start_server.assert_called_once_with(
-        server_name="test-server",
-        app_context=authenticated_client.app.state.app_context,
-    )
-    authenticated_client.app.dependency_overrides.clear()
-
-
-@patch("bedrock_server_manager.web.routers.server_actions.tasks.run_task")
-def test_stop_server_route(mock_run_task, authenticated_client):
-    """Test the stop_server_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    response = authenticated_client.post("/api/server/test-server/stop")
-    assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
-    authenticated_client.app.dependency_overrides.clear()
-
-
-@patch("bedrock_server_manager.web.routers.server_actions.tasks.run_task")
-def test_restart_server_route(mock_run_task, authenticated_client):
-    """Test the restart_server_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    response = authenticated_client.post("/api/server/test-server/restart")
-    assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
-    authenticated_client.app.dependency_overrides.clear()
-
-
-@patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
-def test_send_command_route_success(mock_send_command, authenticated_client):
-    """Test the send_command_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_send_command.return_value = {"status": "success"}
     response = authenticated_client.post(
-        "/api/server/test-server/send_command", json={"command": "list"}
+        f"/api/server/{real_bedrock_server.server_name}/start"
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    mock_send_command.assert_called_once_with(
-        server_name="test-server",
-        command="list",
-        app_context=authenticated_client.app.state.app_context,
+
+
+def test_stop_server_route(authenticated_client, real_bedrock_server):
+    """Test the stop_server_route with a successful response."""
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/stop"
     )
-    authenticated_client.app.dependency_overrides.clear()
+    assert response.status_code == 202
+    assert "initiated in background" in response.json()["message"]
+
+
+def test_restart_server_route(authenticated_client, real_bedrock_server):
+    """Test the restart_server_route with a successful response."""
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/restart"
+    )
+    assert response.status_code == 202
+    assert "initiated in background" in response.json()["message"]
+
+
+@patch("bedrock_server_manager.core.system.base.is_server_running")
+def test_send_command_route_success(
+    mock_is_server_running, authenticated_client, app_context, real_bedrock_server
+):
+    """Test the send_command_route with a successful response."""
+    mock_is_server_running.return_value = True
+    app_context.bedrock_process_manager.start_server(real_bedrock_server.server_name)
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/send_command",
+        json={"command": "list"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    app_context.bedrock_process_manager.stop_server(real_bedrock_server.server_name)
 
 
 @patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
@@ -132,25 +114,19 @@ def test_send_command_route_bsm_error(mock_send_command, authenticated_client):
     authenticated_client.app.dependency_overrides.clear()
 
 
-@patch("bedrock_server_manager.web.routers.server_actions.tasks.run_task")
-def test_update_server_route(mock_run_task, authenticated_client):
+def test_update_server_route(authenticated_client, real_bedrock_server):
     """Test the update_server_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/update"
     )
-    response = authenticated_client.post("/api/server/test-server/update")
     assert response.status_code == 202
     assert "initiated in background" in response.json()["message"]
-    authenticated_client.app.dependency_overrides.clear()
 
 
-@patch("bedrock_server_manager.web.routers.server_actions.tasks.run_task")
-def test_delete_server_route(mock_run_task, authenticated_client):
+def test_delete_server_route(authenticated_client, real_bedrock_server):
     """Test the delete_server_route with a successful response."""
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
+    response = authenticated_client.delete(
+        f"/api/server/{real_bedrock_server.server_name}/delete"
     )
-    response = authenticated_client.delete("/api/server/test-server/delete")
     assert response.status_code == 202
     assert "initiated in background" in response.json()["message"]
-    authenticated_client.app.dependency_overrides.clear()

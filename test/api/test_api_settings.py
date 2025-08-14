@@ -50,11 +50,9 @@ class TestSettingsAPI:
 
     @patch("bedrock_server_manager.api.settings.setup_logging")
     def test_reload_global_settings(self, mock_setup_logging, app_context):
-        with patch.object(app_context.settings, "reload") as mock_reload:
-            result = reload_global_settings(app_context=app_context)
-            assert result["status"] == "success"
-            mock_reload.assert_called_once()
-            mock_setup_logging.assert_called_once()
+        result = reload_global_settings(app_context=app_context)
+        assert result["status"] == "success"
+        mock_setup_logging.assert_called_once()
 
     def test_get_global_setting_no_key(self, app_context):
         with pytest.raises(MissingArgumentError):

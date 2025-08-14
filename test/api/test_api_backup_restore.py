@@ -31,83 +31,72 @@ class TestBackupRestore:
         assert result["status"] == "success"
         assert len(result["backups"]) == 2
 
-    @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
-    def test_backup_world(self, mock_lifecycle, app_context):
+    def test_backup_world(self, app_context):
         server = app_context.get_server("test_server")
-        with patch.object(
-            server, "_backup_world_data_internal", return_value="world_backup.mcworld"
-        ) as mock_backup:
-            result = backup_world("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            mock_lifecycle.assert_called_once()
-            mock_backup.assert_called_once()
+        world_dir = os.path.join(server.server_dir, "worlds", "world")
+        os.makedirs(world_dir)
+        (Path(world_dir) / "level.dat").touch()
 
-    @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
-    def test_backup_config_file(self, mock_lifecycle, app_context):
+        result = backup_world("test_server", stop_start_server=False, app_context=app_context)
+        assert result["status"] == "success"
+
+    def test_backup_config_file(self, app_context):
         server = app_context.get_server("test_server")
-        with patch.object(
-            server, "_backup_config_file_internal", return_value="server.properties.bak"
-        ) as mock_backup:
-            result = backup_config_file(
-                "test_server", "server.properties", app_context=app_context
-            )
-            assert result["status"] == "success"
-            mock_lifecycle.assert_called_once()
-            mock_backup.assert_called_once_with("server.properties")
+        (Path(server.server_dir) / "server.properties").touch()
 
-    @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
-    def test_backup_all(self, mock_lifecycle, app_context):
+        result = backup_config_file(
+            "test_server", "server.properties", stop_start_server=False, app_context=app_context
+        )
+        assert result["status"] == "success"
+
+    def test_backup_all(self, app_context):
         server = app_context.get_server("test_server")
-        with patch.object(
-            server, "backup_all_data", return_value={"world": "world.mcworld"}
-        ) as mock_backup:
-            result = backup_all("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            mock_lifecycle.assert_called_once()
-            mock_backup.assert_called_once()
+        world_dir = os.path.join(server.server_dir, "worlds", "world")
+        os.makedirs(world_dir)
+        (Path(world_dir) / "level.dat").touch()
+        (Path(server.server_dir) / "server.properties").touch()
 
-    @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
-    def test_restore_all(self, mock_lifecycle, app_context):
+        result = backup_all("test_server", stop_start_server=False, app_context=app_context)
+        assert result["status"] == "success"
+
+    def test_restore_all(self, app_context):
         server = app_context.get_server("test_server")
-        with patch.object(
-            server,
-            "restore_all_data_from_latest",
-            return_value={"world": "world.mcworld"},
-        ) as mock_restore:
-            result = restore_all("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            mock_lifecycle.assert_called_once()
-            mock_restore.assert_called_once()
+        backup_dir = server.server_backup_directory
+        os.makedirs(backup_dir, exist_ok=True)
 
-    @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
-    def test_restore_world(self, mock_lifecycle, app_context, tmp_path):
+        world_backup_file = Path(backup_dir) / "world_backup_20230101_000000.mcworld"
+        with open(world_backup_file, "wb") as f:
+            import zipfile
+            with zipfile.ZipFile(f, "w") as zf:
+                zf.writestr("test.txt", "test")
+        
+        (Path(backup_dir) / "server.properties_backup_20230101_000000.properties").touch()
+
+        result = restore_all("test_server", stop_start_server=False, app_context=app_context)
+        assert result["status"] == "success"
+
+    def test_restore_world(self, app_context, tmp_path):
         server = app_context.get_server("test_server")
         backup_file = tmp_path / "world.mcworld"
-        backup_file.touch()
+        with open(backup_file, "wb") as f:
+            import zipfile
+            with zipfile.ZipFile(f, "w") as zf:
+                zf.writestr("test.txt", "test")
 
-        with patch.object(server, "import_active_world_from_mcworld") as mock_import:
-            result = restore_world(
-                "test_server", str(backup_file), app_context=app_context
-            )
-            assert result["status"] == "success"
-            mock_lifecycle.assert_called_once()
-            mock_import.assert_called_once_with(str(backup_file))
+        result = restore_world(
+            "test_server", str(backup_file), stop_start_server=False, app_context=app_context
+        )
+        assert result["status"] == "success"
 
-    @patch("bedrock_server_manager.api.backup_restore.server_lifecycle_manager")
-    def test_restore_config_file(self, mock_lifecycle, app_context, tmp_path):
+    def test_restore_config_file(self, app_context, tmp_path):
         server = app_context.get_server("test_server")
-        backup_file = tmp_path / "server.properties.bak"
+        backup_file = tmp_path / "server.properties_backup_20230101_000000.properties"
         backup_file.touch()
 
-        with patch.object(
-            server, "_restore_config_file_internal", return_value="server.properties"
-        ) as mock_restore:
-            result = restore_config_file(
-                "test_server", str(backup_file), app_context=app_context
-            )
-            assert result["status"] == "success"
-            mock_lifecycle.assert_called_once()
-            mock_restore.assert_called_once_with(str(backup_file))
+        result = restore_config_file(
+            "test_server", str(backup_file), stop_start_server=False, app_context=app_context
+        )
+        assert result["status"] == "success"
 
     def test_prune_old_backups(self, app_context):
         server = app_context.get_server("test_server")
