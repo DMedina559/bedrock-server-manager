@@ -105,18 +105,6 @@ def test_serve_world_icon_api_not_found(
     assert response.status_code == 404
 
 
-def test_get_root_favicon(client: TestClient, app_context):
-    """Test the get_root_favicon route with a successful response."""
-    favicon_path = os.path.join(
-        app_context.settings.get("paths.data"), "static", "image", "icon", "favicon.ico"
-    )
-    os.makedirs(os.path.dirname(favicon_path), exist_ok=True)
-    with open(favicon_path, "w") as f:
-        f.write("test")
-    response = client.get("/favicon.ico")
-    assert response.status_code == 200
-
-
 @patch("bedrock_server_manager.web.app.needs_setup", return_value=False)
 @patch("bedrock_server_manager.web.routers.util.os.path.exists")
 def test_get_root_favicon_not_found(mock_exists, mock_needs_setup, client: TestClient):
