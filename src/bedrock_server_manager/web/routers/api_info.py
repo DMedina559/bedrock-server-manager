@@ -155,7 +155,7 @@ async def get_server_running_status_api_route(
         if result.get("status") == "success":
             return GeneralApiResponse(
                 status="success",
-                data={"running": result.get("running")},
+                data={"running": result.get("is_running")},
                 message=result.get("message"),
             )
         else:
@@ -416,25 +416,26 @@ async def validate_server_api_route(
         if result.get("status") == "success":
             return GeneralApiResponse(status="success", message=result.get("message"))
         else:
+            # This case handles when the underlying API returns an error status
+            # without raising an exception itself.
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result.get(
+                    "message", f"Server '{server_name}' not found or is invalid."
+                ),
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        logger.error(
-            f"API Validate Server '{server_name}': BSMError: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
-            f"API Validate Server '{server_name}': Unexpected error: {e}", exc_info=True
+            f"API Validate Server '{server_name}': Unexpected error in route: {e}",
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error validating server.",
+            detail="An unexpected error occurred while validating the server.",
         )
 
 
