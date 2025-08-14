@@ -22,6 +22,7 @@ from fastapi import (
     HTTPException,
     BackgroundTasks,
     status,
+    Request,
 )
 from pydantic import BaseModel, Field
 
@@ -61,6 +62,7 @@ class CommandPayload(BaseModel):
     tags=["Server Actions API"],
 )
 async def start_server_route(
+    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
 ):
@@ -79,9 +81,12 @@ async def start_server_route(
     """
     identity = current_user.username
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
+    app_context = request.app.state.app_context
 
     try:
-        result = server_api.start_server(server_name)
+        result = server_api.start_server(
+            server_name=server_name, app_context=app_context
+        )
         if result.get("status") == "success":
             return ActionResponse(
                 message=result.get("message") or "Server started successfully"
@@ -105,6 +110,7 @@ async def start_server_route(
     tags=["Server Actions API"],
 )
 async def stop_server_route(
+    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -125,12 +131,14 @@ async def stop_server_route(
     """
     identity = current_user.username
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
+    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_api.stop_server,
-        server_name,
+        server_name=server_name,
+        app_context=app_context,
     )
 
     return ActionResponse(
@@ -148,6 +156,7 @@ async def stop_server_route(
     tags=["Server Actions API"],
 )
 async def restart_server_route(
+    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -173,12 +182,14 @@ async def restart_server_route(
     logger.info(
         f"API: Restart server request for '{server_name}' by user '{identity}'."
     )
+    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_api.restart_server,
-        server_name,
+        server_name=server_name,
+        app_context=app_context,
     )
 
     return ActionResponse(
@@ -195,6 +206,7 @@ async def restart_server_route(
     tags=["Server Actions API"],
 )
 async def send_command_route(
+    request: Request,
     server_name: str,
     payload: CommandPayload,
     current_user: User = Depends(get_moderator_user),
@@ -244,6 +256,7 @@ async def send_command_route(
     logger.info(
         f"API: Send command request for '{server_name}' by user '{identity}'. Command: {payload.command}"
     )
+    app_context = request.app.state.app_context
 
     if not payload.command or not payload.command.strip():
         raise HTTPException(
@@ -252,7 +265,11 @@ async def send_command_route(
         )
 
     try:
-        command_result = server_api.send_command(server_name, payload.command.strip())
+        command_result = server_api.send_command(
+            server_name=server_name,
+            command=payload.command.strip(),
+            app_context=app_context,
+        )
 
         if command_result.get("status") == "success":
             logger.info(
@@ -314,6 +331,7 @@ async def send_command_route(
     tags=["Server Actions API"],
 )
 async def update_server_route(
+    request: Request,
     server_name: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_admin_user),
@@ -334,12 +352,14 @@ async def update_server_route(
     """
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
+    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_install_config.update_server,
-        server_name,
+        server_name=server_name,
+        app_context=app_context,
     )
 
     return ActionResponse(
@@ -357,6 +377,7 @@ async def update_server_route(
     tags=["Server Actions API"],
 )
 async def delete_server_route(
+    request: Request,
     server_name: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_admin_user),
@@ -379,12 +400,14 @@ async def delete_server_route(
     logger.warning(
         f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
     )
+    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_api.delete_server_data,
-        server_name,
+        server_name=server_name,
+        app_context=app_context,
     )
 
     return ActionResponse(

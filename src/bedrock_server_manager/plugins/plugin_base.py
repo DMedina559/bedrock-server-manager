@@ -141,7 +141,7 @@ class PluginBase(ABC):
 
     # --- Server Lifecycle Event Hooks ---
 
-    def before_server_start(self, server_name: str):
+    def before_server_start(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         just before a server start operation is attempted.
 
@@ -150,7 +150,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_server_start(self, server_name: str, result: Dict[str, Any]):
+    def after_server_start(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         just after a server start operation has been attempted.
 
@@ -162,7 +162,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_server_stop(self, server_name: str):
+    def before_server_stop(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         just before a server stop operation is attempted.
 
@@ -171,7 +171,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_server_stop(self, server_name: str, result: Dict[str, Any]):
+    def after_server_stop(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         just after a server stop operation has been attempted.
 
@@ -183,7 +183,7 @@ class PluginBase(ABC):
 
     # --- Server Command Event Hooks ---
 
-    def before_command_send(self, server_name: str, command: str):
+    def before_command_send(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a command is sent to a running server's console.
 
@@ -193,9 +193,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_command_send(
-        self, server_name: str, command: str, result: Dict[str, Any]
-    ):
+    def after_command_send(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a command has been sent to a server's console.
 
@@ -210,7 +208,7 @@ class PluginBase(ABC):
 
     # --- Backup and Restore Event Hooks ---
 
-    def before_backup(self, server_name: str, backup_type: str, **kwargs: Any):
+    def before_backup(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a backup operation for a server begins.
 
@@ -223,9 +221,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_backup(
-        self, server_name: str, backup_type: str, result: Dict[str, Any], **kwargs: Any
-    ):
+    def after_backup(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a backup operation for a server completes.
 
@@ -237,7 +233,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_restore(self, server_name: str, restore_type: str, **kwargs: Any):
+    def before_restore(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a restore operation for a server begins.
 
@@ -249,9 +245,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_restore(
-        self, server_name: str, restore_type: str, result: Dict[str, Any], **kwargs: Any
-    ):
+    def after_restore(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a restore operation for a server completes.
 
@@ -263,7 +257,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_prune_backups(self, server_name: str):
+    def before_prune_backups(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before old backups are pruned for a specific server.
 
@@ -272,7 +266,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_prune_backups(self, server_name: str, result: Dict[str, Any]):
+    def after_prune_backups(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to prune old backups for a server completes.
 
@@ -285,12 +279,7 @@ class PluginBase(ABC):
 
     # --- Server Configuration Event Hooks (Allowlist, Permissions, Properties) ---
 
-    def before_allowlist_change(
-        self,
-        server_name: str,
-        players_to_add: List[Dict[str, Any]],
-        players_to_remove: List[str],
-    ):
+    def before_allowlist_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a server's allowlist (``allowlist.json``) is modified.
 
@@ -302,7 +291,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_allowlist_change(self, server_name: str, result: Dict[str, Any]):
+    def after_allowlist_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to modify a server's allowlist completes.
 
@@ -312,7 +301,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_permission_change(self, server_name: str, xuid: str, permission: str):
+    def before_permission_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a player's permission level (in ``permissions.json``) is changed for a server.
 
@@ -324,9 +313,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_permission_change(
-        self, server_name: str, xuid: str, result: Dict[str, Any]
-    ):
+    def after_permission_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to change a player's permission level completes.
 
@@ -337,7 +324,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_properties_change(self, server_name: str, properties: Dict[str, Any]):
+    def before_properties_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a server's ``server.properties`` file is modified.
 
@@ -348,7 +335,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_properties_change(self, server_name: str, result: Dict[str, Any]):
+    def after_properties_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to modify ``server.properties`` completes.
 
@@ -360,7 +347,7 @@ class PluginBase(ABC):
 
     # --- Server Installation and Update Event Hooks ---
 
-    def before_server_install(self, server_name: str, target_version: str):
+    def before_server_install(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a new Bedrock server instance installation begins.
 
@@ -371,7 +358,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_server_install(self, server_name: str, result: Dict[str, Any]):
+    def after_server_install(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a new Bedrock server installation attempt completes.
 
@@ -381,7 +368,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_server_update(self, server_name: str, target_version: str):
+    def before_server_update(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before an existing Bedrock server instance is updated to a new version.
 
@@ -391,7 +378,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_server_update(self, server_name: str, result: Dict[str, Any]):
+    def after_server_update(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a Bedrock server update attempt completes.
 
@@ -403,7 +390,7 @@ class PluginBase(ABC):
 
     # --- Player Database Event Hooks ---
 
-    def before_players_add(self, players_data: List[Dict[str, Any]]):
+    def before_players_add(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before players are manually added to the central player database.
 
@@ -414,7 +401,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_players_add(self, result: Dict[str, Any]):
+    def after_players_add(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to manually add players to the central player database completes.
 
@@ -424,14 +411,14 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_player_db_scan(self):
+    def before_player_db_scan(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a scan of all server logs (or other sources) for new players begins.
         This scan is typically used to automatically populate the central player database.
         """
         pass
 
-    def after_player_db_scan(self, result: Dict[str, Any]):
+    def after_player_db_scan(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after a scan for new players has completed.
 
@@ -443,7 +430,7 @@ class PluginBase(ABC):
 
     # --- World Management Event Hooks ---
 
-    def before_world_export(self, server_name: str, export_dir: str):
+    def before_world_export(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a server's world is exported to a ``.mcworld`` file.
 
@@ -453,7 +440,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_world_export(self, server_name: str, result: Dict[str, Any]):
+    def after_world_export(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to export a server's world completes.
 
@@ -464,7 +451,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_world_import(self, server_name: str, file_path: str):
+    def before_world_import(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a ``.mcworld`` file is imported to replace a server's active world.
 
@@ -474,7 +461,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_world_import(self, server_name: str, result: Dict[str, Any]):
+    def after_world_import(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to import a world to a server completes.
 
@@ -484,7 +471,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_world_reset(self, server_name: str):
+    def before_world_reset(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a server's active world directory and its contents are deleted.
         This is a destructive operation.
@@ -494,7 +481,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_world_reset(self, server_name: str, result: Dict[str, Any]):
+    def after_world_reset(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to reset a server's world completes.
 
@@ -506,7 +493,7 @@ class PluginBase(ABC):
 
     # --- Addon Management Event Hooks ---
 
-    def before_addon_import(self, server_name: str, addon_file_path: str):
+    def before_addon_import(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before an addon file (e.g., ``.mcpack``, ``.mcaddon``) is imported to a server.
 
@@ -516,7 +503,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_addon_import(self, server_name: str, result: Dict[str, Any]):
+    def after_addon_import(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to import an addon to a server completes.
 
@@ -528,7 +515,7 @@ class PluginBase(ABC):
 
     # --- System Service and Application Setting Event Hooks ---
 
-    def before_service_change(self, server_name: str, action: str, **kwargs: Any):
+    def before_service_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a system service related to a server (e.g., systemd unit) or the Web UI
         is changed (e.g., created, enabled, disabled, deleted).
@@ -542,9 +529,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_service_change(
-        self, server_name: str, action: str, result: Dict[str, Any], **kwargs: Any
-    ):
+    def after_service_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to change a system service related to a server or Web UI completes.
 
@@ -556,7 +541,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_autoupdate_change(self, server_name: str, new_value: bool):
+    def before_autoupdate_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before a server's automatic update setting is changed.
 
@@ -567,7 +552,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_autoupdate_change(self, server_name: str, result: Dict[str, Any]):
+    def after_autoupdate_change(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to change a server's autoupdate setting completes.
 
@@ -577,7 +562,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def before_prune_download_cache(self, download_dir: str, keep_count: int):
+    def before_prune_download_cache(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         before the global download cache for server software is pruned.
 
@@ -588,7 +573,7 @@ class PluginBase(ABC):
         """
         pass
 
-    def after_prune_download_cache(self, result: Dict[str, Any]):
+    def after_prune_download_cache(self, **kwargs: Any):
         """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
         after an attempt to prune the global download cache completes.
 

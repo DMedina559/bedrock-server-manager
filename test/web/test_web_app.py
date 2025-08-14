@@ -14,7 +14,7 @@ def test_static_files(client: TestClient):
     assert response.status_code == 200
 
 
-def test_openapi_json(client: TestClient):
+def test_openapi_json(client: TestClient, authenticated_user):
     """Test that the OpenAPI JSON is available."""
     response = client.get("/api/openapi.json")
     assert response.status_code == 200

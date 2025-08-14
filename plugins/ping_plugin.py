@@ -16,7 +16,7 @@ class PingPlugin(PluginBase):
     It sends a 'pingplugin:ping' event after a server successfully starts.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """
@@ -26,7 +26,7 @@ class PingPlugin(PluginBase):
             f"'{self.name}' v{self.version} loaded. Will send 'pingplugin:ping' events after successful server starts."
         )
 
-    def after_server_start(self, server_name: str, result: dict):
+    def after_server_start(self, **kwargs: any):
         """
         An application event hook, called by the PluginManager after a server
         start attempt.
@@ -39,6 +39,9 @@ class PingPlugin(PluginBase):
             result (dict): A dictionary containing the outcome of the start operation.
                            Expected to have a "status" key (e.g., "success").
         """
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
+
         self.logger.debug(
             f"'{self.name}' received 'after_server_start' event for server '{server_name}'. Result: {result.get('status')}"
         )

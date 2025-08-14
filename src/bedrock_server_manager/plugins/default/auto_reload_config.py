@@ -3,6 +3,7 @@
 Plugin that automatically reloads server configurations after changes.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class AutoReloadPlugin(PluginBase):
@@ -12,7 +13,7 @@ class AutoReloadPlugin(PluginBase):
     ensuring changes take effect immediately without manual intervention.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
@@ -58,8 +59,10 @@ class AutoReloadPlugin(PluginBase):
                 f"Server '{server_name}' is not running, skipping reload after {context} change."
             )
 
-    def after_allowlist_change(self, server_name: str, result: dict):
+    def after_allowlist_change(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
 
         if result.get("status") == "success":
@@ -78,8 +81,10 @@ class AutoReloadPlugin(PluginBase):
                 f"Allowlist change for '{server_name}' was not successful, skipping reload."
             )
 
-    def after_permission_change(self, server_name: str, xuid: str, result: dict):
+    def after_permission_change(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
         if result.get("status") == "success":

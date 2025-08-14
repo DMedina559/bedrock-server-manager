@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ...db.database import get_db
 from ...db.models import User
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import get_current_user, pwd_context
 from ..schemas import User as UserSchema
 from ..auth_utils import get_admin_user, get_moderator_user
@@ -33,7 +33,7 @@ async def users_page(
     Serves the user management page.
     """
     users = db.query(User).all()
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "users.html",
         {"request": request, "users": users, "current_user": current_user},
@@ -63,6 +63,14 @@ async def create_user(
     """
     Creates a new user.
     """
+    # Check for existing user
+    existing_user = db.query(User).filter(User.username == data.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User with username '{data.username}' already exists.",
+        )
+
     hashed_password = pwd_context.hash(data.password)
     user = User(username=data.username, hashed_password=hashed_password, role=data.role)
     db.add(user)

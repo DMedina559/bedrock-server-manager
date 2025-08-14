@@ -27,7 +27,7 @@ from fastapi.responses import (
 from pydantic import BaseModel, Field
 
 from ..schemas import BaseApiResponse, User
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import get_current_user
 from ..auth_utils import get_admin_user
 from ...api import settings as settings_api
@@ -84,7 +84,7 @@ async def manage_settings_page_route(
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed global settings page.")
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "manage_settings.html",
         {"request": request, "current_user": current_user},
@@ -94,7 +94,7 @@ async def manage_settings_page_route(
 # --- API Route: Get All Global Settings ---
 @router.get("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
 async def get_all_settings_api_route(
-    current_user: User = Depends(get_admin_user),
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Retrieves all global application settings.
@@ -143,8 +143,9 @@ async def get_all_settings_api_route(
     """
     identity = current_user.username
     logger.info(f"API: Get global settings request by '{identity}'.")
+    app_context = request.app.state.app_context
     try:
-        result = settings_api.get_all_global_settings()
+        result = settings_api.get_all_global_settings(app_context=app_context)
         if result.get("status") == "success":
             return SettingsResponse(
                 status="success",
@@ -168,6 +169,7 @@ async def get_all_settings_api_route(
 # --- API Route: Set a Global Setting ---
 @router.post("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
 async def set_setting_api_route(
+    request: Request,
     payload: SettingItem,
     current_user: User = Depends(get_admin_user),
 ):
@@ -207,7 +209,7 @@ async def set_setting_api_route(
     logger.info(
         f"API: Set global setting request for key '{payload.key}' by '{identity}'."
     )
-
+    app_context = request.app.state.app_context
     if not payload.key:  # Redundant due to Pydantic Field(...) validation
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -216,7 +218,9 @@ async def set_setting_api_route(
 
     try:
 
-        result = settings_api.set_global_setting(payload.key, payload.value)
+        result = settings_api.set_global_setting(
+            key=payload.key, value=payload.value, app_context=app_context
+        )
         if result.get("status") == "success":
 
             return SettingsResponse(
@@ -256,7 +260,7 @@ async def set_setting_api_route(
 # --- API Route: Get Available Themes ---
 @router.get("/api/themes", response_model=Dict[str, str], tags=["Settings API"])
 async def get_themes_api_route(
-    current_user: User = Depends(get_current_user),
+    request: Request, current_user: User = Depends(get_current_user)
 ):
     """
     Retrieves a list of available themes.
@@ -268,6 +272,7 @@ async def get_themes_api_route(
     """
     identity = current_user.username
     logger.info(f"API: Get themes request by '{identity}'.")
+    app_context = request.app.state.app_context
     try:
         themes = {}
         # Scan built-in themes
@@ -281,7 +286,7 @@ async def get_themes_api_route(
                     themes[theme_name] = f"/static/css/themes/{filename}"
 
         # Scan custom themes
-        custom_themes_path = get_settings_instance().get("paths.themes")
+        custom_themes_path = app_context.settings.get("paths.themes")
         if os.path.isdir(custom_themes_path):
             for filename in os.listdir(custom_themes_path):
                 if filename.endswith(".css"):
@@ -302,7 +307,7 @@ async def get_themes_api_route(
     "/api/settings/reload", response_model=SettingsResponse, tags=["Settings API"]
 )
 async def reload_settings_api_route(
-    current_user: User = Depends(get_admin_user),
+    request: Request, current_user: User = Depends(get_admin_user)
 ):
     """
     Forces a reload of global application settings and logging configuration.
@@ -326,8 +331,9 @@ async def reload_settings_api_route(
     """
     identity = current_user.username
     logger.info(f"API: Reload global settings request by '{identity}'.")
+    app_context = request.app.state.app_context
     try:
-        result = settings_api.reload_global_settings()
+        result = settings_api.reload_global_settings(app_context=app_context)
         if result.get("status") == "success":
             return SettingsResponse(
                 status="success",

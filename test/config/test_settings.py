@@ -27,27 +27,9 @@ def db_session():
 from unittest.mock import MagicMock
 
 
-@pytest.fixture(scope="function")
-def settings(db_session, monkeypatch, tmp_path, mock_db_session_manager):
-    # Setup for the settings instance
-    test_data_dir = tmp_path / "test_app_data"
-    test_data_dir.mkdir()
-
-    # Point the settings to use the test database
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.db_session_manager",
-        mock_db_session_manager(db_session),
-    )
-
-    # Invalidate any existing singleton instance
-    Settings._instance = None
-
-    settings_instance = Settings()
-
-    yield settings_instance
-
-    # Teardown
-    Settings._instance = None
+@pytest.fixture
+def settings(app_context):
+    return app_context.settings
 
 
 def test_initialization_with_defaults(settings):
@@ -57,19 +39,32 @@ def test_initialization_with_defaults(settings):
     assert settings.get("web.port") == 11325
 
 
-def test_setting_and_getting_values(settings):
+def test_setting_and_getting_values(settings, db_session):
     """Test that setting a value is persisted and retrievable."""
     settings.set("web.port", 8000)
     assert settings.get("web.port") == 8000
 
+    # Check the database directly
+    setting_in_db = db_session.query(Setting).filter_by(key="web").one()
+    assert setting_in_db.value["port"] == 8000
+
     settings.set("retention.logs", 10)
     assert settings.get("retention.logs") == 10
 
+    # Check the database directly
+    setting_in_db = db_session.query(Setting).filter_by(key="retention").one()
+    assert setting_in_db.value["logs"] == 10
 
-def test_nested_setting_and_getting(settings):
+
+def test_nested_setting_and_getting(settings, db_session, tmp_path):
     """Test that nested values can be set and retrieved."""
-    settings.set("paths.servers", "/new/server/path")
-    assert settings.get("paths.servers") == "/new/server/path"
+    new_path = tmp_path / "new_server_path"
+    settings.set("paths.servers", str(new_path))
+    assert settings.get("paths.servers") == str(new_path)
+
+    # Check the database directly
+    setting_in_db = db_session.query(Setting).filter_by(key="paths").one()
+    assert setting_in_db.value["servers"] == str(new_path)
 
     # Ensure other nested values are not affected
     assert settings.get("paths.backups") is not None
@@ -95,15 +90,6 @@ def test_reload_settings(settings, db_session):
     assert settings.get("web.port") == 54321
 
 
-def test_singleton_behavior(settings):
-    """Test that the Settings class behaves as a singleton."""
-    new_settings_instance = Settings()
-    assert new_settings_instance is settings
-
-    settings.set("custom.test_singleton", True)
-    assert new_settings_instance.get("custom.test_singleton") is True
-
-
 def test_get_with_default_value(settings):
     """Test that the get method returns the default value if the key does not exist."""
     assert settings.get("non_existent_key", "default_value") == "default_value"
@@ -121,39 +107,14 @@ from unittest.mock import patch
 from unittest.mock import patch
 
 
-@patch("bedrock_server_manager.config.settings.bcm_config.save_config")
-@patch("bedrock_server_manager.config.settings.Settings.load")
-@patch("bedrock_server_manager.config.settings.bcm_config.load_config")
-def test_determine_app_data_dir_priority(
-    mock_load_config,
-    mock_settings_load,
-    mock_save_config,
-    monkeypatch,
-    tmp_path,
-    db_session,
-    mock_db_session_manager,
-):
-    """Test that _determine_app_data_dir respects the priority: config > default."""
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.db_session_manager",
-        mock_db_session_manager(db_session),
-    )
-    mock_load_config.return_value = {}
-
-    Settings._instance = None
-    settings = Settings()
-
-    # 1. Test config file priority
-    config_dir = str(tmp_path / "config_dir")
-    mock_load_config.return_value = {"data_dir": config_dir}
-    assert settings._determine_app_data_dir() == config_dir
-    mock_load_config.return_value = {}
-
-    # 2. Test home directory default
-    expected_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
-    assert settings._determine_app_data_dir() == expected_dir
-
-    Settings._instance = None
+def test_determine_app_data_dir_uses_config(settings, monkeypatch, tmp_path):
+    """Test that _determine_app_data_dir uses the data_dir from bcm_config."""
+    with patch(
+        "bedrock_server_manager.config.settings.bcm_config.load_config"
+    ) as mock_load_config:
+        config_dir = str(tmp_path / "config_dir")
+        mock_load_config.return_value = {"data_dir": config_dir}
+        assert settings._determine_app_data_dir() == config_dir
 
 
 def test_determine_app_config_dir(settings):

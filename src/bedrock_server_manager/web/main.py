@@ -1,237 +1,199 @@
 # bedrock_server_manager/web/main.py
 """
-Main application file for the Bedrock Server Manager web UI.
+Provides the main function for configuring and running the Uvicorn web server.
 
-This module initializes the :class:`fastapi.FastAPI` application instance,
-mounts the static files directory, configures the Jinja2 templating environment
-by calling :func:`~.templating.configure_templates`, and includes all API
-and page routers from the ``web.routers`` package.
-
-It serves as the central point for constructing the web application, preparing
-it to be run by an ASGI server like Uvicorn. The Uvicorn server is also
-started here if the script is run directly.
+This module contains the :func:`run_web_server` function, which is responsible
+for initializing and starting the Uvicorn server that serves the FastAPI application.
+The FastAPI application instance (`app`) itself is expected to be defined in
+:mod:`bedrock_server_manager.web.main`. This module handles parsing command-line
+arguments and application settings to correctly configure Uvicorn's host, port,
+debug mode, and worker processes.
 """
-from sys import version
-import os
-from pathlib import Path
-
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
 
 import logging
+import ipaddress
+from typing import Optional, List, Union
 
-from . import templating
-from ..config import get_installed_version
-from ..instances import get_plugin_manager_instance
+import uvicorn
+
+from ..context import AppContext
+from .app import create_web_app
+
+logger = logging.getLogger(__name__)
 
 
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")  # This is a string path
-STATIC_DIR = os.path.join(APP_ROOT, "static")
-version = get_installed_version()
+def run_web_server(
+    app_context: "AppContext",
+    host: Optional[Union[str, List[str]]] = None,
+    debug: bool = False,
+    threads: Optional[int] = None,
+) -> None:
+    """
+    Configures and starts the Uvicorn web server to serve the FastAPI application.
 
-# --- Setup Template Directories ---
-# Start with the main application's template directory
-all_template_dirs = [Path(TEMPLATES_DIR)]
+    This function is the main entry point for launching the web interface and API
+    for the Bedrock Server Manager. It handles:
+    - Checking for required authentication environment variables.
+    - Determining the host and port based on command-line arguments and application settings.
+    - Configuring Uvicorn's operational mode (debug/production), log level, and worker count.
+    - Launching Uvicorn to serve the FastAPI application located at
+      ``bedrock_server_manager.web.main:app``.
 
-web_main_templating_logger = logging.getLogger("bsm_web_main_templating_setup")
+    Extensive logging is performed throughout the configuration and startup sequence.
 
-global_api_plugin_manager = get_plugin_manager_instance()
+    Args:
+        host (Optional[Union[str, List[str]]]): Specifies the host address(es)
+            for Uvicorn to bind to. This can be a single IP address/hostname as a
+            string, or a list of addresses/hostnames. If provided via CLI, these
+            values take precedence over the ``web.host`` setting in the application
+            configuration. If multiple hosts are given (either via CLI or settings),
+            Uvicorn will typically bind to the first one in the list.
+            Defaults to ``None``, in which case the host is determined by the
+            ``web.host`` setting (defaulting to "127.0.0.1").
+        debug (bool): If ``True``, Uvicorn is run in development mode. This typically
+            enables auto-reload on code changes, sets a more verbose log level (debug),
+            and uses a single worker process. If ``False`` (default), Uvicorn runs in
+            production mode, with the number of worker processes determined by the
+            ``web.threads`` setting (or its default).
+        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
 
-if global_api_plugin_manager and hasattr(
-    global_api_plugin_manager, "plugin_template_paths"
-):
-    if global_api_plugin_manager.plugin_template_paths:
-        web_main_templating_logger.info(
-            f"Adding {len(global_api_plugin_manager.plugin_template_paths)} template paths from plugins."
+            Only used for Windows Service
+
+    Raises:
+        Exception: Re-raises any exception encountered during `uvicorn.run` if
+            Uvicorn itself fails to start (e.g., port already in use, invalid app path).
+
+    Settings Interaction:
+        This function reads the following keys from the global ``settings`` object:
+        - ``web.port`` (int): The port number for Uvicorn to listen on.
+          Defaults to 11325 if not set or invalid. Valid range: 1-65535.
+        - ``web.host`` (Union[str, List[str]]): The host address(es) to bind to if
+          not overridden by the ``host`` argument. Defaults to "127.0.0.1".
+        - ``web.threads`` (int): The number of Uvicorn worker processes to use when
+          not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
+    """
+    settings = app_context.settings
+
+    port_setting_key = "web.port"
+    port_val = settings.get(port_setting_key, 11325)
+    try:
+        port = int(port_val)
+        if not (0 < port < 65536):
+            raise ValueError("Port out of range")
+    except (ValueError, TypeError):
+        logger.error(
+            f"Invalid port number configured: {port_val}. Using default 11325."
         )
-        # Ensure paths are unique and are Path objects
-        unique_plugin_paths = {
-            p
-            for p in global_api_plugin_manager.plugin_template_paths
-            if isinstance(p, Path)
-        }
-        all_template_dirs.extend(list(unique_plugin_paths))
+        port = 11325
+    logger.info(f"FastAPI server configured to run on port: {port}")
+
+    hosts_to_use_cli: Optional[List[str]] = None
+    if host:
+        logger.info(f"Using host(s) provided via command-line: {host}")
+        if isinstance(host, str):
+            hosts_to_use_cli = [host]
+        elif isinstance(host, list):
+            hosts_to_use_cli = host
+
+    final_host_to_bind = "127.0.0.1"
+
+    if hosts_to_use_cli:
+        final_host_to_bind = hosts_to_use_cli[0]
+        if len(hosts_to_use_cli) > 1:
+            logger.warning(
+                f"Multiple hosts via CLI {hosts_to_use_cli}, Uvicorn binds to first: {final_host_to_bind}"
+            )
     else:
-        web_main_templating_logger.info(
-            "No additional template paths found from plugins."
-        )
-else:
-    web_main_templating_logger.warning(
-        "global_api_plugin_manager or its plugin_template_paths attribute is unavailable. "
-        "Only main app templates will be loaded."
-    )
-
-# Ensure all paths are strings for Jinja2Templates if it doesn't handle Path objects directly (it should, but being safe)
-# Jinja2Templates directory argument can be a str or a list of str/Path.
-# Using Path objects directly is fine.
-web_main_templating_logger.info(
-    f"Configuring Jinja2 environment with directories: {all_template_dirs}"
-)
-templating.configure_templates(all_template_dirs)
-
-
-app = FastAPI(
-    title="Bedrock Server Manager",
-    version=version,
-    redoc_url=None,
-    openapi_url="/api/openapi.json",
-    swagger_ui_parameters={
-        "defaultModelsExpandDepth": -1,  # Hide models section by default
-        "filter": True,  # Enable filtering for operations
-        "deepLinking": True,  # Enable deep linking for tags and operations
-    },
-)
-
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-# Mount custom themes directory
-from ..instances import get_settings_instance
-
-themes_path = get_settings_instance().get("paths.themes")
-if os.path.isdir(themes_path):
-    app.mount("/themes", StaticFiles(directory=themes_path), name="themes")
-
-from . import routers
-from .dependencies import needs_setup
-from starlette.middleware.authentication import AuthenticationMiddleware
-from .auth_utils import CustomAuthBackend, get_current_user_optional
-
-
-@app.middleware("http")
-async def setup_check_middleware(request: Request, call_next):
-    if (
-        await needs_setup()
-        and not request.url.path.startswith("/setup")
-        and not request.url.path.startswith("/static")
-    ):
-        return RedirectResponse(url="/setup")
-
-    # Manually handle authentication to bypass it for static files
-    if not request.url.path.startswith("/static"):
-        auth_backend = CustomAuthBackend()
-        auth_result = await auth_backend.authenticate(request)
-        if auth_result:
-            creds, user = auth_result
-            request.state.user = user
+        logger.info("No host via command-line, using settings.")
+        settings_host = settings.get("web.host")
+        if isinstance(settings_host, list) and settings_host:
+            final_host_to_bind = settings_host[0]
+            if len(settings_host) > 1:
+                logger.warning(
+                    f"Multiple hosts in settings {settings_host}, Uvicorn binds to first: {final_host_to_bind}"
+                )
+        elif isinstance(settings_host, str) and settings_host:
+            final_host_to_bind = settings_host
         else:
-            request.state.user = None
+            logger.warning(
+                f"Host setting 'web.host' invalid ('{settings_host}'). Defaulting to {final_host_to_bind}."
+            )
 
-    response = await call_next(request)
-    return response
+    try:
+        ipaddress.ip_address(final_host_to_bind)
+        logger.info(f"Uvicorn will bind to IP: {final_host_to_bind}")
+    except ValueError:
+        logger.info(f"Uvicorn will bind to hostname: {final_host_to_bind}")
 
+    uvicorn_log_level = "info"
+    reload_enabled = False
+    workers = 1
 
-@app.middleware("http")
-async def add_user_to_request(request: Request, call_next):
-    user = await get_current_user_optional(request)
-    request.state.current_user = user
-    response = await call_next(request)
-    return response
-
-
-app.include_router(routers.setup_router)
-app.include_router(routers.auth_router)
-app.include_router(routers.users_router)
-app.include_router(routers.register_router)
-app.include_router(routers.server_actions_router)
-app.include_router(routers.server_install_config_router)
-app.include_router(routers.backup_restore_router)
-app.include_router(routers.content_router)
-app.include_router(routers.settings_router)
-app.include_router(routers.api_info_router)
-app.include_router(routers.plugin_router)
-app.include_router(routers.tasks_router)
-app.include_router(routers.main_router)
-app.include_router(routers.account_router)
-app.include_router(routers.audit_log_router)
-
-
-# --- Dynamically include FastAPI routers from plugins ---
-
-import logging  # Use standard logging
-
-
-web_main_plugin_logger = logging.getLogger(
-    "bsm_web_main_plugin_loader"
-)  # Specific logger
-
-if (
-    global_api_plugin_manager
-    and hasattr(global_api_plugin_manager, "plugin_fastapi_routers")
-    and global_api_plugin_manager.plugin_fastapi_routers
-):
-    web_main_plugin_logger.info(
-        f"Found {len(global_api_plugin_manager.plugin_fastapi_routers)} FastAPI router(s) "
-        "from plugins via bedrock_server_manager.api.plugin_manager. Attempting to include them."
-    )
-    for router_idx, router_obj in enumerate(
-        global_api_plugin_manager.plugin_fastapi_routers
-    ):
+    if debug:
+        logger.warning("Running FastAPI in DEBUG mode (Uvicorn reload enabled).")
+        uvicorn_log_level = "debug"
+        reload_enabled = True
+    else:
+        threads_setting_key = "web.threads"
         try:
-            # Basic check if it's an APIRouter (can be made more robust)
-            if hasattr(router_obj, "routes") and callable(
-                getattr(router_obj, "include_router", None)
-            ):  # Heuristic check
-                app.include_router(router_obj)
-                router_prefix = getattr(router_obj, "prefix", f"N/A_idx_{router_idx}")
-                web_main_plugin_logger.info(
-                    f"Successfully included FastAPI router with prefix '{router_prefix}' from a plugin."
-                )
+            if threads is None:
+                workers_val = int(settings.get(threads_setting_key, 4))
+                if workers_val > 0:
+                    workers = workers_val
+                else:
+                    logger.warning(
+                        f"Invalid '{threads_setting_key}' ({workers_val}). Using default: {workers}."
+                    )
             else:
-                web_main_plugin_logger.warning(
-                    f"Plugin provided an object that does not appear to be a valid FastAPI APIRouter at index {router_idx}. Object type: {type(router_obj)}"
-                )
-        except Exception as e_router:
-            web_main_plugin_logger.error(
-                f"Failed to include a FastAPI router (index {router_idx}) from a plugin: {e_router}",
-                exc_info=True,
+                workers_val = int(threads)
+                if workers_val > 0:
+                    workers = workers_val
+                else:
+                    logger.warning(
+                        f"Invalid 'threads' passed ({workers}). Using default: {workers}."
+                    )
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Invalid format for '{threads_setting_key}'. Using default: {workers}."
             )
-elif global_api_plugin_manager:
-    web_main_plugin_logger.info(
-        "No additional FastAPI routers found from plugins via bedrock_server_manager.api.plugin_manager."
-    )
-else:
-    # This case implies global_api_plugin_manager import failed or it's None.
-    web_main_plugin_logger.error(
-        "global_api_plugin_manager is None or unavailable. Cannot include FastAPI routers from plugins. "
-        "Check logs for import errors related to 'bedrock_server_manager.api.plugin_manager'."
-    )
 
-# --- Dynamically mount static directories from plugins ---
-if (
-    global_api_plugin_manager
-    and hasattr(global_api_plugin_manager, "plugin_static_mounts")
-    and global_api_plugin_manager.plugin_static_mounts
-):
-    web_main_plugin_logger.info(
-        f"Found {len(global_api_plugin_manager.plugin_static_mounts)} static mount configurations "
-        "from plugins. Attempting to mount them."
-    )
-    for mount_path, dir_path, name in global_api_plugin_manager.plugin_static_mounts:
-        try:
-            app.mount(mount_path, StaticFiles(directory=dir_path), name=name)
-            web_main_plugin_logger.info(
-                f"Successfully mounted static directory '{dir_path}' at '{mount_path}' with name '{name}' from a plugin."
+        if (
+            workers > 1 and reload_enabled
+        ):  # This state should ideally be avoided for stability
+            logger.warning(
+                "Uvicorn reload mode is enabled with multiple workers. This may lead to unexpected behavior. For production, disable reload or use a process manager like Gunicorn with Uvicorn workers."
             )
-        except Exception as e_static_mount:
-            web_main_plugin_logger.error(
-                f"Failed to mount static directory '{dir_path}' at '{mount_path}' (name: '{name}') from a plugin: {e_static_mount}",
-                exc_info=True,
-            )
-elif global_api_plugin_manager:
-    web_main_plugin_logger.info("No additional static mounts found from plugins.")
-# No else here, as the error for global_api_plugin_manager being unavailable is already logged above.
+            # Consider forcing reload_enabled = False if workers > 1 in production mode
+        logger.info(f"Uvicorn production mode with {workers} worker(s).")
 
-app.include_router(routers.util_router)
+    server_mode = (
+        "DEBUG (Uvicorn with reload)" if reload_enabled else "PRODUCTION (Uvicorn)"
+    )
+    logger.info(f"Starting FastAPI web server in {server_mode} mode...")
+    logger.info(f"Listening on: http://{final_host_to_bind}:{port}")
 
+    try:
+        from uvicorn.config import LOGGING_CONFIG
 
-if __name__ == "__main__":
-    import uvicorn
-    from uvicorn.config import LOGGING_CONFIG
+        # To prevent uvicorn from taking over the logger, we need to disable it.
+        # More info: https://github.com/encode/uvicorn/issues/1285
+        LOGGING_CONFIG["loggers"]["uvicorn"]["propagate"] = True
 
-    # To prevent uvicorn from taking over the logger, we need to disable it.
-    # More info: https://github.com/encode/uvicorn/issues/1285
-    LOGGING_CONFIG["loggers"]["uvicorn"]["propagate"] = True
+        # Create the FastAPI app
+        app = create_web_app(app_context)
 
-    uvicorn.run(app, host="127.0.0.1", port=11325, log_config=LOGGING_CONFIG)
+        uvicorn.run(
+            app,
+            host=final_host_to_bind,
+            port=port,
+            log_config=LOGGING_CONFIG,
+            log_level=uvicorn_log_level.lower(),  # Ensure log level is lowercase
+            reload=reload_enabled,
+            workers=1,  # workers if not reload_enabled and workers > 1 else None,
+            forwarded_allow_ips="*",
+            proxy_headers=True,
+        )
+    except Exception as e:
+        logger.critical(f"Failed to start Uvicorn: {e}", exc_info=True)
+
+        raise

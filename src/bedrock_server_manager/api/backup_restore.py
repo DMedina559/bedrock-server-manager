@@ -26,20 +26,22 @@ to safely stop and restart the server. All functions are exposed to the plugin s
 import os
 import logging
 import threading
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance, get_plugin_manager_instance
+from ..instances import get_server_instance
 from .utils import server_lifecycle_manager
+from ..plugins.event_trigger import trigger_plugin_event
 from ..error import (
     BSMError,
     AppFileNotFoundError,
     MissingArgumentError,
     InvalidServerNameError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,9 @@ _backup_restore_lock = threading.Lock()
 
 
 @plugin_method("list_backup_files")
-def list_backup_files(server_name: str, backup_type: str) -> Dict[str, Any]:
+def list_backup_files(
+    server_name: str, backup_type: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Lists available backup files for a given server and type.
 
     This is a read-only operation and does not require a lock. It calls
@@ -82,7 +86,10 @@ def list_backup_files(server_name: str, backup_type: str) -> Dict[str, Any]:
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         backup_data = server.list_backups(backup_type)
         return {"status": "success", "backups": backup_data}
     except BSMError as e:
@@ -96,7 +103,12 @@ def list_backup_files(server_name: str, backup_type: str) -> Dict[str, Any]:
 
 
 @plugin_method("backup_world")
-def backup_world(server_name: str, stop_start_server: bool = True) -> Dict[str, str]:
+@trigger_plugin_event(before="before_backup", after="after_backup")
+def backup_world(
+    server_name: str,
+    stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
+) -> Dict[str, str]:
     """Creates a backup of the server's world directory.
 
     This operation is thread-safe and guarded by a lock. It calls the internal
@@ -127,7 +139,6 @@ def backup_world(server_name: str, stop_start_server: bool = True) -> Dict[str, 
             :class:`~.error.BackupRestoreError` (export/pruning issues),
             or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world backup."
@@ -137,27 +148,25 @@ def backup_world(server_name: str, stop_start_server: bool = True) -> Dict[str, 
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
 
-        plugin_manager.trigger_event(
-            "before_backup",
-            server_name=server_name,
-            backup_type="world",
-            stop_start_server=stop_start_server,
-        )
         logger.info(
             f"API: Initiating world backup for server '{server_name}'. Stop/Start: {stop_start_server}"
         )
 
         try:
             # Use a context manager to handle stopping and starting the server.
-            with server_lifecycle_manager(server_name, stop_start_server):
-                server = get_server_instance(server_name)
+            with server_lifecycle_manager(
+                server_name, stop_start_server, app_context=app_context
+            ):
+                if app_context:
+                    server = app_context.get_server(server_name)
+                else:
+                    server = get_server_instance(server_name)
                 backup_file = server._backup_world_data_internal()
-            result = {
+            return {
                 "status": "success",
                 "message": f"World backup '{os.path.basename(backup_file)}' created successfully for server '{server_name}'.",
             }
@@ -166,33 +175,28 @@ def backup_world(server_name: str, stop_start_server: bool = True) -> Dict[str, 
             logger.error(
                 f"API: World backup failed for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"World backup failed: {e}"}
+            return {"status": "error", "message": f"World backup failed: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during world backup for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during world backup: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_backup",
-                server_name=server_name,
-                backup_type="world",
-                result=result,
-            )
 
     finally:
         _backup_restore_lock.release()
 
-    return result
-
 
 @plugin_method("backup_config_file")
+@trigger_plugin_event(before="before_backup", after="after_backup")
 def backup_config_file(
-    server_name: str, file_to_backup: str, stop_start_server: bool = True
+    server_name: str,
+    file_to_backup: str,
+    stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Creates a backup of a specific server configuration file.
 
@@ -231,7 +235,6 @@ def backup_config_file(
             :class:`~.error.FileOperationError` (file copy/pruning issues),
             or errors from server stop/start if `stop_start_server` is true.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config backup."
@@ -241,7 +244,6 @@ def backup_config_file(
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
@@ -249,22 +251,20 @@ def backup_config_file(
             raise MissingArgumentError("File to backup cannot be empty.")
 
         filename_base = os.path.basename(file_to_backup)
-        plugin_manager.trigger_event(
-            "before_backup",
-            server_name=server_name,
-            backup_type="config_file",
-            file_to_backup=file_to_backup,
-            stop_start_server=stop_start_server,
-        )
         logger.info(
             f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'. Stop/Start: {stop_start_server}"
         )
 
         try:
-            with server_lifecycle_manager(server_name, stop_start_server):
-                server = get_server_instance(server_name)
+            with server_lifecycle_manager(
+                server_name, stop_start_server, app_context=app_context
+            ):
+                if app_context:
+                    server = app_context.get_server(server_name)
+                else:
+                    server = get_server_instance(server_name)
                 backup_file = server._backup_config_file_internal(filename_base)
-            result = {
+            return {
                 "status": "success",
                 "message": f"Config file '{filename_base}' backed up as '{os.path.basename(backup_file)}' successfully.",
             }
@@ -274,32 +274,28 @@ def backup_config_file(
                 f"API: Config file backup failed for '{filename_base}' on '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {"status": "error", "message": f"Config file backup failed: {e}"}
+            return {"status": "error", "message": f"Config file backup failed: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during config file backup for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during config file backup: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_backup",
-                server_name=server_name,
-                backup_type="config_file",
-                result=result,
-            )
 
     finally:
         _backup_restore_lock.release()
 
-    return result
-
 
 @plugin_method("backup_all")
-def backup_all(server_name: str, stop_start_server: bool = True) -> Dict[str, Any]:
+@trigger_plugin_event(before="before_backup", after="after_backup")
+def backup_all(
+    server_name: str,
+    stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
+) -> Dict[str, Any]:
     """Performs a full backup of the server's world and configuration files.
 
     This operation is thread-safe and guarded by a lock. It calls
@@ -332,7 +328,6 @@ def backup_all(server_name: str, stop_start_server: bool = True) -> Dict[str, An
             :class:`~.error.BackupRestoreError` (if critical world backup fails),
             or errors from server stop if `stop_start_server` is true.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent full backup."
@@ -342,27 +337,25 @@ def backup_all(server_name: str, stop_start_server: bool = True) -> Dict[str, An
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
 
-        plugin_manager.trigger_event(
-            "before_backup",
-            server_name=server_name,
-            backup_type="all",
-            stop_start_server=stop_start_server,
-        )
         logger.info(
             f"API: Initiating full backup for server '{server_name}'. Stop/Start: {stop_start_server}"
         )
 
         try:
             # The server is stopped before the backup but not restarted after.
-            with server_lifecycle_manager(server_name, stop_before=stop_start_server):
-                server = get_server_instance(server_name)
+            with server_lifecycle_manager(
+                server_name, stop_before=stop_start_server, app_context=app_context
+            ):
+                if app_context:
+                    server = app_context.get_server(server_name)
+                else:
+                    server = get_server_instance(server_name)
                 backup_results = server.backup_all_data()
-            result = {
+            return {
                 "status": "success",
                 "message": f"Full backup completed successfully for server '{server_name}'.",
                 "details": backup_results,
@@ -372,32 +365,28 @@ def backup_all(server_name: str, stop_start_server: bool = True) -> Dict[str, An
             logger.error(
                 f"API: Full backup failed for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"Full backup failed: {e}"}
+            return {"status": "error", "message": f"Full backup failed: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during full backup for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during full backup: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_backup",
-                server_name=server_name,
-                backup_type="all",
-                result=result,
-            )
 
     finally:
         _backup_restore_lock.release()
 
-    return result
-
 
 @plugin_method("restore_all")
-def restore_all(server_name: str, stop_start_server: bool = True) -> Dict[str, Any]:
+@trigger_plugin_event(before="before_restore", after="after_restore")
+def restore_all(
+    server_name: str,
+    stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
+) -> Dict[str, Any]:
     """Restores the server from the latest available backups.
 
     This operation is thread-safe and guarded by a lock. It calls
@@ -434,7 +423,6 @@ def restore_all(server_name: str, stop_start_server: bool = True) -> Dict[str, A
             :class:`~.error.BackupRestoreError` (if any component fails to restore),
             or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent restore."
@@ -444,35 +432,34 @@ def restore_all(server_name: str, stop_start_server: bool = True) -> Dict[str, A
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
 
-        plugin_manager.trigger_event(
-            "before_restore",
-            server_name=server_name,
-            restore_type="all",
-            stop_start_server=stop_start_server,
-        )
         logger.info(
             f"API: Initiating restore_all for server '{server_name}'. Stop/Start: {stop_start_server}"
         )
 
         try:
             with server_lifecycle_manager(
-                server_name, stop_before=stop_start_server, restart_on_success_only=True
+                server_name,
+                stop_before=stop_start_server,
+                restart_on_success_only=True,
+                app_context=app_context,
             ):
-                server = get_server_instance(server_name)
+                if app_context:
+                    server = app_context.get_server(server_name)
+                else:
+                    server = get_server_instance(server_name)
                 restore_results = server.restore_all_data_from_latest()
 
             if not restore_results:
-                result = {
+                return {
                     "status": "success",
                     "message": f"No backups found for server '{server_name}'. Nothing restored.",
                 }
             else:
-                result = {
+                return {
                     "status": "success",
                     "message": f"Restore_all completed successfully for server '{server_name}'.",
                     "details": restore_results,
@@ -482,33 +469,28 @@ def restore_all(server_name: str, stop_start_server: bool = True) -> Dict[str, A
             logger.error(
                 f"API: Restore_all failed for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"Restore_all failed: {e}"}
+            return {"status": "error", "message": f"Restore_all failed: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during restore_all for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during restore_all: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_restore",
-                server_name=server_name,
-                restore_type="all",
-                result=result,
-            )
 
     finally:
         _backup_restore_lock.release()
 
-    return result
-
 
 @plugin_method("restore_world")
+@trigger_plugin_event(before="before_restore", after="after_restore")
 def restore_world(
-    server_name: str, backup_file_path: str, stop_start_server: bool = True
+    server_name: str,
+    backup_file_path: str,
+    stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Restores a server's world from a specific backup file.
 
@@ -546,7 +528,6 @@ def restore_world(
             :class:`~.error.BackupRestoreError`, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world restore."
@@ -556,20 +537,12 @@ def restore_world(
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
         if not backup_file_path:
             raise MissingArgumentError("Backup file path cannot be empty.")
 
-        plugin_manager.trigger_event(
-            "before_restore",
-            server_name=server_name,
-            restore_type="world",
-            backup_file_path=backup_file_path,
-            stop_start_server=stop_start_server,
-        )
         backup_filename = os.path.basename(backup_file_path)
         logger.info(
             f"API: Initiating world restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
@@ -580,12 +553,18 @@ def restore_world(
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
 
             with server_lifecycle_manager(
-                server_name, stop_before=stop_start_server, restart_on_success_only=True
+                server_name,
+                stop_before=stop_start_server,
+                restart_on_success_only=True,
+                app_context=app_context,
             ):
-                server = get_server_instance(server_name)
+                if app_context:
+                    server = app_context.get_server(server_name)
+                else:
+                    server = get_server_instance(server_name)
                 server.import_active_world_from_mcworld(backup_file_path)
 
-            result = {
+            return {
                 "status": "success",
                 "message": f"World restore from '{backup_filename}' completed successfully for server '{server_name}'.",
             }
@@ -594,33 +573,28 @@ def restore_world(
             logger.error(
                 f"API: World restore failed for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"World restore failed: {e}"}
+            return {"status": "error", "message": f"World restore failed: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during world restore for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during world restore: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_restore",
-                server_name=server_name,
-                restore_type="world",
-                result=result,
-            )
 
     finally:
         _backup_restore_lock.release()
 
-    return result
-
 
 @plugin_method("restore_config_file")
+@trigger_plugin_event(before="before_restore", after="after_restore")
 def restore_config_file(
-    server_name: str, backup_file_path: str, stop_start_server: bool = True
+    server_name: str,
+    backup_file_path: str,
+    stop_start_server: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Restores a specific config file from a backup.
 
@@ -659,7 +633,6 @@ def restore_config_file(
         BSMError: Propagates errors from underlying operations like
             :class:`~.error.FileOperationError` or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config restore."
@@ -669,20 +642,12 @@ def restore_config_file(
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
         if not backup_file_path:
             raise MissingArgumentError("Backup file path cannot be empty.")
 
-        plugin_manager.trigger_event(
-            "before_restore",
-            server_name=server_name,
-            restore_type="config_file",
-            backup_file_path=backup_file_path,
-            stop_start_server=stop_start_server,
-        )
         backup_filename = os.path.basename(backup_file_path)
         logger.info(
             f"API: Initiating config restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
@@ -693,12 +658,18 @@ def restore_config_file(
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
 
             with server_lifecycle_manager(
-                server_name, stop_before=stop_start_server, restart_on_success_only=True
+                server_name,
+                stop_before=stop_start_server,
+                restart_on_success_only=True,
+                app_context=app_context,
             ):
-                server = get_server_instance(server_name)
+                if app_context:
+                    server = app_context.get_server(server_name)
+                else:
+                    server = get_server_instance(server_name)
                 restored_file = server._restore_config_file_internal(backup_file_path)
 
-            result = {
+            return {
                 "status": "success",
                 "message": f"Config file '{os.path.basename(restored_file)}' restored successfully from '{backup_filename}'.",
             }
@@ -708,32 +679,26 @@ def restore_config_file(
                 f"API: Config file restore failed for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {"status": "error", "message": f"Config file restore failed: {e}"}
+            return {"status": "error", "message": f"Config file restore failed: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during config file restore for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during config file restore: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_restore",
-                server_name=server_name,
-                restore_type="config_file",
-                result=result,
-            )
 
     finally:
         _backup_restore_lock.release()
 
-    return result
-
 
 @plugin_method("prune_old_backups")
-def prune_old_backups(server_name: str) -> Dict[str, str]:
+@trigger_plugin_event(before="before_prune_backups", after="after_prune_backups")
+def prune_old_backups(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Prunes old backups for a server based on retention settings.
 
     This operation is thread-safe and guarded by a lock. It iteratively calls
@@ -763,7 +728,6 @@ def prune_old_backups(server_name: str) -> Dict[str, str]:
             Individual :class:`~.error.FileOperationError` for components are
             typically aggregated into the error message.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not _backup_restore_lock.acquire(blocking=False):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent prune."
@@ -773,27 +737,27 @@ def prune_old_backups(server_name: str) -> Dict[str, str]:
             "message": "Backup/restore operation already in progress.",
         }
 
-    result = {}
     try:
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
 
-        plugin_manager.trigger_event("before_prune_backups", server_name=server_name)
         logger.info(
             f"API: Initiating pruning of old backups for server '{server_name}'."
         )
 
         try:
-            server = get_server_instance(server_name)
+            if app_context:
+                server = app_context.get_server(server_name)
+            else:
+                server = get_server_instance(server_name)
             # If the backup directory doesn't exist, there's nothing to do.
             if not server.server_backup_directory or not os.path.isdir(
                 server.server_backup_directory
             ):
-                result = {
+                return {
                     "status": "success",
                     "message": "No backup directory found, nothing to prune.",
                 }
-                return result
 
             pruning_errors = []
             # Prune world backups.
@@ -829,12 +793,12 @@ def prune_old_backups(server_name: str) -> Dict[str, str]:
 
             # Report final status based on whether any errors occurred.
             if pruning_errors:
-                result = {
+                return {
                     "status": "error",
                     "message": f"Pruning completed with errors: {'; '.join(pruning_errors)}",
                 }
             else:
-                result = {
+                return {
                     "status": "success",
                     "message": f"Backup pruning completed for server '{server_name}'.",
                 }
@@ -843,22 +807,16 @@ def prune_old_backups(server_name: str) -> Dict[str, str]:
             logger.error(
                 f"API: Cannot prune backups for '{server_name}': {e}", exc_info=True
             )
-            result = {"status": "error", "message": f"Pruning setup error: {e}"}
+            return {"status": "error", "message": f"Pruning setup error: {e}"}
         except Exception as e:
             logger.error(
                 f"API: Unexpected error during backup pruning for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error during pruning: {e}",
             }
-        finally:
-            plugin_manager.trigger_event(
-                "after_prune_backups", server_name=server_name, result=result
-            )
 
     finally:
         _backup_restore_lock.release()
-
-    return result

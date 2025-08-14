@@ -10,12 +10,17 @@ safe, and version-agnostic access to these registered functions. It also
 facilitates inter-plugin communication through a custom event system.
 """
 import logging
+import inspect
+import functools
 from typing import Dict, Any, Callable, TYPE_CHECKING, TypeVar, List
+
+from typing import Optional
 
 if TYPE_CHECKING:
     # Used for type hinting to avoid circular import at runtime.
     # The PluginManager is central to plugin operations and event handling.
     from .plugin_manager import PluginManager
+    from ..context import AppContext
 
 # Initialize a logger for this module.
 # Log messages will be prefixed with "bedrock_server_manager.plugins.api_bridge".
@@ -101,7 +106,12 @@ class PluginAPI:
     other plugins.
     """
 
-    def __init__(self, plugin_name: str, plugin_manager: "PluginManager"):
+    def __init__(
+        self,
+        plugin_name: str,
+        plugin_manager: "PluginManager",
+        app_context: Optional["AppContext"],
+    ):
         """Initializes the PluginAPI instance for a specific plugin.
 
         This constructor is called by the `PluginManager` when a plugin is
@@ -113,10 +123,51 @@ class PluginAPI:
             plugin_manager (PluginManager): A reference to the `PluginManager`
                 instance. This is used to delegate custom event operations
                 (listening and sending) to the manager.
+            app_context (Optional[AppContext]): A reference to the global
+                application context, providing access to shared application state
+                and managers. This can be `None` during initial setup phases.
         """
         self._plugin_name: str = plugin_name
         self._plugin_manager: "PluginManager" = plugin_manager
+        self._app_context: Optional["AppContext"] = app_context
         logger.debug(f"PluginAPI instance created for plugin '{self._plugin_name}'.")
+
+    @property
+    def app_context(self) -> "AppContext":
+        """Provides direct access to the application's context.
+
+        This property returns the central `AppContext` object, which holds
+        instances of key application components like the `Settings` manager,
+        the `BedrockServerManager`, and the `PluginManager` itself.
+
+        Example:
+            ```python
+            # In a plugin method:
+            settings = self.api.app_context.settings
+            server_manager = self.api.app_context.manager
+            all_servers = server_manager.get_all_servers()
+            ```
+
+        Returns:
+            AppContext: The application context instance.
+
+        Raises:
+            RuntimeError: If the application context has not been set on this
+                `PluginAPI` instance yet. This would indicate an improper
+                initialization sequence in the application startup.
+        """
+        if self._app_context is None:
+            # This state should not be reachable in a correctly started application,
+            # as the AppContext is set by the PluginManager during plugin loading.
+            logger.critical(
+                f"Plugin '{self._plugin_name}' tried to access `api.app_context`, but it has not been set. "
+                "This indicates a critical error in the application's startup sequence."
+            )
+            raise RuntimeError(
+                "Application context is not available. It may not have been "
+                "properly initialized and set for the PluginAPI."
+            )
+        return self._app_context
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
         """Dynamically retrieves a registered core API function when accessed as an attribute.
@@ -127,13 +178,20 @@ class PluginAPI:
         `'some_function_name'`. This method then looks up `name` in the
         `_api_registry`.
 
+        It also inspects the signature of the retrieved function. If the function
+        has a parameter named `app_context`, this method automatically provides
+        the `AppContext` to it, simplifying the function's implementation for
+        both the core API and the plugin calling it.
+
         Args:
             name (str): The name of the attribute (API function) being accessed
                 by the plugin.
 
         Returns:
             Callable[..., Any]: The callable API function retrieved from the
-            `_api_registry` corresponding to the given `name`.
+            `_api_registry` corresponding to the given `name`. If the function
+            expects an `app_context`, a partial function with the context already
+            bound is returned.
 
         Raises:
             AttributeError: If the function `name` has not been registered in
@@ -150,6 +208,29 @@ class PluginAPI:
                 f"Available APIs: {list(_api_registry.keys())}"
             )
         api_function = _api_registry[name]
+
+        # --- Automatic AppContext Injection ---
+        # Inspect the function's signature to see if it wants the app_context.
+        try:
+            sig = inspect.signature(api_function)
+            if "app_context" in sig.parameters:
+                logger.debug(
+                    f"API function '{name}' expects 'app_context'. "
+                    "Injecting it automatically."
+                )
+                # Use functools.partial to pre-fill the app_context argument.
+                # This returns a new callable that plugins can use without
+                # needing to pass the context themselves.
+                return functools.partial(api_function, app_context=self.app_context)
+        except (ValueError, TypeError) as e:
+            # This can happen for certain built-in functions or callables that
+            # are not inspectable. In such cases, we just return the original.
+            logger.warning(
+                f"Could not inspect the signature of API function '{name}'. "
+                f"Automatic 'app_context' injection will not be available for it. Error: {e}"
+            )
+
+        # If no app_context injection, or if inspection fails, return the original function.
         logger.debug(
             f"Plugin '{self._plugin_name}' successfully accessed API function: '{name}'."
         )

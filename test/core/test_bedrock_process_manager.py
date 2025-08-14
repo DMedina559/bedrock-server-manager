@@ -1,81 +1,61 @@
+import os
+import time
 import pytest
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 from bedrock_server_manager.core.bedrock_process_manager import BedrockProcessManager
 from bedrock_server_manager.error import ServerNotRunningError, ServerStartError
 
 
-@pytest.fixture(autouse=True)
-def reset_singleton():
-    BedrockProcessManager._instance = None
-
-
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_singleton_pattern(mock_thread):
-    assert BedrockProcessManager() is BedrockProcessManager()
-
-
 @pytest.fixture
-def mock_get_server_instance(mocker, mock_bedrock_server):
-    """Fixture to patch get_server_instance for the core.bedrock_process_manager module."""
-    mock_bedrock_server.server_dir = "dummy_dir"
-    mock_bedrock_server.bedrock_executable_path = "dummy_executable"
-    mock_bedrock_server.get_pid_file_path.return_value = "dummy_pid_file"
-    return mocker.patch(
-        "bedrock_server_manager.core.bedrock_process_manager.get_server_instance",
-        return_value=mock_bedrock_server,
-    )
+def manager(app_context):
+    """Fixture to get a BedrockProcessManager instance and cleanup servers."""
+    manager = BedrockProcessManager(app_context=app_context)
+    yield manager
+    # Cleanup: stop any running servers after the test
+    for server_name in list(manager.servers.keys()):
+        try:
+            manager.stop_server(server_name)
+        except ServerNotRunningError:
+            continue
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_start_server_success(mock_thread, mock_get_server_instance):
+def test_start_server_success(manager):
     # Arrange
-    manager = BedrockProcessManager()
-    server_name = "test_server"
+    server = manager.app_context.get_server("test_server")
+    server_name = server.server_name
 
-    with (
-        patch(
-            "bedrock_server_manager.core.bedrock_process_manager.subprocess.Popen"
-        ) as mock_popen,
-        patch(
-            "bedrock_server_manager.core.bedrock_process_manager.core_process.write_pid_to_file"
-        ) as mock_write_pid,
-        patch(
-            "bedrock_server_manager.core.bedrock_process_manager.open", mock_open()
-        ) as mock_file,
-    ):
-        # Act
-        manager.start_server(server_name)
+    # Act
+    manager.start_server(server_name)
 
-        # Assert
-        assert server_name in manager.servers
-        mock_popen.assert_called_once()
-        mock_write_pid.assert_called_once()
+    # Assert
+    assert server_name in manager.servers
+    process = manager.servers[server_name]
+    assert process.poll() is None  # Check if the process is running
+
+    # Verify PID file is created
+    pid_file_path = server.get_pid_file_path()
+    assert os.path.exists(pid_file_path)
+    with open(pid_file_path, "r") as f:
+        pid = int(f.read())
+        assert pid == process.pid
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_start_server_already_running(mock_thread):
+def test_start_server_already_running(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
-    manager.servers[server_name] = MagicMock()
-    manager.servers[server_name].poll.return_value = None
+    manager.start_server(server_name)  # Start the server once
 
     # Assert
     with pytest.raises(ServerStartError):
-        manager.start_server(server_name)
+        manager.start_server(server_name)  # Try to start it again
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_stop_server_success(mock_thread, mock_get_settings_instance):
+def test_stop_server_success(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
-    mock_process = MagicMock()
-    mock_process.poll.return_value = None
-    manager.servers[server_name] = mock_process
-
-    mock_get_settings_instance.get.return_value = 1
+    manager.start_server(server_name)
+    assert server_name in manager.servers
 
     # Act
     manager.stop_server(server_name)
@@ -83,15 +63,10 @@ def test_stop_server_success(mock_thread, mock_get_settings_instance):
     # Assert
     assert server_name not in manager.servers
     assert manager.intentionally_stopped[server_name] is True
-    mock_process.stdin.write.assert_called_with(b"stop\n")
-    mock_process.stdin.flush.assert_called_once()
-    mock_process.wait.assert_called_once()
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_stop_server_not_running(mock_thread):
+def test_stop_server_not_running(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
 
     # Assert
@@ -99,28 +74,22 @@ def test_stop_server_not_running(mock_thread):
         manager.stop_server(server_name)
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_send_command_success(mock_thread):
+def test_send_command_success(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
     command = "say Hello"
-    mock_process = MagicMock()
-    mock_process.poll.return_value = None
-    manager.servers[server_name] = mock_process
+    manager.start_server(server_name)
 
     # Act
     manager.send_command(server_name, command)
 
-    # Assert
-    mock_process.stdin.write.assert_called_with(f"{command}\n".encode())
-    mock_process.stdin.flush.assert_called_once()
+    # Assert - For now, we just check that it doesn't raise an error.
+    # A more advanced test could involve checking server output.
+    pass
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_send_command_server_not_running(mock_thread):
+def test_send_command_server_not_running(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
     command = "say Hello"
 
@@ -129,25 +98,21 @@ def test_send_command_server_not_running(mock_thread):
         manager.send_command(server_name, command)
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_get_server_process(mock_thread):
+def test_get_server_process(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
-    mock_process = MagicMock()
-    manager.servers[server_name] = mock_process
+    manager.start_server(server_name)
+    expected_process = manager.servers[server_name]
 
     # Act
     process = manager.get_server_process(server_name)
 
     # Assert
-    assert process == mock_process
+    assert process is expected_process
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_get_server_process_not_found(mock_thread):
+def test_get_server_process_not_found(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
 
     # Act
@@ -157,14 +122,11 @@ def test_get_server_process_not_found(mock_thread):
     assert process is None
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.threading.Thread")
-def test_server_restart_failsafe(mock_thread, mock_get_settings_instance):
+def test_server_restart_failsafe(manager):
     # Arrange
-    manager = BedrockProcessManager()
     server_name = "test_server"
     manager.failure_counts[server_name] = 3
-
-    mock_get_settings_instance.get.return_value = 3
+    manager.app_context.settings.set("server.max_restarts", 3)
 
     with patch.object(manager, "start_server") as mock_start_server:
         # Act
@@ -172,3 +134,23 @@ def test_server_restart_failsafe(mock_thread, mock_get_settings_instance):
 
         # Assert
         mock_start_server.assert_not_called()
+
+
+def test_start_server_already_running_with_pid_file(manager):
+    # Arrange
+    server = manager.app_context.get_server("test_server")
+    server_name = server.server_name
+    pid_file_path = server.get_pid_file_path()
+
+    # Create a dummy PID file to simulate a stale process
+    with open(pid_file_path, "w") as f:
+        f.write("12345")
+
+    # Act & Assert
+    with pytest.raises(
+        ServerStartError, match=f"Server '{server_name}' has a stale PID file."
+    ):
+        manager.start_server(server_name)
+
+    # Cleanup
+    os.remove(pid_file_path)

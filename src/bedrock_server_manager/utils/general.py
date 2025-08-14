@@ -11,11 +11,17 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+
+from ..context import AppContext
+
+
 logger = logging.getLogger(__name__)
 
 
 def startup_checks(
-    app_name: Optional[str] = "BedrockServerManager", version: Optional[str] = "0.0.0"
+    app_context: AppContext,
+    app_name: Optional[str] = "BedrockServerManager",
+    version: Optional[str] = "0.0.0",
 ) -> None:
     """
     Performs initial checks and setup when the application starts.
@@ -37,26 +43,26 @@ def startup_checks(
         # Raising an exception is the correct way to halt execution on a critical failure.
         raise RuntimeError(message)
 
-    from bedrock_server_manager.instances import get_settings_instance
+    settings = app_context.settings
 
     # Ensure essential directories exist
     dirs_to_create = {
-        "BASE_DIR": get_settings_instance().get("paths.servers"),
-        "CONTENT_DIR": get_settings_instance().get("paths.content"),
+        "BASE_DIR": settings.get("paths.servers"),
+        "CONTENT_DIR": settings.get("paths.content"),
         "WORLDS_SUBDIR": (
-            os.path.join(str(get_settings_instance().get("paths.content")), "worlds")
-            if get_settings_instance().get("paths.content")
+            os.path.join(str(settings.get("paths.content")), "worlds")
+            if settings.get("paths.content")
             else None
         ),
         "ADDONS_SUBDIR": (
-            os.path.join(str(get_settings_instance().get("paths.content")), "addons")
-            if get_settings_instance().get("paths.content")
+            os.path.join(str(settings.get("paths.content")), "addons")
+            if settings.get("paths.content")
             else None
         ),
-        "DOWNLOAD_DIR": get_settings_instance().get("paths.downloads"),
-        "PLUGIN_DIR": get_settings_instance().get("paths.plugins"),
-        "BACKUP_DIR": get_settings_instance().get("paths.backups"),
-        "LOG_DIR": get_settings_instance().get("paths.logs"),
+        "DOWNLOAD_DIR": settings.get("paths.downloads"),
+        "PLUGIN_DIR": settings.get("paths.plugins"),
+        "BACKUP_DIR": settings.get("paths.backups"),
+        "LOG_DIR": settings.get("paths.logs"),
     }
 
     for name, dir_path in dirs_to_create.items():

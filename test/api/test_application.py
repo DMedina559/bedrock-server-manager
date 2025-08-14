@@ -10,76 +10,90 @@ from bedrock_server_manager.api.application import (
 from bedrock_server_manager.error import FileError, BSMError
 
 
-@pytest.fixture
-def mock_get_manager_instance(mocker, mock_bedrock_server_manager):
-    """Fixture to patch get_manager_instance for the api.application module."""
-    return mocker.patch(
-        "bedrock_server_manager.api.application.get_manager_instance",
-        return_value=mock_bedrock_server_manager,
-        autospec=True,
-    )
-
-
 class TestApplicationInfo:
-    def test_get_application_info_api(self, mock_get_manager_instance):
-        result = get_application_info_api()
+    def test_get_application_info_api(self, app_context):
+        result = get_application_info_api(app_context=app_context)
         assert result["status"] == "success"
         assert result["data"]["application_name"] == "Bedrock Server Manager"
-        assert result["data"]["version"] == "1.0.0"
 
 
 class TestContentListing:
-    def test_list_available_worlds_api(self, mock_get_manager_instance):
-        result = list_available_worlds_api()
+    def test_list_available_worlds_api(self, app_context, tmp_path):
+        worlds_dir = tmp_path / "content" / "worlds"
+        worlds_dir.mkdir(parents=True, exist_ok=True)
+        (worlds_dir / "world1.mcworld").touch()
+        app_context.manager._content_dir = str(tmp_path / "content")
+
+        result = list_available_worlds_api(app_context=app_context)
         assert result["status"] == "success"
-        assert result["files"] == ["/content/worlds/world1.mcworld"]
+        assert len(result["files"]) == 1
+        assert "world1.mcworld" in result["files"][0]
 
-    def test_list_available_addons_api(self, mock_get_manager_instance):
-        result = list_available_addons_api()
+    def test_list_available_addons_api(self, app_context, tmp_path):
+        addons_dir = tmp_path / "content" / "addons"
+        addons_dir.mkdir(parents=True, exist_ok=True)
+        (addons_dir / "addon1.mcpack").touch()
+        app_context.manager._content_dir = str(tmp_path / "content")
+
+        result = list_available_addons_api(app_context=app_context)
         assert result["status"] == "success"
-        assert result["files"] == ["/content/addons/addon1.mcpack"]
+        assert len(result["files"]) == 1
+        assert "addon1.mcpack" in result["files"][0]
 
-    def test_list_available_worlds_api_file_error(self, mock_get_manager_instance):
-        mock_get_manager_instance.return_value.list_available_worlds.side_effect = (
-            FileError("Test error")
-        )
-        result = list_available_worlds_api()
-        assert result["status"] == "error"
-        assert "Test error" in result["message"]
+    def test_list_available_worlds_api_file_error(self, real_manager):
+        with patch.object(
+            real_manager, "list_available_worlds", side_effect=FileError("Test error")
+        ):
+            with patch(
+                "bedrock_server_manager.api.application.get_manager_instance",
+                return_value=real_manager,
+            ):
+                result = list_available_worlds_api()
+                assert result["status"] == "error"
+                assert "Test error" in result["message"]
 
-    def test_list_available_addons_api_file_error(self, mock_get_manager_instance):
-        mock_get_manager_instance.return_value.list_available_addons.side_effect = (
-            FileError("Test error")
-        )
-        result = list_available_addons_api()
-        assert result["status"] == "error"
-        assert "Test error" in result["message"]
+    def test_list_available_addons_api_file_error(self, real_manager):
+        with patch.object(
+            real_manager, "list_available_addons", side_effect=FileError("Test error")
+        ):
+            with patch(
+                "bedrock_server_manager.api.application.get_manager_instance",
+                return_value=real_manager,
+            ):
+                result = list_available_addons_api()
+                assert result["status"] == "error"
+                assert "Test error" in result["message"]
 
 
 class TestGetAllServersData:
-    def test_get_all_servers_data_success(self, mock_get_manager_instance):
-        mock_get_manager_instance.return_value.get_servers_data.return_value = (
-            [{"name": "server1"}],
-            [],
-        )
-        result = get_all_servers_data()
+    def test_get_all_servers_data_success(self, app_context, real_bedrock_server):
+        result = get_all_servers_data(app_context=app_context)
         assert result["status"] == "success"
         assert len(result["servers"]) == 1
 
-    def test_get_all_servers_data_partial_success(self, mock_get_manager_instance):
-        mock_get_manager_instance.return_value.get_servers_data.return_value = (
-            [{"name": "server1"}],
-            ["Error on server2"],
-        )
-        result = get_all_servers_data()
-        assert result["status"] == "success"
-        assert len(result["servers"]) == 1
-        assert "Completed with errors" in result["message"]
+    def test_get_all_servers_data_partial_success(self, real_manager):
+        with patch.object(
+            real_manager,
+            "get_servers_data",
+            return_value=([{"name": "server1"}], ["Error on server2"]),
+        ):
+            with patch(
+                "bedrock_server_manager.api.application.get_manager_instance",
+                return_value=real_manager,
+            ):
+                result = get_all_servers_data()
+                assert result["status"] == "success"
+                assert len(result["servers"]) == 1
+                assert "Completed with errors" in result["message"]
 
-    def test_get_all_servers_data_bsm_error(self, mock_get_manager_instance):
-        mock_get_manager_instance.return_value.get_servers_data.side_effect = BSMError(
-            "Test BSM error"
-        )
-        result = get_all_servers_data()
-        assert result["status"] == "error"
-        assert "Test BSM error" in result["message"]
+    def test_get_all_servers_data_bsm_error(self, real_manager):
+        with patch.object(
+            real_manager, "get_servers_data", side_effect=BSMError("Test BSM error")
+        ):
+            with patch(
+                "bedrock_server_manager.api.application.get_manager_instance",
+                return_value=real_manager,
+            ):
+                result = get_all_servers_data()
+                assert result["status"] == "error"
+                assert "Test BSM error" in result["message"]

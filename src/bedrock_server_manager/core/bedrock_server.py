@@ -8,10 +8,11 @@ specialized mixin classes (e.g., for process control, world management, backups)
 each contributing a distinct set of features. This compositional approach promotes
 code organization and modularity, allowing for clear separation of concerns.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Import all the mixin classes that will be combined to form the BedrockServer.
 from . import server
+from ..config.settings import Settings
 from ..error import FileOperationError, ConfigParseError
 
 
@@ -125,8 +126,7 @@ class BedrockServer(
     """
 
     def __init__(
-        self,
-        server_name: str,
+        self, server_name: str, settings_instance: Settings = None, app_context=None
     ) -> None:
         """Initializes a BedrockServer instance.
 
@@ -144,13 +144,14 @@ class BedrockServer(
                 is also used as the directory name for the server's files under
                 the application's base server directory (defined by
                 ``paths.servers_base_dir`` in settings).
-            settings_instance (Optional[:class:`~bedrock_server_manager.config.settings.Settings`]):
+            settings_instance (:class:`~bedrock_server_manager.config.settings.Settings`):
                 An instance of the application's global :class:`~bedrock_server_manager.config.settings.Settings`
-                object. If not provided, the :class:`~.core.server.base_server_mixin.BedrockServerBaseMixin`
-                will attempt to load it.
+                object. This is a required dependency.
         """
         super().__init__(
             server_name=server_name,
+            settings_instance=settings_instance,
+            app_context=app_context,
         )
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."

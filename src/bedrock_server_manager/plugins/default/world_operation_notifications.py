@@ -3,6 +3,7 @@
 Plugin to send in-game notifications before world operations like export, import, or reset.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -11,7 +12,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
     are performed on a running server, providing a heads-up for potential disruptions.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
@@ -60,8 +61,10 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} warning."
             )
 
-    def before_world_export(self, server_name: str, export_dir: str):
+    def before_world_export(self, **kwargs: Any):
         """Notifies players before a world export begins."""
+        server_name = kwargs.get("server_name")
+        export_dir = kwargs.get("export_dir")
         self.logger.debug(
             f"Handling before_world_export for '{server_name}' to '{export_dir}'."
         )
@@ -69,8 +72,10 @@ class WorldOperationNotificationsPlugin(PluginBase):
             server_name, "World export starting...", "world export"
         )
 
-    def before_world_import(self, server_name: str, file_path: str):
+    def before_world_import(self, **kwargs: Any):
         """Notifies players before a world import begins."""
+        server_name = kwargs.get("server_name")
+        file_path = kwargs.get("file_path")
         self.logger.debug(
             f"Handling before_world_import for '{server_name}' from '{file_path}'."
         )
@@ -80,8 +85,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
             "world import",
         )
 
-    def before_world_reset(self, server_name: str):
+    def before_world_reset(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
+        server_name = kwargs.get("server_name")
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
         self.logger.warning(
             f"Critical operation: World reset initiated for server '{server_name}'."

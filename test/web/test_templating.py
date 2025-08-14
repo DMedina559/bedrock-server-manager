@@ -8,13 +8,14 @@ from bedrock_server_manager.web.templating import (
 )
 
 
-def test_configure_and_get_templates():
+def test_configure_and_get_templates(mocker):
     """Test that templates are configured and retrieved correctly."""
     template_dir = Path("./test_templates")
     template_dir.mkdir(exist_ok=True)
     (template_dir / "test.html").write_text("Hello, {{ name }}!")
 
-    configure_templates([template_dir])
+    mock_settings = mocker.MagicMock()
+    configure_templates([template_dir], mock_settings)
     templates = get_templates()
 
     assert isinstance(templates, Jinja2Templates)

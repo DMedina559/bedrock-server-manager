@@ -16,55 +16,82 @@ from bedrock_server_manager.api.server_install_config import (
 from bedrock_server_manager.error import UserInputError
 
 
-@pytest.fixture
-def mock_get_server_instance(mocker, mock_bedrock_server):
-    """Fixture to patch get_server_instance for the api.server_install_config module."""
-    mock_bedrock_server.add_to_allowlist.return_value = 1
-    mock_bedrock_server.get_allowlist.return_value = [
-        {"name": "player1", "xuid": "123"}
-    ]
-    mock_bedrock_server.remove_from_allowlist.return_value = True
-    mock_bedrock_server.get_formatted_permissions.return_value = [
-        {"name": "player1", "xuid": "123", "permission_level": "operator"}
-    ]
-    mock_bedrock_server.get_server_properties.return_value = {"level-name": "world"}
-    mock_bedrock_server.get_target_version.return_value = "1.0.0"
-    mock_bedrock_server.is_update_needed.return_value = True
-    mock_bedrock_server.get_version.return_value = "1.0.0"
-
-    return mocker.patch(
-        "bedrock_server_manager.api.server_install_config.get_server_instance",
-        return_value=mock_bedrock_server,
-    )
+import os
+import json
 
 
 class TestAllowlist:
-    def test_add_players_to_allowlist_api(self, mock_get_server_instance):
+    def test_add_players_to_allowlist_api(self, app_context):
+        server = app_context.get_server("test_server")
         result = add_players_to_allowlist_api(
-            "test-server", [{"name": "player2", "xuid": "456"}]
+            "test_server", [{"name": "player2", "xuid": "456"}], app_context=app_context
         )
         assert result["status"] == "success"
         assert result["added_count"] == 1
 
-    def test_get_server_allowlist_api(self, mock_get_server_instance):
-        result = get_server_allowlist_api("test-server")
+        # Check the allowlist file
+        allowlist_path = os.path.join(server.server_dir, "allowlist.json")
+        with open(allowlist_path, "r") as f:
+            allowlist_data = json.load(f)
+
+        assert len(allowlist_data) == 1
+        assert allowlist_data[0]["name"] == "player2"
+
+    def test_get_server_allowlist_api(self, app_context):
+        server = app_context.get_server("test_server")
+        # Add a player to the allowlist first
+        allowlist_path = os.path.join(server.server_dir, "allowlist.json")
+        with open(allowlist_path, "w") as f:
+            json.dump([{"name": "player1", "xuid": "123"}], f)
+
+        result = get_server_allowlist_api("test_server", app_context=app_context)
         assert result["status"] == "success"
         assert len(result["players"]) == 1
+        assert result["players"][0]["name"] == "player1"
 
-    def test_remove_players_from_allowlist(self, mock_get_server_instance):
-        result = remove_players_from_allowlist("test-server", ["player1"])
+    def test_remove_players_from_allowlist(self, app_context):
+        server = app_context.get_server("test_server")
+        # Add a player to the allowlist first
+        allowlist_path = os.path.join(server.server_dir, "allowlist.json")
+        with open(allowlist_path, "w") as f:
+            json.dump([{"name": "player1", "xuid": "123"}], f)
+
+        result = remove_players_from_allowlist(
+            "test_server", ["player1"], app_context=app_context
+        )
         assert result["status"] == "success"
         assert result["details"]["removed"] == ["player1"]
 
+        # Check the allowlist file
+        with open(allowlist_path, "r") as f:
+            allowlist_data = json.load(f)
+
+        assert len(allowlist_data) == 0
+
 
 class TestPermissions:
-    def test_configure_player_permission(self, mock_get_server_instance):
+    def test_configure_player_permission(self, app_context):
+        server = app_context.get_server("test_server")
         result = configure_player_permission(
-            "test-server", "123", "player1", "operator"
+            "test_server", "123", "player1", "operator", app_context=app_context
         )
         assert result["status"] == "success"
 
-    def test_get_server_permissions_api(self, mock_get_server_instance):
+        # Check the permissions file
+        permissions_path = os.path.join(server.server_dir, "permissions.json")
+        with open(permissions_path, "r") as f:
+            permissions_data = json.load(f)
+
+        assert len(permissions_data) == 1
+        assert permissions_data[0]["xuid"] == "123"
+
+    def test_get_server_permissions_api(self, app_context):
+        server = app_context.get_server("test_server")
+        # Add a permission to the permissions file first
+        permissions_path = os.path.join(server.server_dir, "permissions.json")
+        with open(permissions_path, "w") as f:
+            json.dump([{"xuid": "123", "permission": "operator", "name": "player1"}], f)
+
         with patch(
             "bedrock_server_manager.api.server_install_config.player_api.get_all_known_players_api"
         ) as mock_get_players:
@@ -72,14 +99,15 @@ class TestPermissions:
                 "status": "success",
                 "players": [{"name": "player1", "xuid": "123"}],
             }
-            result = get_server_permissions_api("test-server")
+            result = get_server_permissions_api("test_server", app_context=app_context)
             assert result["status"] == "success"
             assert len(result["data"]["permissions"]) == 1
+            assert result["data"]["permissions"][0]["name"] == "player1"
 
 
 class TestProperties:
-    def test_get_server_properties_api(self, mock_get_server_instance):
-        result = get_server_properties_api("test-server")
+    def test_get_server_properties_api(self, app_context):
+        result = get_server_properties_api("test_server", app_context=app_context)
         assert result["status"] == "success"
         assert result["properties"]["level-name"] == "world"
 
@@ -94,15 +122,17 @@ class TestProperties:
         )
 
     @patch("bedrock_server_manager.api.server_install_config.server_lifecycle_manager")
-    def test_modify_server_properties(
-        self, mock_lifecycle, mock_get_server_instance, mock_bedrock_server
-    ):
-        result = modify_server_properties("test-server", {"level-name": "new-world"})
+    def test_modify_server_properties(self, mock_lifecycle, app_context):
+        server = app_context.get_server("test_server")
+        result = modify_server_properties(
+            "test_server", {"level-name": "new-world"}, app_context=app_context
+        )
         assert result["status"] == "success"
         mock_lifecycle.assert_called_once()
-        mock_bedrock_server.set_server_property.assert_called_once_with(
-            "level-name", "new-world"
-        )
+
+        # Check the server.properties file
+        properties = server.get_server_properties()
+        assert properties["level-name"] == "new-world"
 
 
 class TestInstallUpdate:
@@ -110,30 +140,28 @@ class TestInstallUpdate:
         "bedrock_server_manager.api.server_install_config.validate_server_name_format"
     )
     @patch("os.path.exists", return_value=False)
-    def test_install_new_server(
-        self,
-        mock_exists,
-        mock_validate,
-        mock_get_server_instance,
-        mock_bedrock_server,
-        mocker,
-    ):
+    def test_install_new_server(self, mock_exists, mock_validate, app_context):
         mock_validate.return_value = {"status": "success"}
-        mock_get_settings_instance = mocker.patch(
-            "bedrock_server_manager.api.server_install_config.get_settings_instance"
-        )
-        mock_get_settings_instance.return_value.get.return_value = "/servers"
-        result = install_new_server("new-server")
-        assert result["status"] == "success"
-        mock_bedrock_server.install_or_update.assert_called_once()
+        server = app_context.get_server("new-server")
+        with patch.object(server, "install_or_update") as mock_install:
+            result = install_new_server("new-server", app_context=app_context)
+            assert result["status"] == "success"
+            assert "next_step_url" in result
+            assert (
+                result["next_step_url"]
+                == "/server/new-server/configure_properties?new_install=true"
+            )
+            mock_install.assert_called_once()
 
     @patch("bedrock_server_manager.api.server_install_config.server_lifecycle_manager")
-    def test_update_server(
-        self, mock_lifecycle, mock_get_server_instance, mock_bedrock_server
-    ):
-        result = update_server("test-server")
-        assert result["status"] == "success"
-        assert result["updated"] is True
-        mock_lifecycle.assert_called_once()
-        mock_bedrock_server.backup_all_data.assert_called_once()
-        mock_bedrock_server.install_or_update.assert_called_once()
+    def test_update_server(self, mock_lifecycle, app_context):
+        server = app_context.get_server("test_server")
+        with patch.object(server, "is_update_needed", return_value=True):
+            with patch.object(server, "backup_all_data") as mock_backup:
+                with patch.object(server, "install_or_update") as mock_install:
+                    result = update_server("test_server", app_context=app_context)
+                    assert result["status"] == "success"
+                    assert result["updated"] is True
+                    mock_lifecycle.assert_called_once()
+                    mock_backup.assert_called_once()
+                    mock_install.assert_called_once()

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 
 # Local application imports.
+from ..system import base as system_base
 from ..system import process as system_process
 from .base_server_mixin import BedrockServerBaseMixin
 from ...error import (
@@ -50,7 +51,6 @@ from ...error import (
     SystemError,
     BSMError,
 )
-from ...instances import get_bedrock_process_manager
 
 
 class ServerProcessMixin(BedrockServerBaseMixin):
@@ -90,13 +90,22 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        self.process_manager = get_bedrock_process_manager()
+
+    @property
+    def process_manager(self):
+        """Gets the bedrock process manager from the app context."""
+        if self.app_context:
+            return self.app_context.bedrock_process_manager
+        raise ConfigurationError(
+            "Application context not available on the server instance."
+        )
 
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""
         self.logger.debug(f"Checking if server '{self.server_name}' is running.")
-        process = self.process_manager.get_server_process(self.server_name)
-        return process is not None and process.poll() is None
+        return system_base.is_server_running(
+            self.server_name, self.server_dir, self.app_config_dir
+        )
 
     def send_command(self, command: str) -> None:
         """Sends a command string to the running Bedrock server process."""

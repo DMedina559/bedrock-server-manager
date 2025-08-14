@@ -32,7 +32,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import (
     create_access_token,
     authenticate_user,
@@ -91,7 +91,7 @@ async def login_page(
     if user:
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request, "login.html", {"request": request, "form": {}, "current_user": user}
     )
 
@@ -99,7 +99,10 @@ async def login_page(
 # --- API Login Route ---
 @router.post("/token", response_model=Token)
 async def api_login_for_access_token(
-    response: FastAPIResponse, username: str = Form(...), password: str = Form(...)
+    request: Request,
+    response: FastAPIResponse,
+    username: str = Form(...),
+    password: str = Form(...),
 ):
     """
     Handles API user login, creates a JWT, and sets it as an HTTP-only cookie.
@@ -141,11 +144,13 @@ async def api_login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    access_token = create_access_token(data={"sub": authenticated_username})
-
-    cookie_secure = get_settings_instance().get("web.jwt_cookie_secure", False)
-    cookie_samesite = get_settings_instance().get("web.jwt_cookie_samesite", "Lax")
+    app_context = request.app.state.app_context
+    access_token = create_access_token(
+        data={"sub": authenticated_username}, app_context=app_context
+    )
+    settings = app_context.settings
+    cookie_secure = settings.get("web.jwt_cookie_secure", False)
+    cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
 
     response.set_cookie(
         key="access_token_cookie",

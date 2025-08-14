@@ -14,40 +14,34 @@ from ..error import (
     ServerStartError,
     FileOperationError,
 )
-from ..instances import get_server_instance, get_settings_instance
+from ..config.settings import Settings
+from ..context import AppContext
 
 
 class BedrockProcessManager:
     """
     Manages Bedrock server processes, including starting, stopping, and monitoring.
-
-    This class is a singleton to ensure only one instance manages all server processes.
     """
 
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super(BedrockProcessManager, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self):
+    def __init__(
+        self,
+        app_context: AppContext,
+    ):
         """Initializes the BedrockProcessManager."""
-        if not hasattr(self, "initialized"):
-            self.servers: Dict[str, subprocess.Popen] = {}
-            self.intentionally_stopped: Dict[str, bool] = {}
-            self.failure_counts: Dict[str, int] = {}
-            self.start_times: Dict[str, float] = {}
-            self.logger = logging.getLogger(__name__)
-            self.monitoring_thread = threading.Thread(
-                target=self._monitor_servers, daemon=True
-            )
-            self.monitoring_thread.start()
-            self.initialized = True
-            self.logger.info("BedrockProcessManager initialized.")
+        self.servers: Dict[str, subprocess.Popen] = {}
+        self.intentionally_stopped: Dict[str, bool] = {}
+        self.failure_counts: Dict[str, int] = {}
+        self.start_times: Dict[str, float] = {}
+        self.logger = logging.getLogger(__name__)
+        self.app_context = app_context
+
+        self.settings = self.app_context.settings
+
+        self.monitoring_thread = threading.Thread(
+            target=self._monitor_servers, daemon=True
+        )
+        self.monitoring_thread.start()
+        self.logger.info("BedrockProcessManager initialized.")
 
     def add_server(self, server_name: str, process: subprocess.Popen):
         """
@@ -78,9 +72,16 @@ class BedrockProcessManager:
             self.logger.warning(f"Server '{server_name}' is already running.")
             raise ServerStartError(f"Server '{server_name}' is already running.")
 
-        server = get_server_instance(server_name)
+        server = self.app_context.get_server(server_name)
+
         output_file = os.path.join(server.server_dir, "server_output.txt")
         pid_file_path = server.get_pid_file_path()
+
+        if os.path.exists(pid_file_path):
+            self.logger.error(
+                f"Attempted to start server '{server_name}', but a PID file already exists at '{pid_file_path}'."
+            )
+            raise ServerStartError(f"Server '{server_name}' has a stale PID file.")
 
         try:
             with open(output_file, "ab") as f:
@@ -137,7 +138,7 @@ class BedrockProcessManager:
             self.logger.info(f"Sending 'stop' command to server '{server_name}'.")
             process.stdin.write(b"stop\n")
             process.stdin.flush()
-            timeout = get_settings_instance().get("SERVER_STOP_TIMEOUT_SEC", 60)
+            timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
             process.wait(timeout=timeout)
             self.logger.info(f"Server '{server_name}' stopped gracefully.")
         except subprocess.TimeoutExpired:
@@ -154,6 +155,11 @@ class BedrockProcessManager:
 
         del self.servers[server_name]
         self.intentionally_stopped[server_name] = True
+
+        server = self.app_context.get_server(server_name)
+        pid_file_path = server.get_pid_file_path()
+        core_process.remove_pid_file_if_exists(pid_file_path)
+
         self.logger.info(
             f"Server '{server_name}' has been marked as intentionally stopped."
         )
@@ -197,9 +203,13 @@ class BedrockProcessManager:
 
     def _monitor_servers(self):
         """Monitors server processes and restarts them if they crash."""
-        monitoring_interval = get_settings_instance().get(
-            "SERVER_MONITORING_INTERVAL_SEC", 10
-        )
+        try:
+            monitoring_interval = self.settings.get(
+                "SERVER_MONITORING_INTERVAL_SEC", 10
+            )
+        except Exception:
+            monitoring_interval = 10
+
         self.logger.info(
             f"Server monitoring thread started with a {monitoring_interval} second interval."
         )
@@ -231,7 +241,7 @@ class BedrockProcessManager:
         Args:
             server_name (str): The name of the server to restart.
         """
-        max_retries = get_settings_instance().get("SERVER_MAX_RESTART_RETRIES", 3)
+        max_retries = self.settings.get("SERVER_MAX_RESTART_RETRIES", 3)
         failure_count = self.failure_counts.get(server_name, 0)
 
         if failure_count >= max_retries:
@@ -274,8 +284,7 @@ class BedrockProcessManager:
         Raises:
             ServerStartError: If the server is already running or fails to start.
         """
-
-        server = get_server_instance(server_name)
+        server = self.app_context.get_server(server_name)
 
         try:
             server.set_status_in_config("ERROR")

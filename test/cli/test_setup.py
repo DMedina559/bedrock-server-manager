@@ -11,15 +11,13 @@ def runner():
     return CliRunner()
 
 
-@patch("bedrock_server_manager.cli.setup.get_settings_instance")
 @patch("bedrock_server_manager.cli.setup.bcm_config")
 @patch("bedrock_server_manager.cli.setup.questionary")
-def test_setup_command_basic(
-    mock_questionary, mock_bcm_config, mock_settings_instance, runner
-):
-    # Mock settings instance
+def test_setup_command_basic(mock_questionary, mock_bcm_config, runner):
+    # Mock app_context and its settings
+    mock_app_context = MagicMock()
     mock_settings = MagicMock()
-    mock_settings_instance.return_value = mock_settings
+    mock_app_context.settings = mock_settings
 
     # Mock bcm_config
     mock_bcm_config.load_config.return_value = {}
@@ -32,7 +30,10 @@ def test_setup_command_basic(
     ]
     mock_questionary.confirm.return_value.ask.return_value = False  # No advanced DB
 
-    result = runner.invoke(setup, obj={"bsm": MagicMock()})
+    result = runner.invoke(
+        setup,
+        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
+    )
 
     assert result.exit_code == 0
     assert "Setup complete!" in result.output
@@ -47,15 +48,13 @@ def test_setup_command_basic(
     mock_settings.set.assert_any_call("web.port", 12345)
 
 
-@patch("bedrock_server_manager.cli.setup.get_settings_instance")
 @patch("bedrock_server_manager.cli.setup.bcm_config")
 @patch("bedrock_server_manager.cli.setup.questionary")
-def test_setup_command_advanced_db(
-    mock_questionary, mock_bcm_config, mock_settings_instance, runner
-):
-    # Mock settings instance
+def test_setup_command_advanced_db(mock_questionary, mock_bcm_config, runner):
+    # Mock app_context and its settings
+    mock_app_context = MagicMock()
     mock_settings = MagicMock()
-    mock_settings_instance.return_value = mock_settings
+    mock_app_context.settings = mock_settings
 
     # Mock bcm_config
     mock_bcm_config.load_config.return_value = {}
@@ -72,7 +71,10 @@ def test_setup_command_advanced_db(
         True,
     ]  # No to service, Yes to advanced DB
 
-    result = runner.invoke(setup, obj={"bsm": MagicMock()})
+    result = runner.invoke(
+        setup,
+        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
+    )
 
     assert result.exit_code == 0
     assert "Setup complete!" in result.output

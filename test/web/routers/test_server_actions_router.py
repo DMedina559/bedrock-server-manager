@@ -1,43 +1,57 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+import pytest
+from bedrock_server_manager.web.dependencies import validate_server_exists
 
 
-@patch("bedrock_server_manager.web.routers.server_actions.server_api.start_server")
-def test_start_server_route(mock_start_server, authenticated_client):
+def test_start_server_route(authenticated_client, real_bedrock_server):
     """Test the start_server_route with a successful response."""
-    mock_start_server.return_value = {"status": "success"}
-    response = authenticated_client.post("/api/server/test-server/start")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-def test_stop_server_route(authenticated_client):
-    """Test the stop_server_route with a successful response."""
-    response = authenticated_client.post("/api/server/test-server/stop")
-    assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
-
-
-def test_restart_server_route(authenticated_client):
-    """Test the restart_server_route with a successful response."""
-    response = authenticated_client.post("/api/server/test-server/restart")
-    assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
-
-
-@patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
-def test_send_command_route_success(mock_send_command, authenticated_client):
-    """Test the send_command_route with a successful response."""
-    mock_send_command.return_value = {"status": "success"}
     response = authenticated_client.post(
-        "/api/server/test-server/send_command", json={"command": "list"}
+        f"/api/server/{real_bedrock_server.server_name}/start"
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
 
+def test_stop_server_route(authenticated_client, real_bedrock_server):
+    """Test the stop_server_route with a successful response."""
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/stop"
+    )
+    assert response.status_code == 202
+    assert "initiated in background" in response.json()["message"]
+
+
+def test_restart_server_route(authenticated_client, real_bedrock_server):
+    """Test the restart_server_route with a successful response."""
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/restart"
+    )
+    assert response.status_code == 202
+    assert "initiated in background" in response.json()["message"]
+
+
+@patch("bedrock_server_manager.core.system.base.is_server_running")
+def test_send_command_route_success(
+    mock_is_server_running, authenticated_client, app_context, real_bedrock_server
+):
+    """Test the send_command_route with a successful response."""
+    mock_is_server_running.return_value = True
+    app_context.bedrock_process_manager.start_server(real_bedrock_server.server_name)
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/send_command",
+        json={"command": "list"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    app_context.bedrock_process_manager.stop_server(real_bedrock_server.server_name)
+
+
 @patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
 def test_send_command_route_blocked_command(mock_send_command, authenticated_client):
     """Test the send_command_route with a blocked command."""
+    authenticated_client.app.dependency_overrides[validate_server_exists] = (
+        lambda: "test-server"
+    )
     from bedrock_server_manager.error import BlockedCommandError
 
     mock_send_command.side_effect = BlockedCommandError("Command is blocked")
@@ -46,11 +60,15 @@ def test_send_command_route_blocked_command(mock_send_command, authenticated_cli
     )
     assert response.status_code == 403
     assert "Command is blocked" in response.json()["detail"]
+    authenticated_client.app.dependency_overrides.clear()
 
 
 @patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
 def test_send_command_route_server_not_running(mock_send_command, authenticated_client):
     """Test the send_command_route with a server that is not running."""
+    authenticated_client.app.dependency_overrides[validate_server_exists] = (
+        lambda: "test-server"
+    )
     from bedrock_server_manager.error import ServerNotRunningError
 
     mock_send_command.side_effect = ServerNotRunningError("Server is not running")
@@ -59,11 +77,15 @@ def test_send_command_route_server_not_running(mock_send_command, authenticated_
     )
     assert response.status_code == 409
     assert "Server is not running" in response.json()["detail"]
+    authenticated_client.app.dependency_overrides.clear()
 
 
 @patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
 def test_send_command_route_user_input_error(mock_send_command, authenticated_client):
     """Test the send_command_route with a UserInputError."""
+    authenticated_client.app.dependency_overrides[validate_server_exists] = (
+        lambda: "test-server"
+    )
     from bedrock_server_manager.error import UserInputError
 
     mock_send_command.side_effect = UserInputError("Invalid command")
@@ -72,11 +94,15 @@ def test_send_command_route_user_input_error(mock_send_command, authenticated_cl
     )
     assert response.status_code == 400
     assert "Invalid command" in response.json()["detail"]
+    authenticated_client.app.dependency_overrides.clear()
 
 
 @patch("bedrock_server_manager.web.routers.server_actions.server_api.send_command")
 def test_send_command_route_bsm_error(mock_send_command, authenticated_client):
     """Test the send_command_route with a BSMError."""
+    authenticated_client.app.dependency_overrides[validate_server_exists] = (
+        lambda: "test-server"
+    )
     from bedrock_server_manager.error import BSMError
 
     mock_send_command.side_effect = BSMError("Failed to send command")
@@ -85,17 +111,22 @@ def test_send_command_route_bsm_error(mock_send_command, authenticated_client):
     )
     assert response.status_code == 500
     assert "Failed to send command" in response.json()["detail"]
+    authenticated_client.app.dependency_overrides.clear()
 
 
-def test_update_server_route(authenticated_client):
+def test_update_server_route(authenticated_client, real_bedrock_server):
     """Test the update_server_route with a successful response."""
-    response = authenticated_client.post("/api/server/test-server/update")
+    response = authenticated_client.post(
+        f"/api/server/{real_bedrock_server.server_name}/update"
+    )
     assert response.status_code == 202
     assert "initiated in background" in response.json()["message"]
 
 
-def test_delete_server_route(authenticated_client):
+def test_delete_server_route(authenticated_client, real_bedrock_server):
     """Test the delete_server_route with a successful response."""
-    response = authenticated_client.delete("/api/server/test-server/delete")
+    response = authenticated_client.delete(
+        f"/api/server/{real_bedrock_server.server_name}/delete"
+    )
     assert response.status_code == 202
     assert "initiated in background" in response.json()["message"]

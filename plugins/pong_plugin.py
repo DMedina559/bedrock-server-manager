@@ -15,7 +15,7 @@ class PongPlugin(PluginBase):
     sent by other plugins. It specifically listens for 'pingplugin:ping'.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         """

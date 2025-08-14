@@ -17,7 +17,7 @@ plugin system via
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
@@ -28,12 +28,15 @@ from ..error import (
     BSMError,
     InvalidServerNameError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_server_running_status")
-def get_server_running_status(server_name: str) -> Dict[str, Any]:
+def get_server_running_status(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Checks if the server process is currently running.
 
     This function queries the operating system to determine if the Bedrock
@@ -60,7 +63,10 @@ def get_server_running_status(server_name: str) -> Dict[str, Any]:
 
     logger.info(f"API: Checking running status for server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         is_running = server.is_running()
         logger.debug(
             f"API: is_running() check for '{server_name}' returned: {is_running}"
@@ -84,7 +90,9 @@ def get_server_running_status(server_name: str) -> Dict[str, Any]:
 
 
 @plugin_method("get_server_config_status")
-def get_server_config_status(server_name: str) -> Dict[str, Any]:
+def get_server_config_status(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Gets the status from the server's configuration file.
 
     This function reads the 'status' field (e.g., 'RUNNING', 'STOPPED')
@@ -115,7 +123,10 @@ def get_server_config_status(server_name: str) -> Dict[str, Any]:
 
     logger.info(f"API: Getting config status for server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         status = server.get_status_from_config()
         logger.debug(
             f"API: get_status_from_config() for '{server_name}' returned: '{status}'"
@@ -139,7 +150,9 @@ def get_server_config_status(server_name: str) -> Dict[str, Any]:
 
 
 @plugin_method("get_server_installed_version")
-def get_server_installed_version(server_name: str) -> Dict[str, Any]:
+def get_server_installed_version(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Gets the installed version from the server's configuration file.
 
     This function reads the 'installed_version' field from the server's
@@ -168,7 +181,10 @@ def get_server_installed_version(server_name: str) -> Dict[str, Any]:
 
     logger.info(f"API: Getting installed version for server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         version = server.get_version()
         logger.debug(f"API: get_version() for '{server_name}' returned: '{version}'")
         return {"status": "success", "installed_version": version}

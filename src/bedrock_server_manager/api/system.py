@@ -20,25 +20,28 @@ These functions are designed for use by higher-level application components,
 such as the web UI or CLI, to provide system-level control and monitoring.
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance, get_plugin_manager_instance
+from ..instances import get_server_instance
 from ..error import (
     BSMError,
     InvalidServerNameError,
     MissingArgumentError,
     UserInputError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_bedrock_process_info")
-def get_bedrock_process_info(server_name: str) -> Dict[str, Any]:
+def get_bedrock_process_info(
+    server_name: str, app_context: Optional[AppContext] = None
+) -> Dict[str, Any]:
     """Retrieves resource usage for a running Bedrock server process.
 
     This function queries the system for the server's process by calling
@@ -68,7 +71,10 @@ def get_bedrock_process_info(server_name: str) -> Dict[str, Any]:
 
     logger.debug(f"API: Getting process info for server '{server_name}'...")
     try:
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         process_info = server.get_process_info()
 
         # If get_process_info returns None, the server is not running or inaccessible.
@@ -96,7 +102,12 @@ def get_bedrock_process_info(server_name: str) -> Dict[str, Any]:
         }
 
 
-def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
+from ..plugins.event_trigger import trigger_plugin_event
+
+
+def set_autoupdate(
+    server_name: str, autoupdate_value: str, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Sets the 'autoupdate' flag in the server's specific JSON configuration file.
 
     This function modifies the server-specific JSON configuration file to
@@ -121,7 +132,6 @@ def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
         FileOperationError: If writing the server's JSON configuration file fails.
         ConfigParseError: If the server's JSON configuration is malformed during load/save.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     if autoupdate_value is None:
@@ -133,18 +143,16 @@ def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
         raise UserInputError("Autoupdate value must be 'true' or 'false'.")
     value_bool = value_lower == "true"
 
-    plugin_manager.trigger_event(
-        "before_autoupdate_change", server_name=server_name, new_value=value_bool
-    )
-
-    result = {}
     try:
         logger.info(
             f"API: Setting 'autoupdate' config for server '{server_name}' to {value_bool}..."
         )
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         server.set_autoupdate(value_bool)
-        result = {
+        return {
             "status": "success",
             "message": f"Autoupdate setting for '{server_name}' updated to {value_bool}.",
         }
@@ -154,25 +162,22 @@ def set_autoupdate(server_name: str, autoupdate_value: str) -> Dict[str, str]:
             f"API: Failed to set autoupdate config for '{server_name}': {e}",
             exc_info=True,
         )
-        result = {"status": "error", "message": f"Failed to set autoupdate config: {e}"}
+        return {"status": "error", "message": f"Failed to set autoupdate config: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error setting autoupdate for '{server_name}': {e}",
             exc_info=True,
         )
-        result = {
+        return {
             "status": "error",
             "message": f"Unexpected error setting autoupdate: {e}",
         }
-    finally:
-        plugin_manager.trigger_event(
-            "after_autoupdate_change", server_name=server_name, result=result
-        )
-
-    return result
 
 
-def set_autostart(server_name: str, autostart_value: str) -> Dict[str, str]:
+@trigger_plugin_event(before="before_autostart_change", after="after_autostart_change")
+def set_autostart(
+    server_name: str, autostart_value: str, app_context: Optional[AppContext] = None
+) -> Dict[str, str]:
     """Sets the 'autostart' flag in the server's specific JSON configuration file.
 
     This function modifies the server-specific JSON configuration file to
@@ -197,7 +202,6 @@ def set_autostart(server_name: str, autostart_value: str) -> Dict[str, str]:
         FileOperationError: If writing the server's JSON configuration file fails.
         ConfigParseError: If the server's JSON configuration is malformed during load/save.
     """
-    plugin_manager = get_plugin_manager_instance()
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     if autostart_value is None:
@@ -209,18 +213,16 @@ def set_autostart(server_name: str, autostart_value: str) -> Dict[str, str]:
         raise UserInputError("autostart value must be 'true' or 'false'.")
     value_bool = value_lower == "true"
 
-    plugin_manager.trigger_event(
-        "before_autostart_change", server_name=server_name, new_value=value_bool
-    )
-
-    result = {}
     try:
         logger.info(
             f"API: Setting 'autostart' config for server '{server_name}' to {value_bool}..."
         )
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         server.set_autostart(value_bool)
-        result = {
+        return {
             "status": "success",
             "message": f"autostart setting for '{server_name}' updated to {value_bool}.",
         }
@@ -230,19 +232,13 @@ def set_autostart(server_name: str, autostart_value: str) -> Dict[str, str]:
             f"API: Failed to set autostart config for '{server_name}': {e}",
             exc_info=True,
         )
-        result = {"status": "error", "message": f"Failed to set autostart config: {e}"}
+        return {"status": "error", "message": f"Failed to set autostart config: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error setting autostart for '{server_name}': {e}",
             exc_info=True,
         )
-        result = {
+        return {
             "status": "error",
             "message": f"Unexpected error setting autostart: {e}",
         }
-    finally:
-        plugin_manager.trigger_event(
-            "after_autostart_change", server_name=server_name, result=result
-        )
-
-    return result

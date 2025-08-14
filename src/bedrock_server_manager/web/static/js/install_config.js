@@ -258,8 +258,9 @@ function _handleInstallSuccessNavigation(apiResponseData) {
     const functionName = '_handleInstallSuccessNavigation';
     console.log(`${functionName}: Handling successful install response.`);
     console.debug(`${functionName}: Response data:`, apiResponseData);
+    console.log("JULES DEBUG: apiResponseData is " + JSON.stringify(apiResponseData));
 
-    const nextUrl = apiResponseData?.result?.next_step_url;
+    const nextUrl = apiResponseData?.next_step_url;
     const message = apiResponseData?.message || "Server installed successfully!";
 
     if (nextUrl) {

@@ -1,12 +1,16 @@
+from __future__ import annotations
 import os
 import json
 import logging
-from typing import Dict, Any
+from typing import TYPE_CHECKING, Dict, Any, Optional
 from ..db.database import db_session_manager
 from ..db.models import Player, User, Server, Plugin
 from ..error import ConfigurationError
 from ..config import bcm_config
 from ..config.const import env_name
+
+if TYPE_CHECKING:
+    from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +188,7 @@ def migrate_settings_v1_to_v2(
     return new_config
 
 
-def migrate_env_token_to_db(env_name: str):
+def migrate_env_token_to_db(env_name: str, app_context: Optional[AppContext] = None):
     """Migrates the JWT token from environment variables to the database."""
     from ..instances import get_settings_instance
 
@@ -193,7 +197,10 @@ def migrate_env_token_to_db(env_name: str):
     if not token:
         return
 
-    settings = get_settings_instance()
+    if app_context:
+        settings = app_context.settings
+    else:
+        settings = get_settings_instance()
     settings.set("web.jwt_secret_key", token)
     logger.info(
         "Successfully migrated JWT token from environment variables to the database."
@@ -262,19 +269,25 @@ def migrate_server_config_to_db(server_name: str, server_config_dir: str):
         logger.error(f"Failed to migrate config for server '{server_name}': {e}")
 
 
-def migrate_services_to_db():
+def migrate_services_to_db(app_context: Optional[AppContext] = None):
     """Migrates systemd/Windows service status to the database."""
     from ..instances import get_server_instance, get_settings_instance
     import platform
     import subprocess
 
-    settings = get_settings_instance()
+    if app_context:
+        settings = app_context.settings
+    else:
+        settings = get_settings_instance()
     server_path = settings.get("paths.servers")
     if not server_path or not os.path.isdir(server_path):
         return
 
     for server_name in os.listdir(server_path):
-        server = get_server_instance(server_name)
+        if app_context:
+            server = app_context.get_server(server_name)
+        else:
+            server = get_server_instance(server_name)
         if not server.is_installed():
             continue
 

@@ -29,6 +29,8 @@ from ..error import MissingArgumentError
 from .schemas import User
 from ..db.database import db_session_manager
 from ..db.models import User as UserModel
+from ..context import AppContext
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +39,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # --- JWT Configuration ---
-def get_jwt_secret_key() -> str:
-    from ..instances import get_settings_instance
-
+def get_jwt_secret_key(settings: Settings) -> str:
     """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
-    settings = get_settings_instance()
     jwt_secret_key = settings.get("web.jwt_secret_key")
 
     if not jwt_secret_key:
@@ -52,8 +51,6 @@ def get_jwt_secret_key() -> str:
     return jwt_secret_key
 
 
-JWT_SECRET_KEY = get_jwt_secret_key()
-
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
@@ -61,7 +58,9 @@ cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 # --- Token Creation ---
 def create_access_token(
-    data: dict, expires_delta: Optional[datetime.timedelta] = None
+    data: dict,
+    expires_delta: Optional[datetime.timedelta] = None,
+    app_context: Optional[AppContext] = None,
 ) -> str:
     """Creates a JSON Web Token (JWT) for access.
 
@@ -78,15 +77,21 @@ def create_access_token(
         str: The encoded JWT string.
     """
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
+
+    if app_context:
+        settings = app_context.settings
     else:
         from ..instances import get_settings_instance
 
+        settings = get_settings_instance()
+
+    JWT_SECRET_KEY = get_jwt_secret_key(settings)
+
+    if expires_delta:
+        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
+    else:
         try:
-            jwt_expires_weeks = float(
-                get_settings_instance().get("web.token_expires_weeks", 4.0)
-            )
+            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
         except (ValueError, TypeError):
             jwt_expires_weeks = 4.0
         access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
@@ -136,6 +141,9 @@ async def get_current_user_optional(
         return None
 
     try:
+        app_context = request.app.state.app_context
+        settings = app_context.settings
+        JWT_SECRET_KEY = get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
         if username is None:
@@ -154,9 +162,11 @@ async def get_current_user_optional(
             db_session.commit()
 
             return User(
+                id=user.id,
                 username=user.username,
                 identity_type="jwt",
                 role=user.role,
+                is_active=user.is_active,
                 theme=user.theme,
             )
 

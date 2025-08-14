@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ...db.database import get_db
 from ...db.models import User, RegistrationToken
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import (
     pwd_context,
     get_current_user,
@@ -87,7 +87,7 @@ async def registration_page(
             detail="Invalid or expired registration token.",
         )
 
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "register.html",
         {"request": request, "token": token, "current_user": current_user},

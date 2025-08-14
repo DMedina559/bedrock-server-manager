@@ -1,7 +1,9 @@
 import pytest
 from unittest.mock import patch
 from click.testing import CliRunner
-from bedrock_server_manager.__main__ import cli
+from bedrock_server_manager.__main__ import create_cli_app
+
+cli = create_cli_app()
 
 
 @pytest.fixture

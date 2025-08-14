@@ -32,11 +32,6 @@ from .const import (
     get_installed_version,
 )
 from . import bcm_config
-from ..utils.migration import (
-    migrate_settings_v1_to_v2,
-    migrate_players_json_to_db,
-    migrate_env_token_to_db,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -83,14 +78,6 @@ def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any,
 
 
 class Settings:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(Settings, cls).__new__(cls)
-            cls._instance.__initialized = False
-        return cls._instance
-
     """Manages loading, accessing, and saving application settings.
 
     This class acts as a single source of truth for all configuration data.
@@ -132,16 +119,7 @@ class Settings:
                backups, logs) exist on the filesystem.
 
         """
-        if self.__initialized:
-            return
-        self.__initialized = True
-
         logger.debug("Initializing Settings")
-
-        # Migrations before db initialization
-        from ..utils.migration import migrate_env_vars_to_config_file
-
-        migrate_env_vars_to_config_file()
 
         # Determine the primary application data and config directories.
         self._app_data_dir_path = self._determine_app_data_dir()
@@ -156,20 +134,10 @@ class Settings:
         self._settings: Dict[str, Any] = {}
         self.load()
 
-        # Migrate players.json to the database
-        players_json_path = os.path.join(self.config_dir, "players.json")
-        migrate_players_json_to_db(players_json_path)
-
-        # Migrations after db initialization
-        from ..utils.migration import migrate_env_auth_to_db
-
-        migrate_env_auth_to_db(env_name)
-        migrate_env_token_to_db(env_name)
-
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
 
-        It prioritizes the ``BSM_DATA_DIR`` environment variable if set.
+        It prioritizes the ``data_dir`` from bcm_config if set.
         Otherwise, it defaults to a ``bedrock-server-manager`` directory in the
         user's home folder (e.g., ``~/.bedrock-server-manager`` on Linux/macOS or
         ``%USERPROFILE%\\bedrock-server-manager`` on Windows).
@@ -180,11 +148,7 @@ class Settings:
         """
         # 1. Check config file
         config = bcm_config.load_config()
-        data_dir = config.get("data_dir")
-
-        # 3. Fallback to user's home directory
-        if not data_dir:
-            data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
+        data_dir = config["data_dir"]
 
         os.makedirs(data_dir, exist_ok=True)
         return data_dir
@@ -318,17 +282,6 @@ class Settings:
                     user_config = {}
                     for setting in db.query(Setting).all():
                         user_config[setting.key] = setting.value
-
-                    # Check for old config format and migrate if necessary.
-                    if "config_version" not in user_config:
-                        self._settings = migrate_settings_v1_to_v2(
-                            user_config, self.config_path, self.default_config
-                        )
-                        self._write_config(db)
-                        # Reload config from the newly migrated file
-                        user_config = {}
-                        for setting in db.query(Setting).all():
-                            user_config[setting.key] = setting.value
 
                     # Deep merge user settings into the default settings.
                     deep_merge(user_config, self._settings)

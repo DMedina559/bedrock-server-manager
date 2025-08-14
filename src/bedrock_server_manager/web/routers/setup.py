@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ...db.database import get_db
 from ...db.models import User
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import pwd_context, get_current_user_optional
 from ..schemas import User as UserSchema
 
@@ -34,7 +34,7 @@ async def setup_page(
     if db.query(User).first():
         # If a user already exists, redirect to home page, as setup is complete
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    return templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request, "setup.html", {"request": request, "current_user": current_user}
     )
 

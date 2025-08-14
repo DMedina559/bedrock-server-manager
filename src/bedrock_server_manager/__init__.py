@@ -10,6 +10,9 @@ from .core import (
 # Configuration
 from .config import Settings, get_installed_version
 
+# App Context
+from .context import AppContext
+
 # Plugin system essentials
 from .plugins import PluginBase, PluginManager
 from . import error as errors
@@ -24,7 +27,9 @@ __all__ = [
     "BedrockDownloader",
     "BedrockProcessManager",
     # Config
-    "Settings",  # The class
+    "Settings",
+    # App Context
+    "AppContext",
     # Plugins
     "PluginBase",
     "PluginManager",

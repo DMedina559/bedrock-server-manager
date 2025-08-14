@@ -5,7 +5,6 @@ from appdirs import user_data_dir
 
 from ..config import bcm_config
 from ..config.const import package_name, app_author, app_name_title
-from ..instances import get_settings_instance
 from .service import interactive_web_service_workflow
 
 
@@ -18,12 +17,12 @@ def setup(ctx: click.Context):
     and database connection.
     """
     try:
-        from ..core import BedrockServerManager
+        from ..context import AppContext
 
-        bsm: BedrockServerManager = ctx.obj["bsm"]
+        app_context: AppContext = ctx.obj["app_context"]
         click.secho(f"{app_name_title} - Setup", fg="cyan")
 
-        settings = get_settings_instance()
+        settings = app_context.settings
         current_config = bcm_config.load_config()
 
         # --- Prompt for Data Directory ---
@@ -63,7 +62,7 @@ def setup(ctx: click.Context):
             f"Do you want to configure a system service for {app_name_title}?",
             default=False,
         ).ask():
-            interactive_web_service_workflow(bsm)
+            interactive_web_service_workflow(app_context.manager)
         else:
             click.echo(
                 "Skipping service configuration. You can set it up later using the 'service' command."

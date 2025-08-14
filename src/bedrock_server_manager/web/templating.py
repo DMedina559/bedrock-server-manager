@@ -21,7 +21,7 @@ from ..utils import get_utils
 templates: Optional[Jinja2Templates] = None
 
 
-def configure_templates(template_directories: List[Path]):
+def configure_templates(template_directories: List[Path], settings):
     from ..config import get_installed_version, app_name_title
 
     """
@@ -48,14 +48,13 @@ def configure_templates(template_directories: List[Path]):
     templates.env.filters["basename"] = os.path.basename
 
     # Add global variables
-    from ..instances import get_settings_instance
     from .auth_utils import get_current_user_optional
 
     templates.env.globals["app_name"] = app_name_title
     templates.env.globals["app_version"] = get_installed_version()
     templates.env.globals["splash_text"] = get_utils._get_splash_text()
     templates.env.globals["panorama_url"] = "/api/panorama"
-    templates.env.globals["settings"] = get_settings_instance()
+    templates.env.globals["settings"] = settings
 
 
 def get_templates() -> Jinja2Templates:

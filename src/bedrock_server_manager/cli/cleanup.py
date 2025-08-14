@@ -22,7 +22,7 @@ from typing import Optional
 
 import click
 
-from ..instances import get_settings_instance
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ def _cleanup_log_files(log_dir_path: Path) -> int:
     help="Clean up Python bytecode cache files (__pycache__).",
 )
 @click.option(
-    "-l", "--logs", is_flag=True, help="Clean up application log files (``*.log``)."
+    "-l", "--logs", is_flag=True, help="Clean up application log files (``.log``)."
 )
 @click.option(
     "--log-dir",
@@ -135,7 +135,10 @@ def _cleanup_log_files(log_dir_path: Path) -> int:
     type=click.Path(file_okay=False, resolve_path=True, path_type=Path),
     help="Override the default log directory from settings.",
 )
-def cleanup(cache: bool, logs: bool, log_dir_override: Optional[Path]):
+@click.pass_context
+def cleanup(
+    ctx: click.Context, cache: bool, logs: bool, log_dir_override: Optional[Path]
+):
     """
     Cleans up generated application files, such as logs and Python bytecode cache.
 
@@ -156,6 +159,7 @@ def cleanup(cache: bool, logs: bool, log_dir_override: Optional[Path]):
                      `--log-dir` nor found in settings).
     """
     logger.info("CLI: Running cleanup command...")
+    app_context: AppContext = ctx.obj["app_context"]
 
     if not cache and not logs:
         click.secho(
@@ -186,7 +190,7 @@ def cleanup(cache: bool, logs: bool, log_dir_override: Optional[Path]):
         # Determine the correct log directory, prioritizing the command-line override.
         final_log_dir = log_dir_override
         if not final_log_dir:
-            settings_log_dir = get_settings_instance().get("paths.logs")
+            settings_log_dir = app_context.settings.get("paths.logs")
             if settings_log_dir:
                 final_log_dir = Path(settings_log_dir)
 

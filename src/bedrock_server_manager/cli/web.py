@@ -61,7 +61,8 @@ def web():
     show_default=True,
     help="Run mode: 'direct' blocks the terminal, 'detached' runs in the background.",
 )
-def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
+@click.pass_context
+def start_web_server(ctx: click.Context, hosts: Tuple[str], debug: bool, mode: str):
     """
     Starts the Bedrock Server Manager web UI.
 
@@ -74,6 +75,7 @@ def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
 
     Calls API: :func:`~bedrock_server_manager.api.web.start_web_server_api`.
     """
+    app_context = ctx.obj["app_context"]
     click.echo(f"Attempting to start web server in '{mode}' mode...")
     if mode == "direct":
         click.secho(
@@ -84,7 +86,9 @@ def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
         host_list = (
             list(hosts) if hosts else None
         )  # Pass None if no hosts are provided, API handles default
-        response = web_api.start_web_server_api(host_list, debug, mode)
+        response = web_api.start_web_server_api(
+            host=host_list, debug=debug, mode=mode, app_context=app_context
+        )
 
         # In 'direct' mode, start_web_server_api (which calls bsm.start_web_ui_direct)
         # is blocking. So, we'll only reach here after it stops or if mode is 'detached'.
@@ -115,7 +119,8 @@ def start_web_server(hosts: Tuple[str], debug: bool, mode: str):
 
 
 @web.command("stop")
-def stop_web_server():
+@click.pass_context
+def stop_web_server(ctx: click.Context):
     """
     Stops a detached Bedrock Server Manager web UI process.
 
@@ -128,9 +133,10 @@ def stop_web_server():
 
     Calls API: :func:`~bedrock_server_manager.api.web.stop_web_server_api`.
     """
+    app_context = ctx.obj["app_context"]
     click.echo("Attempting to stop the web server...")
     try:
-        response = web_api.stop_web_server_api()
+        response = web_api.stop_web_server_api(app_context=app_context)
         _handle_api_response(response, "Web server stopped successfully.")
     except BSMError as e:
         click.secho(f"An error occurred: {e}", fg="red")

@@ -1,5 +1,6 @@
 # autostart_servers.py
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 
 class AutostartServers(PluginBase):
@@ -17,7 +18,7 @@ class AutostartServers(PluginBase):
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
-    def on_manager_startup(self):
+    def on_manager_startup(self, **kwargs: Any):
         result = self.api.get_all_servers_data()
         servers = result["servers"]
         for server in servers:

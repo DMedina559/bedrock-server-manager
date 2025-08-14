@@ -20,13 +20,13 @@ plugin system.
 import os
 import logging
 import threading
-from typing import Dict
+from typing import Dict, Optional
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance, get_plugin_manager_instance
+from ..instances import get_server_instance
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -35,6 +35,7 @@ from ..error import (
     SendCommandError,
     ServerNotRunningError,
 )
+from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +45,17 @@ logger = logging.getLogger(__name__)
 _addon_lock = threading.Lock()
 
 
+from ..plugins.event_trigger import trigger_plugin_event
+
+
 @plugin_method("import_addon")
+@trigger_plugin_event(before="before_addon_import", after="after_addon_import")
 def import_addon(
     server_name: str,
     addon_file_path: str,
     stop_start_server: bool = True,
     restart_only_on_success: bool = True,
+    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Installs an addon to a specified Bedrock server.
 
@@ -90,7 +96,6 @@ def import_addon(
             :class:`~.error.ExtractError`, :class:`~.error.FileOperationError`,
             or errors from server stop/start.
     """
-    plugin_manager = get_plugin_manager_instance()
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
     if not _addon_lock.acquire(blocking=False):
@@ -102,7 +107,6 @@ def import_addon(
             "message": "An addon operation is already in progress.",
         }
 
-    result = {}
     try:
         addon_filename = os.path.basename(addon_file_path) if addon_file_path else "N/A"
         logger.info(
@@ -118,15 +122,11 @@ def import_addon(
         if not os.path.isfile(addon_file_path):
             raise AppFileNotFoundError(addon_file_path, "Addon file")
 
-        # --- Plugin Hook: Before Import ---
-        plugin_manager.trigger_event(
-            "before_addon_import",
-            server_name=server_name,
-            addon_file_path=addon_file_path,
-        )
-
         try:
-            server = get_server_instance(server_name)
+            if app_context:
+                server = app_context.get_server(server_name)
+            else:
+                server = get_server_instance(server_name)
 
             # If the server is running, send a warning message to players.
             if server.is_running():
@@ -143,6 +143,7 @@ def import_addon(
                 stop_before=stop_start_server,
                 start_after=stop_start_server,
                 restart_on_success_only=restart_only_on_success,
+                app_context=app_context,
             ):
                 logger.info(
                     f"API: Processing addon file '{addon_filename}' for server '{server_name}'..."
@@ -156,7 +157,7 @@ def import_addon(
             message = f"Addon '{addon_filename}' installed successfully for server '{server_name}'."
             if stop_start_server:
                 message += " Server stop/start cycle handled."
-            result = {"status": "success", "message": message}
+            return {"status": "success", "message": message}
 
         except BSMError as e:
             # Handle application-specific errors.
@@ -164,7 +165,7 @@ def import_addon(
                 f"API: Addon import failed for '{addon_filename}' on '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Error installing addon '{addon_filename}': {e}",
             }
@@ -175,20 +176,11 @@ def import_addon(
                 f"API: Unexpected error during addon import for '{server_name}': {e}",
                 exc_info=True,
             )
-            result = {
+            return {
                 "status": "error",
                 "message": f"Unexpected error installing addon: {e}",
             }
 
-        finally:
-            # --- Plugin Hook: After Import ---
-            # This hook runs regardless of whether the import succeeded or failed.
-            plugin_manager.trigger_event(
-                "after_addon_import", server_name=server_name, result=result
-            )
-
     finally:
         # Ensure the lock is always released, even if errors occur.
         _addon_lock.release()
-
-    return result

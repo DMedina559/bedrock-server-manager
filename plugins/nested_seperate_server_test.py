@@ -47,6 +47,7 @@ What to Look For in the Logs:
   - Crucially, NO "Skipping recursive trigger..." message for the "server2" event.
 """
 from bedrock_server_manager import PluginBase
+from typing import Any
 
 # --- Configuration for the test ---
 # These should be names of actual, configured servers in your BSM setup.
@@ -68,7 +69,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
     for the same event type but different identifying parameters (e.g., different server names).
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
 
     def on_load(self):
         global _server_b_triggered_by_this_plugin
@@ -92,11 +93,12 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"  5. Expect to see 'before_server_start' logs from this plugin for BOTH '{SERVER_A_NAME_TRIGGER}' AND '{SERVER_B_NAME_NESTED}'."
         )
 
-    def before_server_start(self, server_name: str, mode: str):
+    def before_server_start(self, **kwargs: Any):
         global _server_b_triggered_by_this_plugin
+        server_name = kwargs.get("server_name")
 
         self.logger.info(
-            f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}' (mode: {mode})."
+            f"--- NESTED TEST: 'before_server_start' invoked for server '{server_name}'."
         )
 
         if (
@@ -111,7 +113,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
-                self.api.start_server(server_name=SERVER_B_NAME_NESTED, mode="detached")
+                self.api.start_server(server_name=SERVER_B_NAME_NESTED)
                 self.logger.info(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
                 )

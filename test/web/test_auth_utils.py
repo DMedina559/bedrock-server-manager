@@ -6,15 +6,39 @@ from bedrock_server_manager.web.auth_utils import (
     pwd_context,
     create_access_token,
     get_current_user_optional,
-    JWT_SECRET_KEY,
+    get_current_user,
     ALGORITHM,
 )
-from fastapi import Request
+from fastapi import Request, FastAPI, Depends
+from fastapi.testclient import TestClient
 from bedrock_server_manager.db.models import User as UserModel
+from bedrock_server_manager.web.schemas import User
+from bedrock_server_manager.context import AppContext
+from bedrock_server_manager.web.routers import auth_router, users_router
 
 # Test data
 TEST_USER = "testuser"
 TEST_PASSWORD = "testpassword"
+
+
+@pytest.fixture
+def unauthenticated_app(app_context):
+    app = FastAPI()
+    app.state.app_context = app_context
+    app.include_router(auth_router, prefix="/auth")
+    app.include_router(users_router, prefix="/users")
+
+    @app.get("/users/me-optional")
+    async def read_users_me_optional(
+        current_user: User = Depends(get_current_user_optional),
+    ):
+        return current_user
+
+    @app.get("/users/me", response_model=User)
+    async def read_users_me(current_user: User = Depends(get_current_user)):
+        return current_user
+
+    return app
 
 
 def test_verify_password():
@@ -31,116 +55,96 @@ def test_get_password_hash():
     assert hashed_password != TEST_PASSWORD
 
 
-def test_create_access_token():
+def test_create_access_token(app_context):
     """Test access token creation."""
+    from bedrock_server_manager.web.auth_utils import get_jwt_secret_key
+
     access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
+        data={"sub": TEST_USER},
+        expires_delta=timedelta(minutes=15),
+        app_context=app_context,
     )
-    decoded_token = jwt.decode(access_token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    decoded_token = jwt.decode(
+        access_token, get_jwt_secret_key(app_context.settings), algorithms=[ALGORITHM]
+    )
     assert decoded_token["sub"] == TEST_USER
 
 
-from fastapi import FastAPI, Depends
-from fastapi.testclient import TestClient
-
-
 @pytest.mark.asyncio
-async def test_get_current_user(test_db):
+async def test_get_current_user(db_session, app_context):
     """Test getting the current user from a valid token."""
     user = UserModel(
         username=TEST_USER,
         hashed_password=pwd_context.hash(TEST_PASSWORD),
         role="admin",
     )
-    test_db.add(user)
-    test_db.commit()
-    test_db.refresh(user)
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
 
     access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
+        data={"sub": TEST_USER},
+        expires_delta=timedelta(minutes=15),
+        app_context=app_context,
     )
+    app = FastAPI()
+    app.state.app_context = app_context
     request = Request(
         {
             "type": "http",
             "headers": [(b"authorization", f"Bearer {access_token}".encode())],
+            "app": app,
         }
     )
-    request.state.db = test_db
+    request.state.db = db_session
     user = await get_current_user_optional(request)
     assert user.username == TEST_USER
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_invalid_token(client: TestClient):
+async def test_get_current_user_invalid_token(unauthenticated_app):
     """Test getting the current user from an invalid token."""
-    request = Request(
-        {"type": "http", "headers": [(b"authorization", b"Bearer invalid_token")]}
-    )
-    user = await get_current_user_optional(request)
-    assert user is None
+    with TestClient(unauthenticated_app) as client:
+        response = client.get(
+            "/users/me", headers={"Authorization": "Bearer invalid_token"}
+        )
+        assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_expired_token(client: TestClient):
+async def test_get_current_user_expired_token(unauthenticated_app, app_context):
     """Test getting the current user from an expired token."""
-    access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=-15)
-    )
-    request = Request(
-        {
-            "type": "http",
-            "headers": [(b"authorization", f"Bearer {access_token}".encode())],
-        }
-    )
-    user = await get_current_user_optional(request)
-    assert user is None
+    with TestClient(unauthenticated_app) as client:
+        access_token = create_access_token(
+            data={"sub": TEST_USER},
+            expires_delta=timedelta(minutes=-15),
+            app_context=app_context,
+        )
+        response = client.get(
+            "/users/me", headers={"Authorization": f"Bearer {access_token}"}
+        )
+        assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_no_username(client: TestClient):
+async def test_get_current_user_no_username(unauthenticated_app, app_context):
     """Test getting the current user from a token with no username."""
-    access_token = create_access_token(
-        data={"sub": None}, expires_delta=timedelta(minutes=15)
-    )
-    request = Request(
-        {
-            "type": "http",
-            "headers": [(b"authorization", f"Bearer {access_token}".encode())],
-        }
-    )
-    user = await get_current_user_optional(request)
-    assert user is None
+    with TestClient(unauthenticated_app) as client:
+        access_token = create_access_token(
+            data={"sub": None},
+            expires_delta=timedelta(minutes=15),
+            app_context=app_context,
+        )
+        response = client.get(
+            "/users/me", headers={"Authorization": f"Bearer {access_token}"}
+        )
+        assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_optional(test_db):
-    """Test getting an optional user from a valid token."""
-    user = UserModel(
-        username=TEST_USER,
-        hashed_password=pwd_context.hash(TEST_PASSWORD),
-        role="admin",
-    )
-    test_db.add(user)
-    test_db.commit()
-    test_db.refresh(user)
-
-    access_token = create_access_token(
-        data={"sub": TEST_USER}, expires_delta=timedelta(minutes=15)
-    )
-    request = Request(
-        {
-            "type": "http",
-            "headers": [(b"authorization", f"Bearer {access_token}".encode())],
-        }
-    )
-    request.state.db = test_db
-    user = await get_current_user_optional(request)
-    assert user.username == TEST_USER
-
-
-@pytest.mark.asyncio
-async def test_get_current_user_optional_no_token(client: TestClient):
+async def test_get_current_user_optional_no_token(unauthenticated_app):
     """Test getting an optional user with no token."""
-    request = Request({"type": "http", "headers": []})
-    user = await get_current_user_optional(request)
-    assert user is None
+    with TestClient(unauthenticated_app) as client:
+        response = client.get("/users/me-optional")
+        assert response.status_code == 200
+        assert response.json() is None
