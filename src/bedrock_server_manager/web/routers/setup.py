@@ -11,7 +11,11 @@ from sqlalchemy.exc import IntegrityError
 from ...db.database import get_db
 from ...db.models import User
 from ..templating import get_templates
-from ..auth_utils import pwd_context, get_current_user_optional
+from ..auth_utils import (
+    pwd_context,
+    get_current_user_optional,
+    create_access_token,
+)
 from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
@@ -76,15 +80,36 @@ async def create_first_user(
 
         logger.info(f"First user '{data.username}' created with admin role.")
 
-        # Return JSON response with redirect_url, consistent with register.py
-        return JSONResponse(
+        # Log the user in by creating an access token and setting it as a cookie
+        app_context = request.app.state.app_context
+        access_token = create_access_token(
+            data={"sub": user.username}, app_context=app_context
+        )
+        settings = app_context.settings
+        cookie_secure = settings.get("web.jwt_cookie_secure", False)
+        cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
+
+        # Create the JSON response
+        response = JSONResponse(
             content={
                 "status": "success",
-                "message": "Admin account created successfully. Please log in.",
-                "redirect_url": "/auth/login?message=Admin account created successfully. Please log in.",
+                "message": "Admin account created and logged in successfully.",
+                "redirect_url": "/settings?in_setup=true",
             },
             status_code=status.HTTP_200_OK,
         )
+
+        # Set the cookie on the response
+        response.set_cookie(
+            key="access_token_cookie",
+            value=access_token,
+            httponly=True,
+            secure=cookie_secure,
+            samesite=cookie_samesite,
+            path="/",
+        )
+
+        return response
 
     except IntegrityError:
         db.rollback()  # Rollback the transaction on database error

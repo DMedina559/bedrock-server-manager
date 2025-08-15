@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .core.bedrock_server import BedrockServer
     from .core.manager import BedrockServerManager
     from .plugins.plugin_manager import PluginManager
+    from .core.bedrock_process_manager import BedrockProcessManager
 
 
 class AppContext:
@@ -16,23 +17,36 @@ class AppContext:
 
     def __init__(
         self,
-        settings: "Settings",
-        manager: "BedrockServerManager",
+        settings: "Settings" | None = None,
+        manager: "BedrockServerManager" | None = None,
     ):
         """
         Initializes the AppContext.
-
-        Args:
-            settings (Settings): The application settings instance.
-            manager (BedrockServerManager): The BedrockServerManager instance.
         """
+        self.settings: "Settings" | None = settings
+        self.manager: "BedrockServerManager" | None = manager
+        self.bedrock_process_manager: "BedrockProcessManager" | None = None
+        self._plugin_manager: "PluginManager" | None = None
+        self._servers: Dict[str, "BedrockServer"] = {}
+
+    def load(self):
+        """
+        Loads the application context by initializing the settings and manager.
+        """
+        from .config.settings import Settings
+        from .core.manager import BedrockServerManager
         from .core.bedrock_process_manager import BedrockProcessManager
 
-        self.settings = settings
-        self.manager = manager
-        self._plugin_manager: "PluginManager" | None = None
+        if self.settings is None:
+            self.settings = Settings()
+            self.settings.load()
+
+        if self.manager is None:
+            assert self.settings is not None
+            self.manager = BedrockServerManager(self.settings)
+            self.manager.load()
+
         self.bedrock_process_manager = BedrockProcessManager(app_context=self)
-        self._servers: Dict[str, "BedrockServer"] = {}
 
     @property
     def plugin_manager(self) -> "PluginManager":

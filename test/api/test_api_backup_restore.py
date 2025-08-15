@@ -37,7 +37,9 @@ class TestBackupRestore:
         os.makedirs(world_dir)
         (Path(world_dir) / "level.dat").touch()
 
-        result = backup_world("test_server", stop_start_server=False, app_context=app_context)
+        result = backup_world(
+            "test_server", stop_start_server=False, app_context=app_context
+        )
         assert result["status"] == "success"
 
     def test_backup_config_file(self, app_context):
@@ -45,7 +47,10 @@ class TestBackupRestore:
         (Path(server.server_dir) / "server.properties").touch()
 
         result = backup_config_file(
-            "test_server", "server.properties", stop_start_server=False, app_context=app_context
+            "test_server",
+            "server.properties",
+            stop_start_server=False,
+            app_context=app_context,
         )
         assert result["status"] == "success"
 
@@ -56,7 +61,9 @@ class TestBackupRestore:
         (Path(world_dir) / "level.dat").touch()
         (Path(server.server_dir) / "server.properties").touch()
 
-        result = backup_all("test_server", stop_start_server=False, app_context=app_context)
+        result = backup_all(
+            "test_server", stop_start_server=False, app_context=app_context
+        )
         assert result["status"] == "success"
 
     def test_restore_all(self, app_context):
@@ -67,12 +74,17 @@ class TestBackupRestore:
         world_backup_file = Path(backup_dir) / "world_backup_20230101_000000.mcworld"
         with open(world_backup_file, "wb") as f:
             import zipfile
+
             with zipfile.ZipFile(f, "w") as zf:
                 zf.writestr("test.txt", "test")
-        
-        (Path(backup_dir) / "server.properties_backup_20230101_000000.properties").touch()
 
-        result = restore_all("test_server", stop_start_server=False, app_context=app_context)
+        (
+            Path(backup_dir) / "server.properties_backup_20230101_000000.properties"
+        ).touch()
+
+        result = restore_all(
+            "test_server", stop_start_server=False, app_context=app_context
+        )
         assert result["status"] == "success"
 
     def test_restore_world(self, app_context, tmp_path):
@@ -80,11 +92,15 @@ class TestBackupRestore:
         backup_file = tmp_path / "world.mcworld"
         with open(backup_file, "wb") as f:
             import zipfile
+
             with zipfile.ZipFile(f, "w") as zf:
                 zf.writestr("test.txt", "test")
 
         result = restore_world(
-            "test_server", str(backup_file), stop_start_server=False, app_context=app_context
+            "test_server",
+            str(backup_file),
+            stop_start_server=False,
+            app_context=app_context,
         )
         assert result["status"] == "success"
 
@@ -94,7 +110,10 @@ class TestBackupRestore:
         backup_file.touch()
 
         result = restore_config_file(
-            "test_server", str(backup_file), stop_start_server=False, app_context=app_context
+            "test_server",
+            str(backup_file),
+            stop_start_server=False,
+            app_context=app_context,
         )
         assert result["status"] == "success"
 

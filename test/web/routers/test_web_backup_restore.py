@@ -6,7 +6,9 @@ from unittest.mock import patch, MagicMock
     "bedrock_server_manager.api.backup_restore.backup_all",
     return_value={"status": "success"},
 )
-def test_backup_server_api_route_success(mock_backup, authenticated_client, real_bedrock_server):
+def test_backup_server_api_route_success(
+    mock_backup, authenticated_client, real_bedrock_server
+):
     """Test the backup_server_api_route with a successful backup."""
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/backup/action",

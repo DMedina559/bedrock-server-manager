@@ -151,6 +151,23 @@ class BedrockServerManager(
                 constants cannot be accessed.
         """
         self.settings = settings
+        self.capabilities = {}
+        self._config_dir = None
+        self._app_data_dir = None
+        self._app_name_title = None
+        self._package_name = None
+        self._expath = None
+        self._base_dir = None
+        self._content_dir = None
+        self._app_version = "0.0.0"
+        self._WEB_SERVER_PID_FILENAME = "web_server.pid"
+        self._WEB_SERVER_START_ARG = ["web", "start"]
+        self._WEB_SERVICE_SYSTEMD_NAME = "bedrock-server-manager-webui.service"
+        self._WEB_SERVICE_WINDOWS_NAME_INTERNAL = "BedrockServerManagerWebUI"
+        self._WEB_SERVICE_WINDOWS_DISPLAY_NAME = "Bedrock Server Manager Web UI"
+
+    def load(self):
+        """Loads the manager's settings and capabilities."""
         logger.debug(
             f"BedrockServerManager initialized using settings from: {self.settings.config_path}"
         )
@@ -170,10 +187,6 @@ class BedrockServerManager(
 
         self._base_dir = self.settings.get("paths.servers")
         self._content_dir = self.settings.get("paths.content")
-
-        # Constants for managing the web server process.
-        self._WEB_SERVER_PID_FILENAME = "web_server.pid"
-        self._WEB_SERVER_START_ARG = ["web", "start"]
 
         _clean_package_name_for_systemd = (
             self._package_name.lower().replace("_", "-").replace(" ", "-")

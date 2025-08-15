@@ -232,12 +232,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-from .dependencies import needs_setup
+from ..config import bcm_config
 
 
 class CustomAuthBackend(AuthenticationBackend):
     async def authenticate(self, conn):
-        if await needs_setup():
+        if bcm_config.needs_setup():
             return AuthCredentials(["unauthenticated"]), SimpleUser("guest")
 
         user = await get_current_user_optional(conn)

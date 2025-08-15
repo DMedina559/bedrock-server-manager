@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from typing import Generator
 from bedrock_server_manager.db.database import Base, get_db
-from bedrock_server_manager.web.dependencies import validate_server_exists, needs_setup
+from bedrock_server_manager.web.dependencies import validate_server_exists
 from bedrock_server_manager.web.auth_utils import (
     create_access_token,
     pwd_context,
@@ -219,9 +219,11 @@ def app_context(
         )
 
     settings = Settings()
+    settings.load()
     settings.set("paths.plugins", str(plugins_dir))
 
     manager = BedrockServerManager(settings)
+    manager.load()
 
     # Create dummy server files
     server_name = "test_server"
@@ -251,6 +253,7 @@ def app_context(
     os.chmod(executable_path, 0o755)
 
     context = AppContext(settings=settings, manager=manager)
+    context.load()
     set_app_context(context)
 
     # Load plugins
@@ -277,10 +280,12 @@ def app(app_context):
 def mock_dependencies(monkeypatch, app):
     """Mock dependencies for tests."""
 
-    async def mock_needs_setup():
+    def mock_needs_setup():
         return False
 
-    monkeypatch.setattr("bedrock_server_manager.web.app.needs_setup", mock_needs_setup)
+    monkeypatch.setattr(
+        "bedrock_server_manager.config.bcm_config.needs_setup", mock_needs_setup
+    )
     app.dependency_overrides[validate_server_exists] = lambda: "test-server"
     yield
     app.dependency_overrides = {}

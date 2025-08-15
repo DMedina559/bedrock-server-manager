@@ -8,6 +8,8 @@
 {% endblock %}
 
 {% block content %}
+<div id="setup-banner-container"></div>
+
     {# --- Page Header --- #}
     {# Use standard h2 for section titles #}
 <h2>Manage Global Settings</h2>
@@ -47,9 +49,31 @@
         « Back to Dashboard
     </a>
 </div>
+
 {% endblock %}
 
 {% block body_scripts %}
 {# This script is loaded after utils.js (which is in base.html) #}
 <script src="{{ request.url_for('static', path='js/manage_settings.js') }}" defer></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('in_setup')) {
+            const bannerContainer = document.getElementById('setup-banner-container');
+            if (bannerContainer) {
+                bannerContainer.innerHTML = `
+                <div class="setup-banner">
+                    <h3>Step 1: Global Settings</h3>
+                    <p>
+                        Modify the global settings for your Bedrock Server Manager instance. Reload the settings after making changes to apply them.\n
+                        <strong>Note:</strong> Some settings may require a server restart to take effect.
+                    </p>
+                    <a href="/plugins?in_setup=true" class="action-button">Continue to Plugin Setup</a>
+                </div>
+            `;
+            }
+        }
+    });
+</script>
 {% endblock %}

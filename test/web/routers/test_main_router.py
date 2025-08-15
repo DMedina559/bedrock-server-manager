@@ -1,6 +1,6 @@
 from unittest.mock import patch
 from fastapi.testclient import TestClient
-from bedrock_server_manager.web.dependencies import validate_server_exists, needs_setup
+from bedrock_server_manager.web.dependencies import validate_server_exists
 
 import pytest
 
@@ -19,9 +19,7 @@ def test_index_unauthenticated(client: TestClient, authenticated_user):
     assert response.headers["location"] == "/auth/login"
 
 
-def test_monitor_server_route(
-    authenticated_client: TestClient, real_bedrock_server
-):
+def test_monitor_server_route(authenticated_client: TestClient, real_bedrock_server):
     """Test the monitor_server_route with an authenticated user."""
     response = authenticated_client.get("/server/test_server/monitor")
     assert response.status_code == 200

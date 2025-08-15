@@ -6,7 +6,9 @@ from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentEr
 
 
 class TestImportAddon:
-    @patch("bedrock_server_manager.core.server.addon_mixin.ServerAddonMixin.process_addon_file")
+    @patch(
+        "bedrock_server_manager.core.server.addon_mixin.ServerAddonMixin.process_addon_file"
+    )
     def test_import_addon_success_with_stop_start(
         self, mock_process_addon, app_context, tmp_path
     ):
@@ -14,14 +16,14 @@ class TestImportAddon:
         addon_file.write_text("dummy content")
         server = app_context.get_server("test_server")
 
-        result = import_addon(
-            "test_server", str(addon_file), app_context=app_context
-        )
+        result = import_addon("test_server", str(addon_file), app_context=app_context)
         assert result["status"] == "success"
         assert "installed successfully" in result["message"]
         mock_process_addon.assert_called_once_with(str(addon_file))
 
-    @patch("bedrock_server_manager.core.server.addon_mixin.ServerAddonMixin.process_addon_file")
+    @patch(
+        "bedrock_server_manager.core.server.addon_mixin.ServerAddonMixin.process_addon_file"
+    )
     def test_import_addon_success_no_stop_start(
         self, mock_process_addon, app_context, tmp_path
     ):
