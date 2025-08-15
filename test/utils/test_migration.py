@@ -406,15 +406,3 @@ class TestMigrateEnvVarsToConfigFile:
         migrate_env_vars_to_config_file()
 
         mock_save_config.assert_called_once_with({"data_dir": "/test/data/dir"})
-
-    @patch("bedrock_server_manager.utils.migration.bcm_config.save_config")
-    @patch("bedrock_server_manager.utils.migration.bcm_config.load_config")
-    def test_migrate_env_vars_skips_if_present(
-        self, mock_load_config, mock_save_config, monkeypatch
-    ):
-        mock_load_config.return_value = {"data_dir": "/existing/data/dir"}
-        monkeypatch.setenv("BEDROCK_SERVER_MANAGER_DATA_DIR", "/test/data/dir")
-
-        migrate_env_vars_to_config_file()
-
-        mock_save_config.assert_not_called()

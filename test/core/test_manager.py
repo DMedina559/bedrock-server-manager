@@ -101,6 +101,7 @@ def test_manager_system_capabilities_check(
     mocker.patch("shutil.which", side_effect=which_side_effect)
     mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy_expath")
     manager = BedrockServerManager(app_context.settings)
+    manager.load()
 
     assert manager.capabilities == expected_caps
     assert manager.can_schedule_tasks == expected_caps["scheduler"]

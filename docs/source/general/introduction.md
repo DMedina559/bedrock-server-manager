@@ -55,41 +55,36 @@ This provides the `bsm-api-client` command, which allows you to perform various 
 
 ### Step 2: Configure the Web Server
 
-To get started with the web server, you must first set these environment variables. **The web server will not start if these are not set.**
+To get started with the web server, its recommended to run the setup command first:
 
-1.  **Generate Password Hash:**
-    The `BEDROCK_SERVER_MANAGER_PASSWORD` variable requires a password hash, **not** plain text. Use this command to generate one:
-    ```bash
-    bedrock-server-manager generate-password
-    ```
-    Follow the prompts and copy the resulting hash.
+```bash
+bedrock-server-manager setup
+```
 
-2.  **Set Environment Variables:**
-    -   `BEDROCK_SERVER_MANAGER_USERNAME`: **Required**. The plain text username for web UI and API login.
-    -   `BEDROCK_SERVER_MANAGER_PASSWORD`: **Required**. The hashed password you just generated.
-    -   `BEDROCK_SERVER_MANAGER_TOKEN`: **Recommended**. A long, random, secret string. If not set, API tokens will become invalid across restarts.
+This command will prompt you for the necessary configuration details, such as: 
 
-    > Follow your platform's documentation for setting environment variables.
+-   **Data Directory**: The location where the application will store its data (default is `$HOME/bedrock-server-manager`).
+-   **Databse URL**: The URL for the database connection (default is `sqlite:///<data_dir>/bedrock_server_manager.db`).
+-   **Host**: The IP address the web server will listen on (default is `127.0.0.1`).
+-   **Port**: The port the web server will use (default is `11325`).
+-   **System Service**: Whether to install the web server as a system service (default is `no`).
+
+If you choose not to run the setup command, default values will be used. This can be changed later by running the setup command.
 
 ### Step 3: Run the Application
 
 To start the web server, use the following command:
+
 ```bash
 bedrock-server-manager web start
 ```
 By default, the server listens on `127.0.0.1:11325`. Once running, you can access the web interface in your browser at this address.
 
+Once the server is running, a one first-time setup will be required. This includes setting up an admin user account and configuring your first bedrock server.
+
 > See the [Web Usage Guide](../web/general.md) for more examples, like how to run the server on a different IP.
 
 ---
-
-## Further Configuration
-
-### Data Directory
-
-Bedrock Server Manager uses an optional Environment Variable, `BEDROCK_SERVER_MANAGER_DATA_DIR`, to set the default config/data location. If this variable does not exist, it will default to `$HOME/bedrock-server-manager`.
-
-The app will create its data folders in this location. This is where servers will be installed and where the app will look when managing various server aspects.
 
 #### JSON Configuration File
 

@@ -16,7 +16,7 @@ from ..db import database
 from . import templating
 from ..config import get_installed_version
 from . import routers
-from .dependencies import needs_setup
+from ..config import bcm_config
 from .auth_utils import CustomAuthBackend, get_current_user_optional
 
 
@@ -91,7 +91,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     @app.middleware("http")
     async def setup_check_middleware(request: Request, call_next):
         if (
-            await needs_setup()
+            bcm_config.needs_setup()
             and not request.url.path.startswith("/setup")
             and not request.url.path.startswith("/static")
         ):

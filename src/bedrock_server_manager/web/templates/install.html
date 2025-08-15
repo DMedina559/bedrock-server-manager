@@ -13,6 +13,8 @@
 
 {# Main content for this page #}
 {% block content %}
+<div id="setup-banner-container"></div>
+
     {# Page Heading #}
 <h2>Install New Bedrock Server</h2>
 
@@ -63,4 +65,26 @@
         </div>
 </section> {# End .install-config-section #}
 
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('in_setup')) {
+            const bannerContainer = document.getElementById('setup-banner-container');
+            if (bannerContainer) {
+                bannerContainer.innerHTML = `
+                <div class="setup-banner">
+                    <h3>Step 3: Install a Server</h3>
+                    <p>
+                        Install and configure your first Bedrock Server. This will include setting server.properties, allowlist, and other files.
+                    </p>
+                    <a href="/" class="action-button">Skip</a>
+                </div>
+            `;
+            }
+        }
+    });
+</script>
 {% endblock %}

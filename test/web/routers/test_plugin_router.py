@@ -67,18 +67,14 @@ def test_trigger_event_api_route_user_input_error(
     assert "Invalid event name" in response.json()["detail"]
 
 
-def test_set_plugin_status_api_route_enable_success(
-    authenticated_client, app_context
-):
+def test_set_plugin_status_api_route_enable_success(authenticated_client, app_context):
     """Test enabling a plugin with a successful response."""
     response = authenticated_client.post("/api/plugins/plugin1", json={"enabled": True})
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
 
-def test_set_plugin_status_api_route_disable_success(
-    authenticated_client, app_context
-):
+def test_set_plugin_status_api_route_disable_success(authenticated_client, app_context):
     """Test disabling a plugin with a successful response."""
     response = authenticated_client.post(
         "/api/plugins/plugin1", json={"enabled": False}
