@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .core.bedrock_server import BedrockServer
     from .core.manager import BedrockServerManager
     from .plugins.plugin_manager import PluginManager
+    from .core.bedrock_process_manager import BedrockProcessManager
 
 
 class AppContext:

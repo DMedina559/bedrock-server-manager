@@ -76,15 +76,6 @@ def create_cli_app():
 
             set_app_context(app_context)
 
-            # --- Event Handling and Shutdown ---
-            def shutdown_cli_app():
-                logger.info("Running CLI app shutdown hooks...")
-                if database.engine:
-                    database.engine.dispose()
-                logger.info("CLI app shutdown hooks complete.")
-
-            atexit.register(shutdown_cli_app)
-
             # Load the full application context only if the command is not 'setup' or 'migrate'
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
@@ -102,6 +93,15 @@ def create_cli_app():
                 logger.info(
                     f"Starting {app_name_title} v{__version__} (CLI context)..."
                 )
+
+                # --- Event Handling and Shutdown ---
+                def shutdown_cli_app():
+                    logger.info("Running CLI app shutdown hooks...")
+                    if database.engine:
+                        database.engine.dispose()
+                    logger.info("CLI app shutdown hooks complete.")
+
+                atexit.register(shutdown_cli_app)
 
                 startup_checks(app_context, app_name_title, __version__)
 
