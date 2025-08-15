@@ -75,5 +75,3 @@ async def validate_server_exists(
             f"Dependency: Invalid server name format for '{server_name}': {e}"
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-

@@ -79,9 +79,7 @@ def test_get_server_version_api_route_failure(mock_get_version, authenticated_cl
     assert "Unexpected error getting installed version." in response.json()["detail"]
 
 
-def test_validate_server_api_route_success(
-    authenticated_client, real_bedrock_server
-):
+def test_validate_server_api_route_success(authenticated_client, real_bedrock_server):
     """Test the validate_server_api_route with a successful validation."""
     response = authenticated_client.get("/api/server/test_server/validate")
     assert response.status_code == 200
@@ -175,9 +173,7 @@ import os
 
 def test_prune_downloads_api_route_success(authenticated_client, app_context):
     """Test the prune_downloads_api_route with a successful prune."""
-    download_dir = os.path.join(
-        app_context.settings.get("paths.downloads"), "stable"
-    )
+    download_dir = os.path.join(app_context.settings.get("paths.downloads"), "stable")
     os.makedirs(download_dir)
     response = authenticated_client.post(
         "/api/downloads/prune", json={"directory": "stable"}

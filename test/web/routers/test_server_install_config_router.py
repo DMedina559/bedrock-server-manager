@@ -354,7 +354,9 @@ def test_get_server_permissions_api_route(authenticated_client, real_bedrock_ser
     "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate",
     return_value={"status": "success"},
 )
-def test_configure_service_api_route(mock_set_autoupdate, authenticated_client, real_bedrock_server):
+def test_configure_service_api_route(
+    mock_set_autoupdate, authenticated_client, real_bedrock_server
+):
     """Test the configure_service_api_route with a successful response."""
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/service/update",
