@@ -219,9 +219,11 @@ def app_context(
         )
 
     settings = Settings()
+    settings.load()
     settings.set("paths.plugins", str(plugins_dir))
 
     manager = BedrockServerManager(settings)
+    manager.load()
 
     # Create dummy server files
     server_name = "test_server"
@@ -251,6 +253,7 @@ def app_context(
     os.chmod(executable_path, 0o755)
 
     context = AppContext(settings=settings, manager=manager)
+    context.load()
     set_app_context(context)
 
     # Load plugins
