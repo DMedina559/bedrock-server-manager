@@ -6,110 +6,33 @@
 :align: center
 ```
 
-## 3.6.0 (WIP)
+```{important}
+**A Note on the Future of BSM: Preparing for Version 3.6.0**
 
-```{tip}
-With version 3.6.0, the web server is now a required component and acts as the central management point for all Bedrock servers. This change simplifies process management and improves stability.
-Key improvements include:
-All server processes are now managed directly by the web server.
-Configuration data has been migrated from JSON files to a database for better performance and reliability.
-The previous backend CLI has been removed. All actions are now handled via the web interface.
-These changes create a more robust and efficient platform for managing your servers.
+As part of the ongoing effort to modernize the Bedrock Server Manager codebase for better performance, stability, and maintainability, the upcoming version **3.6.0** will introduce major architectural changes. I want to be transparent about these developments so you can plan accordingly, as these changes will change the way you interact with the application.
+
+The core goal of 3.6.0 is to unify the server management experience across all platforms (Windows, Linux, etc.) by moving away from platform-specific implementations like named pipes and separate system services.
+
+Key changes to expect in **BSM 3.6.0** include:
+
+*   **Unified Process Management:** All Bedrock servers will be managed within a single, multi-threaded BSM process. This replaces the current model of launching a separate process for each server, which will significantly improve performance, resource usage, and allow for more reliable features like health checks and automatic crash recovery.
+
+*   **Mandatory Web Server:** The web server will become the central, always-running component of BSM. The Command Line Interface (CLI) will be refactored to communicate directly with the web server's API for all operations. This change is essential for the new unified process model.
+
+*   **Simplified Services:** Individual server services (`systemd` on Linux, Windows Services) will be deprecated. Instead, the main BSM web server service will be responsible for automatically starting all designated servers on boot.
+
+*   **Database Migration:** To consolidate the various `.json` configuration files and prevent potential file-locking issues, BSM will migrate to a dedicated database (a simple, file-based one by default). This will also pave the way for future enhancements like multi-user accounts and permissions. (May not be included in 3.6.0)
+
+*   **Deprecation of CLI Plugins:** A side effect of the new architecture is that custom CLI plugins, introduced in v3.5.0, will likely be removed. Since the CLI will now be a client for the web API, this plugin type will no longer be compatible.
+
+I understand that frequent breaking changes can be frustrating. Many of the recent updates have involved significant refactoring to evolve BSM from its simple script origins into the robust management tool it's become. This upcoming 3.6.0 release represents the final major step in this architectural overhaul. These changes will create a more stable and feature-rich foundation for the future of Bedrock Server Manager.
 ```
-
-### **Important Notices & Breaking Changes**
-
-```{warning}
-Stop servers before updating!
-```
-*   BREAKING CHANGE: Removed CLI Plugin support
-*   Requires the BSM app to always be running (A System Service for the web server is recommended `bedrock-server-manager web service configure`)
-
-*   Its recommended to run the `migration old-config` command after updating to 3.6.0 to ensure smooth migration
-    * After running this command you should also run the `setup` command to ensure basic migration was successful
-
-### **Core Architectural Changes**
-
-*   Moved most of the CLI commands to the `bsm-api-client[cli]` package
-*   Refactored most of the app away from global singletons to a passed around `AppContext` object
-*   Added gracefull shutdown for BSM
-    *   Shuts down all running bedrock servers
-    *   Unloads all plugins
-*   Web server now starts without needing any setup
-
-### **Database and Configuration Migration**
-
-*   Database migrations
-    ```{note} 
-    Using the default database has been observed to cause slow loadding times for the web server on some systems, if you experience this issue, consider using an external database such as MySQL or PostgreSQL.
-    ```
-    *   Migrated BSM from a JSON based config to a SQLite database
-    *   Use default included `bedrock_server_manager.db` or use your own external database
-    *   Automatically migrates from the old JSON config to the new database
-    *   All json config files are now stored in the database
-        *   This includes the global config, server configs, and plugin configs, player configs
-    *   All environment variables are now stored in the database
-        *   Web server environment variables are now stored in the database and are auto migrated to the database
-        *   App Data Directory is now stored in a seperate json file in the users `%APPDATA%` directory (`.congig/bedrock-server-manager` on linux, `AppData/local/bedrock-server-manager` on Windows)
-            *   Database URL is also stored in this file
-*   Added `migrate` command
-    * `migrate databse` command to migrate the database to new versions as needed (for future updates)
-    * `migrate old-config` command to migrate from the old JSON config to the new database
-*   Added `setup` command to setup App config
-    *   Sets up the App Data Directory and database URL, Web Host and Port, system service
-
-### **Server Management**
-
-*   Revamped server start methods
-    *   Now uses a generic process open instead of complex platform specific named pipe methods
-    *   System Services for individual servers will no longer work, is now handled by the `autostart_plugin` during BSM startup
-*   Added crash restarts
-    *   Bedrock servers will now restart if they crashed
-
-### **Multi-User and Access Control**
-
-*   Added Multi user support with Access Control
-    *   Admins can now create and manage users with different access levels
-        *   Current access levels:
-            *   Admin: Full access to full application
-            *   Moderator: Limited to basic server management not including updates, installs, or content management
-            *   User: Limited to view privileges, can only view basic data
-    *   Admins can create a registration link for users to register
-        *   Link is valid for 24 hours
-    *   Admins can enable/disable user accounts, and change their roles
-*   Themes are now user specific
-    *   Each user can now have their own theme
-
-### **System Service Improvements**
-
-*   Improved system service support
-    *   On Windows you can now enter account credentials to run the service as a specific user
-    *   Added `--system` flag for linux to create a systemd service for the web server on the system level
-
-### **Plugin and Developer Updates**
-
-*   If you're a plugin developer with FASTAPI plugins, you should update your plugins to use the new `get_current_user`, `get_admin_user`, `get_moderator_user` dependency to ensure proper access control
-*   Added the `server_lifecycle_manager` as a Plugin Method
-    *   A context manager useful for plugins that need to perform actions on servers the requires the server to be stopped
-*   The `get_*_instance` functions in `instances.py` have been deprecated (will be removed in 3.7.0)
-    *   Instead the AppContext object (created in the CLI app) is passed around to all functions
-    *   FastAPI plugins can access the `AppContext` object via `app.state.app_context`
-*   Added `app_context` to the `PluginAPI` class, plugins can now access the AppContext object to access the current app state with `self.api.app_context`
-    *   AppContext will be automatically passed to all plugin methods
-*   Plugins are now only loaded during the web server startup, no longer during the CLI app startup
-
-### **Other Backend Changes**
-
-*   Various backend changes such as:
-    *   Object based authentication
-    *   Changes routers to use the new `get_current_user`, `get_admin_user`, `get_moderator_user` dependencies
-    *   Most API modules have been refactored to use the new AppContext object
 
 ## 3.5.7
 ```{tip}
-Experience the new CLI before the 3.6.0 update now:
+Experience the new CLI before the 3.6.0 now:
 
-`pip install --upgrade bedrock-server-manager[cli]`
+`pip install bedrock-server-manager[cli]`
 
 Use the `bsm-api-client` command to interact with the web server
 

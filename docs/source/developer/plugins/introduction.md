@@ -47,7 +47,7 @@ class MyFirstPlugin(PluginBase):
 ```
 
 4.  **Run the application:** Start the Bedrock Server Manager.
-5.  **Enable your plugin:** Navigate to the Web UI to activate it. You should see your "Hello from MyFirstPlugin!" message in the logs on the next startup or plugins reload.
+5.  **Enable your plugin:** Use the command `bedrock-server-manager plugin enable <your_plugin_name>` to activate it. You should see your "Hello from MyFirstPlugin!" message in the logs on the next startup.
 
 ---
 
@@ -151,18 +151,66 @@ class HomeAutomationStarterPlugin(PluginBase):
         self.api.start_server(server_name=TARGET_SERVER_NAME, mode="detached")
 ```
 
-## 5. Extending Functionality: Custom FastAPI Endpoints
+## 5. Extending Functionality: Custom CLI Commands and FastAPI Endpoints
 
-Plugins can significantly extend Bedrock Server Manager by adding their own custom FastAPI web endpoints. This allows for deep integration and tailored functionality.
+Plugins can significantly extend Bedrock Server Manager by adding their own custom CLI commands and FastAPI web endpoints. This allows for deep integration and tailored functionality.
 
 To enable this, your plugin class (derived from `PluginBase`) needs to override one or both of the following methods:
 
+*   **`get_cli_commands(self) -> List[click.Command | click.Group]`**:
+    This method should return a list of Click command or group objects that your plugin wants to add to the main `bedrock-server-manager` CLI.
 *   **`get_fastapi_routers(self) -> List[fastapi.APIRouter]`**:
     This method should return a list of FastAPI `APIRouter` instances that your plugin wants to add to the main web application.
 
 The Plugin Manager will call these methods on your plugin instance after it's loaded. The collected commands and routers are then integrated into the main application.
 
-### 5.1. Adding Custom FastAPI Endpoints (Web APIs and Pages)
+### 5.1. Adding Custom CLI Commands
+
+To add CLI commands, define your Click commands/groups as usual and then return them in a list from `get_cli_commands()`.
+
+**Example:**
+
+```python
+# my_cli_plugin.py
+from bedrock_server_manager import PluginBase
+import click
+
+# Define a Click command group
+@click.group("myplug")
+def my_plugin_cli_group():
+    """A custom command group from My CLI Plugin."""
+    pass # This docstring will appear in 'bsm myplug --help'
+
+@my_plugin_cli_group.command("greet")
+@click.option('--name', default='CLI User', help='The person to greet.')
+def greet_command(name):
+    """Greets a user from the plugin's CLI."""
+    click.echo(f"Hello, {name}, from My CLI Plugin!")
+
+@my_plugin_cli_group.command("status")
+def status_command():
+    """Shows a custom status from the plugin."""
+    click.echo("My CLI Plugin status: All systems nominal.")
+
+class MyCLIPlugin(PluginBase):
+    version = "1.1.0"  # Mandatory
+
+    def on_load(self):
+        self.logger.info(f"{self.name} v{self.version} loaded.")
+
+    def get_cli_commands(self):
+        self.logger.info(f"Providing CLI command group 'myplug' with its subcommands.")
+        # Return the top-level group; Click handles its subcommands.
+        return [my_plugin_cli_group] 
+```
+
+After enabling `my_cli_plugin.py`, the following commands would become available:
+
+*   `bedrock-server-manager myplug --help`
+*   `bedrock-server-manager myplug greet --name "Awesome Dev"`
+*   `bedrock-server-manager myplug status`
+
+### 5.2. Adding Custom FastAPI Endpoints (Web APIs and Pages)
 
 To add web endpoints, define your FastAPI `APIRouter` instances and return them in a list from `get_fastapi_routers()`. These routers will be included in the main FastAPI application.
 
@@ -175,12 +223,6 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 
 # Attempt to import authentication dependency; provide a fallback for isolated testing/robustness
-# There are three access roles admin, moderator, and user.
-
-# - get_current_user: User, read only access APIs
-# - get_moderator_user: Moderator, basic server management APIs, not including installs, updates, or content management
-# - get_admin_user: Admin, full access to all APIs
-
 try:
     from bedrock_server_manager.web import get_current_user
     HAS_AUTH_DEP = True
@@ -240,7 +282,7 @@ After enabling `my_web_api_plugin.py` and restarting the Bedrock Server Manager 
 
 These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api/openapi.json` or `/docs`).
 
-#### 5.1.1. Serving HTML Pages with Application Styling (Jinja2 Templates)
+#### 5.2.1. Serving HTML Pages with Application Styling (Jinja2 Templates)
 
 While returning direct `HTMLResponse` content is possible, for a look and feel consistent with the main application, plugins can serve HTML pages rendered via Jinja2 templates that extend the application's `base.html`. This requires structuring your plugin as a package.
 
@@ -313,7 +355,7 @@ async def get_styled_plugin_page(request: Request):
 
 The Plugin Manager and the main application will ensure that the path returned by `get_template_paths()` is added to the Jinja2 loader's search path.
 
-#### 5.1.2. Serving Plugin-Specific Static Files (CSS, JS, Images)
+#### 5.2.2. Serving Plugin-Specific Static Files (CSS, JS, Images)
 
 If your plugin requires its own static assets (CSS, JavaScript, images) that are not part of the main application's static files, you can make them available.
 
@@ -393,8 +435,83 @@ The Plugin Manager and main application will use the information from `get_stati
 
 *   **Unique Prefixes & Mount Names:** Essential for routers and static mounts to avoid conflicts.
 *   **Authentication:** Apply as needed to your plugin's routers or individual routes.
-*  **HTML Pages:** Tag your HTML routers with `plugin-ui` to have it added to the Web UI
 ```
+
+### 5.3. Adding Custom CLI Interactive Menu Items
+
+Plugins can also add their own items to the main interactive CLI menu (the one you see when you run `bedrock-server-manager` without subcommands). This allows plugins to offer complex, guided interactions using `questionary` directly from the main menu.
+
+**1. Implement `get_cli_menu_items()`:**
+
+Your plugin class should override the `get_cli_menu_items(self) -> List[Dict[str, Any]]` method from `PluginBase`. This method should return a list of dictionaries. Each dictionary defines a menu item and must contain:
+
+*   `"name"` (str): The text that will be displayed in the CLI menu for this item.
+*   `"handler"` (Callable): A callable (typically a method of your plugin instance) that will be executed when the user selects this menu item. This handler function **must** accept a `click.Context` object as its first argument.
+
+**Example:**
+
+```python
+# my_interactive_cli_plugin.py
+from bedrock_server_manager import PluginBase
+import click # For click.Context type hint and potentially other click utilities
+import questionary # If your handler uses questionary for sub-menus
+
+class MyInteractiveCLIPlugin(PluginBase):
+    version = "1.0.0"
+
+    def _my_custom_menu_action(self, ctx: click.Context):
+        """Handler for the custom CLI menu item."""
+        self.logger.info(f"Custom menu action from {self.name} executed!")
+        click.secho(f"Hello from '{self.name}'s interactive menu item!", fg="magenta")
+        
+        # Example of further interaction using questionary
+        choice = questionary.select(
+            "Choose a sub-action:",
+            choices=["Info", "Perform Task", "Nothing"],
+            use_indicator=True
+        ).ask()
+
+        if choice == "Info":
+            click.secho("You chose 'Info'. This plugin is awesome!", fg="cyan")
+        elif choice == "Perform Task":
+            # Example: Use self.api to do something
+            # server_name = "some_server" # This would need to be obtained, e.g. via another prompt
+            # self.api.send_command(server_name=server_name, command="say Hello from plugin menu")
+            click.secho("Task performed (simulated).", fg="green")
+        else:
+            click.secho("Okay, doing nothing more.", fg="yellow")
+
+    def get_cli_menu_items(self) -> list[dict[str, any]]:
+        return [
+            {
+                "name": f"Run Interactive Action from {self.name}", # Name displayed in the menu
+                "handler": self._my_custom_menu_action    # The method to call
+            }
+            # You can add more dictionaries here for more menu items from this plugin
+        ]
+
+    def on_load(self):
+        self.logger.info(f"{self.name} v{self.version} loaded, providing CLI menu items.")
+
+```
+
+**2. How it Works:**
+
+*   When the Bedrock Server Manager CLI starts in interactive mode, it will call `get_cli_menu_items()` on all enabled plugins.
+*   If any plugins provide menu items, a new option like "Plugin Custom Menus" will appear in the main menu.
+*   Selecting "Plugin Custom Menus" will then display a sub-menu listing all the `"name"` strings from your plugin(s). The plugin's name will also be shown for clarity (e.g., "Run Interactive Action from MyInteractiveCLIPlugin (from plugin: my_interactive_cli_plugin)").
+*   When the user selects your plugin's menu item, the corresponding `"handler"` method will be called.
+
+**3. Inside Your Handler (`_my_custom_menu_action` in the example):**
+
+*   The handler receives a `click.Context` object (`ctx`). This context can be used to:
+    *   Invoke other Click commands: `ctx.invoke(other_command_group.get_command(ctx, "sub_cmd"), ...)`.
+    *   Access shared objects if they are stored in `ctx.obj` (e.g., `ctx.obj['bsm']` for the `BedrockServerManager` instance, or potentially `ctx.obj['plugin_manager']`).
+*   You can use `self.logger` for logging and `self.api` to interact with the core application.
+*   You can use `questionary` to build further interactive prompts or sub-menus.
+*   Remember to handle user cancellation (e.g., if `questionary.select(...).ask()` returns `None`).
+
+This feature allows plugins to provide rich, guided CLI experiences that are seamlessly integrated into the main application menu.
 
 ## 6. Best Practices
 

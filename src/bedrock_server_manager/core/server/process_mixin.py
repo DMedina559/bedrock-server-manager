@@ -37,9 +37,11 @@ if TYPE_CHECKING:
 
 
 # Local application imports.
-from ..system import base as system_base
+from ..system import linux as system_linux_proc
+from ..system import windows as system_windows_proc
 from ..system import process as system_process
 from .base_server_mixin import BedrockServerBaseMixin
+from ..system import base as system_base
 from ...error import (
     ConfigurationError,
     MissingArgumentError,
@@ -90,39 +92,121 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-
-    @property
-    def process_manager(self):
-        """Gets the bedrock process manager from the app context."""
-        if self.app_context:
-            return self.app_context.bedrock_process_manager
-        raise ConfigurationError(
-            "Application context not available on the server instance."
-        )
+        # Attributes like self.server_name, self.server_dir etc. are available from BedrockServerBaseMixin.
+        # Methods like self.is_installed() (from InstallUpdateMixin) and
+        # self.set_status_in_config() (from ServerStateMixin) are expected to be present
+        # on the final composed BedrockServer object.
 
     def is_running(self) -> bool:
-        """Checks if the Bedrock server process is currently running and verified."""
+        """Checks if the Bedrock server process is currently running and verified.
+
+        This method delegates to
+        :func:`~.core.system.base.is_server_running`, which internally uses
+        :func:`~.core.system.process.get_verified_bedrock_process` to check
+        not only if a process with the stored PID exists, but also if that
+        process matches the expected executable path and working directory for
+        this server instance.
+
+        It does not update the server's persisted status in the configuration
+        but provides a real-time check of the process state.
+
+        Returns:
+            bool: ``True`` if the server process is running and verified,
+            ``False`` otherwise. This includes cases where `psutil` might be
+            unavailable or if checks fail due to permissions or other system errors.
+
+        Raises:
+            ConfigurationError: If the base directory for servers (`paths.servers`)
+                is not configured in settings, as this is essential for path
+                verification.
+        """
         self.logger.debug(f"Checking if server '{self.server_name}' is running.")
-        return system_base.is_server_running(
-            self.server_name, self.server_dir, self.app_config_dir
-        )
+
+        if not self.base_dir:  # From BedrockServerBaseMixin
+            raise ConfigurationError(
+                "Base server directory ('paths.servers') not configured, cannot check server running status."
+            )
+
+        try:
+            # system_base.is_server_running itself calls core_process.get_verified_bedrock_process
+            is_running_flag = system_base.is_server_running(
+                self.server_name, self.server_dir, self.app_config_dir
+            )
+            self.logger.debug(
+                f"system_base.is_server_running for '{self.server_name}' returned: {is_running_flag}"
+            )
+            return is_running_flag
+        except (
+            BSMError
+        ) as e_bsm:  # Catch known BSM errors that might occur during check
+            self.logger.warning(
+                f"A known error occurred during is_server_running check for '{self.server_name}': {e_bsm}"
+            )
+            return False
+        except ConfigurationError:
+            # Let ConfigurationError propagate as it's critical
+            raise
+        except Exception as e_unexp:
+            # Catch any other unexpected errors and treat as "not running" for safety
+            self.logger.error(
+                f"Unexpected error during is_server_running check for '{self.server_name}': {e_unexp}",
+                exc_info=True,
+            )
+            return False
 
     def send_command(self, command: str) -> None:
-        """Sends a command string to the running Bedrock server process."""
+        """Sends a command string to the running Bedrock server process.
+
+        This method delegates to platform-specific functions for sending commands:
+
+            - On Linux: :func:`~.core.system.linux._linux_send_command` (uses FIFO).
+            - On Windows: :func:`~.core.system.windows._windows_send_command` (uses named pipes).
+
+        Args:
+            command (str): The command string to send to the server's console
+                (e.g., "list", "say Hello World").
+
+        Raises:
+            MissingArgumentError: If the `command` string is empty.
+            ServerNotRunningError: If :meth:`.is_running` returns ``False`` before
+                attempting to send the command.
+            NotImplementedError: If the current operating system is not supported
+                or if the required system module (linux/windows) is not available.
+            SendCommandError: For underlying failures during the send operation
+                (e.g., pipe errors, `schtasks` errors).
+            CommandNotFoundError: If platform-specific helper commands (`schtasks` if it was missing but passed init)
+                are not found. (More likely caught during scheduler init).
+            SystemError: For other unexpected system-level errors during the send.
+        """
         if not command:
             raise MissingArgumentError("Command cannot be empty.")
 
-        if not self.is_running():
+        if not self.is_running():  # Relies on the refined is_running()
             raise ServerNotRunningError(
                 f"Cannot send command: Server '{self.server_name}' is not running."
             )
 
         self.logger.info(
-            f"Sending command '{command}' to server '{self.server_name}'..."
+            f"Sending command '{command}' to server '{self.server_name}' on {self.os_type}..."
         )
 
         try:
-            self.process_manager.send_command(self.server_name, command)
+            if self.os_type == "Linux":
+                if not system_linux_proc:  # Should not happen if correctly imported
+                    raise NotImplementedError(
+                        "Linux system processing module not available (system_linux_proc)."
+                    )
+                system_linux_proc._linux_send_command(self.server_name, command)
+            elif self.os_type == "Windows":
+                if not system_windows_proc:  # Should not happen
+                    raise NotImplementedError(
+                        "Windows system processing module not available (system_windows_proc)."
+                    )
+                system_windows_proc._windows_send_command(self.server_name, command)
+            else:
+                raise NotImplementedError(
+                    f"Sending commands is not supported on operating system: {self.os_type}"
+                )
             self.logger.info(
                 f"Command '{command}' sent successfully to server '{self.server_name}'."
             )
@@ -133,8 +217,33 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"An unexpected error occurred while sending command to '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def start(self) -> None:
-        """Starts the Bedrock server process."""
+    def start(self) -> NoReturn:
+        """Starts the Bedrock server process directly in the foreground (blocking).
+
+        This method is intended for direct, interactive server execution and will
+        block the calling thread until the server process terminates (either
+        gracefully or due to a crash). It handles pre-start checks, updates the
+        server's status in its configuration, and delegates to platform-specific
+        start functions:
+
+            - On Linux: :func:`~.core.system.linux._linux_start_server`.
+            - On Windows: :func:`~.core.system.windows._windows_start_server`.
+
+        The server's status is set to "STARTING" before launch and should be
+        updated to "RUNNING" by the platform-specific function upon successful
+        startup. On termination, this method ensures the status is set to
+        "STOPPED" or "ERROR".
+
+        Requires `self.is_installed()` (from another mixin) to be ``True``.
+
+        Raises:
+            ServerStartError: If the server is not installed, is already running,
+                runs on an unsupported OS, or if any error occurs during the
+                startup or execution of the server process. This can wrap
+                various underlying exceptions like :class:`~.error.BSMError` or
+                :class:`~.error.SystemError`.
+        """
+        # --- Pre-flight Checks ---
         if not hasattr(self, "is_installed") or not self.is_installed():
             raise ServerStartError(
                 f"Cannot start server '{self.server_name}': Not installed or "
@@ -147,52 +256,118 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             )
             raise ServerStartError(f"Server '{self.server_name}' is already running.")
 
+        # --- Begin Startup Process ---
         try:
             if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("STARTING")
+                self.set_status_in_config("STARTING")  # type: ignore
+            else:
+                self.logger.warning(
+                    "set_status_in_config method not found; cannot update status to STARTING."
+                )
         except Exception as e_status:
             self.logger.warning(
                 f"Failed to set status to STARTING for '{self.server_name}': {e_status}"
             )
 
-        self.logger.info(f"Attempting to start server '{self.server_name}'...")
+        self.logger.info(
+            f"Attempting a direct (blocking) start for server '{self.server_name}' "
+            f"on {self.os_type}..."
+        )
 
         try:
-            self.process_manager.start_server(self.server_name)
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("RUNNING")
-            self.logger.info(f"Server '{self.server_name}' has been started.")
-        except BSMError as e_bsm_start:
+            # --- Platform-Specific Blocking Call ---
+            if self.os_type == "Linux":
+                system_linux_proc._linux_start_server(
+                    self.server_name, self.server_dir, self.app_config_dir
+                )
+            elif self.os_type == "Windows":
+                system_windows_proc._windows_start_server(
+                    self.server_name, self.server_dir, self.app_config_dir
+                )
+            else:
+                # This case should ideally be caught earlier if OS is unsupported for any operation.
+                if hasattr(self, "set_status_in_config"):
+                    self.set_status_in_config("ERROR")  # type: ignore
+                raise ServerStartError(
+                    f"Unsupported operating system for server start: {self.os_type}"
+                )
+
+            self.logger.info(
+                f"Direct server session for '{self.server_name}' has ended gracefully."
+            )
+
+        except BSMError as e_bsm_start:  # Catch known BSM errors during startup
             self.logger.error(
                 f"A known BSM error occurred while starting server '{self.server_name}': {e_bsm_start}",
                 exc_info=True,
             )
             if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("ERROR")
+                self.set_status_in_config("ERROR")  # type: ignore
             raise ServerStartError(
                 f"Failed to start server '{self.server_name}': {e_bsm_start}"
             ) from e_bsm_start
-        except Exception as e_unexp_runtime:
+        except (
+            Exception
+        ) as e_unexp_runtime:  # Catch unexpected errors during server runtime
             self.logger.error(
                 f"An unexpected error occurred while server '{self.server_name}' was running: {e_unexp_runtime}",
                 exc_info=True,
             )
             if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("ERROR")
+                self.set_status_in_config("ERROR")  # type: ignore
             raise ServerStartError(
                 f"Unexpected error during server '{self.server_name}' execution: {e_unexp_runtime}"
             ) from e_unexp_runtime
+        finally:
+            # --- Final Status Cleanup ---
+            # Check current stored status. If it's still STARTING or RUNNING, correct it.
+            if hasattr(self, "get_status_from_config") and hasattr(
+                self, "set_status_in_config"
+            ):
+                current_stored_status = self.get_status_from_config()  # type: ignore
+                if current_stored_status not in ("STOPPED", "ERROR"):
+                    self.logger.info(
+                        f"Server '{self.server_name}' process ended. Correcting stored status from '{current_stored_status}' to STOPPED."
+                    )
+                    self.set_status_in_config("STOPPED")  # type: ignore
+            else:
+                self.logger.warning(
+                    "Status management methods (get/set_status_in_config) not found; final status may be inaccurate."
+                )
 
     def stop(self) -> None:
-        """Stops the Bedrock server process gracefully, with a forceful fallback."""
+        """Stops the Bedrock server process gracefully, with a forceful fallback.
+
+        This method orchestrates the server shutdown sequence:
+
+            1. Checks if the server is running using :meth:`.is_running`. If not,
+               ensures the stored status is "STOPPED" and returns.
+            2. Sets the server's stored status to "STOPPING".
+            3. Attempts a graceful shutdown by sending the "stop" command via
+               :meth:`.send_command`.
+            4. Waits for the process to terminate, checking its status periodically
+               up to a configured timeout (`SERVER_STOP_TIMEOUT_SEC` from settings).
+            5. If the server is still running after the timeout, it attempts a
+               forceful PID-based termination using utilities from
+               :mod:`~.core.system.process`.
+            6. Updates the stored status to "STOPPED" upon successful termination,
+               or "ERROR" if issues persist.
+
+        Raises:
+            ServerStopError: If the server fails to stop after all attempts and
+                is still detected as running.
+        """
         if not self.is_running():
             self.logger.info(
                 f"Attempted to stop server '{self.server_name}', but it is not currently running."
             )
-            if hasattr(self, "set_status_in_config"):
-                if self.get_status_from_config() != "STOPPED":
+            # Ensure stored status is consistent if is_running is false.
+            if hasattr(self, "get_status_from_config") and hasattr(
+                self, "set_status_in_config"
+            ):
+                if self.get_status_from_config() != "STOPPED":  # type: ignore
                     try:
-                        self.set_status_in_config("STOPPED")
+                        self.set_status_in_config("STOPPED")  # type: ignore
                     except Exception as e_stat:
                         self.logger.warning(
                             f"Failed to set status to STOPPED for non-running server '{self.server_name}': {e_stat}"
@@ -201,25 +376,161 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         try:
             if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("STOPPING")
-        except Exception as e_stat:
+                self.set_status_in_config("STOPPING")  # type: ignore
+        except Exception as e_stat:  # Should be more specific if possible
             self.logger.warning(
                 f"Failed to set status to STOPPING for '{self.server_name}': {e_stat}"
             )
 
         self.logger.info(f"Attempting to stop server '{self.server_name}'...")
 
+        # --- 1. Attempt graceful shutdown via command ---
+        graceful_attempted = False
         try:
-            self.process_manager.stop_server(self.server_name)
+            # Ensure send_command method exists (it should if this mixin is used correctly)
+            if hasattr(self, "send_command"):
+                self.send_command("stop")  # This method is part of ServerProcessMixin
+                self.logger.info(f"Sent 'stop' command to server '{self.server_name}'.")
+                graceful_attempted = True
+            else:
+                self.logger.warning(  # Should not happen in normal use
+                    "send_command method not found on self. Cannot send graceful stop command."
+                )
+        except BSMError as e_cmd:  # Catch known BSM errors from send_command
+            self.logger.warning(
+                f"Failed to send 'stop' command to '{self.server_name}': {e_cmd}. Proceeding to check process status."
+            )
+        except Exception as e_unexp_cmd:  # Catch any other unexpected error
+            self.logger.error(
+                f"Unexpected error sending 'stop' command to '{self.server_name}': {e_unexp_cmd}",
+                exc_info=True,
+            )
+
+        # --- 2. Wait for process to terminate ---
+        # Only wait if a graceful stop was attempted, or always wait if is_running was true?
+        # Current logic waits regardless, which is fine.
+        stop_timeout_sec = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
+        # Make max_attempts at least 1 to ensure at least one check after command.
+        max_attempts = max(1, stop_timeout_sec // 2)
+        sleep_interval = 2  # seconds
+
+        self.logger.info(
+            f"Waiting up to {max_attempts * sleep_interval}s for '{self.server_name}' process to terminate..."
+        )
+
+        for attempt in range(max_attempts):
+            if not self.is_running():
+                if hasattr(self, "set_status_in_config"):
+                    self.set_status_in_config("STOPPED")  # type: ignore
+                self.logger.info(
+                    f"Server '{self.server_name}' stopped successfully (detected on attempt {attempt + 1})."
+                )
+                return
+
+            self.logger.debug(
+                f"Waiting for '{self.server_name}' to stop (attempt {attempt + 1}/{max_attempts})..."
+            )
+            time.sleep(sleep_interval)
+
+        # --- 3. If still running, attempt forceful PID-based termination ---
+        if self.is_running():  # Re-check after waiting
+            self.logger.error(
+                f"Server '{self.server_name}' failed to stop gracefully after command and wait."
+            )
+            self.logger.info(
+                f"Attempting forceful PID-based termination for server '{self.server_name}'."
+            )
+
+            # Ensure get_pid_file_path method exists (from BaseServerMixin or similar)
+            if not hasattr(self, "get_pid_file_path"):
+                self.logger.error(
+                    "get_pid_file_path method not found. Cannot perform PID-based termination."
+                )
+                if hasattr(self, "set_status_in_config"):
+                    self.set_status_in_config("ERROR")  # type: ignore
+                raise ServerStopError(
+                    f"Cannot perform PID-based stop for '{self.server_name}': missing PID file path method."
+                )
+
+            pid_file_path = self.get_pid_file_path()  # type: ignore
+            try:
+                pid_to_terminate = system_process.read_pid_from_file(pid_file_path)
+                if pid_to_terminate and system_process.is_process_running(
+                    pid_to_terminate
+                ):
+                    self.logger.info(
+                        f"Terminating PID {pid_to_terminate} for '{self.server_name}'."
+                    )
+                    system_process.terminate_process_by_pid(pid_to_terminate)
+                    time.sleep(
+                        sleep_interval
+                    )  # Give a moment for termination to reflect
+                    if not self.is_running():  # Final check
+                        if hasattr(self, "set_status_in_config"):
+                            self.set_status_in_config("STOPPED")  # type: ignore
+                        self.logger.info(
+                            f"Server '{self.server_name}' (PID {pid_to_terminate}) forcefully terminated and confirmed stopped."
+                        )
+                        return
+                    else:
+                        self.logger.error(
+                            f"Server '{self.server_name}' (PID {pid_to_terminate}) STILL RUNNING after forceful termination attempt."
+                        )
+                elif pid_to_terminate:
+                    self.logger.info(
+                        f"PID {pid_to_terminate} from file for '{self.server_name}' is not running. Removing stale PID file."
+                    )
+                    system_process.remove_pid_file_if_exists(pid_file_path)
+                    # If it wasn't running by PID, but is_running() said it was, there's a discrepancy.
+                    # However, if is_running() now returns false, we're good.
+                    if not self.is_running() and hasattr(self, "set_status_in_config"):
+                        self.set_status_in_config("STOPPED")  # type: ignore
+                    return
+
+            except (
+                FileOperationError,
+                SystemError,
+                ServerStopError,
+                MissingArgumentError,
+            ) as e_force:
+                self.logger.error(
+                    f"Error during forceful termination attempt for '{self.server_name}': {e_force}",
+                    exc_info=True,
+                )
+            except Exception as e_unexp_force:
+                self.logger.error(
+                    f"Unexpected error during forceful termination of '{self.server_name}': {e_unexp_force}",
+                    exc_info=True,
+                )
+        else:  # Was not running after the wait period
             if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("STOPPED")
-            self.logger.info(f"Server '{self.server_name}' stopped successfully.")
-        except BSMError as e:
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("ERROR")
+                self.set_status_in_config("STOPPED")  # type: ignore
+            self.logger.info(
+                f"Server '{self.server_name}' confirmed stopped after waiting period."
+            )
+            return
+
+        # --- 4. Final status update and error if still running ---
+        if hasattr(self, "get_status_from_config") and hasattr(
+            self, "set_status_in_config"
+        ):
+            if self.get_status_from_config() != "STOPPED":  # type: ignore
+                self.set_status_in_config("ERROR")  # type: ignore
+
+        if self.is_running():  # Final check
             raise ServerStopError(
-                f"Failed to stop server '{self.server_name}': {e}"
-            ) from e
+                f"Server '{self.server_name}' failed to stop after all attempts. Manual intervention may be required."
+            )
+        else:
+            # This path means it stopped, but possibly due to forceful kill or after initial command failed.
+            # Status should have been set to STOPPED if termination was confirmed.
+            # If it's ERROR here, it means forceful termination might have also failed confirmation.
+            if hasattr(self, "get_status_from_config") and self.get_status_from_config() != "STOPPED":  # type: ignore
+                self.logger.warning(
+                    f"Server '{self.server_name}' stopped, but final status in config is not 'STOPPED'. Current: {self.get_status_from_config()}."
+                )
+                if hasattr(self, "set_status_in_config"):
+                    self.set_status_in_config("STOPPED")  # type: ignore
 
     def get_process_info(self) -> Optional[Dict[str, Any]]:
         """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process.

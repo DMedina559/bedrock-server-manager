@@ -1,0 +1,134 @@
+<!-- bedrock_server_manager//web/templates/schedule_tasks.html -->
+{# Linux Cron Job Scheduler Page #}
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Cron Scheduler: {{ server_name }}{% endblock %}
+
+{% block head_scripts %}
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/linux_task.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<h2>Cron Job Scheduler (Linux)</h2>
+<p style="margin-bottom: 15px;">Server Context: <strong>{{ server_name }}</strong></p>
+
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;"></div>
+
+{# Display error message passed from route, if any #}
+{% if error_message %}
+<div class="message-box message-error">
+    {{ error_message }}
+</div>
+{% endif %}
+
+<section class="schedule-tasks-section list-section">
+    <h3>Current Scheduled Jobs</h3>
+    <p>List of cron jobs associated with this server context found in the user's crontab.</p>
+
+    {% if table_data %}
+    <div class="table-responsive-wrapper">
+        <table class="server-table">
+            <thead>
+                <tr>
+                    <th scope="col">Min</th>
+                    <th scope="col">Hour</th>
+                    <th scope="col">Day</th>
+                    <th scope="col">Mon</th>
+                    <th scope="col">DoW</th>
+                    <th scope="col">Readable Schedule</th>
+                    <th scope="col">Command Action</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in table_data %}
+                <tr>
+                    <td data-label="Min">{{ job.minute }}</td>
+                    <td data-label="Hour">{{ job.hour }}</td>
+                    <td data-label="Day">{{ job.day_of_month }}</td>
+                    <td data-label="Mon">{{ job.month }}</td>
+                    <td data-label="DoW">{{ job.day_of_week }}</td>
+                    <td data-label="Schedule">{{ job.schedule_time }}</td>
+                    <td data-label="Command">{{ job.command_display }}</td>
+                    <td data-label="Actions">
+                        <div class="actions">
+                            {% set original_cron_string = job.minute ~ ' ' ~ job.hour ~ ' ' ~ job.day_of_month ~ ' ' ~ job.month ~ ' ' ~ job.day_of_week ~ ' ' ~ job.command %}
+                            <a href="#"
+                               onclick="event.preventDefault(); fillModifyForm('{{ original_cron_string | e | replace('\\', '\\\\') }}');"
+                               class="action-link modify-link" title="Modify this job's schedule">Modify</a>
+                            <a href="#"
+                               onclick="event.preventDefault(); confirmDelete('{{ original_cron_string | e | replace('\\', '\\\\') }}', '{{ server_name | e }}');"
+                               class="action-button danger-button" title="Delete this job">Delete</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="no-servers-message">
+        No specific cron jobs found scheduled for server context '{{ server_name }}'.
+    </p>
+    {% endif %}
+
+    <div class="list-actions form-actions">
+        <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">« Back to Dashboard</a>
+        <button type="button" onclick="prepareNewCronForm()" class="action-button">Add New Job</button>
+    </div>
+</section>
+
+<section class="add-cron-job-section form-section" id="add-modify-cron-section" style="display: none;">
+    <h2 id="cron-form-title">Add New Cron Job</h2>
+    <form id="cron-form" novalidate data-server-name="{{ server_name | e }}" data-expath="{{ EXPATH | e }}">
+        <input type="hidden" id="original_cron_string" name="original_cron_string" value="">
+
+        <div class="form-group">
+            <label for="command" class="form-label">Select Command:</label>
+            <select id="command" name="command" class="form-input" required>
+                <option value="" disabled selected>-- Select Command --</option>
+                <option value="server update">Update Server</option>
+                <option value="backup create --type all">Backup Server (All)</option>
+                <option value="server start">Start Server</option>
+                <option value="server stop">Stop Server</option>
+                <option value="server restart">Restart Server</option>
+            </select>
+        </div>
+
+        <p>Enter schedule time (* = any value):</p>
+        <div class="form-grid cron-grid">
+            <div class="form-group">
+                <label for="minute" class="form-label">Minute:</label>
+                <input type="text" id="minute" name="minute" class="form-input" value="*" required>
+                <small class="form-help-text">0-59, *</small>
+            </div>
+            <div class="form-group">
+                <label for="hour" class="form-label">Hour:</label>
+                <input type="text" id="hour" name="hour" class="form-input" value="*" required>
+                <small class="form-help-text">0-23, *</small>
+            </div>
+            <div class="form-group">
+                <label for="day" class="form-label">Day of Month:</label>
+                <input type="text" id="day" name="day" class="form-input" value="*" required>
+                <small class="form-help-text">1-31, *</small>
+            </div>
+            <div class="form-group">
+                <label for="month" class="form-label">Month:</label>
+                <input type="text" id="month" name="month" class="form-input" value="*" required>
+                <small class="form-help-text">1-12, *</small>
+            </div>
+            <div class="form-group">
+                <label for="weekday" class="form-label">Day of Week:</label>
+                <input type="text" id="weekday" name="weekday" class="form-input" value="*" required>
+                <small class="form-help-text">0-6 (Sun=0), *</small>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="action-button start-button" id="cron-submit-btn">Add Job</button>
+            <button type="button" onclick="cancelCronForm()" class="action-link">Cancel</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

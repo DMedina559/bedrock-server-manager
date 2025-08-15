@@ -24,12 +24,7 @@ import logging
 import threading
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Type, Callable, Tuple, TYPE_CHECKING
-
-from sqlalchemy.orm import Session
-
-if TYPE_CHECKING:
-    from ..context import AppContext
+from typing import List, Dict, Any, Optional, Type, Callable, Tuple
 
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
 from ..config import (
@@ -37,10 +32,7 @@ from ..config import (
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
 )
-from ..utils.migration import migrate_plugin_config_to_db
-from ..db.database import db_session_manager
-from ..config.settings import Settings
-from ..db.models import Plugin
+from ..instances import get_settings_instance
 from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
 
@@ -67,17 +59,30 @@ class PluginManager:
     and dispatches various events to them.
     """
 
-    def __init__(self, settings: Settings):
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(PluginManager, cls).__new__(cls)
+            # Initialization logic moved to a separate method
+            # to avoid re-running it on every "call" to the singleton.
+            cls._instance._init_once()
+        return cls._instance
+
+    def _init_once(self):
         """
-        Initializes the PluginManager.
+        Initializes the PluginManager. This method is called only once.
 
         Sets up plugin directories (user and default), determines the path for
         ``plugins.json``, initializes internal state for plugin configurations,
         loaded plugin instances, and custom event listeners. It also ensures
         that the configured plugin directories exist on the filesystem.
         """
+        if hasattr(self, "_initialized") and self._initialized:
+            return
+        self._initialized = True
 
-        self.settings = settings
+        self.settings = get_settings_instance()
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -90,13 +95,14 @@ class PluginManager:
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
+        self.plugin_cli_commands: List[Any] = []
         self.plugin_fastapi_routers: List[Any] = []
         self.html_render_tag = "plugin-ui"  # Tag for HTML rendering in FastAPI
         self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
-        self.app_context: Optional["AppContext"] = None
+        self.plugin_cli_menu_items: List[Dict[str, Any]] = []  # For dynamic CLI menus
 
         for directory in self.plugin_dirs:
             try:
@@ -109,36 +115,64 @@ class PluginManager:
 
         logger.info("PluginManager initialized.")
 
-    def set_app_context(self, app_context: "AppContext"):
-        """Sets the application context for the plugin manager."""
-        self.app_context = app_context
-        logger.debug("Application context set for PluginManager.")
-
     def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations from the database.
+        """Loads plugin configurations from the ``plugins.json`` file.
+
+        If the file doesn't exist or is malformed, it returns an empty dictionary,
+        prompting a rebuild of the configuration by methods like
+        :meth:`._synchronize_config_with_disk`.
+
         Returns:
             Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
             mapping plugin names to their configuration dictionaries.
             Returns an empty dict if loading fails or the file is not found.
         """
-        with db_session_manager() as db:
-            plugins = db.query(Plugin).all()
-            return {plugin.plugin_name: plugin.config for plugin in plugins}
+        if not self.config_path.exists():
+            logger.debug(
+                f"Plugin configuration file '{self.config_path}' not found. Returning empty config."
+            )
+            return {}
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+                logger.debug(
+                    f"Successfully loaded plugin configuration from '{self.config_path}'."
+                )
+                return config_data
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"Error decoding plugin configuration file '{self.config_path}' or its format is outdated. "
+                f"Attempting to rebuild configuration. Error: {e}",
+                exc_info=True,
+            )
+            return {}
+        except Exception as e:
+            logger.error(
+                f"An unexpected error occurred while loading plugin configuration from '{self.config_path}': {e}",
+                exc_info=True,
+            )
+            return {}
 
     def _save_config(self):
-        """Saves the current in-memory plugin configuration to the database."""
-        with db_session_manager() as db:
-            for plugin_name, config in self.plugin_config.items():
-                plugin = (
-                    db.query(Plugin).filter(Plugin.plugin_name == plugin_name).first()
-                )
-                if plugin:
-                    plugin.config = config
-                else:
-                    plugin = Plugin(plugin_name=plugin_name, config=config)
-                    db.add(plugin)
-            db.commit()
-            logger.info("Plugin configuration successfully saved to database.")
+        """Saves the current in-memory plugin configuration to ``plugins.json``.
+
+        The configuration (``self.plugin_config``) is saved in a human-readable
+        JSON format, pretty-printed with indentation and sorted keys.
+        """
+        logger.debug(
+            f"Attempting to save plugin configuration to '{self.config_path}'."
+        )
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(self.plugin_config, f, indent=4, sort_keys=True)
+            logger.info(
+                f"Plugin configuration successfully saved to '{self.config_path}'."
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to save plugin configuration to '{self.config_path}': {e}",
+                exc_info=True,
+            )
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches all configured plugin directories for a specific plugin file.
@@ -364,7 +398,6 @@ class PluginManager:
         )
 
         for plugin_name, path_to_load in all_potential_plugins.items():
-            migrate_plugin_config_to_db(plugin_name, path_to_load.parent)
             logger.debug(
                 f"Processing plugin '{plugin_name}' from path: '{path_to_load}'."
             )
@@ -533,12 +566,16 @@ class PluginManager:
             self.plugins.clear()
 
         # Clear any previously collected commands and routers
+        self.plugin_cli_commands.clear()
+        logger.debug("Cleared previously collected plugin CLI commands.")
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared previously collected plugin FastAPI routers.")
         self.plugin_template_paths.clear()
         logger.debug("Cleared previously collected plugin template paths.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared previously collected plugin static mounts.")
+        self.plugin_cli_menu_items.clear()
+        logger.debug("Cleared previously collected plugin CLI menu items.")
 
         loaded_plugin_count = 0
         for plugin_name, config_data in self.plugin_config.items():
@@ -577,9 +614,7 @@ class PluginManager:
                 try:
                     plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
                     api_instance = PluginAPI(
-                        plugin_name=plugin_name,
-                        plugin_manager=self,
-                        app_context=self.app_context,
+                        plugin_name=plugin_name, plugin_manager=self
                     )
                     logger.debug(
                         f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
@@ -594,6 +629,31 @@ class PluginManager:
                         f"Dispatching 'on_load' event to plugin '{plugin_name}'."
                     )
                     self.dispatch_event(instance, "on_load")
+
+                    # Collect CLI commands
+                    try:
+                        if hasattr(instance, "get_cli_commands") and callable(
+                            getattr(instance, "get_cli_commands")
+                        ):
+                            commands = instance.get_cli_commands()
+                            if isinstance(commands, list) and commands:
+                                self.plugin_cli_commands.extend(commands)
+                                logger.info(
+                                    f"Collected {len(commands)} CLI command(s) from plugin '{plugin_name}'."
+                                )
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' added {len(commands)} CLI command(s). "
+                                    "Ensure you trust this plugin and understand what these commands do before execution."
+                                )
+                            elif commands:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_cli_commands() did not return a list or returned an empty list."
+                                )
+                    except Exception as e_cli:
+                        logger.error(
+                            f"Error collecting CLI commands from plugin '{plugin_name}': {e_cli}",
+                            exc_info=True,
+                        )
 
                     # Collect FastAPI routers
                     try:
@@ -698,6 +758,52 @@ class PluginManager:
                             exc_info=True,
                         )
 
+                    # Collect CLI menu items
+                    try:
+                        if hasattr(instance, "get_cli_menu_items") and callable(
+                            getattr(instance, "get_cli_menu_items")
+                        ):
+                            menu_items = instance.get_cli_menu_items()
+                            if isinstance(menu_items, list) and menu_items:
+                                valid_menu_items = []
+                                for item_idx, item_config in enumerate(menu_items):
+                                    if (
+                                        isinstance(item_config, dict)
+                                        and "name" in item_config
+                                        and isinstance(item_config["name"], str)
+                                        and "handler" in item_config
+                                        and callable(item_config["handler"])
+                                    ):
+                                        # Store plugin instance with handler for context, or handler itself if it's bound
+                                        valid_menu_items.append(
+                                            {
+                                                "name": item_config["name"],
+                                                "handler": item_config[
+                                                    "handler"
+                                                ],  # Assumes handler is bound or static
+                                                "plugin_name": instance.name,  # For context if needed
+                                            }
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"Plugin '{plugin_name}' provided an invalid CLI menu item configuration at index {item_idx}: {item_config}. Expected dict with 'name' (str) and 'handler' (callable)."
+                                        )
+
+                                self.plugin_cli_menu_items.extend(valid_menu_items)
+                                if valid_menu_items:
+                                    logger.info(
+                                        f"Collected {len(valid_menu_items)} CLI menu item(s) from plugin '{plugin_name}'."
+                                    )
+                            elif menu_items:  # Not a list or empty
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' get_cli_menu_items() did not return a list or returned an empty list."
+                                )
+                    except Exception as e_cli_menu:
+                        logger.error(
+                            f"Error collecting CLI menu items from plugin '{plugin_name}': {e_cli_menu}",
+                            exc_info=True,
+                        )
+
                 except Exception as e:
                     logger.error(
                         f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
@@ -709,46 +815,12 @@ class PluginManager:
                 )
         logger.info(
             f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
+            f"Collected {len(self.plugin_cli_commands)} total CLI command(s), "
             f"{len(self.plugin_fastapi_routers)} total FastAPI router(s), "
             f"{len(self.plugin_template_paths)} total template paths, "
             f"{len(self.plugin_static_mounts)} total static mounts, and "
+            f"{len(self.plugin_cli_menu_items)} total CLI menu items from plugins."
         )
-
-    def unload_plugins(self):
-        """Unloads all currently active plugins.
-
-        This method provides a way to refresh the plugin system without restarting
-        the entire application. It involves:
-
-            1.  Dispatching the ``on_unload`` event to all currently loaded plugins
-                (via :meth:`.dispatch_event`).
-            2.  Clearing all registered custom event listeners from
-                ``self.custom_event_listeners`` (as the plugins that registered
-                them are being unloaded).
-        """
-        logger.info("--- Unloading all plugins ---")
-
-        if self.plugins:
-            logger.info(f"Unloading {len(self.plugins)} currently active plugins...")
-            for plugin_instance in list(self.plugins):
-                logger.debug(
-                    f"Dispatching 'on_unload' event to plugin '{plugin_instance.name}'."
-                )
-                self.dispatch_event(plugin_instance, "on_unload")
-            logger.info(
-                f"Finished dispatching 'on_unload' to {len(self.plugins)} plugins."
-            )
-            self.plugins.clear()
-        else:
-            logger.info("No plugins were active to unload.")
-
-        if self.custom_event_listeners:
-            logger.info(
-                f"Clearing {sum(len(v) for v in self.custom_event_listeners.values())} custom plugin event listeners from {len(self.custom_event_listeners)} event types."
-            )
-            self.custom_event_listeners.clear()
-        else:
-            logger.info("No custom plugin event listeners to clear.")
 
     def get_html_render_routes(self) -> List[Dict[str, str]]:
         """
@@ -947,12 +1019,16 @@ class PluginManager:
             logger.info("No custom plugin event listeners to clear.")
 
         # Also clear collected commands and routers on full reload
+        self.plugin_cli_commands.clear()
+        logger.debug("Cleared collected plugin CLI commands during reload.")
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared collected plugin FastAPI routers during reload.")
         self.plugin_template_paths.clear()
         logger.debug("Cleared collected plugin template paths during reload.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared collected plugin static mounts during reload.")
+        self.plugin_cli_menu_items.clear()
+        logger.debug("Cleared collected plugin CLI menu items during reload.")
 
         logger.info(
             "Re-running plugin discovery, synchronization, and loading process..."

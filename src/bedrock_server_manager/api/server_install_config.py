@@ -35,6 +35,7 @@ from ..plugins import plugin_method
 from ..instances import (
     get_server_instance,
     get_settings_instance,
+    get_plugin_manager_instance,
 )
 from . import player as player_api
 from .utils import (
@@ -49,21 +50,16 @@ from ..error import (
     UserInputError,
     AppFileNotFoundError,
 )
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
-
-from ..plugins.event_trigger import trigger_plugin_event
+plugin_manager = get_plugin_manager_instance()
 
 
 # --- Allowlist ---
 @plugin_method("add_players_to_allowlist_api")
-@trigger_plugin_event(before="before_allowlist_change", after="after_allowlist_change")
 def add_players_to_allowlist_api(
-    server_name: str,
-    new_players_data: List[Dict[str, Any]],
-    app_context: Optional[AppContext] = None,
+    server_name: str, new_players_data: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """Adds new players to the allowlist for a specific server.
 
@@ -100,17 +96,22 @@ def add_players_to_allowlist_api(
             "message": "Invalid input: new_players_data must be a list.",
         }
 
+    plugin_manager.trigger_event(
+        "before_allowlist_change",
+        server_name=server_name,
+        players_to_add=new_players_data,
+        players_to_remove=[],
+    )
+
     logger.info(
         f"API: Adding {len(new_players_data)} player(s) to allowlist for '{server_name}'."
     )
+    result = {}
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         added_count = server.add_to_allowlist(new_players_data)
 
-        return {
+        result = {
             "status": "success",
             "message": f"Successfully added {added_count} new players to the allowlist.",
             "added_count": added_count,
@@ -120,22 +121,26 @@ def add_players_to_allowlist_api(
         logger.error(
             f"API: Failed to update allowlist for '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"Failed to update allowlist: {e}"}
+        result = {"status": "error", "message": f"Failed to update allowlist: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error updating allowlist for '{server_name}': {e}",
             exc_info=True,
         )
-        return {
+        result = {
             "status": "error",
             "message": f"Unexpected error updating allowlist: {e}",
         }
+    finally:
+        plugin_manager.trigger_event(
+            "after_allowlist_change", server_name=server_name, result=result
+        )
+
+    return result
 
 
 @plugin_method("get_server_allowlist_api")
-def get_server_allowlist_api(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_server_allowlist_api(server_name: str) -> Dict[str, Any]:
     """Retrieves the allowlist for a specific server.
 
     Calls :meth:`~.core.bedrock_server.BedrockServer.get_allowlist`
@@ -161,10 +166,7 @@ def get_server_allowlist_api(
         raise MissingArgumentError("Server name cannot be empty.")
 
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         players = server.get_allowlist()
         return {"status": "success", "players": players}
     except BSMError as e:
@@ -184,11 +186,8 @@ def get_server_allowlist_api(
 
 
 @plugin_method("remove_players_from_allowlist")
-@trigger_plugin_event(before="before_allowlist_change", after="after_allowlist_change")
 def remove_players_from_allowlist(
-    server_name: str,
-    player_names: List[str],
-    app_context: Optional[AppContext] = None,
+    server_name: str, player_names: List[str]
 ) -> Dict[str, Any]:
     """Removes one or more players from the server's allowlist by name.
 
@@ -216,6 +215,14 @@ def remove_players_from_allowlist(
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 
+    plugin_manager.trigger_event(
+        "before_allowlist_change",
+        server_name=server_name,
+        players_to_add=[],
+        players_to_remove=player_names,
+    )
+
+    result = {}
     try:
         if not player_names:
             return {
@@ -224,10 +231,7 @@ def remove_players_from_allowlist(
                 "details": {"removed": [], "not_found": []},
             }
 
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         removed_players, not_found_players = [], []
 
         # Iterate and remove each player, tracking success and failure.
@@ -237,7 +241,7 @@ def remove_players_from_allowlist(
             else:
                 not_found_players.append(player)
 
-        return {
+        result = {
             "status": "success",
             "message": "Allowlist update process completed.",
             "details": {"removed": removed_players, "not_found": not_found_players},
@@ -248,7 +252,7 @@ def remove_players_from_allowlist(
             f"API: Failed to remove players from allowlist for '{server_name}': {e}",
             exc_info=True,
         )
-        return {
+        result = {
             "status": "error",
             "message": f"Failed to process allowlist removal: {e}",
         }
@@ -257,20 +261,19 @@ def remove_players_from_allowlist(
             f"API: Unexpected error removing players for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
+        result = {"status": "error", "message": f"Unexpected error: {e}"}
+    finally:
+        plugin_manager.trigger_event(
+            "after_allowlist_change", server_name=server_name, result=result
+        )
+
+    return result
 
 
 # --- Player Permissions ---
 @plugin_method("configure_player_permission")
-@trigger_plugin_event(
-    before="before_permission_change", after="after_permission_change"
-)
 def configure_player_permission(
-    server_name: str,
-    xuid: str,
-    player_name: Optional[str],
-    permission: str,
-    app_context: Optional[AppContext] = None,
+    server_name: str, xuid: str, player_name: Optional[str], permission: str
 ) -> Dict[str, str]:
     """Sets a player's permission level in permissions.json.
 
@@ -304,14 +307,19 @@ def configure_player_permission(
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
+    plugin_manager.trigger_event(
+        "before_permission_change",
+        server_name=server_name,
+        xuid=xuid,
+        permission=permission,
+    )
+
+    result = {}
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         server.set_player_permission(xuid, permission, player_name)
 
-        return {
+        result = {
             "status": "success",
             "message": f"Permission for XUID '{xuid}' set to '{permission.lower()}'.",
         }
@@ -321,19 +329,23 @@ def configure_player_permission(
             f"API: Failed to configure permission for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Failed to configure permission: {e}"}
+        result = {"status": "error", "message": f"Failed to configure permission: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error configuring permission for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
+        result = {"status": "error", "message": f"Unexpected error: {e}"}
+    finally:
+        plugin_manager.trigger_event(
+            "after_permission_change", server_name=server_name, xuid=xuid, result=result
+        )
+
+    return result
 
 
 @plugin_method("get_server_permissions_api")
-def get_server_permissions_api(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_server_permissions_api(server_name: str) -> Dict[str, Any]:
     """Retrieves processed permissions data for a server.
 
     This function reads the server's ``permissions.json`` file via
@@ -362,14 +374,11 @@ def get_server_permissions_api(
         return {"status": "error", "message": "Server name cannot be empty."}
 
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         player_name_map: Dict[str, str] = {}
 
         # Fetch global player data to create a XUID -> Name mapping.
-        players_response = player_api.get_all_known_players_api(app_context=app_context)
+        players_response = player_api.get_all_known_players_api()
         if players_response.get("status") == "success":
             for p_data in players_response.get("players", []):
                 if p_data.get("xuid") and p_data.get("name"):
@@ -399,9 +408,7 @@ def get_server_permissions_api(
 
 # --- Server Properties ---
 @plugin_method("get_server_properties_api")
-def get_server_properties_api(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_server_properties_api(server_name: str) -> Dict[str, Any]:
     """Reads and returns the `server.properties` file for a server.
 
     Delegates to
@@ -424,10 +431,7 @@ def get_server_properties_api(
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         properties = server.get_server_properties()
         return {"status": "success", "properties": properties}
     except AppFileNotFoundError as e:
@@ -531,14 +535,10 @@ def validate_server_property_value(property_name: str, value: str) -> Dict[str, 
 
 
 @plugin_method("modify_server_properties")
-@trigger_plugin_event(
-    before="before_properties_change", after="after_properties_change"
-)
 def modify_server_properties(
     server_name: str,
     properties_to_update: Dict[str, str],
     restart_after_modify: bool = False,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Modifies one or more properties in `server.properties`.
 
@@ -579,6 +579,13 @@ def modify_server_properties(
     if not isinstance(properties_to_update, dict):
         raise TypeError("Properties must be a dict.")
 
+    plugin_manager.trigger_event(
+        "before_properties_change",
+        server_name=server_name,
+        properties=properties_to_update,
+    )
+
+    result = {}
     try:
         # First, validate all properties before making any changes.
         for name, val_str in properties_to_update.items():
@@ -592,19 +599,13 @@ def modify_server_properties(
 
         # Use a context manager to handle stopping and restarting the server.
         with server_lifecycle_manager(
-            server_name,
-            stop_before=restart_after_modify,
-            restart_on_success_only=True,
-            app_context=app_context,
+            server_name, stop_before=restart_after_modify, restart_on_success_only=True
         ):
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = get_server_instance(server_name)
             for prop_name, prop_value in properties_to_update.items():
                 server.set_server_property(prop_name, prop_value)
 
-        return {
+        result = {
             "status": "success",
             "message": "Server properties updated successfully.",
         }
@@ -613,23 +614,27 @@ def modify_server_properties(
         logger.error(
             f"API: Failed to modify properties for '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"Failed to modify properties: {e}"}
+        result = {"status": "error", "message": f"Failed to modify properties: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error modifying properties for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Unexpected error: {e}"}
+        result = {"status": "error", "message": f"Unexpected error: {e}"}
+    finally:
+        plugin_manager.trigger_event(
+            "after_properties_change", server_name=server_name, result=result
+        )
+
+    return result
 
 
 # --- INSTALL/UPDATE FUNCTIONS ---
 @plugin_method("install_new_server")
-@trigger_plugin_event(before="before_server_install", after="after_server_install")
 def install_new_server(
     server_name: str,
     target_version: str = "LATEST",
     server_zip_path: Optional[str] = None,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Installs a new Bedrock server.
 
@@ -665,18 +670,18 @@ def install_new_server(
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 
+    plugin_manager.trigger_event(
+        "before_server_install", server_name=server_name, target_version=target_version
+    )
+
+    result = {}
     try:
         # Perform pre-flight checks before creating anything.
         val_res = validate_server_name_format(server_name)
         if val_res.get("status") == "error":
             raise UserInputError(val_res.get("message"))
 
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
-
-        base_dir = settings.get("paths.servers")
+        base_dir = get_settings_instance().get("paths.servers")
         if not base_dir:
             raise FileOperationError("'paths.servers' not configured in settings.")
         if os.path.exists(os.path.join(base_dir, server_name)):
@@ -687,37 +692,34 @@ def install_new_server(
         logger.info(
             f"API: Installing new server '{server_name}', target version '{target_version}'."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         server.install_or_update(target_version, server_zip_path=server_zip_path)
-        return {
+        result = {
             "status": "success",
             "version": server.get_version(),
             "message": f"Server '{server_name}' installed successfully to version {server.get_version()}.",
-            "next_step_url": f"/server/{server_name}/configure_properties?new_install=true",
         }
 
     except BSMError as e:
         logger.error(
             f"API: Installation failed for '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"Server installation failed: {e}"}
+        result = {"status": "error", "message": f"Server installation failed: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error installing '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+        result = {"status": "error", "message": f"An unexpected error occurred: {e}"}
+    finally:
+        plugin_manager.trigger_event(
+            "after_server_install", server_name=server_name, result=result
+        )
+
+    return result
 
 
 @plugin_method("update_server")
-@trigger_plugin_event(before="before_server_update", after="after_server_update")
-def update_server(
-    server_name: str,
-    send_message: bool = True,
-    app_context: Optional[AppContext] = None,
-) -> Dict[str, Any]:
+def update_server(server_name: str, send_message: bool = True) -> Dict[str, Any]:
     """Updates an existing server to its configured target version.
 
     The process is as follows:
@@ -765,12 +767,16 @@ def update_server(
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
+    result = {}
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
         target_version = server.get_target_version()
+
+        plugin_manager.trigger_event(
+            "before_server_update",
+            server_name=server_name,
+            target_version=target_version,
+        )
 
         logger.info(
             f"API: Updating server '{server_name}'. Send message: {send_message}"
@@ -789,7 +795,6 @@ def update_server(
             stop_before=True,
             start_after=True,
             restart_on_success_only=True,
-            app_context=app_context,
         ):
             logger.info(f"API: Backing up '{server_name}' before update...")
             server.backup_all_data()
@@ -798,7 +803,7 @@ def update_server(
             )
             server.install_or_update(target_version)
 
-        return {
+        result = {
             "status": "success",
             "updated": True,
             "new_version": server.get_version(),
@@ -807,9 +812,15 @@ def update_server(
 
     except BSMError as e:
         logger.error(f"API: Update failed for '{server_name}': {e}", exc_info=True)
-        return {"status": "error", "message": f"Server update failed: {e}"}
+        result = {"status": "error", "message": f"Server update failed: {e}"}
     except Exception as e:
         logger.error(
             f"API: Unexpected error updating '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+        result = {"status": "error", "message": f"An unexpected error occurred: {e}"}
+    finally:
+        plugin_manager.trigger_event(
+            "after_server_update", server_name=server_name, result=result
+        )
+
+    return result

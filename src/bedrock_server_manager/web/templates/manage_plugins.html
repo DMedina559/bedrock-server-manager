@@ -22,11 +22,9 @@
     <section class="list-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h3>Available Plugins</h3>
-            {% if current_user.role == 'admin' %}
             <button id="reload-plugins-btn" class="action-button">
                 <i class="fas fa-sync-alt"></i> Reload Plugins {# Assuming Font Awesome is available #}
             </button>
-            {% endif %}
         </div>
         <ul id="plugin-list" class="item-list">
             <li id="plugin-loader" class="list-item-status" role="status">
@@ -45,12 +43,10 @@
                 <small class="plugin-version" style="margin-left: 8px; color: #bbb;"></small>
             </div>
             <div class="plugin-controls">
-                {% if current_user.role == 'admin' %}
                 <label class="toggle-switch-container">
                     <input type="checkbox" class="toggle-input plugin-toggle-switch" data-plugin-name="">
                     <span class="toggle-switch"></span>
                 </label>
-                {% endif %}
             </div>
         </li>
     </template>

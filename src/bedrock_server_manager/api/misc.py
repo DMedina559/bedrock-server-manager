@@ -15,29 +15,24 @@ from ..plugins import plugin_method
 
 # Local application imports.
 from ..core import prune_old_downloads
-from ..instances import get_settings_instance
+from ..instances import get_settings_instance, get_plugin_manager_instance
 from ..error import (
     BSMError,
     UserInputError,
     MissingArgumentError,
 )
-from ..plugins.event_trigger import trigger_plugin_event
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 # A lock to prevent race conditions during miscellaneous file operations.
 _misc_lock = threading.Lock()
 
+plugin_manager = get_plugin_manager_instance()
+
 
 @plugin_method("prune_download_cache")
-@trigger_plugin_event(
-    before="before_prune_download_cache", after="after_prune_download_cache"
-)
 def prune_download_cache(
-    download_dir: str,
-    keep_count: Optional[int] = None,
-    app_context: Optional[AppContext] = None,
+    download_dir: str, keep_count: Optional[int] = None
 ) -> Dict[str, str]:
     """Prunes old downloaded server archives (.zip) in a directory.
 
@@ -83,6 +78,7 @@ def prune_download_cache(
             "message": "A file operation is already in progress.",
         }
 
+    result = {}
     try:
         if not download_dir:
             raise MissingArgumentError("Download directory cannot be empty.")
@@ -92,11 +88,7 @@ def prune_download_cache(
             # Determine the number of files to keep, prioritizing the function
             # argument over the global setting.
             if keep_count is None:
-                if app_context:
-                    settings = app_context.settings
-                else:
-                    settings = get_settings_instance()
-                keep_setting = settings.get("retention.downloads", 3)
+                keep_setting = get_settings_instance().get("retention.downloads", 3)
                 effective_keep = int(keep_setting)
             else:
                 effective_keep = int(keep_count)
@@ -110,6 +102,12 @@ def prune_download_cache(
                 f"Invalid keep_count or DOWNLOAD_KEEP setting: {e}"
             ) from e
 
+        # --- Plugin Hook: Before Prune ---
+        plugin_manager.trigger_event(
+            "before_prune_download_cache",
+            download_dir=download_dir,
+            keep_count=effective_keep,
+        )
         logger.info(
             f"API: Pruning download cache directory '{download_dir}'. Keep: {effective_keep}"
         )
@@ -119,7 +117,7 @@ def prune_download_cache(
             prune_old_downloads(download_dir=download_dir, download_keep=effective_keep)
 
             logger.info(f"API: Pruning successful for directory '{download_dir}'.")
-            return {
+            result = {
                 "status": "success",
                 "message": f"Download cache pruned successfully for '{download_dir}'.",
             }
@@ -130,22 +128,31 @@ def prune_download_cache(
                 f"API: Failed to prune download cache '{download_dir}': {e}",
                 exc_info=True,
             )
-            return {"status": "error", "message": f"Failed to prune downloads: {e}"}
+            result = {"status": "error", "message": f"Failed to prune downloads: {e}"}
         except Exception as e:
             # Handle any other unexpected errors.
             logger.error(
                 f"API: Unexpected error pruning download cache '{download_dir}': {e}",
                 exc_info=True,
             )
-            return {
+            result = {
                 "status": "error",
                 "message": f"Unexpected error pruning downloads: {e}",
             }
 
+        finally:
+            # --- Plugin Hook: After Prune ---
+            # This hook runs regardless of whether the prune succeeded or failed.
+            plugin_manager.trigger_event("after_prune_download_cache", result=result)
+
     except UserInputError as e:
         # Handle the validation error for keep_count from the outer try block.
-        return {"status": "error", "message": str(e)}
+        result = {"status": "error", "message": str(e)}
+        # Trigger the 'after' hook even on input validation failure.
+        plugin_manager.trigger_event("after_prune_download_cache", result=result)
 
     finally:
         # Ensure the lock is always released, even if errors occur.
         _misc_lock.release()
+
+    return result

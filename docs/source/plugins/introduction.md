@@ -23,13 +23,30 @@ Plugins are small Python scripts that "hook into" the Bedrock Server Manager to 
 
 ## Managing Plugins with the Command Line
 
-You can easily control which plugins are active from the Web Server.
+You can easily control which plugins are active using the `bedrock-server-manager plugin` command-line interface (CLI).
 
-Changes made are saved immediately and will be applied the next time the application starts or reload.
+*   **`bedrock-server-manager plugin list`**
+    *   Displays all discovered plugins and their current status (Enabled/Disabled).
+    *   **Example:**
+        ```
+        $ bedrock-server-manager plugin list
+        Fetching plugin statuses...
+        Plugin Statuses:
+        Plugin Name                         | Status   | Version |
+        ------------------------------------|----------|---------|
+        server_lifecycle__notifications     | Enabled  | 1.0.0   |
+        my_custom_plugin                    | Disabled | 1.4.5   |
+        ```
 
-```{note}
-If you're changing the status of a FASTAPI plugin you must fully restart the web server
-```
+*   **`bedrock-server-manager plugin enable <plugin_name>`**
+    *   Enables the specified plugin. The name is the filename without `.py`.
+    *   **Example:** `bedrock-server-manager plugin enable my_custom_plugin`
+
+*   **`bedrock-server-manager plugin disable <plugin_name>`**
+    *   Disables a plugin you no longer want to use.
+    *   **Example:** `bedrock-server-manager plugin disable server_lifecycle_notifications`
+
+Changes made with these commands are saved immediately and will be applied the next time the application starts.
 
 ---
 
@@ -46,7 +63,6 @@ A few essential built-in plugins are included in BSM to provide core functionali
 *   `server_lifecycle_notifications` (enabled by default)
 *   `world_operation_notifications` (enabled by default)
 *   `auto_reload_config` (enabled by default)
-*   `autostart_plugin` (enabled by default)
 *   `update_before_start` (enabled by default)
 *   `backup_on_start` (disabled by default)
 *   `content_uploader_plugin` (disabled by default)

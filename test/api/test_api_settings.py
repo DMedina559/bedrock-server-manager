@@ -11,53 +11,59 @@ from bedrock_server_manager.api.settings import (
 from bedrock_server_manager.error import MissingArgumentError
 
 
+@pytest.fixture
+def mock_settings():
+    """Fixture for a mocked Settings object."""
+    settings = MagicMock()
+    settings.get.return_value = "test_value"
+    settings._settings = {"key": "value"}
+    return settings
+
+
+@pytest.fixture
+def mock_get_settings_instance(mock_settings):
+    """Fixture to patch get_settings_instance."""
+    with patch(
+        "bedrock_server_manager.api.settings.get_settings_instance",
+        return_value=mock_settings,
+    ) as mock:
+        yield mock
+
+
 class TestSettingsAPI:
-    def test_get_global_setting(self, app_context):
-        # The app_context fixture uses isolated_settings, which creates a default config
-        result = get_global_setting("paths.servers", app_context=app_context)
+    def test_get_global_setting(self, mock_get_settings_instance):
+        result = get_global_setting("some.key")
         assert result["status"] == "success"
-        assert "servers" in result["value"]
+        assert result["value"] == "test_value"
 
-    def test_get_all_global_settings(self, app_context):
-        result = get_all_global_settings(app_context=app_context)
+    def test_get_all_global_settings(self, mock_get_settings_instance):
+        result = get_all_global_settings()
         assert result["status"] == "success"
-        assert "paths" in result["data"]
-        assert "servers" in result["data"]["paths"]
+        assert result["data"] == {"key": "value"}
 
-    def test_set_global_setting(self, app_context):
-        from bedrock_server_manager.db.models import Setting
-        from bedrock_server_manager.db.database import db_session_manager
-
-        result = set_global_setting("retention.backups", 5, app_context=app_context)
+    def test_set_global_setting(self, mock_get_settings_instance, mock_settings):
+        result = set_global_setting("some.key", "new_value")
         assert result["status"] == "success"
+        mock_settings.set.assert_called_once_with("some.key", "new_value")
 
-        with db_session_manager() as db_session:
-            setting = db_session.query(Setting).filter_by(key="retention").one()
-            assert setting.value["backups"] == 5
-
-    def test_set_custom_global_setting(self, app_context):
-        from bedrock_server_manager.db.models import Setting
-        from bedrock_server_manager.db.database import db_session_manager
-
-        result = set_custom_global_setting(
-            "custom_key", "custom_value", app_context=app_context
-        )
+    def test_set_custom_global_setting(self, mock_get_settings_instance, mock_settings):
+        result = set_custom_global_setting("custom_key", "custom_value")
         assert result["status"] == "success"
-
-        with db_session_manager() as db_session:
-            setting = db_session.query(Setting).filter_by(key="custom").one()
-            assert setting.value["custom_key"] == "custom_value"
+        mock_settings.set.assert_called_once_with("custom.custom_key", "custom_value")
 
     @patch("bedrock_server_manager.api.settings.setup_logging")
-    def test_reload_global_settings(self, mock_setup_logging, app_context):
-        result = reload_global_settings(app_context=app_context)
+    def test_reload_global_settings(
+        self, mock_setup_logging, mock_get_settings_instance, mock_settings
+    ):
+        result = reload_global_settings()
         assert result["status"] == "success"
+        mock_settings.reload.assert_called_once()
         mock_setup_logging.assert_called_once()
 
-    def test_get_global_setting_no_key(self, app_context):
+    def test_get_global_setting_no_key(self):
         with pytest.raises(MissingArgumentError):
-            get_global_setting("", app_context=app_context)
+            get_global_setting("")
 
-    def test_set_global_setting_no_key(self, app_context):
+    def test_set_global_setting_no_key(self):
         with pytest.raises(MissingArgumentError):
-            set_global_setting("", "value", app_context=app_context)
+            set_global_setting("", "value")

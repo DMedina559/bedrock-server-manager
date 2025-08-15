@@ -9,21 +9,27 @@ the interactive menu system.
 """
 
 import logging
+import platform
 import sys
-import atexit
+
 import click
 
+# --- Early and Essential Imports ---
+# This block handles critical import failures gracefully.
 try:
     from . import __version__
+    from . import api
     from .config import app_name_title
-    from .db import database
     from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
-    from .config.settings import Settings
-    from .core.manager import BedrockServerManager
-    from .context import AppContext
-    from .plugins import PluginManager
+    from .instances import (
+        get_manager_instance,
+        get_settings_instance,
+        get_plugin_manager_instance,
+    )
+
+    global_api_plugin_manager = get_plugin_manager_instance()
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -39,108 +45,173 @@ except ImportError as e:
 # --- Import all Click command modules ---
 # These are grouped logically for clarity.
 from .cli import (
+    addon,
+    backup_restore,
     cleanup,
     generate_password,
+    main_menus,
+    player,
+    server_actions,
+    server_allowlist,
+    server_permissions,
+    server_properties,
+    system,
+    utils,
     web,
-    setup,
-    service,
-    migrate,
+    world,
+    plugins,
 )
 
 
-def create_cli_app():
-    """Creates and configures the CLI application."""
+# --- Main Click Group Definition ---
+@click.group(
+    invoke_without_command=True,
+    context_settings=dict(help_option_names=["-h", "--help"]),
+)
+@click.version_option(
+    __version__, "-v", "--version", message=f"{app_name_title} %(version)s"
+)
+@click.pass_context
+def cli(ctx: click.Context):
+    """A comprehensive CLI for managing Minecraft Bedrock servers.
 
-    @click.group(
-        invoke_without_command=True,
-        context_settings=dict(help_option_names=["-h", "--help"]),
-    )
-    @click.version_option(
-        __version__, "-v", "--version", message=f"{app_name_title} %(version)s"
-    )
-    @click.pass_context
-    def cli(ctx: click.Context):
-        """A comprehensive CLI for managing Minecraft Bedrock servers.
+    This tool provides a full suite of commands to install, configure,
+    manage, and monitor Bedrock dedicated server instances.
 
-        This tool provides a full suite of commands to install, configure,
-        manage, and monitor Bedrock dedicated server instances.
+    If run without any arguments, it launches a user-friendly interactive
+    menu to guide you through all available actions.
+    """
+    try:
+        # --- Initial Application Setup ---
+        log_dir = get_settings_instance().get("paths.logs")
 
-        If run without any arguments, it launches a user-friendly interactive
-        menu to guide you through all available actions.
-        """
-
-        try:
-            # --- Initial Application Setup ---
-            settings = Settings()
-            manager = BedrockServerManager(settings)
-
-            app_context = AppContext(settings=settings, manager=manager)
-            from .instances import set_app_context
-
-            set_app_context(app_context)
-
-            log_dir = settings.get("paths.logs")
-
-            logger = setup_logging(
-                log_dir=log_dir,
-                log_keep=settings.get("retention.logs"),
-                file_log_level=settings.get("logging.file_level"),
-                cli_log_level=settings.get("logging.cli_level"),
-                force_reconfigure=True,
-                plugin_dir=settings.get("paths.plugins"),
-            )
-            log_separator(logger, app_name=app_name_title, app_version=__version__)
-            logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
-
-            startup_checks(app_context, app_name_title, __version__)
-
-            # --- Event Handling and Shutdown ---
-            def shutdown_cli_app():
-                logger.info("Running CLI app shutdown hooks...")
-                if database.engine:
-                    database.engine.dispose()
-                logger.info("CLI app shutdown hooks complete.")
-
-            atexit.register(shutdown_cli_app)
-
-        except Exception as setup_e:
-            logging.getLogger("bsm_critical_setup").critical(
-                f"An unrecoverable error occurred during CLI application startup: {setup_e}",
-                exc_info=True,
-            )
-            click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
-            sys.exit(1)
-
-        ctx.obj = {"cli": cli, "app_context": app_context}
-
-        if ctx.invoked_subcommand is None:
-            logger.info("No command specified.")
-            sys.exit(1)
-
-    # --- Command Assembly ---
-    # A structured way to add all commands to the main `cli` group.
-    def _add_commands_to_cli():
-        """Attaches all core command groups/standalone commands AND plugin commands to the main CLI group."""
-
-        cli.add_command(web.web)
-        cli.add_command(cleanup.cleanup)
-        cli.add_command(setup.setup)
-        cli.add_command(
-            generate_password.generate_password_hash_command, name="generate-password"
+        logger = setup_logging(
+            log_dir=log_dir,
+            log_keep=get_settings_instance().get("retention.logs"),
+            file_log_level=get_settings_instance().get("logging.file_level"),
+            cli_log_level=get_settings_instance().get("logging.cli_level"),
+            force_reconfigure=True,
+            plugin_dir=get_settings_instance().get("paths.plugins"),
         )
-        cli.add_command(service.service)
-        cli.add_command(migrate.migrate)
+        log_separator(logger, app_name=app_name_title, app_version=__version__)
+        logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
 
-    # Call the assembly function to build the CLI with core and plugin commands
-    _add_commands_to_cli()
+        bsm = get_manager_instance()
+        startup_checks(app_name_title, __version__)
 
-    return cli
+        # api_utils.update_server_statuses() might trigger api.__init__ if not already done.
+        # This ensures plugin_manager.load_plugins() has been called.
+        global_api_plugin_manager.trigger_guarded_event("on_manager_startup")
+        api.utils.update_server_statuses()
+
+    except Exception as setup_e:
+        logging.getLogger("bsm_critical_setup").critical(
+            f"An unrecoverable error occurred during CLI application startup: {setup_e}",
+            exc_info=True,
+        )
+        click.secho(f"CRITICAL STARTUP ERROR: {setup_e}", fg="red", bold=True)
+        sys.exit(1)
+
+    ctx.obj = {
+        "cli": cli,
+        "bsm": bsm,
+        "settings": get_settings_instance(),
+        "plugin_manager": global_api_plugin_manager,
+    }
+
+    if ctx.invoked_subcommand is None:
+        logger.info("No command specified; launching main interactive menu.")
+        try:
+            main_menus.main_menu(ctx)
+        except UserExitError:
+            # A clean, intentional exit from the main menu.
+            sys.exit(0)
+        except (click.Abort, KeyboardInterrupt):
+            # The user pressed Ctrl+C or cancelled a top-level prompt.
+            click.secho("\nOperation cancelled by user.", fg="red")
+            sys.exit(1)
+
+
+# --- Helper function to add plugin CLI commands ---
+def _add_plugin_cli_commands(main_cli_group: click.Group, pm_instance):
+    """Adds CLI commands from plugins to the main CLI group."""
+    if pm_instance and hasattr(pm_instance, "plugin_cli_commands"):
+        plugin_commands = pm_instance.plugin_cli_commands
+        if plugin_commands:
+            # Using print as this runs very early, before logger might be fully set up by CLI.
+            print(
+                f"[BSM __main__] Adding {len(plugin_commands)} CLI command(s) from plugins to group '{main_cli_group.name}'."
+            )
+            for cmd_idx, cmd in enumerate(plugin_commands):
+                if isinstance(cmd, (click.Command, click.Group)):
+                    main_cli_group.add_command(cmd)
+                    cmd_name = getattr(cmd, "name", f"unknown_cmd_idx_{cmd_idx}")
+                    print(f"[BSM __main__] Added plugin CLI command/group: {cmd_name}")
+                else:
+                    print(
+                        f"[BSM __main__] WARNING: Plugin provided an object that is not a valid Click command/group at index {cmd_idx}: {type(cmd)}"
+                    )
+        # No explicit message if plugin_commands is empty, as PluginManager logs collection.
+    elif pm_instance:
+        print(
+            "[BSM __main__] WARNING: Imported plugin_manager has no 'plugin_cli_commands' attribute.",
+            file=sys.stderr,
+        )
+    else:
+        # This case is logged by the import try-except block for global_api_plugin_manager
+        print(
+            "[BSM __main__] INFO: global_api_plugin_manager is None. Cannot add plugin CLI commands.",
+            file=sys.stderr,
+        )
+
+
+# --- Command Assembly ---
+# A structured way to add all commands to the main `cli` group.
+def _add_commands_to_cli():
+    """Attaches all core command groups/standalone commands AND plugin commands to the main CLI group."""
+    # `cli` is the globally defined Click group.
+    # `global_api_plugin_manager` is the plugin_manager from bedrock_server_manager.api
+
+    # Core Command Groups
+    cli.add_command(backup_restore.backup)
+    cli.add_command(player.player)
+    cli.add_command(server_permissions.permissions)
+    cli.add_command(server_properties.properties)
+    cli.add_command(server_actions.server)
+    cli.add_command(system.system)
+    cli.add_command(web.web)
+    cli.add_command(world.world)
+    cli.add_command(server_allowlist.allowlist)
+    cli.add_command(plugins.plugin)
+
+    if platform.system() == "Windows":
+        from .cli import windows_service
+
+        cli.add_command(windows_service.service)
+
+    # Standalone Commands
+    cli.add_command(addon.install_addon)
+    cli.add_command(cleanup.cleanup)
+    cli.add_command(
+        generate_password.generate_password_hash_command, name="generate-password"
+    )
+    cli.add_command(utils.list_servers)
+
+    # After adding all core commands, add plugin commands using the global plugin manager instance
+    if (
+        global_api_plugin_manager
+    ):  # Check if it was successfully imported and initialized
+        _add_plugin_cli_commands(cli, global_api_plugin_manager)
+    # If global_api_plugin_manager is None, warnings/errors already printed during its import attempt
+
+
+# Call the assembly function to build the CLI with core and plugin commands
+_add_commands_to_cli()
 
 
 def main():
     """Main execution function wrapped for final, fatal exception handling."""
     try:
-        cli = create_cli_app()
         cli()
     except Exception as e:
         # This is a last-resort catch-all for unexpected errors not handled by Click.

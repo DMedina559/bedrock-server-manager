@@ -1,0 +1,78 @@
+<!-- bedrock_server_manager//web/templates/schedule_trigger.html -->
+{#-
+    Jinja2 Macro for Rendering a Windows Task Trigger Group
+
+    This file defines a macro that *can* be used to render the HTML structure for configuring
+    a single trigger within the Windows Task Scheduler form.
+
+    IMPORTANT NOTE: The current implementation in `windows_task.js` dynamically generates
+    this HTML structure using JavaScript functions (`addTrigger`, `showTriggerFields`).
+    Therefore, this Jinja2 macro is likely **NOT USED** in the current workflow and
+    is kept here for reference or potential alternative implementations. If used,
+    it would require significant coordination with the JavaScript logic.
+-#}
+
+{# --- Macro Definition --- #}
+{% macro render_trigger_fields(trigger_num, existing_trigger_data=None) %}
+    {#
+        Renders the HTML for one trigger configuration block.
+
+        Args:
+            trigger_num (int): A unique number for this trigger group (used for IDs/names).
+            existing_trigger_data (dict, optional): Data for an existing trigger to pre-populate fields.
+                                                    Should match the structure returned by the details API.
+                                                    Defaults to None for a new, blank trigger.
+
+        Structure:
+        - Contains a header with the trigger number and a remove button.
+        - Includes a dropdown (<select>) to choose the trigger type.
+        - Includes a placeholder <div> where JavaScript (`showTriggerFields`) dynamically
+          adds the specific input fields based on the selected trigger type.
+    #}
+
+    {# --- Trigger Group Container --- #}
+    {# Unique ID for targeting by JS remove function and styling #}
+    <div class="trigger-group" id="trigger-group-{{ trigger_num }}" data-trigger-num="{{ trigger_num }}">
+
+        {# --- Trigger Header --- #}
+        <div class="trigger-header">
+            <h3>Trigger {{ trigger_num }}</h3>
+            {# Remove button - calls JavaScript function 'removeTrigger' passing its number #}
+            <button type="button"
+                    class="action-button remove-trigger-btn danger-button" {# Use consistent button styles #}
+                    onclick="removeTrigger({{ trigger_num }})"
+                    title="Remove This Trigger">
+                × {# HTML entity for 'x' symbol #}
+            </button>
+        </div>
+
+        {# --- Trigger Type Selection --- #}
+        <div class="form-group">
+            <label for="trigger_type_{{ trigger_num }}" class="form-label">Trigger Type:</label>
+            {# Dropdown to select the type of trigger #}
+            {# The onchange event calls the JavaScript 'showTriggerFields' function #}
+            {# JS needs to read existing_trigger_data (if provided) to set the initial selected option #}
+            <select id="trigger_type_{{ trigger_num }}" name="trigger_type_{{ trigger_num }}" class="form-input trigger-type-select" onchange="showTriggerFields({{ trigger_num }})">
+                <option value="">-- Select Trigger Type --</option>
+                <option value="TimeTrigger">One Time</option>
+                <option value="Daily">Daily</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Monthly">Monthly</option>
+                {# Add other supported trigger types (Logon, Boot, etc.) here if needed #}
+            </select>
+            {# Placeholder for validation errors related to trigger type selection #}
+            <div class="validation-error" data-field="trigger_type_{{ trigger_num }}"></div>
+        </div>
+
+        {# --- Dynamic Trigger Fields Placeholder --- #}
+        {# This div is intentionally empty in the template. #}
+        {# The JavaScript function `showTriggerFields(trigger_num, existing_trigger_data)` #}
+        {# is responsible for populating this div with the appropriate input fields #}
+        {# based on the selected value in the dropdown above. #}
+        <div class="trigger-fields-container" id="trigger_fields_{{ trigger_num }}">
+             <!-- Fields like Start Time, Interval, Days, Months appear here via JS -->
+        </div>
+
+    </div> {# --- End .trigger-group --- #}
+{% endmacro %}
+{# --- End Macro Definition --- #}

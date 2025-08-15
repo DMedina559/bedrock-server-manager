@@ -35,7 +35,6 @@ What to look for in the logs:
   indicating the API call didn't crash due to an event stack overflow.
 """
 from bedrock_server_manager import PluginBase
-from typing import Any
 
 
 class RecursiveLoopPlugin(PluginBase):
@@ -44,7 +43,7 @@ class RecursiveLoopPlugin(PluginBase):
     'before_server_start' -> 'before_backup' -> 'before_server_start' event chain.
     """
 
-    version = "1.1.0"
+    version = "1.0.0"
 
     def on_load(self):
         self.logger.info(
@@ -58,11 +57,10 @@ class RecursiveLoopPlugin(PluginBase):
             "A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop."
         )
 
-    def before_server_start(self, **kwargs: Any):
+    def before_server_start(self, server_name: str, mode: str):
         """This is EVENT A in the A -> B -> A' loop."""
-        server_name = kwargs.get("server_name")
         self.logger.info(
-            f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}'."
+            f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}', mode '{mode}'."
         )
         self.logger.info(
             "--- LOOP TEST (A->B): From 'before_server_start', calling self.api.backup_all() to trigger 'before_backup'."
@@ -80,11 +78,10 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (EVENT A - Handler Call): Finished 'before_server_start' handler execution."
         )
 
-    def before_backup(self, **kwargs: Any):
+    def before_backup(self, server_name: str, backup_type: str, **kwargs):
         """This is EVENT B in the A -> B -> A' loop."""
-        server_name = kwargs.get("server_name")
         self.logger.info(
-            f"--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '{server_name}'."
+            f"--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '{server_name}', type '{backup_type}'."
         )
         self.logger.info(
             "--- LOOP TEST (B->A' - Recursive Attempt): From 'before_backup', DANGEROUS CALL! "
@@ -96,7 +93,7 @@ class RecursiveLoopPlugin(PluginBase):
             # recursive 'before_server_start' from executing.
             # The api.start_server() function itself will still run its internal logic.
             self.api.start_server(
-                server_name=server_name
+                server_name=server_name, mode="detached"
             )  # Using "detached" for the API call
 
             self.logger.info(

@@ -50,14 +50,9 @@ class TestPluginAPI:
         return MagicMock()
 
     @pytest.fixture
-    def mock_app_context(self):
-        """Fixture for a mocked AppContext."""
-        return MagicMock()
-
-    @pytest.fixture
-    def plugin_api(self, mock_plugin_manager, mock_app_context):
+    def plugin_api(self, mock_plugin_manager):
         """Fixture for a PluginAPI instance."""
-        return PluginAPI("test_plugin", mock_plugin_manager, mock_app_context)
+        return PluginAPI("test_plugin", mock_plugin_manager)
 
     def test_getattr_success(self, plugin_api):
         """Tests that __getattr__ successfully retrieves a registered API function."""

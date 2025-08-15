@@ -22,14 +22,12 @@ from fastapi import (
     HTTPException,
     BackgroundTasks,
     status,
-    Request,
 )
 from pydantic import BaseModel, Field
 
-from ..schemas import ActionResponse, User
+from ..schemas import ActionResponse
 from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
-from ..auth_utils import get_admin_user, get_moderator_user
 from ...api import server as server_api, server_install_config
 from ...error import (
     BSMError,
@@ -57,49 +55,49 @@ class CommandPayload(BaseModel):
 @router.post(
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Start a server instance",
     tags=["Server Actions API"],
 )
 async def start_server_route(
-    request: Request,
+    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
-    Starts a specific Bedrock server instance.
+    Initiates starting a specific Bedrock server instance in the background.
+
+    The server start operation is performed as a background task.
+    This endpoint immediately returns a 202 Accepted response indicating
+    the task has been queued.
 
     - **server_name**: Path parameter, validated by `validate_server_exists` dependency.
     - Requires authentication.
 
     Args:
+        background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to start. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the start operation has been initiated.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
+    task_id = tasks.create_task()
+    background_tasks.add_task(
+        tasks.run_task,
+        task_id,
+        server_api.start_server,
+        server_name,
+        mode="detached",
+    )
 
-    try:
-        result = server_api.start_server(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ActionResponse(
-                message=result.get("message") or "Server started successfully"
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("message"),
-            )
-    except BSMError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+    return ActionResponse(
+        status="pending",
+        message=f"Start operation for server '{server_name}' initiated in background.",
+        task_id=task_id,
+    )
 
 
 @router.post(
@@ -110,10 +108,9 @@ async def start_server_route(
     tags=["Server Actions API"],
 )
 async def stop_server_route(
-    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates stopping a specific Bedrock server instance in the background.
@@ -124,21 +121,19 @@ async def stop_server_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to stop. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the stop operation has been initiated.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_api.stop_server,
-        server_name=server_name,
-        app_context=app_context,
+        server_name,
     )
 
     return ActionResponse(
@@ -156,10 +151,9 @@ async def stop_server_route(
     tags=["Server Actions API"],
 )
 async def restart_server_route(
-    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates restarting a specific Bedrock server instance in the background.
@@ -173,23 +167,21 @@ async def restart_server_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server to restart. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the restart operation has been initiated.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Restart server request for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_api.restart_server,
-        server_name=server_name,
-        app_context=app_context,
+        server_name,
     )
 
     return ActionResponse(
@@ -206,10 +198,9 @@ async def restart_server_route(
     tags=["Server Actions API"],
 )
 async def send_command_route(
-    request: Request,
     server_name: str,
     payload: CommandPayload,
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Sends a command to a specific running Bedrock server instance.
@@ -220,7 +211,7 @@ async def send_command_route(
     Args:
         server_name (str): The name of the server to send the command to.
         payload (CommandPayload): Contains the ``command`` string.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse:
@@ -252,11 +243,10 @@ async def send_command_route(
             "details": "There are 0/10 players online:\\n"
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Send command request for '{server_name}' by user '{identity}'. Command: {payload.command}"
     )
-    app_context = request.app.state.app_context
 
     if not payload.command or not payload.command.strip():
         raise HTTPException(
@@ -265,11 +255,7 @@ async def send_command_route(
         )
 
     try:
-        command_result = server_api.send_command(
-            server_name=server_name,
-            command=payload.command.strip(),
-            app_context=app_context,
-        )
+        command_result = server_api.send_command(server_name, payload.command.strip())
 
         if command_result.get("status") == "success":
             logger.info(
@@ -331,10 +317,9 @@ async def send_command_route(
     tags=["Server Actions API"],
 )
 async def update_server_route(
-    request: Request,
     server_name: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates updating a specific Bedrock server instance in the background.
@@ -345,21 +330,19 @@ async def update_server_route(
     Args:
         server_name (str): The name of the server to update.
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the update operation has been initiated.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_install_config.update_server,
-        server_name=server_name,
-        app_context=app_context,
+        server_name,
     )
 
     return ActionResponse(
@@ -377,10 +360,9 @@ async def update_server_route(
     tags=["Server Actions API"],
 )
 async def delete_server_route(
-    request: Request,
     server_name: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates deleting a specific Bedrock server instance and its data in the background.
@@ -391,23 +373,21 @@ async def delete_server_route(
     Args:
         server_name (str): The name of the server to delete.
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse: Confirmation that the delete operation has been initiated.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.warning(
         f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
     )
-    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         server_api.delete_server_data,
-        server_name=server_name,
-        app_context=app_context,
+        server_name,
     )
 
     return ActionResponse(

@@ -1,0 +1,107 @@
+<!-- bedrock_server_manager//web/templates/schedule_tasks_windows.html -->
+{# Windows Task Scheduler Management Page #}
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - Task Scheduler: {{ server_name }}{% endblock %}
+
+{% block head_scripts %}
+<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+<script src="{{ request.url_for('static', path='js/windows_task.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<h2>Windows Task Scheduler</h2>
+<p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
+
+{# Display error message passed from route, if any #}
+{% if error_message %}
+<div class="message-box message-error">
+    {{ error_message }}
+</div>
+{% endif %}
+
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;"></div>
+
+<section class="windows-tasks-section list-section">
+    <h3>Current Scheduled Tasks</h3>
+    <p>List of scheduled tasks associated with this server.</p>
+
+    <div id="task-list-container">
+        {% if tasks %}
+        <div class="table-responsive-wrapper">
+            <table class="server-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Task Name</th>
+                        <th scope="col">Command</th>
+                        <th scope="col">Schedule</th>
+                        <th scope="col" style="width: 150px; text-align: center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr>
+                        <td data-label="Task Name">{{ task.task_name }}</td>
+                        <td data-label="Command">{{ task.command }}</td>
+                        <td data-label="Schedule">{{ task.schedule }}</td>
+                        <td data-label="Actions" style="text-align: center;">
+                            <div class="actions">
+                                <a href="#" onclick="event.preventDefault(); prepareModifyFormWindows('{{ task.task_name | e }}', '{{ task.command | e }}')" class="action-link modify-link" title="Modify this task">Modify</a>
+                                <a href="#" onclick="event.preventDefault(); confirmDeleteWindows('{{ task.task_name | e }}', '{{ server_name | e }}')" class="action-button danger-button" title="Delete this task">Delete</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-servers-message">
+            No scheduled tasks found associated with server '{{ server_name }}'.
+        </p>
+        {% endif %}
+    </div>
+
+    <div class="list-actions form-actions">
+        <button type="button" onclick="prepareNewTaskForm()" class="action-button">Add New Task</button>
+        <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">« Back to Dashboard</a>
+    </div>
+</section>
+
+<section class="add-modify-task-section form-section" id="add-modify-task-section" style="display: none;">
+    <h2 id="form-title">Add/Modify Task</h2>
+
+    <form id="task-form" novalidate data-server-name="{{ server_name | e }}">
+        <input type="hidden" id="original_task_name" name="original_task_name" value="">
+
+        <div class="form-group">
+            <label for="command" class="form-label">Select Command:</label>
+            <select id="command" name="command" class="form-input" required>
+                <option value="" disabled selected>-- Select Command --</option>
+                <option value="server update">Update Server</option>
+                <option value="backup create --type all">Backup Server (All)</option>
+                <option value="server start">Start Server</option>
+                <option value="server stop">Stop Server</option>
+                <option value="server restart">Restart Server</option>
+            </select>
+        </div>
+
+        <hr style="border-color: #555; margin: 25px 0;">
+
+        <h3>Triggers</h3>
+        <p>Define when the task should run. The existing schedule will be replaced.</p>
+        <div id="triggers-container"></div>
+        <button type="button" onclick="addTrigger()" class="action-button secondary-button" id="add-trigger-btn">
+            Add Another Trigger
+        </button>
+
+        <hr style="border-color: #555; margin: 25px 0;">
+
+        <div class="form-actions">
+            <button type="submit" class="action-button start-button" id="submit-task-btn">Save Task</button>
+            <button type="button" onclick="cancelTaskForm()" class="action-link cancel-button">Cancel</button>
+        </div>
+    </form>
+</section>
+
+{% endblock %}

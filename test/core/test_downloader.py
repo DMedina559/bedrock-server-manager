@@ -5,8 +5,7 @@ import json
 import zipfile
 import shutil
 import logging
-import platform
-import re
+import platform  # Added platform import
 from pathlib import Path
 from unittest import (
     mock,
@@ -38,6 +37,22 @@ import requests
 
 
 @pytest.fixture
+def mock_settings(mocker):
+    """Mocks the Settings object to provide controlled configuration values."""
+    settings = mocker.MagicMock(spec=Settings)
+    # Provide default values for settings typically used by BedrockDownloader
+    # These can be overridden in specific tests if needed
+    settings.get.side_effect = lambda key, default=None: {
+        "paths.downloads": str(
+            Path("dummy_downloads")
+        ),  # Default, will be overridden by temp_download_base_dir in downloader_instance
+        "retention.downloads": 3,
+        "_app_name": "TestBSM",
+    }.get(key, default)
+    return settings
+
+
+@pytest.fixture
 def temp_server_dir(tmp_path_factory):
     """Creates a temporary directory for a server installation."""
     return tmp_path_factory.mktemp("server_dir_")
@@ -50,12 +65,16 @@ def temp_download_base_dir(tmp_path_factory):
 
 
 @pytest.fixture
-def downloader_instance(app_context, temp_server_dir, temp_download_base_dir, mocker):
+def downloader_instance(mock_settings, temp_server_dir, temp_download_base_dir, mocker):
     """Creates a BedrockDownloader instance with mocked settings and temp paths."""
 
-    app_context.settings.set("paths.downloads", str(temp_download_base_dir))
-    app_context.settings.set("retention.downloads", 3)
-    app_context.settings.set("_app_name", "TestBSM")
+    # Override the default "paths.downloads" from mock_settings to use the temp directory
+    def settings_get_side_effect(key, default=None):
+        if key == "paths.downloads":
+            return str(temp_download_base_dir)
+        return {"retention.downloads": 3, "_app_name": "TestBSM"}.get(key, default)
+
+    mock_settings.get.side_effect = settings_get_side_effect
 
     # Mock platform.system() by default for predictable behavior, can be overridden in tests
     mocker.patch("platform.system", return_value="Linux")
@@ -63,7 +82,6 @@ def downloader_instance(app_context, temp_server_dir, temp_download_base_dir, mo
     downloader = BedrockDownloader(
         server_dir=str(temp_server_dir),
         target_version="LATEST",  # Default, can be changed in tests by re-init or new instance
-        app_context=app_context,
     )
     return downloader
 
@@ -321,20 +339,30 @@ def test_prune_os_error_on_unlink(temp_download_base_dir: Path, mocker, caplog):
 
 
 def test_downloader_initialization_success(
-    app_context, temp_server_dir, temp_download_base_dir, mocker
+    mock_settings, temp_server_dir, temp_download_base_dir, mocker
 ):
     """Test successful initialization of BedrockDownloader."""
-    app_context.settings.set("paths.downloads", str(temp_download_base_dir))
-    app_context.settings.set("retention.downloads", 3)
-    app_context.settings.set("_app_name", "TestBSM")
 
+    # Ensure mock_settings returns the correct temp_download_base_dir for this test
+    # This is similar to what downloader_instance fixture does.
+    def settings_get_side_effect(key, default=None):
+        if key == "paths.downloads":
+            return str(temp_download_base_dir)
+        return {  # Provide other necessary defaults if any
+            "retention.downloads": 3,
+            "_app_name": "TestBSM",
+        }.get(key, default)
+
+    mock_settings.get.side_effect = settings_get_side_effect
+    mocker.patch(
+        "bedrock_server_manager.core.downloader.get_settings_instance",
+        return_value=mock_settings,
+    )
     # Mock platform.system as it's used in BedrockDownloader constructor and not by a fixture here
     mocker.patch("platform.system", return_value="Linux")
 
-    downloader = BedrockDownloader(
-        str(temp_server_dir), "1.20.10.01", app_context=app_context
-    )
-    assert downloader.settings is app_context.settings
+    downloader = BedrockDownloader(str(temp_server_dir), "1.20.10.01")
+    assert downloader.settings is mock_settings
     assert downloader.server_dir == str(temp_server_dir)
     assert downloader.input_target_version == "1.20.10.01"
     assert (
@@ -347,25 +375,35 @@ def test_downloader_initialization_success(
     assert downloader._custom_version_number == "1.20.10.01"
 
 
-def test_downloader_initialization_missing_args(app_context, temp_server_dir):
+def test_downloader_initialization_missing_args(mock_settings, temp_server_dir):
     """Test BedrockDownloader initialization with missing arguments."""
     with pytest.raises(MissingArgumentError, match="Server directory cannot be empty"):
-        BedrockDownloader("", "LATEST", app_context=app_context)
+        BedrockDownloader("", "LATEST")
 
     with pytest.raises(MissingArgumentError, match="Target version cannot be empty"):
-        BedrockDownloader(str(temp_server_dir), "", app_context=app_context)
+        BedrockDownloader(str(temp_server_dir), "")
 
 
 def test_downloader_initialization_missing_download_path_setting(
-    app_context, temp_server_dir
+    mocker, temp_server_dir
 ):
     """Test BedrockDownloader if paths.downloads is missing in settings."""
-    app_context.settings._settings["paths"].pop("downloads", None)
+    settings_no_download_path = mocker.MagicMock(spec=Settings)
+    settings_no_download_path.get.side_effect = lambda key, default=None: {
+        "retention.downloads": 3  # other settings might be fine
+    }.get(
+        key, default
+    )  # paths.downloads will return None
+
+    mocker.patch(
+        "bedrock_server_manager.core.downloader.get_settings_instance",
+        return_value=settings_no_download_path,
+    )
 
     with pytest.raises(
         ConfigurationError, match="DOWNLOAD_DIR setting is missing or empty"
     ):
-        BedrockDownloader(str(temp_server_dir), "LATEST", app_context=app_context)
+        BedrockDownloader(str(temp_server_dir), "LATEST")
 
 
 @pytest.mark.parametrize(
@@ -384,7 +422,7 @@ def test_downloader_initialization_missing_download_path_setting(
     ],
 )
 def test_downloader_determine_version_parameters(
-    app_context,
+    mock_settings,
     temp_server_dir,
     target_version_input,
     expected_version_type,
@@ -400,12 +438,9 @@ def test_downloader_determine_version_parameters(
             str(temp_server_dir),
             target_version_input,
             server_zip_path=str(dummy_zip),
-            app_context=app_context,
         )
     else:
-        downloader = BedrockDownloader(
-            str(temp_server_dir), target_version_input, app_context=app_context
-        )
+        downloader = BedrockDownloader(str(temp_server_dir), target_version_input)
     assert downloader._version_type == expected_version_type
     assert downloader._custom_version_number == expected_custom_number
 
@@ -854,13 +889,10 @@ def test_download_server_zip_file_os_error_on_write(
 
     mocker.patch("builtins.open", side_effect=OSError("Cannot write to disk"))
 
-    # Make regex platform-agnostic for path separators
-    match_str = (
-        re.escape("Cannot write to file '")
-        + ".*"
-        + re.escape("write_fail.zip': Cannot write to disk")
-    )
-    with pytest.raises(FileOperationError, match=match_str):
+    with pytest.raises(
+        FileOperationError,
+        match="Cannot write to file '.*/write_fail.zip': Cannot write to disk",
+    ):
         downloader_instance._download_server_zip_file()
 
 
@@ -1074,12 +1106,10 @@ def test_full_server_setup_extract_fails(downloader_instance, mocker):
 # --- Tests for BedrockDownloader - Getter Methods ---
 
 
-def test_downloader_getters_initial_state(app_context, temp_server_dir):
+def test_downloader_getters_initial_state(mock_settings, temp_server_dir):
     """Test getter methods return None or initial values before operations."""
     # Create a downloader instance without calling any processing methods yet
-    downloader = BedrockDownloader(
-        str(temp_server_dir), "LATEST", app_context=app_context
-    )
+    downloader = BedrockDownloader(str(temp_server_dir), "LATEST")
 
     assert downloader.get_actual_version() is None
     assert downloader.get_zip_file_path() is None
@@ -1191,10 +1221,7 @@ def test_prepare_download_assets_custom_zip_success(
 
 def test_prepare_download_assets_custom_zip_not_found(downloader_instance):
     """Test prepare_download_assets with a non-existent custom ZIP file."""
-    if os.name == "nt":
-        non_existent_zip_path = "C:/path/to/non_existent.zip"
-    else:
-        non_existent_zip_path = "/path/to/non_existent.zip"
+    non_existent_zip_path = "/path/to/non_existent.zip"
 
     with pytest.raises(
         AppFileNotFoundError,

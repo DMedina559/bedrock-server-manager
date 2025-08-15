@@ -258,9 +258,8 @@ function _handleInstallSuccessNavigation(apiResponseData) {
     const functionName = '_handleInstallSuccessNavigation';
     console.log(`${functionName}: Handling successful install response.`);
     console.debug(`${functionName}: Response data:`, apiResponseData);
-    console.log("JULES DEBUG: apiResponseData is " + JSON.stringify(apiResponseData));
 
-    const nextUrl = apiResponseData?.next_step_url;
+    const nextUrl = apiResponseData?.result?.next_step_url;
     const message = apiResponseData?.message || "Server installed successfully!";
 
     if (nextUrl) {
@@ -517,13 +516,20 @@ async function saveServiceSettings(buttonElement, serverName, currentOs, isNewIn
             // Decide default? Or fail? Let's proceed without it for now.
         }
 
-        const autostartCheckbox = configSection.querySelector('#service-autostart-cb'); // The .toggle-input checkbox
-        if (autostartCheckbox) {
-            requestBody.autostart = autostartCheckbox.checked; // Boolean value
+        if (currentOs === 'Linux' || currentOs === 'Windows') {
+            const autostartCheckbox = configSection.querySelector('#service-autostart-cb'); // The .toggle-input checkbox
+            if (autostartCheckbox) {
+                requestBody.autostart = autostartCheckbox.checked; // Boolean value
+            } else {
+                console.warn(`${functionName}: Autostart checkbox (#service-autostart-cb) not found.`);
+            }
+            console.debug(`${functionName}: Settings gathered:`, requestBody);
         } else {
-            console.warn(`${functionName}: Autostart checkbox (#service-autostart-cb) not found.`);
+            const errorMsg = `Unsupported OS '${currentOs}' for service configuration.`;
+            console.error(`${functionName}: ${errorMsg}`);
+            showStatusMessage(errorMsg, "error");
+            return; // Cannot proceed
         }
-        console.debug(`${functionName}: Settings gathered:`, requestBody);
 
         if (isNewInstall) {
             const startServerCheckbox = configSection.querySelector('#service-start-server'); // The .toggle-input

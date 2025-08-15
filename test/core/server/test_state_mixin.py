@@ -3,97 +3,131 @@ import os
 import shutil
 import tempfile
 import json
-from unittest.mock import patch, MagicMock
-
 from bedrock_server_manager.core.server.state_mixin import ServerStateMixin
 from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
 from bedrock_server_manager.core.server.config_management_mixin import (
     ServerConfigManagementMixin,
 )
 from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import (
-    UserInputError,
-    AppFileNotFoundError,
-    ConfigParseError,
-)
 
 
-def test_get_status_running(real_bedrock_server):
-    server = real_bedrock_server
+class SetupBedrockServer(
+    ServerStateMixin, ServerConfigManagementMixin, BedrockServerBaseMixin
+):
+    @property
+    def server_config_path(self):
+        return os.path.join(self.server_config_dir, "server_config.json")
+
+    def get_server_properties_path(self):
+        return os.path.join(self.server_dir, "server.properties")
+
+    def is_running(self):
+        return False
+
+
+@pytest.fixture
+def state_mixin_fixture():
+    temp_dir = tempfile.mkdtemp()
+    server_name = "test_server"
+    settings = Settings()
+    settings.set("paths.servers", os.path.join(temp_dir, "servers"))
+    settings._config_dir_path = os.path.join(temp_dir, "config")
+
+    server = SetupBedrockServer(server_name=server_name, settings_instance=settings)
+    os.makedirs(server.server_config_dir, exist_ok=True)
+    os.makedirs(server.server_dir, exist_ok=True)
+
+    yield server, temp_dir
+
+    shutil.rmtree(temp_dir)
+
+
+from unittest.mock import patch
+
+
+def test_get_status_running(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     with patch.object(server, "is_running", return_value=True):
         assert server.get_status() == "RUNNING"
 
 
-def test_get_status_stopped(real_bedrock_server):
-    server = real_bedrock_server
+def test_get_status_stopped(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     with patch.object(server, "is_running", return_value=False):
         assert server.get_status() == "STOPPED"
 
 
-def test_get_status_unknown(real_bedrock_server):
-    server = real_bedrock_server
-    with (
-        patch.object(server, "is_running", side_effect=Exception("error")),
-        patch.object(server, "get_status_from_config", return_value="UNKNOWN"),
-    ):
+def test_get_status_unknown(state_mixin_fixture):
+    server, _ = state_mixin_fixture
+    with patch.object(server, "is_running", side_effect=Exception("error")):
         assert server.get_status() == "UNKNOWN"
 
 
-def test_manage_json_config_invalid_key(real_bedrock_server, db_session):
-    server = real_bedrock_server
+def test_load_server_config_empty_file(state_mixin_fixture):
+    server, _ = state_mixin_fixture
+    with open(server._server_specific_json_config_file_path, "w") as f:
+        f.write("")
+    config = server._load_server_config()
+    assert config["server_info"]["status"] == "UNKNOWN"
+
+
+def test_load_server_config_corrupted_file(state_mixin_fixture):
+    server, _ = state_mixin_fixture
+    with open(server._server_specific_json_config_file_path, "w") as f:
+        f.write("{corrupted_json}")
+    config = server._load_server_config()
+    assert config["server_info"]["status"] == "UNKNOWN"
+
+
+def test_manage_json_config_invalid_key(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     assert server._manage_json_config("invalid.key", "read") is None
 
 
-def test_manage_json_config_invalid_operation(real_bedrock_server):
-    server = real_bedrock_server
+def test_manage_json_config_invalid_operation(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     with pytest.raises(Exception):
         server._manage_json_config("server_info.status", "invalid_op")
 
 
-def test_get_and_set_version(real_bedrock_server):
-    server = real_bedrock_server
-    from bedrock_server_manager.db.models import Server
-    from bedrock_server_manager.db.database import db_session_manager
+def test_set_status_in_config(state_mixin_fixture):
+    server, _ = state_mixin_fixture
+    server._manage_json_config("server_info.status", "write", "STOPPED")
+    with open(server._server_specific_json_config_file_path, "r") as f:
+        data = json.load(f)
+    assert data["server_info"]["status"] == "STOPPED"
 
+
+def test_get_and_set_version(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     server.set_version("1.2.3")
-
-    # Assert that the config was saved correctly
-    with db_session_manager() as db_session:
-        db_server = (
-            db_session.query(Server).filter_by(server_name=server.server_name).one()
-        )
-        assert db_server.config["server_info"]["installed_version"] == "1.2.3"
+    assert server.get_version() == "1.2.3"
 
 
-def test_get_and_set_target_version(real_bedrock_server):
-    server = real_bedrock_server
-    from bedrock_server_manager.db.models import Server
-    from bedrock_server_manager.db.database import db_session_manager
-
+def test_get_and_set_target_version(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     server.set_target_version("LATEST")
-
-    # Assert that the config was saved correctly
-    with db_session_manager() as db_session:
-        db_server = (
-            db_session.query(Server).filter_by(server_name=server.server_name).one()
-        )
-        assert db_server.config["settings"]["target_version"] == "LATEST"
+    assert server.get_target_version() == "LATEST"
 
 
-def test_get_world_name_success(real_bedrock_server):
-    server = real_bedrock_server
-    assert server.get_world_name() == "world"
+def test_get_world_name_success(state_mixin_fixture):
+    server, _ = state_mixin_fixture
+    with open(server.server_properties_path, "w") as f:
+        f.write("level-name=MyWorld\n")
+    assert server.get_world_name() == "MyWorld"
 
 
-def test_get_world_name_no_properties(real_bedrock_server):
-    server = real_bedrock_server
-    os.remove(server.server_properties_path)
+from bedrock_server_manager.error import AppFileNotFoundError, ConfigParseError
+
+
+def test_get_world_name_no_properties(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     with pytest.raises(AppFileNotFoundError):
         server.get_world_name()
 
 
-def test_get_world_name_no_level_name(real_bedrock_server):
-    server = real_bedrock_server
+def test_get_world_name_no_level_name(state_mixin_fixture):
+    server, _ = state_mixin_fixture
     with open(server.server_properties_path, "w") as f:
         f.write("other-setting=value\n")
     with pytest.raises(ConfigParseError):

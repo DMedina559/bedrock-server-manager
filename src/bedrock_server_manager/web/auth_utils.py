@@ -13,24 +13,20 @@ including:
 
 The JWT secret key and token expiration are configurable via environment variables.
 """
+import os
 import datetime
-from datetime import timezone
 import logging
 from typing import Optional, Dict, Any
 import secrets
 
 from jose import JWTError, jwt
-from fastapi import HTTPException, Security, Request, status
+from fastapi import HTTPException, Security, Request
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from passlib.context import CryptContext
-from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
 from ..error import MissingArgumentError
-from .schemas import User
-from ..db.database import db_session_manager
-from ..db.models import User as UserModel
-from ..context import AppContext
-from ..config import Settings
+from ..config import env_name
+from ..instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
 
@@ -39,28 +35,31 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # --- JWT Configuration ---
-def get_jwt_secret_key(settings: Settings) -> str:
-    """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
-    jwt_secret_key = settings.get("web.jwt_secret_key")
+JWT_SECRET_KEY_ENV = f"{env_name}_TOKEN"
+JWT_SECRET_KEY = os.environ.get(JWT_SECRET_KEY_ENV)
 
-    if not jwt_secret_key:
-        jwt_secret_key = secrets.token_urlsafe(32)
-        settings.set("web.jwt_secret_key", jwt_secret_key)
-        logger.info("JWT secret key not found in settings, generating a new one")
-
-    return jwt_secret_key
-
+if not JWT_SECRET_KEY:
+    JWT_SECRET_KEY = secrets.token_urlsafe(32)
+    logger.warning(
+        "JWT secret key not found in environment variables. Using a randomly generated key. Tokens will not be valid across server restarts."
+    )
 
 ALGORITHM = "HS256"
+try:
+    JWT_EXPIRES_WEEKS = float(
+        get_settings_instance().get("web.token_expires_weeks", 4.0)
+    )
+except (ValueError, TypeError):
+    JWT_EXPIRES_WEEKS = 4.0
+ACCESS_TOKEN_EXPIRE_MINUTES = JWT_EXPIRES_WEEKS * 7 * 24 * 60
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 
 # --- Token Creation ---
 def create_access_token(
-    data: dict,
-    expires_delta: Optional[datetime.timedelta] = None,
-    app_context: Optional[AppContext] = None,
+    data: dict, expires_delta: Optional[datetime.timedelta] = None
 ) -> str:
     """Creates a JSON Web Token (JWT) for access.
 
@@ -77,26 +76,11 @@ def create_access_token(
         str: The encoded JWT string.
     """
     to_encode = data.copy()
-
-    if app_context:
-        settings = app_context.settings
-    else:
-        from ..instances import get_settings_instance
-
-        settings = get_settings_instance()
-
-    JWT_SECRET_KEY = get_jwt_secret_key(settings)
-
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
     else:
-        try:
-            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
-        except (ValueError, TypeError):
-            jwt_expires_weeks = 4.0
-        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
         expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-            minutes=access_token_expire_minutes
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
         )
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
@@ -106,13 +90,15 @@ def create_access_token(
 # --- Token Verification and User Retrieval ---
 async def get_current_user_optional(
     request: Request,
-) -> Optional[User]:
+    token_header: Optional[str] = Security(oauth2_scheme),
+    token_cookie: Optional[str] = Security(cookie_scheme),
+) -> Optional[Dict[str, Any]]:
     """
     FastAPI dependency to retrieve the current user if authenticated.
 
     This dependency attempts to decode a JWT token (using :func:`jose.jwt.decode`)
-    obtained from either the Authorization header (Bearer token) or an HTTP
-    cookie ("access_token_cookie").
+    obtained from either the Authorization header (Bearer token via :data:`oauth2_scheme`)
+    or an HTTP cookie ("access_token_cookie" via :data:`cookie_scheme`).
 
     If a valid token is found and successfully decoded, it returns a dictionary
     containing the username (from the "sub" claim) and an identity type.
@@ -124,66 +110,32 @@ async def get_current_user_optional(
 
     Args:
         request (:class:`fastapi.Request`): The incoming request object.
+        token_header (Optional[str]): Token from the OAuth2PasswordBearer security scheme.
+            Injected by FastAPI.
+        token_cookie (Optional[str]): Token from the APIKeyCookie security scheme.
+            Injected by FastAPI.
 
     Returns:
-        Optional[User]: A dictionary ``{"username": str, "identity_type": "jwt"}``
+        Optional[Dict[str, Any]]: A dictionary ``{"username": str, "identity_type": "jwt"}``
         if authentication is successful, otherwise ``None``.
     """
-    token = request.cookies.get("access_token_cookie")
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header:
-            parts = auth_header.split()
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                token = parts[1]
-
+    token = token_header or token_cookie
     if not token:
         return None
-
     try:
-        app_context = request.app.state.app_context
-        settings = app_context.settings
-        JWT_SECRET_KEY = get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
         if username is None:
             return None
-
-        def get_user_from_db(db_session):
-            user = (
-                db_session.query(UserModel)
-                .filter(UserModel.username == username)
-                .first()
-            )
-            if not user or not user.is_active:
-                return None
-
-            user.last_seen = datetime.datetime.now(timezone.utc)
-            db_session.commit()
-
-            return User(
-                id=user.id,
-                username=user.username,
-                identity_type="jwt",
-                role=user.role,
-                is_active=user.is_active,
-                theme=user.theme,
-            )
-
-        db = getattr(getattr(request, "state", None), "db", None)
-        if db:
-            return get_user_from_db(db)
-        else:
-            with db_session_manager() as db:
-                return get_user_from_db(db)
-
+        return {"username": username, "identity_type": "jwt"}
     except JWTError:
         return None
 
 
 async def get_current_user(
-    user: Optional[User] = Security(get_current_user_optional),
-) -> User:
+    request: Request,
+    user: Optional[Dict[str, Any]] = Security(get_current_user_optional),
+) -> Dict[str, Any]:
     """
     FastAPI dependency that requires an authenticated user.
 
@@ -196,11 +148,11 @@ async def get_current_user(
 
     Args:
         request (:class:`fastapi.Request`): The incoming request object.
-        user (Optional[User]): The user data dictionary returned by
+        user (Optional[Dict[str, Any]]): The user data dictionary returned by
             :func:`~.get_current_user_optional`. Injected by FastAPI.
 
     Returns:
-        User: The user data dictionary (e.g., ``{"username": str}``)
+        Dict[str, Any]: The user data dictionary (e.g., ``{"username": str}``)
         if the user is authenticated.
 
     Raises:
@@ -232,27 +184,16 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-from .dependencies import needs_setup
-
-
-class CustomAuthBackend(AuthenticationBackend):
-    async def authenticate(self, conn):
-        if await needs_setup():
-            return AuthCredentials(["unauthenticated"]), SimpleUser("guest")
-
-        user = await get_current_user_optional(conn)
-        if user is None:
-            return
-
-        return AuthCredentials(["authenticated"]), SimpleUser(user.username)
-
-
 def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
     """
-    Authenticates a user against the database.
+    Authenticates a user against environment variable credentials.
 
     This function checks the provided `username_form` and `password_form`
-    against credentials stored in the database.
+    against credentials stored in environment variables:
+    - Username is checked against :const:`~bedrock_server_manager.config.const.env_name` + ``_USERNAME``.
+    - Password is verified against a stored hash (from
+      :const:`~bedrock_server_manager.config.const.env_name` + ``_PASSWORD``)
+      using :func:`.verify_password`.
 
     Args:
         username_form (str): The username submitted by the user.
@@ -260,36 +201,22 @@ def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
 
     Returns:
         Optional[str]: The username if authentication is successful,
-        otherwise ``None``.
+        otherwise ``None``. Prints a critical log if environment variables
+        are not set.
     """
-    with db_session_manager() as db:
-        user = db.query(UserModel).filter(UserModel.username == username_form).first()
-        if not user:
-            return None
-        if not verify_password(password_form, user.hashed_password):
-            return None
-        return user.username
+    USERNAME_ENV = f"{env_name}_USERNAME"
+    PASSWORD_ENV = f"{env_name}_PASSWORD"
+    stored_username = os.environ.get(USERNAME_ENV)
+    stored_password_hash = os.environ.get(PASSWORD_ENV)
 
-
-async def get_admin_user(current_user: User = Security(get_current_user)):
-    """
-    FastAPI dependency that requires the current user to be an admin.
-    """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this resource.",
+    if not stored_username or not stored_password_hash:
+        logger.error(
+            "CRITICAL: Web authentication environment variables (USERNAME or PASSWORD HASH) are not set."
         )
-    return current_user
+        return None
 
-
-async def get_moderator_user(current_user: User = Security(get_current_user)):
-    """
-    FastAPI dependency that requires the current user to be a moderator or an admin.
-    """
-    if current_user.role not in ["admin", "moderator"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this resource.",
-        )
-    return current_user
+    if username_form == stored_username and verify_password(
+        password_form, stored_password_hash
+    ):
+        return stored_username
+    return None

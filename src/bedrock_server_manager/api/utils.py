@@ -20,7 +20,7 @@ These utilities are designed to be used by other API modules or higher-level
 application logic to encapsulate common or complex operations.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from contextlib import contextmanager
 
 # Plugin system imports to bridge API functionality.
@@ -38,15 +38,12 @@ from ..error import (
     UserInputError,
     ServerStartError,
 )
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("validate_server_exist")
-def validate_server_exist(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def validate_server_exist(server_name: str) -> Dict[str, Any]:
     """Validates if a server is correctly installed.
 
     This function checks for the existence of the server's directory and its
@@ -73,10 +70,7 @@ def validate_server_exist(
     logger.debug(f"API: Validating existence of server '{server_name}'...")
     try:
         # Instantiating BedrockServer also validates underlying configurations.
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = get_server_instance(server_name)
 
         # is_installed() returns a simple boolean.
         if server.is_installed():
@@ -143,9 +137,7 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
-def update_server_statuses(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def update_server_statuses() -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
     This function calls
@@ -171,15 +163,9 @@ def update_server_statuses(
     logger.debug("API: Updating all server statuses...")
 
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
         # get_servers_data() from the manager now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = manager.get_servers_data(
-            app_context=app_context
-        )
+        all_servers_data, discovery_errors = get_manager_instance().get_servers_data()
         if discovery_errors:
             error_messages.extend(discovery_errors)
 
@@ -220,9 +206,7 @@ def update_server_statuses(
 
 
 @plugin_method("get_system_and_app_info")
-def get_system_and_app_info(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_system_and_app_info() -> Dict[str, Any]:
     """Retrieves basic system and application information.
 
     Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
@@ -233,13 +217,9 @@ def get_system_and_app_info(
     """
     logger.debug("API: Requesting system and app info.")
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
         data = {
-            "os_type": manager.get_os_type(),
-            "app_version": manager.get_app_version(),
+            "os_type": get_manager_instance().get_os_type(),
+            "app_version": get_manager_instance().get_app_version(),
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
         return {"status": "success", "data": data}
@@ -248,28 +228,12 @@ def get_system_and_app_info(
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
-def stop_all_servers(settings=None, app_context: Optional[AppContext] = None):
-    """Stops all running servers."""
-    logger.info("API: Stopping all servers...")
-    if app_context:
-        manager = app_context.manager
-    else:
-        manager = get_manager_instance(settings)
-    servers_data, _ = manager.get_servers_data(app_context=app_context)
-    for server_data in servers_data:
-        server_name = server_data.get("name")
-        if server_name and server_data.get("status") == "running":
-            api_stop_server(server_name, app_context=app_context)
-
-
-@plugin_method("server_lifecycle_manager")
 @contextmanager
 def server_lifecycle_manager(
     server_name: str,
     stop_before: bool,
     start_after: bool = True,
     restart_on_success_only: bool = False,
-    app_context: Optional[AppContext] = None,
 ):
     """A context manager to safely stop and restart a server for an operation.
 
@@ -304,10 +268,7 @@ def server_lifecycle_manager(
         Exception: Re-raises any exception that occurs within the ``with`` block itself.
         BSMError: For other application-specific errors during server interactions.
     """
-    if app_context:
-        server = app_context.get_server(server_name)
-    else:
-        server = get_server_instance(server_name)
+    server = get_server_instance(server_name)
     was_running = False
     operation_succeeded = True
 
@@ -324,7 +285,7 @@ def server_lifecycle_manager(
         if server.is_running():
             was_running = True
             logger.info(f"Context Mgr: Server '{server_name}' is running. Stopping...")
-            stop_result = api_stop_server(server_name, app_context=app_context)
+            stop_result = api_stop_server(server_name)
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}': {stop_result.get('message')}. Aborted."
                 logger.error(error_msg)
@@ -363,9 +324,7 @@ def server_lifecycle_manager(
                 logger.info(f"Context Mgr: Restarting server '{server_name}'...")
                 try:
                     # Use the API function to ensure detached mode and proper handling.
-                    start_result = api_start_server(
-                        server_name, app_context=app_context
-                    )
+                    start_result = api_start_server(server_name, mode="detached")
                     if start_result.get("status") == "error":
                         raise ServerStartError(
                             f"Failed to restart '{server_name}': {start_result.get('message')}"

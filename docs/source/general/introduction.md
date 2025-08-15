@@ -8,92 +8,120 @@
 
 <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bedrock-server-manager?link=https%3A%2F%2Fpypi.org%2Fproject%2Fbedrock-server-manager%2F"> <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/bedrock-server-manager"> <img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dw/bedrock-server-manager"> <img alt="License" src="https://img.shields.io/github/license/dmedina559/bedrock-server-manager">
 
-Bedrock Server Manager is a comprehensive python package designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease through a user-friendly web interface. It is compatible with both Linux and Windows systems.
 
-```{image} https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/main_index.png
-:alt: Web Interface
-:width: 600px
-:align: center
-```
+Bedrock Server Manager is a comprehensive python package designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease, and is Linux/Windows compatable.
 
 ## Features
 
--   **Install New Servers**: Quickly set up a server with customizable options like version (LATEST, PREVIEW, or CUSTOM versions).
--   **Update Existing Servers**: Seamlessly download and update server files while preserving critical configuration files and backups.
--   **Backup Management**: Automatically backup worlds and configuration files, with pruning for older backups.
--   **Server Configuration**: Easily modify server properties and the allow-list interactively.
--   **Auto-Update**: Automatically update the server with a simple restart.
--   **Content Management**: Easily import .mcworld/.mcpack files into your server.
--   **Resource Monitoring**: View how much CPU and RAM your server is using.
--   **Web Server**: Manage your Minecraft servers in your browser, even if you're on mobile!
--   **Plugin Support**: Extend functionality with custom plugins that can listen to events, access the core app APIs, and trigger custom events.
+Install New Servers: Quickly set up a server with customizable options like version (LATEST, PREVIEW, or specific versions).
 
----
+Update Existing Servers: Seamlessly download and update server files while preserving critical configuration files and backups.
 
-## Quick Start Guide
+Backup Management: Automatically backup worlds and configuration files, with pruning for older backups.
 
-### Step 1: Installation
+Server Configuration: Easily modify server properties, and allow-list interactively.
 
-```{note}
-This app requires **Python 3.10** or later, and you will need **pip** installed.
-```
+Auto-Update supported: Automatically update the server with a simple restart.
 
-First, install the main application package from PyPI:
+Command-Line Tools: Send game commands, start, stop, and restart servers directly from the command line.
+
+Interactive Menu: Access a user-friendly interface to manage servers without manually typing commands.
+
+Install/Update Content: Easily import .mcworld/.mcpack files into your server.
+
+Automate Various Server Task: Quickly create cron/task to automate task such as backup-server or restart-server.
+
+View Resource Usage: View how much CPU and RAM your server is using.
+
+Web Server: Easily manage your Minecraft servers in your browser, even if you're on mobile!
+
+Plugin Support: Extend functionality with custom plugins that can listen to events, access the core app APIs, and trigger custom events.
+
+## Prerequisites
+
+This app requires `Python 3.10` or later, and you will need `pip` installed
+
+## Installation
+
+### Install/Update The Package:
+
+1. Run the command 
 ```bash
 pip install --upgrade bedrock-server-manager
 ```
+See the [Installation](../extras/installation.md) documentation for more information on installing development versions of the app.
 
-#### (Optional) Install the API Client for CLI Management
+## Configuration
 
-To manage your servers from the command line, install the optional API client:
-```bash
-pip install --upgrade "bsm-api-client[cli]"
+### Setup The Configuration:
+
+bedrock-server-manager will use the Environment Variable `BEDROCK_SERVER_MANAGER_DATA_DIR` for setting the default config/data location, if this variable does not exist it will default to `$HOME/bedrock-server-manager`
+
+Follow your platforms documentation for setting Enviroment Variables
+
+The app will create its data folders in this location. This is where servers will be installed to and where the app will look when managing various server aspects. 
+
+Certain variables can can be changed directly in the `./.config/bedrock_server_manager.json`
+
+#### JSON Configuration File:
+
+Provides the default configuration values for the application.
+
+These defaults are used when a configuration file is not found or when a specific setting is missing from an existing configuration file. Paths are constructed dynamically based on the determined application data directory (see _determine_app_data_dir()).
+
+The structure of the default configuration is as follows:
+
+```json
+{
+    "config_version": 2,
+    "paths": {
+        "servers": "<app_data_dir>/servers",
+        "content": "<app_data_dir>/content",
+        "downloads": "<app_data_dir>/.downloads",
+        "backups": "<app_data_dir>/backups",
+        "plugins": "<app_data_dir>/plugins",
+        "logs": "<app_data_dir>/.logs"
+    },
+    "retention": {
+        "backups": 3,
+        "downloads": 3,
+        "logs": 3
+    },
+    "logging": {
+        "file_level": 20,
+        "cli_level": 30
+    },
+    "web": {
+        "host": "127.0.0.1",
+        "port": 11325,
+        "token_expires_weeks": 4,
+        "threads": 4
+    },
+    "custom": {}
+}
 ```
-This provides the `bsm-api-client` command, which allows you to perform various tasks via the API.
 
-> See the [Installation Guide](../extras/installation.md) for beta or development versions.
-
-### Step 2: Configure the Web Server
-
-To get started with the web server, its recommended to run the setup command first:
+### Run the app:
 
 ```bash
-bedrock-server-manager setup
+bedrock-server-manager <command> [options]
 ```
-
-This command will prompt you for the necessary configuration details, such as: 
-
--   **Data Directory**: The location where the application will store its data (default is `$HOME/bedrock-server-manager`).
--   **Databse URL**: The URL for the database connection (default is `sqlite:///<data_dir>/bedrock_server_manager.db`).
--   **Host**: The IP address the web server will listen on (default is `127.0.0.1`).
--   **Port**: The port the web server will use (default is `11325`).
--   **System Service**: Whether to install the web server as a system service (default is `no`).
-
-If you choose not to run the setup command, default values will be used. This can be changed later by running the setup command.
-
-### Step 3: Run the Application
-
-To start the web server, use the following command:
+or
 
 ```bash
-bedrock-server-manager web start
+python -m bedrock_server_manager <command> [options] # 3.3.0 and later
 ```
-By default, the server listens on `127.0.0.1:11325`. Once running, you can access the web interface in your browser at this address.
 
-Once the server is running, a one first-time setup will be required. This includes setting up an admin user account and configuring your first bedrock server.
+See the [CLI Usage](../cli/general.md) for example on how to run the cli app.
 
-> See the [Web Usage Guide](../web/general.md) for more examples, like how to run the server on a different IP.
+See the [Web Usage](../web/general.md) for example on how to run the web server.
 
----
-
-## What's Next?
-Bedrock Server Manager is a powerful tool for managing Minecraft Bedrock Dedicated Servers. To explore more about its capabilities, check out the following sections:
-
--   [Web Usage](../web/general.md): Discover how to use the web interface for server management.
--   [CLI Commands](../cli/commands.rst): View what commands are available for the core application.
--   [API Client CLI Commands](../cli/api_client_commands.rst): View what commands are available in the `bsm-api-client` package.
--   [Plugins](../plugins/introduction.md): Explore how to extend the functionality of Bedrock Server Manager with custom plugins.
--   [Changelog](../changelog.md): Stay updated with the latest changes and improvements in each release.
--   [Troubleshooting](./troubleshooting.md): Find solutions to common issues.
--   [Contributing](https://github.com/DMedina559/bedrock-server-manager/blob/main/CONTRIBUTING.md): Find out how you can contribute to the project and help improve it.
--   [License](https://github.com/DMedina559/bedrock-server-manager/blob/main/LICENSE): Understand the licensing terms under which Bedrock Server Manager is distributed.
+## Whats Next?
+Bedrock Server Manager is a powerful tool for managing Minecraft Bedrock Dedicated Servers, and it continues to evolve with new features and improvements.
+To explore more about its capabilities, check out the following sections:
+- [CLI Commands](../cli/commands.rst): Learn what commands are available in the command-line interface and how to use them effectively.
+- [Web Usage](../web/general.md): Discover how to use the web interface for server management.
+- [Plugins](../plugins/introduction.md): Explore how to extend the functionality of Bedrock Server Manager with custom plugins.
+- [Changelog](../changelog.md): Stay updated with the latest changes and improvements in each release.
+- [Contributing](https://github.com/DMedina559/bedrock-server-manager/blob/main/CONTRIBUTING.md): Find out how you can contribute to the project and help improve it.
+- [License](https://github.com/DMedina559/bedrock-server-manager/blob/main/LICENSE): Understand the licensing terms under which Bedrock Server Manager is distributed.

@@ -17,13 +17,12 @@ from typing import Optional, List
 from pathlib import Path
 
 from ..utils import get_utils
+from ..config import get_installed_version, app_name_title
 
 templates: Optional[Jinja2Templates] = None
 
 
-def configure_templates(template_directories: List[Path], settings):
-    from ..config import get_installed_version, app_name_title
-
+def configure_templates(template_directories: List[Path]):
     """
     Creates and configures the global Jinja2Templates instance.
 
@@ -48,13 +47,13 @@ def configure_templates(template_directories: List[Path], settings):
     templates.env.filters["basename"] = os.path.basename
 
     # Add global variables
-    from .auth_utils import get_current_user_optional
+    from ..instances import get_settings_instance
 
     templates.env.globals["app_name"] = app_name_title
     templates.env.globals["app_version"] = get_installed_version()
     templates.env.globals["splash_text"] = get_utils._get_splash_text()
     templates.env.globals["panorama_url"] = "/api/panorama"
-    templates.env.globals["settings"] = settings
+    templates.env.globals["settings"] = get_settings_instance()
 
 
 def get_templates() -> Jinja2Templates:

@@ -33,9 +33,9 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse, User
+from ..schemas import BaseApiResponse
 from ..templating import templates
-from ..auth_utils import get_current_user, get_moderator_user
+from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ...api import backup_restore as backup_restore_api
 from ...instances import get_settings_instance
@@ -110,7 +110,7 @@ class BackupRestoreResponse(BaseApiResponse):
 async def backup_menu_page(
     request: Request,
     server_name: str,
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Displays the backup menu page for a specific server.
@@ -121,12 +121,12 @@ async def backup_menu_page(
     Args:
         request (Request): The FastAPI request object.
         server_name (str): The name of the server for which to display backup options.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``backup_menu.html`` template.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"User '{identity}' accessed backup menu for server '{server_name}'.")
     return templates.TemplateResponse(
         request,
@@ -144,7 +144,7 @@ async def backup_menu_page(
 async def backup_config_select_page(
     request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Displays the page for selecting specific configuration files to back up.
@@ -152,12 +152,12 @@ async def backup_config_select_page(
     Args:
         request (Request): The FastAPI request object.
         server_name (str): Name of the server (validated by dependency).
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``backup_config_options.html`` template.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"User '{identity}' accessed config backup selection page for server '{server_name}'."
     )
@@ -178,7 +178,7 @@ async def backup_config_select_page(
 async def restore_menu_page(
     request: Request,
     server_name: str,
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Displays the restore menu page for a specific server.
@@ -189,12 +189,12 @@ async def restore_menu_page(
     Args:
         request (Request): The FastAPI request object.
         server_name (str): The name of the server for which to display restore options.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``restore_menu.html`` template.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"User '{identity}' accessed restore menu for server '{server_name}'.")
     return templates.TemplateResponse(
         request,
@@ -213,7 +213,7 @@ async def show_select_backup_file_page(
     request: Request,
     restore_type: str,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Displays the page for selecting a specific backup file for restoration.
@@ -225,13 +225,13 @@ async def show_select_backup_file_page(
         request (Request): The FastAPI request object.
         restore_type (str): The type of content to restore (e.g., "world", "properties", "allowlist", "permissions").
         server_name (str): Name of the server (validated by dependency).
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``restore_select_backup.html`` template with a list of relevant backups.
         RedirectResponse: If `restore_type` is invalid or no backups are found.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"User '{identity}' viewing selection page for '{restore_type}' backups for server '{server_name}'."
     )
@@ -248,13 +248,8 @@ async def show_select_backup_file_page(
             url=str(redirect_url), status_code=status.HTTP_302_FOUND
         )
 
-    app_context = request.app.state.app_context
     try:
-        api_result = backup_restore_api.list_backup_files(
-            server_name=server_name,
-            backup_type=restore_type,
-            app_context=app_context,
-        )
+        api_result = backup_restore_api.list_backup_files(server_name, restore_type)
         if api_result.get("status") == "success":
             full_paths = api_result.get("backups", [])
             if not full_paths:
@@ -325,7 +320,7 @@ async def handle_restore_select_backup_type_api(
     request: Request,
     payload: RestoreTypePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Handles the API request for selecting a restore type and redirects to file selection.
@@ -343,7 +338,7 @@ async def handle_restore_select_backup_type_api(
         request (Request): The FastAPI request object (used to construct redirect URL).
         payload (RestoreTypePayload): Specifies the `restore_type`.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         BackupRestoreResponse:
@@ -369,7 +364,7 @@ async def handle_restore_select_backup_type_api(
             "backups": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     restore_type = payload.restore_type.lower()
 
     logger.info(
@@ -415,10 +410,9 @@ async def handle_restore_select_backup_type_api(
     tags=["Backup & Restore API"],
 )
 async def prune_backups_api_route(
-    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to prune old backups for a specific server.
@@ -431,7 +425,7 @@ async def prune_backups_api_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         BackupRestoreResponse:
@@ -439,18 +433,16 @@ async def prune_backups_api_route(
             - ``message``: Confirmation that pruning has been initiated.
             - ``task_id``: ID of the background task.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request to prune backups for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     task_id = tasks.create_task()
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         backup_restore_api.prune_old_backups,
-        server_name=server_name,
-        app_context=app_context,
+        server_name,
     )
 
     return BackupRestoreResponse(
@@ -466,10 +458,9 @@ async def prune_backups_api_route(
     tags=["Backup & Restore API"],
 )
 async def list_server_backups_api_route(
-    request: Request,
     backup_type: str,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Lists available backup files for a specific server and backup type.
@@ -486,7 +477,7 @@ async def list_server_backups_api_route(
     Args:
         backup_type (str): The type of backups to list.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         BackupRestoreResponse:
@@ -525,14 +516,14 @@ async def list_server_backups_api_route(
             "backups": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
+
     try:
         api_result = backup_restore_api.list_backup_files(
-            server_name=server_name, backup_type=backup_type, app_context=app_context
+            server_name=server_name, backup_type=backup_type
         )
         if api_result.get("status") == "success":
             backup_data = api_result.get("backups", [])
@@ -606,11 +597,10 @@ async def list_server_backups_api_route(
     tags=["Backup & Restore API"],
 )
 async def backup_action_api_route(
-    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to perform a backup action for a specific server.
@@ -622,11 +612,11 @@ async def backup_action_api_route(
     - **Request body**: Expects a :class:`.BackupActionPayload`.
     - Requires authentication.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Backup action '{payload.backup_type}' requested for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
+
     valid_types = ["world", "config", "all"]
     if payload.backup_type.lower() not in valid_types:
         raise HTTPException(
@@ -644,12 +634,12 @@ async def backup_action_api_route(
 
     task_id = tasks.create_task()
     target_func = None
-    kwargs = {"server_name": server_name, "app_context": app_context}
+    args = [server_name]
     if payload.backup_type.lower() == "world":
         target_func = backup_restore_api.backup_world
     elif payload.backup_type.lower() == "config":
         target_func = backup_restore_api.backup_config_file
-        kwargs["file_to_backup"] = payload.file_to_backup.strip()
+        args.append(payload.file_to_backup.strip())
     elif payload.backup_type.lower() == "all":
         target_func = backup_restore_api.backup_all
 
@@ -657,7 +647,7 @@ async def backup_action_api_route(
         tasks.run_task,
         task_id,
         target_func,
-        **kwargs,
+        *args,
     )
 
     return BackupRestoreResponse(
@@ -674,11 +664,10 @@ async def backup_action_api_route(
     tags=["Backup & Restore API"],
 )
 async def restore_action_api_route(
-    request: Request,
     payload: RestoreActionPayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to perform a restore action for a specific server.
@@ -691,11 +680,11 @@ async def restore_action_api_route(
     - **Request body**: Expects a :class:`.RestoreActionPayload`.
     - Requires authentication.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Restore action '{payload.restore_type}' requested for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
+
     valid_types = ["world", "properties", "allowlist", "permissions", "all"]
     restore_type_lower = payload.restore_type.lower()
 
@@ -723,12 +712,12 @@ async def restore_action_api_route(
 
     task_id = tasks.create_task()
     target_func = None
-    kwargs = {"server_name": server_name, "app_context": app_context}
+    args = [server_name]
 
     if restore_type_lower == "all":
         target_func = backup_restore_api.restore_all
     else:
-        backup_base_dir = app_context.settings.get("paths.backups")
+        backup_base_dir = get_settings_instance().get("paths.backups")
         if not backup_base_dir:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -756,16 +745,16 @@ async def restore_action_api_route(
 
         if restore_type_lower == "world":
             target_func = backup_restore_api.restore_world
-            kwargs["backup_file_path"] = full_backup_path
+            args.append(full_backup_path)
         elif restore_type_lower in ["properties", "allowlist", "permissions"]:
             target_func = backup_restore_api.restore_config_file
-            kwargs["backup_file_path"] = full_backup_path
+            args.append(full_backup_path)
 
     background_tasks.add_task(
         tasks.run_task,
         task_id,
         target_func,
-        **kwargs,
+        *args,
     )
 
     return BackupRestoreResponse(

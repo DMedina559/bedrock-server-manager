@@ -9,40 +9,58 @@ from bedrock_server_manager.api.info import (
 from bedrock_server_manager.error import BSMError
 
 
+@pytest.fixture
+def mock_bedrock_server():
+    """Fixture for a mocked BedrockServer."""
+    server = MagicMock()
+    server.is_running.return_value = False
+    server.get_status_from_config.return_value = "STOPPED"
+    server.get_version.return_value = "1.0.0"
+    return server
+
+
+@pytest.fixture
+def mock_get_server_instance(mock_bedrock_server):
+    """Fixture to patch get_server_instance."""
+    with patch(
+        "bedrock_server_manager.api.info.get_server_instance",
+        return_value=mock_bedrock_server,
+    ) as mock:
+        yield mock
+
+
 class TestServerInfo:
-    def test_get_server_running_status_running(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=True):
-            result = get_server_running_status("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            assert result["is_running"] is True
-
-    def test_get_server_running_status_stopped(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=False):
-            result = get_server_running_status("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            assert result["is_running"] is False
-
-    def test_get_server_config_status(self, app_context):
-        server = app_context.get_server("test_server")
-        # Set a status in the config
-        server.set_status_in_config("RUNNING")
-        result = get_server_config_status("test_server", app_context=app_context)
+    def test_get_server_running_status_running(
+        self, mock_get_server_instance, mock_bedrock_server
+    ):
+        mock_bedrock_server.is_running.return_value = True
+        result = get_server_running_status("test-server")
         assert result["status"] == "success"
-        assert result["config_status"] == "RUNNING"
+        assert result["is_running"] is True
 
-    def test_get_server_installed_version(self, app_context):
-        server = app_context.get_server("test_server")
-        # Set a version in the config
-        server.set_version("1.2.3")
-        result = get_server_installed_version("test_server", app_context=app_context)
+    def test_get_server_running_status_stopped(
+        self, mock_get_server_instance, mock_bedrock_server
+    ):
+        result = get_server_running_status("test-server")
         assert result["status"] == "success"
-        assert result["installed_version"] == "1.2.3"
+        assert result["is_running"] is False
 
-    def test_bsm_error_handling(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", side_effect=BSMError("Test error")):
-            result = get_server_running_status("test_server", app_context=app_context)
-            assert result["status"] == "error"
-            assert "Test error" in result["message"]
+    def test_get_server_config_status(
+        self, mock_get_server_instance, mock_bedrock_server
+    ):
+        result = get_server_config_status("test-server")
+        assert result["status"] == "success"
+        assert result["config_status"] == "STOPPED"
+
+    def test_get_server_installed_version(
+        self, mock_get_server_instance, mock_bedrock_server
+    ):
+        result = get_server_installed_version("test-server")
+        assert result["status"] == "success"
+        assert result["installed_version"] == "1.0.0"
+
+    def test_bsm_error_handling(self, mock_get_server_instance, mock_bedrock_server):
+        mock_bedrock_server.is_running.side_effect = BSMError("Test error")
+        result = get_server_running_status("test-server")
+        assert result["status"] == "error"
+        assert "Test error" in result["message"]

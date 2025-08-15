@@ -36,6 +36,7 @@ from ...error import (
     AppFileNotFoundError,
 )
 from ...utils import get_timestamp
+from ...instances import get_settings_instance
 
 
 class ServerBackupMixin(BedrockServerBaseMixin):
@@ -95,7 +96,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             The absolute path to the backup directory if ``paths.backups`` is
             configured in settings, otherwise ``None`` (and a warning is logged).
         """
-        backup_base_dir = self.settings.get("paths.backups")
+        backup_base_dir = get_settings_instance().get("paths.backups")
         if not backup_base_dir:
             self.logger.warning(
                 f"Global backup directory ('paths.backups') not configured in settings. "
@@ -186,22 +187,6 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"Server '{self.server_name}': Listing '{backup_type_norm}' backups from '{server_bck_dir}'."
         )
 
-        # Define glob patterns for each type of backup first to validate backup_type.
-        patterns = {
-            "world": os.path.join(
-                server_bck_dir, "*.mcworld"
-            ),  # Standard .mcworld extension
-            "properties": os.path.join(server_bck_dir, "server_backup_*.properties"),
-            "allowlist": os.path.join(server_bck_dir, "allowlist_backup_*.json"),
-            "permissions": os.path.join(server_bck_dir, "permissions_backup_*.json"),
-        }
-
-        if backup_type_norm not in patterns and backup_type_norm != "all":
-            valid_types = list(patterns.keys()) + ["all"]
-            raise UserInputError(
-                f"Invalid backup type: '{backup_type}'. Must be one of {valid_types}."
-            )
-
         if not os.path.isdir(server_bck_dir):
             self.logger.warning(
                 f"Backup directory not found: '{server_bck_dir}'. Returning empty result."
@@ -209,6 +194,20 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             return {} if backup_type_norm == "all" else []
 
         try:
+            # Define glob patterns for each type of backup.
+            patterns = {
+                "world": os.path.join(
+                    server_bck_dir, "*.mcworld"
+                ),  # Standard .mcworld extension
+                "properties": os.path.join(
+                    server_bck_dir, "server_backup_*.properties"
+                ),
+                "allowlist": os.path.join(server_bck_dir, "allowlist_backup_*.json"),
+                "permissions": os.path.join(
+                    server_bck_dir, "permissions_backup_*.json"
+                ),
+            }
+
             if backup_type_norm in patterns:
                 return self._find_and_sort_backups(patterns[backup_type_norm])
             elif backup_type_norm == "all":
@@ -218,6 +217,12 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                     if files:  # Only add category if backups exist
                         categorized_backups[f"{key}_backups"] = files
                 return categorized_backups
+            else:
+                valid_types = list(patterns.keys()) + ["all"]
+                raise UserInputError(
+                    f"Invalid backup type: '{backup_type}'. Must be one of {valid_types}."
+                )
+
         except (
             OSError
         ) as e:  # Catch errors from os.path.isdir, glob.glob, os.path.getmtime
@@ -268,7 +273,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         if not isinstance(file_extension, str) or not file_extension.strip():
             raise MissingArgumentError("file_extension must be a non-empty string.")
 
-        backup_keep_count = self.settings.get("retention.backups", 3)  # Default to 3
+        backup_keep_count = get_settings_instance().get(
+            "retention.backups", 3
+        )  # Default to 3
 
         self.logger.info(
             f"Server '{self.server_name}': Pruning backups in '{server_bck_dir}' for prefix '{component_prefix}', "

@@ -19,7 +19,6 @@ from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
 )
-from ..schemas import User
 from ..dependencies import validate_server_exists
 from ...instances import get_server_instance
 from ...instances import get_settings_instance
@@ -41,7 +40,7 @@ router = APIRouter()
 
 # --- Route: Serve Custom Panorama ---
 @router.get("/api/panorama", response_class=FileResponse, tags=["Global Info API"])
-async def serve_custom_panorama_api(request: Request):
+async def serve_custom_panorama_api():
     """Serves a custom `panorama.jpeg` background image if available, otherwise a default.
 
     This endpoint attempts to locate a `panorama.jpeg` file in the application's
@@ -59,9 +58,8 @@ async def serve_custom_panorama_api(request: Request):
               or if the configuration directory is not set.
     """
     logger.debug("Request received to serve custom panorama background.")
-    app_context = request.app.state.app_context
     try:
-        config_dir = app_context.settings.config_dir
+        config_dir = get_settings_instance().config_dir
         if not config_dir:
 
             logger.error("Config directory not set in settings.")
@@ -101,9 +99,8 @@ async def serve_custom_panorama_api(request: Request):
     tags=["Server Info API"],
 )
 async def serve_world_icon_api(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
 
@@ -114,7 +111,7 @@ async def serve_world_icon_api(
     Args:
         server_name (str): The name of the server, validated by `validate_server_exists`.
                            Injected by FastAPI's dependency system.
-        current_user (User): The authenticated user object, injected by
+        current_user (Dict[str, Any]): The authenticated user object, injected by
                                        `get_current_user`. Used for logging.
 
     Returns:
@@ -128,11 +125,11 @@ async def serve_world_icon_api(
               processing.
     """
     logger.debug(
-        f"Request to serve world icon for server '{server_name}' by user '{current_user.username}'."
+        f"Request to serve world icon for server '{server_name}' by user '{current_user.get('username', 'Unknown')}'."
     )
-    app_context = request.app.state.app_context
+
     try:
-        server = app_context.get_server(server_name)
+        server = get_server_instance(server_name)
         icon_path = server.world_icon_filesystem_path
 
         if server.has_world_icon() and icon_path and os.path.isfile(icon_path):
@@ -210,14 +207,11 @@ async def get_root_favicon():
 
 
 # --- Catch-all Route ---
-from typing import Optional
-
-
 @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
 async def catch_all_api_route(
     request: Request,
     full_path: str,
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Redirects any unmatched authenticated API path to the main dashboard ('/').
 
@@ -228,19 +222,15 @@ async def catch_all_api_route(
     Args:
         request (Request): The incoming request object, provided by FastAPI.
         full_path (str): The unmatched path segment captured by the route.
-        current_user (User): The authenticated user object, injected by
+        current_user (Dict[str, Any]): The authenticated user object, injected by
                                        `get_current_user`. Used for logging.
 
     Returns:
         RedirectResponse: A redirect to the main dashboard page ("/").
     """
-    if current_user:
-        logger.warning(
-            f"User '{current_user.username}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
-        )
-        return RedirectResponse(url="/")
-    else:
-        logger.warning(
-            f"Unauthenticated user accessed undefined path: '/{full_path}'. Redirecting to login."
-        )
-        return RedirectResponse(url="/auth/login", status_code=302)
+    logger.warning(
+        f"User '{current_user.get('username', 'Unknown')}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
+    )
+
+    index_url = "/"
+    return RedirectResponse(url=index_url)

@@ -40,7 +40,6 @@ from typing import Tuple, Optional, Set
 # Local application imports.
 from .system import base as system_base
 from ..instances import get_settings_instance
-from ..context import AppContext
 from ..error import (
     DownloadError,
     ExtractError,
@@ -207,7 +206,6 @@ class BedrockDownloader:
         server_dir: str,
         target_version: str = "LATEST",
         server_zip_path: Optional[str] = None,
-        app_context: Optional[AppContext] = None,
     ):
         """Initializes the BedrockDownloader.
 
@@ -236,10 +234,7 @@ class BedrockDownloader:
                 "Target version cannot be empty for BedrockDownloader."
             )
 
-        if app_context:
-            self.settings = app_context.settings
-        else:
-            self.settings = get_settings_instance()
+        self.settings = get_settings_instance()
         self.server_dir: str = os.path.abspath(server_dir)
         self.input_target_version: str = target_version.strip()
         self.logger = logging.getLogger(__name__)

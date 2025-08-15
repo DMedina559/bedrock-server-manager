@@ -51,20 +51,6 @@ The server manager looks for a file named `world_icon.jpeg` inside each world's 
 
 If a `world_icon.jpeg` file is not found within a specific world's directory, the default Bedrock Server Manager icon will be displayed for that world in the server list.
 
-## API Client
-
-The `bsm-api-client` is an asynchronous Python library for interacting with the Bedrock Server Manager API.
-
-This library allows developers to programmatically manage their Minecraft Bedrock servers. It is ideal for automating administrative tasks, building custom control panels, or integrating BSM into other systems and workflows.
-
-It also provides a Command-Line Interface (CLI), allowing you to execute commands on the BSM web server from a local or remote machine.
-
-- **Repository**: [https://github.com/DMedina559/bsm-api-client](https://github.com/DMedina559/bsm-api-client)
-
 ## Home Assistant Integration
 
-The Bedrock Server Manager integration for Home Assistant allows you to control and monitor your server directly from your Home Assistant dashboard.
-
-This integration is built using the `bsm-api-client`.
-
-- **Repository**: [https://github.com/DMedina559/bsm-home-assistant-integration](https://github.com/DMedina559/bsm-home-assistant-integration)
+If you use Home Assistant, check out the [**Bedrock Server Manager integration**](https://github.com/DMedina559/bsm-home-assistant-integration).

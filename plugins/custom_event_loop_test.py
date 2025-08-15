@@ -57,7 +57,7 @@ class CustomEventLoopTestPlugin(PluginBase):
     using a chained custom event sequence: Event X -> Event Y -> Event X (recursive).
     """
 
-    version = "1.1.0"
+    version = "1.0.0"
 
     def on_load(self):
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")

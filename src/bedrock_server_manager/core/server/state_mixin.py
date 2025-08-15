@@ -29,22 +29,14 @@ import os
 import json
 from typing import Optional, Any, Dict, TYPE_CHECKING
 
-from sqlalchemy.orm import Session
-
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ...db.database import db_session_manager
-from ...db.models import Server
 from ...error import (
     MissingArgumentError,
     UserInputError,
     FileOperationError,
     ConfigParseError,
     AppFileNotFoundError,
-)
-from ...utils.migration import (
-    migrate_server_config_v1_to_v2,
-    migrate_server_config_to_db,
 )
 
 # Version for the server-specific JSON config schema
@@ -99,6 +91,15 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """
         super().__init__(*args, **kwargs)
 
+    @property
+    def _server_specific_json_config_file_path(self) -> str:
+        """str: The absolute path to this server's specific JSON configuration file.
+
+        The filename is typically ``<server_name>_config.json``, located within
+        the directory returned by :attr:`.BedrockServerBaseMixin.server_config_dir`.
+        """
+        return os.path.join(self.server_config_dir, f"{self.server_name}_config.json")
+
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
 
@@ -119,12 +120,79 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 "status": "UNKNOWN",
             },
             "settings": {
-                "autoupdate": False,
-                "autostart": False,
+                "autoupdate": False,  # Default to boolean
                 "target_version": "UNKNOWN",
             },
             "custom": {},
         }
+
+    def _migrate_server_config_v1_to_v2(
+        self, old_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Migrates a flat v1 server configuration to the nested v2 format.
+
+        This internal method takes an old, presumably flat dictionary
+        (`old_config`) representing a v1 server configuration and transforms
+        it into the structured v2 format defined by
+        :meth:`._get_default_server_config`. Known v1 keys like
+        "installed_version", "target_version", "status", and "autoupdate"
+        are mapped to their new locations in the "server_info" and "settings"
+        sections. Any other unrecognized keys from the old config are moved
+        into a "custom" sub-dictionary.
+
+        Args:
+            old_config (Dict[str, Any]): The dictionary loaded from an old v1
+                server configuration file.
+
+        Returns:
+            Dict[str, Any]: A new dictionary representing the server configuration
+            in the v2 schema, populated with values from the `old_config`.
+        """
+        self.logger.info(
+            f"Migrating server config for '{self.server_name}' from v1 (flat) to v2 (nested)."
+        )
+        new_config = self._get_default_server_config()  # Start with a clean v2 default
+
+        # Migrate known server_info keys
+        new_config["server_info"]["installed_version"] = old_config.get(
+            "installed_version", new_config["server_info"]["installed_version"]
+        )
+        # Note: target_version was in top-level in v1, moved to settings in v2 structure.
+        # The default config already provides a 'UNKNOWN' if not found.
+        new_config["settings"]["target_version"] = old_config.get(
+            "target_version", new_config["settings"]["target_version"]
+        )
+        new_config["server_info"]["status"] = old_config.get(
+            "status", new_config["server_info"]["status"]
+        )
+
+        # Migrate known settings keys
+        autoupdate_val = old_config.get("autoupdate")
+        if isinstance(
+            autoupdate_val, str
+        ):  # v1 might have stored as string "true"/"false"
+            new_config["settings"]["autoupdate"] = autoupdate_val.lower() == "true"
+        elif isinstance(autoupdate_val, bool):  # Or correctly as bool
+            new_config["settings"]["autoupdate"] = autoupdate_val
+        # If missing or other type, it keeps the default from _get_default_server_config()
+
+        # Migrate any other unrecognized top-level keys to the "custom" section
+        known_v1_keys_handled = {
+            "installed_version",
+            "target_version",  # Already handled for its new location
+            "status",
+            "autoupdate",
+            # config_schema_version is not a v1 key, but good to exclude if it somehow appears
+            "config_schema_version",
+        }
+        for key, value in old_config.items():
+            if key not in known_v1_keys_handled:
+                new_config["custom"][key] = value
+
+        new_config["config_schema_version"] = (
+            SERVER_CONFIG_SCHEMA_VERSION  # Ensure new version is set
+        )
+        return new_config
 
     def _load_server_config(self) -> Dict[str, Any]:
         """Loads the server-specific JSON configuration.
@@ -149,38 +217,113 @@ class ServerStateMixin(BedrockServerBaseMixin):
             FileOperationError: If directory creation or file reading fails due
                 to ``OSError``.
         """
-        with db_session_manager() as db:
-            migrate_server_config_to_db(self.server_name, self.server_config_dir)
-            server = (
-                db.query(Server).filter(Server.server_name == self.server_name).first()
-            )
-            if server:
-                return server.config
+        config_file_path = self._server_specific_json_config_file_path
+        server_json_config_subdir = self.server_config_dir  # From base mixin
 
-            # Create new server config in DB
+        try:
+            os.makedirs(server_json_config_subdir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to create server config directory '{server_json_config_subdir}': {e}"
+            ) from e
+
+        if not os.path.exists(config_file_path):
             self.logger.info(
-                f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
+                f"Server config file '{config_file_path}' not found. Initializing with defaults."
             )
             default_config = self._get_default_server_config()
-            server = Server(server_name=self.server_name, config=default_config)
-            db.add(server)
-            db.commit()
-            db.refresh(server)
-            return server.config
+            self._save_server_config(default_config)  # Save the new default config
+            return default_config
+
+        current_config: Dict[str, Any]
+        try:
+            with open(config_file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                if not content.strip():  # Handle empty file case
+                    self.logger.warning(
+                        f"Server config file '{config_file_path}' is empty. Re-initializing with defaults."
+                    )
+                    current_config = self._get_default_server_config()
+                    self._save_server_config(current_config)
+                    return current_config
+
+                loaded_json = json.loads(content)
+                if not isinstance(loaded_json, dict):
+                    # This case implies a severely malformed file, not just old schema.
+                    # Attempting migration might be risky. Let's log and re-initialize.
+                    self.logger.error(
+                        f"Server config file '{config_file_path}' content is not a JSON object (dictionary). "
+                        "The file is likely corrupted. Re-initializing with defaults."
+                    )
+                    current_config = self._get_default_server_config()
+                    self._save_server_config(current_config)
+                    return current_config
+                current_config = loaded_json
+
+        except json.JSONDecodeError as e_json:
+            self.logger.warning(
+                f"Failed to parse JSON from '{config_file_path}': {e_json}. "
+                "File might be corrupted or in an unknown format. Re-initializing with defaults."
+            )
+            current_config = self._get_default_server_config()
+            self._save_server_config(current_config)
+            return current_config
+        except OSError as e_os:
+            raise FileOperationError(
+                f"Failed to read config file '{config_file_path}': {e_os}"
+            ) from e_os
+
+        # Schema version check and migration for v1 (no version key)
+        if "config_schema_version" not in current_config:
+            self.logger.info(
+                f"Old server config format (v1, no schema version) detected in '{config_file_path}'. Migrating to v{SERVER_CONFIG_SCHEMA_VERSION}."
+            )
+            current_config = self._migrate_server_config_v1_to_v2(current_config)
+            self._save_server_config(current_config)  # Save migrated config
+        elif (
+            current_config.get("config_schema_version") != SERVER_CONFIG_SCHEMA_VERSION
+        ):
+            # Placeholder for future schema migrations (e.g., v2 to v3)
+            # For now, if it's not v1 (handled above) and not current, log a warning.
+            self.logger.warning(
+                f"Server config schema version mismatch in '{config_file_path}'. "
+                f"Found version {current_config.get('config_schema_version')}, expected {SERVER_CONFIG_SCHEMA_VERSION}. "
+                "Attempting to use as is, but data might be incompatible or migration not yet supported."
+            )
+            # Potentially, one might add specific migration paths here:
+            # if current_config.get("config_schema_version") == 2 and SERVER_CONFIG_SCHEMA_VERSION == 3:
+            #     current_config = self._migrate_server_config_v2_to_v3(current_config)
+            #     self._save_server_config(current_config)
+
+        return current_config
 
     def _save_server_config(self, config_data: Dict[str, Any]) -> None:
-        """Saves the server configuration data to the database.
+        """Saves the server configuration data to its JSON file.
+
+        The configuration is pretty-printed with an indent of 4 and sorted keys.
 
         Args:
             config_data (Dict[str, Any]): The server configuration dictionary to save.
+
+        Raises:
+            FileOperationError: If writing the configuration file fails due to an ``OSError``.
+            ConfigParseError: If `config_data` is not JSON serializable (``TypeError``).
         """
-        with db_session_manager() as db:
-            server = (
-                db.query(Server).filter(Server.server_name == self.server_name).first()
+        config_file_path = self._server_specific_json_config_file_path
+        try:
+            with open(config_file_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=4, sort_keys=True)
+            self.logger.debug(
+                f"Successfully wrote server config to '{config_file_path}'."
             )
-            if server:
-                server.config = config_data
-                db.commit()
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to write server config file '{config_file_path}': {e}"
+            ) from e
+        except TypeError as e_type:  # For non-serializable data
+            raise ConfigParseError(
+                f"Server config data for '{self.server_name}' is not JSON serializable: {e_type}"
+            ) from e_type
 
     def _manage_json_config(
         self,
@@ -379,57 +522,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             key="settings.autoupdate", operation="write", value=value
         )
         self.logger.info(f"Autoupdate for '{self.server_name}' set to '{value}'.")
-
-    def get_autostart(self) -> bool:
-        """Retrieves the 'autostart' setting from the server's JSON config.
-
-        Accesses ``settings.autostart`` via :meth:`._manage_json_config`.
-
-        Returns:
-            bool: The autostart status (``True`` or ``False``). Defaults to ``False``
-            if the setting is not found or an error occurs during retrieval.
-        """
-        self.logger.debug(f"Getting autostart value for server '{self.server_name}'.")
-        try:
-            autostart_setting = self._manage_json_config(
-                key="settings.autostart", operation="read"
-            )
-            if isinstance(autostart_setting, bool):
-                return autostart_setting
-            # Handle string "true"/"false" for robustness if manually edited or from old versions
-            if isinstance(autostart_setting, str):
-                return autostart_setting.lower() == "true"
-            self.logger.warning(
-                f"autostart setting for '{self.server_name}' is not a boolean, found: {autostart_setting}. Defaulting to False."
-            )
-            return False  # Default if not found or invalid type
-        except Exception as e:
-            self.logger.error(
-                f"Error getting autostart setting for '{self.server_name}': {e}. Defaulting to False.",
-                exc_info=True,
-            )
-            return False
-
-    def set_autostart(self, value: bool) -> None:
-        """Sets the 'autostart' setting in the server's JSON config.
-
-        Updates ``settings.autostart`` via :meth:`._manage_json_config`.
-
-        Args:
-            value (bool): The boolean value to set for autostart.
-
-        Raises:
-            UserInputError: If `value` is not a boolean.
-        """
-        self.logger.debug(f"Setting autostart for '{self.server_name}' to '{value}'.")
-        if not isinstance(value, bool):
-            raise UserInputError(
-                f"autostart value for '{self.server_name}' must be a boolean, got {type(value).__name__}."
-            )
-        self._manage_json_config(
-            key="settings.autostart", operation="write", value=value
-        )
-        self.logger.info(f"autostart for '{self.server_name}' set to '{value}'.")
 
     def get_status_from_config(self) -> str:
         """Retrieves the stored 'status' from the server's JSON config.

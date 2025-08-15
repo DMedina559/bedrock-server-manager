@@ -8,12 +8,10 @@ on:
       - 'main'
     paths:
       - 'src/bedrock_server_manager/**'
-      - 'test/**'
       - 'pyproject.toml'
   pull_request:
     paths:
       - 'src/bedrock_server_manager/**'
-      - 'test/**'
       - 'pyproject.toml'
 
 jobs:
@@ -23,19 +21,16 @@ jobs:
       contents: write
       packages: write
 
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.13']
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 3.10
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.10'
 
     - name: Install dependencies
       run: |

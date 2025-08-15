@@ -12,7 +12,7 @@ plugins (via methods exposed by
 programmatically access and modify these global settings.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
@@ -24,15 +24,12 @@ from ..error import (
     BSMError,
     MissingArgumentError,
 )
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_global_setting")
-def get_global_setting(
-    key: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_global_setting(key: str) -> Dict[str, Any]:
     """Reads a single value from the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.get`
@@ -56,11 +53,7 @@ def get_global_setting(
 
     logger.debug(f"API: Reading global setting '{key}'.")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
-        retrieved_value = settings.get(key)
+        retrieved_value = get_settings_instance().get(key)
         logger.debug(f"API: Successfully read global setting '{key}'.")
         return {
             "status": "success",
@@ -78,9 +71,7 @@ def get_global_setting(
 
 
 @plugin_method("get_all_global_settings")
-def get_all_global_settings(
-    app_context: Optional[AppContext] = None,
-) -> Dict[str, Any]:
+def get_all_global_settings() -> Dict[str, Any]:
     """Reads the entire global application settings configuration.
 
     Returns a copy of all currently loaded settings from the
@@ -93,13 +84,9 @@ def get_all_global_settings(
     """
     logger.debug("API: Reading all global settings.")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
         # Accessing _settings is an internal detail, but this API provides
         # a controlled public interface to it. A copy is returned.
-        all_settings = settings._settings.copy()
+        all_settings = get_settings_instance()._settings.copy()
         logger.debug("API: Successfully retrieved all global settings.")
         return {
             "status": "success",
@@ -115,9 +102,7 @@ def get_all_global_settings(
         }
 
 
-def set_global_setting(
-    key: str, value: Any, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def set_global_setting(key: str, value: Any) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.set`
@@ -145,11 +130,7 @@ def set_global_setting(
 
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
-        settings.set(key, value)
+        get_settings_instance().set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
             "status": "success",
@@ -174,9 +155,7 @@ def set_global_setting(
 
 
 @plugin_method("set_custom_global_setting")
-def set_custom_global_setting(
-    key: str, value: Any, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def set_custom_global_setting(key: str, value: Any) -> Dict[str, Any]:
     """Writes a custom value to the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.set`
@@ -206,11 +185,7 @@ def set_custom_global_setting(
 
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
-        settings.set(key, value)
+        get_settings_instance().set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
             "status": "success",
@@ -234,7 +209,7 @@ def set_custom_global_setting(
         }
 
 
-def reload_global_settings(app_context: Optional[AppContext] = None) -> Dict[str, str]:
+def reload_global_settings() -> Dict[str, str]:
     """
     Forces a reload of settings and logging config from the file.
 
@@ -258,21 +233,17 @@ def reload_global_settings(app_context: Optional[AppContext] = None) -> Dict[str
     """
     logger.info("API: Received request to reload global settings and logging.")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
         # Step 1: Reload the settings from the file
-        settings.reload()
+        get_settings_instance().reload()
         logger.info("API: Global settings successfully reloaded.")
 
         # Step 2: Re-apply logging configuration with the new settings
         logger.info("API: Re-applying logging configuration...")
         setup_logging(
-            log_dir=settings.get("paths.logs"),
-            log_keep=settings.get("retention.logs"),
-            file_log_level=settings.get("logging.file_level"),
-            cli_log_level=settings.get("logging.cli_level"),
+            log_dir=get_settings_instance().get("paths.logs"),
+            log_keep=get_settings_instance().get("retention.logs"),
+            file_log_level=get_settings_instance().get("logging.file_level"),
+            cli_log_level=get_settings_instance().get("logging.cli_level"),
             force_reconfigure=True,  # Crucial flag to force removal of old handlers
         )
         logger.info("API: Logging configuration successfully re-applied.")

@@ -32,52 +32,22 @@
 
     {# --- Sidebar Navigation --- #}
     <aside class="sidebar-nav">
+        {# Links use data-target to link to content section IDs #}
         <a href="#overview-section" class="nav-link active" data-target="overview-section">Overview</a>
-
-        <div class="nav-item">
-            <a href="#" class="nav-link has-submenu">Server Management</a>
-            <div class="submenu">
-                <a href="#manage-section" class="nav-link" data-target="manage-section">Manage Servers</a>
-                {% if current_user.role != 'user' %}
-                <a href="#configure-section" class="nav-link" data-target="configure-section">Configure</a>
-                <a href="#backup-restore-section" class="nav-link" data-target="backup-restore-section">Backup/Restore</a>
-                {% endif %}
-            </div>
-        </div>
-
-        {% if current_user.role == 'admin' %}
-        <div class="nav-item">
-            <a href="#" class="nav-link has-submenu">Extras</a>
-            <div class="submenu">
-                <a href="#content-section" class="nav-link" data-target="content-section">Manage Content</a>
-                <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
-            </div>
-        </div>
-        {% endif %}
-
-        <div class="nav-item">
-            <a href="#" class="nav-link has-submenu">Settings</a>
-            <div class="submenu">
-                <a href="{{ url_for('account_page') }}" class="nav-link">Account Management</a>
-                {% if current_user and current_user.role == 'admin' %}
-                <a href="{{ url_for('users_page') }}" class="nav-link">User Management</a>
-                {% endif %}
-                {% if current_user.role == 'admin' %}
-                <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Global Settings</a>
-                {% endif %}
-            </div>
-        </div>
+        <a href="#manage-section" class="nav-link" data-target="manage-section">Manage Servers</a>
+        <a href="#configure-section" class="nav-link" data-target="configure-section">Configure</a>
+        <a href="#content-section" class="nav-link" data-target="content-section">Content</a>
+        <a href="#backup-restore-section" class="nav-link" data-target="backup-restore-section">Backup/Restore</a>
+        <a href="{{ request.url_for('manage_plugins_page') if request else '/plugins/' }}" class="nav-link">Manage Plugins</a>
+        <a href="{{ request.url_for('manage_settings_page') if request else '/settings' }}" class="nav-link">Settings</a>
 
         {# --- Plugin Web Pages Submenu --- #}
         {% if plugin_html_pages %}
-        <div class="nav-item">
-            <a href="#" class="nav-link has-submenu">From Plugins</a>
-            <div class="submenu">
-                {% for page in plugin_html_pages %}
-                <a href="{{ page.path }}" class="nav-link plugin-page-link" title="{{ page.name }}">{{ page.name }}</a>
-                {% endfor %}
-            </div>
-        </div>
+        <hr class="nav-separator">
+        <div class="nav-sub-header">|  From Plugins:</div>
+        {% for page in plugin_html_pages %}
+        <a href="{{ page.path }}" class="nav-link plugin-page-link" title="{{ page.name }}">{{ page.name }}</a>
+        {% endfor %}
         {% endif %}
         {# --- End Plugin Web Pages Submenu --- #}
 
@@ -85,9 +55,7 @@
         <hr class="nav-separator">
 
         {# Actions #}
-        {% if current_user.role == 'admin' %}
         <a href="{{ request.url_for('install_server_page') if request else '/install' }}" class="nav-link nav-action-button install-server-button">Install New Server</a>
-        {% endif %}
         <a href="{{ request.url_for('logout') if request else '/auth/logout' }}" class="nav-link nav-action-button danger-button">Logout</a>
     </aside> {# --- End Sidebar Navigation --- #}
 
@@ -107,12 +75,10 @@
             {# Action buttons targeting the selected server #}
             <div class="action-buttons-group">
                 {# JS functions in server_actions.js use getSelectedServer() #}
-                {% if current_user.role != 'user' %}
                 <button type="button" class="action-button start-button" onclick="startServer(this)" title="Start selected server" disabled>Start</button>
                 <button type="button" class="action-button danger-button" onclick="stopServer(this)" title="Stop selected server" disabled>Stop</button>
                 <button type="button" class="action-button" onclick="restartServer(this)" title="Restart selected server" disabled>Restart</button>
                 <button type="button" class="action-button" onclick="promptCommand(this)" title="Send command to selected server" disabled>Send Command</button>
-                {% endif %}
             </div>
         </section> {# --- End Server Selection --- #}
 
@@ -140,25 +106,21 @@
             <div class="section-actions server-dependent-actions">
                 <h4>Actions for <span id="selected-server-manage" style="font-style: italic;">(No server selected)</span></h4>
                 <div class="button-group">
-                    {% if current_user.role == 'admin' %}
                     <button type="button"
                             onclick="triggerServerUpdate(this, document.getElementById('server-select').value)"
                             class="action-button"
                             title="Check for updates and install if available for the selected server" disabled>
                         Update Server
                     </button>
-                    {% endif %}
                     <a href="#" id="config-link-monitor" class="action-button config-nav-link" disabled>
                         Monitor Usage
                     </a>
-                    {% if current_user.role == 'admin' %}
                     <button type="button"
                             onclick="deleteServer(this, document.getElementById('server-select').value)"
                             class="action-button danger-button"
                             title="Delete all data for the selected server" disabled>
                         Delete Server
                     </button>
-                    {% endif %}
                 </div>
             </div>
         </section> {# --- End Manage Section --- #}
@@ -174,9 +136,7 @@
                     <a href="#" id="config-link-properties" class="action-link config-nav-link" disabled title="Edit server.properties">Properties</a>
                     <a href="#" id="config-link-allowlist" class="action-link config-nav-link" disabled title="Edit allowlist.json">Allowlist</a>
                     <a href="#" id="config-link-permissions" class="action-link config-nav-link" disabled title="Edit permissions.json">Permissions</a>
-                    {% if current_user.role == 'admin' %}
                     <a href="#" id="config-link-service" class="action-link config-nav-link" disabled title="Configure autostart/autoupdate">Service Settings</a>
-                    {% endif %}
                 </div>
                 {# REMOVED {% if not servers %} check #}
             </div>
@@ -184,7 +144,6 @@
 
 
         {# Content Section - Links to import pages #}
-        {% if current_user.role == 'admin' %}
         <section id="content-section" class="content-section">
             <h2>Content Management</h2>
             <p>Select a server from the dropdown above to import content:</p>
@@ -196,11 +155,9 @@
                 </div>
             </div>
         </section> {# --- End Content Section --- #}
-        {% endif %}
 
 
         {# Backup/Restore Section - Links to specific menus #}
-        {% if current_user.role != 'user' %}
         <section id="backup-restore-section" class="content-section">
             <h2>Backup & Restore</h2>
             <p>Select a server from the dropdown above to manage backups:</p>
@@ -212,7 +169,6 @@
                 </div>
             </div>
         </section> {# --- End Backup/Restore Section --- #}
-        {% endif %}
 
     </main> {# --- End Main Content Area --- #}
 
@@ -223,4 +179,5 @@
 
 {# --- Body Scripts Block --- #}
 {% block body_scripts %}
+
 {% endblock %}

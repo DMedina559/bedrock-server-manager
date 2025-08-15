@@ -94,16 +94,16 @@ def test_set_server_folder_permissions_non_existent_dir():
         set_server_folder_permissions("non_existent_dir")
 
 
-@pytest.mark.skipif(os.name != "posix", reason="Linux specific test")
 @patch("os.chmod", side_effect=OSError)
 def test_set_server_folder_permissions_os_error_on_chmod(mock_chmod, temp_server_dir):
     with pytest.raises(PermissionsError):
         set_server_folder_permissions(temp_server_dir)
 
 
-@pytest.mark.skipif(os.name != "posix", reason="Linux specific test")
 @patch("os.chown", side_effect=OSError)
 def test_set_server_folder_permissions_os_error_on_chown(mock_chown, temp_server_dir):
+    if os.name != "posix":
+        pytest.skip("Linux specific test")
     with pytest.raises(PermissionsError):
         set_server_folder_permissions(temp_server_dir)
 

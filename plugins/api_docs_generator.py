@@ -12,20 +12,20 @@ class APIDocsGenerator(PluginBase):
     for all registered plugin API functions.
     """
 
-    version = "1.1.0"
+    version = "1.0.2"
 
     def on_load(self):
         self.logger.info(
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
-    def on_manager_startup(self, **kwargs: Any):
+    def on_manager_startup(self):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API.
         """
         self.logger.info("Generating API documentation...")
-        self.settings = self.api.app_context.settings
+        self.settings = Settings()
 
         try:
             # 1. Get the detailed API list

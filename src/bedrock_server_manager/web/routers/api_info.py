@@ -16,11 +16,11 @@ import logging
 import os
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse, User
-from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
+from ..schemas import BaseApiResponse
+from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ...instances import get_settings_instance
 from ...api import (
@@ -91,9 +91,8 @@ class AddPlayersPayload(BaseModel):
     tags=["Server Info API"],
 )
 async def get_server_running_status_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Checks if a specific server's process is currently running.
@@ -143,19 +142,16 @@ async def get_server_running_status_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
-        result = info_api.get_server_running_status(
-            server_name=server_name, app_context=app_context
-        )
+        result = info_api.get_server_running_status(server_name)
         if result.get("status") == "success":
             return GeneralApiResponse(
                 status="success",
-                data={"running": result.get("is_running")},
+                data={"running": result.get("running")},
                 message=result.get("message"),
             )
         else:
@@ -188,9 +184,8 @@ async def get_server_running_status_api_route(
     tags=["Server Info API"],
 )
 async def get_server_config_status_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Retrieves the last known status from a server's configuration file.
@@ -201,7 +196,7 @@ async def get_server_config_status_api_route(
 
     Args:
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -225,15 +220,12 @@ async def get_server_config_status_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request for config status for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
-        result = info_api.get_server_config_status(
-            server_name=server_name, app_context=app_context
-        )
+        result = info_api.get_server_config_status(server_name)
         if result.get("status") == "success":
             return GeneralApiResponse(
                 status="success",
@@ -272,9 +264,8 @@ async def get_server_config_status_api_route(
     tags=["Server Info API"],
 )
 async def get_server_version_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Retrieves the installed version of a specific server.
@@ -285,7 +276,7 @@ async def get_server_version_api_route(
 
     Args:
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -309,15 +300,13 @@ async def get_server_version_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request for installed version for server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
-        result = info_api.get_server_installed_version(
-            server_name=server_name, app_context=app_context
-        )
+        result = info_api.get_server_installed_version(server_name)
+        print(f"Result: {result}")
         if result.get("status") == "success":
             return GeneralApiResponse(
                 status="success",
@@ -359,7 +348,7 @@ async def get_server_version_api_route(
     tags=["Server Info API"],
 )
 async def validate_server_api_route(
-    request: Request, server_name: str, current_user: User = Depends(get_current_user)
+    server_name: str, current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Validates if a server installation exists and is minimally correct.
@@ -369,7 +358,7 @@ async def validate_server_api_route(
 
     Args:
         server_name (str): The name of the server to validate.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -404,38 +393,34 @@ async def validate_server_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request to validate server '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
-        result = utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        )
+        result = utils_api.validate_server_exist(server_name)
         if result.get("status") == "success":
             return GeneralApiResponse(status="success", message=result.get("message"))
         else:
-            # This case handles when the underlying API returns an error status
-            # without raising an exception itself.
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=result.get(
-                    "message", f"Server '{server_name}' not found or is invalid."
-                ),
+                status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
+    except BSMError as e:
+        logger.error(
+            f"API Validate Server '{server_name}': BSMError: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
     except Exception as e:
         logger.error(
-            f"API Validate Server '{server_name}': Unexpected error in route: {e}",
-            exc_info=True,
+            f"API Validate Server '{server_name}': Unexpected error: {e}", exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while validating the server.",
+            detail="Unexpected error validating server.",
         )
 
 
@@ -445,7 +430,7 @@ async def validate_server_api_route(
     tags=["Server Info API"],
 )
 async def server_process_info_api_route(
-    request: Request, server_name: str, current_user: User = Depends(get_current_user)
+    server_name: str, current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Retrieves resource usage information for a running server process.
@@ -461,7 +446,7 @@ async def server_process_info_api_route(
 
     Args:
         server_name (str): The name of the server.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -507,13 +492,10 @@ async def server_process_info_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.debug(f"API: Process info request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
-        result = system_api.get_bedrock_process_info(
-            server_name=server_name, app_context=app_context
-        )
+        result = system_api.get_bedrock_process_info(server_name)
 
         if result.get("status") == "success":
             return GeneralApiResponse(
@@ -550,7 +532,7 @@ async def server_process_info_api_route(
     "/api/players/scan", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Scans all server logs to discover and update the central player database.
@@ -559,7 +541,7 @@ async def scan_players_api_route(
     This is a global action not tied to a specific server.
 
     Args:
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -589,11 +571,10 @@ async def scan_players_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: Request to scan logs for players by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
-        result = player_api.scan_and_update_player_db_api(app_context=app_context)
+        result = player_api.scan_and_update_player_db_api()
         if result.get("status") == "success":
             return GeneralApiResponse(
                 status="success",
@@ -622,7 +603,7 @@ async def scan_players_api_route(
     "/api/players/get", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def get_all_players_api_route(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Retrieves the list of all known players from the central player database.
@@ -636,7 +617,7 @@ async def get_all_players_api_route(
         - If `players.json` is not found or empty, "players" will be an empty list.
 
     Args:
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -667,11 +648,11 @@ async def get_all_players_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: Request to retrieve all players by user '{identity}'.")
-    app_context = request.app.state.app_context
+
     try:
-        result_dict = player_api.get_all_known_players_api(app_context=app_context)
+        result_dict = player_api.get_all_known_players_api()
 
         if result_dict.get("status") == "success":
             logger.debug(
@@ -720,9 +701,8 @@ async def get_all_players_api_route(
     tags=["Global Actions API"],
 )
 async def prune_downloads_api_route(
-    request: Request,
     payload: PruneDownloadsPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Prunes old downloaded server archives from a specified cache subdirectory.
@@ -736,7 +716,7 @@ async def prune_downloads_api_route(
 
     Args:
         payload (PruneDownloadsPayload): Specifies directory and keep count.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -767,13 +747,13 @@ async def prune_downloads_api_route(
             "files_kept": 2
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request to prune downloads by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
     )
-    app_context = request.app.state.app_context
+
     try:
-        download_cache_base_dir = app_context.settings.get("paths.downloads")
+        download_cache_base_dir = get_settings_instance().get("paths.downloads")
         if not download_cache_base_dir:
             raise BSMError("DOWNLOAD_DIR setting is missing or empty in configuration.")
 
@@ -801,9 +781,7 @@ async def prune_downloads_api_route(
                 detail="Target cache directory not found.",
             )
 
-        result = misc_api.prune_download_cache(
-            full_download_dir_path, payload.keep, app_context=app_context
-        )
+        result = misc_api.prune_download_cache(full_download_dir_path, payload.keep)
 
         if result.get("status") == "success":
             return GeneralApiResponse(
@@ -841,7 +819,7 @@ async def prune_downloads_api_route(
 
 @router.get("/api/servers", response_model=GeneralApiResponse, tags=["Global Info API"])
 async def get_servers_list_api_route(
-    request: Request, current_user: User = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Retrieves a list of all detected server instances with their status and version.
@@ -850,7 +828,7 @@ async def get_servers_list_api_route(
     This provides a summary for each managed server.
 
     Args:
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -886,11 +864,10 @@ async def get_servers_list_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.debug(f"API: Request for all servers list by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
-        result = app_api.get_all_servers_data(app_context=app_context)
+        result = app_api.get_all_servers_data()
         if result.get("status") == "success":
             return GeneralApiResponse(status="success", servers=result.get("servers"))
         else:
@@ -907,7 +884,7 @@ async def get_servers_list_api_route(
 
 
 @router.get("/api/info", response_model=GeneralApiResponse, tags=["Global Info API"])
-async def get_system_info_api_route(request: Request):
+async def get_system_info_api_route():
     """
     Retrieves general system and application information.
 
@@ -943,9 +920,8 @@ async def get_system_info_api_route(request: Request):
         }
     """
     logger.debug("API: Request for system and app info.")
-    app_context = request.app.state.app_context
     try:
-        result = utils_api.get_system_and_app_info(app_context=app_context)
+        result = utils_api.get_system_and_app_info()
         if result.get("status") == "success":
             return GeneralApiResponse(status="success", info=result.get("data"))
         else:
@@ -966,9 +942,7 @@ async def get_system_info_api_route(request: Request):
     "/api/players/add", response_model=GeneralApiResponse, tags=["Global Players API"]
 )
 async def add_players_api_route(
-    request: Request,
-    payload: AddPlayersPayload,
-    current_user: User = Depends(get_moderator_user),
+    payload: AddPlayersPayload, current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Manually adds or updates player entries in the central player database.
@@ -982,7 +956,7 @@ async def add_players_api_route(
 
     Args:
         payload (AddPlayersPayload): List of player strings to add.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         GeneralApiResponse:
@@ -1011,16 +985,14 @@ async def add_players_api_route(
             "files_kept": null
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: Request to add players by user '{identity}'. Payload: {payload.players}"
     )
-    app_context = request.app.state.app_context
+
     try:
 
-        result = player_api.add_players_manually_api(
-            player_strings=payload.players, app_context=app_context
-        )
+        result = player_api.add_players_manually_api(player_strings=payload.players)
 
         if result.get("status") == "success":
             return GeneralApiResponse(

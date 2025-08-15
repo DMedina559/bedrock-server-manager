@@ -18,9 +18,9 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from ..schemas import ActionResponse, BaseApiResponse, User
+from ..schemas import ActionResponse, BaseApiResponse
 from ..templating import templates
-from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
+from ..auth_utils import get_current_user
 from ..dependencies import validate_server_exists
 from ...api import (
     world as world_api,
@@ -58,7 +58,7 @@ class ContentListResponse(BaseApiResponse):
 async def install_world_page(
     request: Request,
     server_name: str,
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Serves the HTML page for selecting a world file to install on a server.
@@ -68,22 +68,21 @@ async def install_world_page(
     Args:
         request (Request): The FastAPI request object.
         server_name (str): The name of the server for which to install the world.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``select_world.html`` template, providing it
                       with a list of available world files and the server name.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"User '{identity}' accessed world install selection page for server '{server_name}'."
     )
 
     world_files: List[str] = []
     error_message: Optional[str] = None
-    app_context = request.app.state.app_context
     try:
-        list_result = app_api.list_available_worlds_api(app_context=app_context)
+        list_result = app_api.list_available_worlds_api()
         if list_result.get("status") == "success":
             full_paths = list_result.get("files", [])
             world_files = [os.path.basename(p) for p in full_paths]
@@ -123,7 +122,7 @@ async def install_world_page(
 async def install_addon_page(
     request: Request,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Serves the HTML page for selecting an addon file to install on a server.
@@ -133,22 +132,21 @@ async def install_addon_page(
     Args:
         request (Request): The FastAPI request object.
         server_name (str): The name of the server for which to install the addon. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         HTMLResponse: Renders the ``select_addon.html`` template, providing it
                       with a list of available addon files and the server name.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"User '{identity}' accessed addon install selection page for server '{server_name}'."
     )
 
     addon_files: List[str] = []
     error_message: Optional[str] = None
-    app_context = request.app.state.app_context
     try:
-        list_result = app_api.list_available_addons_api(app_context=app_context)
+        list_result = app_api.list_available_addons_api()
         if list_result.get("status") == "success":
             full_paths = list_result.get("files", [])
             addon_files = [os.path.basename(p) for p in full_paths]
@@ -186,7 +184,7 @@ async def install_addon_page(
     tags=["Content API"],
 )
 async def list_worlds_api_route(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Retrieves a list of available .mcworld template files.
@@ -195,7 +193,7 @@ async def list_worlds_api_route(
     Calls :func:`~bedrock_server_manager.api.application.list_available_worlds_api`.
 
     Args:
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ContentListResponse:
@@ -212,11 +210,10 @@ async def list_worlds_api_route(
             "files": ["Skyblock.mcworld", "CityLiving.mcworld"]
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: List available worlds request by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
-        api_result = app_api.list_available_worlds_api(app_context=app_context)
+        api_result = app_api.list_available_worlds_api()
         if api_result.get("status") == "success":
             full_paths = api_result.get("files", [])
             basenames = [os.path.basename(p) for p in full_paths]
@@ -245,7 +242,7 @@ async def list_worlds_api_route(
     tags=["Content API"],
 )
 async def list_addons_api_route(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Retrieves a list of available .mcaddon or .mcpack template files.
@@ -254,7 +251,7 @@ async def list_addons_api_route(
     Calls :func:`~bedrock_server_manager.api.application.list_available_addons_api`.
 
     Args:
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ContentListResponse:
@@ -271,11 +268,10 @@ async def list_addons_api_route(
             "files": ["ModernFurniture.mcaddon", "LuckyBlocks.mcpack"]
         }
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: List available addons request by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
-        api_result = app_api.list_available_addons_api(app_context=app_context)
+        api_result = app_api.list_available_addons_api()
         if api_result.get("status") == "success":
             full_paths = api_result.get("files", [])
             basenames = [os.path.basename(p) for p in full_paths]
@@ -305,11 +301,10 @@ async def list_addons_api_route(
     tags=["Content API"],
 )
 async def install_world_api_route(
-    request: Request,
     payload: FileNamePayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to install a world from a .mcworld file to a server.
@@ -321,7 +316,7 @@ async def install_world_api_route(
         payload (FileNamePayload): Contains the `filename` of the .mcworld file.
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse:
@@ -329,23 +324,21 @@ async def install_world_api_route(
             - ``message``: Confirmation that the world installation has been initiated.
             - ``task_id``: ID of the background task.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     selected_filename = payload.filename
     logger.info(
         f"API: World install of '{selected_filename}' for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
+
     try:
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
             )
 
         content_base_dir = os.path.join(
-            app_context.settings.get("paths.content"), "worlds"
+            get_settings_instance().get("paths.content"), "worlds"
         )
         full_world_file_path = os.path.normpath(
             os.path.join(content_base_dir, selected_filename)
@@ -376,9 +369,8 @@ async def install_world_api_route(
             tasks.run_task,
             task_id,
             world_api.import_world,
-            server_name=server_name,
-            selected_file_path=full_world_file_path,
-            app_context=app_context,
+            server_name,
+            full_world_file_path,
         )
 
         return ActionResponse(
@@ -414,10 +406,9 @@ async def install_world_api_route(
     tags=["Content API"],
 )
 async def export_world_api_route(
-    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to export the active world of a server to a .mcworld file.
@@ -428,7 +419,7 @@ async def export_world_api_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse:
@@ -436,15 +427,13 @@ async def export_world_api_route(
             - ``message``: Confirmation that the world export has been initiated.
             - ``task_id``: ID of the background task.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(
         f"API: World export requested for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
+
     try:
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -455,8 +444,7 @@ async def export_world_api_route(
             tasks.run_task,
             task_id,
             world_api.export_world,
-            server_name=server_name,
-            app_context=app_context,
+            server_name,
         )
 
         return ActionResponse(
@@ -485,10 +473,9 @@ async def export_world_api_route(
     tags=["Content API"],
 )
 async def reset_world_api_route(
-    request: Request,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to reset a server's world.
@@ -500,7 +487,7 @@ async def reset_world_api_route(
     Args:
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse:
@@ -508,14 +495,12 @@ async def reset_world_api_route(
             - ``message``: Confirmation that the world reset has been initiated.
             - ``task_id``: ID of the background task.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     logger.info(f"API: World reset requested for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
+
     try:
         # Validate server existence before queueing task
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -526,8 +511,7 @@ async def reset_world_api_route(
             tasks.run_task,
             task_id,
             world_api.reset_world,
-            server_name=server_name,
-            app_context=app_context,
+            server_name,
         )
 
         return ActionResponse(
@@ -556,11 +540,10 @@ async def reset_world_api_route(
     tags=["Content API"],
 )
 async def install_addon_api_route(
-    request: Request,
     payload: FileNamePayload,
     background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Initiates a background task to install an addon from a .mcaddon or .mcpack file to a server.
@@ -572,7 +555,7 @@ async def install_addon_api_route(
         payload (FileNamePayload): Contains the `filename` of the addon file.
         background_tasks (BackgroundTasks): FastAPI background tasks utility.
         server_name (str): The name of the server. Validated by dependency.
-        current_user (User): Authenticated user object.
+        current_user (Dict[str, Any]): Authenticated user object.
 
     Returns:
         ActionResponse:
@@ -580,23 +563,21 @@ async def install_addon_api_route(
             - ``message``: Confirmation that the addon installation has been initiated.
             - ``task_id``: ID of the background task.
     """
-    identity = current_user.username
+    identity = current_user.get("username", "Unknown")
     selected_filename = payload.filename
     logger.info(
         f"API: Addon install of '{selected_filename}' for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
+
     try:
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not utils_api.validate_server_exist(server_name):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
             )
 
         content_base_dir = os.path.join(
-            app_context.settings.get("paths.content"), "addons"
+            get_settings_instance().get("paths.content"), "addons"
         )
         full_addon_file_path = os.path.normpath(
             os.path.join(content_base_dir, selected_filename)
@@ -627,9 +608,8 @@ async def install_addon_api_route(
             tasks.run_task,
             task_id,
             addon_api.import_addon,
-            server_name=server_name,
-            addon_file_path=full_addon_file_path,
-            app_context=app_context,
+            server_name,
+            full_addon_file_path,
         )
 
         return ActionResponse(

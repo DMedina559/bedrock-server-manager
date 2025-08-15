@@ -9,31 +9,32 @@ TEST_SERVER_NAME = "test-server"
 
 
 @pytest.mark.asyncio
-async def test_validate_server_exists(app_context, real_bedrock_server):
+@patch("bedrock_server_manager.api.utils.validate_server_exist")
+async def test_validate_server_exists(mock_validate):
     """Test that a valid server passes validation."""
-    request = MagicMock()
-    request.app.state.app_context = app_context
-    result = await validate_server_exists(request, real_bedrock_server.server_name)
-    assert result == real_bedrock_server.server_name
+    mock_validate.return_value = {"status": "success"}
+    result = await validate_server_exists(TEST_SERVER_NAME)
+    assert result == TEST_SERVER_NAME
+    mock_validate.assert_called_once_with(TEST_SERVER_NAME)
 
 
 @pytest.mark.asyncio
-async def test_validate_server_not_found(app_context):
+@patch("bedrock_server_manager.api.utils.validate_server_exist")
+async def test_validate_server_not_found(mock_validate):
     """Test that a non-existent server raises an HTTPException."""
-    request = MagicMock()
-    request.app.state.app_context = app_context
+    mock_validate.return_value = {"status": "error", "message": "Server not found"}
     with pytest.raises(HTTPException) as excinfo:
-        await validate_server_exists(request, "non-existent-server")
+        await validate_server_exists(TEST_SERVER_NAME)
     assert excinfo.value.status_code == 404
-    assert "is not installed or the installation is invalid" in excinfo.value.detail
+    assert "Server not found" in excinfo.value.detail
 
 
 @pytest.mark.asyncio
-async def test_validate_server_invalid_name(app_context):
+@patch("bedrock_server_manager.api.utils.validate_server_exist")
+async def test_validate_server_invalid_name(mock_validate):
     """Test that an invalid server name raises an HTTPException."""
-    request = MagicMock()
-    request.app.state.app_context = app_context
+    mock_validate.side_effect = InvalidServerNameError("Invalid server name")
     with pytest.raises(HTTPException) as excinfo:
-        await validate_server_exists(request, "invalid name")
+        await validate_server_exists(TEST_SERVER_NAME)
     assert excinfo.value.status_code == 400
-    assert "Invalid server name format" in excinfo.value.detail
+    assert "Invalid server name" in excinfo.value.detail

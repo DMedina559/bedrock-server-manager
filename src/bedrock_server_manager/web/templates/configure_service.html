@@ -9,118 +9,135 @@
 {# Include JavaScript files needed for this page #}
 {% block head_scripts %}
     {# Core utilities #}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
     {# Contains saveServiceSettings function and toggle switch JS logic #}
-<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
     {# server_actions.js might be needed if saveServiceSettings calls start_server #}
-<script src="{{ request.url_for('static', path='js/server_actions.js') }}" defer></script>
+    <script src="{{ request.url_for('static', path='js/server_actions.js') }}" defer></script>
 {% endblock %}
 
 
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
-<h2>Configure Service Options</h2>
+    <h2>Configure Service Options</h2>
 
     {# Display server context and installation step if applicable #}
-<p style="margin-bottom: 15px;">
-    Server: <strong>{{ server_name }}</strong>
-    {% if new_install %}
-    {# Indicator for multi-step installation workflow #}
-    {# Assuming this is the final step? Adjust number if needed. #}
-    <br><span class="step-indicator">(Step 4 of 4 for New Installation)</span>
-    {% endif %}
-</p>
+    <p style="margin-bottom: 15px;">
+        Server: <strong>{{ server_name }}</strong>
+        {% if new_install %}
+             {# Indicator for multi-step installation workflow #}
+             {# Assuming this is the final step? Adjust number if needed. #}
+             <br><span class="step-indicator">(Step 4 of 4 for New Installation)</span>
+        {% endif %}
+    </p>
 
     {# --- Status Message Area --- #}
     {# Targeted by JavaScript (showStatusMessage) #}
-<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
-</div>
+    <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
+        <!-- Status messages from save actions will appear here -->
+    </div>
 
     {# Area for JavaScript-driven validation errors #}
-<div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;">
-</div>
+    <div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;">
+        <!-- Overall validation errors will appear here -->
+    </div>
 
     {# Server-side flash messages (handled by base.html) #}
 
     {# --- Service Configuration Section --- #}
-<section class="service-config-section">
+    <section class="service-config-section">
 
-    <p>Configure automatic behavior for this server.</p>
+        {# --- Conditionally render options based on OS --- #}
+        {% if os == 'Linux' or os == 'Windows' %}
 
-    {# --- Auto-Update Toggle (Common to Linux/Windows) --- #}
-    {# This setting controls whether the server checks for updates when started #}
-    <div class="form-group form-group-toggle-container">
-        <div class="form-label-group">
-            {# Label linked to the actual checkbox input #}
-            <label for="service-autoupdate-cb" class="form-label">Enable Auto-Update on Start:</label>
-            <small class="form-help-text">
-                Checks for updates when starting via the manager.
-            </small>
+        <p>Configure automatic behavior for this server.</p>
+
+        {# --- Auto-Update Toggle (Common to Linux/Windows) --- #}
+        {# This setting controls whether the server checks for updates when started #}
+        <div class="form-group form-group-toggle-container">
+            <div class="form-label-group">
+                {# Label linked to the actual checkbox input #}
+                <label for="service-autoupdate-cb" class="form-label">Enable Auto-Update on Start:</label>
+                <small class="form-help-text">
+                    Checks for updates when starting via the manager.
+                </small>
+            </div>
+            <div class="toggle-switch-container">
+                {# Checkbox input stores the state #}
+                <input type="checkbox" id="service-autoupdate-cb" name="autoupdate-cb" class="toggle-input" value="true" {% if autoupdate %}checked{% endif %}>
+                {# Visual switch linked to the checkbox #}
+                <label for="service-autoupdate-cb" class="toggle-switch"></label>
+            </div>
+            {# Hidden input ensures 'false' is submitted if checkbox is unchecked #}
+            <input type="hidden" name="autoupdate" class="toggle-hidden-false" value="false">
+            {# Placeholder for validation error related to this toggle #}
+            {# <div class="validation-error" data-field="autoupdate" style="grid-column: 1 / -1;"></div> #}
         </div>
-        <div class="toggle-switch-container">
-            {# Checkbox input stores the state #}
-            <input type="checkbox" id="service-autoupdate-cb" name="autoupdate-cb" class="toggle-input" value="true" {% if autoupdate %}checked{% endif %}>
-            {# Visual switch linked to the checkbox #}
-            <label for="service-autoupdate-cb" class="toggle-switch"></label>
+
+        {# --- Auto-Start Toggle (Linux - Systemd | Windows - SC.exe) --- #}
+        {% if os == 'Linux' or os == 'Windows' %}
+        <div class="form-group form-group-toggle-container">
+            <div class="form-label-group">
+                <label for="service-autostart-cb" class="form-label">Enable Autostart on Login:</label>
+                <small class="form-help-text">Starts the server automatically.</small>
+            </div>
+            <div class="toggle-switch-container">
+                <input type="checkbox" id="service-autostart-cb" name="autostart-cb" class="toggle-input" value="true" {% if autostart %}checked{% endif %}>
+                <label for="service-autostart-cb" class="toggle-switch"></label>
+            </div>
+            <input type="hidden" name="autostart" class="toggle-hidden-false" value="false">
         </div>
-        {# Hidden input ensures 'false' is submitted if checkbox is unchecked #}
-        <input type="hidden" name="autoupdate" class="toggle-hidden-false" value="false">
-        {# Placeholder for validation error related to this toggle #}
-        {# <div class="validation-error" data-field="autoupdate" style="grid-column: 1 / -1;"></div> #}
-    </div>
+        {% endif %}
 
-    {# --- Auto-Start Toggle (Linux - Systemd | Windows - SC.exe) --- #}
-    <div class="form-group form-group-toggle-container">
-        <div class="form-label-group">
-            <label for="service-autostart-cb" class="form-label">Enable Autostart on BSM Startup:</label>
-            <small class="form-help-text">Starts the server automatically when the BSM Web Server starts using the autostart_plugin.</small>
+
+        {# --- Start Server after Save Toggle (New Install Only) --- #}
+        {% if new_install %}
+        <div class="form-group form-group-toggle-container" style="margin-top: 20px; border-top: 1px solid #555; padding-top: 15px;">
+            <div class="form-label-group">
+                <label for="service-start-server" class="form-label">Start Server After Saving?</label>
+                <small class="form-help-text">Automatically start the server once these settings are saved.</small>
+            </div>
+            <div class="toggle-switch-container">
+                {# This checkbox value is read directly by JS, no hidden false needed #}
+                <input type="checkbox" id="service-start-server" name="start_server" class="toggle-input" value="true"> {# Default off #}
+                <label for="service-start-server" class="toggle-switch"></label>
+            </div>
         </div>
-        <div class="toggle-switch-container">
-            <input type="checkbox" id="service-autostart-cb" name="autostart-cb" class="toggle-input" value="true" {% if autostart %}checked{% endif %}>
-            <label for="service-autostart-cb" class="toggle-switch"></label>
+        {% endif %} {# End of new_install section #}
+
+        {# --- Form Actions --- #}
+        <div class="form-actions">
+            {# Save button calls JS function, passing necessary data #}
+            {# Use |tojson filter for boolean new_install flag #}
+            <button type="button"
+                    onclick="saveServiceSettings(this, '{{ server_name | e }}', '{{ os }}', {{ new_install | tojson }})"
+                    class="action-button start-button">
+                {# Green save button #}
+                Save Service Settings
+            </button>
+
+            {# Navigation button/link #}
+            <a href="{{ request.url_for('index') }}" class="action-link">
+                {% if new_install %}
+                Finish Setup & Go To Dashboard
+                {% else %}
+                « Back to Dashboard
+                {% endif %}
+            </a>
         </div>
-        <input type="hidden" name="autostart" class="toggle-hidden-false" value="false">
-    </div>
 
-
-    {# --- Start Server after Save Toggle (New Install Only) --- #}
-    {% if new_install %}
-    <div class="form-group form-group-toggle-container" style="margin-top: 20px; border-top: 1px solid #555; padding-top: 15px;">
-        <div class="form-label-group">
-            <label for="service-start-server" class="form-label">Start Server After Saving?</label>
-            <small class="form-help-text">Automatically start the server once these settings are saved.</small>
+        {% else %} {# --- Unsupported OS --- #}
+        <div class="message-box message-warning">
+            {# Use warning style #}
+            Service configuration is not currently supported on this operating system ({{ os }}).
         </div>
-        <div class="toggle-switch-container">
-            {# This checkbox value is read directly by JS, no hidden false needed #}
-            <input type="checkbox" id="service-start-server" name="start_server" class="toggle-input" value="true"> {# Default off #}
-            <label for="service-start-server" class="toggle-switch"></label>
+        <div class="form-actions">
+            <a href="{{ request.url_for('index') }}" class="action-button">Back to Dashboard</a> {# Simple back button #}
         </div>
-    </div>
-    {% endif %} {# End of new_install section #}
+        {% endif %} {# End of OS check #}
 
-    {# --- Form Actions --- #}
-    <div class="form-actions">
-        {# Save button calls JS function, passing necessary data #}
-        {# Use |tojson filter for boolean new_install flag #}
-        <button type="button"
-                onclick="saveServiceSettings(this, '{{ server_name | e }}', '{{ os }}', {{ new_install | tojson }})"
-                class="action-button start-button">
-            {# Green save button #}
-            Save Service Settings
-        </button>
-
-        {# Navigation button/link #}
-        <a href="{{ request.url_for('index') }}" class="action-link">
-            {% if new_install %}
-            Finish Setup & Go To Dashboard
-            {% else %}
-            « Back to Dashboard
-            {% endif %}
-        </a>
-    </div>
-
-</section> {# --- End of .service-config-section --- #}
+    </section> {# --- End of .service-config-section --- #}
 
 {% endblock %}
 
@@ -131,23 +148,23 @@
     {# Assuming the JS logic from install_config.js (or similar) is loaded via head_scripts #}
     {# If that script doesn't exist or doesn't handle toggles, add the JS here: #}
     {#
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const toggleInputs = document.querySelectorAll('.service-config-section .toggle-input');
-        console.log(`Initializing ${toggleInputs.length} toggle switches in service config.`);
-        toggleInputs.forEach(input => {
-            const baseName = input.name.replace('-cb', '');
-            const hiddenFalseInput = input.closest('.form-group-toggle-container')?.querySelector(`.toggle-hidden-false[name="${baseName}"]`);
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggleInputs = document.querySelectorAll('.service-config-section .toggle-input');
+            console.log(`Initializing ${toggleInputs.length} toggle switches in service config.`);
+            toggleInputs.forEach(input => {
+                const baseName = input.name.replace('-cb', '');
+                const hiddenFalseInput = input.closest('.form-group-toggle-container')?.querySelector(`.toggle-hidden-false[name="${baseName}"]`);
 
-            const syncHiddenFalse = () => {
-                if (hiddenFalseInput) {
-                    hiddenFalseInput.disabled = input.checked;
-                }
-            };
-            input.addEventListener('change', syncHiddenFalse);
-            syncHiddenFalse(); // Initial sync
+                const syncHiddenFalse = () => {
+                    if (hiddenFalseInput) {
+                        hiddenFalseInput.disabled = input.checked;
+                    }
+                };
+                input.addEventListener('change', syncHiddenFalse);
+                syncHiddenFalse(); // Initial sync
+            });
         });
-    });
-</script>
+    </script>
     #}
 {% endblock %}

@@ -2,16 +2,17 @@
 """Manages application-wide configuration settings.
 
 This module provides the `Settings` class, which is responsible for loading
-settings from a database, providing default values for missing keys, saving
-changes back to the database, and determining the appropriate application data and
+settings from a JSON file, providing default values for missing keys, saving
+changes back to the file, and determining the appropriate application data and
 configuration directories based on the environment.
 
-The configuration is stored in a key-value format in the database. Settings are accessed
+The configuration is stored in a nested JSON format. Settings are accessed
 programmatically using dot-notation (e.g., :meth:`Settings.get('paths.servers')`).
 
 Key components:
 
     - :class:`Settings`: The main class for managing configuration.
+    - :func:`deep_merge`: A utility function for merging dictionaries.
     - `settings`: A global instance of the :class:`Settings` class.
 
 """
@@ -22,16 +23,12 @@ import logging
 import collections.abc
 from typing import Any, Dict
 
-from ..db.database import db_session_manager, engine
-from ..db.models import Setting, Base
 from ..error import ConfigurationError
 from .const import (
     package_name,
     env_name,
-    app_author,
     get_installed_version,
 )
-from . import bcm_config
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +68,14 @@ def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any,
     """
     for key, value in source.items():
         if isinstance(value, collections.abc.Mapping):
-            destination[key] = deep_merge(value, destination.get(key, {}))
+            # Ensure the destination node is a dictionary before merging
+            node = destination.setdefault(key, {})
+            if not isinstance(node, collections.abc.Mapping):
+                # If the destination node exists but is not a dictionary,
+                # overwrite it with the source dictionary node
+                node = {}
+                destination[key] = node
+            deep_merge(value, node)
         else:
             destination[key] = value
     return destination
@@ -85,13 +89,13 @@ class Settings:
 
         - Determining appropriate application data and configuration directories
           based on the environment (respecting ``BSM_DATA_DIR``).
-        - Loading settings from a database.
+        - Loading settings from a JSON configuration file (``bedrock_server_manager.json``).
         - Providing sensible default values for missing settings.
         - Migrating settings from older formats (e.g., ``script_config.json`` or schema v1).
-        - Saving changes back to the database.
+        - Saving changes back to the configuration file.
         - Ensuring critical directories (e.g., for servers, backups, logs) exist.
 
-    Settings are stored in a key-value format in the database and can be accessed
+    Settings are stored in a nested dictionary structure and can be accessed
     programmatically using dot-notation via the :meth:`get` and :meth:`set` methods
     (e.g., ``settings.get('paths.servers')``).
 
@@ -112,7 +116,7 @@ class Settings:
             2. Handles migration of the configuration file name from the old
                `script_config.json` to `bedrock_server_manager.json` if necessary.
             3. Retrieves the installed package version.
-            4. Loads settings from the database. If the database is empty,
+            4. Loads settings from the configuration file. If the file doesn't exist,
                it's created with default settings. If an old configuration schema is
                detected, it's migrated.
             5. Ensures all necessary application directories (e.g., for servers,
@@ -120,11 +124,11 @@ class Settings:
 
         """
         logger.debug("Initializing Settings")
-
         # Determine the primary application data and config directories.
         self._app_data_dir_path = self._determine_app_data_dir()
         self._config_dir_path = self._determine_app_config_dir()
         self.config_file_name = NEW_CONFIG_FILE_NAME
+        self._migrate_config_filename()
         self.config_path = os.path.join(self._config_dir_path, self.config_file_name)
 
         # Get the installed package version.
@@ -134,10 +138,43 @@ class Settings:
         self._settings: Dict[str, Any] = {}
         self.load()
 
+    def _migrate_config_filename(self):
+        """
+        Checks for the old config filename and renames it to the new one.
+
+        This is a one-time operation for existing installations that previously
+        used `script_config.json`. If `script_config.json` exists and
+        `bedrock_server_manager.json` does not, `script_config.json` will be
+        renamed to `bedrock_server_manager.json`.
+
+        Raises:
+            ConfigurationError: If the renaming operation fails due to an OSError
+                (e.g., permission issues).
+        """
+        old_config_path = os.path.join(self._config_dir_path, OLD_CONFIG_FILE_NAME)
+        new_config_path = os.path.join(self._config_dir_path, NEW_CONFIG_FILE_NAME)
+
+        if os.path.exists(old_config_path) and not os.path.exists(new_config_path):
+            logger.info(
+                f"Found old configuration file '{OLD_CONFIG_FILE_NAME}'. "
+                f"Migrating to '{NEW_CONFIG_FILE_NAME}'..."
+            )
+            try:
+                os.rename(old_config_path, new_config_path)
+                logger.info(
+                    "Successfully migrated configuration file name. "
+                    f"The old file '{OLD_CONFIG_FILE_NAME}' has been renamed."
+                )
+            except OSError as e:
+                raise ConfigurationError(
+                    f"Failed to rename configuration file from '{old_config_path}' to "
+                    f"'{new_config_path}'. Please check file permissions."
+                ) from e
+
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
 
-        It prioritizes the ``data_dir`` from bcm_config if set.
+        It prioritizes the ``BSM_DATA_DIR`` environment variable if set.
         Otherwise, it defaults to a ``bedrock-server-manager`` directory in the
         user's home folder (e.g., ``~/.bedrock-server-manager`` on Linux/macOS or
         ``%USERPROFILE%\\bedrock-server-manager`` on Windows).
@@ -146,10 +183,10 @@ class Settings:
         Returns:
             str: The absolute path to the application data directory.
         """
-        # 1. Check config file
-        config = bcm_config.load_config()
-        data_dir = config["data_dir"]
-
+        env_var_name = f"{env_name}_DATA_DIR"
+        data_dir = os.environ.get(env_var_name)
+        if not data_dir:
+            data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
         os.makedirs(data_dir, exist_ok=True)
         return data_dir
 
@@ -206,6 +243,7 @@ class Settings:
                     "port": 11325,
                     "token_expires_weeks": 4,
                     "threads": 4,
+                    "theme": "dark",
                 },
                 "custom": {}
             }
@@ -238,19 +276,21 @@ class Settings:
                 "host": "127.0.0.1",
                 "port": 11325,
                 "token_expires_weeks": 4,
+                "theme": "dark",
                 "threads": 4,
             },
             "custom": {},
         }
 
     def load(self):
-        """Loads settings from the database.
+        """Loads settings from the JSON configuration file.
 
         The process is as follows:
 
             1. Starts with a fresh copy of the default settings (see :meth:`default_config`).
-            2. If the database is empty, it's populated with these default settings.
-            3. If the database has settings, they are loaded:
+            2. If the configuration file (``bedrock_server_manager.json``) doesn't exist,
+               it's created with these default settings.
+            3. If the file exists, it's read:
                 a. If the loaded configuration does not contain a ``config_version`` key,
                    it's assumed to be an old (v1) flat format and is migrated to the
                    current nested (v2) structure via :meth:`_migrate_v1_to_v2`. The
@@ -270,29 +310,95 @@ class Settings:
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
 
-        with db_session_manager() as db:
-            # Check if the database is empty
-            if db.query(Setting).count() == 0:
-                logger.info(
-                    "No settings found in the database. Creating with default settings."
+        if not os.path.exists(self.config_path):
+            logger.info(
+                f"Configuration file not found at {self.config_path}. "
+                "Creating with default settings."
+            )
+            self._write_config()
+        else:
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    user_config = json.load(f)
+
+                # Check for old config format and migrate if necessary.
+                if "config_version" not in user_config:
+                    self._migrate_v1_to_v2(user_config)
+                    # Reload config from the newly migrated file
+                    with open(self.config_path, "r", encoding="utf-8") as f:
+                        user_config = json.load(f)
+
+                # Deep merge user settings into the default settings.
+                deep_merge(user_config, self._settings)
+
+            except (ValueError, OSError) as e:
+                logger.warning(
+                    f"Could not load config file at {self.config_path}: {e}. "
+                    "Using default settings. A new config will be saved on the next settings change."
                 )
-                self._write_config(db)
-            else:
-                try:
-                    user_config = {}
-                    for setting in db.query(Setting).all():
-                        user_config[setting.key] = setting.value
-
-                    # Deep merge user settings into the default settings.
-                    deep_merge(user_config, self._settings)
-
-                except (ValueError, OSError) as e:
-                    logger.warning(
-                        f"Could not load config from database: {e}. "
-                        "Using default settings. A new config will be saved on the next settings change."
-                    )
 
         self._ensure_dirs_exist()
+
+    def _migrate_v1_to_v2(self, old_config: dict):
+        """Migrates a flat v1 configuration (no ``config_version`` key) to the nested v2 format.
+
+        This method performs the following steps:
+
+            1. Backs up the existing v1 configuration file to ``<config_file_name>.v1.bak``.
+            2. Creates a new configuration structure based on :meth:`default_config`.
+            3. Maps known keys from the old flat ``old_config`` dictionary to their
+               new locations in the nested v2 structure.
+            4. Sets ``config_version`` to ``CONFIG_SCHEMA_VERSION`` in the new structure.
+            5. Writes the new v2 configuration to the primary configuration file.
+
+        Args:
+            old_config (dict): The loaded dictionary from the old, flat (v1)
+                configuration file.
+
+        Raises:
+            ConfigurationError: If backing up the old config file fails (e.g., due
+                to file permissions).
+        """
+        logger.info(
+            "Old configuration format (v1) detected. Migrating to new nested format (v2)..."
+        )
+        # 1. Back up the old file
+        backup_path = f"{self.config_path}.v1.bak"
+        try:
+            os.rename(self.config_path, backup_path)
+            logger.info(f"Old configuration file backed up to {backup_path}")
+        except OSError as e:
+            raise ConfigurationError(
+                f"Failed to back up old config file to {backup_path}. "
+                "Migration aborted. Please check file permissions."
+            ) from e
+
+        # 2. Create the new config by starting with defaults and overwriting with old values
+        new_config = self.default_config
+        key_map = {
+            # Old Key: ("category", "new_key")
+            "BASE_DIR": ("paths", "servers"),
+            "CONTENT_DIR": ("paths", "content"),
+            "DOWNLOAD_DIR": ("paths", "downloads"),
+            "BACKUP_DIR": ("paths", "backups"),
+            "PLUGIN_DIR": ("paths", "plugins"),
+            "LOG_DIR": ("paths", "logs"),
+            "BACKUP_KEEP": ("retention", "backups"),
+            "DOWNLOAD_KEEP": ("retention", "downloads"),
+            "LOGS_KEEP": ("retention", "logs"),
+            "FILE_LOG_LEVEL": ("logging", "file_level"),
+            "CLI_LOG_LEVEL": ("logging", "cli_level"),
+            "WEB_PORT": ("web", "port"),
+            "TOKEN_EXPIRES_WEEKS": ("web", "token_expires_weeks"),
+        }
+        for old_key, (category, new_key) in key_map.items():
+            if old_key in old_config:
+                new_config[category][new_key] = old_config[old_key]
+
+        # 3. Save the new configuration file
+        self._settings = new_config
+        self._write_config()
+        logger.info("Successfully migrated configuration to the new format.")
 
     def _ensure_dirs_exist(self):
         """Ensures that all critical directories specified in the settings exist.
@@ -323,24 +429,22 @@ class Settings:
                         f"Could not create critical directory: {dir_path}"
                     ) from e
 
-    def _write_config(self, db: Any):
-        """Writes the current settings dictionary to the database.
+    def _write_config(self):
+        """Writes the current settings dictionary to the JSON configuration file.
+
+        The settings are stored in the file specified by :attr:`config_path`.
+        The parent directory for the config file is created if it doesn't exist.
+        The JSON is pretty-printed with an indent of 4 and sorted keys.
 
         Raises:
             ConfigurationError: If writing the configuration fails (e.g., due to
                 permission issues or an object that cannot be serialized to JSON).
         """
         try:
-            for key, value in self._settings.items():
-                setting = db.query(Setting).filter_by(key=key).first()
-                if setting:
-                    setting.value = value
-                else:
-                    setting = Setting(key=key, value=value)
-                    db.add(setting)
-            db.commit()
-        except Exception as e:
-            db.rollback()
+            os.makedirs(self._config_dir_path, exist_ok=True)
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(self._settings, f, indent=4, sort_keys=True)
+        except (OSError, TypeError) as e:
             raise ConfigurationError(f"Failed to write configuration: {e}") from e
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -371,14 +475,14 @@ class Settings:
         """Sets a configuration value using dot-notation and saves the change.
 
         Intermediate dictionaries are created if they do not exist along the
-        path specified by `key`. The configuration is only written to the database via
+        path specified by `key`. The configuration is only written to disk via
         :meth:`_write_config` if the new ``value`` is different from the
         existing value for the given ``key``.
 
         Example:
             ``settings.set("retention.backups", 5)``
             This will update the "backups" key within the "retention" dictionary
-            and then save the entire configuration to the database.
+            and then save the entire configuration to the file.
 
         Args:
             key (str): The dot-separated configuration key to set (e.g.,
@@ -396,18 +500,17 @@ class Settings:
 
         d[keys[-1]] = value
         logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
-        with db_session_manager() as db:
-            self._write_config(db)
+        self._write_config()
 
     def reload(self):
-        """Reloads the settings from the database.
+        """Reloads the settings from the configuration file.
 
         This method re-runs the :meth:`load` method, which re-reads the
-        configuration from the database and updates the
-        in-memory settings dictionary. Any external changes made to the database
+        configuration file (specified by :attr:`config_path`) and updates the
+        in-memory settings dictionary. Any external changes made to the file
         since the last load or save will be reflected.
         """
-        logger.info("Reloading configuration from database")
+        logger.info(f"Reloading configuration from {self.config_path}")
         self.load()
         logger.info("Configuration reloaded successfully.")
 

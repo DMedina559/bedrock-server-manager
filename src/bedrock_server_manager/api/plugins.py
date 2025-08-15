@@ -19,19 +19,17 @@ These functions facilitate management and interaction with plugins, primarily
 for use by administrative interfaces like a web UI or CLI.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-from ..plugins.plugin_manager import PluginManager
+from ..instances import get_plugin_manager_instance
 from ..plugins import plugin_method
 from ..error import UserInputError
-from ..context import AppContext
-from ..instances import get_plugin_manager_instance
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_plugin_statuses")
-def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
+def get_plugin_statuses() -> Dict[str, Any]:
     """
     Retrieves the statuses and metadata of all discovered plugins.
 
@@ -39,9 +37,6 @@ def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, A
     the plugin files on disk by calling an internal method of the
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
     It then returns a copy of the current plugin configuration.
-
-    Args:
-        plugin_manager (PluginManager): The plugin manager instance.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -53,12 +48,11 @@ def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, A
     """
     logger.debug("API: Attempting to get plugin statuses.")
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_plugin_manager_instance()
-        pm._synchronize_config_with_disk()
-        statuses = pm.plugin_config
+        plugin_manager = get_plugin_manager_instance()
+        plugin_manager._synchronize_config_with_disk()
+        # The config contains dicts like: {"enabled": bool, "description": str, "version": str}
+        statuses = plugin_manager.plugin_config
+
         logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
         return {"status": "success", "plugins": statuses.copy()}
     except Exception as e:
@@ -66,11 +60,7 @@ def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, A
         return {"status": "error", "message": f"Failed to get plugin statuses: {e}"}
 
 
-def set_plugin_status(
-    plugin_name: str = None,
-    enabled: bool = None,
-    app_context: Optional[AppContext] = None,
-) -> Dict[str, Any]:
+def set_plugin_status(plugin_name: str, enabled: bool) -> Dict[str, Any]:
     """
     Sets the enabled/disabled status for a specific plugin.
 
@@ -86,7 +76,6 @@ def set_plugin_status(
         needs to be called afterwards.
 
     Args:
-        plugin_manager (PluginManager): The plugin manager instance.
         plugin_name (str): The name of the plugin to configure.
         enabled (bool): ``True`` to enable the plugin, ``False`` to disable it.
 
@@ -103,25 +92,34 @@ def set_plugin_status(
 
     logger.info(f"API: Setting status for plugin '{plugin_name}' to {enabled}.")
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_plugin_manager_instance()
-        pm._synchronize_config_with_disk()
+        plugin_manager = get_plugin_manager_instance()
+        # Ensure the plugin manager's config is up-to-date with disk.
+        # This will also ensure plugin_name exists if it's a valid plugin.
+        plugin_manager._synchronize_config_with_disk()
 
-        if plugin_name not in pm.plugin_config:
+        if plugin_name not in plugin_manager.plugin_config:
+            logger.warning(
+                f"API: Attempted to configure non-existent or undiscovered plugin '{plugin_name}'."
+            )
             raise UserInputError(
                 f"Plugin '{plugin_name}' not found or not discoverable."
             )
 
-        if not isinstance(pm.plugin_config.get(plugin_name), dict):
+        # Check if the entry for plugin_name is indeed a dictionary
+        # This is a defensive check, especially if _synchronize_config_with_disk has robust migration
+        if not isinstance(plugin_manager.plugin_config.get(plugin_name), dict):
+            logger.error(
+                f"API: Plugin '{plugin_name}' has an invalid configuration format. Expected a dictionary."
+            )
+
             return {
                 "status": "error",
                 "message": f"Plugin '{plugin_name}' has an invalid configuration. Please try reloading plugins.",
             }
 
-        pm.plugin_config[plugin_name]["enabled"] = bool(enabled)
-        pm._save_config()
+        # Update the 'enabled' key within the plugin's config dictionary
+        plugin_manager.plugin_config[plugin_name]["enabled"] = bool(enabled)
+        plugin_manager._save_config()
 
         action = "enabled" if enabled else "disabled"
         logger.info(f"API: Plugin '{plugin_name}' successfully {action}.")
@@ -129,7 +127,7 @@ def set_plugin_status(
             "status": "success",
             "message": f"Plugin '{plugin_name}' has been {action}. Reload plugins for changes to take full effect.",
         }
-    except UserInputError as e:
+    except UserInputError as e:  # Catch specific UserInputError to re-raise
         raise
     except Exception as e:
         logger.error(
@@ -141,16 +139,15 @@ def set_plugin_status(
         }
 
 
-def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
+def reload_plugins() -> Dict[str, Any]:
     """
     Triggers the plugin manager to unload all active plugins and
     then reload all plugins based on the current configuration.
 
-    This function calls the `reload` method of the
+    This function calls the `reload` method of the global
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager` instance.
-
-    Args:
-        plugin_manager (PluginManager): The plugin manager instance.
+    This process involves dispatching `on_unload` to existing plugins, clearing
+    event listeners, and then re-running the full plugin discovery and loading sequence.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -159,11 +156,8 @@ def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
     """
     logger.info("API: Attempting to reload all plugins.")
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_plugin_manager_instance()
-        pm.reload()
+        plugin_manager = get_plugin_manager_instance()
+        plugin_manager.reload()  # Call the reload method on the global instance
         logger.info("API: Plugins reloaded successfully.")
         return {
             "status": "success",
@@ -178,20 +172,17 @@ def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
 
 
 def trigger_external_plugin_event_api(
-    event_name: str = None,
-    payload: Dict[str, Any] = None,
-    app_context: Optional[AppContext] = None,
+    event_name: str, payload: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Allows an external source (like a web route or CLI) to trigger a custom plugin event.
 
-    This function calls the `trigger_custom_plugin_event` method of the
+    This function calls the `trigger_custom_plugin_event` method of the global
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager` instance.
     The `triggering_plugin_name` argument for the core method is set to
     ``"external_api_trigger"`` to identify the source of this event.
 
     Args:
-        plugin_manager (PluginManager): The plugin manager instance.
         event_name (str): The name of the custom event to trigger. Must follow
             the 'namespace:event_name' format for custom events.
         payload (Optional[Dict[str, Any]], optional): A dictionary of data to
@@ -209,18 +200,18 @@ def trigger_external_plugin_event_api(
             'namespace:event_name' format required by the plugin manager.
     """
     if not event_name:
+        logger.warning("API: Trigger custom event failed - event_name is required.")
+        # It's better to raise an error here for the web route to catch and return 400
         raise UserInputError("Event name is required to trigger a custom plugin event.")
 
     logger.info(
         f"API: Attempting to trigger custom plugin event '{event_name}' externally."
     )
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_plugin_manager_instance()
+        plugin_manager = get_plugin_manager_instance()
         actual_payload = payload if payload is not None else {}
-        pm.trigger_custom_plugin_event(
+        # "external_api_trigger" identifies the source of this event.
+        plugin_manager.trigger_custom_plugin_event(
             event_name, "external_api_trigger", **actual_payload
         )
         logger.info(
