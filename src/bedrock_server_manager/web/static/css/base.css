@@ -463,3 +463,80 @@ pre.monitor-output {
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: center;
+}
+
+/* ==========================================================================
+   Modal Styles
+   ========================================================================== */
+
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 100; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+}
+
+.modal-content {
+    background-color: var(--container-background-color);
+    margin: 15% auto; /* 15% from the top and centered */
+    padding: 25px;
+    border: 1px solid var(--border-color);
+    width: 80%; /* Could be more or less, depending on screen size */
+    max-width: 500px;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.modal-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: #fff;
+    text-decoration: none;
+}
+
+/* Secondary button style */
+.action-button.secondary {
+    background-color: var(--button-background-color);
+    border-color: var(--button-border-color);
+    color: var(--button-text-color);
+}
+
+.action-button.secondary:hover {
+    background-color: var(--button-hover-background-color);
+    border-color: var(--button-hover-border-color);
+}
+
+/* ==========================================================================
+   Setup Flow Banner
+   ========================================================================== */
+.setup-banner {
+    background-color: rgba(40, 40, 90, 0.85);
+    border: 1px solid rgba(100, 100, 255, 0.7);
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.setup-banner p {
+    margin: 0 0 10px 0;
+}
