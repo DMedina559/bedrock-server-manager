@@ -98,21 +98,21 @@ Running BSM as a service on Windows has specific requirements:
 *   **Administrator Privileges**: You must run your Command Prompt or PowerShell session **as an Administrator** to create, configure, or manage Windows services.
 *   **Alternative to Services (No Admin)**: If you don't have administrative rights, you can manually create a task in the **Windows Task Scheduler** to launch the BSM web server on startup.
 *   **Use Python from python.org**: It is **highly recommended** to use a Python installer from [python.org](https://www.python.org/downloads/windows/). The version from the Microsoft Store is known to cause critical file-locking issues that can prevent BSM and other Python Environments from working correctly.
-*   **Set the "Log On As" Account**: A common reason services fail to start is incorrect permissions. After creating a service, go to the Services app (`services.msc`), find the service, and in its **Properties**, go to the **Log On** tab. Change "Log on as:" from "Local System account" to **"This account"** and enter your local Windows username and password. This ensures the service can access server files, backups, and content in your user directory.
+~~*   **Set the "Log On As" Account**: A common reason services fail to start is incorrect permissions. After creating a service, go to the Services app (`services.msc`), find the service, and in its **Properties**, go to the **Log On** tab. Change "Log on as:" from "Local System account" to **"This account"** and enter your local Windows username and password. This ensures the service can access server files, backups, and content in your user directory.~~ (As of v3.6.0, this is no longer required as credentials are entered at creation.)
 
 ### Linux Service Integration
 
-*   **Enable Startup on Boot (`linger`)**: Services are created with the `--user` flag which only run while you are logged in. To enable your BSM service to start automatically on boot and stay running, you must enable lingering for your user account:
+*   **Enable Startup on Boot (`linger`)**: Services are created with the `--user` flag by default which only run while you are logged in. To enable your BSM service to start automatically on boot and stay running, you must enable lingering for your user account:
     ```bash
     sudo loginctl enable-linger $(whoami)
     ```
-*   **Environment Variables**: `systemd` user services do not inherit environment variables from your shell (`~/.bashrc`, etc.). You must handle them manually:
+~~*   **Environment Variables**: `systemd` user services do not inherit environment variables from your shell (`~/.bashrc`, etc.). You must handle them manually:
     1.  Create a separate environment file (e.g., `~/.config/bsm/bsm.env`) containing your `BEDROCK_SERVER_MANAGER_*` variables.
     2.  **Secure the file.** Since this file contains sensitive credentials, restrict its permissions so that only your user account can read and write to it:
         ```bash
         chmod 600 ~/.config/bsm/bsm.env
         ```
-    3.  Add the `EnvironmentFile=` directive to your `systemd` service file to load the variables.
+    3.  Add the `EnvironmentFile=` directive to your `systemd` service file to load the variables.~~ (As of v3.6.0, a database is used to store various configuration, including environment variables, so this is no longer necessary.)
 
 ### Tested Systems
 - Debian 12 (Bookworm)

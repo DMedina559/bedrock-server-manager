@@ -46,9 +46,15 @@ Example: specify all ipv4:
 bedrock-server-manager web start --host 0.0.0.0
 ```
 
+You can also change the host by running the `setup` command, which will prompt you for the host to use.
+
+```bash
+bedrock-server-manager setup
+```
+
 ### Port:
 
-By default Bedrock Server Manager will use port `11325`. This can be change in bedrock_serveer_manager.json
+By default Bedrock Server Manager will use port `11325`. This can be change with the `setup` command.
 
 ### HTTP API:
 
