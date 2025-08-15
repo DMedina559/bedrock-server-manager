@@ -62,21 +62,21 @@ def test_setup_command_advanced_db(mock_questionary, mock_bcm_config, runner):
     # Mock questionary prompts
     mock_questionary.text.return_value.ask.side_effect = [
         "test_data_dir",
+        "test_db_url",  # DB URL
         "testhost",
         "12345",
-        "test_db_url",  # DB URL
     ]
     mock_questionary.confirm.return_value.ask.side_effect = [
-        False,
         True,
-    ]  # No to service, Yes to advanced DB
+        False,
+    ]  # Yes to advanced DB, No to service
 
     result = runner.invoke(
         setup,
         obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "Setup complete!" in result.output
 
     # Verify config saving
