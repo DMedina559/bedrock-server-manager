@@ -86,40 +86,6 @@ Once the server is running, a one first-time setup will be required. This includ
 
 ---
 
-#### JSON Configuration File
-
-Certain variables can be changed directly in the `bedrock_server_manager.json` file, located at `./.config/bedrock_server_manager.json` within your data directory. This file provides default configuration values for the application.
-
-<details>
-<summary><b>Default JSON file</b></summary>
-
-```json
-{
-    "config_version": 2,
-    "paths": {
-        "servers": "<app_data_dir>/servers",
-        "content": "<app_data_dir>/content",
-        "downloads": "<app_data_dir>/.downloads",
-        "backups": "<app_data_dir>/backups",
-        "plugins": "<app_data_dir>/plugins",
-        "themes": "<app_data_dir>/themes",
-        "logs": "<app_data_dir>/.logs"
-    },
-    "retention": {
-        "backups": 3,
-        "downloads": 3,
-        "logs": 3
-    },
-    "web": {
-        "host": "127.0.0.1",
-        "port": 11325,
-        "token_expires_weeks": 4,
-        "threads": 4
-    }
-}
-```
-</details>
-
 ## What's Next?
 Bedrock Server Manager is a powerful tool for managing Minecraft Bedrock Dedicated Servers. To explore more about its capabilities, check out the following sections:
 

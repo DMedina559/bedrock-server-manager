@@ -28,7 +28,7 @@ You can easily control which plugins are active from the Web Server.
 Changes made are saved immediately and will be applied the next time the application starts or reload.
 
 ```{note}
-If you're changing the status of a FASTAPI plugin you must fullt restart the web server
+If you're changing the status of a FASTAPI plugin you must fully restart the web server
 ```
 
 ---

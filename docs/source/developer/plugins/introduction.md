@@ -175,6 +175,12 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 
 # Attempt to import authentication dependency; provide a fallback for isolated testing/robustness
+# There are three access roles admin, moderator, and user.
+
+# - get_current_user: User, read only access APIs
+# - get_moderator_user: Moderator, basic server management APIs, not including installs, updates, or content management
+# - get_admin_user: Admin, full access to all APIs
+
 try:
     from bedrock_server_manager.web import get_current_user
     HAS_AUTH_DEP = True
