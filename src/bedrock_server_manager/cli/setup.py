@@ -1,10 +1,9 @@
 from math import e
 import click
 import questionary
-from appdirs import user_data_dir
 
 from ..config import bcm_config
-from ..config.const import package_name, app_author, app_name_title
+from ..config.const import app_name_title
 from .service import interactive_web_service_workflow
 
 
@@ -25,7 +24,7 @@ def setup(ctx: click.Context):
         current_config = bcm_config.load_config()
 
         # --- Prompt for Data Directory ---
-        default_data_dir = user_data_dir(package_name, app_author)
+        default_data_dir = bcm_config._config_dir
         data_dir = questionary.text(
             "Enter the path for the data directory:",
             default=current_config.get("data_dir", default_data_dir),

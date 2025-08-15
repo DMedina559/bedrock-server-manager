@@ -25,7 +25,7 @@ from .const import package_name, app_author
 logger = logging.getLogger(__name__)
 
 _CONFIG_FILE_NAME = "bedrock_server_manager.json"
-_config_dir = user_config_dir(package_name, app_author)
+_config_dir = user_config_dir(package_name)
 _config_path = os.path.join(_config_dir, _CONFIG_FILE_NAME)
 
 
@@ -60,7 +60,7 @@ def load_config() -> Dict[str, Any]:
 
     if "data_dir" not in config or not config["data_dir"]:
         # Fallback to a bedrock-server-manager folder in the user's home directory
-        data_dir = os.path.join(os.path.expanduser("~"), f".{package_name}")
+        data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
         config["data_dir"] = data_dir
         logger.info(f"Configuration 'data_dir' not set. Defaulting to {data_dir}.")
         config_changed = True
