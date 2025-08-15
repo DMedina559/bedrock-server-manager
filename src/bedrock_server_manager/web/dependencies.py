@@ -77,9 +77,3 @@ async def validate_server_exists(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-async def needs_setup():
-    """
-    FastAPI dependency that checks if the application needs to be set up.
-    """
-    with db_session_manager() as db:
-        return db.query(User).first() is None
