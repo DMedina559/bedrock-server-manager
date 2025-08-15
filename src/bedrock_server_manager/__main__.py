@@ -71,28 +71,10 @@ def create_cli_app():
 
         try:
             # --- Initial Application Setup ---
-            settings = Settings()
-            manager = BedrockServerManager(settings)
-
-            app_context = AppContext(settings=settings, manager=manager)
+            app_context = AppContext()
             from .instances import set_app_context
 
             set_app_context(app_context)
-
-            log_dir = settings.get("paths.logs")
-
-            logger = setup_logging(
-                log_dir=log_dir,
-                log_keep=settings.get("retention.logs"),
-                file_log_level=settings.get("logging.file_level"),
-                cli_log_level=settings.get("logging.cli_level"),
-                force_reconfigure=True,
-                plugin_dir=settings.get("paths.plugins"),
-            )
-            log_separator(logger, app_name=app_name_title, app_version=__version__)
-            logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
-
-            startup_checks(app_context, app_name_title, __version__)
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app():
@@ -102,6 +84,26 @@ def create_cli_app():
                 logger.info("CLI app shutdown hooks complete.")
 
             atexit.register(shutdown_cli_app)
+
+            # Load the full application context only if the command is not 'setup' or 'migrate'
+            if ctx.invoked_subcommand not in ["setup", "migrate"]:
+                app_context.load()
+
+                log_dir = app_context.settings.get("paths.logs")
+                logger = setup_logging(
+                    log_dir=log_dir,
+                    log_keep=app_context.settings.get("retention.logs"),
+                    file_log_level=app_context.settings.get("logging.file_level"),
+                    cli_log_level=app_context.settings.get("logging.cli_level"),
+                    force_reconfigure=True,
+                    plugin_dir=app_context.settings.get("paths.plugins"),
+                )
+                log_separator(logger, app_name=app_name_title, app_version=__version__)
+                logger.info(
+                    f"Starting {app_name_title} v{__version__} (CLI context)..."
+                )
+
+                startup_checks(app_context, app_name_title, __version__)
 
         except Exception as setup_e:
             logging.getLogger("bsm_critical_setup").critical(

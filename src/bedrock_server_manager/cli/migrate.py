@@ -21,8 +21,11 @@ def migrate():
 
 
 @migrate.command()
-def database():
+@click.pass_context
+def database(ctx: click.Context):
     """Upgrades the database to the latest version."""
+    app_context: AppContext = ctx.obj["app_context"]
+    app_context.load()
     try:
         click.echo("Upgrading database...")
         alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
@@ -39,10 +42,14 @@ def database():
 def old_config(ctx: click.Context):
     """Migrates settings from environment variables and old formats to the database."""
     app_context: AppContext = ctx.obj["app_context"]
-    settings = app_context.settings
     try:
         click.echo("Migrating settings...")
         migrate_env_vars_to_config_file()
+
+        # Now that env vars are migrated, load the AppContext
+        app_context.load()
+
+        settings = app_context.settings
         players_json_path = os.path.join(settings.config_dir, "players.json")
         migrate_players_json_to_db(players_json_path)
         migrate_env_auth_to_db(env_name)

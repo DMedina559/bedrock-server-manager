@@ -120,19 +120,12 @@ class Settings:
 
         """
         logger.debug("Initializing Settings")
-
-        # Determine the primary application data and config directories.
-        self._app_data_dir_path = self._determine_app_data_dir()
-        self._config_dir_path = self._determine_app_config_dir()
+        self._app_data_dir_path = None
+        self._config_dir_path = None
         self.config_file_name = NEW_CONFIG_FILE_NAME
-        self.config_path = os.path.join(self._config_dir_path, self.config_file_name)
-
-        # Get the installed package version.
+        self.config_path = None
         self._version_val = get_installed_version()
-
-        # Load settings from the config file or create a default one.
         self._settings: Dict[str, Any] = {}
-        self.load()
 
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
@@ -267,6 +260,11 @@ class Settings:
                critical application directories.
 
         """
+        # Determine the primary application data and config directories.
+        self._app_data_dir_path = self._determine_app_data_dir()
+        self._config_dir_path = self._determine_app_config_dir()
+        self.config_path = os.path.join(self._config_dir_path, self.config_file_name)
+
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
 

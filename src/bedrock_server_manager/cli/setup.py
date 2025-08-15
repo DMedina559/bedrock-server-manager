@@ -22,7 +22,6 @@ def setup(ctx: click.Context):
         app_context: AppContext = ctx.obj["app_context"]
         click.secho(f"{app_name_title} - Setup", fg="cyan")
 
-        settings = app_context.settings
         current_config = bcm_config.load_config()
 
         # --- Prompt for Data Directory ---
@@ -34,6 +33,31 @@ def setup(ctx: click.Context):
         if data_dir:
             bcm_config.set_config_value("data_dir", data_dir)
             click.secho(f"Data directory set to: {data_dir}", fg="green")
+
+        # --- Prompt for Database URL ---
+        click.echo("\n--- Database Configuration ---")
+        if questionary.confirm(
+            "Do you want to configure an advanced database connection (e.g., PostgreSQL)?",
+            default=False,
+        ).ask():
+            db_url = questionary.text(
+                "Enter the full database URL (e.g., postgresql://user:pass@host/dbname):",
+                default=current_config.get("db_url", ""),
+            ).ask()
+            if db_url:
+                bcm_config.set_config_value("db_url", db_url)
+                click.secho(f"Database URL set to: {db_url}", fg="green")
+        else:
+            # If they say no, ensure the db_url is cleared so the default is used
+            if "db_url" in current_config:
+                config = bcm_config.load_config()
+                del config["db_url"]
+                bcm_config.save_config(config)
+            click.echo("Using the default SQLite database.")
+
+        # --- Load AppContext ---
+        app_context.load()
+        settings = app_context.settings
 
         # --- Prompt for Web Host and Port ---
         click.echo("\n--- Web UI Configuration ---")
@@ -67,27 +91,6 @@ def setup(ctx: click.Context):
             click.echo(
                 "Skipping service configuration. You can set it up later using the 'service' command."
             )
-
-        # --- Prompt for Database URL ---
-        click.echo("\n--- Database Configuration ---")
-        if questionary.confirm(
-            "Do you want to configure an advanced database connection (e.g., PostgreSQL)?",
-            default=False,
-        ).ask():
-            db_url = questionary.text(
-                "Enter the full database URL (e.g., postgresql://user:pass@host/dbname):",
-                default=current_config.get("db_url", ""),
-            ).ask()
-            if db_url:
-                bcm_config.set_config_value("db_url", db_url)
-                click.secho(f"Database URL set to: {db_url}", fg="green")
-        else:
-            # If they say no, ensure the db_url is cleared so the default is used
-            if "db_url" in current_config:
-                config = bcm_config.load_config()
-                del config["db_url"]
-                bcm_config.save_config(config)
-            click.echo("Using the default SQLite database.")
 
         click.secho(
             "\nSetup complete! Your settings have been saved.", fg="cyan", bold=True
