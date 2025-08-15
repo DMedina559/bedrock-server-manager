@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 def migrate_players_json_to_db(players_json_path: str):
     """Migrates players from players.json to the database."""
+
+    if not os.path.exists(players_json_path):
+        return
     try:
         with open(players_json_path, "r") as f:
             data = json.load(f)
@@ -344,7 +347,7 @@ def migrate_env_vars_to_config_file():
     # Migrate DATA_DIR
     data_dir_env_var = f"{env_name}_DATA_DIR"
     data_dir_value = os.environ.get(data_dir_env_var)
-    if data_dir_value and "data_dir" not in config:
+    if data_dir_value:
         config["data_dir"] = data_dir_value
         made_changes = True
         logger.info(
