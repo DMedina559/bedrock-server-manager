@@ -43,18 +43,37 @@ def old_config(ctx: click.Context):
     """Migrates settings from environment variables and old formats to the database."""
     app_context: AppContext = ctx.obj["app_context"]
     try:
-        click.echo("Migrating settings...")
-        migrate_env_vars_to_config_file()
+        try:
+            click.echo("Migrating environment variables to config file...")
+            migrate_env_vars_to_config_file()
+        except Exception as e:
+            click.echo(f"Failed to migrate environment variables to config file: {e}")
 
         # Now that env vars are migrated, load the AppContext
         app_context.load()
 
         settings = app_context.settings
-        players_json_path = os.path.join(settings.config_dir, "players.json")
-        migrate_players_json_to_db(players_json_path)
-        migrate_env_auth_to_db(env_name)
-        migrate_env_token_to_db(env_name)
-        click.echo("Settings migration complete.")
+
+        try:
+            click.echo("Migrating players.json to database...")
+            players_json_path = os.path.join(settings.config_dir, "players.json")
+            migrate_players_json_to_db(players_json_path)
+        except Exception as e:
+            click.echo(f"Failed to migrate players.json: {e}")
+
+        try:
+            click.echo("Migrating environment auth settings to database...")
+            migrate_env_auth_to_db(env_name)
+        except Exception as e:
+            click.echo(f"Failed to migrate environment auth settings: {e}")
+
+        try:
+            click.echo("Migrating environment token settings to database...")
+            migrate_env_token_to_db(env_name)
+        except Exception as e:
+            click.echo(f"Failed to migrate environment token settings: {e}")
+
+        click.echo("Migration complete.")
     except Exception as e:
         click.echo(f"An error occurred during settings migration: {e}")
         raise click.Abort()
