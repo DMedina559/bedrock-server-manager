@@ -55,7 +55,12 @@ def initialize_database(db_url: str = None):
     if db_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
 
-    engine = create_engine(db_url, connect_args=connect_args)
+    engine = create_engine(
+        db_url,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_recycle=3600,  # Replaces connection after 1 hour (3600 seconds)
+    )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     _TABLES_CREATED = False
 
