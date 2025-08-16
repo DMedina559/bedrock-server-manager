@@ -17,13 +17,9 @@ try:
     from . import __version__
     from .config import app_name_title
     from .db import database
-    from .error import UserExitError
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
-    from .config.settings import Settings
-    from .core.manager import BedrockServerManager
     from .context import AppContext
-    from .plugins import PluginManager
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -77,6 +73,10 @@ def create_cli_app():
             set_app_context(app_context)
 
             # Load the full application context only if the command is not 'setup' or 'migrate'
+            if ctx.invoked_subcommand in ["setup", "migrate"]:
+                logging.basicConfig(level=logging.INFO)
+                logger = logging.getLogger("bsm_setup")
+
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
 
