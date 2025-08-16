@@ -37,7 +37,6 @@ from ..config import (
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
 )
-from ..utils.migration import migrate_plugin_config_to_db
 from ..db.database import db_session_manager
 from ..config.settings import Settings
 from ..db.models import Plugin
@@ -364,7 +363,6 @@ class PluginManager:
         )
 
         for plugin_name, path_to_load in all_potential_plugins.items():
-            migrate_plugin_config_to_db(plugin_name, path_to_load.parent)
             logger.debug(
                 f"Processing plugin '{plugin_name}' from path: '{path_to_load}'."
             )

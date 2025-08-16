@@ -42,10 +42,7 @@ from ...error import (
     ConfigParseError,
     AppFileNotFoundError,
 )
-from ...utils.migration import (
-    migrate_server_config_v1_to_v2,
-    migrate_server_config_to_db,
-)
+from ...utils.migration import migrate_server_config_v1_to_v2
 
 # Version for the server-specific JSON config schema
 SERVER_CONFIG_SCHEMA_VERSION: int = 2
@@ -150,7 +147,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 to ``OSError``.
         """
         with db_session_manager() as db:
-            migrate_server_config_to_db(self.server_name, self.server_config_dir)
             server = (
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )

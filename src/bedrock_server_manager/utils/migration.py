@@ -388,6 +388,43 @@ def migrate_env_vars_to_config_file():
         logger.error(f"Failed to migrate environment variables to config file: {e}")
 
 
+def migrate_json_configs_to_db(app_context: AppContext):
+    """Migrates server and plugin JSON configs to the database."""
+    # Migrate server configs
+    server_base_dir = app_context.settings.get("paths.servers")
+    if os.path.isdir(server_base_dir):
+        for server_name in os.listdir(server_base_dir):
+            server_dir = os.path.join(server_base_dir, server_name)
+            if os.path.isdir(server_dir):
+                try:
+                    migrate_server_config_to_db(server_name, server_dir)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to migrate config for server '{server_name}': {e}"
+                    )
+
+    # Migrate plugin configs
+    plugin_manager = app_context.plugin_manager
+    for plugin_dir in plugin_manager.plugin_dirs:
+        if os.path.isdir(plugin_dir):
+            for item in os.listdir(plugin_dir):
+                item_path = os.path.join(plugin_dir, item)
+                plugin_name = ""
+                if os.path.isfile(item_path) and item.endswith(".py"):
+                    plugin_name = item[:-3]
+                elif os.path.isdir(item_path):
+                    if os.path.exists(os.path.join(item_path, "__init__.py")):
+                        plugin_name = item
+
+                if plugin_name and not plugin_name.startswith("_"):
+                    try:
+                        migrate_plugin_config_to_db(plugin_name, plugin_dir)
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to migrate config for plugin '{plugin_name}': {e}"
+                        )
+
+
 def migrate_global_theme_to_admin_user():
     """Migrates the global theme setting to the first admin user's preferences."""
     from ..instances import get_settings_instance

@@ -11,6 +11,7 @@ from ..utils.migration import (
     migrate_players_json_to_db,
     migrate_env_auth_to_db,
     migrate_env_token_to_db,
+    migrate_json_configs_to_db,
 )
 
 
@@ -72,6 +73,12 @@ def old_config(ctx: click.Context):
             migrate_env_token_to_db(env_name)
         except Exception as e:
             click.echo(f"Failed to migrate environment token settings: {e}")
+
+        try:
+            click.echo("Migrating server and plugin configs to database...")
+            migrate_json_configs_to_db(app_context)
+        except Exception as e:
+            click.echo(f"Failed to migrate server and plugin configs: {e}")
 
         click.echo("Migration complete.")
     except Exception as e:
