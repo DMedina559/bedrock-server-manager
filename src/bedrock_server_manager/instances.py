@@ -4,7 +4,7 @@ import warnings
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .app_context import AppContext
+    from .context import AppContext
 
 _app_context: AppContext | None = None
 
