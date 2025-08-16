@@ -2,7 +2,10 @@ from __future__ import annotations
 import os
 import json
 import logging
+import platform
+import subprocess
 from typing import TYPE_CHECKING, Dict, Any, Optional
+
 from ..db.database import db_session_manager
 from ..db.models import Player, User, Server, Plugin
 from ..error import ConfigurationError
@@ -16,19 +19,26 @@ logger = logging.getLogger(__name__)
 
 
 def migrate_players_json_to_db(players_json_path: str):
-    """Migrates players from players.json to the database."""
-
+    """Migrates players from players.json to the database if the file exists."""
     if not os.path.exists(players_json_path):
-        return
+        return  # Source file doesn't exist, no migration needed.
+
+    logger.info("Attempting to migrate players from players.json to the database...")
+
     try:
-        with open(players_json_path, "r") as f:
+        with open(players_json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             players = data.get("players", [])
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.warning(f"Could not read players.json from {players_json_path}")
+            if not players:
+                logger.info("players.json contains no players to migrate.")
+                return
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(
+            f"Could not read or parse players.json from {players_json_path}: {e}"
+        )
         return
 
-    # Back up the old file
+    # Back up the old file before database operations
     backup_path = f"{players_json_path}.bak"
     try:
         os.rename(players_json_path, backup_path)
@@ -40,21 +50,29 @@ def migrate_players_json_to_db(players_json_path: str):
         )
         return
 
-    with db_session_manager() as db:
-        try:
+    try:
+        with db_session_manager() as db:
             for player_data in players:
-                player = Player(
-                    player_name=player_data.get("name"),
-                    xuid=player_data.get("xuid"),
-                )
-                db.add(player)
+                # Check if player already exists to ensure idempotency
+                if not db.query(Player).filter_by(xuid=player_data.get("xuid")).first():
+                    player = Player(
+                        player_name=player_data.get("name"),
+                        xuid=player_data.get("xuid"),
+                    )
+                    db.add(player)
             db.commit()
             logger.info(
                 "Successfully migrated players from players.json to the database."
             )
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Failed to migrate players to the database: {e}")
+    except Exception as e:
+        logger.error(
+            f"Failed to migrate players to the database: {e}. Restoring backup."
+        )
+        # Attempt to restore backup on DB failure
+        try:
+            os.rename(backup_path, players_json_path)
+        except OSError as restore_e:
+            logger.error(f"Failed to restore backup file: {restore_e}")
 
 
 def migrate_env_auth_to_db(env_name: str):
@@ -65,19 +83,26 @@ def migrate_env_auth_to_db(env_name: str):
     password = os.environ.get(f"{env_name}_PASSWORD")
 
     if not username or not password:
-        return
+        return  # Environment variables not set, no migration needed.
 
-    with db_session_manager() as db:
-        try:
+    logger.info(
+        f"Attempting to migrate user '{username}' from environment variables..."
+    )
+
+    try:
+        with db_session_manager() as db:
             # Check if the user already exists
             if db.query(User).filter_by(username=username).first():
+                logger.info(
+                    f"User '{username}' already exists in the database. Skipping migration."
+                )
                 return
 
-            # Check if the password from env is already a hash
-            if pwd_context.identify(password):
-                hashed_password = password
-            else:
-                hashed_password = pwd_context.hash(password)
+            hashed_password = (
+                password
+                if pwd_context.identify(password)
+                else pwd_context.hash(password)
+            )
             user = User(
                 username=username, hashed_password=hashed_password, role="admin"
             )
@@ -86,9 +111,8 @@ def migrate_env_auth_to_db(env_name: str):
             logger.info(
                 f"Successfully migrated user '{username}' from environment variables to the database."
             )
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Failed to migrate user '{username}' to the database: {e}")
+    except Exception as e:
+        logger.error(f"Failed to migrate user '{username}' to the database: {e}")
 
 
 def migrate_server_config_v1_to_v2(
@@ -110,6 +134,7 @@ def migrate_server_config_v1_to_v2(
         new_config["settings"]["autoupdate"] = autoupdate_val.lower() == "true"
     elif isinstance(autoupdate_val, bool):
         new_config["settings"]["autoupdate"] = autoupdate_val
+
     known_v1_keys_handled = {
         "installed_version",
         "target_version",
@@ -117,9 +142,11 @@ def migrate_server_config_v1_to_v2(
         "autoupdate",
         "config_schema_version",
     }
+
     for key, value in old_config.items():
         if key not in known_v1_keys_handled:
             new_config["custom"][key] = value
+
     new_config["config_schema_version"] = 2
     return new_config
 
@@ -127,33 +154,11 @@ def migrate_server_config_v1_to_v2(
 def migrate_settings_v1_to_v2(
     old_config: dict, config_path: str, default_config: dict
 ) -> dict:
-    """Migrates a flat v1 configuration (no ``config_version`` key) to the nested v2 format.
-
-    This method performs the following steps:
-
-        1. Backs up the existing v1 configuration file to ``<config_file_name>.v1.bak``.
-        2. Creates a new configuration structure based on :meth:`default_config`.
-        3. Maps known keys from the old flat ``old_config`` dictionary to their
-           new locations in the nested v2 structure.
-        4. Sets ``config_version`` to ``CONFIG_SCHEMA_VERSION`` in the new structure.
-        5. Writes the new v2 configuration to the primary configuration file.
-
-    Args:
-        old_config (dict): The loaded dictionary from the old, flat (v1)
-            configuration file.
-        config_path (str): The path to the configuration file.
-        default_config (dict): The default configuration.
-
-    Returns:
-        dict: The migrated configuration.
-
-    Raises:
-        ConfigurationError: If backing up the old config file fails (e.g., due
-            to file permissions).
-    """
+    """Migrates a flat v1 configuration (no ``config_version`` key) to the nested v2 format."""
     logger.info(
         "Old configuration format (v1) detected. Migrating to new nested format (v2)..."
     )
+
     # 1. Back up the old file
     backup_path = f"{config_path}.v1.bak"
     try:
@@ -165,10 +170,9 @@ def migrate_settings_v1_to_v2(
             "Migration aborted. Please check file permissions."
         ) from e
 
-    # 2. Create the new config by starting with defaults and overwriting with old values
-    new_config = default_config
+    # 2. Create the new config
+    new_config = default_config.copy()
     key_map = {
-        # Old Key: ("category", "new_key")
         "BASE_DIR": ("paths", "servers"),
         "CONTENT_DIR": ("paths", "content"),
         "DOWNLOAD_DIR": ("paths", "downloads"),
@@ -183,6 +187,7 @@ def migrate_settings_v1_to_v2(
         "WEB_PORT": ("web", "port"),
         "TOKEN_EXPIRES_WEEKS": ("web", "token_expires_weeks"),
     }
+
     for old_key, (category, new_key) in key_map.items():
         if old_key in old_config:
             new_config[category][new_key] = old_config[old_key]
@@ -192,22 +197,24 @@ def migrate_settings_v1_to_v2(
 
 
 def migrate_env_token_to_db(env_name: str, app_context: Optional[AppContext] = None):
-    """Migrates the JWT token from environment variables to the database."""
+    """Migrates the JWT token from an environment variable to the database."""
     from ..instances import get_settings_instance
 
     token = os.environ.get(f"{env_name}_TOKEN")
-
     if not token:
         return
 
-    if app_context:
-        settings = app_context.settings
-    else:
-        settings = get_settings_instance()
-    settings.set("web.jwt_secret_key", token)
     logger.info(
-        "Successfully migrated JWT token from environment variables to the database."
+        "Attempting to migrate JWT token from environment variable to database..."
     )
+    try:
+        settings = app_context.settings if app_context else get_settings_instance()
+        settings.set("web.jwt_secret_key", token)
+        logger.info(
+            "Successfully migrated JWT token from environment variable to the database."
+        )
+    except Exception as e:
+        logger.error(f"Failed to migrate JWT token to the database: {e}")
 
 
 def migrate_plugin_config_to_db(plugin_name: str, plugin_directory: str):
@@ -218,14 +225,13 @@ def migrate_plugin_config_to_db(plugin_name: str, plugin_directory: str):
 
     logger.info(f"Migrating config for plugin '{plugin_name}' from JSON to database.")
 
-    # Back up the old file
     backup_path = f"{config_file_path}.bak"
     try:
         os.rename(config_file_path, backup_path)
         logger.info(f"Old plugin config file backed up to {backup_path}")
     except OSError as e:
         logger.error(
-            f"Failed to back up plugin config file to {backup_path}. "
+            f"Failed to back up plugin config file '{config_file_path}' to '{backup_path}'. "
             "Migration aborted. Please check file permissions."
         )
         return
@@ -234,11 +240,23 @@ def migrate_plugin_config_to_db(plugin_name: str, plugin_directory: str):
         with open(backup_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
         with db_session_manager() as db:
-            plugin_entry = Plugin(plugin_name=plugin_name, config=config_data)
-            db.add(plugin_entry)
-            db.commit()
-    except (json.JSONDecodeError, OSError) as e:
+            # Check if config already exists
+            if not db.query(Plugin).filter_by(plugin_name=plugin_name).first():
+                plugin_entry = Plugin(plugin_name=plugin_name, config=config_data)
+                db.add(plugin_entry)
+                db.commit()
+                logger.info(f"Successfully migrated config for plugin '{plugin_name}'.")
+            else:
+                logger.info(
+                    f"Plugin '{plugin_name}' config already in database. Skipping."
+                )
+    except (json.JSONDecodeError, OSError, Exception) as e:
         logger.error(f"Failed to migrate config for plugin '{plugin_name}': {e}")
+        try:
+            os.rename(backup_path, config_file_path)
+            logger.info(f"Restored plugin config backup for '{plugin_name}'.")
+        except OSError as restore_e:
+            logger.error(f"Failed to restore plugin config backup: {restore_e}")
 
 
 def migrate_server_config_to_db(server_name: str, server_config_dir: str):
@@ -249,7 +267,6 @@ def migrate_server_config_to_db(server_name: str, server_config_dir: str):
 
     logger.info(f"Migrating config for server '{server_name}' from JSON to database.")
 
-    # Back up the old file
     backup_path = f"{config_file_path}.bak"
     try:
         os.rename(config_file_path, backup_path)
@@ -265,112 +282,120 @@ def migrate_server_config_to_db(server_name: str, server_config_dir: str):
         with open(backup_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
         with db_session_manager() as db:
-            server_entry = Server(server_name=server_name, config=config_data)
-            db.add(server_entry)
-            db.commit()
-    except (json.JSONDecodeError, OSError) as e:
+            # Check if config already exists
+            if not db.query(Server).filter_by(server_name=server_name).first():
+                server_entry = Server(server_name=server_name, config=config_data)
+                db.add(server_entry)
+                db.commit()
+                logger.info(f"Successfully migrated config for server '{server_name}'.")
+            else:
+                logger.info(
+                    f"Server '{server_name}' config already in database. Skipping."
+                )
+    except (json.JSONDecodeError, OSError, Exception) as e:
         logger.error(f"Failed to migrate config for server '{server_name}': {e}")
+        try:
+            os.rename(backup_path, config_file_path)
+            logger.info(f"Restored server config backup for '{server_name}'.")
+        except OSError as restore_e:
+            logger.error(f"Failed to restore server config backup: {restore_e}")
 
 
 def migrate_services_to_db(app_context: Optional[AppContext] = None):
-    """Migrates systemd/Windows service status to the database."""
+    """Migrates systemd/Windows service autostart status to the database."""
     from ..instances import get_server_instance, get_settings_instance
-    import platform
-    import subprocess
 
-    if app_context:
-        settings = app_context.settings
-    else:
-        settings = get_settings_instance()
-    server_path = settings.get("paths.servers")
-    if not server_path or not os.path.isdir(server_path):
+    logger.info("Checking for system services to migrate autostart status...")
+    try:
+        settings = app_context.settings if app_context else get_settings_instance()
+        server_path = settings.get("paths.servers")
+        if not server_path or not os.path.isdir(server_path):
+            logger.debug(
+                "Server path not configured or not a directory. Skipping service migration."
+            )
+            return
+    except Exception as e:
+        logger.error(f"Could not retrieve settings for service migration: {e}")
         return
 
     for server_name in os.listdir(server_path):
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
-        if not server.is_installed():
-            continue
-
-        if platform.system() == "Linux":
-            service_name = f"bedrock-{server_name}.service"
-            service_path = os.path.join(
-                os.path.expanduser("~"), ".config", "systemd", "user", service_name
+        try:
+            server = (
+                app_context.get_server(server_name)
+                if app_context
+                else get_server_instance(server_name)
             )
-            if os.path.exists(service_path):
-                try:
-                    result = subprocess.run(
-                        ["systemctl", "--user", "is-enabled", service_name],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode == 0 and result.stdout.strip() == "enabled":
-                        server.set_autostart(True)
-                    else:
-                        server.set_autostart(False)
-                except FileNotFoundError:
-                    pass
-        elif platform.system() == "Windows":
-            from ..core.system.windows import check_service_exists
+            if not server.is_installed():
+                continue
 
-            service_name = f"bedrock-{server_name}"
-            try:
+            autostart_enabled = False
+            if platform.system() == "Linux":
+                service_name = f"bedrock-{server_name}.service"
+                result = subprocess.run(
+                    ["systemctl", "--user", "is-enabled", service_name],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                autostart_enabled = (
+                    result.returncode == 0 and result.stdout.strip() == "enabled"
+                )
+            elif platform.system() == "Windows":
+                from ..core.system.windows import check_service_exists
+
+                service_name = f"bedrock-{server_name}"
                 if check_service_exists(service_name):
                     result = subprocess.run(
                         ["sc", "qc", service_name],
                         capture_output=True,
                         text=True,
+                        check=False,
                     )
-                    if "AUTO_START" in result.stdout:
-                        server.set_autostart(True)
-                    else:
-                        server.set_autostart(False)
-            except Exception:
-                pass
+                    autostart_enabled = "AUTO_START" in result.stdout
+
+            server.set_autostart(autostart_enabled)
+        except Exception as e:
+            logger.error(
+                f"Failed to migrate service status for server '{server_name}': {e}"
+            )
 
 
 def migrate_env_vars_to_config_file():
-    """
-    Migrates DATA_DIR and DB_URL from environment variables to the config file.
-
-    This function checks for the presence of BSM_DATA_DIR and DATABASE_URL
-    environment variables. If found, their values are moved into the
-    bedrock_server_manager.json configuration file. This is intended to be
-    a one-time migration to help users transition from environment variable-based
-    configuration to the centralized config file.
-    """
-    config = bcm_config.load_config()
-    made_changes = False
-
-    # Migrate DATA_DIR
+    """Migrates DATA_DIR from environment variables to the config file."""
     data_dir_env_var = f"{env_name}_DATA_DIR"
     data_dir_value = os.environ.get(data_dir_env_var)
-    if data_dir_value:
-        config["data_dir"] = data_dir_value
-        made_changes = True
-        logger.info(
-            f"Migrated {data_dir_env_var} from environment to config file. "
-            "You can now remove this environment variable."
-        )
 
-    if made_changes:
-        bcm_config.save_config(config)
+    if not data_dir_value:
+        return
+
+    logger.info(f"Attempting to migrate {data_dir_env_var} to config file...")
+    try:
+        config = bcm_config.load_config()
+        if "data_dir" not in config or config["data_dir"] != data_dir_value:
+            config["data_dir"] = data_dir_value
+            bcm_config.save_config(config)
+            logger.info(
+                f"Successfully migrated {data_dir_env_var} to config file. "
+                "You can now remove this environment variable."
+            )
+    except Exception as e:
+        logger.error(f"Failed to migrate environment variables to config file: {e}")
 
 
 def migrate_global_theme_to_admin_user():
-    """Migrates the global theme setting to the first admin user."""
+    """Migrates the global theme setting to the first admin user's preferences."""
     from ..instances import get_settings_instance
 
-    settings = get_settings_instance()
-    global_theme = settings.get("web.theme")
+    logger.info("Checking for global theme setting to migrate to admin user...")
+    try:
+        settings = get_settings_instance()
+        global_theme = settings.get("web.theme")
 
-    if not global_theme:
-        return
+        if not global_theme:
+            logger.debug("No global theme set. Skipping migration.")
+            return
 
-    with db_session_manager() as db:
-        try:
+        with db_session_manager() as db:
             admin_user = db.query(User).filter_by(role="admin").first()
             if admin_user:
                 admin_user.theme = global_theme
@@ -378,9 +403,11 @@ def migrate_global_theme_to_admin_user():
                 logger.info(
                     f"Successfully migrated global theme '{global_theme}' to admin user '{admin_user.username}'."
                 )
-
-                # Remove the global theme setting
+                # Remove the now-obsolete global theme setting
                 settings.set("web.theme", None)
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Failed to migrate global theme to admin user: {e}")
+            else:
+                logger.warning(
+                    "Global theme found, but no admin user exists to migrate it to."
+                )
+    except Exception as e:
+        logger.error(f"Failed to migrate global theme to admin user: {e}")
