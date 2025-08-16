@@ -24,13 +24,19 @@ def test_engine_creation(monkeypatch):
         # Test sqlite
         database.initialize_database("sqlite:///test.db")
         mock_create_engine.assert_called_with(
-            "sqlite:///test.db", connect_args={"check_same_thread": False}
+            "sqlite:///test.db",
+            connect_args={"check_same_thread": False},
+            pool_pre_ping=True,
+            pool_recycle=3600,
         )
 
         # Test postgresql
         database.initialize_database("postgresql://user:password@host:5432/database")
         mock_create_engine.assert_called_with(
-            "postgresql://user:password@host:5432/database", connect_args={}
+            "postgresql://user:password@host:5432/database",
+            connect_args={},
+            pool_pre_ping=True,
+            pool_recycle=3600,
         )
 
 

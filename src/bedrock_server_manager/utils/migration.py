@@ -50,6 +50,7 @@ def migrate_players_json_to_db(players_json_path: str):
         )
         return
 
+    db = None
     try:
         with db_session_manager() as db:
             for player_data in players:
@@ -65,6 +66,8 @@ def migrate_players_json_to_db(players_json_path: str):
                 "Successfully migrated players from players.json to the database."
             )
     except Exception as e:
+        if db:
+            db.rollback()
         logger.error(
             f"Failed to migrate players to the database: {e}. Restoring backup."
         )
@@ -89,6 +92,7 @@ def migrate_env_auth_to_db(env_name: str):
         f"Attempting to migrate user '{username}' from environment variables..."
     )
 
+    db = None
     try:
         with db_session_manager() as db:
             # Check if the user already exists
@@ -112,6 +116,8 @@ def migrate_env_auth_to_db(env_name: str):
                 f"Successfully migrated user '{username}' from environment variables to the database."
             )
     except Exception as e:
+        if db:
+            db.rollback()
         logger.error(f"Failed to migrate user '{username}' to the database: {e}")
 
 

@@ -94,7 +94,10 @@ class TestMigratePlayersJsonToDb:
 
         assert mock_db_session.add.call_count == 2
         mock_db_session.rollback.assert_called_once()
-        assert backup_json_path.exists()
+        assert not backup_json_path.exists()
+        assert players_json_path.exists()
+        with open(players_json_path, "r") as f:
+            assert json.load(f) == players_data
 
 
 class TestMigrateEnvAuthToDb:
