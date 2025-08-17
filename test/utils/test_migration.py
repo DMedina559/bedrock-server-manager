@@ -463,7 +463,7 @@ class TestMigrateJsonSettingsToDb:
             "custom": {"key1": "value1"},
         }
         config_path = tmp_path / "bedrock_server_manager.json"
-        backup_path = tmp_path / "bedrock_server_manager.json.migrated-to-db.bak"
+        backup_path = tmp_path / "bedrock_server_manager.json.bak"
         with open(config_path, "w") as f:
             json.dump(config_data, f)
         

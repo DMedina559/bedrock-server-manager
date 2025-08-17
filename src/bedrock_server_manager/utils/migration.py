@@ -510,7 +510,7 @@ def migrate_json_settings_to_db(app_context: AppContext):
         
         app_context.settings.reload()
 
-        backup_path = f"{config_path}.migrated-to-db.bak"
+        backup_path = f"{config_path}.bak"
         if os.path.exists(backup_path):
             os.remove(backup_path)
         os.rename(config_path, backup_path)
