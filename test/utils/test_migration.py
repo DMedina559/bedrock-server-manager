@@ -14,6 +14,7 @@ from bedrock_server_manager.utils.migration import (
     migrate_plugin_config_to_db,
     migrate_server_config_to_db,
     migrate_services_to_db,
+    migrate_json_settings_to_db,
 )
 from bedrock_server_manager.db.models import Player, User, Server, Setting
 from bedrock_server_manager.error import ConfigurationError
@@ -39,9 +40,43 @@ def mock_session_local(mock_db_session, mocker):
         yield mock
 
 
+@pytest.fixture
+def app_context(tmp_path):
+    """Fixture for a mocked AppContext."""
+
+    class MockSettings:
+        def __init__(self):
+            self.config_dir = str(tmp_path)
+            self._data = {}
+
+        def get(self, key):
+            return self._data.get(key)
+
+        def set(self, key, value):
+            self._data[key] = value
+
+        def reload(self):
+            pass
+
+    class MockAppContext:
+        def __init__(self):
+            self.settings = MockSettings()
+            self._servers = {}
+
+        def get_server(self, server_name):
+            if server_name not in self._servers:
+                mock_server = MagicMock()
+                mock_server.server_name = server_name
+                mock_server.is_installed.return_value = True
+                self._servers[server_name] = mock_server
+            return self._servers[server_name]
+
+    return MockAppContext()
+
+
 class TestMigratePlayersJsonToDb:
     def test_migrate_players_json_to_db_success(
-        self, tmp_path, mock_session_local, mock_db_session
+        self, tmp_path, mock_session_local, mock_db_session, app_context
     ):
         players_data = {
             "players": [
@@ -54,28 +89,31 @@ class TestMigratePlayersJsonToDb:
         with open(players_json_path, "w") as f:
             json.dump(players_data, f)
 
-        migrate_players_json_to_db(str(players_json_path))
+        migrate_players_json_to_db(app_context)
 
         assert mock_db_session.add.call_count == 2
         mock_db_session.commit.assert_called_once()
         assert backup_json_path.exists()
 
-    def test_migrate_players_json_to_db_file_not_found(self, mock_session_local):
-        migrate_players_json_to_db("non_existent_file.json")
+    def test_migrate_players_json_to_db_file_not_found(
+        self, mock_session_local, app_context
+    ):
+        app_context.settings.config_dir = "non_existent_dir"
+        migrate_players_json_to_db(app_context)
         mock_session_local.assert_not_called()
 
     def test_migrate_players_json_to_db_invalid_json(
-        self, tmp_path, mock_session_local
+        self, tmp_path, mock_session_local, app_context
     ):
         players_json_path = tmp_path / "players.json"
         with open(players_json_path, "w") as f:
             f.write("{invalid_json}")
 
-        migrate_players_json_to_db(str(players_json_path))
+        migrate_players_json_to_db(app_context)
         mock_session_local.assert_not_called()
 
     def test_migrate_players_json_to_db_db_error(
-        self, tmp_path, mock_session_local, mock_db_session
+        self, tmp_path, mock_session_local, mock_db_session, app_context
     ):
         players_data = {
             "players": [
@@ -90,7 +128,7 @@ class TestMigratePlayersJsonToDb:
 
         mock_db_session.commit.side_effect = Exception("DB error")
 
-        migrate_players_json_to_db(str(players_json_path))
+        migrate_players_json_to_db(app_context)
 
         assert mock_db_session.add.call_count == 2
         mock_db_session.rollback.assert_called_once()
@@ -103,42 +141,58 @@ class TestMigratePlayersJsonToDb:
 class TestMigrateEnvAuthToDb:
     @patch.dict(
         os.environ,
-        {"TEST_USERNAME": "testuser", "TEST_PASSWORD": "testpassword"},
+        {
+            "BEDROCK_SERVER_MANAGER_USERNAME": "testuser",
+            "BEDROCK_SERVER_MANAGER_PASSWORD": "testpassword",
+        },
+        clear=True,
     )
-    def test_migrate_env_auth_to_db_success(self, mock_session_local, mock_db_session):
-        migrate_env_auth_to_db("TEST")
+    def test_migrate_env_auth_to_db_success(
+        self, mock_session_local, mock_db_session, app_context
+    ):
+        migrate_env_auth_to_db(app_context)
 
         mock_db_session.add.assert_called_once()
         mock_db_session.commit.assert_called_once()
 
-    def test_migrate_env_auth_to_db_no_env_vars(self, mock_session_local):
-        migrate_env_auth_to_db("TEST")
+    def test_migrate_env_auth_to_db_no_env_vars(self, mock_session_local, app_context):
+        migrate_env_auth_to_db(app_context)
         mock_session_local.assert_not_called()
 
     @patch.dict(
         os.environ,
-        {"TEST_USERNAME": "testuser", "TEST_PASSWORD": "testpassword"},
+        {
+            "BEDROCK_SERVER_MANAGER_USERNAME": "testuser",
+            "BEDROCK_SERVER_MANAGER_PASSWORD": "testpassword",
+        },
+        clear=True,
     )
     def test_migrate_env_auth_to_db_user_exists(
-        self, mock_session_local, mock_db_session
+        self, mock_session_local, mock_db_session, app_context
     ):
         mock_db_session.query.return_value.filter_by.return_value.first.return_value = (
             User()
         )
 
-        migrate_env_auth_to_db("TEST")
+        migrate_env_auth_to_db(app_context)
 
         mock_db_session.add.assert_not_called()
         mock_db_session.commit.assert_not_called()
 
     @patch.dict(
         os.environ,
-        {"TEST_USERNAME": "testuser", "TEST_PASSWORD": "testpassword"},
+        {
+            "BEDROCK_SERVER_MANAGER_USERNAME": "testuser",
+            "BEDROCK_SERVER_MANAGER_PASSWORD": "testpassword",
+        },
+        clear=True,
     )
-    def test_migrate_env_auth_to_db_db_error(self, mock_session_local, mock_db_session):
+    def test_migrate_env_auth_to_db_db_error(
+        self, mock_session_local, mock_db_session, app_context
+    ):
         mock_db_session.commit.side_effect = Exception("DB error")
 
-        migrate_env_auth_to_db("TEST")
+        migrate_env_auth_to_db(app_context)
 
         mock_db_session.add.assert_called_once()
         mock_db_session.rollback.assert_called_once()
@@ -146,14 +200,15 @@ class TestMigrateEnvAuthToDb:
     @patch.dict(
         os.environ,
         {
-            "TEST_USERNAME": "testuser_hashed",
-            "TEST_PASSWORD": "$2b$12$CoDITwbHQm4rzcWNk6VbR.we8YuV4vf9zUmZ6gQvsIVwcz7BWTOAy",
+            "BEDROCK_SERVER_MANAGER_USERNAME": "testuser_hashed",
+            "BEDROCK_SERVER_MANAGER_PASSWORD": "$2b$12$CoDITwbHQm4rzcWNk6VbR.we8YuV4vf9zUmZ6gQvsIVwcz7BWTOAy",
         },
+        clear=True,
     )
     def test_migrate_env_auth_to_db_with_hashed_password(
-        self, mock_session_local, mock_db_session
+        self, mock_session_local, mock_db_session, app_context
     ):
-        migrate_env_auth_to_db("TEST")
+        migrate_env_auth_to_db(app_context)
 
         mock_db_session.add.assert_called_once()
         added_user = mock_db_session.add.call_args[0][0]
@@ -276,30 +331,32 @@ class TestMigrateSettingsV1ToV2:
 
 
 class TestMigrateEnvTokenToDb:
-    @patch.dict(os.environ, {"TEST_TOKEN": "test_token"})
+    @patch.dict(os.environ, {"BEDROCK_SERVER_MANAGER_TOKEN": "test_token"}, clear=True)
     def test_migrate_env_token_to_db_success(self, app_context):
-        migrate_env_token_to_db("TEST", app_context=app_context)
+        migrate_env_token_to_db(app_context)
         assert app_context.settings.get("web.jwt_secret_key") == "test_token"
 
     @patch.dict(os.environ, {}, clear=True)
     def test_migrate_env_token_to_db_no_token(self, app_context):
-        initial_token = app_context.settings.get("web.jwt_secret_key")
-        migrate_env_token_to_db("TEST", app_context=app_context)
+        initial_token = "initial_token"
+        app_context.settings.set("web.jwt_secret_key", initial_token)
+        migrate_env_token_to_db(app_context)
         assert app_context.settings.get("web.jwt_secret_key") == initial_token
 
 
 class TestMigratePluginConfigToDb:
     def test_migrate_plugin_config_to_db_success(
-        self, tmp_path, mock_session_local, mock_db_session
+        self, tmp_path, mock_session_local, mock_db_session, app_context
     ):
         plugin_name = "test_plugin"
         plugin_config_data = {"enabled": True, "version": "1.0.0"}
-        plugin_config_path = tmp_path / f"{plugin_name}.json"
-        backup_config_path = tmp_path / f"{plugin_name}.json.bak"
+        plugins_data = {plugin_name: plugin_config_data}
+        plugin_config_path = tmp_path / "plugins.json"
+        backup_config_path = tmp_path / "plugins.json.bak"
         with open(plugin_config_path, "w") as f:
-            json.dump(plugin_config_data, f)
+            json.dump(plugins_data, f)
 
-        migrate_plugin_config_to_db(plugin_name, str(tmp_path))
+        migrate_plugin_config_to_db(str(tmp_path))
 
         mock_db_session.add.assert_called_once()
         added_plugin = mock_db_session.add.call_args[0][0]
@@ -311,7 +368,7 @@ class TestMigratePluginConfigToDb:
     def test_migrate_plugin_config_to_db_no_file(
         self, tmp_path, mock_session_local, mock_db_session
     ):
-        migrate_plugin_config_to_db("non_existent_plugin", str(tmp_path))
+        migrate_plugin_config_to_db(str(tmp_path))
         mock_session_local.assert_not_called()
 
 
@@ -321,8 +378,10 @@ class TestMigrateServerConfigToDb:
     ):
         server_name = "test_server"
         server_config_data = {"server_info": {"installed_version": "1.0.0"}}
-        server_config_path = tmp_path / f"{server_name}_config.json"
-        backup_config_path = tmp_path / f"{server_name}_config.json.bak"
+        server_dir = tmp_path / server_name
+        os.makedirs(server_dir)
+        server_config_path = server_dir / f"{server_name}_config.json"
+        backup_config_path = server_dir / f"{server_name}_config.json.bak"
         with open(server_config_path, "w") as f:
             json.dump(server_config_data, f)
 
@@ -409,3 +468,53 @@ class TestMigrateEnvVarsToConfigFile:
         migrate_env_vars_to_config_file()
 
         mock_save_config.assert_called_once_with({"data_dir": "/test/data/dir"})
+
+
+class TestMigrateJsonSettingsToDb:
+    def test_migrate_json_settings_to_db_success_adds_new_settings(
+        self, app_context, tmp_path, mock_session_local, mock_db_session
+    ):
+        config_data = {
+            "config_version": 2,
+            "web": {"port": 8080},
+            "logging": {"cli_level": "DEBUG"},
+        }
+        config_path = tmp_path / "bedrock_server_manager.json"
+        backup_path = tmp_path / "bedrock_server_manager.json.bak"
+        with open(config_path, "w") as f:
+            json.dump(config_data, f)
+
+        mock_db_session.query.return_value.filter_by.return_value.first.return_value = (
+            None
+        )
+
+        migrate_json_settings_to_db(app_context)
+
+        assert mock_db_session.add.call_count == 3
+        mock_db_session.commit.assert_called_once()
+        assert app_context.settings.reload.called
+        assert backup_path.exists()
+
+    def test_migrate_json_settings_to_db_no_file(self, app_context, mock_session_local):
+        app_context.settings.config_dir = "non_existent_dir"
+        migrate_json_settings_to_db(app_context)
+        mock_session_local.assert_not_called()
+
+    def test_migrate_json_settings_to_db_updates_existing(
+        self, app_context, tmp_path, mock_session_local, mock_db_session
+    ):
+        config_data = {"web": {"port": 9090}}
+        config_path = tmp_path / "bedrock_server_manager.json"
+        with open(config_path, "w") as f:
+            json.dump(config_data, f)
+
+        existing_setting = Setting(key="web.port", value=8080)
+        mock_db_session.query.return_value.filter_by.return_value.first.return_value = (
+            existing_setting
+        )
+
+        migrate_json_settings_to_db(app_context)
+
+        assert existing_setting.value == 9090
+        mock_db_session.add.assert_not_called()
+        mock_db_session.commit.assert_called_once()
