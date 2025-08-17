@@ -106,3 +106,13 @@ def get_bedrock_process_manager(settings_instance=None):
     )
 
     return get_app_context().bedrock_process_manager
+
+
+def get_db():
+    warnings.warn(
+        "get_db is deprecated and will be removed in 3.7.0. "
+        "Use the application context instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return get_app_context().db

@@ -10,6 +10,7 @@ from bedrock_server_manager.db import database
 def test_get_database_url(mock_load_config):
     """Test that get_database_url returns the URL from bcm_config."""
     mock_load_config.return_value = {"db_url": "test_db_url"}
+    database._db_instance = database.Database()  # Reset the instance
     assert database.get_database_url() == "test_db_url"
 
     mock_load_config.return_value = {}
@@ -22,6 +23,7 @@ def test_engine_creation(monkeypatch):
         "bedrock_server_manager.db.database.create_engine"
     ) as mock_create_engine:
         # Test sqlite
+        database._db_instance = database.Database()  # Reset the instance
         database.initialize_database("sqlite:///test.db")
         mock_create_engine.assert_called_with(
             "sqlite:///test.db",
@@ -31,6 +33,7 @@ def test_engine_creation(monkeypatch):
         )
 
         # Test postgresql
+        database._db_instance = database.Database()  # Reset the instance
         database.initialize_database("postgresql://user:password@host:5432/database")
         mock_create_engine.assert_called_with(
             "postgresql://user:password@host:5432/database",

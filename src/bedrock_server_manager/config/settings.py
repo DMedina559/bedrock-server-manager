@@ -20,9 +20,12 @@ import os
 import json
 import logging
 import collections.abc
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING, Optional
 
 from ..db.database import db_session_manager, engine
+
+if TYPE_CHECKING:
+    from ..db.database import Database
 from ..db.models import Setting, Base
 from ..error import ConfigurationError
 from .const import (
@@ -103,7 +106,7 @@ class Settings:
         config_path (str): The full path to the configuration file.
     """
 
-    def __init__(self):
+    def __init__(self, db: Optional["Database"] = None):
         """Initializes the Settings object.
 
         This constructor performs the following actions:
@@ -126,6 +129,7 @@ class Settings:
         self.config_path = None
         self._version_val = get_installed_version()
         self._settings: Dict[str, Any] = {}
+        self.db = db
 
     def _determine_app_data_dir(self) -> str:
         """Determines the main application data directory.
@@ -268,7 +272,8 @@ class Settings:
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
 
-        with db_session_manager() as db:
+        session_manager = self.db.session_manager if self.db else db_session_manager
+        with session_manager() as db:
             # Check if the database is empty
             if db.query(Setting).count() == 0:
                 logger.info(
@@ -397,7 +402,8 @@ class Settings:
             logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
         else:
             logger.info(f"Setting '{key}' updated. Saving configuration.")
-        with db_session_manager() as db:
+        session_manager = self.db.session_manager if self.db else db_session_manager
+        with session_manager() as db:
             self._write_config(db)
 
     def reload(self):

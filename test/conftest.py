@@ -158,7 +158,7 @@ def db_session(tmp_path):
     # Setup: initialize the database with a test-specific URL
     db_path = tmp_path / "test.db"
     database.initialize_database(f"sqlite:///{db_path}")
-    database._ensure_tables_created()
+    database._db_instance._ensure_tables_created()
 
     db = database.SessionLocal()
 
@@ -170,6 +170,7 @@ def db_session(tmp_path):
     database.engine = None
     database.SessionLocal = None
     database._TABLES_CREATED = False
+    database._db_instance = database.Database()
 
 
 @pytest.fixture

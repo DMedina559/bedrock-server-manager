@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from .config.settings import Settings
@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .core.manager import BedrockServerManager
     from .plugins.plugin_manager import PluginManager
     from .core.bedrock_process_manager import BedrockProcessManager
+    from .db.database import Database
 
 
 class AppContext:
@@ -17,16 +18,18 @@ class AppContext:
 
     def __init__(
         self,
-        settings: "Settings" | None = None,
-        manager: "BedrockServerManager" | None = None,
+        settings: Optional["Settings"] = None,
+        manager: Optional["BedrockServerManager"] = None,
+        db: Optional["Database"] = None,
     ):
         """
         Initializes the AppContext.
         """
-        self.settings: "Settings" | None = settings
-        self.manager: "BedrockServerManager" | None = manager
-        self._bedrock_process_manager: "BedrockProcessManager" | None = None
-        self._plugin_manager: "PluginManager" | None = None
+        self.settings: Optional["Settings"] = settings
+        self.manager: Optional["BedrockServerManager"] = manager
+        self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
+        self._plugin_manager: Optional["PluginManager"] = None
+        self._db: Optional["Database"] = db
         self._servers: Dict[str, "BedrockServer"] = {}
 
     def load(self):
@@ -36,6 +39,8 @@ class AppContext:
         from .config.settings import Settings
         from .core.manager import BedrockServerManager
 
+        self.db.initialize()
+
         if self.settings is None:
             self.settings = Settings()
             self.settings.load()
@@ -44,6 +49,27 @@ class AppContext:
             assert self.settings is not None
             self.manager = BedrockServerManager(self.settings)
             self.manager.load()
+
+    @property
+    def db(self) -> "Database":
+        """
+        Lazily loads and returns the Database instance.
+        """
+        if self._db is None:
+            from .db.instances import get_db_instance
+
+            self._db = get_db_instance()
+        return self._db
+
+    @db.setter
+    def db(self, value: "Database"):
+        """
+        Sets the Database instance.
+        """
+        from .db.instances import set_db_instance
+
+        self._db = value
+        set_db_instance(self._db)
 
     @property
     def plugin_manager(self) -> "PluginManager":
