@@ -470,58 +470,47 @@ def migrate_global_theme_to_admin_user():
         logger.error(f"Failed to migrate global theme to admin user: {e}")
 
 
-def _flatten_dict(
-    d: Dict[str, Any], parent_key: str = "", sep: str = "."
-) -> Dict[str, Any]:
-    items = []
-    for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, dict):
-            items.extend(_flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
+from ..config.settings import deep_merge
 
 
 def migrate_json_settings_to_db(app_context: AppContext):
     """Migrates settings from a file-based bedrock_server_manager.json to the database."""
-    config_path = os.path.join(
-        app_context.settings.config_dir, "bedrock_server_manager.json"
-    )
-
+    config_path = os.path.join(app_context.settings.config_dir, "bedrock_server_manager.json")
+    
     if not os.path.exists(config_path):
-        logger.debug(
-            "bedrock_server_manager.json not found, no settings migration needed."
-        )
+        logger.debug("bedrock_server_manager.json not found, no settings migration needed.")
         return
 
-    logger.info(
-        "Found old bedrock_server_manager.json, migrating settings to database..."
-    )
+    logger.info("Found old bedrock_server_manager.json, migrating settings to database...")
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.error(f"Failed to read or parse old config file at {config_path}: {e}")
         return
 
     try:
-        flat_config = _flatten_dict(config_data)
-
         with db_session_manager() as db:
-            for key, value in flat_config.items():
+            current_db_settings = {}
+            for s in db.query(Setting).all():
+                current_db_settings[s.key] = s.value
+
+            merged_config = deep_merge(config_data, current_db_settings)
+
+            for key, value in merged_config.items():
                 setting = db.query(Setting).filter_by(key=key).first()
                 if setting:
-                    setting.value = value
+                    if setting.value != value:
+                        setting.value = value
                 else:
                     setting = Setting(key=key, value=value)
                     db.add(setting)
             db.commit()
-
+        
         app_context.settings.reload()
 
-        backup_path = f"{config_path}.bak"
+        backup_path = f"{config_path}.migrated-to-db.bak"
         if os.path.exists(backup_path):
             os.remove(backup_path)
         os.rename(config_path, backup_path)
@@ -529,7 +518,4 @@ def migrate_json_settings_to_db(app_context: AppContext):
         logger.info(f"Old config file has been backed up to {backup_path}.")
 
     except Exception as e:
-        logger.error(
-            f"An error occurred during settings migration from JSON to DB: {e}",
-            exc_info=True,
-        )
+        logger.error(f"An error occurred during settings migration from JSON to DB: {e}", exc_info=True)
