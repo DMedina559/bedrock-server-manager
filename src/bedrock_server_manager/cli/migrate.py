@@ -57,20 +57,19 @@ def old_config(ctx: click.Context):
 
         try:
             click.echo("Migrating players.json to database...")
-            players_json_path = os.path.join(settings.config_dir, "players.json")
-            migrate_players_json_to_db(players_json_path)
+            migrate_players_json_to_db(app_context)
         except Exception as e:
             click.echo(f"Failed to migrate players.json: {e}")
 
         try:
             click.echo("Migrating environment auth settings to database...")
-            migrate_env_auth_to_db(env_name)
+            migrate_env_auth_to_db(app_context)
         except Exception as e:
             click.echo(f"Failed to migrate environment auth settings: {e}")
 
         try:
             click.echo("Migrating environment token settings to database...")
-            migrate_env_token_to_db(env_name)
+            migrate_env_token_to_db(app_context)
         except Exception as e:
             click.echo(f"Failed to migrate environment token settings: {e}")
 

@@ -18,9 +18,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def migrate_players_json_to_db(players_json_path: str):
+def migrate_players_json_to_db(app_context: AppContext):
     """Migrates players from players.json to the database if the file exists."""
+    players_json_path = os.path.join(app_context.settings.config_dir, "players.json")
+    logger.info(f"Checking for players.json at {players_json_path}")
     if not os.path.exists(players_json_path):
+        logger.info(
+            f"players.json not found at {players_json_path}. Skipping migration."
+        )
         return  # Source file doesn't exist, no migration needed.
 
     logger.info("Attempting to migrate players from players.json to the database...")
@@ -78,7 +83,7 @@ def migrate_players_json_to_db(players_json_path: str):
             logger.error(f"Failed to restore backup file: {restore_e}")
 
 
-def migrate_env_auth_to_db(env_name: str):
+def migrate_env_auth_to_db(app_context: AppContext):
     """Migrates authentication from environment variables to the database."""
     from ..web.auth_utils import pwd_context
 
@@ -202,10 +207,8 @@ def migrate_settings_v1_to_v2(
     return new_config
 
 
-def migrate_env_token_to_db(env_name: str, app_context: Optional[AppContext] = None):
+def migrate_env_token_to_db(app_context: AppContext):
     """Migrates the JWT token from an environment variable to the database."""
-    from ..instances import get_settings_instance
-
     token = os.environ.get(f"{env_name}_TOKEN")
     if not token:
         return
@@ -214,7 +217,7 @@ def migrate_env_token_to_db(env_name: str, app_context: Optional[AppContext] = N
         "Attempting to migrate JWT token from environment variable to database..."
     )
     try:
-        settings = app_context.settings if app_context else get_settings_instance()
+        settings = app_context.settings
         settings.set("web.jwt_secret_key", token)
         logger.info(
             "Successfully migrated JWT token from environment variable to the database."
@@ -223,13 +226,22 @@ def migrate_env_token_to_db(env_name: str, app_context: Optional[AppContext] = N
         logger.error(f"Failed to migrate JWT token to the database: {e}")
 
 
-def migrate_plugin_config_to_db(plugin_name: str, plugin_directory: str):
-    """Migrates a plugin's configuration from a JSON file to the database."""
-    config_file_path = os.path.join(plugin_directory, f"{plugin_name}.json")
+def migrate_plugin_config_to_db(config_dir: str):
+    """
+    Migrates plugin configurations from a single plugins.json file to the database,
+    overwriting any existing default configurations.
+    """
+    config_file_path = os.path.join(config_dir, "plugins.json")
+    logger.info(f"Checking for plugin config file at {config_file_path}")
     if not os.path.exists(config_file_path):
+        logger.info(
+            f"Plugin config file not found at {config_file_path}. Skipping migration."
+        )
         return
 
-    logger.info(f"Migrating config for plugin '{plugin_name}' from JSON to database.")
+    logger.info(
+        "Migrating plugin configs from JSON to database, overwriting existing entries."
+    )
 
     backup_path = f"{config_file_path}.bak"
     try:
@@ -244,31 +256,46 @@ def migrate_plugin_config_to_db(plugin_name: str, plugin_directory: str):
 
     try:
         with open(backup_path, "r", encoding="utf-8") as f:
-            config_data = json.load(f)
+            all_plugins_config = json.load(f)
+
         with db_session_manager() as db:
-            # Check if config already exists
-            if not db.query(Plugin).filter_by(plugin_name=plugin_name).first():
-                plugin_entry = Plugin(plugin_name=plugin_name, config=config_data)
-                db.add(plugin_entry)
-                db.commit()
-                logger.info(f"Successfully migrated config for plugin '{plugin_name}'.")
-            else:
-                logger.info(
-                    f"Plugin '{plugin_name}' config already in database. Skipping."
+            for plugin_name, config_data in all_plugins_config.items():
+                # Find the existing plugin entry.
+                plugin_entry = (
+                    db.query(Plugin).filter_by(plugin_name=plugin_name).first()
                 )
+
+                if plugin_entry:
+                    # Update the existing config with data from the JSON file.
+                    plugin_entry.config = config_data
+                    logger.info(f"Updating config for plugin '{plugin_name}'.")
+                else:
+                    # If no default entry exists, create a new one.
+                    plugin_entry = Plugin(plugin_name=plugin_name, config=config_data)
+                    db.add(plugin_entry)
+                    logger.info(f"Creating new config for plugin '{plugin_name}'.")
+
+            db.commit()
+            logger.info("Successfully migrated all plugin configs from the JSON file.")
+
     except (json.JSONDecodeError, OSError, Exception) as e:
-        logger.error(f"Failed to migrate config for plugin '{plugin_name}': {e}")
+        logger.error(f"Failed to migrate plugin configs: {e}")
         try:
             os.rename(backup_path, config_file_path)
-            logger.info(f"Restored plugin config backup for '{plugin_name}'.")
+            logger.info(f"Restored plugin config backup for '{config_file_path}'.")
         except OSError as restore_e:
             logger.error(f"Failed to restore plugin config backup: {restore_e}")
 
 
 def migrate_server_config_to_db(server_name: str, server_config_dir: str):
     """Migrates a server's configuration from a JSON file to the database."""
-    config_file_path = os.path.join(server_config_dir, f"{server_name}_config.json")
+    config_dir = os.path.join(server_config_dir, server_name)
+    config_file_path = os.path.join(config_dir, f"{server_name}_config.json")
+    logger.info(f"Checking for server config file at {config_file_path}")
     if not os.path.exists(config_file_path):
+        logger.info(
+            f"Server config file not found at {config_file_path}. Skipping migration."
+        )
         return
 
     logger.info(f"Migrating config for server '{server_name}' from JSON to database.")
@@ -392,37 +419,21 @@ def migrate_json_configs_to_db(app_context: AppContext):
     """Migrates server and plugin JSON configs to the database."""
     # Migrate server configs
     server_base_dir = app_context.settings.get("paths.servers")
+    config_dir = app_context.settings.config_dir
     if os.path.isdir(server_base_dir):
         for server_name in os.listdir(server_base_dir):
             server_dir = os.path.join(server_base_dir, server_name)
             if os.path.isdir(server_dir):
                 try:
-                    migrate_server_config_to_db(server_name, server_dir)
+
+                    migrate_server_config_to_db(server_name, config_dir)
                 except Exception as e:
                     logger.error(
                         f"Failed to migrate config for server '{server_name}': {e}"
                     )
 
     # Migrate plugin configs
-    plugin_manager = app_context.plugin_manager
-    for plugin_dir in plugin_manager.plugin_dirs:
-        if os.path.isdir(plugin_dir):
-            for item in os.listdir(plugin_dir):
-                item_path = os.path.join(plugin_dir, item)
-                plugin_name = ""
-                if os.path.isfile(item_path) and item.endswith(".py"):
-                    plugin_name = item[:-3]
-                elif os.path.isdir(item_path):
-                    if os.path.exists(os.path.join(item_path, "__init__.py")):
-                        plugin_name = item
-
-                if plugin_name and not plugin_name.startswith("_"):
-                    try:
-                        migrate_plugin_config_to_db(plugin_name, plugin_dir)
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to migrate config for plugin '{plugin_name}': {e}"
-                        )
+    migrate_plugin_config_to_db(config_dir)
 
 
 def migrate_global_theme_to_admin_user():

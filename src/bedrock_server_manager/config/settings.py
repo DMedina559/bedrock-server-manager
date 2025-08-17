@@ -393,7 +393,10 @@ class Settings:
             d = d.setdefault(k, {})
 
         d[keys[-1]] = value
-        logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
+        if key != "web.jwt_token_secret":
+            logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
+        else:
+            logger.info(f"Setting '{key}' updated. Saving configuration.")
         with db_session_manager() as db:
             self._write_config(db)
 
