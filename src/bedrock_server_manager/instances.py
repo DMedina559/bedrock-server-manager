@@ -44,15 +44,9 @@ def get_app_context() -> AppContext:
     # return _app_context
 
 
-_settings = None
-_manager = None
-_plugin_manager = None
-_servers = {}
-
-
 def get_settings_instance():
     warnings.warn(
-        "get_settings_instance is deprecated and will be removed in a future version. "
+        "get_settings_instance is deprecated and will be removed in 3.7.0. "
         "Use the application context instead.",
         DeprecationWarning,
         stacklevel=2,
@@ -63,7 +57,7 @@ def get_settings_instance():
 
 def get_manager_instance(settings_instance=None):
     warnings.warn(
-        "get_manager_instance is deprecated and will be removed in a future version. "
+        "get_manager_instance is deprecated and will be removed in 3.7.0. "
         "Use the application context instead.",
         DeprecationWarning,
         stacklevel=2,
@@ -77,13 +71,13 @@ def get_plugin_manager_instance():
     Returns a new instance of the PluginManager.
 
     .. deprecated:: 3.6.0
-        This function is deprecated and will be removed in a future version.
+        This function is deprecated and will be removed in 3.7.0.
         The PluginManager should be accessed from the application context
         (e.g., FastAPI request state or Click context) instead of being
         instantiated globally.
     """
     warnings.warn(
-        "get_plugin_manager_instance is deprecated and will be removed in a future version. "
+        "get_plugin_manager_instance is deprecated and will be removed in 3.7.0. "
         "Use the application context instead.",
         DeprecationWarning,
         stacklevel=2,
@@ -94,7 +88,7 @@ def get_plugin_manager_instance():
 
 def get_server_instance(server_name: str, settings_instance=None):
     warnings.warn(
-        "get_server_instance is deprecated and will be removed in a future version. "
+        "get_server_instance is deprecated and will be removed in 3.7.0. "
         "Use the application context instead.",
         DeprecationWarning,
         stacklevel=2,
@@ -105,7 +99,7 @@ def get_server_instance(server_name: str, settings_instance=None):
 
 def get_bedrock_process_manager(settings_instance=None):
     warnings.warn(
-        "get_bedrock_process_manager is deprecated and will be removed in a future version. "
+        "get_bedrock_process_manager is deprecated and will be removed in 3.7.0. "
         "Use the application context instead.",
         DeprecationWarning,
         stacklevel=2,
