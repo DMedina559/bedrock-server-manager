@@ -14,6 +14,7 @@ from ..utils.migration import (
     migrate_json_configs_to_db,
     migrate_json_settings_to_db,
     migrate_services_to_db,
+    migrate_global_theme_to_admin_user
 )
 
 
@@ -81,6 +82,18 @@ def old_config(ctx: click.Context):
             migrate_env_token_to_db(app_context)
         except Exception as e:
             click.echo(f"Failed to migrate environment token settings: {e}")
+
+        try:
+            click.echo("Migrating global theme to admin user...")
+            migrate_global_theme_to_admin_user(app_context)
+        except Exception as e:
+            click.echo(f"Failed to migrate global theme to admin user: {e}")
+
+        try:
+            click.echo("Migrating services to database...")
+            migrate_services_to_db(app_context)
+        except Exception as e:
+            click.echo(f"Failed to migrate services: {e}")
 
         try:
             click.echo("Migrating server and plugin configs to database...")

@@ -439,13 +439,13 @@ def migrate_json_configs_to_db(app_context: AppContext):
 from ..db.models import Setting
 
 
-def migrate_global_theme_to_admin_user():
+def migrate_global_theme_to_admin_user(app_context: Optional[AppContext] = None):
     """Migrates the global theme setting to the first admin user's preferences."""
     from ..instances import get_settings_instance
+    settings = app_context.settings if app_context else get_settings_instance()
 
     logger.info("Checking for global theme setting to migrate to admin user...")
     try:
-        settings = get_settings_instance()
         global_theme = settings.get("web.theme")
 
         if not global_theme:
