@@ -25,7 +25,7 @@ class AppContext:
         """
         self.settings: "Settings" | None = settings
         self.manager: "BedrockServerManager" | None = manager
-        self.bedrock_process_manager: "BedrockProcessManager" | None = None
+        self._bedrock_process_manager: "BedrockProcessManager" | None = None
         self._plugin_manager: "PluginManager" | None = None
         self._servers: Dict[str, "BedrockServer"] = {}
 
@@ -35,7 +35,6 @@ class AppContext:
         """
         from .config.settings import Settings
         from .core.manager import BedrockServerManager
-        from .core.bedrock_process_manager import BedrockProcessManager
 
         if self.settings is None:
             self.settings = Settings()
@@ -45,8 +44,6 @@ class AppContext:
             assert self.settings is not None
             self.manager = BedrockServerManager(self.settings)
             self.manager.load()
-
-        self.bedrock_process_manager = BedrockProcessManager(app_context=self)
 
     @property
     def plugin_manager(self) -> "PluginManager":
@@ -66,6 +63,24 @@ class AppContext:
         Sets the PluginManager instance.
         """
         self._plugin_manager = value
+
+    @property
+    def bedrock_process_manager(self) -> "BedrockProcessManager":
+        """
+        Lazily loads and returns the BedrockProcessManager instance.
+        """
+        if self._bedrock_process_manager is None:
+            from .core.bedrock_process_manager import BedrockProcessManager
+
+            self._bedrock_process_manager = BedrockProcessManager(app_context=self)
+        return self._bedrock_process_manager
+
+    @bedrock_process_manager.setter
+    def bedrock_process_manager(self, value: "BedrockProcessManager"):
+        """
+        Sets the BedrockProcessManager instance.
+        """
+        self._bedrock_process_manager = value
 
     def get_server(self, server_name: str) -> "BedrockServer":
         """
