@@ -90,16 +90,16 @@ def old_config(ctx: click.Context):
             click.echo(f"Failed to migrate global theme to admin user: {e}")
 
         try:
-            click.echo("Migrating services to database...")
-            migrate_services_to_db(app_context)
-        except Exception as e:
-            click.echo(f"Failed to migrate services: {e}")
-
-        try:
             click.echo("Migrating server and plugin configs to database...")
             migrate_json_configs_to_db(app_context)
         except Exception as e:
             click.echo(f"Failed to migrate server and plugin configs: {e}")
+
+        try:
+            click.echo("Migrating services to database...")
+            migrate_services_to_db(app_context)
+        except Exception as e:
+            click.echo(f"Failed to migrate services: {e}")
 
         click.echo("Migration complete.")
     except Exception as e:
