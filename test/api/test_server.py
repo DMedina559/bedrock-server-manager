@@ -21,9 +21,8 @@ from bedrock_server_manager.error import (
 
 
 class TestServerSettings:
-    def test_get_server_setting(self, app_context):
+    def test_get_server_setting(self, app_context, db_session):
         from bedrock_server_manager.db.models import Server
-        from bedrock_server_manager.db.database import db_session_manager
 
         # First, set a value so we have something to get
         set_server_setting(
@@ -36,33 +35,29 @@ class TestServerSettings:
         assert result["status"] == "success"
         assert result["value"] == "some_value"
 
-    def test_set_server_setting(self, app_context):
+    def test_set_server_setting(self, app_context, db_session):
         from bedrock_server_manager.db.models import Server
-        from bedrock_server_manager.db.database import db_session_manager
 
         result = set_server_setting(
             "test_server", "custom.some_key", "new_value", app_context=app_context
         )
         assert result["status"] == "success"
 
-        with db_session_manager() as db_session:
-            server = db_session.query(Server).filter_by(server_name="test_server").one()
-            config = server.config
-            assert config["custom"]["some_key"] == "new_value"
+        server = db_session.query(Server).filter_by(server_name="test_server").one()
+        config = server.config
+        assert config["custom"]["some_key"] == "new_value"
 
-    def test_set_server_custom_value(self, app_context):
+    def test_set_server_custom_value(self, app_context, db_session):
         from bedrock_server_manager.db.models import Server
-        from bedrock_server_manager.db.database import db_session_manager
 
         result = set_server_custom_value(
             "test_server", "some_key", "custom_value", app_context=app_context
         )
         assert result["status"] == "success"
 
-        with db_session_manager() as db_session:
-            server = db_session.query(Server).filter_by(server_name="test_server").one()
-            config = server.config
-            assert config["custom"]["some_key"] == "custom_value"
+        server = db_session.query(Server).filter_by(server_name="test_server").one()
+        config = server.config
+        assert config["custom"]["some_key"] == "custom_value"
 
     def test_get_all_server_settings(self, app_context):
         result = get_all_server_settings("test_server", app_context=app_context)

@@ -36,13 +36,11 @@ class TestPlayerManagement:
             assert result["status"] == "error"
             assert "Invalid player data" in result["message"]
 
-    def test_get_all_known_players_api(self, app_context):
+    def test_get_all_known_players_api(self, app_context, db_session):
         from bedrock_server_manager.db.models import Player
-        from bedrock_server_manager.db.database import db_session_manager
 
-        with db_session_manager() as db_session:
-            db_session.add(Player(player_name="player1", xuid="123"))
-            db_session.commit()
+        db_session.add(Player(player_name="player1", xuid="123"))
+        db_session.commit()
 
         result = get_all_known_players_api(app_context=app_context)
         assert result["status"] == "success"

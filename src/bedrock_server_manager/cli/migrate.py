@@ -28,8 +28,6 @@ def migrate():
 @click.pass_context
 def database(ctx: click.Context):
     """Upgrades the database to the latest version."""
-    app_context: AppContext = ctx.obj["app_context"]
-    app_context.load()
     try:
         click.echo("Upgrading database...")
         alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
