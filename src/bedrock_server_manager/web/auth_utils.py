@@ -58,9 +58,9 @@ cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 # --- Token Creation ---
 def create_access_token(
+    app_context: AppContext,
     data: dict,
     expires_delta: Optional[datetime.timedelta] = None,
-    app_context: Optional[AppContext] = None,
 ) -> str:
     """Creates a JSON Web Token (JWT) for access.
 
@@ -78,12 +78,7 @@ def create_access_token(
     """
     to_encode = data.copy()
 
-    if app_context:
-        settings = app_context.settings
-    else:
-        from ..instances import get_settings_instance
-
-        settings = get_settings_instance()
+    settings = app_context.settings
 
     JWT_SECRET_KEY = get_jwt_secret_key(settings)
 

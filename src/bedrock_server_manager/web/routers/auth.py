@@ -40,7 +40,6 @@ from ..auth_utils import (
     get_current_user,
 )
 from ..schemas import User
-from ...instances import get_settings_instance
 
 logger = logging.getLogger(__name__)
 

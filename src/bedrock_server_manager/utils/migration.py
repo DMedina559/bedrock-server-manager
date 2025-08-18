@@ -334,13 +334,12 @@ def migrate_server_config_to_db(server_name: str, server_config_dir: str):
             logger.error(f"Failed to restore server config backup: {restore_e}")
 
 
-def migrate_services_to_db(app_context: Optional[AppContext] = None):
+def migrate_services_to_db(app_context: AppContext = None):
     """Migrates systemd/Windows service autostart status to the database."""
-    from ..instances import get_server_instance, get_settings_instance
 
     logger.info("Checking for system services to migrate autostart status...")
     try:
-        settings = app_context.settings if app_context else get_settings_instance()
+        settings = app_context.settings
         server_path = settings.get("paths.servers")
         if not server_path or not os.path.isdir(server_path):
             logger.debug(
@@ -353,11 +352,8 @@ def migrate_services_to_db(app_context: Optional[AppContext] = None):
 
     for server_name in os.listdir(server_path):
         try:
-            server = (
-                app_context.get_server(server_name)
-                if app_context
-                else get_server_instance(server_name)
-            )
+            server = app_context.get_server(server_name)
+
             if not server.is_installed():
                 continue
 
@@ -439,11 +435,10 @@ def migrate_json_configs_to_db(app_context: AppContext):
 from ..db.models import Setting
 
 
-def migrate_global_theme_to_admin_user(app_context: Optional[AppContext] = None):
+def migrate_global_theme_to_admin_user(app_context: AppContext):
     """Migrates the global theme setting to the first admin user's preferences."""
-    from ..instances import get_settings_instance
 
-    settings = app_context.settings if app_context else get_settings_instance()
+    settings = app_context.settings
 
     logger.info("Checking for global theme setting to migrate to admin user...")
     try:

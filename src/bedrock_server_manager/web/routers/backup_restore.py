@@ -38,7 +38,6 @@ from ..templating import templates
 from ..auth_utils import get_current_user, get_moderator_user
 from ..dependencies import validate_server_exists
 from ...api import backup_restore as backup_restore_api
-from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError
 from .. import tasks
 

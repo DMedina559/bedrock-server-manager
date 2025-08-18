@@ -3,7 +3,6 @@
 Plugin that automatically updates a Bedrock server to the latest version.
 """
 from bedrock_server_manager import PluginBase
-from bedrock_server_manager.instances import get_server_instance
 from bedrock_server_manager.error import BSMError
 from typing import Any
 
@@ -33,7 +32,7 @@ class AutoupdatePlugin(PluginBase):
 
         try:
             # Create an instance for the server to access its configuration.
-            server_instance = get_server_instance(server_name)
+            server_instance = self.api.app_context.get_server(server_name)
             autoupdate_enabled = server_instance.get_autoupdate()
 
             if not autoupdate_enabled:

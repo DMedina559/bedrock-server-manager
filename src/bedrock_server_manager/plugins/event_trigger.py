@@ -7,9 +7,6 @@ import functools
 import inspect
 from typing import Callable, Optional, Any
 
-from ..instances import get_plugin_manager_instance
-from ..context import AppContext
-
 
 def trigger_plugin_event(
     _func: Optional[Callable] = None,
@@ -52,10 +49,7 @@ def trigger_plugin_event(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
-            if isinstance(app_context, AppContext):
-                plugin_manager = app_context.plugin_manager
-            else:
-                plugin_manager = get_plugin_manager_instance()
+            plugin_manager = app_context.plugin_manager
 
             if before:
                 plugin_manager.trigger_event(before, **event_kwargs)
@@ -72,10 +66,8 @@ def trigger_plugin_event(
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
-            if isinstance(app_context, AppContext):
-                plugin_manager = app_context.plugin_manager
-            else:
-                plugin_manager = get_plugin_manager_instance()
+
+            plugin_manager = app_context.plugin_manager
 
             if before:
                 plugin_manager.trigger_event(before, **event_kwargs)

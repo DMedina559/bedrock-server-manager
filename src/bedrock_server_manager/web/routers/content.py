@@ -28,7 +28,6 @@ from ...api import (
     application as app_api,
     utils as utils_api,
 )
-from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError
 from .. import tasks
 

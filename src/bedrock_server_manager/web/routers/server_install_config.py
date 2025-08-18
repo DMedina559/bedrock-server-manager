@@ -46,8 +46,7 @@ from ...api import (
     system as system_api,
     utils as utils_api,
 )
-from ...error import BSMError, UserInputError, AppFileNotFoundError
-from ...instances import get_settings_instance
+from ...error import BSMError, UserInputError
 from .. import tasks
 
 logger = logging.getLogger(__name__)

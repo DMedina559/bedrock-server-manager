@@ -31,7 +31,6 @@ from ..templating import get_templates
 from ..auth_utils import get_current_user
 from ..auth_utils import get_admin_user
 from ...api import settings as settings_api
-from ...instances import get_settings_instance
 from ...error import BSMError, UserInputError, MissingArgumentError
 
 logger = logging.getLogger(__name__)

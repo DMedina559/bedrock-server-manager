@@ -22,7 +22,6 @@ from pydantic import BaseModel, Field
 from ..schemas import BaseApiResponse, User
 from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
 from ..dependencies import validate_server_exists
-from ...instances import get_settings_instance
 from ...api import (
     application as app_api,
     utils as utils_api,

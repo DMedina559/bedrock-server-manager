@@ -21,8 +21,6 @@ from ..auth_utils import (
 )
 from ..schemas import User
 from ..dependencies import validate_server_exists
-from ...instances import get_server_instance
-from ...instances import get_settings_instance
 from ...error import (
     BSMError,
     AppFileNotFoundError,
