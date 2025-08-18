@@ -13,17 +13,6 @@ from bedrock_server_manager.db.database import Base
 from bedrock_server_manager.db.models import Setting
 
 
-@pytest.fixture(scope="function")
-def db_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-    Base.metadata.drop_all(engine)
-
-
 from unittest.mock import MagicMock
 
 

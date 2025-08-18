@@ -187,23 +187,16 @@ def real_manager(app_context):
 
 
 @pytest.fixture
-def app_context(
-    isolated_settings, tmp_path, db_session, mock_db_session_manager, monkeypatch
-):
+def app_context(isolated_settings, tmp_path, db_session, monkeypatch):
     """Fixture for a real AppContext instance."""
     from bedrock_server_manager.context import AppContext
     from bedrock_server_manager.config.settings import Settings
     from bedrock_server_manager.core.manager import BedrockServerManager
     from bedrock_server_manager.instances import set_app_context
     from bedrock_server_manager.plugins.plugin_manager import PluginManager
+    from bedrock_server_manager.db import database
     import os
     import platform
-
-    # Point the settings to use the test database
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.settings.db_session_manager",
-        mock_db_session_manager(db_session),
-    )
 
     # Create dummy plugin
     plugins_dir = tmp_path / "plugins"
@@ -219,7 +212,7 @@ def app_context(
             "        pass\n"
         )
 
-    settings = Settings()
+    settings = Settings(db=database._db_instance)
     settings.load()
     settings.set("paths.plugins", str(plugins_dir))
 
