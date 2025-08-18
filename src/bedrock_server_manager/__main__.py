@@ -16,7 +16,6 @@ import click
 try:
     from . import __version__
     from .config import app_name_title
-    from .db import database
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
     from .context import AppContext

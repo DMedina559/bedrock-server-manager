@@ -95,6 +95,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
             bcm_config.needs_setup(request.app.state.app_context)
             and not request.url.path.startswith("/setup")
             and not request.url.path.startswith("/static")
+            and not request.url.path.startswith("/favicon.ico")
         ):
             return RedirectResponse(url="/setup")
 
