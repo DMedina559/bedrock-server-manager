@@ -227,7 +227,7 @@ from ..config import bcm_config
 
 class CustomAuthBackend(AuthenticationBackend):
     async def authenticate(self, conn):
-        if bcm_config.needs_setup():
+        if bcm_config.needs_setup(conn.app.state.app_context):
             return AuthCredentials(["unauthenticated"]), SimpleUser("guest")
 
         user = await get_current_user_optional(conn)

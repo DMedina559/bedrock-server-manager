@@ -131,12 +131,14 @@ def set_config_value(key: str, value: Any):
     save_config(config)
 
 
-def needs_setup() -> bool:
+from ..context import AppContext
+
+
+def needs_setup(app_context: AppContext) -> bool:
     """
     Checks if the application needs to be set up by checking if there are any users in the database.
     """
-    from ..db.database import db_session_manager
     from ..db.models import User
 
-    with db_session_manager() as db:
+    with app_context.db.session_manager() as db:
         return db.query(User).first() is None

@@ -274,7 +274,7 @@ def app(app_context):
 def mock_dependencies(monkeypatch, app):
     """Mock dependencies for tests."""
 
-    def mock_needs_setup():
+    def mock_needs_setup(app_context):
         return False
 
     monkeypatch.setattr(

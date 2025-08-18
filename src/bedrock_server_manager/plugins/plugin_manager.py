@@ -37,7 +37,6 @@ from ..config import (
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
 )
-from ..db.database import db_session_manager
 from ..config.settings import Settings
 from ..db.models import Plugin
 from .plugin_base import PluginBase
@@ -120,13 +119,15 @@ class PluginManager:
             mapping plugin names to their configuration dictionaries.
             Returns an empty dict if loading fails or the file is not found.
         """
-        with db_session_manager() as db:
+        assert self.app_context is not None
+        with self.app_context.db.session_manager() as db:
             plugins = db.query(Plugin).all()
             return {plugin.plugin_name: plugin.config for plugin in plugins}
 
     def _save_config(self):
         """Saves the current in-memory plugin configuration to the database."""
-        with db_session_manager() as db:
+        assert self.app_context is not None
+        with self.app_context.db.session_manager() as db:
             for plugin_name, config in self.plugin_config.items():
                 plugin = (
                     db.query(Plugin).filter(Plugin.plugin_name == plugin_name).first()

@@ -92,7 +92,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     @app.middleware("http")
     async def setup_check_middleware(request: Request, call_next):
         if (
-            bcm_config.needs_setup()
+            bcm_config.needs_setup(request.app.state.app_context)
             and not request.url.path.startswith("/setup")
             and not request.url.path.startswith("/static")
         ):
