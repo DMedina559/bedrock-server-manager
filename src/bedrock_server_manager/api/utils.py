@@ -23,6 +23,8 @@ import logging
 from typing import Dict, Any, Optional
 from contextlib import contextmanager
 
+from bedrock_server_manager.web import app
+
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
@@ -248,17 +250,15 @@ def get_system_and_app_info(
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
-def stop_all_servers(settings=None, app_context: Optional[AppContext] = None):
+def stop_all_servers(app_context: AppContext):
     """Stops all running servers."""
     logger.info("API: Stopping all servers...")
-    if app_context:
-        manager = app_context.manager
-    else:
-        manager = get_manager_instance(settings)
+    manager = app_context.manager
     servers_data, _ = manager.get_servers_data(app_context=app_context)
     for server_data in servers_data:
         server_name = server_data.get("name")
-        if server_name and server_data.get("status") == "running":
+        server = app_context.get_server(server_name)
+        if server.is_running():
             api_stop_server(server_name, app_context=app_context)
 
 

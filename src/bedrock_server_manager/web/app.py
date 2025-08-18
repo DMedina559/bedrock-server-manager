@@ -36,6 +36,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         yield
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
+        app_context = app.state.app_context
         api.utils.stop_all_servers(app_context=app_context)
         app_context.plugin_manager.unload_plugins()
         if database.engine:
