@@ -33,7 +33,6 @@ from sqlalchemy.orm import Session
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ...db.database import db_session_manager
 from ...db.models import Server
 from ...error import (
     MissingArgumentError,
@@ -42,7 +41,7 @@ from ...error import (
     ConfigParseError,
     AppFileNotFoundError,
 )
-from ...utils.migration import migrate_server_config_v1_to_v2
+
 
 # Version for the server-specific JSON config schema
 SERVER_CONFIG_SCHEMA_VERSION: int = 2
@@ -146,7 +145,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
             FileOperationError: If directory creation or file reading fails due
                 to ``OSError``.
         """
-        with db_session_manager() as db:
+        with self.settings.db.session_manager() as db:
             server = (
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )
@@ -170,7 +169,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         Args:
             config_data (Dict[str, Any]): The server configuration dictionary to save.
         """
-        with db_session_manager() as db:
+        with self.settings.db.session_manager() as db:
             server = (
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )

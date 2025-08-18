@@ -42,7 +42,7 @@ class AppContext:
         self.db.initialize()
 
         if self.settings is None:
-            self.settings = Settings()
+            self.settings = Settings(db=self.db)
             self.settings.load()
 
         if self.manager is None:

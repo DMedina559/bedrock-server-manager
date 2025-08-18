@@ -35,8 +35,6 @@ from ..config import Settings
 from ..context import AppContext
 from ..instances import get_server_instance
 from ..config import EXPATH, app_name_title, package_name
-from ..db.database import db_session_manager
-from ..db.models import Player
 from ..error import (
     ConfigurationError,
     FileOperationError,

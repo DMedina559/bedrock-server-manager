@@ -1,9 +1,8 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.db.database import db_session_manager
 from bedrock_server_manager.db.models import Player
 from bedrock_server_manager.error import (
     AppFileNotFoundError,
@@ -11,6 +10,7 @@ from bedrock_server_manager.error import (
     UserInputError,
 )
 from bedrock_server_manager.instances import get_server_instance
+
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class PlayerMixin:
             ):
                 raise UserInputError(f"Invalid player entry format: {p_data}")
 
-        with db_session_manager() as db:
+        with self.settings.db.session_manager() as db:
             try:
                 updated_count = 0
                 added_count = 0
@@ -143,7 +143,7 @@ class PlayerMixin:
             List[Dict[str, str]]: A list of player dictionaries, where each
             dictionary typically contains ``"name"`` and ``"xuid"`` keys.
         """
-        with db_session_manager() as db:
+        with self.settings.db.session_manager() as db:
             players = db.query(Player).all()
             return [
                 {"name": player.player_name, "xuid": player.xuid} for player in players

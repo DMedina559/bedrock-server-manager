@@ -50,34 +50,26 @@ def test_manage_json_config_invalid_operation(real_bedrock_server):
         server._manage_json_config("server_info.status", "invalid_op")
 
 
-def test_get_and_set_version(real_bedrock_server):
+def test_get_and_set_version(real_bedrock_server, db_session):
     server = real_bedrock_server
     from bedrock_server_manager.db.models import Server
-    from bedrock_server_manager.db.database import db_session_manager
 
     server.set_version("1.2.3")
 
     # Assert that the config was saved correctly
-    with db_session_manager() as db_session:
-        db_server = (
-            db_session.query(Server).filter_by(server_name=server.server_name).one()
-        )
-        assert db_server.config["server_info"]["installed_version"] == "1.2.3"
+    db_server = db_session.query(Server).filter_by(server_name=server.server_name).one()
+    assert db_server.config["server_info"]["installed_version"] == "1.2.3"
 
 
-def test_get_and_set_target_version(real_bedrock_server):
+def test_get_and_set_target_version(real_bedrock_server, db_session):
     server = real_bedrock_server
     from bedrock_server_manager.db.models import Server
-    from bedrock_server_manager.db.database import db_session_manager
 
     server.set_target_version("LATEST")
 
     # Assert that the config was saved correctly
-    with db_session_manager() as db_session:
-        db_server = (
-            db_session.query(Server).filter_by(server_name=server.server_name).one()
-        )
-        assert db_server.config["settings"]["target_version"] == "LATEST"
+    db_server = db_session.query(Server).filter_by(server_name=server.server_name).one()
+    assert db_server.config["settings"]["target_version"] == "LATEST"
 
 
 def test_get_world_name_success(real_bedrock_server):

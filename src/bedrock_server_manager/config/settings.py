@@ -22,7 +22,6 @@ import logging
 import collections.abc
 from typing import Any, Dict, TYPE_CHECKING, Optional
 
-from ..db.database import db_session_manager, engine
 
 if TYPE_CHECKING:
     from ..db.database import Database
@@ -272,8 +271,8 @@ class Settings:
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
 
-        session_manager = self.db.session_manager if self.db else db_session_manager
-        with session_manager() as db:
+        assert self.db is not None
+        with self.db.session_manager() as db:
             # Check if the database is empty
             if db.query(Setting).count() == 0:
                 logger.info(
@@ -402,8 +401,8 @@ class Settings:
             logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
         else:
             logger.info(f"Setting '{key}' updated. Saving configuration.")
-        session_manager = self.db.session_manager if self.db else db_session_manager
-        with session_manager() as db:
+        assert self.db is not None
+        with self.db.session_manager() as db:
             self._write_config(db)
 
     def reload(self):
