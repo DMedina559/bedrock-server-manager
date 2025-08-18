@@ -22,22 +22,25 @@ def mock_system_linux_utils(mocker):
 
 
 class TestWebServerLifecycle:
-    @patch("bedrock_server_manager.api.web.get_manager_instance")
-    def test_start_web_server_direct(self, mock_get_manager):
-        mock_manager = mock_get_manager()
-        start_web_server_api(mode="direct")
-        mock_manager.start_web_ui_direct.assert_called_once()
+    def test_start_web_server_direct(self, app_context):
+        app_context.manager.start_web_ui_direct = MagicMock()
+        start_web_server_api(mode="direct", app_context=app_context)
+        app_context.manager.start_web_ui_direct.assert_called_once_with(
+            app_context, None, False, None
+        )
 
     @patch("bedrock_server_manager.api.web.system_process_utils")
     @patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True)
-    def test_start_web_server_detached(self, mock_system_process, real_manager):
+    def test_start_web_server_detached(
+        self, mock_system_process, app_context
+    ):
         with patch(
             "bedrock_server_manager.api.web.get_manager_instance",
-            return_value=real_manager,
+            return_value=app_context.manager,
         ):
             mock_system_process.read_pid_from_file.return_value = None
             mock_system_process.launch_detached_process.return_value = 12345
-            result = start_web_server_api(mode="detached")
+            result = start_web_server_api(mode="detached", app_context=app_context)
             assert result["status"] == "success"
             assert result["pid"] == 12345
 

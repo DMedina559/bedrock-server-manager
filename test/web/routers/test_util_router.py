@@ -91,14 +91,15 @@ def test_serve_world_icon_api_default(
     assert response.text == "fake default icon"
 
 
-@patch("bedrock_server_manager.web.routers.util.get_server_instance")
 @patch("bedrock_server_manager.web.routers.util.os.path.isfile")
 def test_serve_world_icon_api_not_found(
-    mock_isfile, mock_get_server, authenticated_client
+    mock_isfile, authenticated_client, app_context, mocker
 ):
     """Test the serve_world_icon_api route with no icon found."""
-    mock_get_server.return_value.world_icon_filesystem_path = "/fake/path"
-    mock_get_server.return_value.has_world_icon.return_value = False
+    mock_server = MagicMock()
+    mock_server.world_icon_filesystem_path = "/fake/path"
+    mock_server.has_world_icon.return_value = False
+    mocker.patch.object(app_context, "get_server", return_value=mock_server)
     mock_isfile.return_value = False
 
     response = authenticated_client.get("/api/server/test-server/world/icon")

@@ -254,7 +254,12 @@ def stop_all_servers(app_context: AppContext):
     """Stops all running servers."""
     logger.info("API: Stopping all servers...")
     manager = app_context.manager
-    servers_data, _ = manager.get_servers_data(app_context=app_context)
+    result = manager.get_servers_data(app_context=app_context)
+    if isinstance(result, tuple) and len(result) == 2:
+        servers_data, _ = result
+    else:
+        servers_data = []
+
     for server_data in servers_data:
         server_name = server_data.get("name")
         server = app_context.get_server(server_name)
