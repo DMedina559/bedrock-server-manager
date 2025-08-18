@@ -6,7 +6,6 @@ import platform
 import subprocess
 from typing import TYPE_CHECKING, Dict, Any, Optional
 
-from ..db.database import db_session_manager
 from ..db.models import Player, User, Server, Plugin
 from ..error import ConfigurationError
 from ..config import bcm_config
@@ -57,7 +56,7 @@ def migrate_players_json_to_db(app_context: AppContext):
 
     db = None
     try:
-        with db_session_manager() as db:
+        with app_context.db.session_manager() as db:
             for player_data in players:
                 # Check if player already exists to ensure idempotency
                 if not db.query(Player).filter_by(xuid=player_data.get("xuid")).first():
@@ -99,7 +98,7 @@ def migrate_env_auth_to_db(app_context: AppContext):
 
     db = None
     try:
-        with db_session_manager() as db:
+        with app_context.db.session_manager() as db:
             # Check if the user already exists
             if db.query(User).filter_by(username=username).first():
                 logger.info(
@@ -226,7 +225,7 @@ def migrate_env_token_to_db(app_context: AppContext):
         logger.error(f"Failed to migrate JWT token to the database: {e}")
 
 
-def migrate_plugin_config_to_db(config_dir: str):
+def migrate_plugin_config_to_db(app_context: AppContext, config_dir: str):
     """
     Migrates plugin configurations from a single plugins.json file to the database,
     overwriting any existing default configurations.
@@ -258,7 +257,7 @@ def migrate_plugin_config_to_db(config_dir: str):
         with open(backup_path, "r", encoding="utf-8") as f:
             all_plugins_config = json.load(f)
 
-        with db_session_manager() as db:
+        with app_context.db.session_manager() as db:
             for plugin_name, config_data in all_plugins_config.items():
                 # Find the existing plugin entry.
                 plugin_entry = (
@@ -287,7 +286,9 @@ def migrate_plugin_config_to_db(config_dir: str):
             logger.error(f"Failed to restore plugin config backup: {restore_e}")
 
 
-def migrate_server_config_to_db(server_name: str, server_config_dir: str):
+def migrate_server_config_to_db(
+    app_context: AppContext, server_name: str, server_config_dir: str
+):
     """Migrates a server's configuration from a JSON file to the database."""
     config_dir = os.path.join(server_config_dir, server_name)
     config_file_path = os.path.join(config_dir, f"{server_name}_config.json")
@@ -314,7 +315,7 @@ def migrate_server_config_to_db(server_name: str, server_config_dir: str):
     try:
         with open(backup_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
-        with db_session_manager() as db:
+        with app_context.db.session_manager() as db:
             # Check if config already exists
             if not db.query(Server).filter_by(server_name=server_name).first():
                 server_entry = Server(server_name=server_name, config=config_data)
@@ -422,14 +423,14 @@ def migrate_json_configs_to_db(app_context: AppContext):
             if os.path.isdir(server_dir):
                 try:
 
-                    migrate_server_config_to_db(server_name, config_dir)
+                    migrate_server_config_to_db(app_context, server_name, config_dir)
                 except Exception as e:
                     logger.error(
                         f"Failed to migrate config for server '{server_name}': {e}"
                     )
 
     # Migrate plugin configs
-    migrate_plugin_config_to_db(config_dir)
+    migrate_plugin_config_to_db(app_context, config_dir)
 
 
 from ..db.models import Setting
@@ -448,7 +449,7 @@ def migrate_global_theme_to_admin_user(app_context: AppContext):
             logger.debug("No global theme set. Skipping migration.")
             return
 
-        with db_session_manager() as db:
+        with app_context.db.session_manager() as db:
             admin_user = db.query(User).filter_by(role="admin").first()
             if admin_user:
                 admin_user.theme = global_theme
@@ -493,7 +494,7 @@ def migrate_json_settings_to_db(app_context: AppContext):
         return
 
     try:
-        with db_session_manager() as db:
+        with app_context.db.session_manager() as db:
             current_db_settings = {}
             for s in db.query(Setting).all():
                 current_db_settings[s.key] = s.value
