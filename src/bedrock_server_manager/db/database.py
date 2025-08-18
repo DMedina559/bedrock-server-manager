@@ -51,7 +51,9 @@ class Database:
             pool_pre_ping=True,
             pool_recycle=3600,
         )
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        self.SessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=self.engine
+        )
         self._tables_created = False
 
     def _ensure_tables_created(self):

@@ -33,6 +33,7 @@ def get_db_instance() -> Database:
         # To maintain backward compatibility for now, we can fall back to the default instance.
         # In the future, this should raise a RuntimeError.
         from .database import _db_instance as default_db_instance
+
         return default_db_instance
         # raise RuntimeError("Database instance has not been set.")
     return _db_instance
