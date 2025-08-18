@@ -70,7 +70,9 @@ async def create_first_user(
             )
 
         hashed_password = pwd_context.hash(data.password)
-        user = User(username=data.username, hashed_password=hashed_password, role="admin")
+        user = User(
+            username=data.username, hashed_password=hashed_password, role="admin"
+        )
 
         try:
             db.add(user)

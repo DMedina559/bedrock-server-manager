@@ -70,7 +70,9 @@ async def create_user(
             )
 
         hashed_password = pwd_context.hash(data.password)
-        user = User(username=data.username, hashed_password=hashed_password, role=data.role)
+        user = User(
+            username=data.username, hashed_password=hashed_password, role=data.role
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -149,7 +151,9 @@ async def disable_user(
                 "disable_user",
                 {"user_id": user.id, "username": user.username},
             )
-            logger.info(f"User '{user.username}' disabled by '{current_user.username}'.")
+            logger.info(
+                f"User '{user.username}' disabled by '{current_user.username}'."
+            )
             return {"status": "success"}
 
     raise HTTPException(

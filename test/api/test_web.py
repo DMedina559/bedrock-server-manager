@@ -31,9 +31,7 @@ class TestWebServerLifecycle:
 
     @patch("bedrock_server_manager.api.web.system_process_utils")
     @patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True)
-    def test_start_web_server_detached(
-        self, mock_system_process, app_context
-    ):
+    def test_start_web_server_detached(self, mock_system_process, app_context):
         with patch(
             "bedrock_server_manager.api.web.get_manager_instance",
             return_value=app_context.manager,

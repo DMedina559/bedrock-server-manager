@@ -19,9 +19,7 @@ router = APIRouter(
 )
 
 
-def create_audit_log(
-    app_context, user_id: int, action: str, details: dict = None
-):
+def create_audit_log(app_context, user_id: int, action: str, details: dict = None):
     """
     Creates an audit log entry.
     """
