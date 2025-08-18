@@ -106,10 +106,6 @@ def test_serve_world_icon_api_not_found(
     assert response.status_code == 404
 
 
-@patch(
-    "bedrock_server_manager.config.bcm_config.needs_setup",
-    new=lambda app_context: False,
-)
 @patch("bedrock_server_manager.web.routers.util.os.path.exists")
 def test_get_root_favicon_not_found(mock_exists, client: TestClient):
     """Test the get_root_favicon route with no favicon found."""
