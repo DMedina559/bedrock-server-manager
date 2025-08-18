@@ -2,7 +2,6 @@ import pytest
 from bedrock_server_manager.instances import (
     get_settings_instance,
     get_manager_instance,
-    get_plugin_manager_instance,
     get_server_instance,
     get_bedrock_process_manager,
 )
@@ -21,13 +20,6 @@ def test_get_manager_instance(app_context: AppContext):
     with pytest.deprecated_call():
         manager = get_manager_instance()
     assert manager is app_context.manager
-
-
-def test_get_plugin_manager_instance(app_context: AppContext):
-    """Tests that get_plugin_manager_instance returns the correct plugin_manager instance from the context."""
-    with pytest.deprecated_call():
-        plugin_manager = get_plugin_manager_instance()
-    assert plugin_manager is app_context.plugin_manager
 
 
 def test_get_server_instance(app_context: AppContext):
