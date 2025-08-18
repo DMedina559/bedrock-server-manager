@@ -73,17 +73,18 @@ def create_cli_app():
             set_app_context(app_context)
 
             # --- Event Handling and Shutdown ---
-            def shutdown_cli_app():
+            def shutdown_cli_app(app_context: AppContext):
                 """A cleanup function to be run on exit."""
                 # Use a generic logger, as the full logger may not be configured
                 # for all commands (e.g., setup, migrate).
                 shutdown_logger = logging.getLogger("bsm_shutdown")
                 shutdown_logger.info("Running CLI app shutdown hooks...")
+                database = app_context.db
                 if database.engine:
                     database.engine.dispose()
                 shutdown_logger.info("CLI app shutdown hooks complete.")
 
-            atexit.register(shutdown_cli_app)
+            atexit.register(shutdown_cli_app, app_context)
 
             # Load the full application context only if the command is not 'setup' or 'migrate'
             if ctx.invoked_subcommand in ["setup", "migrate"]:
