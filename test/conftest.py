@@ -315,13 +315,15 @@ def authenticated_user(db_session):
 
 
 @pytest.fixture
-def authenticated_client(client, authenticated_user, app):
+def authenticated_client(client, authenticated_user, app, app_context):
     async def mock_get_current_user():
         return authenticated_user
 
     app.dependency_overrides[get_current_user_optional] = mock_get_current_user
     access_token = create_access_token(
-        data={"sub": authenticated_user.username}, expires_delta=timedelta(minutes=15)
+        app_context,
+        data={"sub": authenticated_user.username},
+        expires_delta=timedelta(minutes=15),
     )
     client.headers["Authorization"] = f"Bearer {access_token}"
     yield client

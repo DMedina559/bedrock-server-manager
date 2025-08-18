@@ -72,12 +72,12 @@ class TestWorldAPI:
             mock_lifecycle.assert_called_once()
             mock_delete.assert_called_once()
 
-    def test_invalid_server_name(self):
+    def test_invalid_server_name(self, app_context):
         with pytest.raises(InvalidServerNameError):
-            get_world_name("")
+            get_world_name("", app_context=app_context)
 
-    def test_lock_skipped(self):
+    def test_lock_skipped(self, app_context):
         with patch("bedrock_server_manager.api.world._world_lock") as mock_lock:
             mock_lock.acquire.return_value = False
-            result = export_world("test_server")
+            result = export_world("test_server", app_context=app_context)
             assert result["status"] == "skipped"
