@@ -79,59 +79,7 @@ class Database:
         finally:
             db.close()
 
-
-# For backward compatibility
-_db_instance = Database()
-
-# These will be initialized by initialize_database()
-engine = None
-SessionLocal = None
-_TABLES_CREATED = False
-
-
-def get_database_url():
-    """Gets the database url from config."""
-    warnings.warn(
-        "get_database_url is deprecated. Use Database.get_database_url() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return _db_instance.get_database_url()
-
-
-def initialize_database(db_url: str = None):
-    """Initializes the database engine and session."""
-    warnings.warn(
-        "initialize_database is deprecated. Use Database.initialize() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    global engine, SessionLocal, _TABLES_CREATED
-    _db_instance.db_url = db_url
-    _db_instance.initialize()
-    engine = _db_instance.engine
-    SessionLocal = _db_instance.SessionLocal
-    _TABLES_CREATED = _db_instance._tables_created
-
-
-def get_db():
-    """Yields a database session."""
-    warnings.warn(
-        "get_db is deprecated. Use Database.session_manager() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    with _db_instance.session_manager() as db:
-        yield db
-
-
-@contextmanager
-def db_session_manager():
-    """Context manager for database sessions."""
-    warnings.warn(
-        "db_session_manager is deprecated. Use Database.session_manager() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    with _db_instance.session_manager() as db:
-        yield db
+    def close(self):
+        """Closes the database connection engine."""
+        if self.engine:
+            self.engine.dispose()

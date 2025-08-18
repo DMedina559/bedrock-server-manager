@@ -12,7 +12,6 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.authentication import AuthenticationMiddleware
 
 from ..context import AppContext
-from ..db import database
 from . import templating
 from ..config import get_installed_version
 from . import routers
@@ -39,8 +38,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         app_context = app.state.app_context
         api.utils.stop_all_servers(app_context=app_context)
         app_context.plugin_manager.unload_plugins()
-        if database.engine:
-            database.engine.dispose()
+        app_context.db.close()
         logger.info("Web app shutdown hooks complete.")
 
     from ..config import SCRIPT_DIR

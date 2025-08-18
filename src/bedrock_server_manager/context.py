@@ -27,9 +27,9 @@ class AppContext:
         """
         self.settings: Optional["Settings"] = settings
         self.manager: Optional["BedrockServerManager"] = manager
+        self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
-        self._db: Optional["Database"] = db
         self._servers: Dict[str, "BedrockServer"] = {}
 
     def load(self):
@@ -56,9 +56,8 @@ class AppContext:
         Lazily loads and returns the Database instance.
         """
         if self._db is None:
-            from .db.instances import get_db_instance
-
-            self._db = get_db_instance()
+            from .db.database import Database
+            self._db = Database()
         return self._db
 
     @db.setter
@@ -66,10 +65,7 @@ class AppContext:
         """
         Sets the Database instance.
         """
-        from .db.instances import set_db_instance
-
         self._db = value
-        set_db_instance(self._db)
 
     @property
     def plugin_manager(self) -> "PluginManager":

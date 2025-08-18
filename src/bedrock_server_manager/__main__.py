@@ -78,9 +78,7 @@ def create_cli_app():
                 # for all commands (e.g., setup, migrate).
                 shutdown_logger = logging.getLogger("bsm_shutdown")
                 shutdown_logger.info("Running CLI app shutdown hooks...")
-                database = app_context.db
-                if database.engine:
-                    database.engine.dispose()
+                app_context.db.close()
                 shutdown_logger.info("CLI app shutdown hooks complete.")
 
             atexit.register(shutdown_cli_app, app_context)
