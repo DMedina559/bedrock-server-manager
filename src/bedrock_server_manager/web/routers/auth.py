@@ -134,7 +134,8 @@ async def api_login_for_access_token(
         }
     """
     logger.info(f"API login attempt for '{username}'")
-    authenticated_username = authenticate_user(username, password)
+    app_context = request.app.state.app_context
+    authenticated_username = authenticate_user(app_context, username, password)
 
     if not authenticated_username:
         logger.warning(f"Invalid API login attempt for '{username}'.")

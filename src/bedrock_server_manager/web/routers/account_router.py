@@ -7,7 +7,6 @@ from bedrock_server_manager.web.auth_utils import (
     pwd_context,
 )
 from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.db.database import db_session_manager
 from ..templating import get_templates
 from pydantic import BaseModel
 from ..schemas import User as UserSchema, BaseApiResponse
@@ -43,9 +42,11 @@ async def account_api(user: UserSchema = Depends(get_current_user)):
 
 @router.post("/api/account/theme", response_model=BaseApiResponse)
 async def update_theme(
-    theme_update: ThemeUpdate, user: UserSchema = Depends(get_current_user)
+    request: Request,
+    theme_update: ThemeUpdate,
+    user: UserSchema = Depends(get_current_user),
 ):
-    with db_session_manager() as db:
+    with request.app.state.app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )
@@ -60,9 +61,11 @@ async def update_theme(
 
 @router.post("/api/account/profile", response_model=BaseApiResponse)
 async def update_profile(
-    profile_update: ProfileUpdate, user: UserSchema = Depends(get_current_user)
+    request: Request,
+    profile_update: ProfileUpdate,
+    user: UserSchema = Depends(get_current_user),
 ):
-    with db_session_manager() as db:
+    with request.app.state.app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )
@@ -78,10 +81,11 @@ async def update_profile(
 
 @router.post("/api/account/change-password", response_model=BaseApiResponse)
 async def change_password(
+    request: Request,
     data: ChangePasswordRequest,
     user: UserSchema = Depends(get_current_user),
 ):
-    with db_session_manager() as db:
+    with request.app.state.app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )

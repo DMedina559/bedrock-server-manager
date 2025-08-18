@@ -7,10 +7,8 @@ import secrets
 import time
 from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from ...db.database import get_db
 from ...db.models import User, RegistrationToken
 from ..templating import get_templates
 from ..auth_utils import (
@@ -40,7 +38,6 @@ class GenerateTokenRequest(BaseModel):
 async def generate_token(
     request: Request,
     data: GenerateTokenRequest,
-    db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_admin_user),
 ):
     """
@@ -50,8 +47,9 @@ async def generate_token(
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
     registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    db.add(registration_token)
-    db.commit()
+    with request.app.state.app_context.db.session_manager() as db:
+        db.add(registration_token)
+        db.commit()
 
     # Get the base URL from the request
     base_url = str(request.base_url)
@@ -72,20 +70,20 @@ async def generate_token(
 async def registration_page(
     request: Request,
     token: str,
-    db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user_optional),
 ):
     """
     Serves the registration page if the token is valid.
     """
-    registration_token = (
-        db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
-    )
-    if not registration_token or registration_token.expires < int(time.time()):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invalid or expired registration token.",
+    with request.app.state.app_context.db.session_manager() as db:
+        registration_token = (
+            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
         )
+        if not registration_token or registration_token.expires < int(time.time()):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invalid or expired registration token.",
+            )
 
     return get_templates().TemplateResponse(
         request,
@@ -104,70 +102,70 @@ async def register_user(
     request: Request,
     token: str,
     data: RegisterUserRequest,
-    db: Session = Depends(get_db),
 ):
     """
     Creates a new user from a registration token.
     """
-    registration_token = (
-        db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
-    )
-    if not registration_token or registration_token.expires < int(time.time()):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "status": "error",
-                "message": "Invalid or expired registration token.",
-            },
+    with request.app.state.app_context.db.session_manager() as db:
+        registration_token = (
+            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+        )
+        if not registration_token or registration_token.expires < int(time.time()):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "status": "error",
+                    "message": "Invalid or expired registration token.",
+                },
+            )
+
+        hashed_password = pwd_context.hash(data.password)
+        user = User(
+            username=data.username,
+            hashed_password=hashed_password,
+            role=registration_token.role,
         )
 
-    hashed_password = pwd_context.hash(data.password)
-    user = User(
-        username=data.username,
-        hashed_password=hashed_password,
-        role=registration_token.role,
-    )
+        try:
+            db.add(user)
+            db.delete(registration_token)  # Delete token after successful registration
+            db.commit()
+            db.refresh(user)  # Refresh the user object to get its ID if needed later
 
-    try:
-        db.add(user)
-        db.delete(registration_token)  # Delete token after successful registration
-        db.commit()
-        db.refresh(user)  # Refresh the user object to get its ID if needed later
+            logger.info(
+                f"User '{data.username}' registered with role '{registration_token.role}'."
+            )
 
-        logger.info(
-            f"User '{data.username}' registered with role '{registration_token.role}'."
-        )
+            return JSONResponse(
+                content={
+                    "status": "success",
+                    "message": "Registration successful. Please log in.",
+                    "redirect_url": "/auth/login?message=Registration successful. Please log in.",
+                },
+                status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
+            )
 
-        return JSONResponse(
-            content={
-                "status": "success",
-                "message": "Registration successful. Please log in.",
-                "redirect_url": "/auth/login?message=Registration successful. Please log in.",
-            },
-            status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
-        )
-
-    except IntegrityError:
-        db.rollback()  # Rollback the transaction on database error
-        logger.warning(
-            f"Registration failed: Username '{data.username}' already exists."
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "status": "error",
-                "message": "Username already exists. Please choose a different one.",
-            },
-        )
-    except Exception as e:
-        db.rollback()  # Rollback for any other unexpected errors
-        logger.error(
-            f"An unexpected error occurred during registration: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "status": "error",
-                "message": "An unexpected server error occurred during registration.",
-            },
-        )
+        except IntegrityError:
+            db.rollback()  # Rollback the transaction on database error
+            logger.warning(
+                f"Registration failed: Username '{data.username}' already exists."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "status": "error",
+                    "message": "Username already exists. Please choose a different one.",
+                },
+            )
+        except Exception as e:
+            db.rollback()  # Rollback for any other unexpected errors
+            logger.error(
+                f"An unexpected error occurred during registration: {e}", exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "status": "error",
+                    "message": "An unexpected server error occurred during registration.",
+                },
+            )

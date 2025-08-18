@@ -12,7 +12,6 @@ See Also:
 import logging
 from fastapi import HTTPException, status, Path
 from sqlalchemy.orm import Session
-from ..db.database import db_session_manager
 from ..db.models import User
 from ..api import utils as utils_api
 from ..error import InvalidServerNameError

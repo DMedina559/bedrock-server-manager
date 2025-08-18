@@ -27,7 +27,6 @@ from starlette.authentication import AuthCredentials, AuthenticationBackend, Sim
 
 from ..error import MissingArgumentError
 from .schemas import User
-from ..db.database import db_session_manager
 from ..db.models import User as UserModel
 from ..context import AppContext
 from ..config import Settings
@@ -165,12 +164,8 @@ async def get_current_user_optional(
                 theme=user.theme,
             )
 
-        db = getattr(getattr(request, "state", None), "db", None)
-        if db:
+        with app_context.db.session_manager() as db:
             return get_user_from_db(db)
-        else:
-            with db_session_manager() as db:
-                return get_user_from_db(db)
 
     except JWTError:
         return None
@@ -242,7 +237,9 @@ class CustomAuthBackend(AuthenticationBackend):
         return AuthCredentials(["authenticated"]), SimpleUser(user.username)
 
 
-def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
+def authenticate_user(
+    app_context: AppContext, username_form: str, password_form: str
+) -> Optional[str]:
     """
     Authenticates a user against the database.
 
@@ -257,7 +254,7 @@ def authenticate_user(username_form: str, password_form: str) -> Optional[str]:
         Optional[str]: The username if authentication is successful,
         otherwise ``None``.
     """
-    with db_session_manager() as db:
+    with app_context.db.session_manager() as db:
         user = db.query(UserModel).filter(UserModel.username == username_form).first()
         if not user:
             return None
