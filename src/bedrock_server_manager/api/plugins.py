@@ -21,11 +21,10 @@ for use by administrative interfaces like a web UI or CLI.
 import logging
 from typing import Dict, Any, Optional
 
-from ..plugins.plugin_manager import PluginManager
+from ..instances import get_app_context
 from ..plugins import plugin_method
 from ..error import UserInputError
 from ..context import AppContext
-from ..instances import get_plugin_manager_instance
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, A
         if app_context:
             pm = app_context.plugin_manager
         else:
-            pm = get_plugin_manager_instance()
+            pm = get_app_context().plugin_manager
         pm._synchronize_config_with_disk()
         statuses = pm.plugin_config
         logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
@@ -106,7 +105,7 @@ def set_plugin_status(
         if app_context:
             pm = app_context.plugin_manager
         else:
-            pm = get_plugin_manager_instance()
+            pm = get_app_context().plugin_manager
         pm._synchronize_config_with_disk()
 
         if plugin_name not in pm.plugin_config:
@@ -162,7 +161,7 @@ def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
         if app_context:
             pm = app_context.plugin_manager
         else:
-            pm = get_plugin_manager_instance()
+            pm = get_app_context().plugin_manager
         pm.reload()
         logger.info("API: Plugins reloaded successfully.")
         return {
@@ -218,7 +217,7 @@ def trigger_external_plugin_event_api(
         if app_context:
             pm = app_context.plugin_manager
         else:
-            pm = get_plugin_manager_instance()
+            pm = get_app_context().plugin_manager
         actual_payload = payload if payload is not None else {}
         pm.trigger_custom_plugin_event(
             event_name, "external_api_trigger", **actual_payload
