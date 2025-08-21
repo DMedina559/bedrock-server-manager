@@ -64,36 +64,48 @@ class WorldOperationNotificationsPlugin(PluginBase):
     def before_world_export(self, **kwargs: Any):
         """Notifies players before a world export begins."""
         server_name = kwargs.get("server_name")
+        app_context = kwargs.get("app_context")
         export_dir = kwargs.get("export_dir")
         self.logger.debug(
             f"Handling before_world_export for '{server_name}' to '{export_dir}'."
         )
-        self._send_ingame_warning(
-            server_name, "World export starting...", "world export"
-        )
+        if app_context:
+            server = app_context.get_server(server_name)
+            if server.player_count > 0:
+                self._send_ingame_warning(
+                    server_name, "World export starting...", "world export"
+                )
 
     def before_world_import(self, **kwargs: Any):
         """Notifies players before a world import begins."""
         server_name = kwargs.get("server_name")
+        app_context = kwargs.get("app_context")
         file_path = kwargs.get("file_path")
         self.logger.debug(
             f"Handling before_world_import for '{server_name}' from '{file_path}'."
         )
-        self._send_ingame_warning(
-            server_name,
-            "World import starting... Current world will be replaced.",
-            "world import",
-        )
+        if app_context:
+            server = app_context.get_server(server_name)
+            if server.player_count > 0:
+                self._send_ingame_warning(
+                    server_name,
+                    "World import starting... Current world will be replaced.",
+                    "world import",
+                )
 
     def before_world_reset(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
         server_name = kwargs.get("server_name")
+        app_context = kwargs.get("app_context")
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
         self.logger.warning(
             f"Critical operation: World reset initiated for server '{server_name}'."
         )
-        self._send_ingame_warning(
-            server_name,
-            "CRITICAL WARNING: Server world is being reset NOW!",
-            "world reset",
-        )
+        if app_context:
+            server = app_context.get_server(server_name)
+            if server.player_count > 0:
+                self._send_ingame_warning(
+                    server_name,
+                    "CRITICAL WARNING: Server world is being reset NOW!",
+                    "world reset",
+                )

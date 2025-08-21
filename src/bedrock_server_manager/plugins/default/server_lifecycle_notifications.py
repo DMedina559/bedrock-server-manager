@@ -73,17 +73,24 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     def before_server_stop(self, **kwargs: Any):
         """Sends a shutdown warning and waits before the server stops."""
         server_name = kwargs.get("server_name")
-        self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
-        if self._is_server_running(server_name):
-            warning_message = (
-                f"Server is stopping in {self.stop_warning_delay} seconds..."
-            )
-            self._send_ingame_message(server_name, warning_message, "shutdown warning")
+        app_context = kwargs.get("app_context")
 
-            self.logger.info(
-                f"Waiting {self.stop_warning_delay}s before '{server_name}' stops."
-            )
-            time.sleep(self.stop_warning_delay)
+        self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
+        if app_context:
+            server = app_context.get_server(server_name)
+            if server.player_count > 0:
+                if self._is_server_running(server_name):
+                    warning_message = (
+                        f"Server is stopping in {self.stop_warning_delay} seconds..."
+                    )
+                    self._send_ingame_message(
+                        server_name, warning_message, "shutdown warning"
+                    )
+
+                    self.logger.info(
+                        f"Waiting {self.stop_warning_delay}s before '{server_name}' stops."
+                    )
+                    time.sleep(self.stop_warning_delay)
 
     def after_server_stop(self, **kwargs: Any):
         """Waits for a short period after a server stops, e.g., for port release."""
@@ -99,23 +106,35 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     def before_delete_server_data(self, **kwargs: Any):
         """Sends a final warning before server data is deleted if the server is running."""
         server_name = kwargs.get("server_name")
+        app_context = kwargs.get("app_context")
+
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
-        self._send_ingame_message(
-            server_name,
-            "WARNING: Server data is being deleted permanently!",
-            "data deletion warning",
-        )
+        if app_context:
+            server = app_context.get_server(server_name)
+            if server.player_count > 0:
+                self._send_ingame_message(
+                    server_name,
+                    "WARNING: Server data is being deleted permanently!",
+                    "data deletion warning",
+                )
 
     def before_server_update(self, **kwargs: Any):
         """Notifies players before a server update begins."""
         server_name = kwargs.get("server_name")
         target_version = kwargs.get("target_version")
+        app_context = kwargs.get("app_context")
+
         self.logger.debug(
             f"Handling before_server_update for '{server_name}' to v{target_version}."
         )
-        self._send_ingame_message(
-            server_name, "Server is updating now, please wait...", "update notification"
-        )
+        if app_context:
+            server = app_context.get_server(server_name)
+            if server.player_count > 0:
+                self._send_ingame_message(
+                    server_name,
+                    "Server is updating now, please wait...",
+                    "update notification",
+                )
 
     def after_server_start(self, **kwargs: Any):
         """Waits for a short period after a server starts to allow initialization."""

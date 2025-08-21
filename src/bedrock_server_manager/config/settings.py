@@ -230,6 +230,10 @@ class Settings:
                 "file_level": logging.INFO,
                 "cli_level": logging.WARN,
             },
+            "server_monitoring": {
+                "player_log_monitoring_enabled": True,
+                "player_log_monitoring_interval_sec": 60,
+            },
             "web": {
                 "host": "127.0.0.1",
                 "port": 11325,
