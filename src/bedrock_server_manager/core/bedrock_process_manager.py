@@ -99,7 +99,7 @@ class BedrockProcessManager:
                 ):
                     try:
                         bedrock_server = mc.lookup(
-                            f"127.0.0.1:{server.get_server_properties()['server-port']}"
+                            f"127.0.0.1:{server.get_server_property('server-port')}"
                         )
                         status = bedrock_server.status()
                         server.player_count = status.players.online
