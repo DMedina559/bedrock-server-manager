@@ -150,7 +150,12 @@ class DiscoveryMixin:
                 status = server.get_status()
                 version = server.get_version()
                 servers_data.append(
-                    {"name": server.server_name, "status": status, "version": version}
+                    {
+                        "name": server.server_name,
+                        "status": status,
+                        "version": version,
+                        "player_count": server.player_count,
+                    }
                 )
 
             except (

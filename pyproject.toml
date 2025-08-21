@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bedrock-server-manager"
-version = "3.6.0"
+version = "3.6.0b1"
 authors = [
   { name="DMedina559", email="dmedina559-github@outlook.com" },
 ]
@@ -38,15 +38,16 @@ dependencies = [
     "bcrypt >=4.3.0,<4.4",
     "sqlalchemy >=2.0.0,<2.1",
     "appdirs >=1.4.4,<1.5",
-    "alembic >=1.16,<1.17",
+    "alembic >=1.13.1,<1.17",
+    "mcstatus >=12.2.0,<12.3",
 ]
 
-keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "fastapi"]
+keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "cli", "web", "fastapi"]
 
 [project.urls]
 Repository = "https://github.com/dmedina559/bedrock-server-manager.git"
 "Bug Tracker" = "https://github.com/DMedina559/bedrock-server-manager/issues"
-Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/changelog.html"
+Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/_manual_docs/changelog.html"
 
 [project.optional-dependencies]
 dev = [

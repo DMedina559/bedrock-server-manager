@@ -38,14 +38,20 @@ router = APIRouter()
 
 
 # --- Pydantic Models ---
+class ServerSchema(BaseModel):
+    name: str
+    status: str
+    version: str
+    player_count: int
+
+
 class GeneralApiResponse(BaseApiResponse):
-    """A general-purpose API response model.
-    """
+    """A general-purpose API response model."""
 
     # status: str -> Inherited
     # message: Optional[str] = None -> Inherited
     data: Optional[Dict[str, Any]] = None  # Often for single item details
-    servers: Optional[List[Dict[str, Any]]] = None  # For lists of server data
+    servers: Optional[List[ServerSchema]] = None  # For lists of server data
     info: Optional[Dict[str, Any]] = None  # For app/system info
     players: Optional[List[Dict[str, Any]]] = None  # For player lists
     files_deleted: Optional[int] = None  # For prune operations

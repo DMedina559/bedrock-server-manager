@@ -94,6 +94,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
+        self.player_count = 0
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
