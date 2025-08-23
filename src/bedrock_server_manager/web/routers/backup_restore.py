@@ -114,7 +114,7 @@ async def backup_menu_page(
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed backup menu for server '{server_name}'.")
-    return get_templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "backup_menu.html",
         {"request": request, "current_user": current_user, "server_name": server_name},
@@ -140,7 +140,7 @@ async def backup_config_select_page(
         f"User '{identity}' accessed config backup selection page for server '{server_name}'."
     )
 
-    return get_templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "backup_config_options.html",
         {"request": request, "current_user": current_user, "server_name": server_name},
@@ -163,7 +163,7 @@ async def restore_menu_page(
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed restore menu for server '{server_name}'.")
-    return get_templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "restore_menu.html",
         {"request": request, "current_user": current_user, "server_name": server_name},
@@ -229,7 +229,7 @@ async def show_select_backup_file_page(
                 }
                 for p in full_paths
             ]
-            return get_templates.TemplateResponse(
+            return get_templates().TemplateResponse(
                 request,
                 "restore_select_backup.html",
                 {
