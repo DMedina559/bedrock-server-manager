@@ -7,6 +7,8 @@ import time
 import logging
 from typing import Dict, Optional, TYPE_CHECKING
 
+from mcstatus import BedrockServer as mc
+
 from ..core.system import process as core_process
 from ..error import (
     BSMError,
@@ -36,6 +38,7 @@ class BedrockProcessManager:
         self.app_context = app_context
         self.settings = self.app_context.settings
         self._shutdown_event = threading.Event()
+        self.player_scan_counter = 0
         self.monitoring_thread = threading.Thread(
             target=self._monitor_servers, daemon=True
         )
@@ -68,16 +71,26 @@ class BedrockProcessManager:
             monitoring_interval = self.settings.get(
                 "SERVER_MONITORING_INTERVAL_SEC", 10
             )
+            player_log_monitoring_enabled = self.settings.get(
+                "server_monitoring.player_log_monitoring_enabled", True
+            )
+            player_log_monitoring_interval_sec = self.settings.get(
+                "server_monitoring.player_log_monitoring_interval_sec", 60
+            )
         except Exception:
             monitoring_interval = 10
+            player_log_monitoring_enabled = True
+            player_log_monitoring_interval_sec = 60
 
         self.logger.info(
             f"Server monitoring thread started with a {monitoring_interval} second interval."
         )
+        
         while not self._shutdown_event.is_set():
             if self._shutdown_event.wait(timeout=monitoring_interval):
                 break  # Exit if event is set
 
+            self.player_scan_counter += monitoring_interval
             for server_name, server in list(self.servers.items()):
                 if not server.is_running():
                     if not server.intentionally_stopped:
@@ -91,6 +104,30 @@ class BedrockProcessManager:
                             f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
                         )
                         self.remove_server(server_name)
+                elif (
+                    player_log_monitoring_enabled
+                    and self.player_scan_counter >= player_log_monitoring_interval_sec
+                ):
+                    try:
+                        bedrock_server = mc.lookup(
+                            f"127.0.0.1:{server.get_server_property('server-port')}"
+                        )
+                        status = bedrock_server.status()
+                        server.player_count = status.players.online
+                        if status.players.online > 0:
+                            self.logger.info(
+                                f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
+                            )
+                            players = server.scan_log_for_players()
+                            if players:
+                                self.app_context.manager.save_player_data(players)
+                    except Exception as e:
+                        server.player_count = 0
+                        self.logger.error(
+                            f"Error pinging server '{server.server_name}': {e}"
+                        )
+            if self.player_scan_counter >= player_log_monitoring_interval_sec:
+                self.player_scan_counter = 0
 
     def _try_restart_server(self, server: "BedrockServer"):
         """Tries to restart a crashed server."""
