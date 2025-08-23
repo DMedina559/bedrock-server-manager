@@ -20,7 +20,6 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
-    BackgroundTasks,
     status,
     Request,
 )
@@ -37,7 +36,6 @@ from ...error import (
     ServerNotRunningError,
     BlockedCommandError,
 )
-from .. import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +99,6 @@ async def start_server_route(
 )
 async def stop_server_route(
     request: Request,
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
 ):
@@ -114,10 +111,7 @@ async def stop_server_route(
     identity = current_user.username
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
     app_context = request.app.state.app_context
-    task_id = tasks.create_task()
-    background_tasks.add_task(
-        tasks.run_task,
-        task_id,
+    task_id = app_context.task_manager.run_task(
         server_api.stop_server,
         server_name=server_name,
         app_context=app_context,
@@ -139,7 +133,6 @@ async def stop_server_route(
 )
 async def restart_server_route(
     request: Request,
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
 ):
@@ -154,10 +147,7 @@ async def restart_server_route(
         f"API: Restart server request for '{server_name}' by user '{identity}'."
     )
     app_context = request.app.state.app_context
-    task_id = tasks.create_task()
-    background_tasks.add_task(
-        tasks.run_task,
-        task_id,
+    task_id = app_context.task_manager.run_task(
         server_api.restart_server,
         server_name=server_name,
         app_context=app_context,
@@ -266,7 +256,6 @@ async def send_command_route(
 async def update_server_route(
     request: Request,
     server_name: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_admin_user),
 ):
     """
@@ -278,10 +267,7 @@ async def update_server_route(
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
     app_context = request.app.state.app_context
-    task_id = tasks.create_task()
-    background_tasks.add_task(
-        tasks.run_task,
-        task_id,
+    task_id = app_context.task_manager.run_task(
         server_install_config.update_server,
         server_name=server_name,
         app_context=app_context,
@@ -304,7 +290,6 @@ async def update_server_route(
 async def delete_server_route(
     request: Request,
     server_name: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_admin_user),
 ):
     """
@@ -318,10 +303,7 @@ async def delete_server_route(
         f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
     )
     app_context = request.app.state.app_context
-    task_id = tasks.create_task()
-    background_tasks.add_task(
-        tasks.run_task,
-        task_id,
+    task_id = app_context.task_manager.run_task(
         server_api.delete_server_data,
         server_name=server_name,
         app_context=app_context,

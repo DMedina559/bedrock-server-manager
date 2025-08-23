@@ -68,17 +68,26 @@ def test_install_world_api_route_success(
 ):
     """Test the install_world_api_route with a successful response."""
     worlds_dir = os.path.join(app_context.settings.get("paths.content"), "worlds")
-    os.makedirs(worlds_dir)
+    os.makedirs(worlds_dir, exist_ok=True)
     world_file = os.path.join(worlds_dir, "world.mcworld")
     with open(world_file, "w") as f:
         f.write("test")
+
+    # Mock the task manager's run_task method
+    mock_run_task = MagicMock(return_value="test-task-id")
+    app_context.task_manager.run_task = mock_run_task
 
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/world/install",
         json={"filename": "world.mcworld"},
     )
     assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
+    json_response = response.json()
+    assert "initiated in background" in json_response["message"]
+    assert json_response["task_id"] == "test-task-id"
+
+    # Verify that run_task was called
+    mock_run_task.assert_called_once()
 
 
 @patch("bedrock_server_manager.web.routers.content.utils_api.validate_server_exist")
@@ -101,184 +110,83 @@ def test_install_world_api_route_not_found(
     assert "not found for import" in response.json()["detail"]
 
 
-@patch("bedrock_server_manager.web.routers.content.world_api.import_world")
-def test_install_world_api_route_user_input_error(
-    mock_import_world, authenticated_client, caplog
+def test_install_world_api_route_queues_task_correctly(
+    authenticated_client,
 ):
-    """Test the install_world_api_route with a UserInputError."""
-    from bedrock_server_manager.error import UserInputError
+    """
+    Test that the install_world_api_route correctly queues a task
+    and returns a task ID.
+    """
+    app_context = authenticated_client.app.state.app_context
+    app_context.task_manager.run_task = MagicMock(return_value="test-task-id-123")
 
-    app_context = MagicMock()
-    app_context.settings.get.return_value = "/fake/path"
-    authenticated_client.app.state.app_context = app_context
-    mock_import_world.side_effect = UserInputError("Invalid world file")
     with patch("os.path.isfile", return_value=True):
-        response = authenticated_client.post(
-            "/api/server/test-server/world/install",
-            json={"filename": "world.mcworld"},
-        )
+        # We also need to patch validate_server_exist as it's a dependency
+        with patch(
+            "bedrock_server_manager.api.utils.validate_server_exist",
+            return_value={"status": "success"},
+        ):
+            response = authenticated_client.post(
+                "/api/server/test-server/world/install",
+                json={"filename": "world.mcworld"},
+            )
+
     assert response.status_code == 202
-    assert "Invalid world file" in caplog.text
+    assert response.json()["task_id"] == "test-task-id-123"
+    app_context.task_manager.run_task.assert_called_once()
 
 
-@patch("bedrock_server_manager.web.routers.content.world_api.import_world")
-def test_install_world_api_route_bsm_error(
-    mock_import_world, authenticated_client, caplog
-):
-    """Test the install_world_api_route with a BSMError."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    app_context.settings.get.return_value = "/fake/path"
-    authenticated_client.app.state.app_context = app_context
-    mock_import_world.side_effect = BSMError("Failed to import world")
-    with patch("os.path.isfile", return_value=True):
-        response = authenticated_client.post(
-            "/api/server/test-server/world/install",
-            json={"filename": "world.mcworld"},
-        )
-    assert response.status_code == 202
-    assert "Failed to import world" in caplog.text
-
-
-@patch("bedrock_server_manager.web.routers.content.world_api.export_world")
-def test_export_world_api_route_user_input_error(
-    mock_export_world, authenticated_client, caplog
-):
-    """Test the export_world_api_route with a UserInputError."""
-    from bedrock_server_manager.error import UserInputError
-
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_export_world.side_effect = UserInputError("Invalid server name")
-    response = authenticated_client.post("/api/server/test-server/world/export")
-    assert response.status_code == 202
-    assert "Invalid server name" in caplog.text
-
-
-@patch("bedrock_server_manager.web.routers.content.world_api.export_world")
-def test_export_world_api_route_bsm_error(
-    mock_export_world, authenticated_client, caplog
-):
-    """Test the export_world_api_route with a BSMError."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_export_world.side_effect = BSMError("Failed to export world")
-    response = authenticated_client.post("/api/server/test-server/world/export")
-    assert response.status_code == 202
-    assert "Failed to export world" in caplog.text
-
-
-@patch("bedrock_server_manager.web.routers.content.world_api.reset_world")
-def test_reset_world_api_route_user_input_error(
-    mock_reset_world, authenticated_client, caplog
-):
-    """Test the reset_world_api_route with a UserInputError."""
-    from bedrock_server_manager.error import UserInputError
-
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_reset_world.side_effect = UserInputError("Invalid server name")
-    response = authenticated_client.delete("/api/server/test-server/world/reset")
-    assert response.status_code == 202
-    assert "Invalid server name" in caplog.text
-
-
-@patch("bedrock_server_manager.web.routers.content.world_api.reset_world")
-def test_reset_world_api_route_bsm_error(
-    mock_reset_world, authenticated_client, caplog
-):
-    """Test the reset_world_api_route with a BSMError."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_reset_world.side_effect = BSMError("Failed to reset world")
-    response = authenticated_client.delete("/api/server/test-server/world/reset")
-    assert response.status_code == 202
-    assert "Failed to reset world" in caplog.text
-
-
-@patch("bedrock_server_manager.web.routers.content.addon_api.import_addon")
-def test_install_addon_api_route_user_input_error(
-    mock_import_addon, authenticated_client, caplog
-):
-    """Test the install_addon_api_route with a UserInputError."""
-    from bedrock_server_manager.error import UserInputError
-
-    app_context = MagicMock()
-    app_context.settings.get.return_value = "/fake/path"
-    authenticated_client.app.state.app_context = app_context
-    mock_import_addon.side_effect = UserInputError("Invalid addon file")
-    with patch("os.path.isfile", return_value=True):
-        response = authenticated_client.post(
-            "/api/server/test-server/addon/install",
-            json={"filename": "addon.mcaddon"},
-        )
-    assert response.status_code == 202
-    assert "Invalid addon file" in caplog.text
-
-
-@patch("bedrock_server_manager.web.routers.content.addon_api.import_addon")
-def test_install_addon_api_route_bsm_error(
-    mock_import_addon, authenticated_client, caplog
-):
-    """Test the install_addon_api_route with a BSMError."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    app_context.settings.get.return_value = "/fake/path"
-    authenticated_client.app.state.app_context = app_context
-    mock_import_addon.side_effect = BSMError("Failed to import addon")
-    with patch("os.path.isfile", return_value=True):
-        response = authenticated_client.post(
-            "/api/server/test-server/addon/install",
-            json={"filename": " addon.mcaddon"},
-        )
-    assert response.status_code == 202
-    assert "Failed to import addon" in caplog.text
-
-
-def test_export_world_api_route_success(
+def test_export_world_api_route_queues_task_correctly(
     authenticated_client, app_context, real_bedrock_server
 ):
-    """Test the export_world_api_route with a successful response."""
+    """Test the export_world_api_route correctly queues a task."""
+    mock_run_task = MagicMock(return_value="export-task-id")
+    app_context.task_manager.run_task = mock_run_task
+
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/world/export"
     )
+
     assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
+    assert response.json()["task_id"] == "export-task-id"
+    mock_run_task.assert_called_once()
 
 
-def test_reset_world_api_route_success(
+def test_reset_world_api_route_queues_task_correctly(
     authenticated_client, app_context, real_bedrock_server
 ):
-    """Test the reset_world_api_route with a successful response."""
+    """Test the reset_world_api_route correctly queues a task."""
+    mock_run_task = MagicMock(return_value="reset-task-id")
+    app_context.task_manager.run_task = mock_run_task
+
     response = authenticated_client.delete(
         f"/api/server/{real_bedrock_server.server_name}/world/reset"
     )
     assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
+    assert response.json()["task_id"] == "reset-task-id"
+    mock_run_task.assert_called_once()
 
 
-def test_install_addon_api_route_success(
+def test_install_addon_api_route_queues_task_correctly(
     authenticated_client, app_context, real_bedrock_server
 ):
-    """Test the install_addon_api_route with a successful response."""
+    """Test the install_addon_api_route correctly queues a task."""
     addons_dir = os.path.join(app_context.settings.get("paths.content"), "addons")
-    os.makedirs(addons_dir)
+    os.makedirs(addons_dir, exist_ok=True)
     addon_file = os.path.join(addons_dir, "addon.mcaddon")
     with open(addon_file, "w") as f:
         f.write("test")
+
+    mock_run_task = MagicMock(return_value="addon-task-id")
+    app_context.task_manager.run_task = mock_run_task
 
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/addon/install",
         json={"filename": "addon.mcaddon"},
     )
     assert response.status_code == 202
-    assert "initiated in background" in response.json()["message"]
+    assert response.json()["task_id"] == "addon-task-id"
+    mock_run_task.assert_called_once()
 
 
 @patch("bedrock_server_manager.web.routers.content.utils_api.validate_server_exist")

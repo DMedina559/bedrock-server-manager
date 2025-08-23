@@ -36,7 +36,12 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
         app_context = app.state.app_context
-        app_context.bedrock_process_manager.shutdown()
+        # Shut down the task manager gracefully
+        if (
+            hasattr(app_context, "_task_manager")
+            and app_context._task_manager is not None
+        ):
+            app_context.task_manager.shutdown()
         api.utils.stop_all_servers(app_context=app_context)
         app_context.plugin_manager.unload_plugins()
         app_context.db.close()

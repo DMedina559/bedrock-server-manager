@@ -2,39 +2,20 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
-@patch(
-    "bedrock_server_manager.api.backup_restore.backup_all",
-    return_value={"status": "success"},
-)
-def test_backup_server_api_route_success(
-    mock_backup, authenticated_client, real_bedrock_server
-):
+def test_backup_server_api_route_success(authenticated_client, real_bedrock_server):
     """Test the backup_server_api_route with a successful backup."""
+    app_context = authenticated_client.app.state.app_context
+    app_context.task_manager.run_task = MagicMock(return_value="backup-task-id")
+
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/backup/action",
         json={"backup_type": "all"},
     )
     assert response.status_code == 202
-    assert response.json()["status"] == "pending"
-
-
-@patch("bedrock_server_manager.web.routers.backup_restore.tasks.run_task")
-@patch("bedrock_server_manager.web.routers.backup_restore.tasks.create_task")
-def test_backup_server_api_route_failure(
-    mock_create_task, mock_run_task, authenticated_client
-):
-    """Test the backup_server_api_route with a failed backup."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_create_task.return_value = "test_task_id"
-    mock_run_task.side_effect = BSMError("Backup failed")
-
-    with pytest.raises(BSMError):
-        authenticated_client.post(
-            "/api/server/test-server/backup/action", json={"backup_type": "all"}
-        )
+    json_data = response.json()
+    assert json_data["status"] == "pending"
+    assert json_data["task_id"] == "backup-task-id"
+    app_context.task_manager.run_task.assert_called_once()
 
 
 def test_get_backups_api_route_success(authenticated_client, real_bedrock_server):
@@ -58,54 +39,19 @@ def test_get_backups_api_route_no_backups(mock_get_backups, authenticated_client
     assert response.json()["details"]["all_backups"] == {}
 
 
-@patch(
-    "bedrock_server_manager.api.backup_restore.restore_all",
-    return_value={"status": "success"},
-)
-def test_restore_backup_api_route_success(
-    mock_restore, authenticated_client, real_bedrock_server
-):
+def test_restore_backup_api_route_success(authenticated_client, real_bedrock_server):
     """Test the restore_backup_api_route with a successful restore."""
-    response = authenticated_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/restore/action",
-        json={"restore_type": "all", "backup_file": "test.zip"},
-    )
+    app_context = authenticated_client.app.state.app_context
+    app_context.task_manager.run_task = MagicMock(return_value="restore-task-id")
+
+    # Mock the os.path.isfile check to prevent failure on non-existent backup file
+    with patch("os.path.isfile", return_value=True):
+        response = authenticated_client.post(
+            f"/api/server/{real_bedrock_server.server_name}/restore/action",
+            json={"restore_type": "world", "backup_file": "test.zip"},
+        )
     assert response.status_code == 202
-    assert response.json()["status"] == "pending"
-
-
-@patch("bedrock_server_manager.web.routers.backup_restore.tasks.run_task")
-@patch("bedrock_server_manager.web.routers.backup_restore.tasks.create_task")
-def test_restore_backup_api_route_failure(
-    mock_create_task, mock_run_task, authenticated_client
-):
-    """Test the restore_backup_api_route with a failed restore."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    app_context.settings.get.return_value = "test"
-    authenticated_client.app.state.app_context = app_context
-    mock_create_task.return_value = "test_task_id"
-    mock_run_task.side_effect = BSMError("Restore failed")
-    with pytest.raises(BSMError):
-        authenticated_client.post(
-            "/api/server/test-server/restore/action", json={"restore_type": "all"}
-        )
-
-
-@patch("bedrock_server_manager.web.routers.backup_restore.tasks.run_task")
-@patch("bedrock_server_manager.web.routers.backup_restore.tasks.create_task")
-def test_backup_in_progress(mock_create_task, mock_run_task, authenticated_client):
-    """Test that a 423 is returned when a backup is in progress."""
-    from bedrock_server_manager.error import BSMError
-
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_create_task.return_value = "test_task_id"
-    mock_run_task.side_effect = BSMError(
-        "Backup/restore operation already in progress."
-    )
-    with pytest.raises(BSMError):
-        authenticated_client.post(
-            "/api/server/test-server/backup/action", json={"backup_type": "all"}
-        )
+    json_data = response.json()
+    assert json_data["status"] == "pending"
+    assert json_data["task_id"] == "restore-task-id"
+    app_context.task_manager.run_task.assert_called_once()

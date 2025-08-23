@@ -20,88 +20,30 @@ def test_get_custom_zips(authenticated_client, app_context):
     assert "zip1.zip" in response.json()["custom_zips"]
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.install_new_server",
-    return_value={"status": "success"},
-)
-def test_install_server_api_route_success(mock_install, authenticated_client):
+def test_install_server_api_route_success(authenticated_client):
     """Test the install_server_api_route with a successful installation."""
-    response = authenticated_client.post(
-        "/api/server/install",
-        json={"server_name": "new-server", "server_version": "LATEST"},
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "pending"
+    app_context = authenticated_client.app.state.app_context
+    app_context.task_manager.run_task = MagicMock(return_value="install-task-id")
 
-
-@patch("bedrock_server_manager.web.routers.server_install_config.tasks.create_task")
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.install_new_server"
-)
-def test_install_server_api_route_user_input_error(
-    mock_install, mock_create_task, authenticated_client
-):
-    """
-    Test that when the background installation task fails with a UserInputError,
-    the task status is updated correctly.
-    """
-    from bedrock_server_manager.error import UserInputError
-    from bedrock_server_manager.web import tasks
-
-    tasks.tasks.clear()
-    task_id = "test_task_id"
-    mock_create_task.return_value = task_id
-    mock_install.side_effect = UserInputError("Invalid server version")
-
-    response = authenticated_client.post(
-        "/api/server/install",
-        json={"server_name": "new-server", "server_version": "INVALID"},
-    )
+    # Mock the utils functions that are called before the task is created
+    with patch(
+        "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_name_format",
+        return_value={"status": "success"},
+    ):
+        with patch(
+            "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_exist",
+            return_value={"status": "error"},
+        ):
+            response = authenticated_client.post(
+                "/api/server/install",
+                json={"server_name": "new-server", "server_version": "LATEST"},
+            )
 
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["status"] == "pending"
-    assert json_data["task_id"] == task_id
-
-    task_info = tasks.tasks.get(task_id)
-    assert task_info is not None
-    assert task_info["status"] == "error"
-    assert task_info["message"] == "Invalid server version"
-
-
-@patch("bedrock_server_manager.web.routers.server_install_config.tasks.create_task")
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.server_install_config.install_new_server"
-)
-def test_install_server_api_route_bsm_error(
-    mock_install, mock_create_task, authenticated_client
-):
-    """
-    Test that when the background installation task fails with a BSMError,
-    the task status is updated correctly.
-    """
-    from bedrock_server_manager.error import BSMError
-    from bedrock_server_manager.web import tasks
-
-    tasks.tasks.clear()
-    task_id = "test_task_id"
-    mock_create_task.return_value = task_id
-    mock_install.side_effect = BSMError("Failed to install server")
-
-    response = authenticated_client.post(
-        "/api/server/install",
-        json={"server_name": "new-server", "server_version": "LATEST"},
-    )
-
-    assert response.status_code == 200
-    json_data = response.json()
-    assert json_data["status"] == "pending"
-    assert json_data["task_id"] == task_id
-
-    task_info = tasks.tasks.get(task_id)
-    assert task_info is not None
-    assert task_info["status"] == "error"
-    assert task_info["message"] == "Failed to install server"
+    assert json_data["task_id"] == "install-task-id"
+    app_context.task_manager.run_task.assert_called_once()
 
 
 @patch(

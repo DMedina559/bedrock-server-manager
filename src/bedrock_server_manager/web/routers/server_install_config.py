@@ -27,7 +27,6 @@ from fastapi import (
     status,
     Body,
     Path,
-    BackgroundTasks,
 )
 from fastapi.responses import (
     HTMLResponse,
@@ -47,7 +46,6 @@ from ...api import (
     utils as utils_api,
 )
 from ...error import BSMError, UserInputError
-from .. import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +210,6 @@ async def install_server_page(
 async def install_server_api_route(
     request: Request,
     payload: InstallServerPayload,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_admin_user),
 ):
     """
@@ -282,10 +279,7 @@ async def install_server_api_route(
                 os.path.join(custom_dir, payload.server_zip_path)
             )
 
-        task_id = tasks.create_task()
-        background_tasks.add_task(
-            tasks.run_task,
-            task_id,
+        task_id = app_context.task_manager.run_task(
             server_install_config.install_new_server,
             server_name=payload.server_name,
             target_version=payload.server_version,

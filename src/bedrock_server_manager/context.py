@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .plugins.plugin_manager import PluginManager
     from .core.bedrock_process_manager import BedrockProcessManager
     from .db.database import Database
+    from .web.tasks import TaskManager
 
 
 class AppContext:
@@ -30,6 +31,7 @@ class AppContext:
         self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
+        self._task_manager: Optional["TaskManager"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
 
     def load(self):
@@ -86,6 +88,24 @@ class AppContext:
         Sets the PluginManager instance.
         """
         self._plugin_manager = value
+
+    @property
+    def task_manager(self) -> "TaskManager":
+        """
+        Lazily loads and returns the TaskManager instance.
+        """
+        if self._task_manager is None:
+            from .web.tasks import TaskManager
+
+            self._task_manager = TaskManager()
+        return self._task_manager
+
+    @task_manager.setter
+    def task_manager(self, value: "TaskManager"):
+        """
+        Sets the TaskManager instance.
+        """
+        self._task_manager = value
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":

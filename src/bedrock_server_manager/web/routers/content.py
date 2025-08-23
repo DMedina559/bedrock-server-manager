@@ -12,14 +12,13 @@ from fastapi import (
     Depends,
     HTTPException,
     status,
-    BackgroundTasks,
     Path,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from ..schemas import ActionResponse, BaseApiResponse, User
-from ..templating import get_templates
+from ..templating import templates
 from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
 from ..dependencies import validate_server_exists
 from ...api import (
@@ -29,7 +28,6 @@ from ...api import (
     utils as utils_api,
 )
 from ...error import BSMError, UserInputError
-from .. import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +89,8 @@ async def install_world_page(
         )
         error_message = "An unexpected server error occurred while listing worlds."
 
-    return get_templates().TemplateResponse(
+    return templates.TemplateResponse(
+        request,
         "select_world.html",
         {
             "request": request,
@@ -146,7 +145,8 @@ async def install_addon_page(
         )
         error_message = "An unexpected server error occurred while listing addons."
 
-    return get_templates().TemplateResponse(
+    return templates.TemplateResponse(
+        request,
         "select_addon.html",
         {
             "request": request,
@@ -244,7 +244,6 @@ async def list_addons_api_route(
 async def install_world_api_route(
     request: Request,
     payload: FileNamePayload,
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
 ):
@@ -296,10 +295,7 @@ async def install_world_api_route(
                 detail=f"World file '{selected_filename}' not found for import.",
             )
 
-        task_id = tasks.create_task()
-        background_tasks.add_task(
-            tasks.run_task,
-            task_id,
+        task_id = app_context.task_manager.run_task(
             world_api.import_world,
             server_name=server_name,
             selected_file_path=full_world_file_path,
@@ -340,7 +336,6 @@ async def install_world_api_route(
 )
 async def export_world_api_route(
     request: Request,
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
 ):
@@ -364,10 +359,7 @@ async def export_world_api_route(
                 detail=f"Server '{server_name}' not found.",
             )
 
-        task_id = tasks.create_task()
-        background_tasks.add_task(
-            tasks.run_task,
-            task_id,
+        task_id = app_context.task_manager.run_task(
             world_api.export_world,
             server_name=server_name,
             app_context=app_context,
@@ -400,7 +392,6 @@ async def export_world_api_route(
 )
 async def reset_world_api_route(
     request: Request,
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
 ):
@@ -424,10 +415,7 @@ async def reset_world_api_route(
                 detail=f"Server '{server_name}' not found.",
             )
 
-        task_id = tasks.create_task()
-        background_tasks.add_task(
-            tasks.run_task,
-            task_id,
+        task_id = app_context.task_manager.run_task(
             world_api.reset_world,
             server_name=server_name,
             app_context=app_context,
@@ -461,7 +449,6 @@ async def reset_world_api_route(
 async def install_addon_api_route(
     request: Request,
     payload: FileNamePayload,
-    background_tasks: BackgroundTasks,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
 ):
@@ -513,10 +500,7 @@ async def install_addon_api_route(
                 detail=f"Addon file '{selected_filename}' not found for import.",
             )
 
-        task_id = tasks.create_task()
-        background_tasks.add_task(
-            tasks.run_task,
-            task_id,
+        task_id = app_context.task_manager.run_task(
             addon_api.import_addon,
             server_name=server_name,
             addon_file_path=full_addon_file_path,
