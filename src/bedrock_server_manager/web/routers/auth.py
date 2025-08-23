@@ -31,8 +31,9 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
+from fastapi.templating import Jinja2Templates
 
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
     create_access_token,
     authenticate_user,
@@ -40,6 +41,7 @@ from ..auth_utils import (
     get_current_user,
 )
 from ..schemas import User
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -70,29 +72,29 @@ class UserLogin(BaseModel):
 async def login_page(
     request: Request,
     user: Optional[User] = Depends(get_current_user_optional),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """Serves the HTML login page."""
     if user:
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
-    return get_templates().TemplateResponse(
-        request, "login.html", {"request": request, "form": {}, "current_user": user}
+    return templates.TemplateResponse(
+        "login.html", {"request": request, "form": {}, "current_user": user}
     )
 
 
 # --- API Login Route ---
 @router.post("/token", response_model=Token)
 async def api_login_for_access_token(
-    request: Request,
     response: FastAPIResponse,
     username: str = Form(...),
     password: str = Form(...),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Handles API user login, creates a JWT, and sets it as an HTTP-only cookie.
     """
     logger.info(f"API login attempt for '{username}'")
-    app_context = request.app.state.app_context
     authenticated_username = authenticate_user(app_context, username, password)
 
     if not authenticated_username:
@@ -102,7 +104,6 @@ async def api_login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    app_context = request.app.state.app_context
     access_token = create_access_token(
         data={"sub": authenticated_username}, app_context=app_context
     )

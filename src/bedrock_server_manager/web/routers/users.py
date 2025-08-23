@@ -5,13 +5,15 @@ FastAPI router for user management.
 import logging
 from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from ...db.models import User
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context
 from ..auth_utils import get_current_user, pwd_context
 from ..schemas import User as UserSchema
 from ..auth_utils import get_admin_user, get_moderator_user
 from .audit_log import create_audit_log
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +27,15 @@ router = APIRouter(
 async def users_page(
     request: Request,
     current_user: UserSchema = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the user management page.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         users = db.query(User).all()
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "users.html",
         {"request": request, "users": users, "current_user": current_user},
     )
@@ -53,14 +56,14 @@ class UpdateUserRoleRequest(BaseModel):
 
 @router.post("/create", include_in_schema=False)
 async def create_user(
-    request: Request,
     data: CreateUserRequest,
     current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Creates a new user.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         # Check for existing user
         existing_user = db.query(User).filter(User.username == data.username).first()
         if existing_user:
@@ -78,7 +81,7 @@ async def create_user(
         db.refresh(user)
 
         create_audit_log(
-            request.app.state.app_context,
+            app_context,
             current_user.id,
             "create_user",
             {"user_id": user.id, "username": user.username, "role": user.role},
@@ -92,18 +95,18 @@ async def create_user(
 
 @router.post("/{user_id}/delete", include_in_schema=False)
 async def delete_user(
-    request: Request,
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Deletes a user.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             create_audit_log(
-                request.app.state.app_context,
+                app_context,
                 current_user.id,
                 "delete_user",
                 {"user_id": user.id, "username": user.username},
@@ -121,14 +124,14 @@ async def delete_user(
 
 @router.post("/{user_id}/disable", include_in_schema=False)
 async def disable_user(
-    request: Request,
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Disables a user.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             if user.role == "admin":
@@ -146,7 +149,7 @@ async def disable_user(
             user.is_active = False
             db.commit()
             create_audit_log(
-                request.app.state.app_context,
+                app_context,
                 current_user.id,
                 "disable_user",
                 {"user_id": user.id, "username": user.username},
@@ -164,20 +167,20 @@ async def disable_user(
 
 @router.post("/{user_id}/enable", include_in_schema=False)
 async def enable_user(
-    request: Request,
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Enables a user.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             user.is_active = True
             db.commit()
             create_audit_log(
-                request.app.state.app_context,
+                app_context,
                 current_user.id,
                 "enable_user",
                 {"user_id": user.id, "username": user.username},
@@ -193,15 +196,15 @@ async def enable_user(
 
 @router.post("/{user_id}/role", include_in_schema=False)
 async def update_user_role(
-    request: Request,
     user_id: int,
     data: UpdateUserRoleRequest,
     current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Updates a user's role.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             if user.role == "admin" and data.role != "admin":
@@ -219,7 +222,7 @@ async def update_user_role(
             user.role = data.role
             db.commit()
             create_audit_log(
-                request.app.state.app_context,
+                app_context,
                 current_user.id,
                 "update_user_role",
                 {

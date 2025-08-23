@@ -8,9 +8,10 @@ import time
 from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError
+from fastapi.templating import Jinja2Templates
 
 from ...db.models import User, RegistrationToken
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
     pwd_context,
     get_current_user,
@@ -18,6 +19,7 @@ from ..auth_utils import (
     get_admin_user,
 )
 from ..schemas import User as UserSchema
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ async def generate_token(
     request: Request,
     data: GenerateTokenRequest,
     current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Generates a new registration token.
@@ -47,7 +50,7 @@ async def generate_token(
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
     registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         db.add(registration_token)
         db.commit()
 
@@ -71,11 +74,13 @@ async def registration_page(
     request: Request,
     token: str,
     current_user: UserSchema = Depends(get_current_user_optional),
+    app_context: AppContext = Depends(get_app_context),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the registration page if the token is valid.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         registration_token = (
             db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
         )
@@ -85,8 +90,7 @@ async def registration_page(
                 detail="Invalid or expired registration token.",
             )
 
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "register.html",
         {"request": request, "token": token, "current_user": current_user},
     )
@@ -99,14 +103,14 @@ class RegisterUserRequest(BaseModel):
 
 @router.post("/{token}", include_in_schema=False)
 async def register_user(
-    request: Request,
     token: str,
     data: RegisterUserRequest,
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Creates a new user from a registration token.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         registration_token = (
             db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
         )

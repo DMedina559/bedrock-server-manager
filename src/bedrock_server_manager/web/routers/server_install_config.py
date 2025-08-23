@@ -33,10 +33,10 @@ from fastapi.responses import (
     JSONResponse,
 )
 from pydantic import BaseModel, Field
+from fastapi.templating import Jinja2Templates
 
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context, validate_server_exists
 from ..auth_utils import get_current_user
-from ..dependencies import validate_server_exists
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..schemas import User
 from ...api import (
@@ -46,6 +46,7 @@ from ...api import (
     utils as utils_api,
 )
 from ...error import BSMError, UserInputError
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -159,12 +160,12 @@ class ServiceUpdatePayload(BaseModel):
     tags=["Server Installation API"],
 )
 async def get_custom_zips(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves a list of available custom server ZIP files.
     """
-    app_context = request.app.state.app_context
     try:
         download_dir = app_context.settings.get("paths.downloads")
         custom_dir = os.path.join(download_dir, "custom")
@@ -189,15 +190,17 @@ async def get_custom_zips(
     include_in_schema=False,
 )
 async def install_server_page(
-    request: Request, current_user: User = Depends(get_admin_user)
+    request: Request,
+    current_user: User = Depends(get_admin_user),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the HTML page for installing a new Bedrock server.
     """
     identity = current_user.username
     logger.info(f"User '{identity}' accessed new server install page.")
-    return get_templates().TemplateResponse(
-        request, "install.html", {"request": request, "current_user": current_user}
+    return templates.TemplateResponse(
+        "install.html", {"request": request, "current_user": current_user}
     )
 
 
@@ -208,9 +211,9 @@ async def install_server_page(
     tags=["Server Installation API"],
 )
 async def install_server_api_route(
-    request: Request,
     payload: InstallServerPayload,
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Handles the installation of a new Bedrock server instance.
@@ -222,7 +225,6 @@ async def install_server_api_route(
     logger.info(
         f"API: New server install request from user '{identity}' for server '{payload.server_name}'."
     )
-    app_context = request.app.state.app_context
     validation_result = utils_api.validate_server_name_format(payload.server_name)
     if validation_result.get("status") == "error":
         raise HTTPException(
@@ -329,6 +331,7 @@ async def configure_properties_page(
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the HTML page for configuring a server's ``server.properties`` file.
@@ -337,8 +340,7 @@ async def configure_properties_page(
     logger.info(
         f"User '{identity}' accessed configure properties for server '{server_name}'. New install: {new_install}"
     )
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "configure_properties.html",
         {
             "request": request,
@@ -361,6 +363,7 @@ async def configure_allowlist_page(
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the HTML page for configuring a server's ``allowlist.json`` file.
@@ -369,8 +372,7 @@ async def configure_allowlist_page(
     logger.info(
         f"User '{identity}' accessed configure allowlist for server '{server_name}'. New install: {new_install}"
     )
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "configure_allowlist.html",
         {
             "request": request,
@@ -393,6 +395,7 @@ async def configure_permissions_page(
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the HTML page for configuring player permissions (``permissions.json``).
@@ -401,8 +404,7 @@ async def configure_permissions_page(
     logger.info(
         f"User '{identity}' accessed configure permissions for server '{server_name}'. New install: {new_install}"
     )
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "configure_permissions.html",
         {
             "request": request,
@@ -425,6 +427,7 @@ async def configure_service_page(
     new_install: bool = False,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """Serves the HTML page for configuring server-specific service settings (autoupdate/autostart)."""
     identity = current_user.username
@@ -442,9 +445,7 @@ async def configure_service_page(
         "autostart_enabled": False,
         "autoupdate_enabled": False,
     }
-    return get_templates().TemplateResponse(
-        request, "configure_service.html", template_data
-    )
+    return templates.TemplateResponse("configure_service.html", template_data)
 
 
 # --- API Route: /api/server/{server_name}/properties/set ---
@@ -454,10 +455,10 @@ async def configure_service_page(
     tags=["Server Configuration API"],
 )
 async def configure_properties_api_route(
-    request: Request,
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Modifies properties in the server.properties file for a specific server.
@@ -466,7 +467,6 @@ async def configure_properties_api_route(
     logger.info(
         f"API: Configure properties request for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     properties_data = payload.properties
     if not isinstance(properties_data, dict):
         raise HTTPException(
@@ -518,9 +518,9 @@ async def configure_properties_api_route(
     "/api/server/{server_name}/properties/get", tags=["Server Configuration API"]
 )
 async def get_server_properties_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves the server.properties for a specific server as a dictionary.
@@ -529,7 +529,6 @@ async def get_server_properties_api_route(
     logger.info(
         f"API: Get properties request for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     result = server_install_config.get_server_properties_api(
         server_name=server_name, app_context=app_context
     )
@@ -554,10 +553,10 @@ async def get_server_properties_api_route(
     tags=["Server Configuration API"],
 )
 async def add_to_allowlist_api_route(
-    request: Request,
     payload: AllowlistAddPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Adds one or more players to the server's allowlist.
@@ -566,7 +565,6 @@ async def add_to_allowlist_api_route(
     logger.info(
         f"API: Add to allowlist request for '{server_name}' by user '{identity}'. Players: {payload.players}"
     )
-    app_context = request.app.state.app_context
     new_players_data = [
         {"name": player_name, "ignoresPlayerLimit": payload.ignoresPlayerLimit}
         for player_name in payload.players
@@ -607,16 +605,15 @@ async def add_to_allowlist_api_route(
     "/api/server/{server_name}/allowlist/get", tags=["Server Configuration API"]
 )
 async def get_allowlist_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves the allowlist for a specific server.
     """
     identity = current_user.username
     logger.info(f"API: Get allowlist request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     result = server_install_config.get_server_allowlist_api(
         server_name=server_name, app_context=app_context
     )
@@ -641,10 +638,10 @@ async def get_allowlist_api_route(
     tags=["Server Configuration API"],
 )
 async def remove_allowlist_players_api_route(
-    request: Request,
     payload: AllowlistRemovePayload,
     server_name: str = Depends(validate_server_exists),
     current_user: Dict[str, Any] = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Removes one or more players from the server's allowlist by name.
@@ -653,7 +650,6 @@ async def remove_allowlist_players_api_route(
     logger.info(
         f"API: Remove from allowlist request for '{server_name}' by user '{identity}'. Players: {payload.players}"
     )
-    app_context = request.app.state.app_context
     try:
         result = server_install_config.remove_players_from_allowlist(
             server_name=server_name,
@@ -697,10 +693,10 @@ async def remove_allowlist_players_api_route(
     tags=["Server Configuration API"],
 )
 async def configure_permissions_api_route(
-    request: Request,
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Sets permission levels for multiple players on a specific server.
@@ -709,7 +705,6 @@ async def configure_permissions_api_route(
     logger.info(
         f"API: Configure permissions request for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     permission_entries = payload.permissions
     errors: Dict[str, str] = {}  # Store errors by XUID
     success_count = 0
@@ -796,9 +791,9 @@ async def configure_permissions_api_route(
     "/api/server/{server_name}/permissions/get", tags=["Server Configuration API"]
 )
 async def get_server_permissions_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves processed and formatted permissions data for a specific server.
@@ -807,7 +802,6 @@ async def get_server_permissions_api_route(
     logger.info(
         f"API: Get permissions request for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     result = server_install_config.get_server_permissions_api(
         server_name=server_name, app_context=app_context
     )
@@ -832,10 +826,10 @@ async def get_server_permissions_api_route(
     tags=["Server Configuration API"],
 )
 async def configure_service_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     payload: ServiceUpdatePayload = Body(...),
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Updates server-specific service settings like autoupdate and autostart.
@@ -844,7 +838,6 @@ async def configure_service_api_route(
     logger.info(
         f"API: Configure service request for '{server_name}' by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
     )
-    app_context = request.app.state.app_context
     current_os = platform.system()
 
     if payload.autoupdate is None and payload.autostart is None:

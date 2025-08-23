@@ -20,12 +20,13 @@ from ..auth_utils import (
     get_current_user_optional,
 )
 from ..schemas import User
-from ..dependencies import validate_server_exists
+from ..dependencies import validate_server_exists, get_app_context
 from ...error import (
     BSMError,
     AppFileNotFoundError,
     InvalidServerNameError,
 )
+from ...context import AppContext
 
 WEB_APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(WEB_APP_ROOT))
@@ -39,7 +40,9 @@ router = APIRouter()
 
 # --- Route: Serve Custom Panorama ---
 @router.get("/api/panorama", response_class=FileResponse, tags=["Global Info API"])
-async def serve_custom_panorama_api(request: Request):
+async def serve_custom_panorama_api(
+    app_context: AppContext = Depends(get_app_context),
+):
     """Serves a custom `panorama.jpeg` background image if available, otherwise a default.
 
     This endpoint attempts to locate a `panorama.jpeg` file in the application's
@@ -48,7 +51,6 @@ async def serve_custom_panorama_api(request: Request):
     from the static assets.
     """
     logger.debug("Request received to serve custom panorama background.")
-    app_context = request.app.state.app_context
     try:
         config_dir = app_context.settings.config_dir
         if not config_dir:
@@ -90,9 +92,9 @@ async def serve_custom_panorama_api(request: Request):
     tags=["Server Info API"],
 )
 async def serve_world_icon_api(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
 
@@ -103,7 +105,6 @@ async def serve_world_icon_api(
     logger.debug(
         f"Request to serve world icon for server '{server_name}' by user '{current_user.username}'."
     )
-    app_context = request.app.state.app_context
     try:
         server = app_context.get_server(server_name)
         icon_path = server.world_icon_filesystem_path

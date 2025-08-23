@@ -4,18 +4,22 @@ from typing import Dict, Any
 
 from ..auth_utils import get_current_user
 from ..schemas import User
+from ..dependencies import get_app_context
+from ...context import AppContext
 
 router = APIRouter()
 
 
 @router.get("/api/tasks/status/{task_id}", tags=["Tasks"])
 async def get_task_status(
-    request: Request, task_id: str, current_user: User = Depends(get_current_user)
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves the status of a background task.
     """
-    task = request.app.state.app_context.task_manager.get_task(task_id)
+    task = app_context.task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task

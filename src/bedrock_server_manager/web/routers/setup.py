@@ -7,15 +7,17 @@ from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from fastapi.templating import Jinja2Templates
 
 from ...db.models import User
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
     pwd_context,
     get_current_user_optional,
     create_access_token,
 )
 from ..schemas import User as UserSchema
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +31,18 @@ router = APIRouter(
 async def setup_page(
     request: Request,
     current_user: UserSchema = Depends(get_current_user_optional),
+    app_context: AppContext = Depends(get_app_context),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the setup page if no users exist in the database.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         if db.query(User).first():
             # If a user already exists, redirect to home page, as setup is complete
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    return get_templates().TemplateResponse(
-        request, "setup.html", {"request": request, "current_user": current_user}
+    return templates.TemplateResponse(
+        "setup.html", {"request": request, "current_user": current_user}
     )
 
 
@@ -52,13 +56,13 @@ class CreateFirstUserRequest(BaseModel):
 
 @router.post("", include_in_schema=False)
 async def create_first_user(
-    request: Request,
     data: CreateFirstUserRequest,
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Creates the first user (admin) in the database.
     """
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         if db.query(User).first():
             # If a user already exists, prevent creating another first user
             raise HTTPException(
@@ -82,7 +86,6 @@ async def create_first_user(
             logger.info(f"First user '{data.username}' created with admin role.")
 
             # Log the user in by creating an access token and setting it as a cookie
-            app_context = request.app.state.app_context
             access_token = create_access_token(
                 data={"sub": user.username}, app_context=app_context
             )

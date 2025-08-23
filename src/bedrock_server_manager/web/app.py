@@ -12,7 +12,6 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.authentication import AuthenticationMiddleware
 
 from ..context import AppContext
-from . import templating
 from ..config import get_installed_version
 from . import routers
 from ..config import bcm_config
@@ -51,22 +50,8 @@ def create_web_app(app_context: AppContext) -> FastAPI:
 
     app_path = os.path.join(SCRIPT_DIR, "web", "app.py")
     APP_ROOT = os.path.dirname(os.path.abspath(app_path))
-    TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")
     STATIC_DIR = os.path.join(APP_ROOT, "static")
     version = get_installed_version()
-
-    # --- Template Directories Setup ---
-    all_template_dirs = [Path(TEMPLATES_DIR)]
-    if plugin_manager.plugin_template_paths:
-        logger.info(
-            f"Adding {len(plugin_manager.plugin_template_paths)} template paths from plugins."
-        )
-        unique_plugin_paths = {
-            p for p in plugin_manager.plugin_template_paths if isinstance(p, Path)
-        }
-        all_template_dirs.extend(list(unique_plugin_paths))
-    logger.info(f"Configuring Jinja2 with directories: {all_template_dirs}")
-    templating.configure_templates(all_template_dirs, settings)
 
     # --- FastAPI App Initialization ---
     app = FastAPI(

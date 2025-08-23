@@ -292,22 +292,24 @@ In your plugin's FastAPI route handlers, import and use the main application's c
 
 ```python
 # my_packaged_plugin/__init__.py or a submodule like web_routes.py
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse # Keep for other types of responses if needed
+from fastapi.templating import Jinja2Templates
 
 from bedrock_server_manager.web import get_templates
 
 my_plugin_web_router = APIRouter(prefix="/my-package", tags=["My Packaged Plugin"])
-templates_env = get_templates() # Get the configured Jinja2 environment
 
 @my_plugin_web_router.get("/styled-page", response_class=HTMLResponse)
-async def get_styled_plugin_page(request: Request):
-
+async def get_styled_plugin_page(
+    request: Request,
+    templates: Jinja2Templates = Depends(get_templates),
+):
     # "my_page.html" will be found by Jinja2 if the plugin's template path
     # was correctly registered via get_template_paths().
-    return templates_env.TemplateResponse(
-        "my_page.html", 
-        {"request": request, "my_plugin_data": "Some dynamic data!"}
+    return templates.TemplateResponse(
+        "my_page.html",
+        {"request": request, "my_plugin_data": "Some dynamic data!"},
     )
 ```
 

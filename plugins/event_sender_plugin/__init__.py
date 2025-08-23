@@ -9,12 +9,12 @@ from fastapi import APIRouter, Request, Depends
 import click  # For prompts and colored output
 import json  # For parsing JSON payload
 
-from bedrock_server_manager.web import get_templates, get_admin_user
+from bedrock_server_manager.web import get_admin_user
 from bedrock_server_manager import PluginBase
 
 
 class EventSenderPlugin(PluginBase):
-    version = "1.1.0"
+    version = "1.1.1"
 
     def on_load(self):
         self.logger.info(
@@ -39,11 +39,11 @@ class EventSenderPlugin(PluginBase):
             current_user: Dict[str, Any] = Depends(get_admin_user),
         ):
             self.logger.debug(f"Serving event sender page for plugin: {self.name}")
-            templates_env = get_templates()
+            templates_env = self.api.app_context.templates
             # Template name will be relative to one of the template folders.
             # If this plugin's "templates" folder is registered, Jinja2 will find it.
             return templates_env.TemplateResponse(
-                request, "event_sender_page.html", {"request": request}
+                "event_sender_page.html", {"request": request}
             )
 
     def on_unload(self):

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, Optional
 
+import os
+from pathlib import Path
+
 if TYPE_CHECKING:
     from .config.settings import Settings
     from .core.bedrock_server import BedrockServer
@@ -10,6 +13,7 @@ if TYPE_CHECKING:
     from .core.bedrock_process_manager import BedrockProcessManager
     from .db.database import Database
     from .web.tasks import TaskManager
+    from fastapi.templating import Jinja2Templates
 
 
 class AppContext:
@@ -33,6 +37,7 @@ class AppContext:
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
+        self._templates: Optional["Jinja2Templates"] = None
 
     def load(self):
         """
@@ -124,6 +129,39 @@ class AppContext:
         Sets the BedrockProcessManager instance.
         """
         self._bedrock_process_manager = value
+
+    @property
+    def templates(self) -> "Jinja2Templates":
+        """
+        Lazily loads and returns the Jinja2Templates instance.
+        """
+        if self._templates is None:
+            from fastapi.templating import Jinja2Templates
+            from .config import get_installed_version, app_name_title, SCRIPT_DIR
+            from .utils import get_utils
+
+            app_path = os.path.join(SCRIPT_DIR, "web", "app.py")
+            APP_ROOT = os.path.dirname(os.path.abspath(app_path))
+            TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")
+
+            all_template_dirs = [Path(TEMPLATES_DIR)]
+            if self.plugin_manager.plugin_template_paths:
+                unique_plugin_paths = {
+                    p
+                    for p in self.plugin_manager.plugin_template_paths
+                    if isinstance(p, Path)
+                }
+                all_template_dirs.extend(list(unique_plugin_paths))
+
+            self._templates = Jinja2Templates(directory=all_template_dirs)
+            self._templates.env.filters["basename"] = os.path.basename
+            self._templates.env.globals["app_name"] = app_name_title
+            self._templates.env.globals["app_version"] = get_installed_version()
+            self._templates.env.globals["splash_text"] = get_utils._get_splash_text()
+            self._templates.env.globals["panorama_url"] = "/api/panorama"
+            self._templates.env.globals["settings"] = self.settings
+
+        return self._templates
 
     def get_server(self, server_name: str) -> "BedrockServer":
         """

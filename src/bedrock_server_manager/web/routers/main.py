@@ -16,15 +16,16 @@ from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context, validate_server_exists
 from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
 )
 from ..schemas import User
-from ..dependencies import validate_server_exists
 from ...plugins.plugin_manager import PluginManager
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ router = APIRouter()
 async def index(
     request: Request,
     current_user: Optional[User] = Depends(get_current_user_optional),
+    app_context: AppContext = Depends(get_app_context),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Renders the main dashboard page (index).
@@ -48,15 +51,13 @@ async def index(
     )
 
     try:
-        app_context = request.app.state.app_context
         plugin_manager: PluginManager = app_context.plugin_manager
         plugin_html_pages = plugin_manager.get_html_render_routes()
     except Exception as e:
         logger.error(f"Error getting plugin HTML pages: {e}", exc_info=True)
         plugin_html_pages = []
 
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
@@ -76,6 +77,7 @@ async def monitor_server_route(
     request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_current_user),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Renders the server-specific monitoring page.
@@ -85,8 +87,7 @@ async def monitor_server_route(
     """
     username = current_user.username
     logger.info(f"User '{username}' accessed monitor page for server '{server_name}'.")
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "monitor.html",
         {"request": request, "server_name": server_name, "current_user": current_user},
     )

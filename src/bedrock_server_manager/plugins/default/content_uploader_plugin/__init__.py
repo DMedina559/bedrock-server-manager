@@ -11,8 +11,7 @@ from fastapi import APIRouter, Request, File, UploadFile, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase
-from bedrock_server_manager.web.auth_utils import get_admin_user
-from bedrock_server_manager.web import get_templates
+from bedrock_server_manager.web import get_admin_user
 
 # Define allowed extensions
 ALLOWED_EXTENSIONS = {".mcworld", ".mcpack", ".mcaddon"}
@@ -92,9 +91,9 @@ class ContentUploaderPlugin(PluginBase):
         ):
             self.logger.debug("Serving content upload page using TemplateResponse.")
 
-            templates_env = get_templates()
+            templates_env = self.api.app_context.templates
             return templates_env.TemplateResponse(
-                request, "upload_page.html", {"request": request}
+                "upload_page.html", {"request": request}
             )
 
         @self.router.post("/api/content/upload", name="handle_file_upload")

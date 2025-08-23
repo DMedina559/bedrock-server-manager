@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import ActionResponse, User
 from ..auth_utils import get_current_user
-from ..dependencies import validate_server_exists
+from ..dependencies import validate_server_exists, get_app_context
 from ..auth_utils import get_admin_user, get_moderator_user
 from ...api import server as server_api, server_install_config
 from ...error import (
@@ -36,6 +36,7 @@ from ...error import (
     ServerNotRunningError,
     BlockedCommandError,
 )
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -60,16 +61,15 @@ class CommandPayload(BaseModel):
     tags=["Server Actions API"],
 )
 async def start_server_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Starts a specific Bedrock server instance.
     """
     identity = current_user.username
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
 
     try:
         result = server_api.start_server(
@@ -98,9 +98,9 @@ async def start_server_route(
     tags=["Server Actions API"],
 )
 async def stop_server_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates stopping a specific Bedrock server instance in the background.
@@ -110,7 +110,6 @@ async def stop_server_route(
     """
     identity = current_user.username
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     task_id = app_context.task_manager.run_task(
         server_api.stop_server,
         server_name=server_name,
@@ -132,9 +131,9 @@ async def stop_server_route(
     tags=["Server Actions API"],
 )
 async def restart_server_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates restarting a specific Bedrock server instance in the background.
@@ -146,7 +145,6 @@ async def restart_server_route(
     logger.info(
         f"API: Restart server request for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     task_id = app_context.task_manager.run_task(
         server_api.restart_server,
         server_name=server_name,
@@ -167,10 +165,10 @@ async def restart_server_route(
     tags=["Server Actions API"],
 )
 async def send_command_route(
-    request: Request,
     server_name: str,
     payload: CommandPayload,
     current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Sends a command to a specific running Bedrock server instance.
@@ -179,7 +177,6 @@ async def send_command_route(
     logger.info(
         f"API: Send command request for '{server_name}' by user '{identity}'. Command: {payload.command}"
     )
-    app_context = request.app.state.app_context
 
     if not payload.command or not payload.command.strip():
         raise HTTPException(
@@ -254,9 +251,9 @@ async def send_command_route(
     tags=["Server Actions API"],
 )
 async def update_server_route(
-    request: Request,
     server_name: str,
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates updating a specific Bedrock server instance in the background.
@@ -266,7 +263,6 @@ async def update_server_route(
     """
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     task_id = app_context.task_manager.run_task(
         server_install_config.update_server,
         server_name=server_name,
@@ -288,9 +284,9 @@ async def update_server_route(
     tags=["Server Actions API"],
 )
 async def delete_server_route(
-    request: Request,
     server_name: str,
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates deleting a specific Bedrock server instance and its data in the background.
@@ -302,7 +298,6 @@ async def delete_server_route(
     logger.warning(
         f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
     )
-    app_context = request.app.state.app_context
     task_id = app_context.task_manager.run_task(
         server_api.delete_server_data,
         server_name=server_name,

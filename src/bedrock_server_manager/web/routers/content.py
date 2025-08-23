@@ -16,11 +16,11 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
+from fastapi.templating import Jinja2Templates
 
 from ..schemas import ActionResponse, BaseApiResponse, User
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context, validate_server_exists
 from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
-from ..dependencies import validate_server_exists
 from ...api import (
     world as world_api,
     addon as addon_api,
@@ -28,6 +28,7 @@ from ...api import (
     utils as utils_api,
 )
 from ...error import BSMError, UserInputError
+from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,8 @@ async def install_world_page(
     request: Request,
     server_name: str,
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the HTML page for selecting a world file to install on a server.
@@ -69,7 +72,6 @@ async def install_world_page(
 
     world_files: List[str] = []
     error_message: Optional[str] = None
-    app_context = request.app.state.app_context
     try:
         list_result = app_api.list_available_worlds_api(app_context=app_context)
         if list_result.get("status") == "success":
@@ -89,8 +91,7 @@ async def install_world_page(
         )
         error_message = "An unexpected server error occurred while listing worlds."
 
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "select_world.html",
         {
             "request": request,
@@ -112,6 +113,8 @@ async def install_addon_page(
     request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
     Serves the HTML page for selecting an addon file to install on a server.
@@ -125,7 +128,6 @@ async def install_addon_page(
 
     addon_files: List[str] = []
     error_message: Optional[str] = None
-    app_context = request.app.state.app_context
     try:
         list_result = app_api.list_available_addons_api(app_context=app_context)
         if list_result.get("status") == "success":
@@ -145,8 +147,7 @@ async def install_addon_page(
         )
         error_message = "An unexpected server error occurred while listing addons."
 
-    return get_templates().TemplateResponse(
-        request,
+    return templates.TemplateResponse(
         "select_addon.html",
         {
             "request": request,
@@ -165,14 +166,14 @@ async def install_addon_page(
     tags=["Content API"],
 )
 async def list_worlds_api_route(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves a list of available .mcworld template files.
     """
     identity = current_user.username
     logger.info(f"API: List available worlds request by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
         api_result = app_api.list_available_worlds_api(app_context=app_context)
         if api_result.get("status") == "success":
@@ -203,14 +204,14 @@ async def list_worlds_api_route(
     tags=["Content API"],
 )
 async def list_addons_api_route(
-    request: Request, current_user: User = Depends(get_moderator_user)
+    current_user: User = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves a list of available .mcaddon or .mcpack template files.
     """
     identity = current_user.username
     logger.info(f"API: List available addons request by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
         api_result = app_api.list_available_addons_api(app_context=app_context)
         if api_result.get("status") == "success":
@@ -242,10 +243,10 @@ async def list_addons_api_route(
     tags=["Content API"],
 )
 async def install_world_api_route(
-    request: Request,
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates a background task to install a world from a .mcworld file to a server.
@@ -258,7 +259,6 @@ async def install_world_api_route(
     logger.info(
         f"API: World install of '{selected_filename}' for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
         if not utils_api.validate_server_exist(
             server_name=server_name, app_context=app_context
@@ -335,9 +335,9 @@ async def install_world_api_route(
     tags=["Content API"],
 )
 async def export_world_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates a background task to export the active world of a server to a .mcworld file.
@@ -349,7 +349,6 @@ async def export_world_api_route(
     logger.info(
         f"API: World export requested for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
         if not utils_api.validate_server_exist(
             server_name=server_name, app_context=app_context
@@ -391,9 +390,9 @@ async def export_world_api_route(
     tags=["Content API"],
 )
 async def reset_world_api_route(
-    request: Request,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates a background task to reset a server's world.
@@ -404,7 +403,6 @@ async def reset_world_api_route(
     """
     identity = current_user.username
     logger.info(f"API: World reset requested for '{server_name}' by user '{identity}'.")
-    app_context = request.app.state.app_context
     try:
         # Validate server existence before queueing task
         if not utils_api.validate_server_exist(
@@ -447,10 +445,10 @@ async def reset_world_api_route(
     tags=["Content API"],
 )
 async def install_addon_api_route(
-    request: Request,
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates a background task to install an addon from a .mcaddon or .mcpack file to a server.
@@ -463,7 +461,6 @@ async def install_addon_api_route(
     logger.info(
         f"API: Addon install of '{selected_filename}' for '{server_name}' by user '{identity}'."
     )
-    app_context = request.app.state.app_context
     try:
         if not utils_api.validate_server_exist(
             server_name=server_name, app_context=app_context

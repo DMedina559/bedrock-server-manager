@@ -6,10 +6,13 @@ from bedrock_server_manager.web.auth_utils import (
     verify_password,
     pwd_context,
 )
+from fastapi.templating import Jinja2Templates
+
 from bedrock_server_manager.db.models import User as UserModel
-from ..templating import get_templates
+from ..dependencies import get_templates, get_app_context
 from pydantic import BaseModel
 from ..schemas import User as UserSchema, BaseApiResponse
+from ...context import AppContext
 
 router = APIRouter()
 
@@ -33,8 +36,12 @@ class ChangePasswordRequest(BaseModel):
     response_class=HTMLResponse,
     include_in_schema=False,
 )
-async def account_page(request: Request, user: UserSchema = Depends(get_current_user)):
-    return get_templates().TemplateResponse(
+async def account_page(
+    request: Request,
+    user: UserSchema = Depends(get_current_user),
+    templates: Jinja2Templates = Depends(get_templates),
+):
+    return templates.TemplateResponse(
         "account.html", {"request": request, "current_user": user}
     )
 
@@ -46,11 +53,11 @@ async def account_api(user: UserSchema = Depends(get_current_user)):
 
 @router.post("/api/account/theme", response_model=BaseApiResponse)
 async def update_theme(
-    request: Request,
     theme_update: ThemeUpdate,
     user: UserSchema = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )
@@ -65,11 +72,11 @@ async def update_theme(
 
 @router.post("/api/account/profile", response_model=BaseApiResponse)
 async def update_profile(
-    request: Request,
     profile_update: ProfileUpdate,
     user: UserSchema = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )
@@ -85,11 +92,11 @@ async def update_profile(
 
 @router.post("/api/account/change-password", response_model=BaseApiResponse)
 async def change_password(
-    request: Request,
     data: ChangePasswordRequest,
     user: UserSchema = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
 ):
-    with request.app.state.app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )

@@ -23,8 +23,6 @@ import logging
 from typing import Dict, Any, Optional
 from contextlib import contextmanager
 
-from bedrock_server_manager.web import app
-
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
