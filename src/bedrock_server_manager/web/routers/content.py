@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from ..schemas import ActionResponse, BaseApiResponse, User
-from ..templating import templates
+from ..templating import get_templates
 from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
 from ..dependencies import validate_server_exists
 from ...api import (
@@ -89,7 +89,7 @@ async def install_world_page(
         )
         error_message = "An unexpected server error occurred while listing worlds."
 
-    return templates.TemplateResponse(
+    return get_templates.TemplateResponse(
         request,
         "select_world.html",
         {
@@ -145,7 +145,7 @@ async def install_addon_page(
         )
         error_message = "An unexpected server error occurred while listing addons."
 
-    return templates.TemplateResponse(
+    return get_templates.TemplateResponse(
         request,
         "select_addon.html",
         {
