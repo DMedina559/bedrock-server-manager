@@ -89,7 +89,7 @@ async def install_world_page(
         )
         error_message = "An unexpected server error occurred while listing worlds."
 
-    return get_templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "select_world.html",
         {
@@ -145,7 +145,7 @@ async def install_addon_page(
         )
         error_message = "An unexpected server error occurred while listing addons."
 
-    return get_templates.TemplateResponse(
+    return get_templates().TemplateResponse(
         request,
         "select_addon.html",
         {
