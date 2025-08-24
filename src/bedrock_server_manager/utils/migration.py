@@ -104,11 +104,13 @@ def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:
                     env_file_path = line.strip().split("=", 1)[1]
                     if env_file_path.startswith("-"):
                         env_file_path = env_file_path[1:]
-                    
+
                     if not os.path.isabs(env_file_path):
                         # Assuming the env file is relative to the service file's directory
                         # This is a common practice but might not cover all edge cases
-                        env_file_path = os.path.join(os.path.dirname(service_path), env_file_path)
+                        env_file_path = os.path.join(
+                            os.path.dirname(service_path), env_file_path
+                        )
 
                     if os.path.exists(env_file_path):
                         env_vars = {}
@@ -119,18 +121,20 @@ def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:
                                     env_vars[key] = value
                         return env_vars
     except Exception as e:
-        logger.warning(f"Could not load environment from systemd service {service_name}: {e}")
-    
+        logger.warning(
+            f"Could not load environment from systemd service {service_name}: {e}"
+        )
+
     return {}
 
 
 def migrate_env_auth_to_db(app_context: AppContext):
     """Migrates authentication from environment variables to the database."""
     from ..web.auth_utils import pwd_context
-    
+
     # Load environment from systemd service file if it exists
     systemd_env = _load_env_from_systemd_service("bedrock-server-manager-webui.service")
-    
+
     env = os.environ.copy()
     env.update(systemd_env)
 

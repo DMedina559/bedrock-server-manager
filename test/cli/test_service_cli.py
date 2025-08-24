@@ -75,7 +75,9 @@ def test_configure_web_service_non_interactive(
 @patch("bedrock_server_manager.api.web.enable_web_ui_service")
 def test_enable_web_service(mock_enable_api, runner, mock_app_context):
     mock_enable_api.return_value = {"status": "success"}
-    result = runner.invoke(enable_web_service_cli, obj={"app_context": mock_app_context})
+    result = runner.invoke(
+        enable_web_service_cli, obj={"app_context": mock_app_context}
+    )
     assert result.exit_code == 0
     assert "Web UI service enabled successfully" in result.output
     mock_enable_api.assert_called_once_with(app_context=mock_app_context, system=False)

@@ -40,6 +40,7 @@ from .cli import (
     setup,
     service,
     migrate,
+    reset_password,
 )
 
 
@@ -132,6 +133,7 @@ def create_cli_app():
         cli.add_command(
             generate_password.generate_password_hash_command, name="generate-password"
         )
+        cli.add_command(reset_password.reset_password_command)
         cli.add_command(service.service)
         cli.add_command(migrate.migrate)
 
