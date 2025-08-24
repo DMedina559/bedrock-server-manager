@@ -30,8 +30,8 @@ class AppContext:
         """
         Initializes the AppContext.
         """
-        self.settings: Optional["Settings"] = settings
-        self.manager: Optional["BedrockServerManager"] = manager
+        self._settings: Optional["Settings"] = settings
+        self._manager: Optional["BedrockServerManager"] = manager
         self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
@@ -48,14 +48,42 @@ class AppContext:
 
         self.db.initialize()
 
-        if self.settings is None:
-            self.settings = Settings(db=self.db)
-            self.settings.load()
+        if self._settings is None:
+            self._settings = Settings(db=self.db)
+            self._settings.load()
 
-        if self.manager is None:
-            assert self.settings is not None
-            self.manager = BedrockServerManager(self.settings)
-            self.manager.load()
+        if self._manager is None:
+            assert self._settings is not None
+            self._manager = BedrockServerManager(self._settings)
+            self._manager.load()
+
+    def reload(self):
+        """
+        Reloads the application context by reloading settings and all components.
+        """
+        self.settings.reload()
+        self.manager.reload()
+        self.plugin_manager.reload()
+        #self._servers.clear()
+        self._templates = None
+
+    @property
+    def settings(self) -> "Settings":
+        """
+        Returns the Settings instance.
+        """
+        if self._settings is None:
+            raise RuntimeError("Settings have not been loaded. Please call AppContext.load() first.")
+        return self._settings
+
+    @property
+    def manager(self) -> "BedrockServerManager":
+        """
+        Returns the BedrockServerManager instance.
+        """
+        if self._manager is None:
+            raise RuntimeError("BedrockServerManager have not been loaded. Please call AppContext.load() first.")
+        return self._manager
 
     @property
     def db(self) -> "Database":
@@ -67,13 +95,6 @@ class AppContext:
 
             self._db = Database()
         return self._db
-
-    @db.setter
-    def db(self, value: "Database"):
-        """
-        Sets the Database instance.
-        """
-        self._db = value
 
     @property
     def plugin_manager(self) -> "PluginManager":
@@ -87,13 +108,6 @@ class AppContext:
             self._plugin_manager.set_app_context(self)
         return self._plugin_manager
 
-    @plugin_manager.setter
-    def plugin_manager(self, value: "PluginManager"):
-        """
-        Sets the PluginManager instance.
-        """
-        self._plugin_manager = value
-
     @property
     def task_manager(self) -> "TaskManager":
         """
@@ -105,13 +119,6 @@ class AppContext:
             self._task_manager = TaskManager()
         return self._task_manager
 
-    @task_manager.setter
-    def task_manager(self, value: "TaskManager"):
-        """
-        Sets the TaskManager instance.
-        """
-        self._task_manager = value
-
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":
         """
@@ -122,13 +129,6 @@ class AppContext:
 
             self._bedrock_process_manager = BedrockProcessManager(app_context=self)
         return self._bedrock_process_manager
-
-    @bedrock_process_manager.setter
-    def bedrock_process_manager(self, value: "BedrockProcessManager"):
-        """
-        Sets the BedrockProcessManager instance.
-        """
-        self._bedrock_process_manager = value
 
     @property
     def templates(self) -> "Jinja2Templates":
@@ -177,3 +177,21 @@ class AppContext:
                 server_name, settings_instance=self.settings
             )
         return self._servers[server_name]
+
+    def remove_server(self, server_name: str):
+        """
+        Stops a server, removes it from the process manager, and discards it from the context cache.
+        """
+        # 1. Get the server instance from the cache.
+        if server_name in self._servers:
+            server = self._servers[server_name]
+
+            # 2. Stop the server if it is running.
+            # The BedrockServer.stop() method should handle setting the
+            # intentionally_stopped flag, which will cause the process manager
+            # to automatically un-monitor it.
+            if server.is_running():
+                server.stop()
+
+            # 3. Remove from the AppContext cache.
+            del self._servers[server_name]

@@ -209,6 +209,10 @@ class BedrockServerManager(
         except Exception:
             self._app_version = "0.0.0"
 
+    def reload(self):
+        """Reloads the manager's settings and capabilities."""
+        self.load()
+
     # --- Settings Related ---
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Retrieves a configuration value by its key from the global settings.
