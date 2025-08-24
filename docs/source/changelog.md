@@ -6,6 +6,13 @@
 :align: center
 ```
 
+## 3.6.2
+
+### Bug Fixes:
+1. Fixed missing `AppContext` in System service creation
+2. Fixed systemd environment file credentials not migrating in `old-config` command
+3. Potential fix for `serverName` required error in web UI setup
+
 ## 3.6.1
 
 ### New Features:
