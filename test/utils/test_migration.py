@@ -502,3 +502,78 @@ class TestMigrateJsonSettingsToDb:
         app_context.settings.config_dir = "non_existent_dir"
         migrate_json_settings_to_db(app_context)
         assert app_context.db.session_manager.call_count == 0
+
+
+class TestLoadEnvFromSystemService:
+    @patch("platform.system", return_value="Linux")
+    def test_load_env_from_systemd_service_success(self, mock_system, tmp_path):
+        from bedrock_server_manager.utils.migration import (
+            _load_env_from_systemd_service,
+        )
+
+        service_name = "test.service"
+        env_file_content = "BEDROCK_SERVER_MANAGER_USERNAME=testuser\nBEDROCK_SERVER_MANAGER_PASSWORD=testpassword"
+        env_file_path = tmp_path / "test.env"
+        with open(env_file_path, "w") as f:
+            f.write(env_file_content)
+
+        service_file_content = f"[Service]\nEnvironmentFile={env_file_path}"
+        service_file_dir = tmp_path / ".config" / "systemd" / "user"
+        os.makedirs(service_file_dir, exist_ok=True)
+        service_file_path = service_file_dir / service_name
+        with open(service_file_path, "w") as f:
+            f.write(service_file_content)
+
+        with patch(
+            "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
+            return_value=str(service_file_path),
+        ):
+            env_vars = _load_env_from_systemd_service(service_name)
+
+        assert env_vars["BEDROCK_SERVER_MANAGER_USERNAME"] == "testuser"
+        assert env_vars["BEDROCK_SERVER_MANAGER_PASSWORD"] == "testpassword"
+
+    @patch("platform.system", return_value="Windows")
+    def test_load_env_from_systemd_service_not_linux(self, mock_system):
+        from bedrock_server_manager.utils.migration import (
+            _load_env_from_systemd_service,
+        )
+
+        env_vars = _load_env_from_systemd_service("test.service")
+        assert env_vars == {}
+
+    @patch("platform.system", return_value="Linux")
+    @patch(
+        "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
+        return_value="/path/to/non_existent_service_file",
+    )
+    def test_load_env_from_systemd_service_no_service_file(
+        self, mock_get_path, mock_system
+    ):
+        from bedrock_server_manager.utils.migration import (
+            _load_env_from_systemd_service,
+        )
+
+        env_vars = _load_env_from_systemd_service("test.service")
+        assert env_vars == {}
+
+    @patch(
+        "bedrock_server_manager.utils.migration._load_env_from_systemd_service",
+        return_value={},
+    )
+    @patch.dict(
+        os.environ,
+        {
+            "BEDROCK_SERVER_MANAGER_USERNAME": "os_user",
+            "BEDROCK_SERVER_MANAGER_PASSWORD": "os_password",
+        },
+        clear=True,
+    )
+    def test_migrate_env_auth_to_db_fallback_to_os_environ(
+        self, mock_load_env, mock_db_session, app_context
+    ):
+        migrate_env_auth_to_db(app_context)
+        mock_db_session.add.assert_called_once()
+        added_user = mock_db_session.add.call_args[0][0]
+        assert added_user.username == "os_user"
+        mock_db_session.commit.assert_called_once()

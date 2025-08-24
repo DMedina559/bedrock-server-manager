@@ -45,7 +45,7 @@ function submitForm() {
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
-    sendServerActionRequest(null, "{{ url_for('create_first_user') }}", 'POST', data)
+    sendServerActionRequest(null, "{{ request.url_for('create_first_user') }}", 'POST', data)
         .then(response => {
             if (response && response.status === 'success') {
                 window.location.href = response.redirect_url;
