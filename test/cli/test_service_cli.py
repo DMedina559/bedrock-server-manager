@@ -41,20 +41,19 @@ def mock_ctx(mock_app_context):
     return ctx
 
 
-@pytest.mark.skip(reason="Failing in github actions but passes in other envs")
 @patch("bedrock_server_manager.cli.service.interactive_web_service_workflow")
 def test_configure_web_service_interactive(
-    mock_interactive_workflow, runner, mock_bsm, mock_app_context
+    mock_interactive_workflow, runner, mock_app_context
 ):
     result = runner.invoke(configure_web_service, obj={"app_context": mock_app_context})
 
     assert result.exit_code == 0
-    mock_interactive_workflow.assert_called_once_with(mock_bsm)
+    mock_interactive_workflow.assert_called_once_with(mock_app_context)
 
 
 @patch("bedrock_server_manager.cli.service._perform_web_service_configuration")
 def test_configure_web_service_non_interactive(
-    mock_perform_config, runner, mock_bsm, mock_app_context
+    mock_perform_config, runner, mock_app_context
 ):
     result = runner.invoke(
         configure_web_service,
@@ -64,7 +63,7 @@ def test_configure_web_service_non_interactive(
 
     assert result.exit_code == 0
     mock_perform_config.assert_called_once_with(
-        bsm=mock_bsm,
+        app_context=mock_app_context,
         setup_service=True,
         enable_autostart=True,
         system=False,
@@ -74,21 +73,23 @@ def test_configure_web_service_non_interactive(
 
 
 @patch("bedrock_server_manager.api.web.enable_web_ui_service")
-def test_enable_web_service(mock_enable_api, runner, mock_ctx):
+def test_enable_web_service(mock_enable_api, runner, mock_app_context):
     mock_enable_api.return_value = {"status": "success"}
-    result = runner.invoke(enable_web_service_cli, obj=mock_ctx.obj)
+    result = runner.invoke(enable_web_service_cli, obj={"app_context": mock_app_context})
     assert result.exit_code == 0
     assert "Web UI service enabled successfully" in result.output
-    mock_enable_api.assert_called_once()
+    mock_enable_api.assert_called_once_with(app_context=mock_app_context, system=False)
 
 
 @patch("bedrock_server_manager.api.web.disable_web_ui_service")
-def test_disable_web_service(mock_disable_api, runner, mock_ctx):
+def test_disable_web_service(mock_disable_api, runner, mock_app_context):
     mock_disable_api.return_value = {"status": "success"}
-    result = runner.invoke(disable_web_service_cli, obj=mock_ctx.obj)
+    result = runner.invoke(
+        disable_web_service_cli, obj={"app_context": mock_app_context}
+    )
     assert result.exit_code == 0
     assert "Web UI service disabled successfully" in result.output
-    mock_disable_api.assert_called_once()
+    mock_disable_api.assert_called_once_with(app_context=mock_app_context, system=False)
 
 
 @patch("questionary.confirm")
@@ -102,7 +103,7 @@ def test_remove_web_service(mock_remove_api, mock_confirm, runner, mock_app_cont
 
     assert result.exit_code == 0
     assert "Web UI service removed successfully" in result.output
-    mock_remove_api.assert_called_once()
+    mock_remove_api.assert_called_once_with(app_context=mock_app_context, system=False)
 
 
 @patch("bedrock_server_manager.api.web.get_web_ui_service_status")
@@ -121,4 +122,4 @@ def test_status_web_service(mock_status_api, runner, mock_app_context):
     assert "Service Defined: True" in result.output
     assert "Currently Active (Running): True" in result.output
     assert "Enabled for Autostart: True" in result.output
-    mock_status_api.assert_called_once()
+    mock_status_api.assert_called_once_with(app_context=mock_app_context, system=False)
