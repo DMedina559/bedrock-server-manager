@@ -82,12 +82,60 @@ def migrate_players_json_to_db(app_context: AppContext):
             logger.error(f"Failed to restore backup file: {restore_e}")
 
 
+def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:
+    """
+    Loads environment variables from the EnvironmentFile of a systemd service.
+    """
+    if platform.system() != "Linux":
+        return {}
+
+    from ..core.system.linux import get_systemd_service_file_path
+
+    try:
+        service_path = get_systemd_service_file_path(service_name, system=True)
+        if not os.path.exists(service_path):
+            service_path = get_systemd_service_file_path(service_name, system=False)
+            if not os.path.exists(service_path):
+                return {}
+
+        with open(service_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("EnvironmentFile="):
+                    env_file_path = line.strip().split("=", 1)[1]
+                    if env_file_path.startswith("-"):
+                        env_file_path = env_file_path[1:]
+                    
+                    if not os.path.isabs(env_file_path):
+                        # Assuming the env file is relative to the service file's directory
+                        # This is a common practice but might not cover all edge cases
+                        env_file_path = os.path.join(os.path.dirname(service_path), env_file_path)
+
+                    if os.path.exists(env_file_path):
+                        env_vars = {}
+                        with open(env_file_path, "r", encoding="utf-8") as env_file:
+                            for env_line in env_file:
+                                if "=" in env_line:
+                                    key, value = env_line.strip().split("=", 1)
+                                    env_vars[key] = value
+                        return env_vars
+    except Exception as e:
+        logger.warning(f"Could not load environment from systemd service {service_name}: {e}")
+    
+    return {}
+
+
 def migrate_env_auth_to_db(app_context: AppContext):
     """Migrates authentication from environment variables to the database."""
     from ..web.auth_utils import pwd_context
+    
+    # Load environment from systemd service file if it exists
+    systemd_env = _load_env_from_systemd_service("bedrock-server-manager-webui.service")
+    
+    env = os.environ.copy()
+    env.update(systemd_env)
 
-    username = os.environ.get(f"{env_name}_USERNAME")
-    password = os.environ.get(f"{env_name}_PASSWORD")
+    username = env.get(f"{env_name}_USERNAME")
+    password = env.get(f"{env_name}_PASSWORD")
 
     if not username or not password:
         return  # Environment variables not set, no migration needed.
@@ -106,11 +154,13 @@ def migrate_env_auth_to_db(app_context: AppContext):
                 )
                 return
 
-            hashed_password = (
-                password
-                if pwd_context.identify(password)
-                else pwd_context.hash(password)
-            )
+            if pwd_context.identify(password):
+                logger.info("Password is already hashed.")
+                hashed_password = password
+            else:
+                logger.info("Password is not hashed. Hashing now.")
+                hashed_password = pwd_context.hash(password)
+
             user = User(
                 username=username, hashed_password=hashed_password, role="admin"
             )
