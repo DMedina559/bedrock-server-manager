@@ -209,6 +209,12 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
         "appdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
     )
 
+    # Reload the config module to ensure it uses the monkeypatched path
+    from bedrock_server_manager.config import bcm_config
+    import importlib
+
+    importlib.reload(bcm_config)
+
     # 2. Create the unmanaged database
     engine = create_engine(db_url)
     Base.metadata.create_all(engine)
@@ -256,6 +262,12 @@ def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "appdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
     )
+
+    # Reload the config module to ensure it uses the monkeypatched path
+    from bedrock_server_manager.config import bcm_config
+    import importlib
+
+    importlib.reload(bcm_config)
 
     # 2. Create the database in the problematic state
     engine = create_engine(db_url)
