@@ -41,6 +41,7 @@ from .cli import (
     service,
     migrate,
     reset_password,
+    database,
 )
 
 
@@ -136,6 +137,7 @@ def create_cli_app():
         cli.add_command(reset_password.reset_password_command)
         cli.add_command(service.service)
         cli.add_command(migrate.migrate)
+        cli.add_command(database.database)
 
     # Call the assembly function to build the CLI with core and plugin commands
     _add_commands_to_cli()
