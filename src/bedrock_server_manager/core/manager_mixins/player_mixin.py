@@ -150,7 +150,7 @@ class PlayerMixin:
             ]
 
     def discover_and_store_players_from_all_server_logs(
-        self, app_context: Optional[AppContext] = None
+        self, app_context: "AppContext"
     ) -> Dict[str, Any]:
         """Scans all server logs for player data and updates the central player database.
 
@@ -213,13 +213,7 @@ class PlayerMixin:
             logger.debug(f"BSM: Processing potential server '{server_name_candidate}'.")
             try:
                 # Instantiate a BedrockServer to use its encapsulated logic.
-                if app_context:
-                    server_instance = app_context.get_server(server_name_candidate)
-                else:
-                    server_instance = get_server_instance(
-                        server_name=server_name_candidate,
-                        settings_instance=self.settings,
-                    )
+                server_instance = app_context.get_server(server_name_candidate)
 
                 # Validate it's a real server before trying to scan its logs.
                 if not server_instance.is_installed():

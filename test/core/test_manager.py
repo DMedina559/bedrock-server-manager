@@ -259,7 +259,7 @@ def test_discover_and_store_players_from_all_server_logs(app_context, mocker):
         ],
     )
     manager = app_context.manager
-    results = manager.discover_and_store_players_from_all_server_logs()
+    results = manager.discover_and_store_players_from_all_server_logs(app_context)
 
     assert results["total_entries_in_logs"] == 2
     assert results["unique_players_submitted_for_saving"] == 2
@@ -280,7 +280,7 @@ def test_discover_players_base_dir_not_exist(app_context, mocker):
     mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        manager.discover_and_store_players_from_all_server_logs()
+        manager.discover_and_store_players_from_all_server_logs(app_context)
 
 
 # --- BedrockServerManager - Web UI Direct Start Tests ---
@@ -952,7 +952,7 @@ def test_list_available_addons(real_manager, mocker):
 
 def test_validate_server_valid(app_context):
     """Test validate_server for a valid server."""
-    assert app_context.manager.validate_server("test_server") is True
+    assert app_context.manager.validate_server("test_server", app_context) is True
 
 
 def test_validate_server_not_installed(app_context, mocker):
@@ -961,7 +961,7 @@ def test_validate_server_not_installed(app_context, mocker):
         "bedrock_server_manager.core.bedrock_server.BedrockServer.is_installed",
         return_value=False,
     )
-    assert app_context.manager.validate_server("test_server") is False
+    assert app_context.manager.validate_server("test_server", app_context) is False
 
 
 def test_validate_server_instantiation_error(app_context, mocker):
@@ -970,7 +970,10 @@ def test_validate_server_instantiation_error(app_context, mocker):
         "bedrock_server_manager.context.AppContext.get_server",
         side_effect=InvalidServerNameError("Bad name"),
     )
-    assert app_context.manager.validate_server("bad_server_name_format!") is False
+    assert (
+        app_context.manager.validate_server("bad_server_name_format!", app_context)
+        is False
+    )
 
 
 def test_validate_server_empty_name(app_context):
@@ -978,7 +981,7 @@ def test_validate_server_empty_name(app_context):
     with pytest.raises(
         MissingArgumentError, match="Server name cannot be empty for validation."
     ):
-        app_context.manager.validate_server("")
+        app_context.manager.validate_server("", app_context)
 
 
 def test_get_servers_data_success(app_context):
@@ -1000,7 +1003,7 @@ def test_get_servers_data_base_dir_not_exist(app_context, mocker):
     mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        app_context.manager.get_servers_data()
+        app_context.manager.get_servers_data(app_context)
 
 
 def test_get_servers_data_with_non_installed_server(app_context, mocker):

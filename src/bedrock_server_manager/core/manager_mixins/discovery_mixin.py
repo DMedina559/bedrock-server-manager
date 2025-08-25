@@ -20,9 +20,7 @@ class DiscoveryMixin:
     Mixin class for BedrockServerManager that handles server discovery and validation.
     """
 
-    def validate_server(
-        self, server_name: str, app_context: Optional[AppContext] = None
-    ) -> bool:
+    def validate_server(self, server_name: str, app_context: "AppContext") -> bool:
         """Validates if a given server name corresponds to a valid installation.
 
         This method checks for the existence and basic integrity of a server
@@ -53,13 +51,7 @@ class DiscoveryMixin:
             f"BSM: Validating server '{server_name}' using BedrockServer class."
         )
         try:
-            if app_context:
-                server_instance = app_context.get_server(server_name)
-            else:
-                server_instance = get_server_instance(
-                    server_name=server_name,
-                    settings_instance=self.settings,
-                )
+            server_instance = app_context.get_server(server_name)
             is_valid = server_instance.is_installed()
             if is_valid:
                 logger.debug(f"BSM: Server '{server_name}' validation successful.")
@@ -82,7 +74,7 @@ class DiscoveryMixin:
             return False
 
     def get_servers_data(
-        self, app_context: Optional["AppContext"] = None
+        self, app_context: "AppContext"
     ) -> Tuple[List[Dict[str, Any]], List[str]]:
         """Discovers and retrieves status data for all valid server instances.
 
@@ -130,14 +122,8 @@ class DiscoveryMixin:
                 continue
 
             try:
-                # Instantiate a BedrockServer to leverage its encapsulated logic.
-                if app_context:
-                    server = app_context.get_server(server_name_candidate)
-                else:
-                    server = get_server_instance(
-                        server_name=server_name_candidate,
-                        settings_instance=self.settings,
-                    )
+
+                server = app_context.get_server(server_name_candidate)
 
                 # Use the instance's own method to validate its installation.
                 if not server.is_installed():
