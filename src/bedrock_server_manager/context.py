@@ -64,7 +64,7 @@ class AppContext:
         self.settings.reload()
         self.manager.reload()
         self.plugin_manager.reload()
-        #self._servers.clear()
+        # self._servers.clear()
         self._templates = None
 
     @property
@@ -73,7 +73,9 @@ class AppContext:
         Returns the Settings instance.
         """
         if self._settings is None:
-            raise RuntimeError("Settings have not been loaded. Please call AppContext.load() first.")
+            raise RuntimeError(
+                "Settings have not been loaded. Please call AppContext.load() first."
+            )
         return self._settings
 
     @property
@@ -82,7 +84,9 @@ class AppContext:
         Returns the BedrockServerManager instance.
         """
         if self._manager is None:
-            raise RuntimeError("BedrockServerManager have not been loaded. Please call AppContext.load() first.")
+            raise RuntimeError(
+                "BedrockServerManager have not been loaded. Please call AppContext.load() first."
+            )
         return self._manager
 
     @property

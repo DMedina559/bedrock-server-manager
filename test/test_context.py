@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 from bedrock_server_manager.context import AppContext
 
+
 def test_remove_server(app_context: AppContext):
     """
     Tests that the remove_server method stops a running server and removes it from the cache.
@@ -9,7 +10,7 @@ def test_remove_server(app_context: AppContext):
 
     # Get the server once to cache it
     server_instance = app_context.get_server(server_name)
-    
+
     # Mock the server's methods
     server_instance.is_running = MagicMock(return_value=True)
     server_instance.stop = MagicMock()
@@ -26,6 +27,7 @@ def test_remove_server(app_context: AppContext):
     new_server_instance = app_context.get_server(server_name)
     assert new_server_instance is not server_instance
 
+
 def test_remove_server_not_running(app_context: AppContext):
     """
     Tests that remove_server does not call stop() on a non-running server.
@@ -34,7 +36,7 @@ def test_remove_server_not_running(app_context: AppContext):
 
     # Get the server once to cache it
     server_instance = app_context.get_server(server_name)
-    
+
     # Mock the server's methods
     server_instance.is_running = MagicMock(return_value=False)
     server_instance.stop = MagicMock()
@@ -50,6 +52,7 @@ def test_remove_server_not_running(app_context: AppContext):
     new_server_instance = app_context.get_server(server_name)
     assert new_server_instance is not server_instance
 
+
 def test_reload(app_context: AppContext):
     """
     Tests that the reload method reloads all components and clears caches.
@@ -60,7 +63,7 @@ def test_reload(app_context: AppContext):
     app_context.plugin_manager.reload = MagicMock()
 
     # Get a server instance to cache it
-    #server_instance = app_context.get_server("test_server")
+    # server_instance = app_context.get_server("test_server")
 
     # Call reload
     app_context.reload()
@@ -71,5 +74,5 @@ def test_reload(app_context: AppContext):
     app_context.plugin_manager.reload.assert_called_once()
 
     # Assert that server cache is cleared
-    #new_server_instance = app_context.get_server("test_server")
-    #assert new_server_instance is not server_instance
+    # new_server_instance = app_context.get_server("test_server")
+    # assert new_server_instance is not server_instance

@@ -171,7 +171,10 @@ def new_database(ctx: click.Context):
     ]
 
     try:
-        with source_db.session_manager() as source_session, dest_db.session_manager() as dest_session:
+        with (
+            source_db.session_manager() as source_session,
+            dest_db.session_manager() as dest_session,
+        ):
             for model in MODELS_TO_MIGRATE:
                 model_name = model.__name__
                 click.echo(f"Migrating table: {model_name}...")
@@ -196,7 +199,9 @@ def new_database(ctx: click.Context):
             click.secho("\nData migration successful!", fg="green")
 
     except Exception as e:
-        click.secho(f"\nAn error occurred during data migration: {e}", fg="red", exc_info=True)
+        click.secho(
+            f"\nAn error occurred during data migration: {e}", fg="red", exc_info=True
+        )
         click.secho(
             "Rolling back changes. The original database and configuration are untouched.",
             fg="yellow",
