@@ -16,18 +16,99 @@ def database():
     pass
 
 
+import shutil
+from datetime import datetime
+from sqlalchemy import inspect
+
+
 @database.command()
 @click.pass_context
 def upgrade(ctx: click.Context):
-    """Upgrades the database to the latest version."""
+    """Upgrades the database to the latest version, stamping it if necessary."""
+    app_context: AppContext = ctx.obj["app_context"]
+    alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("skip_logging_config", "true")
+
+    # --- Backup Database ---
+    db_url = app_context.db.get_database_url()
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    if db_url.startswith("sqlite:///"):
+        db_path = db_url.split("sqlite:///")[1]
+        backup_dir = app_context.settings.get("paths.backups")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{backup_dir}/db_backup_{timestamp}.sqlite3"
+        try:
+            shutil.copy(db_path, backup_path)
+            click.secho(f"Database backed up to {backup_path}", fg="green")
+        except Exception as e:
+            click.secho(f"Failed to create database backup: {e}", fg="red")
+            if not click.confirm(
+                "Do you want to continue without a backup?", default=False
+            ):
+                raise click.Abort()
+    else:
+        click.secho(
+            "Your database is not SQLite. Please make sure you have a backup before proceeding.",
+            fg="yellow",
+        )
+        if not click.confirm("Do you want to continue?", default=False):
+            raise click.Abort()
+
+    # --- Run Migrations ---
     try:
-        click.echo("Upgrading database...")
-        alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
-        alembic_cfg = Config(str(alembic_ini_path))
-        command.upgrade(alembic_cfg, "head")
-        click.echo("Database upgrade complete.")
+        engine = app_context.db.engine
+        with engine.begin() as connection:
+            alembic_cfg.attributes["connection"] = connection
+
+            # Check if the database is at the latest revision. If not, stamp it.
+            # This handles both missing alembic_version table and empty table cases.
+            inspector = inspect(connection)
+            is_managed = inspector.has_table("alembic_version")
+            current_rev = None
+            if is_managed:
+                from sqlalchemy import text
+
+                current_rev = connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one_or_none()
+
+            if not is_managed or not current_rev:
+                message = (
+                    "Unmanaged database detected."
+                    if not is_managed
+                    else "Database is not up to date."
+                )
+                click.secho(
+                    f"{message} Stamping with the latest migration version...",
+                    fg="yellow",
+                )
+                command.stamp(alembic_cfg, "head")
+                click.secho("Database stamped successfully.", fg="green")
+
+            # Upgrade Database
+            click.echo("Running database upgrade...")
+            command.upgrade(alembic_cfg, "head")
+            click.echo("Database upgrade complete.")
+
+        # --- Check for Admin User ---
+        with app_context.db.session_manager() as db:
+            admin_user = (
+                db.query(models.User).filter(models.User.role == "admin").first()
+            )
+            if not admin_user:
+                click.secho(
+                    "\nWarning: No admin user found in the database.", fg="yellow"
+                )
+                click.echo(
+                    "Please run the 'setup' command to create an initial admin user."
+                )
+                click.echo(
+                    "Alternatively, you can manually create a user and assign the 'admin' role."
+                )
+
     except Exception as e:
-        click.echo(f"An error occurred during the database upgrade: {e}")
+        click.secho(f"An error occurred during the database upgrade: {e}", fg="red")
         raise click.Abort()
 
 
