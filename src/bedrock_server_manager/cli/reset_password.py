@@ -24,6 +24,7 @@ def reset_password_command(ctx, username: str):
             return
 
         user.hashed_password = pwd_context.hash(password)
+        db.commit()
         click.secho(
             f"Password for user '{username}' has been reset successfully.", fg="green"
         )

@@ -39,6 +39,7 @@ def test_reset_password_success(runner, mocker):
     assert result.exit_code == 0
     assert "Password for user 'testuser' has been reset successfully." in result.output
     assert mock_user.hashed_password == "new_hash"
+    mock_db_session.commit.assert_called_once()
 
 
 def test_reset_password_user_not_found(runner, mocker):
