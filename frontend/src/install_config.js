@@ -154,12 +154,12 @@ async function loadPermissions() {
     const data = await sendServerActionRequest(serverName, 'permissions/get', 'GET', null, null, true);
     tableBody.innerHTML = ''; // Clear loader/previous content
 
-    if (data && data.status === 'success' && data.permissions && Array.isArray(data.permissions)) {
+    if (data && data.status === 'success' && data.data && data.data.permissions && Array.isArray(data.data.permissions)) {
       const playerRowTemplate = document.getElementById('player-row-template');
       const noPlayersTemplate = document.getElementById('no-players-row-template');
 
-      if (data.permissions.length > 0) {
-        data.permissions.forEach((player) => {
+      if (data.data.permissions.length > 0) {
+        data.data.permissions.forEach((player) => {
           const rowClone = playerRowTemplate.content.cloneNode(true);
           rowClone.querySelector('.player-name').textContent = player.name;
           rowClone.querySelector('.player-xuid').textContent = player.xuid;
