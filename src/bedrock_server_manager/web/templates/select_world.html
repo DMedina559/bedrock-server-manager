@@ -5,15 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Manage World: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{# Include JavaScript files needed for world installation/export actions #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# content_management.js contains triggerWorldInstall AND triggerWorldExport #}
-<script src="{{ request.url_for('static', path='js/content_management.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
@@ -38,10 +29,7 @@
         {# Added action-section class for consistency #}
         <h4>Export Current World</h4>
         <p>Create a <code class="endpoint-path">.mcworld</code> from the server's current world.</p>
-        <button type="button"
-                class="action-button export-button" {# Specific class if needed #}
-                {# Pass button element and server name to the JS function #}
-                onclick="triggerWorldExport(this, '{{ server_name | e }}')">
+        <button type="button" id="export-world-btn" class="action-button export-button">
             Export Current World
         </button>
     </section>
@@ -51,10 +39,7 @@
         {# Added action-section class for consistency #}
         <h4>Reset Current World</h4>
         <p>Deletes the server's current world.</p>
-        <button type="button"
-                class="action-button danger-button" {# Specific class if needed #}
-                {# Pass button element and server name to the JS function #}
-                onclick="triggerWorldReset(this, '{{ server_name | e }}')">
+        <button type="button" id="reset-world-btn" class="action-button danger-button">
             Reset Current World
         </button>
     </section>
@@ -65,7 +50,7 @@
 <hr style="margin: 20px 0;">
 
     {# --- Import World Section --- #}
-<section class="select-world-section list-section">
+<section class="select-world-section list-section" id="content-management-page" data-server-name="{{ server_name | e }}">
     {# Use list-section class #}
     <h4>Import World File</h4> {# Added heading for clarity #}
 
@@ -95,16 +80,9 @@
                     <td data-label="World File">{{ world_file_path | basename }}</td>
                     {# Cell containing the import button #}
                     <td data-label="Action" style="text-align: center;">
-                        {# Button calls triggerWorldInstall JS function #}
                         <button type="button"
-                                class="action-button import-button" {# Add specific class if needed #}
-                                {# Pass button element, server name, and FULL world file path #}
-                                {# Escape path correctly for JS, handling backslashes #}
-                                {# CHANGE: Pass the relative path for import API #}
-                                {# Assumes world_files contains relative paths or you adjust the route #}
-                                {# If world_files contains full paths, you need to adjust how filename is extracted /sent #}
-                                {# Let's assume for now world_files gives RELATIVE paths #}
-                                onclick="triggerWorldInstall(this, '{{ server_name | e }}', '{{ world_file_path | e | replace('\\', '\\\\') }}')">
+                                class="action-button import-button import-world-btn"
+                                data-world-path="{{ world_file_path | e | replace('\\', '\\\\') }}">
                             Import
                         </button>
                     </td>
@@ -135,9 +113,4 @@
     </a>
 </div>
 
-{% endblock %}
-
-{# --- Optional Body Scripts Block --- #}
-{% block body_scripts %}
-{# No page-specific JS usually needed here, actions are in onclick #}
 {% endblock %}

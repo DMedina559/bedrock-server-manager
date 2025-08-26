@@ -5,27 +5,14 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Monitor Server: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{% block head_scripts %}
-    {# Define the serverName JavaScript variable for monitor_usage.js #}
-    {# Ensure this runs *before* the monitor_usage.js script #}
-    {# Use 'const' for block-scoped variable, escape Jinja variable for safety #}
-    <script>
-        const serverName = "{{ server_name | e }}";
-    </script>
-    {# Include the JavaScript that fetches and updates the status #}
-    <script src="{{ request.url_for('static', path='js/monitor_usage.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
     <h2>Server Monitor</h2>
 
-<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
-    <!-- Status messages appear here -->
-</div>
+    <div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;">
+        <!-- Status messages appear here -->
+    </div>
 
     {# Display the server context #}
     <p style="margin-bottom: 15px;">Server: <strong>{{ server_name }}</strong></p>
@@ -34,17 +21,10 @@
     <section class="monitor-section">
 
         {# --- Status Display Area --- #}
-        {# The <pre> tag preserves whitespace and line breaks from the JS statusText #}
-        {# id="status-info" is targeted by monitor_usage.js #}
-        {# aria-live="polite" makes screen readers announce changes politely #}
-        {# aria-atomic="true" ensures the entire updated content is announced #}
-        <pre id="status-info" class="monitor-output" aria-live="polite" aria-atomic="true">Loading server status...</pre>
+        <pre id="status-info" class="monitor-output" aria-live="polite" aria-atomic="true" data-server-name="{{ server_name | e }}">Loading server status...</pre>
 
         {# --- Navigation Link --- #}
-        {# Using form-actions class for consistent spacing/alignment #}
-        <div class="form-actions monitor-actions"> {# Added monitor-actions for potential specific styling #}
-            {# Link back to the main dashboard #}
-            {# Changed class to action-button for consistent look #}
+        <div class="form-actions monitor-actions">
             <a href="{{ request.url_for('index') }}" class="action-button">
                 « Back to Dashboard
             </a>
@@ -52,9 +32,4 @@
 
     </section> {# --- End .monitor-section --- #}
 
-{% endblock %}
-
-{# --- Optional Body Scripts Block --- #}
-{% block body_scripts %}
-{# No additional body scripts typically needed for this page #}
 {% endblock %}

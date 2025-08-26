@@ -25,7 +25,7 @@
                     <label for="email">Email</label>
                     <input type="email" id="email" name="email" class="form-input" value="{{ current_user.email | default('') }}">
                 </div>
-                <button type="button" class="action-button" onclick="updateProfile()">Save Profile</button>
+                <button type="submit" class="action-button">Save Profile</button>
             </form>
         </section>
 
@@ -53,13 +53,9 @@
                     <label for="confirm_new_password">Confirm New Password</label>
                 <input type="password" id="confirm_new_password" name="confirm_new_password" class="form-input" required autocomplete="new-password">
                 </div>
-                <button type="button" class="action-button" onclick="changePassword()">Change Password</button>
+                <button type="submit" class="action-button">Change Password</button>
             </form>
         </section>
     </main>
 </div>
-{% endblock %}
-
-{% block body_scripts %}
-<script src="{{ request.url_for('static', path='js/account.js') }}" defer></script>
 {% endblock %}

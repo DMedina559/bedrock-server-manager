@@ -5,12 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Backup Menu: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-<script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
-{% endblock %}
-
 {# --- Main Content Block --- #}
 {% block content %}
 <h2>Backup Options</h2>
@@ -19,17 +13,17 @@
     <!-- Status messages from backup actions will appear here -->
 </div>
 
-<section class="backup-menu-section">
+<section class="backup-menu-section" id="backup-restore-page" data-server-name="{{ server_name | e }}">
     <p>Choose a backup action:</p>
     <div class="button-group action-buttons-group" style="margin-bottom: 20px;">
-        <button type="button" onclick="triggerBackup(this, '{{ server_name | e }}', 'world')" class="action-button">
+        <button type="button" id="backup-world-btn" class="action-button">
             Backup World Now
         </button>
         {# Ensure 'backup_config_select_page' is the correct route name defined in your FastAPI router #}
         <a href="{{ request.url_for('backup_config_select_page', server_name=server_name) if request else '#' }}" class="action-button">
             Backup Config File...
         </a>
-        <button type="button" onclick="triggerBackup(this, '{{ server_name | e }}', 'all')" class="action-button">
+        <button type="button" id="backup-all-btn" class="action-button">
             Backup All Now
         </button>
     </div>
@@ -41,11 +35,4 @@
         </a>
     </div>
 </section>
-{% endblock %}
-
-{% block body_scripts %}
-{#
-<script>
-    // Any page-specific initialization if needed
-</script> #}
 {% endblock %}

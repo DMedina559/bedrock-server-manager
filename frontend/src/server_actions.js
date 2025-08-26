@@ -1,15 +1,11 @@
-// bedrock_server_manager/web/static/js/server_actions.js
+// frontend/src/server_actions.js
 /**
  * @fileoverview Frontend JavaScript functions for triggering common server actions
  * like start, stop, restart, delete, update, and sending commands via API calls.
  * These are typically attached to onclick events of buttons in the UI.
- * Depends on functions defined in utils.js (showStatusMessage, sendServerActionRequest).
  */
 
-// Ensure utils.js is loaded
-if (typeof sendServerActionRequest === 'undefined' || typeof showStatusMessage === 'undefined') {
-    console.error("CRITICAL ERROR: Missing required functions from utils.js. Ensure utils.js is loaded first.");
-}
+import { sendServerActionRequest, showStatusMessage } from './utils.js';
 
 /**
  * Gets the currently selected server name from the '#server-select' dropdown.
@@ -51,7 +47,7 @@ function getSelectedServer() {
  *
  * @param {HTMLButtonElement} buttonElement - The 'Start' button element clicked.
  */
-function startServer(buttonElement) {
+export function startServer(buttonElement) {
     const functionName = 'startServer';
     console.log(`${functionName}: Action triggered.`);
     console.debug(`${functionName}: Button Element:`, buttonElement);
@@ -74,7 +70,7 @@ function startServer(buttonElement) {
  *
  * @param {HTMLButtonElement} buttonElement - The 'Stop' button element clicked.
  */
-function stopServer(buttonElement) {
+export function stopServer(buttonElement) {
     const functionName = 'stopServer';
     console.log(`${functionName}: Action triggered.`);
     console.debug(`${functionName}: Button Element:`, buttonElement);
@@ -96,7 +92,7 @@ function stopServer(buttonElement) {
  *
  * @param {HTMLButtonElement} buttonElement - The 'Restart' button element clicked.
  */
-function restartServer(buttonElement) {
+export function restartServer(buttonElement) {
     const functionName = 'restartServer';
     console.log(`${functionName}: Action triggered.`);
     console.debug(`${functionName}: Button Element:`, buttonElement);
@@ -118,7 +114,7 @@ function restartServer(buttonElement) {
  *
  * @param {HTMLButtonElement} buttonElement - The 'Send Command' button element clicked.
  */
-function promptCommand(buttonElement) {
+export function promptCommand(buttonElement) {
     const functionName = 'promptCommand';
     console.log(`${functionName}: Action triggered.`);
     console.debug(`${functionName}: Button Element:`, buttonElement);
@@ -165,7 +161,7 @@ function promptCommand(buttonElement) {
  * @param {HTMLButtonElement} buttonElement - The 'Delete' button element clicked.
  * @param {string} serverName - The name of the server to delete (passed directly, not from select).
  */
-function deleteServer(buttonElement, serverName) {
+export function deleteServer(buttonElement, serverName) {
     const functionName = 'deleteServer';
     console.log(`${functionName}: Action triggered for server: '${serverName}'`);
     console.debug(`${functionName}: Button Element:`, buttonElement);
@@ -204,7 +200,7 @@ function deleteServer(buttonElement, serverName) {
  * @param {HTMLButtonElement} buttonElement - The 'Update' button element clicked.
  * @param {string} serverName - The name of the server to update (passed directly).
  */
-function triggerServerUpdate(buttonElement, serverName) {
+export function triggerServerUpdate(buttonElement, serverName) {
     const functionName = 'triggerServerUpdate';
     console.log(`${functionName}: Action triggered for server: '${serverName}'`);
     console.debug(`${functionName}: Button Element:`, buttonElement);

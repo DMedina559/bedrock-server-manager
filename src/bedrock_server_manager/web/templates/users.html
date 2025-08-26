@@ -2,11 +2,6 @@
 
 {% block title %}Bedrock Server Manager - Users{% endblock %}
 
-{% block head_scripts %}
-    <script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    <script src="{{ request.url_for('static', path='js/sidebar_nav.js') }}" defer></script>
-{% endblock %}
-
 {% block content %}
 <div class="page-layout">
     <aside class="sidebar-nav">
@@ -37,13 +32,13 @@
                         <option value="admin">Admin</option>
                     </select>
                 </div>
-                <button type="button" class="action-button" onclick="generateToken()">Generate Link</button>
+                <button type="button" id="generate-token-btn" class="action-button">Generate Link</button>
             </form>
 
             {% if 'message' in request.query_params and 'Registration link generated' in request.query_params['message'] %}
             <div class="message-box">
                 <p>{{ request.query_params['message'] }}</p>
-                <button class="action-button" onclick="copyToClipboard('{{ request.query_params['message'].split(': ')[1] }}')">Copy Link</button>
+                <button class="action-button copy-link-btn" data-link="{{ request.query_params['message'].split(': ')[1] }}">Copy Link</button>
             </div>
             {% endif %}
             {% endif %}
@@ -68,87 +63,17 @@
                         <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
                     </select>
                 </div>
-                <button type="button" class="action-button" onclick="updateUserRole('{{ user.id }}')">Save</button>
+                <button type="button" class="action-button update-role-btn" data-user-id="{{ user.id }}">Save</button>
                 {% if user.is_active %}
-                <button type="button" class="warning-button" onclick="disableUser('{{ user.id }}')">Disable</button>
+                <button type="button" class="warning-button disable-user-btn" data-user-id="{{ user.id }}">Disable</button>
                 {% else %}
-                <button type="button" class="success-button" onclick="enableUser('{{ user.id }}')">Enable</button>
+                <button type="button" class="success-button enable-user-btn" data-user-id="{{ user.id }}">Enable</button>
                 {% endif %}
-                <button type="button" class="danger-button" onclick="deleteUser('{{ user.id }}')">Delete</button>
+                <button type="button" class="danger-button delete-user-btn" data-user-id="{{ user.id }}">Delete</button>
                 {% endif %}
             </div>
         </section>
         {% endfor %}
     </main>
 </div>
-{% endblock %}
-
-{% block body_scripts %}
-<script>
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(function() {
-        alert('Copied to clipboard');
-    }, function(err) {
-        alert('Could not copy text: ', err);
-    });
-}
-
-function generateToken() {
-    const form = document.getElementById('generate-token-form');
-    const formData = new FormData(form);
-    const data = Object.fromEntries(formData.entries());
-
-    sendServerActionRequest(null, "/register/generate-token", 'POST', data)
-        .then(response => {
-            if (response && response.status === 'success') {
-                window.location.href = response.redirect_url;
-            }
-        });
-}
-
-function disableUser(userId) {
-    if (confirm('Are you sure you want to disable this user?')) {
-        sendServerActionRequest(null, `/users/${userId}/disable`, 'POST')
-            .then(response => {
-                if (response && response.status === 'success') {
-                    window.location.reload();
-                }
-            });
-    }
-}
-
-function enableUser(userId) {
-    if (confirm('Are you sure you want to enable this user?')) {
-        sendServerActionRequest(null, `/users/${userId}/enable`, 'POST')
-            .then(response => {
-                if (response && response.status === 'success') {
-                    window.location.reload();
-                }
-            });
-    }
-}
-
-function deleteUser(userId) {
-    if (confirm('Are you sure you want to delete this user?')) {
-        sendServerActionRequest(null, `/users/${userId}/delete`, 'POST')
-            .then(response => {
-                if (response && response.status === 'success') {
-                    window.location.reload();
-                }
-            });
-    }
-}
-
-function updateUserRole(userId) {
-    const role = document.getElementById(`role-${userId}`).value;
-    const data = { role: role };
-
-    sendServerActionRequest(null, `/users/${userId}/role`, 'POST', data)
-        .then(response => {
-            if (response && response.status === 'success') {
-                window.location.reload();
-            }
-        });
-}
-</script>
 {% endblock %}

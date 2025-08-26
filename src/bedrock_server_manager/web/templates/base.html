@@ -44,10 +44,6 @@ content and scripts using Jinja2 blocks.
 
     {# Page-specific CSS Block - Child templates can add extra stylesheets here #}
     {% block head_styles %}{% endblock %}
-
-    {# Page-specific JS Block in Head - Child templates can add scripts needed early #}
-    {% block head_scripts %}{% endblock %}
-
 </head>
 <body>
 
@@ -112,49 +108,7 @@ content and scripts using Jinja2 blocks.
     </div> {# --- End of .container --- #}
 
     {# -------------------- Scripts at End of Body -------------------- #}
-    {# Load global utilities first #}
-    <script src="{{ url_for('static', path='js/utils.js') }}" defer></script>
-
-    {# Script to read URL query parameters and display messages #}
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const message = urlParams.get('message');
-            const category = urlParams.get('category'); // e.g., 'error', 'warning', 'info'
-
-            if (message) {
-                // Assuming showStatusMessage is defined in utils.js
-                // and can handle a category argument for styling.
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(message, category);
-                } else {
-                    console.warn('showStatusMessage function not found in utils.js. Displaying raw message.');
-                    const statusMessageArea = document.getElementById('status-message-area');
-                    if (statusMessageArea) {
-                        statusMessageArea.textContent = message;
-                        statusMessageArea.style.opacity = 1;
-                        // Add basic styling based on category if showStatusMessage is missing
-                        if (category === 'error' || category === 'danger') {
-                            statusMessageArea.classList.add('message-error');
-                        } else if (category === 'warning') {
-                            statusMessageArea.classList.add('message-warning');
-                        } else if (category === 'info') {
-                            statusMessageArea.classList.add('message-info');
-                        }
-                    }
-                }
-                // Remove the query parameters from the URL to prevent re-display on refresh
-                // This creates a cleaner URL and prevents issues if the user bookmarks.
-                const newUrl = new URL(window.location.href);
-                newUrl.searchParams.delete('message');
-                newUrl.searchParams.delete('category');
-                window.history.replaceState({}, document.title, newUrl.toString());
-            }
-        });
-    </script>
-
-    {# Page-specific JS Block - Child templates can add scripts here #}
-    {% block body_scripts %}{% endblock %}
+    <script src="{{ url_for('static', path='js/dist/bundle.js') }}" defer></script>
 
 </body>
 </html>

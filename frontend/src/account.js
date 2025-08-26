@@ -1,15 +1,59 @@
-// bedrock_server_manager/web/static/js/account.js
+// frontend/src/account.js
 /**
  * @fileoverview Frontend JavaScript for the account management page.
  * Handles theme selection and other account-related settings.
- * Depends on functions from utils.js (showStatusMessage, sendServerActionRequest).
  */
 
-if (typeof sendServerActionRequest === 'undefined' || typeof showStatusMessage === 'undefined') {
-    console.error("Error: Missing required functions from utils.js. Ensure utils.js is loaded first in your base.html template.");
+import { sendServerActionRequest, showStatusMessage } from './utils.js';
+
+function loadUserProfile() {
+    sendServerActionRequest(null, '/api/account', 'GET', null, null, true)
+        .then(response => {
+            if (response) {
+                document.getElementById('full_name').value = response.full_name || '';
+                document.getElementById('email').value = response.email || '';
+            }
+        });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function changePassword() {
+    const form = document.getElementById('change-password-form');
+    const currentPassword = form.elements['current_password'].value;
+    const newPassword = form.elements['new_password'].value;
+    const confirmNewPassword = form.elements['confirm_new_password'].value;
+
+    if (newPassword !== confirmNewPassword) {
+        showStatusMessage('New passwords do not match.', 'error');
+        return;
+    }
+
+    const data = {
+        current_password: currentPassword,
+        new_password: newPassword,
+    };
+
+    sendServerActionRequest(null, '/api/account/change-password', 'POST', data)
+        .then(response => {
+            if (response && response.status === 'success') {
+                form.reset();
+            }
+        });
+}
+
+function updateProfile() {
+    const form = document.getElementById('profile-form');
+    const fullName = form.elements['full_name'].value;
+    const email = form.elements['email'].value;
+
+    const data = {
+        full_name: fullName,
+        email: email,
+    };
+
+    sendServerActionRequest(null, '/api/account/profile', 'POST', data);
+}
+
+export function initializeAccountPage() {
     loadUserProfile();
     // --- Theme Selector Logic ---
     const themeSelect = document.getElementById('theme-select');
@@ -73,51 +117,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
-});
 
-function changePassword() {
-    const form = document.getElementById('change-password-form');
-    const currentPassword = form.elements['current_password'].value;
-    const newPassword = form.elements['new_password'].value;
-    const confirmNewPassword = form.elements['confirm_new_password'].value;
-
-    if (newPassword !== confirmNewPassword) {
-        showStatusMessage('New passwords do not match.', 'error');
-        return;
+    // Attach event listeners for the forms
+    const changePasswordForm = document.getElementById('change-password-form');
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            changePassword();
+        });
     }
 
-    const data = {
-        current_password: currentPassword,
-        new_password: newPassword,
-    };
-
-    sendServerActionRequest(null, '/api/account/change-password', 'POST', data)
-        .then(response => {
-            if (response && response.status === 'success') {
-                form.reset();
-            }
+    const profileForm = document.getElementById('profile-form');
+    if (profileForm) {
+        profileForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            updateProfile();
         });
-}
-
-function updateProfile() {
-    const form = document.getElementById('profile-form');
-    const fullName = form.elements['full_name'].value;
-    const email = form.elements['email'].value;
-
-    const data = {
-        full_name: fullName,
-        email: email,
-    };
-
-    sendServerActionRequest(null, '/api/account/profile', 'POST', data);
-}
-
-function loadUserProfile() {
-    sendServerActionRequest(null, '/api/account', 'GET', null, null, true)
-        .then(response => {
-            if (response) {
-                document.getElementById('full_name').value = response.full_name || '';
-                document.getElementById('email').value = response.email || '';
-            }
-        });
+    }
 }

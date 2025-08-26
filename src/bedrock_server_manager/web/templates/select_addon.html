@@ -5,15 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Select Addon: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{# Include JavaScript files needed for addon installation actions #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# content_management.js contains the triggerAddonInstall function #}
-<script src="{{ request.url_for('static', path='js/content_management.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
@@ -57,12 +48,10 @@
                     <td data-label="Addon File">{{ addon_file_path | basename }}</td>
                     {# Cell containing the install button #}
                     <td data-label="Action" style="text-align: center;">
-                        {# Button calls triggerAddonInstall JS function #}
                         <button type="button"
-                                class="action-button install-button" {# Add specific class if needed #}
-                                {# Pass button element, server name, and FULL addon path #}
-                                {# Escape path correctly for JS, handling backslashes #}
-                                onclick="triggerAddonInstall(this, '{{ server_name | e }}', '{{ addon_file_path | e | replace('\\', '\\\\') }}')">
+                                class="action-button install-button install-addon-btn"
+                                data-server-name="{{ server_name | e }}"
+                                data-addon-path="{{ addon_file_path | e | replace('\\', '\\\\') }}">
                             Install
                         </button>
                     </td>
@@ -92,9 +81,4 @@
 
 </section> {# --- End .select-addon-section --- #}
 
-{% endblock %}
-
-{# --- Optional Body Scripts Block --- #}
-{% block body_scripts %}
-{# No page-specific JS usually needed here, actions are in onclick #}
 {% endblock %}

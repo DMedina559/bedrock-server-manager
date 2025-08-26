@@ -5,18 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Dashboard{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{% block head_scripts %}
-    {# Core JS Utilities #}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# JS for handling global server actions (start, stop, etc.) #}
-<script src="{{ request.url_for('static', path='js/server_actions.js') }}" defer></script>
-    {# JS for handling sidebar navigation clicks #}
-<script src="{{ request.url_for('static', path='js/sidebar_nav.js') }}" defer></script>
-    {# JS for dashboard interactivity #}
-<script src="{{ request.url_for('static', path='js/dashboard.js') }}" defer></script>
-{% endblock %}
-
 {# --- Main Content Block --- #}
 {% block content %}
 
@@ -108,10 +96,10 @@
             <div class="action-buttons-group">
                 {# JS functions in server_actions.js use getSelectedServer() #}
                 {% if current_user.role != 'user' %}
-                <button type="button" class="action-button start-button" onclick="startServer(this)" title="Start selected server" disabled>Start</button>
-                <button type="button" class="action-button danger-button" onclick="stopServer(this)" title="Stop selected server" disabled>Stop</button>
-                <button type="button" class="action-button" onclick="restartServer(this)" title="Restart selected server" disabled>Restart</button>
-                <button type="button" class="action-button" onclick="promptCommand(this)" title="Send command to selected server" disabled>Send Command</button>
+                <button type="button" id="start-server-btn" class="action-button start-button" title="Start selected server" disabled>Start</button>
+                <button type="button" id="stop-server-btn" class="action-button danger-button" title="Stop selected server" disabled>Stop</button>
+                <button type="button" id="restart-server-btn" class="action-button" title="Restart selected server" disabled>Restart</button>
+                <button type="button" id="prompt-command-btn" class="action-button" title="Send command to selected server" disabled>Send Command</button>
                 {% endif %}
             </div>
         </section> {# --- End Server Selection --- #}
@@ -141,10 +129,7 @@
                 <h4>Actions for <span id="selected-server-manage" style="font-style: italic;">(No server selected)</span></h4>
                 <div class="button-group">
                     {% if current_user.role == 'admin' %}
-                    <button type="button"
-                            onclick="triggerServerUpdate(this, document.getElementById('server-select').value)"
-                            class="action-button"
-                            title="Check for updates and install if available for the selected server" disabled>
+                    <button type="button" id="update-server-btn" class="action-button" title="Check for updates and install if available for the selected server" disabled>
                         Update Server
                     </button>
                     {% endif %}
@@ -152,10 +137,7 @@
                         Monitor Usage
                     </a>
                     {% if current_user.role == 'admin' %}
-                    <button type="button"
-                            onclick="deleteServer(this, document.getElementById('server-select').value)"
-                            class="action-button danger-button"
-                            title="Delete all data for the selected server" disabled>
+                    <button type="button" id="delete-server-btn" class="action-button danger-button" title="Delete all data for the selected server" disabled>
                         Delete Server
                     </button>
                     {% endif %}

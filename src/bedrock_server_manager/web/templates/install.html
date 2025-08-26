@@ -4,13 +4,6 @@
 {# Set the page title #}
 {% block title %}{{ super() }} - Install New Server{% endblock %}
 
-{# Add page-specific JS to the head #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script> {# Contains triggerInstallServer #}
-{% endblock %}
-
-
 {# Main content for this page #}
 {% block content %}
 <div id="setup-banner-container"></div>
@@ -59,32 +52,10 @@
 
         {# Form Actions / Navigation #}
         <div class="form-actions">
-            <button type="button" onclick="triggerInstallServer(this)" class="action-button">Install Server</button>
+            <button type="button" id="install-server-btn" class="action-button">Install Server</button>
             {# Use main-button style for primary navigation back #}
             <a href="{{ request.url_for('index') if request else '/' }}" class="action-button">Cancel</a>
         </div>
 </section> {# End .install-config-section #}
 
-{% endblock %}
-
-{% block body_scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('in_setup')) {
-            const bannerContainer = document.getElementById('setup-banner-container');
-            if (bannerContainer) {
-                bannerContainer.innerHTML = `
-                <div class="setup-banner">
-                    <h3>Step 3: Install a Server</h3>
-                    <p>
-                        Install and configure your first Bedrock Server. This will include setting server.properties, allowlist, and other files.
-                    </p>
-                    <a href="/" class="action-button">Skip</a>
-                </div>
-            `;
-            }
-        }
-    });
-</script>
 {% endblock %}

@@ -5,12 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Configure Properties: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
-{% endblock %}
-
 {# --- Main Content Block --- #}
 {% block content %}
 <h2>Configure Server Properties</h2>
@@ -196,7 +190,6 @@
 
     <div class="form-actions">
         <button type="button"
-                onclick="saveProperties(this, '{{ server_name | e }}', {{ new_install | tojson }})"
                 class="action-button start-button"
                 id="submit-properties-btn">
             Save Properties
@@ -212,124 +205,4 @@
         {% endif %}
     </div>
 </section>
-{% endblock %}
-
-
-{# --- Body Scripts Block --- #}
-{% block body_scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const functionName = 'DOMContentLoaded (Properties Page)';
-        console.log(`${functionName}: Initializing...`);
-
-        // --- 1. Initialize Custom Control Event Listeners (Same as before) ---
-        const segmentedControls = document.querySelectorAll('.segmented-control');
-        segmentedControls.forEach(controlWrapper => {
-            const linkedInputId = controlWrapper.dataset.inputId;
-            const linkedInput = document.getElementById(linkedInputId);
-            if (linkedInput) {
-                controlWrapper.querySelectorAll('.segment').forEach(segment => {
-                    segment.addEventListener('click', (event) => {
-                        event.preventDefault();
-                        linkedInput.value = segment.dataset.value;
-                        controlWrapper.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
-                        segment.classList.add('active');
-                    });
-                });
-            }
-        });
-
-        const toggleInputs = document.querySelectorAll('.toggle-input');
-        toggleInputs.forEach(input => {
-            const baseName = input.name.replace('-cb', '');
-            const hiddenFalseInput = input.closest('.form-group-toggle-container')?.querySelector(`.toggle-hidden-false[name="${baseName}"]`);
-            const syncHiddenFalse = () => {
-                if (hiddenFalseInput) hiddenFalseInput.disabled = input.checked;
-            };
-            input.addEventListener('change', syncHiddenFalse);
-            syncHiddenFalse(); // Initial sync for default state
-        });
-        console.log(`${functionName}: Custom control listeners initialized.`);
-
-        // --- 2. Define Helper Functions for Form Population ---
-        const setInputValue = (id, value) => {
-            const el = document.getElementById(id);
-            if (el) el.value = value;
-        };
-
-        const setToggleState = (id, value) => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.checked = (String(value).toLowerCase() === 'true');
-                el.dispatchEvent(new Event('change')); // Crucial: trigger change to sync hidden input
-            }
-        };
-
-        const setSegmentedControlState = (hiddenInputId, value) => {
-            const hiddenInput = document.getElementById(hiddenInputId);
-            const controlWrapper = document.querySelector(`[data-input-id="${hiddenInputId}"]`);
-            if (hiddenInput && controlWrapper) {
-                hiddenInput.value = value;
-                controlWrapper.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
-                const activeSegment = controlWrapper.querySelector(`.segment[data-value="${value}"]`);
-                if (activeSegment) activeSegment.classList.add('active');
-            }
-        };
-
-        function populateForm(properties) {
-            console.log(`${functionName}: Populating form with fetched data.`);
-            // Use property value if it exists, otherwise it will keep the static default from the HTML
-            if (properties['server-name']) setInputValue('server-name', properties['server-name']);
-            if (properties['level-name']) setInputValue('level-name', properties['level-name']);
-            if (properties['gamemode']) setSegmentedControlState('gamemode-hidden', properties['gamemode']);
-            if (properties['difficulty']) setSegmentedControlState('difficulty-hidden', properties['difficulty']);
-            if (properties['allow-cheats'] !== undefined) setToggleState('allow-cheats-cb', properties['allow-cheats']);
-            if (properties['max-players']) setInputValue('max-players', properties['max-players']);
-            if (properties['level-seed']) setInputValue('level-seed', properties['level-seed']);
-            if (properties['server-port']) setInputValue('server-port', properties['server-port']);
-            if (properties['server-portv6']) setInputValue('server-portv6', properties['server-portv6']);
-            if (properties['enable-lan-visibility'] !== undefined) setToggleState('enable-lan-visibility-cb', properties['enable-lan-visibility']);
-            if (properties['allow-list'] !== undefined) setToggleState('allow-list-cb', properties['allow-list']);
-            if (properties['default-player-permission-level']) setSegmentedControlState('default-player-permission-level-hidden', properties['default-player-permission-level']);
-            if (properties['view-distance']) setInputValue('view-distance', properties['view-distance']);
-            if (properties['tick-distance']) setInputValue('tick-distance', properties['tick-distance']);
-            if (properties['online-mode'] !== undefined) setToggleState('online-mode-cb', properties['online-mode']);
-            if (properties['texturepack-required'] !== undefined) setToggleState('texturepack-required-cb', properties['texturepack-required']);
-        }
-
-        // --- 3. Main Function to Fetch Data and Control UI ---
-        async function loadProperties() {
-            const serverName = '{{ server_name | e }}';
-            const loader = document.getElementById('properties-loader');
-            const formContainer = document.getElementById('properties-form-container');
-
-            try {
-                // Refactored to use sendServerActionRequest
-                const data = await window.sendServerActionRequest(serverName, 'properties/get', 'GET', null, null);
-
-                if (data && data.status === 'success' && data.properties) {
-                    populateForm(data.properties);
-                } else {
-                    const errorMsg = (data && data.message) ? data.message : 'Failed to load server properties.';
-                    console.error('Failed to load server properties:', errorMsg);
-                    if (typeof showStatusMessage === 'function' && !(data && data.status === 'error')) {
-                         showStatusMessage(`Error loading properties: ${errorMsg}`, 'error');
-                    }
-                }
-            } catch (error) { // Catch errors from this script's logic
-                console.error('Client-side error in loadProperties:', error);
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(`Client-side error loading properties: ${error.message}`, 'error');
-                }
-            } finally {
-                loader.style.display = 'none';
-                formContainer.style.display = 'block';
-                console.log(`${functionName}: Loading complete. Form is now visible.`);
-            }
-        }
-
-        // --- 4. Run the loading process ---
-        loadProperties();
-    });
-</script>
 {% endblock %}

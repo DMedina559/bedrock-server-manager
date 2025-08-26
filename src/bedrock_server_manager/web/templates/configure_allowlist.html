@@ -4,12 +4,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Configure Allowlist: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-<script src="{{ request.url_for('static', path='js/allowlist.js') }}" defer></script>
-{% endblock %}
-
 {# --- Main Content Block --- #}
 {% block content %}
 <h2>Configure Allowlist</h2>
@@ -43,7 +37,7 @@
         <input type="hidden" name="ignore_limit_add" class="toggle-hidden-false" value="false">
     </div>
     <div class="form-actions">
-        <button type="button" onclick="addAllowlistPlayers(this, '{{ server_name | e }}')" class="action-button start-button">
+        <button type="button" id="add-allowlist-players-btn" class="action-button start-button">
             Add These Players
         </button>
     </div>
@@ -82,75 +76,4 @@
     </a>
     {% endif %}
 </div>
-{% endblock %}
-
-{% block body_scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const serverName = document.querySelector('[data-server-name]').dataset.serverName;
-        const allowlistDisplay = document.getElementById('current-allowlist-display');
-        const playerItemTemplate = document.getElementById('player-item-template');
-        const noPlayersTemplate = document.getElementById('no-players-template');
-
-        window.fetchAndUpdateAllowlistDisplay = async () => {
-            console.log('Fetching and updating allowlist display...');
-            allowlistDisplay.innerHTML = `<div class="loader-container-small"><div class="spinner"></div><p>Loading...</p></div>`;
-
-            try {
-                const data = await window.sendServerActionRequest(serverName, 'allowlist/get', 'GET', null, null);
-                allowlistDisplay.innerHTML = '';
-
-                if (data && data.status === 'success' && Array.isArray(data.players)) { // Changed existing_players to players
-                    const players = data.players; // Changed existing_players to players
-                    if (players.length > 0) {
-                        players.forEach(player => {
-                            const playerClone = playerItemTemplate.content.cloneNode(true);
-                            const nameSpan = playerClone.querySelector('.item-name');
-                            const tagSpan = playerClone.querySelector('.ignores-limit-tag');
-                            const removeButton = playerClone.querySelector('.remove-button');
-
-                            nameSpan.textContent = player.name;
-                            if (String(player.ignoresPlayerLimit).toLowerCase() === 'true') {
-                                tagSpan.style.display = 'inline-block';
-                            }
-
-                            if (window.removeAllowlistPlayer) {
-                                removeButton.onclick = () => removeAllowlistPlayer(removeButton, serverName, player.name);
-                            } else {
-                                removeButton.style.display = 'none';
-                            }
-                            allowlistDisplay.appendChild(playerClone);
-                        });
-                    } else {
-                        const noPlayersClone = noPlayersTemplate.content.cloneNode(true);
-                        allowlistDisplay.appendChild(noPlayersClone);
-                    }
-                } else {
-                    const errorMsg = (data && data.message) ? data.message : 'Failed to load allowlist data.';
-                    console.error('Failed to load allowlist:', errorMsg);
-                    if (typeof showStatusMessage === 'function' && !(data && data.status === 'error')) {
-                        showStatusMessage(`Error loading allowlist: ${errorMsg}`, 'error');
-                    }
-                }
-            } catch (error) {
-                console.error('Client-side error in fetchAndUpdateAllowlistDisplay:', error);
-                allowlistDisplay.innerHTML = '';
-                if (typeof showStatusMessage === 'function') {
-                    showStatusMessage(`Client-side error loading allowlist: ${error.message}`, 'error');
-                }
-            }
-        };
-
-        const toggleInput = document.getElementById('ignore-limit-add');
-        if (toggleInput) {
-            const hiddenFalseInput = document.querySelector('input[name="ignore_limit_add"]');
-            const syncHiddenFalse = () => {
-                if (hiddenFalseInput) hiddenFalseInput.disabled = toggleInput.checked;
-            };
-            toggleInput.addEventListener('change', syncHiddenFalse);
-            syncHiddenFalse();
-        }
-        fetchAndUpdateAllowlistDisplay();
-    });
-</script>
 {% endblock %}

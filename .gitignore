@@ -184,3 +184,6 @@ data
 
 test.db
 test.db-journal
+
+# Frontend
+frontend/node_modules/

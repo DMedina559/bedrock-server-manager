@@ -1,4 +1,4 @@
-// bedrock_server_manager/web/static/js/utils.js
+// frontend/src/utils.js
 /**
  * @fileoverview Utility functions for the Bedrock Server Manager web interface,
  * including status message display and asynchronous API request handling.
@@ -14,7 +14,7 @@
  * @param {string} [type='info'] - The type of message, influencing styling.
  *                                 Expected values: 'info', 'success', 'warning', 'error'.
  */
-function showStatusMessage(message, type = 'info') {
+export function showStatusMessage(message, type = 'info') {
     const functionName = 'showStatusMessage';
     console.log(`${functionName}: Displaying message (Type: ${type}): "${message}"`);
 
@@ -96,7 +96,7 @@ function showStatusMessage(message, type = 'info') {
  * @throws {Error} Can throw errors if JSON parsing fails unexpectedly on a response claiming to be JSON,
  *                 though attempts are made to handle this gracefully.
  */
-async function sendServerActionRequest(serverName, actionPath, method = 'POST', body = null, buttonElement = null, suppressSuccessPopup = false) {
+export async function sendServerActionRequest(serverName, actionPath, method = 'POST', body = null, buttonElement = null, suppressSuccessPopup = false) {
     const functionName = 'sendServerActionRequest';
     // Use console.debug for potentially verbose parameter logging
     console.debug(`${functionName}: Initiating request - Server: '${serverName || 'N/A'}', Path: '${actionPath}', Method: ${method}, SuppressSuccess: ${suppressSuccessPopup}`);

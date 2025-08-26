@@ -5,15 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Login{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{% block head_scripts %}
-    {# Standard utils for showStatusMessage and sendServerActionRequest #}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# New auth.js for handleLoginAttempt #}
-<script src="{{ request.url_for('static', path='js/auth.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Wrapper for login form styling and centering (defined in forms.css) #}
@@ -47,7 +38,7 @@
         {# --- Submit Button --- #}
         {# Use form-actions and login-actions classes for layout/styling #}
         <div class="form-actions login-actions">
-            <button type="button" onclick="handleLoginAttempt(this)" class="action-button start-button">
+            <button type="submit" class="action-button start-button">
                 Log In
             </button>
         </div>
@@ -58,16 +49,4 @@
     <div id="login-error-message" class="message-box message-error" style="display:none; margin-top:15px;"></div>
 
 </div> {# --- End .login-wrapper --- #}
-{% endblock %}
-
-{# --- Optional Body Scripts Block --- #}
-{% block body_scripts %}
-<script>
-    document.getElementById('login-form').addEventListener('keydown', function(event) {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            handleLoginAttempt(document.querySelector('.action-button'));
-        }
-    });
-</script>
 {% endblock %}

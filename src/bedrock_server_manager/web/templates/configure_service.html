@@ -5,18 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Configure Service: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{# Include JavaScript files needed for this page #}
-{% block head_scripts %}
-    {# Core utilities #}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# Contains saveServiceSettings function and toggle switch JS logic #}
-<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
-    {# server_actions.js might be needed if saveServiceSettings calls start_server #}
-<script src="{{ request.url_for('static', path='js/server_actions.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
@@ -44,7 +32,7 @@
     {# Server-side flash messages (handled by base.html) #}
 
     {# --- Service Configuration Section --- #}
-<section class="service-config-section">
+<section id="install-config-page" data-server-name="{{ server_name | e }}" data-is-new-install="{{ new_install | tojson }}" data-os="{{ os }}" class="service-config-section">
 
     <p>Configure automatic behavior for this server.</p>
 
@@ -103,9 +91,7 @@
     <div class="form-actions">
         {# Save button calls JS function, passing necessary data #}
         {# Use |tojson filter for boolean new_install flag #}
-        <button type="button"
-                onclick="saveServiceSettings(this, '{{ server_name | e }}', '{{ os }}', {{ new_install | tojson }})"
-                class="action-button start-button">
+        <button type="button" id="save-service-settings-btn" class="action-button start-button">
             {# Green save button #}
             Save Service Settings
         </button>
@@ -122,32 +108,4 @@
 
 </section> {# --- End of .service-config-section --- #}
 
-{% endblock %}
-
-
-{# --- Body Scripts Block --- #}
-{% block body_scripts %}
-    {# JavaScript for initializing toggle switches (if not globally handled) #}
-    {# Assuming the JS logic from install_config.js (or similar) is loaded via head_scripts #}
-    {# If that script doesn't exist or doesn't handle toggles, add the JS here: #}
-    {#
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const toggleInputs = document.querySelectorAll('.service-config-section .toggle-input');
-        console.log(`Initializing ${toggleInputs.length} toggle switches in service config.`);
-        toggleInputs.forEach(input => {
-            const baseName = input.name.replace('-cb', '');
-            const hiddenFalseInput = input.closest('.form-group-toggle-container')?.querySelector(`.toggle-hidden-false[name="${baseName}"]`);
-
-            const syncHiddenFalse = () => {
-                if (hiddenFalseInput) {
-                    hiddenFalseInput.disabled = input.checked;
-                }
-            };
-            input.addEventListener('change', syncHiddenFalse);
-            syncHiddenFalse(); // Initial sync
-        });
-    });
-</script>
-    #}
 {% endblock %}

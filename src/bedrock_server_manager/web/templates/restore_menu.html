@@ -5,15 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Restore Menu: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{# Include JavaScript files needed for this page's actions (utils, backup_restore) #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# backup_restore.js contains triggerRestoreAll and potentially other handlers #}
-<script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
@@ -38,21 +29,19 @@
     <div class="button-group action-buttons-group" style="margin-bottom: 20px;">
 
         {# Button to navigate to World backup selection via JS #}
-        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'world')">Select World Backup...</button>
+        <button type="button" id="select-world-backup-btn" class="action-button">Select World Backup...</button>
 
         {# Button to navigate to properties backup selection via JS #}
-        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'properties')">Select Properties Backup...</button>
+        <button type="button" id="select-properties-backup-btn" class="action-button">Select Properties Backup...</button>
 
         {# Button to navigate to allowlist backup selection via JS #}
-        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'allowlist')">Select Allowlist Backup...</button>
+        <button type="button" id="select-allowlist-backup-btn" class="action-button">Select Allowlist Backup...</button>
 
         {# Button to navigate to permissions backup selection via JS #}
-        <button type="button" class="action-button" onclick="handleSelectBackupType(this, '{{ server_name | e }}', 'permissions')">Select Permissions Backup...</button>
+        <button type="button" id="select-permissions-backup-btn" class="action-button">Select Permissions Backup...</button>
 
         {# Button to trigger Restore All API call directly via JavaScript #}
-        {# 'this' refers to the button element (for disabling) #}
-        {# 'server_name' comes from Jinja context #}
-        <button type="button" onclick="triggerRestoreAll(this, '{{ server_name | e }}')" class="action-button">
+        <button type="button" id="restore-all-btn" class="action-button">
             Restore All (Latest)
         </button>
 

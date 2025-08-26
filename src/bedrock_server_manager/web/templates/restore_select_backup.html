@@ -5,15 +5,6 @@
 {# --- Page Title Block --- #}
 {% block title %}{{ super() }} - Select Backup to Restore: {{ server_name }}{% endblock %}
 
-{# --- Head Scripts Block --- #}
-{# Include JavaScript files needed for restore actions #}
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/utils.js') }}" defer></script>
-    {# backup_restore.js contains the triggerRestore function #}
-<script src="{{ request.url_for('static', path='js/backup_restore.js') }}" defer></script>
-{% endblock %}
-
-
 {# --- Main Content Block --- #}
 {% block content %}
     {# Main heading for the page #}
@@ -58,10 +49,11 @@
                     <td data-label="Backup File">{{ backup_path.name }}</td>
                     {# Center the button in the actions cell #}
                     <td data-label="Action" style="text-align: center;">
-                        {# Button triggers the JS restore function #}
                         <button type='button'
-                                class='action-button restore-button'
-                                onclick='triggerRestore(this, {{ server_name | tojson }}, {{ restore_type | tojson }}, {{ backup_path.path | tojson }})'>
+                                class='action-button restore-button restore-backup-btn'
+                                data-server-name='{{ server_name | e }}'
+                                data-restore-type='{{ restore_type | e }}'
+                                data-backup-path='{{ backup_path.path | e }}'>
                             Restore This Backup
                         </button>
                     </td>
@@ -89,9 +81,4 @@
 
 </section> {# --- End .restore-select-section --- #}
 
-{% endblock %}
-
-{# --- Optional Body Scripts Block --- #}
-{% block body_scripts %}
-{# No page-specific JS usually needed here, actions are in onclick #}
 {% endblock %}

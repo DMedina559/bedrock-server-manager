@@ -1,4 +1,7 @@
-document.addEventListener('DOMContentLoaded', () => {
+import { sendServerActionRequest, showStatusMessage } from './utils.js';
+import { startServer, stopServer, restartServer, promptCommand, triggerServerUpdate, deleteServer } from './server_actions.js';
+
+export function initializeDashboard() {
     const functionName = 'DashboardManager';
     console.log(`${functionName}: Initializing all dashboard interactivity.`);
 
@@ -113,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function updateDashboard() {
         try {
             // Use sendServerActionRequest and suppress success pop-up for polling
-            const data = await window.sendServerActionRequest(null, '/api/servers', 'GET', null, null, true);
+            const data = await sendServerActionRequest(null, '/api/servers', 'GET', null, null, true);
 
             if (!data || data.status !== 'success' || !Array.isArray(data.servers)) {
                 console.warn(`${functionName}: API call to /api/servers did not return success or valid server data. Message:`, data?.message);
@@ -172,7 +175,15 @@ document.addEventListener('DOMContentLoaded', () => {
         updateActionStates(event.target.value);
     });
 
+    // Attach event listeners to buttons
+    document.getElementById('start-server-btn')?.addEventListener('click', (e) => startServer(e.currentTarget));
+    document.getElementById('stop-server-btn')?.addEventListener('click', (e) => stopServer(e.currentTarget));
+    document.getElementById('restart-server-btn')?.addEventListener('click', (e) => restartServer(e.currentTarget));
+    document.getElementById('prompt-command-btn')?.addEventListener('click', (e) => promptCommand(e.currentTarget));
+    document.getElementById('update-server-btn')?.addEventListener('click', (e) => triggerServerUpdate(e.currentTarget, serverSelect.value));
+    document.getElementById('delete-server-btn')?.addEventListener('click', (e) => deleteServer(e.currentTarget, serverSelect.value));
+
     updateDashboard();
     setInterval(updateDashboard, POLLING_INTERVAL_MS);
     console.log(`${functionName}: Initialization complete. Polling every ${POLLING_INTERVAL_MS}ms.`);
-});
+}

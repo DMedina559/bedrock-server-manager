@@ -1,0 +1,17 @@
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx esbuild src/main.js --bundle --outfile=../src/bedrock_server_manager/web/static/js/dist/bundle.js --minify --sourcemap",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "esbuild": "^0.25.9"
+  }
+}
