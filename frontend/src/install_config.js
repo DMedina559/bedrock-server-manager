@@ -172,6 +172,7 @@ async function loadPermissions() {
         const noPlayersRow = noPlayersTemplate.content.cloneNode(true);
         tableBody.appendChild(noPlayersRow);
       }
+      if (configSection) configSection.style.display = 'block';
     } else {
       showStatusMessage(data?.message || 'Failed to load permissions.', 'error');
     }
@@ -179,7 +180,6 @@ async function loadPermissions() {
     showStatusMessage(`Client-side error loading permissions: ${error.message}`, 'error');
   } finally {
     if (loader) loader.style.display = 'none';
-    configSection.style.display = 'block';
   }
 }
 
@@ -362,25 +362,44 @@ export function initializeInstallConfigPage() {
   };
 
   function populateForm(properties) {
-    if (properties['server-name']) setInputValue('server-name', properties['server-name']);
-    if (properties['level-name']) setInputValue('level-name', properties['level-name']);
-    if (properties['gamemode']) setSegmentedControlState('gamemode-hidden', properties['gamemode']);
-    if (properties['difficulty']) setSegmentedControlState('difficulty-hidden', properties['difficulty']);
-    if (properties['allow-cheats'] !== undefined) setToggleState('allow-cheats-cb', properties['allow-cheats']);
-    if (properties['max-players']) setInputValue('max-players', properties['max-players']);
-    if (properties['level-seed']) setInputValue('level-seed', properties['level-seed']);
-    if (properties['server-port']) setInputValue('server-port', properties['server-port']);
-    if (properties['server-portv6']) setInputValue('server-portv6', properties['server-portv6']);
-    if (properties['enable-lan-visibility'] !== undefined)
-      setToggleState('enable-lan-visibility-cb', properties['enable-lan-visibility']);
-    if (properties['allow-list'] !== undefined) setToggleState('allow-list-cb', properties['allow-list']);
-    if (properties['default-player-permission-level'])
-      setSegmentedControlState('default-player-permission-level-hidden', properties['default-player-permission-level']);
-    if (properties['view-distance']) setInputValue('view-distance', properties['view-distance']);
-    if (properties['tick-distance']) setInputValue('tick-distance', properties['tick-distance']);
-    if (properties['online-mode'] !== undefined) setToggleState('online-mode-cb', properties['online-mode']);
-    if (properties['texturepack-required'] !== undefined)
-      setToggleState('texturepack-required-cb', properties['texturepack-required']);
+    const propertyMap = {
+      'server-name': { id: 'server-name', type: 'input' },
+      'level-name': { id: 'level-name', type: 'input' },
+      gamemode: { id: 'gamemode-hidden', type: 'segment' },
+      difficulty: { id: 'difficulty-hidden', type: 'segment' },
+      'allow-cheats': { id: 'allow-cheats-cb', type: 'toggle' },
+      'max-players': { id: 'max-players', type: 'input' },
+      'level-seed': { id: 'level-seed', type: 'input' },
+      'server-port': { id: 'server-port', type: 'input' },
+      'server-portv6': { id: 'server-portv6', type: 'input' },
+      'enable-lan-visibility': { id: 'enable-lan-visibility-cb', type: 'toggle' },
+      'allow-list': { id: 'allow-list-cb', type: 'toggle' },
+      'default-player-permission-level': { id: 'default-player-permission-level-hidden', type: 'segment' },
+      'view-distance': { id: 'view-distance', type: 'input' },
+      'tick-distance': { id: 'tick-distance', type: 'input' },
+      'online-mode': { id: 'online-mode-cb', type: 'toggle' },
+      'texturepack-required': { id: 'texturepack-required-cb', type: 'toggle' },
+    };
+
+    for (const key in properties) {
+      if (Object.prototype.hasOwnProperty.call(properties, key) && propertyMap[key]) {
+        const prop = propertyMap[key];
+        const value = properties[key];
+        if (value === undefined) continue;
+
+        switch (prop.type) {
+          case 'input':
+            setInputValue(prop.id, value);
+            break;
+          case 'toggle':
+            setToggleState(prop.id, value);
+            break;
+          case 'segment':
+            setSegmentedControlState(prop.id, value);
+            break;
+        }
+      }
+    }
   }
 
   async function loadProperties() {
@@ -390,6 +409,7 @@ export function initializeInstallConfigPage() {
       const data = await sendServerActionRequest(serverName, 'properties/get', 'GET', null, null);
       if (data && data.status === 'success' && data.properties) {
         populateForm(data.properties);
+        if (formContainer) formContainer.style.display = 'block';
       } else {
         showStatusMessage(data?.message || 'Failed to load server properties.', 'error');
       }
@@ -397,7 +417,6 @@ export function initializeInstallConfigPage() {
       showStatusMessage(`Client-side error loading properties: ${error.message}`, 'error');
     } finally {
       if (loader) loader.style.display = 'none';
-      if (formContainer) formContainer.style.display = 'block';
     }
   }
 

@@ -7,6 +7,7 @@
 
 {# --- Main Content Block --- #}
 {% block content %}
+<div id="install-config-page" data-server-name="{{ server_name }}" data-is-new-install="{{ new_install }}">
 <h2>Configure Server Properties</h2>
 <p style="margin-bottom: 15px;">
     Server: <strong>{{ server_name }}</strong>
@@ -205,4 +206,5 @@
         {% endif %}
     </div>
 </section>
+</div>
 {% endblock %}
