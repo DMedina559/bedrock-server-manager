@@ -105,7 +105,8 @@ export function initializeAllowlistPage() {
             removeButton.className = 'action-button remove-button danger-button';
             removeButton.title = `Remove ${player.name || 'this player'}`;
             if (player.name) {
-              removeButton.onclick = () => removeAllowlistPlayer(removeButton, player.name);
+              // Use data attribute instead of onclick
+              removeButton.dataset.playerName = player.name;
             } else {
               removeButton.disabled = true;
             }
@@ -151,6 +152,17 @@ export function initializeAllowlistPage() {
   const addPlayersButton = document.getElementById('add-allowlist-players-btn');
   if (addPlayersButton) {
     addPlayersButton.addEventListener('click', () => addAllowlistPlayers(addPlayersButton));
+  }
+
+  // Event delegation for remove buttons
+  const displayList = document.getElementById('current-allowlist-display');
+  if (displayList) {
+    displayList.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target.classList.contains('remove-button') && target.dataset.playerName) {
+        removeAllowlistPlayer(target, target.dataset.playerName);
+      }
+    });
   }
 
   // Initial fetch

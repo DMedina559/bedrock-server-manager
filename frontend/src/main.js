@@ -1,11 +1,6 @@
 // frontend/src/main.js
 import * as serverActions from './server_actions.js';
 
-// Make server actions available globally for inline event handlers
-// This is a temporary measure until all JS is migrated to modules
-// and event listeners are attached programmatically.
-window.serverActions = serverActions;
-
 import { initializeDashboard } from './dashboard.js';
 import { initializeAccountPage } from './account.js';
 import { initializeAllowlistPage } from './allowlist.js';
@@ -21,11 +16,6 @@ import { handleQueryParameters } from './query_param_handler.js';
 import { initializeUsersPage } from './users.js';
 import { initializeRegisterPage } from './register.js';
 import { initializeSetupPage } from './setup.js';
-
-// Make functions available globally for inline event handlers
-window.backupRestore = backupRestore;
-window.contentManagement = contentManagement;
-window.installConfig = installConfig;
 
 document.addEventListener('DOMContentLoaded', () => {
   // General initializations
