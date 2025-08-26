@@ -1,0 +1,2 @@
+include src/bedrock_server_manager/web/static/js/dist/bundle.js
+include src/bedrock_server_manager/web/static/js/dist/bundle.js.map
