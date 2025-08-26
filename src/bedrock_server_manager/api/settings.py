@@ -19,7 +19,6 @@ from ..plugins import plugin_method
 from ..logging import setup_logging
 
 # Local application imports.
-from ..instances import get_settings_instance
 from ..error import (
     BSMError,
     MissingArgumentError,
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 @plugin_method("get_global_setting")
 def get_global_setting(
-    key: str, app_context: Optional[AppContext] = None
+    key: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Reads a single value from the global application settings.
 
@@ -56,10 +55,7 @@ def get_global_setting(
 
     logger.debug(f"API: Reading global setting '{key}'.")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
+        settings = app_context.settings
         retrieved_value = settings.get(key)
         logger.debug(f"API: Successfully read global setting '{key}'.")
         return {
@@ -79,7 +75,7 @@ def get_global_setting(
 
 @plugin_method("get_all_global_settings")
 def get_all_global_settings(
-    app_context: Optional[AppContext] = None,
+    app_context: AppContext,
 ) -> Dict[str, Any]:
     """Reads the entire global application settings configuration.
 
@@ -93,10 +89,7 @@ def get_all_global_settings(
     """
     logger.debug("API: Reading all global settings.")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
+        settings = app_context.settings
         # Accessing _settings is an internal detail, but this API provides
         # a controlled public interface to it. A copy is returned.
         all_settings = settings._settings.copy()
@@ -116,7 +109,7 @@ def get_all_global_settings(
 
 
 def set_global_setting(
-    key: str, value: Any, app_context: Optional[AppContext] = None
+    key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
@@ -145,10 +138,7 @@ def set_global_setting(
 
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
+        settings = app_context.settings
         settings.set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
@@ -175,7 +165,7 @@ def set_global_setting(
 
 @plugin_method("set_custom_global_setting")
 def set_custom_global_setting(
-    key: str, value: Any, app_context: Optional[AppContext] = None
+    key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes a custom value to the global application settings.
 
@@ -206,10 +196,7 @@ def set_custom_global_setting(
 
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
+        settings = app_context.settings
         settings.set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
@@ -234,7 +221,7 @@ def set_custom_global_setting(
         }
 
 
-def reload_global_settings(app_context: Optional[AppContext] = None) -> Dict[str, str]:
+def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
     """
     Forces a reload of settings and logging config from the file.
 
@@ -258,11 +245,9 @@ def reload_global_settings(app_context: Optional[AppContext] = None) -> Dict[str
     """
     logger.info("API: Received request to reload global settings and logging.")
     try:
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
         # Step 1: Reload the settings from the file
+        app_context.reload()
+        settings = app_context.settings
         settings.reload()
         logger.info("API: Global settings successfully reloaded.")
 
