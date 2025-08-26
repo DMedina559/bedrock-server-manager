@@ -20,6 +20,9 @@
     {# Overrides the content block in base.html #}
     {% block content %}
 
+    {# Hidden div to trigger JS initialization and pass server_name #}
+    <div id="backup-restore-page" data-server-name="{{ server_name }}" style="display: none;"></div>
+
     {# Main heading for the page #}
     <h2>Select Configuration File to Backup</h2>
 

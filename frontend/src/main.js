@@ -28,38 +28,38 @@ window.contentManagement = contentManagement;
 window.installConfig = installConfig;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // General initializations
-    initializeSidebarNav();
-    handleQueryParameters();
+  // General initializations
+  initializeSidebarNav();
+  handleQueryParameters();
 
-    // Page-specific initializations
-    if (document.getElementById('server-card-list')) {
-        initializeDashboard();
-    } else if (document.getElementById('change-password-form')) {
-        initializeAccountPage();
-    } else if (document.getElementById('current-allowlist-display')) {
-        initializeAllowlistPage();
-    } else if (document.getElementById('login-form')) {
-        initializeLoginPage();
-    } else if (document.getElementById('backup-restore-page')) {
-        backupRestore.initializeBackupRestorePage();
-    } else if (document.getElementById('content-management-page')) {
-        contentManagement.initializeContentManagementPage();
-    } else if (document.getElementById('install-config-page')) {
-        installConfig.initializeInstallConfigPage();
-    } else if (document.getElementById('plugin-list')) {
-        initializeManagePluginsPage();
-    } else if (document.getElementById('settings-form-container')) {
-        initializeManageSettingsPage();
-    } else if (document.getElementById('status-info')) {
-        initializeMonitorUsagePage();
-    } else if (document.getElementById('user-management-section')) {
-        initializeUsersPage();
-    } else if (document.getElementById('register-form')) {
-        initializeRegisterPage();
-    } else if (document.getElementById('setup-form')) {
-        initializeSetupPage();
-    }
+  // Page-specific initializations
+  if (document.getElementById('server-card-list')) {
+    initializeDashboard();
+  } else if (document.getElementById('change-password-form')) {
+    initializeAccountPage();
+  } else if (document.getElementById('current-allowlist-display')) {
+    initializeAllowlistPage();
+  } else if (document.getElementById('login-form')) {
+    initializeLoginPage();
+  } else if (document.getElementById('backup-restore-page')) {
+    backupRestore.initializeBackupRestorePage();
+  } else if (document.getElementById('content-management-page')) {
+    contentManagement.initializeContentManagementPage();
+  } else if (document.getElementById('install-config-page')) {
+    installConfig.initializeInstallConfigPage();
+  } else if (document.getElementById('plugin-list')) {
+    initializeManagePluginsPage();
+  } else if (document.getElementById('settings-form-container')) {
+    initializeManageSettingsPage();
+  } else if (document.getElementById('status-info')) {
+    initializeMonitorUsagePage();
+  } else if (document.getElementById('user-management-section')) {
+    initializeUsersPage();
+  } else if (document.getElementById('register-form')) {
+    initializeRegisterPage();
+  } else if (document.getElementById('setup-form')) {
+    initializeSetupPage();
+  }
 
-    console.log("main.js loaded and initialized");
+  console.log('main.js loaded and initialized');
 });
