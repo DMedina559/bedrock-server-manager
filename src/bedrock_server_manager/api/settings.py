@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_global_setting")
-def get_global_setting(
-    key: str, app_context: AppContext
-) -> Dict[str, Any]:
+def get_global_setting(key: str, app_context: AppContext) -> Dict[str, Any]:
     """Reads a single value from the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.get`
@@ -108,9 +106,7 @@ def get_all_global_settings(
         }
 
 
-def set_global_setting(
-    key: str, value: Any, app_context: AppContext
-) -> Dict[str, Any]:
+def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.set`
