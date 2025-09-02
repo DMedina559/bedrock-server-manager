@@ -19,7 +19,7 @@ RUN python -m build
 # Stage 3: Final Python Application
 FROM python:3.12-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y pkg-config libmariadb-dev gcc && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libmariadb-dev gcc libcurl4 && rm -rf /var/lib/apt/lists/*
 COPY --from=python-builder /app/dist/ /app/dist/
 RUN for f in /app/dist/*.whl; do pip install "$f[mysql,mariadb,postgresql]"; done
 EXPOSE 11325
