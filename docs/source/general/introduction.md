@@ -32,6 +32,8 @@ Bedrock Server Manager is a comprehensive python package designed for installing
 
 ## Quick Start Guide
 
+Bedrock Server Manager is also available as a docker image. See the [Docker Guide](../extras/docker.md) for more information.
+
 ### Step 1: Installation
 
 ```{note}
