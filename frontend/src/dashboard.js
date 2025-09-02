@@ -119,7 +119,9 @@ export function initializeDashboard() {
             <p><span class="info-label">Version:</span> <span class="version-text">${version}</span></p>
             <p><span class="info-label">Players:</span> <span class="player-count-text">${server.player_count}</span></p>
         </div>
-        <div class="server-card-actions"></div>`;
+        <div class="server-card-actions">
+            <a href="/servers/${safeServerName}/settings" class="action-link" title="Server Settings">Settings</a>
+        </div>`;
     return card;
   }
 
@@ -182,7 +184,9 @@ export function initializeDashboard() {
                         <p><span class="info-label">Version:</span> <span class="version-text">${version}</span></p>
                         <p><span class="info-label">Players:</span> <span class="player-count-text">${serverData.player_count}</span></p>
                     </div>
-                    <div class="server-card-actions"></div>`;
+                    <div class="server-card-actions">
+                        <a href="/servers/${safeServerName}/settings" class="action-link" title="Server Settings">Settings</a>
+                    </div>`;
         } else {
           card.remove();
         }
@@ -219,6 +223,7 @@ export function initializeDashboard() {
   document
     .getElementById('delete-server-btn')
     ?.addEventListener('click', (e) => deleteServer(e.currentTarget, serverSelect.value));
+
 
   updateDashboard();
   setInterval(updateDashboard, POLLING_INTERVAL_MS);

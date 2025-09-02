@@ -10,6 +10,7 @@ import * as contentManagement from './content_management.js';
 import * as installConfig from './install_config.js';
 import { initializeManagePluginsPage } from './manage_plugins.js';
 import { initializeManageSettingsPage } from './manage_settings.js';
+import { initializeServerSettingsPage } from './server_settings.js';
 import { initializeMonitorUsagePage } from './monitor_usage.js';
 import { initializeSidebarNav } from './sidebar_nav.js';
 import { handleQueryParameters } from './query_param_handler.js';
@@ -40,7 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if (document.getElementById('plugin-list')) {
     initializeManagePluginsPage();
   } else if (document.getElementById('settings-form-container')) {
-    initializeManageSettingsPage();
+    if (window.location.pathname.startsWith('/servers/')) {
+      initializeServerSettingsPage();
+    } else {
+      initializeManageSettingsPage();
+    }
   } else if (document.getElementById('status-info')) {
     initializeMonitorUsagePage();
   } else if (document.getElementById('user-management-section')) {

@@ -306,6 +306,56 @@
         margin-top: 15px;
     }
 
+/* Dropdown Menu for Server Card */
+.dropdown-menu {
+    position: relative; /* This is the anchor for the dropdown content */
+    display: inline-block;
+}
+
+.dropdown-toggle {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0 10px; /* Add some padding for easier clicking */
+    line-height: 1;
+}
+
+.dropdown-content {
+    visibility: hidden; /* Hidden by default */
+    opacity: 0;
+    position: absolute;
+    right: 0; /* Align to the right of the dropdown-menu container */
+    top: 100%; /* Position it below the button */
+    background-color: var(--background-color);
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 100; /* High z-index to be safe */
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    transition: opacity 0.15s ease-in-out, visibility 0.15s ease-in-out;
+}
+
+/* This class is toggled by JS to show the dropdown */
+.dropdown-content.show {
+    visibility: visible;
+    opacity: 1;
+}
+
+.dropdown-content a {
+    color: var(--text-color);
+    padding: 10px 15px;
+    text-decoration: none;
+    display: block;
+    white-space: nowrap;
+}
+
+.dropdown-content a:hover {
+    background-color: var(--accent-color);
+}
+
+
     .sidebar-nav {
         flex-basis: auto; /* Reset fixed basis */
         width: 100%;      /* Take full width */

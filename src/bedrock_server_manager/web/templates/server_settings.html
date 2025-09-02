@@ -1,0 +1,52 @@
+{# bedrock_server_manager/web/templates/server_settings.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ super() }} - {{ server_name }} - Settings{% endblock %}
+
+{% block content %}
+    {# --- Page Header --- #}
+<h2>Manage Settings for {{ server_name }}</h2>
+<p style="margin-bottom: 15px;">Edit server-specific settings. Changes are saved automatically when you modify a field.</p>
+
+    {# --- Status Message Areas --- #}
+<div id="status-message-area" class="message-box" style="opacity: 0; transition: opacity 0.5s ease-out;"></div>
+<div id="validation-error-area" class="message-box message-error" style="margin-bottom: 15px; display: none;"></div>
+
+    {# --- Loading Indicator --- #}
+<div id="settings-loader" class="loader-container">
+    <div class="spinner"></div>
+    <p>Loading settings...</p>
+</div>
+
+    {# --- Settings Configuration Section (Initially hidden, populated by JS) --- #}
+{% if current_user.role == 'admin' %}
+<div class="page-layout">
+    <aside id="settings-sidebar" class="sidebar-nav">
+        <!-- Sidebar links will be dynamically inserted here by JavaScript -->
+    </aside>
+    <main class="main-content">
+        <section id="settings-form-section" class="content-section active" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>Server Configuration</h2>
+            </div>
+            <div id="settings-form-container" class="form-grid">
+                {# The dynamically generated fieldsets and form groups will be injected here #}
+            </div>
+        </section>
+    </main>
+</div>
+{% endif %}
+
+    {# The page-actions div should be outside the section, at the end of the content block #}
+<div class="page-actions">
+    <a href="{{ request.url_for('index') if request else '/' }}" class="action-link">
+        « Back to Dashboard
+    </a>
+</div>
+
+{% endblock %}
+
+{% block body_scripts %}
+{# This script is loaded after utils.js (which is in base.html) #}
+<script src="{{ request.url_for('static', path='js/server_settings.js') }}" defer></script>
+{% endblock %}

@@ -123,6 +123,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     app.include_router(routers.main_router)
     app.include_router(routers.account_router)
     app.include_router(routers.audit_log_router)
+    app.include_router(routers.server_settings_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:

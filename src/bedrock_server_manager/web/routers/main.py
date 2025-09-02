@@ -22,6 +22,7 @@ from ..dependencies import get_templates, get_app_context, validate_server_exist
 from ..auth_utils import (
     get_current_user,
     get_current_user_optional,
+    get_admin_user,
 )
 from ..schemas import User
 from ...plugins.plugin_manager import PluginManager
@@ -90,5 +91,29 @@ async def monitor_server_route(
     return templates.TemplateResponse(
         request,
         "monitor.html",
+        {"server_name": server_name, "current_user": current_user},
+    )
+
+
+@router.get(
+    "/servers/{server_name}/settings",
+    response_class=HTMLResponse,
+    name="server_settings_page",
+    include_in_schema=False,
+)
+async def server_settings_page_route(
+    request: Request,
+    server_name: str = Depends(validate_server_exists),
+    current_user: User = Depends(get_admin_user),
+    templates: Jinja2Templates = Depends(get_templates),
+):
+    """
+    Serves the HTML page for managing server-specific settings.
+    """
+    identity = current_user.username
+    logger.info(f"User '{identity}' accessed settings page for server '{server_name}'.")
+    return templates.TemplateResponse(
+        request,
+        "server_settings.html",
         {"server_name": server_name, "current_user": current_user},
     )

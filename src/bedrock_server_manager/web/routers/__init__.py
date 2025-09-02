@@ -11,6 +11,7 @@ from .server_actions import router as server_actions_router
 from .server_install_config import router as server_install_config_router
 from .settings import router as settings_router
 from .util import router as util_router
+from .server_settings import router as server_settings_router
 from .tasks import router as tasks_router
 from .setup import router as setup_router
 from .account_router import router as account_router
