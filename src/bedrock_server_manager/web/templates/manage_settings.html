@@ -27,20 +27,24 @@
 
     {# --- Settings Configuration Section (Initially hidden, populated by JS) --- #}
 {% if current_user.role == 'admin' %}
-<section id="settings-form-section" class="properties-config-section" style="display: none;">
-    {# Header inside the section to contain the reload button #}
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h3>Application Configuration</h3>
-        <button id="reload-settings-btn" class="action-button">
-            <i class="fas fa-sync-alt"></i> Reload from File
-        </button>
-    </div>
-    {# form-grid container where fieldsets will be appended #}
-    <div id="settings-form-container" class="form-grid">
-        {# The dynamically generated fieldsets and form groups will be injected here #}
-    </div>
-
-</section>
+<div class="page-layout">
+    <aside id="settings-sidebar" class="sidebar-nav">
+        <!-- Sidebar links will be dynamically inserted here by JavaScript -->
+    </aside>
+    <main class="main-content">
+        <section id="settings-form-section" class="content-section active" style="display: none;">
+             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>Application Configuration</h2>
+                <button id="reload-settings-btn" class="action-button">
+                    <i class="fas fa-sync-alt"></i> Reload from File
+                </button>
+            </div>
+            <div id="settings-form-container" class="form-grid">
+                {# The dynamically generated fieldsets and form groups will be injected here #}
+            </div>
+        </section>
+    </main>
+</div>
 {% endif %}
 
     {# The page-actions div should be outside the section, at the end of the content block #}

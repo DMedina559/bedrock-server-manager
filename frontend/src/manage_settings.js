@@ -7,11 +7,12 @@ import { sendServerActionRequest, showStatusMessage } from './utils.js';
 
 export function initializeManageSettingsPage() {
   const settingsFormContainer = document.getElementById('settings-form-container');
+  const settingsSidebar = document.getElementById('settings-sidebar');
   const reloadButton = document.getElementById('reload-settings-btn');
   const loader = document.getElementById('settings-loader');
   const settingsFormSection = document.getElementById('settings-form-section');
 
-  if (!settingsFormSection || !settingsFormContainer || !reloadButton || !loader) {
+  if (!settingsFormSection || !settingsFormContainer || !settingsSidebar || !reloadButton || !loader) {
     console.error('manage_settings.js: Critical elements not found.');
     return;
   }
@@ -19,7 +20,10 @@ export function initializeManageSettingsPage() {
   const showLoader = (isLoading) => {
     loader.style.display = isLoading ? 'block' : 'none';
     settingsFormSection.style.display = isLoading ? 'none' : 'block';
-    if (isLoading) settingsFormContainer.innerHTML = '';
+    if (isLoading) {
+        settingsFormContainer.innerHTML = '';
+        settingsSidebar.innerHTML = '';
+    }
   };
 
   const showError = (message) => {
@@ -30,6 +34,7 @@ export function initializeManageSettingsPage() {
 
   const renderSettings = (data) => {
     settingsFormContainer.innerHTML = '';
+    settingsSidebar.innerHTML = '';
     let totalFieldsRendered = 0;
 
     Object.keys(data)
@@ -38,9 +43,23 @@ export function initializeManageSettingsPage() {
         if (typeof data[categoryKey] !== 'object' || data[categoryKey] === null) return;
 
         const fieldset = document.createElement('fieldset');
+        fieldset.id = `category-${categoryKey}`;
         const legend = document.createElement('legend');
         legend.textContent = categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1);
         fieldset.appendChild(legend);
+
+        const link = document.createElement('a');
+        link.href = `#category-${categoryKey}`;
+        link.className = 'nav-link';
+        link.textContent = legend.textContent;
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.querySelectorAll('.settings-nav .nav-link').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            fieldset.scrollIntoView({ behavior: 'smooth' });
+        });
+        settingsSidebar.appendChild(link);
+
 
         let categoryFieldsAdded = 0;
         Object.keys(data[categoryKey])
