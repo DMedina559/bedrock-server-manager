@@ -19,8 +19,10 @@ RUN python -m build
 # Stage 3: Final Python Application
 FROM python:3.12-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y pkg-config libmariadb-dev gcc libcurl4 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libmariadb-dev-compat gcc libcurl4 && apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=python-builder /app/dist/ /app/dist/
-RUN for f in /app/dist/*.whl; do pip install "$f[mysql,mariadb,postgresql]"; done
+RUN for f in /app/dist/*.whl; do pip install "$f[mysql,mariadb,postgresql]"; done && rm -rf /app/dist
+ENV HOST=0.0.0.0
+ENV PORT=11325
 EXPOSE 11325
-CMD ["bedrock-server-manager", "web", "start", "--host", "0.0.0.0"]
+CMD ["bedrock-server-manager", "web", "start", "--host", "${HOST}", "--port", "${PORT}"]
