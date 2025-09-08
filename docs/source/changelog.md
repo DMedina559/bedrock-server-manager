@@ -14,7 +14,7 @@
 3. Added `--port` to `web start` command to override the port from config
 4. Docker image now available on GitHub Container Registry (GHCR) and Docker Hub
     - Image: `ghcr.io/dmedina559/bedrock-server-manager:latest`, `dmedina559/bedrock-server-manager:latest`
-    - Docs: [Docker Setup](./extras/docker.md)
+    - Docs: [Docker Guide](./extras/docker.md)
 
 ### Backend Changes:
 5. Add `reload` to `AppContext` and some related classes
