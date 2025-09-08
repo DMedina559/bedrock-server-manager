@@ -35,7 +35,7 @@ docker run -d \
   --name bsm-container \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
-  bedrock-server-manager
+  ghcr.io/dmedina559/bedrock-server-manager:latest
 ```
 
 This command creates two named volumes, `bsm_config` and `bsm_data`, and mounts them to the correct locations.
@@ -51,7 +51,23 @@ docker run -d \
   --name bsm-container \
   -v /path/on/host/bsm_config:/root/.config/bedrock-server-manager \
   -v /path/on/host/bsm_data:/root/bedrock-server-manager \
-  bedrock-server-manager
+  ghcr.io/dmedina559/bedrock-server-manager:latest
+```
+
+### Overriding Environment Variables
+
+You can override the default `HOST` and `PORT` for the web server by passing environment variables to the container. If these variables are not set, the application will use the default values (`HOST=0.0.0.0`, `PORT=11325`). For example, to change the web server port to `8080`:
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -p 19132:19132/udp \
+  --name bsm-container \
+  -e PORT=8080 \
+  -e HOST=0.0.0.0 \
+  -v bsm_config:/root/.config/bedrock-server-manager \
+  -v bsm_data:/root/bedrock-server-manager \
+  ghcr.io/dmedina559/bedrock-server-manager:latest
 ```
 
 ### Exposing Minecraft Server Ports
@@ -78,6 +94,9 @@ services:
     ports:
       - "11325:11325"
       - "19132:19132/udp" # Add more ports here for additional servers
+    environment: # Optional
+      - HOST=0.0.0.0
+      - PORT=11325
     volumes:
       - bsm_config:/root/.config/bedrock-server-manager
       - bsm_data:/root/bedrock-server-manager
