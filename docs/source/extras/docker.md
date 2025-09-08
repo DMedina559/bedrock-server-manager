@@ -4,10 +4,15 @@ This project includes a `Dockerfile` that allows you to build and run the Bedroc
 
 ## Image Location
 
-The official Docker image is hosted on the GitHub Container Registry. You can pull it using the following command:
+The official Docker image is hosted on both the GitHub Container Registry and Docker Hub. 
+
+* **Docker Hub**: `dmedina559/bedrock-server-manager:latest`
+* **GitHub Container Registry**: `ghcr.io/dmedina559/bedrock-server-manager:latest`
+
+You can pull it using the following command:
 
 ```bash
-docker pull ghcr.io/dmedina559/bedrock-server-manager:latest
+docker pull dmedina559/bedrock-server-manager:latest
 ```
 
 ## Running the Container
@@ -35,7 +40,7 @@ docker run -d \
   --name bsm-container \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
-  ghcr.io/dmedina559/bedrock-server-manager:latest
+  dmedina559/bedrock-server-manager:latest
 ```
 
 This command creates two named volumes, `bsm_config` and `bsm_data`, and mounts them to the correct locations.
@@ -51,7 +56,7 @@ docker run -d \
   --name bsm-container \
   -v /path/on/host/bsm_config:/root/.config/bedrock-server-manager \
   -v /path/on/host/bsm_data:/root/bedrock-server-manager \
-  ghcr.io/dmedina559/bedrock-server-manager:latest
+  dmedina559/bedrock-server-manager:latest
 ```
 
 ### Overriding Environment Variables
@@ -67,7 +72,7 @@ docker run -d \
   -e HOST=0.0.0.0 \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
-  ghcr.io/dmedina559/bedrock-server-manager:latest
+  dmedina559/bedrock-server-manager:latest
 ```
 
 ### Exposing Minecraft Server Ports
@@ -88,7 +93,7 @@ For an even easier setup, you can use Docker Compose. Create a `docker-compose.y
 version: '3.8'
 services:
   bedrock-server-manager:
-    image: ghcr.io/dmedina559/bedrock-server-manager:latest
+    image: dmedina559/bedrock-server-manager:latest
     container_name: bsm-container
     restart: unless-stopped
     ports:
