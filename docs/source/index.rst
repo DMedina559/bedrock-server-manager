@@ -9,10 +9,6 @@ This documentation is designed to help you understand and use the Bedrock Server
 
 Browse through the sections below to find various information about Bedrock Server Manager, including general information, CLI commands, web interface, plugins, and developer documentation.
 
-Download: `PYPI <https://pypi.org/project/bedrock-server-manager/>`_
-
-Source Code: `Github <https://github.com/DMedina559/bedrock-server-manager>`_
-
 .. toctree::
    :maxdepth: 2
    :caption: General Information
@@ -63,3 +59,6 @@ Source Code: `Github <https://github.com/DMedina559/bedrock-server-manager>`_
    developer/api/api
    developer/classes/classes
    developer/core/core
+
+
+Source Code: `Github <https://github.com/DMedina559/bedrock-server-manager>`_
