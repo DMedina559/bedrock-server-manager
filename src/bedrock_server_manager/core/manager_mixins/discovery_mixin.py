@@ -10,7 +10,6 @@ from bedrock_server_manager.error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
-from bedrock_server_manager.instances import get_server_instance
 
 logger = logging.getLogger(__name__)
 

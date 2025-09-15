@@ -26,7 +26,6 @@ from typing import Dict, Any, Optional
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_manager_instance
 from ..error import BSMError, FileError
 from ..context import AppContext
 
@@ -34,9 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_application_info_api")
-def get_application_info_api(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves general information about the application.
 
     Accesses properties from the global
@@ -54,10 +51,7 @@ def get_application_info_api(
     """
     logger.debug("API: Requesting application info.")
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         info = {
             "application_name": manager._app_name_title,
             "version": manager.get_app_version(),
@@ -73,9 +67,7 @@ def get_application_info_api(
 
 
 @plugin_method("list_available_worlds_api")
-def list_available_worlds_api(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
     Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_worlds`
@@ -92,10 +84,7 @@ def list_available_worlds_api(
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         worlds = manager.list_available_worlds()
         return {"status": "success", "files": worlds}
     except FileError as e:
@@ -107,9 +96,7 @@ def list_available_worlds_api(
 
 
 @plugin_method("list_available_addons_api")
-def list_available_addons_api(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
     Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_addons`
@@ -126,10 +113,7 @@ def list_available_addons_api(
     """
     logger.debug("API: Requesting list of available addons.")
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         addons = manager.list_available_addons()
         return {"status": "success", "files": addons}
     except FileError as e:
@@ -141,9 +125,7 @@ def list_available_addons_api(
 
 
 @plugin_method("get_all_servers_data")
-def get_all_servers_data(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
     This function acts as an API orchestrator, calling the core
@@ -173,10 +155,7 @@ def get_all_servers_data(
     logger.debug("API: Getting status for all servers...")
 
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         # Call the core function which returns both data and potential errors.
         servers_data, bsm_error_messages = manager.get_servers_data(
             app_context=app_context

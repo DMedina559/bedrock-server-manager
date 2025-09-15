@@ -32,7 +32,6 @@ from typing import Dict, Any, Optional
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
 from .utils import server_lifecycle_manager
 from ..plugins.event_trigger import trigger_plugin_event
 from ..error import (
@@ -53,7 +52,7 @@ _backup_restore_lock = threading.Lock()
 
 @plugin_method("list_backup_files")
 def list_backup_files(
-    server_name: str, backup_type: str, app_context: Optional[AppContext] = None
+    server_name: str, backup_type: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Lists available backup files for a given server and type.
 
@@ -86,10 +85,7 @@ def list_backup_files(
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         backup_data = server.list_backups(backup_type)
         return {"status": "success", "backups": backup_data}
     except BSMError as e:
@@ -106,8 +102,8 @@ def list_backup_files(
 @trigger_plugin_event(before="before_backup", after="after_backup")
 def backup_world(
     server_name: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Creates a backup of the server's world directory.
 
@@ -161,10 +157,7 @@ def backup_world(
             with server_lifecycle_manager(
                 server_name, stop_start_server, app_context=app_context
             ):
-                if app_context:
-                    server = app_context.get_server(server_name)
-                else:
-                    server = get_server_instance(server_name)
+                server = app_context.get_server(server_name)
                 backup_file = server._backup_world_data_internal()
             return {
                 "status": "success",
@@ -195,8 +188,8 @@ def backup_world(
 def backup_config_file(
     server_name: str,
     file_to_backup: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Creates a backup of a specific server configuration file.
 
@@ -259,10 +252,7 @@ def backup_config_file(
             with server_lifecycle_manager(
                 server_name, stop_start_server, app_context=app_context
             ):
-                if app_context:
-                    server = app_context.get_server(server_name)
-                else:
-                    server = get_server_instance(server_name)
+                server = app_context.get_server(server_name)
                 backup_file = server._backup_config_file_internal(filename_base)
             return {
                 "status": "success",
@@ -293,8 +283,8 @@ def backup_config_file(
 @trigger_plugin_event(before="before_backup", after="after_backup")
 def backup_all(
     server_name: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Performs a full backup of the server's world and configuration files.
 
@@ -350,10 +340,7 @@ def backup_all(
             with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
-                if app_context:
-                    server = app_context.get_server(server_name)
-                else:
-                    server = get_server_instance(server_name)
+                server = app_context.get_server(server_name)
                 backup_results = server.backup_all_data()
             return {
                 "status": "success",
@@ -384,8 +371,8 @@ def backup_all(
 @trigger_plugin_event(before="before_restore", after="after_restore")
 def restore_all(
     server_name: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Restores the server from the latest available backups.
 
@@ -447,10 +434,7 @@ def restore_all(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                if app_context:
-                    server = app_context.get_server(server_name)
-                else:
-                    server = get_server_instance(server_name)
+                server = app_context.get_server(server_name)
                 restore_results = server.restore_all_data_from_latest()
 
             if not restore_results:
@@ -489,8 +473,8 @@ def restore_all(
 def restore_world(
     server_name: str,
     backup_file_path: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Restores a server's world from a specific backup file.
 
@@ -558,10 +542,7 @@ def restore_world(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                if app_context:
-                    server = app_context.get_server(server_name)
-                else:
-                    server = get_server_instance(server_name)
+                server = app_context.get_server(server_name)
                 server.import_active_world_from_mcworld(backup_file_path)
 
             return {
@@ -593,8 +574,8 @@ def restore_world(
 def restore_config_file(
     server_name: str,
     backup_file_path: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Restores a specific config file from a backup.
 
@@ -663,10 +644,7 @@ def restore_config_file(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                if app_context:
-                    server = app_context.get_server(server_name)
-                else:
-                    server = get_server_instance(server_name)
+                server = app_context.get_server(server_name)
                 restored_file = server._restore_config_file_internal(backup_file_path)
 
             return {
@@ -696,9 +674,7 @@ def restore_config_file(
 
 @plugin_method("prune_old_backups")
 @trigger_plugin_event(before="before_prune_backups", after="after_prune_backups")
-def prune_old_backups(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, str]:
+def prune_old_backups(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Prunes old backups for a server based on retention settings.
 
     This operation is thread-safe and guarded by a lock. It iteratively calls
@@ -746,10 +722,7 @@ def prune_old_backups(
         )
 
         try:
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = app_context.get_server(server_name)
             # If the backup directory doesn't exist, there's nothing to do.
             if not server.server_backup_directory or not os.path.isdir(
                 server.server_backup_directory

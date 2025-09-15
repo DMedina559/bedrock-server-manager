@@ -171,7 +171,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
     from bedrock_server_manager.context import AppContext
     from bedrock_server_manager.config.settings import Settings
     from bedrock_server_manager.core.manager import BedrockServerManager
-    from bedrock_server_manager.instances import set_app_context
     from bedrock_server_manager.plugins.plugin_manager import PluginManager
     from bedrock_server_manager.db.database import Database
     import os
@@ -232,7 +231,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
 
     context = AppContext(settings=settings, manager=manager, db=db)
     context.load()
-    set_app_context(context)
 
     # Load plugins
     context.plugin_manager.plugin_dirs = [plugins_dir]

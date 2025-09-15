@@ -90,9 +90,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:
             "/openapi.json",
         ]
 
-        if bcm_config.needs_setup(
-            request.app.state.app_context
-        ) and not any(request.url.path.startswith(p) for p in allowed_paths):
+        if bcm_config.needs_setup(request.app.state.app_context) and not any(
+            request.url.path.startswith(p) for p in allowed_paths
+        ):
             return RedirectResponse(url="/setup")
 
         # Manually handle authentication to bypass it for static files

@@ -32,10 +32,6 @@ from typing import Dict, List, Optional, Any
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import (
-    get_server_instance,
-    get_settings_instance,
-)
 from . import player as player_api
 from .utils import (
     server_lifecycle_manager,
@@ -63,7 +59,7 @@ from ..plugins.event_trigger import trigger_plugin_event
 def add_players_to_allowlist_api(
     server_name: str,
     new_players_data: List[Dict[str, Any]],
-    app_context: Optional[AppContext] = None,
+    app_context: AppContext,
 ) -> Dict[str, Any]:
     """Adds new players to the allowlist for a specific server.
 
@@ -104,10 +100,7 @@ def add_players_to_allowlist_api(
         f"API: Adding {len(new_players_data)} player(s) to allowlist for '{server_name}'."
     )
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         added_count = server.add_to_allowlist(new_players_data)
 
         return {
@@ -134,7 +127,7 @@ def add_players_to_allowlist_api(
 
 @plugin_method("get_server_allowlist_api")
 def get_server_allowlist_api(
-    server_name: str, app_context: Optional[AppContext] = None
+    server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Retrieves the allowlist for a specific server.
 
@@ -161,10 +154,7 @@ def get_server_allowlist_api(
         raise MissingArgumentError("Server name cannot be empty.")
 
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         players = server.get_allowlist()
         return {"status": "success", "players": players}
     except BSMError as e:
@@ -188,7 +178,7 @@ def get_server_allowlist_api(
 def remove_players_from_allowlist(
     server_name: str,
     player_names: List[str],
-    app_context: Optional[AppContext] = None,
+    app_context: AppContext,
 ) -> Dict[str, Any]:
     """Removes one or more players from the server's allowlist by name.
 
@@ -224,10 +214,7 @@ def remove_players_from_allowlist(
                 "details": {"removed": [], "not_found": []},
             }
 
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         removed_players, not_found_players = [], []
 
         # Iterate and remove each player, tracking success and failure.
@@ -270,7 +257,7 @@ def configure_player_permission(
     xuid: str,
     player_name: Optional[str],
     permission: str,
-    app_context: Optional[AppContext] = None,
+    app_context: AppContext,
 ) -> Dict[str, str]:
     """Sets a player's permission level in permissions.json.
 
@@ -305,10 +292,7 @@ def configure_player_permission(
         raise InvalidServerNameError("Server name cannot be empty.")
 
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         server.set_player_permission(xuid, permission, player_name)
 
         return {
@@ -332,7 +316,7 @@ def configure_player_permission(
 
 @plugin_method("get_server_permissions_api")
 def get_server_permissions_api(
-    server_name: str, app_context: Optional[AppContext] = None
+    server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Retrieves processed permissions data for a server.
 
@@ -362,10 +346,7 @@ def get_server_permissions_api(
         return {"status": "error", "message": "Server name cannot be empty."}
 
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         player_name_map: Dict[str, str] = {}
 
         # Fetch global player data to create a XUID -> Name mapping.
@@ -400,7 +381,7 @@ def get_server_permissions_api(
 # --- Server Properties ---
 @plugin_method("get_server_properties_api")
 def get_server_properties_api(
-    server_name: str, app_context: Optional[AppContext] = None
+    server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Reads and returns the `server.properties` file for a server.
 
@@ -424,10 +405,7 @@ def get_server_properties_api(
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         properties = server.get_server_properties()
         return {"status": "success", "properties": properties}
     except AppFileNotFoundError as e:
@@ -537,8 +515,8 @@ def validate_server_property_value(property_name: str, value: str) -> Dict[str, 
 def modify_server_properties(
     server_name: str,
     properties_to_update: Dict[str, str],
+    app_context: AppContext,
     restart_after_modify: bool = False,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Modifies one or more properties in `server.properties`.
 
@@ -597,10 +575,7 @@ def modify_server_properties(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = app_context.get_server(server_name)
             for prop_name, prop_value in properties_to_update.items():
                 server.set_server_property(prop_name, prop_value)
 
@@ -627,9 +602,9 @@ def modify_server_properties(
 @trigger_plugin_event(before="before_server_install", after="after_server_install")
 def install_new_server(
     server_name: str,
+    app_context: AppContext,
     target_version: str = "LATEST",
     server_zip_path: Optional[str] = None,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Installs a new Bedrock server.
 
@@ -671,10 +646,7 @@ def install_new_server(
         if val_res.get("status") == "error":
             raise UserInputError(val_res.get("message"))
 
-        if app_context:
-            settings = app_context.settings
-        else:
-            settings = get_settings_instance()
+        settings = app_context.settings
 
         base_dir = settings.get("paths.servers")
         if not base_dir:
@@ -687,10 +659,7 @@ def install_new_server(
         logger.info(
             f"API: Installing new server '{server_name}', target version '{target_version}'."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         server.install_or_update(target_version, server_zip_path=server_zip_path)
         return {
             "status": "success",
@@ -715,8 +684,8 @@ def install_new_server(
 @trigger_plugin_event(before="before_server_update", after="after_server_update")
 def update_server(
     server_name: str,
+    app_context: AppContext,
     send_message: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Updates an existing server to its configured target version.
 
@@ -766,10 +735,7 @@ def update_server(
         raise InvalidServerNameError("Server name cannot be empty.")
 
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         target_version = server.get_target_version()
 
         logger.info(

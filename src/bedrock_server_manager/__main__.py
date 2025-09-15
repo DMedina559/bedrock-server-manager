@@ -69,9 +69,6 @@ def create_cli_app():
         try:
             # --- Initial Application Setup ---
             app_context = AppContext()
-            from .instances import set_app_context
-
-            set_app_context(app_context)
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app(app_context: AppContext):
