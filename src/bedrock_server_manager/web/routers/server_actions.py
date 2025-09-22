@@ -112,6 +112,7 @@ async def stop_server_route(
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
     task_id = app_context.task_manager.run_task(
         server_api.stop_server,
+        username=current_user.username,
         server_name=server_name,
         app_context=app_context,
     )
@@ -147,6 +148,7 @@ async def restart_server_route(
     )
     task_id = app_context.task_manager.run_task(
         server_api.restart_server,
+        username=current_user.username,
         server_name=server_name,
         app_context=app_context,
     )
@@ -265,6 +267,7 @@ async def update_server_route(
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
     task_id = app_context.task_manager.run_task(
         server_install_config.update_server,
+        username=current_user.username,
         server_name=server_name,
         app_context=app_context,
     )
@@ -300,6 +303,7 @@ async def delete_server_route(
     )
     task_id = app_context.task_manager.run_task(
         server_api.delete_server_data,
+        username=current_user.username,
         server_name=server_name,
         app_context=app_context,
     )

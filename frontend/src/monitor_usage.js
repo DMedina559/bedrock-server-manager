@@ -1,9 +1,9 @@
-// frontend/src/monitor_usage.js
 /**
  * @fileoverview Frontend JavaScript for the server resource usage monitor page.
  */
 
-import { sendServerActionRequest, showStatusMessage } from './utils.js';
+import { showStatusMessage } from './utils.js';
+import webSocketClient from './websocket_client.js';
 
 export function initializeMonitorUsagePage() {
   const statusElement = document.getElementById('status-info');
@@ -19,39 +19,76 @@ export function initializeMonitorUsagePage() {
     return;
   }
 
-  let statusIntervalId = null;
+  let pollingIntervalId = null;
 
-  async function updateStatus() {
-    try {
-      const data = await sendServerActionRequest(serverName, 'process_info', 'GET', null, null, true);
-      if (data && data.status === 'success' && data.data?.process_info) {
-        const info = data.data.process_info;
-        statusElement.textContent = `
-PID          : ${info.pid ?? 'N/A'}
-CPU Usage    : ${info.cpu_percent != null ? info.cpu_percent.toFixed(1) + '%' : 'N/A'}
-Memory Usage : ${info.memory_mb != null ? info.memory_mb.toFixed(1) + ' MB' : 'N/A'}
-Uptime       : ${info.uptime ?? 'N/A'}
-                `.trim();
-      } else if (data && data.status === 'error') {
-        statusElement.textContent = `Error: ${data.message || 'API error.'}`;
-      } else {
-        statusElement.textContent = 'Server Status: STOPPED or process info not found.';
-      }
-    } catch (error) {
-      statusElement.textContent = `Client-side error: ${error.message}`;
-      showStatusMessage(`Client-side error fetching status: ${error.message}`, 'error');
-      if (statusIntervalId) clearInterval(statusIntervalId);
+  function updateStatusDisplay(processInfo) {
+    if (processInfo) {
+      statusElement.textContent = `
+PID          : ${processInfo.pid ?? 'N/A'}
+CPU Usage    : ${processInfo.cpu_percent != null ? processInfo.cpu_percent.toFixed(1) + '%' : 'N/A'}
+Memory Usage : ${processInfo.memory_mb != null ? processInfo.memory_mb.toFixed(1) + ' MB' : 'N/A'}
+Uptime       : ${processInfo.uptime ?? 'N/A'}
+            `.trim();
+    } else {
+      statusElement.textContent = 'Server Status: STOPPED or process info not found.';
     }
   }
 
-  updateStatus();
-  statusIntervalId = setInterval(updateStatus, 2000);
+  async function pollStatus() {
+    try {
+      // Use fetch directly as sendServerActionRequest is for actions, not silent polling
+      const response = await fetch(`/api/server/${encodeURIComponent(serverName)}/process_info`);
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+      const data = await response.json();
 
-  // Cleanup interval on page unload
-  window.addEventListener('beforeunload', () => {
-    if (statusIntervalId) {
-      clearInterval(statusIntervalId);
+      if (data && data.status === 'success') {
+        updateStatusDisplay(data.data?.process_info);
+      } else if (data && data.status === 'error') {
+        statusElement.textContent = `Error: ${data.message || 'API error.'}`;
+      } else {
+        updateStatusDisplay(null);
+      }
+    } catch (error) {
+      statusElement.textContent = `Client-side error: ${error.message}`;
+      if (pollingIntervalId) clearInterval(pollingIntervalId);
     }
+  }
+
+  function setupWebSocket() {
+    const topic = `resource-monitor:${serverName}`;
+
+    document.addEventListener('websocket-message', (event) => {
+      const message = event.detail;
+      if (message && message.topic === topic && message.type === 'resource_update') {
+        const processInfo = message.data?.process_info;
+        updateStatusDisplay(processInfo);
+      }
+    });
+
+    document.addEventListener('websocket-fallback', () => {
+      console.warn('Monitor Page: WebSocket connection failed. Falling back to polling.');
+      if (!pollingIntervalId) {
+        pollStatus(); // Initial poll
+        pollingIntervalId = setInterval(pollStatus, 2000);
+      }
+    });
+
+    webSocketClient.subscribe(topic);
+  }
+
+  // Initial load and setup
+  setupWebSocket();
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (pollingIntervalId) {
+      clearInterval(pollingIntervalId);
+    }
+    // The websocket client handles its own connection state, but we can unsubscribe
+    const topic = `resource-monitor:${serverName}`;
+    webSocketClient.unsubscribe(topic);
   });
 
   console.log(`Monitoring started for server: ${serverName}`);

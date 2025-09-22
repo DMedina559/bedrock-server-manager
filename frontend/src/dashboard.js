@@ -7,6 +7,7 @@ import {
   triggerServerUpdate,
   deleteServer,
 } from './server_actions.js';
+import webSocketClient from './websocket_client.js';
 
 export function initializeDashboard() {
   const functionName = 'DashboardManager';
@@ -19,6 +20,8 @@ export function initializeDashboard() {
   const serverDependentSections = document.querySelectorAll('.server-dependent-actions');
   const serverCardList = document.getElementById('server-card-list');
   const noServersMessage = document.getElementById('no-servers-message');
+
+  let pollingIntervalId = null;
 
   if (!serverSelect || !serverCardList || !noServersMessage) {
     console.error(`${functionName}: A critical element for the dashboard is missing. Functionality may be impaired.`);
@@ -208,6 +211,38 @@ export function initializeDashboard() {
     }
   }
 
+  function setupWebSocket() {
+    // Topics that trigger a full dashboard refresh
+    const refreshTopics = [
+      'event:after_server_statuses_updated',
+      'event:after_server_start',
+      'event:after_server_stop',
+      'event:after_delete_server_data',
+      'event:after_server_updated',
+      // Any other events that should trigger a refresh
+    ];
+
+    document.addEventListener('websocket-message', (event) => {
+      const message = event.detail;
+      if (message && message.topic && refreshTopics.includes(message.topic)) {
+        console.log(`${functionName}: Received relevant WebSocket event on topic '${message.topic}'. Refreshing dashboard.`);
+        updateDashboard();
+      }
+    });
+
+    // Handle fallback to polling if WebSocket connection fails
+    document.addEventListener('websocket-fallback', () => {
+      console.warn(`${functionName}: WebSocket connection failed. Falling back to polling.`);
+      if (!pollingIntervalId) {
+        pollingIntervalId = setInterval(updateDashboard, POLLING_INTERVAL_MS);
+        console.log(`${functionName}: Polling started as a fallback.`);
+      }
+    });
+
+    refreshTopics.forEach(topic => webSocketClient.subscribe(topic));
+  }
+
+
   serverSelect.addEventListener('change', (event) => {
     updateActionStates(event.target.value);
   });
@@ -224,8 +259,12 @@ export function initializeDashboard() {
     .getElementById('delete-server-btn')
     ?.addEventListener('click', (e) => deleteServer(e.currentTarget, serverSelect.value));
 
-
+  // Initial load
   updateDashboard();
-  setInterval(updateDashboard, POLLING_INTERVAL_MS);
-  console.log(`${functionName}: Initialization complete. Polling every ${POLLING_INTERVAL_MS}ms.`);
+
+  // Setup WebSocket connection and listeners
+  setupWebSocket();
+
+  // The global 'websocket-fallback' event listener in setupWebSocket will handle starting polling if needed.
+  console.log(`${functionName}: Initialization complete.`);
 }

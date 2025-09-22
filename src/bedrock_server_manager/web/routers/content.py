@@ -297,6 +297,7 @@ async def install_world_api_route(
 
         task_id = app_context.task_manager.run_task(
             world_api.import_world,
+            username=current_user.username,
             server_name=server_name,
             selected_file_path=full_world_file_path,
             app_context=app_context,
@@ -360,6 +361,7 @@ async def export_world_api_route(
 
         task_id = app_context.task_manager.run_task(
             world_api.export_world,
+            username=current_user.username,
             server_name=server_name,
             app_context=app_context,
         )
@@ -415,6 +417,7 @@ async def reset_world_api_route(
 
         task_id = app_context.task_manager.run_task(
             world_api.reset_world,
+            username=current_user.username,
             server_name=server_name,
             app_context=app_context,
         )
@@ -499,6 +502,7 @@ async def install_addon_api_route(
 
         task_id = app_context.task_manager.run_task(
             addon_api.import_addon,
+            username=current_user.username,
             server_name=server_name,
             addon_file_path=full_addon_file_path,
             app_context=app_context,

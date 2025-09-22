@@ -244,10 +244,10 @@ TEST_PASSWORD = "testpassword"
 
 
 @pytest.fixture
-def app(app_context):
+def app(app_context, mocker):
     """Create a FastAPI app instance for testing."""
-    # The app_context fixture is defined in the root conftest.py
-    # and is available to all tests.
+    # Mock the resource monitor to prevent its background task from running during most tests
+    mocker.patch("bedrock_server_manager.web.resource_monitor.ResourceMonitor.start")
     _app = create_web_app(app_context)
     return _app
 
