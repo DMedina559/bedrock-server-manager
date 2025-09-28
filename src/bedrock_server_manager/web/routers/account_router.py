@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from bedrock_server_manager.web.auth_utils import (
     get_current_user,
     verify_password,
-    pwd_context,
+    get_password_hash,
 )
 from fastapi.templating import Jinja2Templates
 
@@ -110,7 +110,7 @@ async def change_password(
                 detail="Incorrect current password.",
             )
 
-        db_user.hashed_password = pwd_context.hash(data.new_password)
+        db_user.hashed_password = get_password_hash(data.new_password)
         db.commit()
 
         return BaseApiResponse(

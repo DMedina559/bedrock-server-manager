@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 from bedrock_server_manager.web.dependencies import validate_server_exists
 from bedrock_server_manager.web.auth_utils import (
     create_access_token,
-    pwd_context,
     get_current_user_optional,
+    get_password_hash,
 )
 from datetime import timedelta
 from bedrock_server_manager.db.models import User as UserModel
@@ -284,7 +284,7 @@ def client(app):
 def authenticated_user(db_session):
     user = UserModel(
         username=TEST_USER,
-        hashed_password=pwd_context.hash(TEST_PASSWORD),
+        hashed_password=get_password_hash(TEST_PASSWORD),
         role="admin",
     )
     db_session.add(user)

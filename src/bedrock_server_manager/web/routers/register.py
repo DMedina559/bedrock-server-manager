@@ -13,10 +13,10 @@ from fastapi.templating import Jinja2Templates
 from ...db.models import User, RegistrationToken
 from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
-    pwd_context,
     get_current_user,
     get_current_user_optional,
     get_admin_user,
+    get_password_hash,
 )
 from ..schemas import User as UserSchema
 from ...context import AppContext
@@ -124,7 +124,7 @@ async def register_user(
                 },
             )
 
-        hashed_password = pwd_context.hash(data.password)
+        hashed_password = get_password_hash(data.password)
         user = User(
             username=data.username,
             hashed_password=hashed_password,

@@ -3,10 +3,10 @@ from jose import jwt
 from datetime import timedelta
 from bedrock_server_manager.web.auth_utils import (
     verify_password,
-    pwd_context,
     create_access_token,
     get_current_user_optional,
     get_current_user,
+    get_password_hash,
     ALGORITHM,
 )
 from fastapi import Request, FastAPI, Depends
@@ -43,16 +43,9 @@ def unauthenticated_app(app_context):
 
 def test_verify_password():
     """Test password verification."""
-    hashed_password = pwd_context.hash(TEST_PASSWORD)
+    hashed_password = get_password_hash(TEST_PASSWORD)
     assert verify_password(TEST_PASSWORD, hashed_password)
     assert not verify_password("wrongpassword", hashed_password)
-
-
-def test_get_password_hash():
-    """Test password hashing."""
-    hashed_password = pwd_context.hash(TEST_PASSWORD)
-    assert isinstance(hashed_password, str)
-    assert hashed_password != TEST_PASSWORD
 
 
 def test_create_access_token(app_context):
@@ -75,7 +68,7 @@ async def test_get_current_user(db_session, app_context):
     """Test getting the current user from a valid token."""
     user = UserModel(
         username=TEST_USER,
-        hashed_password=pwd_context.hash(TEST_PASSWORD),
+        hashed_password=get_password_hash(TEST_PASSWORD),
         role="admin",
     )
     db_session.add(user)

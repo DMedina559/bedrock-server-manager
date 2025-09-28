@@ -3,7 +3,7 @@
 
 This module provides functions and configurations related to user authentication,
 including:
-- Password hashing and verification using :mod:`passlib`.
+- Password hashing and verification using :mod:`bcrypt`.
 - JSON Web Token (JWT) creation, decoding, and management using :mod:`jose`.
 - FastAPI security schemes (:class:`~fastapi.security.OAuth2PasswordBearer` and
   :class:`~fastapi.security.APIKeyCookie`) for token handling.
@@ -19,10 +19,10 @@ import logging
 from typing import Optional, Dict, Any
 import secrets
 
+import bcrypt
 from jose import JWTError, jwt
 from fastapi import HTTPException, Security, Request, status
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
-from passlib.context import CryptContext
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
 from ..error import MissingArgumentError
@@ -32,9 +32,6 @@ from ..context import AppContext
 from ..config import Settings
 
 logger = logging.getLogger(__name__)
-
-# --- Passlib Context ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # --- JWT Configuration ---
@@ -207,10 +204,7 @@ async def get_current_user(
 
 # --- Utility for Login Route ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain password against a stored hash using passlib.
-
-    Uses the global :data:`pwd_context` (a :class:`passlib.context.CryptContext` instance)
-    to perform the verification.
+    """Verifies a plain password against a stored hash using bcrypt.
 
     Args:
         plain_password (str): The plain text password to verify.
@@ -219,7 +213,21 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         bool: ``True`` if the password matches the hash, ``False`` otherwise.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    )
+
+
+def get_password_hash(password: str) -> str:
+    """Hashes a password using bcrypt.
+
+    Args:
+        password (str): The plain text password to hash.
+
+    Returns:
+        str: The hashed password.
+    """
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 from ..config import bcm_config

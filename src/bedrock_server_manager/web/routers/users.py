@@ -9,9 +9,8 @@ from fastapi.templating import Jinja2Templates
 
 from ...db.models import User
 from ..dependencies import get_templates, get_app_context
-from ..auth_utils import get_current_user, pwd_context
+from ..auth_utils import get_current_user, get_password_hash, get_admin_user, get_moderator_user
 from ..schemas import User as UserSchema
-from ..auth_utils import get_admin_user, get_moderator_user
 from .audit_log import create_audit_log
 from ...context import AppContext
 
@@ -72,7 +71,7 @@ async def create_user(
                 detail=f"User with username '{data.username}' already exists.",
             )
 
-        hashed_password = pwd_context.hash(data.password)
+        hashed_password = get_password_hash(data.password)
         user = User(
             username=data.username, hashed_password=hashed_password, role=data.role
         )
