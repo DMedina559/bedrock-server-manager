@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -8,7 +8,8 @@ from bedrock_server_manager.web.routers.websocket_router import (
     router as websocket_router,
 )
 from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.web.auth_utils import User, get_current_user
+from bedrock_server_manager.web.auth_utils import User, get_current_user_for_websocket
+from bedrock_server_manager.web.websocket_manager import ConnectionManager
 
 pytestmark = pytest.mark.asyncio
 
@@ -30,17 +31,17 @@ def test_app(mock_user):
     app = FastAPI()
     mock_context = MagicMock(spec=AppContext)
     # Use a real ConnectionManager to test its functionality
-    from bedrock_server_manager.web.websocket_manager import ConnectionManager
-
     mock_context.connection_manager = ConnectionManager()
 
     app.state.app_context = mock_context
     app.include_router(websocket_router)
 
-    async def override_get_current_user():
+    async def override_get_current_user_for_websocket():
         return mock_user
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_current_user_for_websocket] = (
+        override_get_current_user_for_websocket
+    )
     yield app
     app.dependency_overrides.clear()
 
