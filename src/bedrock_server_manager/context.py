@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Dict, Optional
 
 import os
@@ -13,7 +14,10 @@ if TYPE_CHECKING:
     from .core.bedrock_process_manager import BedrockProcessManager
     from .db.database import Database
     from .web.tasks import TaskManager
+    from .web.websocket_manager import ConnectionManager
+    from .web.resource_monitor import ResourceMonitor
     from fastapi.templating import Jinja2Templates
+    from asyncio import AbstractEventLoop
 
 
 class AppContext:
@@ -36,8 +40,11 @@ class AppContext:
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
+        self._connection_manager: Optional["ConnectionManager"] = None
+        self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
         self._templates: Optional["Jinja2Templates"] = None
+        self.loop: Optional["AbstractEventLoop"] = None
 
     def load(self):
         """
@@ -120,8 +127,30 @@ class AppContext:
         if self._task_manager is None:
             from .web.tasks import TaskManager
 
-            self._task_manager = TaskManager()
+            self._task_manager = TaskManager(app_context=self)
         return self._task_manager
+
+    @property
+    def connection_manager(self) -> "ConnectionManager":
+        """
+        Lazily loads and returns the ConnectionManager instance.
+        """
+        if self._connection_manager is None:
+            from .web.websocket_manager import ConnectionManager
+
+            self._connection_manager = ConnectionManager()
+        return self._connection_manager
+
+    @property
+    def resource_monitor(self) -> "ResourceMonitor":
+        """
+        Lazily loads and returns the ResourceMonitor instance.
+        """
+        if self._resource_monitor is None:
+            from .web.resource_monitor import ResourceMonitor
+
+            self._resource_monitor = ResourceMonitor(app_context=self)
+        return self._resource_monitor
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":

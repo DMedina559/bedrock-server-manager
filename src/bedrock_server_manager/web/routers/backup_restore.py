@@ -349,6 +349,7 @@ async def prune_backups_api_route(
     )
     task_id = app_context.task_manager.run_task(
         backup_restore_api.prune_old_backups,
+        username=current_user.username,
         server_name=server_name,
         app_context=app_context,
     )
@@ -496,6 +497,7 @@ async def backup_action_api_route(
 
     task_id = app_context.task_manager.run_task(
         target_func,
+        username=current_user.username,
         **kwargs,
     )
 
@@ -595,6 +597,7 @@ async def restore_action_api_route(
 
     task_id = app_context.task_manager.run_task(
         target_func,
+        username=current_user.username,
         **kwargs,
     )
 

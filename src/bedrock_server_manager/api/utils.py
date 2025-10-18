@@ -25,6 +25,7 @@ from contextlib import contextmanager
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 # Local application imports.
 from ..core import utils as core_utils
@@ -137,6 +138,7 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
+@trigger_plugin_event(after="after_server_statuses_updated")
 def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 

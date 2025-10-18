@@ -53,9 +53,9 @@ def test_create_access_token(app_context):
     from bedrock_server_manager.web.auth_utils import get_jwt_secret_key
 
     access_token = create_access_token(
+        app_context,
         data={"sub": TEST_USER},
         expires_delta=timedelta(minutes=15),
-        app_context=app_context,
     )
     decoded_token = jwt.decode(
         access_token, get_jwt_secret_key(app_context.settings), algorithms=[ALGORITHM]
@@ -76,9 +76,9 @@ async def test_get_current_user(db_session, app_context):
     db_session.refresh(user)
 
     access_token = create_access_token(
+        app_context,
         data={"sub": TEST_USER},
         expires_delta=timedelta(minutes=15),
-        app_context=app_context,
     )
     app = FastAPI()
     app.state.app_context = app_context
@@ -109,9 +109,9 @@ async def test_get_current_user_expired_token(unauthenticated_app, app_context):
     """Test getting the current user from an expired token."""
     with TestClient(unauthenticated_app) as client:
         access_token = create_access_token(
+            app_context,
             data={"sub": TEST_USER},
             expires_delta=timedelta(minutes=-15),
-            app_context=app_context,
         )
         response = client.get(
             "/users/me", headers={"Authorization": f"Bearer {access_token}"}
@@ -124,9 +124,9 @@ async def test_get_current_user_no_username(unauthenticated_app, app_context):
     """Test getting the current user from a token with no username."""
     with TestClient(unauthenticated_app) as client:
         access_token = create_access_token(
+            app_context,
             data={"sub": None},
             expires_delta=timedelta(minutes=15),
-            app_context=app_context,
         )
         response = client.get(
             "/users/me", headers={"Authorization": f"Bearer {access_token}"}

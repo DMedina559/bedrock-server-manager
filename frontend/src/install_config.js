@@ -1,10 +1,10 @@
-// frontend/src/install_config.js
 /**
  * @fileoverview Frontend JavaScript for handling the multi-step server installation
  * and configuration process.
  */
 
 import { sendServerActionRequest, showStatusMessage } from './utils.js';
+import webSocketClient from './websocket_client.js';
 
 function _clearValidationErrors() {
   const errorArea = document.getElementById('validation-error-area');
@@ -43,14 +43,49 @@ function pollTaskStatus(taskId, successCallback) {
       } else if (data.status === 'error') {
         clearInterval(intervalId);
         showStatusMessage(`Task failed: ${data.message}`, 'error');
-      } else if (data.message) {
-        showStatusMessage(`Task in progress: ${data.message}`, 'info');
       }
+      // No "in_progress" message spam for polling
     } catch (error) {
       clearInterval(intervalId);
       showStatusMessage(`Error polling task status: ${error.message}`, 'error');
     }
   }, 2000);
+}
+
+function monitorTaskWithWebSocket(taskId, successCallback) {
+  const topic = `task:${taskId}`;
+  console.log(`Monitoring task ${taskId} via WebSocket on topic ${topic}`);
+  webSocketClient.subscribe(topic);
+
+  const handleTaskUpdate = (event) => {
+    const message = event.detail;
+
+    // Only handle messages for this specific task
+    if (!message || message.topic !== topic) {
+      return;
+    }
+
+    const taskData = message.data;
+    if (taskData.status === 'success') {
+      showStatusMessage(taskData.message || 'Task completed successfully.', 'success');
+      if (successCallback) successCallback(taskData.result);
+      cleanup();
+    } else if (taskData.status === 'error') {
+      showStatusMessage(`Task failed: ${taskData.message}`, 'error');
+      cleanup();
+    } else if (taskData.message) {
+      // Provide in-progress updates
+      showStatusMessage(`Task in progress: ${taskData.message}`, 'info');
+    }
+  };
+
+  const cleanup = () => {
+    console.log(`Cleaning up listener for task ${taskId}`);
+    webSocketClient.unsubscribe(topic);
+    document.removeEventListener('websocket-message', handleTaskUpdate);
+  };
+
+  document.addEventListener('websocket-message', handleTaskUpdate);
 }
 
 export async function triggerInstallServer(buttonElement) {
@@ -68,6 +103,15 @@ export async function triggerInstallServer(buttonElement) {
   if (serverVersion.toUpperCase() === 'CUSTOM') {
     requestBody.server_zip_path = document.getElementById('custom-zip-path').value;
   }
+
+  const startMonitoring = (taskResponse) => {
+    if (webSocketClient.shouldUseFallback()) {
+      console.warn('WebSocket not available, falling back to polling for task monitoring.');
+      pollTaskStatus(taskResponse.task_id, _handleInstallSuccessNavigation);
+    } else {
+      monitorTaskWithWebSocket(taskResponse.task_id, _handleInstallSuccessNavigation);
+    }
+  };
 
   const initialResponse = await sendServerActionRequest(
     null,
@@ -88,14 +132,14 @@ export async function triggerInstallServer(buttonElement) {
           buttonElement,
         );
         if (finalResponse && finalResponse.status === 'pending') {
-          pollTaskStatus(finalResponse.task_id, _handleInstallSuccessNavigation);
+          startMonitoring(finalResponse);
         }
       } else {
         showStatusMessage('Installation cancelled.', 'info');
         if (buttonElement) buttonElement.disabled = false;
       }
     } else if (initialResponse.status === 'pending') {
-      pollTaskStatus(initialResponse.task_id, _handleInstallSuccessNavigation);
+      startMonitoring(initialResponse);
     }
   }
 }
