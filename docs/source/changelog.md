@@ -8,7 +8,6 @@
 ## 3.7.0
 1. Added WebSocket support
    - Various polling elements from the frontend has been replaced with WebSocket connections for real-time updates
-   - **TODO**: Document WebSocket endpoints/usage.
 2. BREAKING CHANGE: Removed `instances.py` module
     - Plugins and other modules should now access the `AppContext` object via dependency injection in FastAPI
 3. Fixed Custom Downloads installs
