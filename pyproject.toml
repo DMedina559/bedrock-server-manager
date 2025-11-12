@@ -50,7 +50,7 @@ Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/changelog.h
 
 [project.optional-dependencies]
 dev = [
-    "pytest >=8.4.0,<8.5",
+    "pytest >=8.4.0,<9.1",
     "pytest-mock >=3.14.0,<3.16",
     "black >=25.1.0,<25.12",
     "flake8 >=7.3.0,<7.4",
