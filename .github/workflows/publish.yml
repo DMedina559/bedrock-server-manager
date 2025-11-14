@@ -75,6 +75,10 @@ jobs:
           images: |
             ghcr.io/${{ github.repository }}
             dmedina559/bedrock-server-manager
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=beta,enable=${{ github.event.release.prerelease }}
+            type=raw,value=stable,enable=${{ !github.event.release.prerelease }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
