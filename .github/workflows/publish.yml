@@ -77,7 +77,7 @@ jobs:
             dmedina559/bedrock-server-manager
           tags: |
             type=ref,event=tag
-            type=raw,value=beta,enable=${{ github.event.release.prerelease }}
+            #type=raw,value=beta,enable=${{ github.event.release.prerelease }}
             type=raw,value=stable,enable=${{ !github.event.release.prerelease }}
 
       - name: Build and push Docker image
