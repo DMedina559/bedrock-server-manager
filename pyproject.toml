@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bedrock-server-manager"
-version = "3.7.0b2"
+dynamic = ["version"]
 authors = [
   { name="DMedina559", email="dmedina559-github@outlook.com" },
 ]
@@ -109,3 +109,5 @@ bedrock-server-manager = "bedrock_server_manager.__main__:main"
 [tool.pytest.ini_options]
 testpaths = ["test"]
 asyncio_mode = "auto"
+
+[tool.setuptools_scm]
