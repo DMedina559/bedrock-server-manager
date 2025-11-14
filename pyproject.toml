@@ -111,3 +111,4 @@ testpaths = ["test"]
 asyncio_mode = "auto"
 
 [tool.setuptools_scm]
+local_scheme = "no-local-version"
