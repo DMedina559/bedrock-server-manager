@@ -76,7 +76,7 @@ jobs:
             ghcr.io/${{ github.repository }}
             dmedina559/bedrock-server-manager
           tags: |
-            type=semver,pattern={{version}}
+            type=ref,event=tag
             type=raw,value=beta,enable=${{ github.event.release.prerelease }}
             type=raw,value=stable,enable=${{ !github.event.release.prerelease }}
 
