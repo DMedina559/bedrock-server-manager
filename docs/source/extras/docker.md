@@ -6,14 +6,42 @@ This project includes a `Dockerfile` that allows you to build and run the Bedroc
 
 The official Docker image is hosted on both the GitHub Container Registry and Docker Hub. 
 
-* **Docker Hub**: `dmedina559/bedrock-server-manager:latest`
-* **GitHub Container Registry**: `ghcr.io/dmedina559/bedrock-server-manager:latest`
+* **Docker Hub**: `dmedina559/bedrock-server-manager:stable`
+* **GitHub Container Registry**: `ghcr.io/dmedina559/bedrock-server-manager:stable`
 
 You can pull it using the following command:
 
 ```bash
-docker pull dmedina559/bedrock-server-manager:latest
+docker pull dmedina559/bedrock-server-manager:stable
 ```
+
+## Image Tags and Versioning
+
+The Docker images for Bedrock Server Manager are tagged to help you choose the right version for your needs. Understanding the tagging strategy will help you manage your deployments effectively.
+
+### Available Tags
+
+*   **`latest`**: This tag always points to the most recent release, including stable, beta, and release candidates. It is a convenient way to stay up-to-date with the latest features and fixes, but it may not always be the most stable. Use this tag if you want the newest version and are comfortable with potentially running pre-release software.
+
+*   **`stable`**: This tag points to the most recent stable release. It does not include beta versions or release candidates. This is the recommended tag for most users, as it provides a balance of new features and stability. Use this tag for production environments or if you prefer to avoid pre-release versions.
+
+*   **Version Tags (e.g., `3.7.0`, `3.7.0b5`)**: Every release, whether stable or pre-release, has its own version-specific tag. These tags are useful for pinning your deployment to a specific version of the application, which ensures that your environment is predictable and does not change unexpectedly. This is a common practice for production deployments where stability and control are critical.
+
+### How to Use the Tags
+
+To pull a specific tag, simply append it to the image name. For example:
+
+*   To pull the latest stable version:
+    ```bash
+    docker pull dmedina559/bedrock-server-manager:stable
+    ```
+
+*   To pull a specific version:
+    ```bash
+    docker pull dmedina559/bedrock-server-manager:3.7.0
+    ```
+
+By choosing the right tag, you can control when and how you update your Bedrock Server Manager instance, ensuring a smooth and stable experience.
 
 ## Running the Container
 
@@ -40,7 +68,7 @@ docker run -d \
   --name bsm-container \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
-  dmedina559/bedrock-server-manager:latest
+  dmedina559/bedrock-server-manager:stable
 ```
 
 This command creates two named volumes, `bsm_config` and `bsm_data`, and mounts them to the correct locations.
@@ -56,7 +84,7 @@ docker run -d \
   --name bsm-container \
   -v /path/on/host/bsm_config:/root/.config/bedrock-server-manager \
   -v /path/on/host/bsm_data:/root/bedrock-server-manager \
-  dmedina559/bedrock-server-manager:latest
+  dmedina559/bedrock-server-manager:stable
 ```
 
 ### Overriding Environment Variables
@@ -72,7 +100,7 @@ docker run -d \
   -e HOST=0.0.0.0 \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
-  dmedina559/bedrock-server-manager:latest
+  dmedina559/bedrock-server-manager:stable
 ```
 
 ### Exposing Minecraft Server Ports
@@ -93,15 +121,16 @@ For an even easier setup, you can use Docker Compose. Create a `docker-compose.y
 version: '3.8'
 services:
   bedrock-server-manager:
-    image: dmedina559/bedrock-server-manager:latest
-    container_name: bsm-container
-    restart: unless-stopped
+    image: dmedina559/bedrock-server-manager:stable     # Use desired tag here (e.g., stable, latest, 3.7.0)
+    container_name: bsm-container                       # Name of the container
+    restart: unless-stopped                             # Restart policy
     ports:
-      - "11325:11325"
-      - "19132:19132/udp" # Add more ports here for additional servers
+      - "11325:11325"                                   # Web server port
+      - "19132:19132/udp"                               # Default Minecraft Bedrock server port
+      # - "19132:19132/udp"                             # Add more ports as needed for additional servers
     environment: # Optional
-      - HOST=0.0.0.0
-      - PORT=11325
+      - HOST=0.0.0.0                                    # Which host to bind the web server to
+      - PORT=11325                                      # Port for the web server
     volumes:
       - bsm_config:/root/.config/bedrock-server-manager
       - bsm_data:/root/bedrock-server-manager
