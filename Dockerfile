@@ -14,6 +14,8 @@ COPY src/ ./src/
 COPY --from=frontend-builder /app/src/bedrock_server_manager/web/static/js/dist/bundle.js /app/src/bedrock_server_manager/web/static/js/dist/bundle.js
 COPY --from=frontend-builder /app/src/bedrock_server_manager/web/static/js/dist/bundle.js.map /app/src/bedrock_server_manager/web/static/js/dist/bundle.js.map
 RUN pip install build
+ARG APP_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
 RUN python -m build
 
 # Stage 3: Final Python Application
