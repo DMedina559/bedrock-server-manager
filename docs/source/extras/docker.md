@@ -1,4 +1,4 @@
-# Running with Docker
+# Docker Install
 
 This project includes a `Dockerfile` that allows you to build and run the Bedrock Server Manager in a containerized environment. This allows for easy deployment and management of the application.
 
