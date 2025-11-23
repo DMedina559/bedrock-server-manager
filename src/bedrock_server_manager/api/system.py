@@ -26,7 +26,6 @@ from typing import Dict, Any, Optional
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
 from ..error import (
     BSMError,
     InvalidServerNameError,
@@ -40,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 @plugin_method("get_bedrock_process_info")
 def get_bedrock_process_info(
-    server_name: str, app_context: Optional[AppContext] = None
+    server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Retrieves resource usage for a running Bedrock server process.
 
@@ -71,10 +70,7 @@ def get_bedrock_process_info(
 
     logger.debug(f"API: Getting process info for server '{server_name}'...")
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         process_info = server.get_process_info()
 
         # If get_process_info returns None, the server is not running or inaccessible.
@@ -106,7 +102,7 @@ from ..plugins.event_trigger import trigger_plugin_event
 
 
 def set_autoupdate(
-    server_name: str, autoupdate_value: str, app_context: Optional[AppContext] = None
+    server_name: str, autoupdate_value: str, app_context: AppContext
 ) -> Dict[str, str]:
     """Sets the 'autoupdate' flag in the server's specific JSON configuration file.
 
@@ -147,10 +143,7 @@ def set_autoupdate(
         logger.info(
             f"API: Setting 'autoupdate' config for server '{server_name}' to {value_bool}..."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         server.set_autoupdate(value_bool)
         return {
             "status": "success",
@@ -176,7 +169,7 @@ def set_autoupdate(
 
 @trigger_plugin_event(before="before_autostart_change", after="after_autostart_change")
 def set_autostart(
-    server_name: str, autostart_value: str, app_context: Optional[AppContext] = None
+    server_name: str, autostart_value: str, app_context: AppContext
 ) -> Dict[str, str]:
     """Sets the 'autostart' flag in the server's specific JSON configuration file.
 
@@ -217,10 +210,7 @@ def set_autostart(
         logger.info(
             f"API: Setting 'autostart' config for server '{server_name}' to {value_bool}..."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         server.set_autostart(value_bool)
         return {
             "status": "success",

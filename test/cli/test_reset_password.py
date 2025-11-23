@@ -25,7 +25,7 @@ def test_reset_password_success(runner, mocker):
     )
 
     mocker.patch(
-        "bedrock_server_manager.cli.reset_password.pwd_context.hash",
+        "bedrock_server_manager.cli.reset_password.get_password_hash",
         return_value="new_hash",
     )
 

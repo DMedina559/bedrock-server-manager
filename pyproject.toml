@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bedrock-server-manager"
-version = "3.6.3"
+dynamic = ["version"]
 authors = [
   { name="DMedina559", email="dmedina559-github@outlook.com" },
 ]
@@ -25,20 +25,19 @@ classifiers = [
 
 dependencies = [
     "requests >=2.32.3,<2.33",
-    "psutil >=7.0.0,<7.1",
+    "psutil >=7.0.0,<7.2",
     'pywin32 >=310,<312; sys_platform == "win32"',
-    "click >=8.2.0,<8.3",
+    "click >=8.2.0,<8.4",
     "questionary >=2.1.0,<2.2",
-    "fastapi >=0.115.0,<0.117",
-    "uvicorn[standard] >=0.35.0,<0.36",
+    "fastapi >=0.115.0,<0.122",
+    "uvicorn[standard] >=0.35.0,<0.39",
     "python-jose[cryptography] >=3.5.0,<3.6",
     "jinja2 >=3.1.0,<3.2",
-    "passlib >=1.7.4,<1.8",
     "python_multipart >=0.0.20,<0.1",
-    "bcrypt >=4.3.0,<4.4",
+    "bcrypt >=5.0.0,<5.1",
     "sqlalchemy >=2.0.0,<2.1",
     "appdirs >=1.4.4,<1.5",
-    "alembic >=1.16,<1.17",
+    "alembic >=1.16,<1.18",
     "mcstatus >=12.0,<12.1",
 ]
 
@@ -51,21 +50,21 @@ Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/changelog.h
 
 [project.optional-dependencies]
 dev = [
-    "pytest >=8.4.0,<8.5",
+    "pytest >=8.4.0,<9.1",
     "pytest-mock >=3.14.0,<3.16",
-    "black >=25.1.0,<25.2",
+    "black >=25.1.0,<25.12",
     "flake8 >=7.3.0,<7.4",
     "httpx >=0.28.0,<0.29",
-    "pytest-asyncio >=1.1.0,<1.2",
+    "pytest-asyncio >=1.1.0,<1.4",
 ]
 
 cli = [
-    "bsm-api-client[cli] >= 1.2.1,<1.3.0"
+    "bsm-api-client[cli] >= 1.2.1,< 1.4.0"
 ]
 
 docs = [
     "sphinx >=8.2.0,<8.3",
-    "sphinx-click >=6.0.0,<6.1",
+    "sphinx-click >=6.0.0,<6.2",
     "myst-parser >=4.0.0,<4.1",
     "sphinx-rtd-theme >=3.0.0,<3.1",
 ]
@@ -110,3 +109,6 @@ bedrock-server-manager = "bedrock_server_manager.__main__:main"
 [tool.pytest.ini_options]
 testpaths = ["test"]
 asyncio_mode = "auto"
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"

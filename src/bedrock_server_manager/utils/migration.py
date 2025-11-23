@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import json
 import logging
+from ..web.auth_utils import get_password_hash
 import platform
 import subprocess
 from typing import TYPE_CHECKING, Dict, Any, Optional
@@ -130,8 +131,6 @@ def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:
 
 def migrate_env_auth_to_db(app_context: AppContext):
     """Migrates authentication from environment variables to the database."""
-    from ..web.auth_utils import pwd_context
-
     # Load environment from systemd service file if it exists
     systemd_env = _load_env_from_systemd_service("bedrock-server-manager-webui.service")
 
@@ -158,12 +157,17 @@ def migrate_env_auth_to_db(app_context: AppContext):
                 )
                 return
 
-            if pwd_context.identify(password):
+            try:
+                is_hashed = password.startswith(("$2a$", "$2b$", "$2y$"))
+            except AttributeError:
+                is_hashed = False
+
+            if is_hashed:
                 logger.info("Password is already hashed.")
                 hashed_password = password
             else:
                 logger.info("Password is not hashed. Hashing now.")
-                hashed_password = pwd_context.hash(password)
+                hashed_password = get_password_hash(password)
 
             user = User(
                 username=username, hashed_password=hashed_password, role="admin"

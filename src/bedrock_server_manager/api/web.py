@@ -30,9 +30,6 @@ except ImportError:
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import (
-    get_manager_instance,
-)
 from ..core.system import process as system_process_utils
 from ..error import (
     BSMError,
@@ -51,12 +48,12 @@ from ..plugins.event_trigger import trigger_plugin_event
 
 @trigger_plugin_event(before="before_web_server_start", after="after_web_server_start")
 def start_web_server_api(
+    app_context: AppContext,
     host: str = None,
     port: Optional[int] = None,
     debug: bool = False,
     mode: str = "direct",
     threads: Optional[int] = None,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
 
@@ -102,10 +99,7 @@ def start_web_server_api(
             raise UserInputError("Invalid mode. Must be 'direct' or 'detached'.")
 
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(None)
+        manager = app_context.manager
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
             manager.start_web_ui_direct(app_context, host, port, debug, threads)

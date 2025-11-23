@@ -1,7 +1,6 @@
 # bedrock_server_manager/web/__init__.py
 from .dependencies import validate_server_exists, get_templates, get_app_context
 from .auth_utils import (
-    pwd_context,
     create_access_token,
     get_current_user_optional,
     get_current_user,
@@ -15,7 +14,6 @@ from .auth_utils import (
 
 __all__ = [
     # Auth utils
-    "pwd_context",
     "create_access_token",
     "get_current_user_optional",
     "get_current_user",

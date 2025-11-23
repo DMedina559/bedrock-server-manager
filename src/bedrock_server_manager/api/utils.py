@@ -25,9 +25,9 @@ from contextlib import contextmanager
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 # Local application imports.
-from ..instances import get_server_instance, get_manager_instance
 from ..core import utils as core_utils
 from .server import (
     start_server as api_start_server,
@@ -44,9 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("validate_server_exist")
-def validate_server_exist(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def validate_server_exist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Validates if a server is correctly installed.
 
     This function checks for the existence of the server's directory and its
@@ -73,10 +71,7 @@ def validate_server_exist(
     logger.debug(f"API: Validating existence of server '{server_name}'...")
     try:
         # Instantiating BedrockServer also validates underlying configurations.
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
 
         # is_installed() returns a simple boolean.
         if server.is_installed():
@@ -143,9 +138,8 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
-def update_server_statuses(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+@trigger_plugin_event(after="after_server_statuses_updated")
+def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
     This function calls
@@ -171,10 +165,7 @@ def update_server_statuses(
     logger.debug("API: Updating all server statuses...")
 
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         # get_servers_data() from the manager now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
         all_servers_data, discovery_errors = manager.get_servers_data(
@@ -220,9 +211,7 @@ def update_server_statuses(
 
 
 @plugin_method("get_system_and_app_info")
-def get_system_and_app_info(
-    settings=None, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves basic system and application information.
 
     Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
@@ -233,10 +222,7 @@ def get_system_and_app_info(
     """
     logger.debug("API: Requesting system and app info.")
     try:
-        if app_context:
-            manager = app_context.manager
-        else:
-            manager = get_manager_instance(settings)
+        manager = app_context.manager
         data = {
             "os_type": manager.get_os_type(),
             "app_version": manager.get_app_version(),
@@ -270,9 +256,9 @@ def stop_all_servers(app_context: AppContext):
 def server_lifecycle_manager(
     server_name: str,
     stop_before: bool,
+    app_context: AppContext,
     start_after: bool = True,
     restart_on_success_only: bool = False,
-    app_context: Optional[AppContext] = None,
 ):
     """A context manager to safely stop and restart a server for an operation.
 
@@ -307,10 +293,7 @@ def server_lifecycle_manager(
         Exception: Re-raises any exception that occurs within the ``with`` block itself.
         BSMError: For other application-specific errors during server interactions.
     """
-    if app_context:
-        server = app_context.get_server(server_name)
-    else:
-        server = get_server_instance(server_name)
+    server = app_context.get_server(server_name)
     was_running = False
     operation_succeeded = True
 

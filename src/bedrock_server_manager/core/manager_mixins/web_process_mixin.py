@@ -1,3 +1,11 @@
+# src/bedrock_server_manager/core/manager_mixins/web_process_mixin.py
+"""
+Mixin for managing the Web UI process.
+
+This module provides the :class:`~.WebProcessMixin` class, which handles the
+lifecycle (start/stop) of the Web UI process when it is managed directly
+by the application (e.g. not as a system service).
+"""
 import logging
 import os
 from typing import List, Optional, Union
@@ -33,6 +41,7 @@ class WebProcessMixin:
             web server is shut down.
 
         Args:
+            app_context (AppContext): The application context.
             host (Optional[str]): The host address for the web server to bind to. Passed directly to
                 :func:`~.web.app.run_web_server`. Defaults to ``None``.
             debug (bool): If ``True``, runs the underlying Uvicorn/FastAPI app

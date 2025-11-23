@@ -1,11 +1,33 @@
 # bedrock_server_manager/plugins/event_trigger.py
 """
-Provides a decorator for triggering plugin events.
+Provides a decorator for triggering plugin events and broadcasting them.
 """
 
+import asyncio
 import functools
 import inspect
-from typing import Callable, Optional, Any
+from typing import Callable, Optional, Any, Dict
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_json(data: Any) -> Any:
+    """
+    Recursively sanitizes data to make it JSON serializable.
+    Converts complex objects to their string representation.
+    """
+    if isinstance(data, (str, int, float, bool, type(None))):
+        return data
+    if isinstance(data, dict):
+        return {_sanitize_for_json(k): _sanitize_for_json(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [_sanitize_for_json(item) for item in data]
+    # For any other type, convert to string
+    try:
+        return str(data)
+    except Exception:
+        return f"<Unserializable object of type {type(data).__name__}>"
 
 
 def trigger_plugin_event(
@@ -15,26 +37,7 @@ def trigger_plugin_event(
     after: Optional[str] = None,
 ):
     """
-    A decorator to trigger plugin events before and after a function call.
-
-    This decorator can be used to decouple API functions from the plugin manager.
-    It fetches the global plugin manager instance and uses it to trigger events.
-
-    Can be used with or without arguments:
-    @trigger_plugin_event(before="before_event", after="after_event")
-    def my_function(server_name: str):
-        ...
-
-    The arguments of the decorated function will be passed as keyword arguments
-    to the event.
-
-    Args:
-        before (Optional[str]): The name of the event to trigger before the
-                                decorated function is called.
-        after (Optional[str]): The name of the event to trigger after the
-                               decorated function is called. The result of the
-                               decorated function will be passed as the 'result'
-                               keyword argument to the event.
+    A decorator to trigger plugin events and broadcast them to WebSockets.
     """
 
     def decorator(func: Callable) -> Callable:
@@ -45,20 +48,71 @@ def trigger_plugin_event(
             bound_args.apply_defaults()
             return dict(bound_args.arguments)
 
+        def _broadcast_event(app_context, event_name, event_data):
+            """Helper to broadcast event to websockets."""
+            if not app_context or not hasattr(app_context, "connection_manager"):
+                return
+
+            connection_manager = app_context.connection_manager
+            sanitized_data = _sanitize_for_json(event_data)
+
+            # Remove sensitive or unnecessary data before broadcasting
+            if "app_context" in sanitized_data:
+                del sanitized_data["app_context"]
+            if "current_user" in sanitized_data:
+                # You might want to keep the username, but remove the full object
+                sanitized_data["current_user"] = str(sanitized_data["current_user"])
+
+            message = {
+                "type": "event",
+                "topic": f"event:{event_name}",
+                "data": sanitized_data,
+            }
+
+            if app_context.loop and app_context.loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    connection_manager.broadcast_to_topic(
+                        f"event:{event_name}", message
+                    ),
+                    app_context.loop,
+                )
+
+        async def _async_broadcast_event(app_context, event_name, event_data):
+            """Async helper to broadcast event to websockets."""
+            if not app_context or not hasattr(app_context, "connection_manager"):
+                return
+
+            connection_manager = app_context.connection_manager
+            sanitized_data = _sanitize_for_json(event_data)
+
+            # Remove sensitive or unnecessary data before broadcasting
+            if "app_context" in sanitized_data:
+                del sanitized_data["app_context"]
+            if "current_user" in sanitized_data:
+                sanitized_data["current_user"] = str(sanitized_data["current_user"])
+
+            message = {
+                "type": "event",
+                "topic": f"event:{event_name}",
+                "data": sanitized_data,
+            }
+            await connection_manager.broadcast_to_topic(f"event:{event_name}", message)
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
-            plugin_manager = app_context.plugin_manager
 
             if before:
-                plugin_manager.trigger_event(before, **event_kwargs)
+                app_context.plugin_manager.trigger_event(before, **event_kwargs)
+                _broadcast_event(app_context, before, event_kwargs)
 
             result = func(*args, **kwargs)
 
             if after:
                 event_kwargs["result"] = result
-                plugin_manager.trigger_event(after, **event_kwargs)
+                app_context.plugin_manager.trigger_event(after, **event_kwargs)
+                _broadcast_event(app_context, after, event_kwargs)
 
             return result
 
@@ -67,16 +121,16 @@ def trigger_plugin_event(
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
 
-            plugin_manager = app_context.plugin_manager
-
             if before:
-                plugin_manager.trigger_event(before, **event_kwargs)
+                app_context.plugin_manager.trigger_event(before, **event_kwargs)
+                await _async_broadcast_event(app_context, before, event_kwargs)
 
             result = await func(*args, **kwargs)
 
             if after:
                 event_kwargs["result"] = result
-                plugin_manager.trigger_event(after, **event_kwargs)
+                app_context.plugin_manager.trigger_event(after, **event_kwargs)
+                await _async_broadcast_event(app_context, after, event_kwargs)
 
             return result
 

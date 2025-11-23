@@ -1,3 +1,11 @@
+# src/bedrock_server_manager/core/manager_mixins/web_service_mixin.py
+"""
+Mixin for managing the Web UI system service.
+
+This module provides the :class:`~.WebServiceMixin` class, which interfaces
+with the operating system's service manager (systemd, Windows Services) to
+control the Bedrock Server Manager Web UI service.
+"""
 import logging
 import os
 import platform
@@ -111,6 +119,12 @@ class WebServiceMixin:
         The start command for the service is constructed by :meth:`._build_web_service_start_command`.
         The application data directory (:attr:`._app_data_dir`) is typically used as the
         working directory for the service.
+
+        Args:
+            system (bool): If ``True``, attempts to create a system-wide service
+                (Linux only, typically requires root). Defaults to ``False`` (user service).
+            username (Optional[str]): (Windows only) The username to run the service as.
+            password (Optional[str]): (Windows only) The password for the service user.
 
         Raises:
             SystemError: If the current operating system is not supported (not Linux or Windows),
@@ -255,6 +269,10 @@ class WebServiceMixin:
         - On Linux, uses :func:`~.core.system.linux.check_service_exists` with :attr:`._WEB_SERVICE_SYSTEMD_NAME`.
         - On Windows, uses :func:`~.core.system.windows.check_service_exists` with :attr:`._WEB_SERVICE_WINDOWS_NAME_INTERNAL`.
 
+        Args:
+            system (bool): If ``True``, checks for a system-wide service.
+                Defaults to ``False`` (user service).
+
         Returns:
             bool: ``True`` if the Web UI service definition exists on the system,
             ``False`` otherwise or if the OS is not supported.
@@ -281,6 +299,10 @@ class WebServiceMixin:
         Uses :func:`~.core.system.linux.enable_systemd_service`.
         On Windows, this sets the service's start type to "Automatic".
         Uses :func:`~.core.system.windows.enable_windows_service`.
+
+        Args:
+            system (bool): If ``True``, enables a system-wide service.
+                Defaults to ``False`` (user service).
 
         Raises:
             SystemError: If the OS is not supported or if the underlying
@@ -321,6 +343,10 @@ class WebServiceMixin:
         Uses :func:`~.core.system.linux.disable_systemd_service`.
         On Windows, this sets the service's start type to "Manual" or "Disabled".
         Uses :func:`~.core.system.windows.disable_windows_service`.
+
+        Args:
+            system (bool): If ``True``, disables a system-wide service.
+                Defaults to ``False`` (user service).
 
         Raises:
             SystemError: If the OS is not supported or if the underlying
@@ -367,6 +393,10 @@ class WebServiceMixin:
         Uses :func:`os.remove` and ``systemctl --user daemon-reload``.
 
         On Windows, this deletes the service using :func:`~.core.system.windows.delete_windows_service`.
+
+        Args:
+            system (bool): If ``True``, removes a system-wide service.
+                Defaults to ``False`` (user service).
 
         Returns:
             bool
@@ -448,6 +478,10 @@ class WebServiceMixin:
         Returns ``False`` if the OS is not supported, if system utilities
         (``systemctl``, ``sc.exe``) are not found, or if the service is not active.
         Errors during the check are logged.
+
+        Args:
+            system (bool): If ``True``, checks a system-wide service.
+                Defaults to ``False`` (user service).
 
         Returns:
             bool: ``True`` if the Web UI service is determined to be active,
@@ -545,6 +579,10 @@ class WebServiceMixin:
         Returns ``False`` if the OS is not supported, if system utilities
         (``systemctl``, ``sc.exe``) are not found, or if the service is not enabled.
         Errors during the check are logged.
+
+        Args:
+            system (bool): If ``True``, checks a system-wide service.
+                Defaults to ``False`` (user service).
 
         Returns:
             bool: ``True`` if the Web UI service is determined to be enabled for

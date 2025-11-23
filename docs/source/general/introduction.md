@@ -11,7 +11,7 @@
 <img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/dmedina559/bedrock-server-manager?label=Docker%20Pulls&color=pink">
 <img alt="GitHub License" src="https://img.shields.io/github/license/dmedina559/bedrock-server-manager?label=License&color=orange">
 
-Bedrock Server Manager is a comprehensive python package designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease through a user-friendly web interface. It is compatible with both Linux and Windows systems.
+Bedrock Server Manager is a comprehensive python server designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease, compatible with Linux/Windows.
 
 ```{image} https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/main_index.png
 :alt: Web Interface

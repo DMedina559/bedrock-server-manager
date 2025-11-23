@@ -96,7 +96,7 @@ async def api_login_for_access_token(
     """
     if not form_data.username or not form_data.password:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Username and password cannot be empty.",
         )
 

@@ -23,6 +23,7 @@ With the web server you can:
 - Monitor resource usage
 - Install world/addons
 - Backup and Restore all or individual files/worlds
+- Manage Plugins
 
 ## Hosts:
 
@@ -85,21 +86,21 @@ Response: On success, the API returns a JSON object containing the access_token:
 }
 ```
 
-Tokens expiration is configurable via `script_config.json` (default: 4 weeks).
+Tokens expiration is configurable via web ui (default: 4 weeks).
 
 ##### `curl` Example (Bash):
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
      -d '{"username": "your_username", "password": "your_password"}' \
-     http://<your-manager-host>:<port>/api/login
+     http://<your-manager-host>:<port>/auth/token
 ```
 
 ##### PowerShell Example:
 
 ```powershell
 $body = @{ username = 'your_username'; password = 'your_password' } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/api/login" -Body $body -ContentType 'application/json'
+Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/auth/token" -Body $body -ContentType 'application/json'
 ```
 
 #### Using the API

@@ -2,7 +2,7 @@ import click
 
 from ..context import AppContext
 from ..db.models import User
-from ..web.auth_utils import pwd_context
+from ..web.auth_utils import get_password_hash
 
 
 @click.command("reset-password", help="Resets the password for a user.")
@@ -23,7 +23,7 @@ def reset_password_command(ctx, username: str):
             click.secho(f"Error: User '{username}' not found.", fg="red")
             return
 
-        user.hashed_password = pwd_context.hash(password)
+        user.hashed_password = get_password_hash(password)
         db.commit()
         click.secho(
             f"Password for user '{username}' has been reset successfully.", fg="green"

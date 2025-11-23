@@ -1,17 +1,29 @@
 # bedrock_server_manager/web/routers/users.py
 """
 FastAPI router for user management.
+
+This module provides endpoints for:
+- Listing users (Moderator+).
+- Creating users (Admin).
+- Deleting users (Admin).
+- Enabling/Disabling users (Admin).
+- Updating user roles (Admin).
 """
 import logging
 from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from ...db.models import User
 from ..dependencies import get_templates, get_app_context
-from ..auth_utils import get_current_user, pwd_context
+from ..auth_utils import (
+    get_current_user,
+    get_password_hash,
+    get_admin_user,
+    get_moderator_user,
+)
 from ..schemas import User as UserSchema
-from ..auth_utils import get_admin_user, get_moderator_user
 from .audit_log import create_audit_log
 from ...context import AppContext
 
@@ -41,16 +53,29 @@ async def users_page(
     )
 
 
-from pydantic import BaseModel
-
-
 class CreateUserRequest(BaseModel):
+    """
+    Request payload for creating a new user.
+
+    Attributes:
+        username (str): The new username.
+        password (str): The new password.
+        role (str): The role for the new user.
+    """
+
     username: str
     password: str
     role: str
 
 
 class UpdateUserRoleRequest(BaseModel):
+    """
+    Request payload for updating a user's role.
+
+    Attributes:
+        role (str): The new role.
+    """
+
     role: str
 
 
@@ -72,7 +97,7 @@ async def create_user(
                 detail=f"User with username '{data.username}' already exists.",
             )
 
-        hashed_password = pwd_context.hash(data.password)
+        hashed_password = get_password_hash(data.password)
         user = User(
             username=data.username, hashed_password=hashed_password, role=data.role
         )

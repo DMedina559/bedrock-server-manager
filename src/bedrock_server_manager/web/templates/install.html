@@ -23,10 +23,6 @@
 
     {# Server-side flash messages handled by base.html #}
 
-{% block head_scripts %}
-<script src="{{ request.url_for('static', path='js/install_config.js') }}" defer></script>
-{% endblock %}
-
 <section id="install-config-page" class="install-config-section">
     {# No <form>
         tag needed if using JS onclick, otherwise wrap form groups #}
@@ -40,16 +36,17 @@
 
         <div class="form-group">
             <label for="install-server-version" class="form-label">Server Version:</label>
-            <input type="text" id="install-server-version" name="server_version" class="form-input" value="{{ server_version or 'LATEST' }}" required oninput="checkCustomVersion(this.value)">
+            <input type="text" id="install-server-version" name="server_version" class="form-input" value="{{ server_version or 'LATEST' }}" required>
             <small class="form-help-text">E.g., LATEST, PREVIEW, CUSTOM, or a specific version like 1.21.0.03</small>
             <div class="validation-error" data-field="server_version"></div>
         </div>
 
         <div id="custom-zip-selector-group" class="form-group" style="display: none;">
-            <label for="custom-zip-selector" class="form-label">Custom Server ZIP:</label>
-            <select id="custom-zip-selector" name="server_zip_path" class="form-input">
-                <!-- Options will be populated by JavaScript -->
-            </select>
+            <label class="form-label">Custom Server ZIP:</label>
+            <div id="custom-zip-list" class="radio-group">
+                <!-- Radio buttons will be populated by JavaScript -->
+            </div>
+            <input type="hidden" id="custom-zip-path" name="server_zip_path">
             <small class="form-help-text">Select a custom server ZIP file from the downloads/custom directory.</small>
             <div class="validation-error" data-field="server_zip_path"></div>
         </div>

@@ -1,3 +1,11 @@
+# src/bedrock_server_manager/core/manager_mixins/player_mixin.py
+"""
+Mixin for global player management.
+
+This module provides the :class:`~.PlayerMixin` class, which handles the
+central player database, including saving player data and aggregating player
+information from multiple servers.
+"""
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -9,7 +17,6 @@ from bedrock_server_manager.error import (
     FileOperationError,
     UserInputError,
 )
-from bedrock_server_manager.instances import get_server_instance
 
 
 logger = logging.getLogger(__name__)
@@ -168,7 +175,7 @@ class PlayerMixin:
                using :meth:`.save_player_data`.
 
         Args:
-            None
+            app_context (AppContext): The application context.
 
         Returns:
             Dict[str, Any]: A dictionary summarizing the discovery and saving operation,

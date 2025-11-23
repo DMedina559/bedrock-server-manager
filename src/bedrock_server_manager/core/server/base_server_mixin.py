@@ -18,7 +18,6 @@ from functools import cached_property
 
 # Local application imports.
 from ..system import base as system_base
-from ...instances import get_settings_instance
 from ...config.settings import Settings
 from ...error import MissingArgumentError, ConfigurationError
 
@@ -52,7 +51,7 @@ class BedrockServerBaseMixin:
     def __init__(
         self,
         server_name: str,
-        settings_instance: Optional[Settings] = None,
+        settings_instance: Settings,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -61,11 +60,8 @@ class BedrockServerBaseMixin:
         Args:
             server_name (str): The unique name of the server. This name is used
                 to derive directory paths and identify the server.
-            settings_instance (Optional[Settings], optional): An optional,
-                pre-configured :class:`~.config.settings.Settings` object.
-                If ``None``, a new global ``Settings`` instance is used. This allows
-                for dependency injection, particularly useful for testing.
-                Defaults to ``None``.
+            settings_instance (Settings): A pre-configured
+                :class:`~.config.settings.Settings` object.
             *args (Any): Variable length argument list, passed to `super().__init__`
                 to support cooperative multiple inheritance.
             **kwargs (Any): Arbitrary keyword arguments, passed to `super().__init__`
@@ -88,12 +84,7 @@ class BedrockServerBaseMixin:
         self.logger: logging.Logger = logging.getLogger(__name__)
 
         self.server_name: str = server_name
-
-        # Use the provided settings instance or create a new one.
-        if settings_instance:
-            self.settings = settings_instance
-        else:
-            self.settings = get_settings_instance()
+        self.settings = settings_instance
 
         if self.settings is None:
             raise ConfigurationError("Settings instance is not available.")

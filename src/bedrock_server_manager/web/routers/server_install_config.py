@@ -283,6 +283,7 @@ async def install_server_api_route(
 
         task_id = app_context.task_manager.run_task(
             server_install_config.install_new_server,
+            username=current_user.username,
             server_name=payload.server_name,
             target_version=payload.server_version,
             server_zip_path=server_zip_path,

@@ -1,10 +1,10 @@
-// frontend/src/install_config.js
 /**
  * @fileoverview Frontend JavaScript for handling the multi-step server installation
  * and configuration process.
  */
 
 import { sendServerActionRequest, showStatusMessage } from './utils.js';
+import webSocketClient from './websocket_client.js';
 
 function _clearValidationErrors() {
   const errorArea = document.getElementById('validation-error-area');
@@ -43,14 +43,49 @@ function pollTaskStatus(taskId, successCallback) {
       } else if (data.status === 'error') {
         clearInterval(intervalId);
         showStatusMessage(`Task failed: ${data.message}`, 'error');
-      } else if (data.message) {
-        showStatusMessage(`Task in progress: ${data.message}`, 'info');
       }
+      // No "in_progress" message spam for polling
     } catch (error) {
       clearInterval(intervalId);
       showStatusMessage(`Error polling task status: ${error.message}`, 'error');
     }
   }, 2000);
+}
+
+function monitorTaskWithWebSocket(taskId, successCallback) {
+  const topic = `task:${taskId}`;
+  console.log(`Monitoring task ${taskId} via WebSocket on topic ${topic}`);
+  webSocketClient.subscribe(topic);
+
+  const handleTaskUpdate = (event) => {
+    const message = event.detail;
+
+    // Only handle messages for this specific task
+    if (!message || message.topic !== topic) {
+      return;
+    }
+
+    const taskData = message.data;
+    if (taskData.status === 'success') {
+      showStatusMessage(taskData.message || 'Task completed successfully.', 'success');
+      if (successCallback) successCallback(taskData.result);
+      cleanup();
+    } else if (taskData.status === 'error') {
+      showStatusMessage(`Task failed: ${taskData.message}`, 'error');
+      cleanup();
+    } else if (taskData.message) {
+      // Provide in-progress updates
+      showStatusMessage(`Task in progress: ${taskData.message}`, 'info');
+    }
+  };
+
+  const cleanup = () => {
+    console.log(`Cleaning up listener for task ${taskId}`);
+    webSocketClient.unsubscribe(topic);
+    document.removeEventListener('websocket-message', handleTaskUpdate);
+  };
+
+  document.addEventListener('websocket-message', handleTaskUpdate);
 }
 
 export async function triggerInstallServer(buttonElement) {
@@ -66,8 +101,17 @@ export async function triggerInstallServer(buttonElement) {
 
   const requestBody = { server_name: serverName, server_version: serverVersion, overwrite: false };
   if (serverVersion.toUpperCase() === 'CUSTOM') {
-    requestBody.server_zip_path = document.getElementById('custom-zip-selector').value;
+    requestBody.server_zip_path = document.getElementById('custom-zip-path').value;
   }
+
+  const startMonitoring = (taskResponse) => {
+    if (webSocketClient.shouldUseFallback()) {
+      console.warn('WebSocket not available, falling back to polling for task monitoring.');
+      pollTaskStatus(taskResponse.task_id, _handleInstallSuccessNavigation);
+    } else {
+      monitorTaskWithWebSocket(taskResponse.task_id, _handleInstallSuccessNavigation);
+    }
+  };
 
   const initialResponse = await sendServerActionRequest(
     null,
@@ -88,14 +132,14 @@ export async function triggerInstallServer(buttonElement) {
           buttonElement,
         );
         if (finalResponse && finalResponse.status === 'pending') {
-          pollTaskStatus(finalResponse.task_id, _handleInstallSuccessNavigation);
+          startMonitoring(finalResponse);
         }
       } else {
         showStatusMessage('Installation cancelled.', 'info');
         if (buttonElement) buttonElement.disabled = false;
       }
     } else if (initialResponse.status === 'pending') {
-      pollTaskStatus(initialResponse.task_id, _handleInstallSuccessNavigation);
+      startMonitoring(initialResponse);
     }
   }
 }
@@ -252,25 +296,52 @@ export async function saveServiceSettings(buttonElement, serverName, currentOs, 
   }
 }
 
-export async function checkCustomVersion(version) {
+async function checkCustomVersion(version) {
   const customZipGroup = document.getElementById('custom-zip-selector-group');
+  const zipListContainer = document.getElementById('custom-zip-list');
+  const hiddenInput = document.getElementById('custom-zip-path');
+
   if (version.toUpperCase() === 'CUSTOM') {
     customZipGroup.style.display = 'block';
     const data = await sendServerActionRequest(null, '/api/downloads/list', 'GET', null, null, true);
-    const selector = document.getElementById('custom-zip-selector');
-    selector.innerHTML = '';
+    zipListContainer.innerHTML = '';
+    hiddenInput.value = '';
+
     if (data && data.custom_zips && data.custom_zips.length > 0) {
-      data.custom_zips.forEach((zip) => {
-        const option = document.createElement('option');
-        option.value = zip;
-        option.textContent = zip;
-        selector.appendChild(option);
+      data.custom_zips.forEach((zip, index) => {
+        const radioId = `custom-zip-${index}`;
+        const radioWrapper = document.createElement('div');
+        radioWrapper.classList.add('radio-item');
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.id = radioId;
+        input.name = 'custom-zip-selection';
+        input.value = zip;
+        input.addEventListener('change', () => {
+          hiddenInput.value = zip;
+        });
+
+        const label = document.createElement('label');
+        label.htmlFor = radioId;
+        label.textContent = zip;
+
+        radioWrapper.appendChild(input);
+        radioWrapper.appendChild(label);
+        zipListContainer.appendChild(radioWrapper);
+
+        // Pre-select the first item
+        if (index === 0) {
+          input.checked = true;
+          hiddenInput.value = zip;
+        }
       });
     } else {
-      selector.innerHTML = '<option disabled>No custom zips found</option>';
+      zipListContainer.innerHTML = '<p>No custom zips found in the downloads/custom directory.</p>';
     }
   } else {
     customZipGroup.style.display = 'none';
+    hiddenInput.value = '';
   }
 }
 
@@ -281,6 +352,13 @@ export function initializeInstallConfigPage() {
   const serverName = installConfigPage?.dataset.serverName;
   const isNewInstall = installConfigPage?.dataset.isNewInstall === 'true';
   const os = installConfigPage?.dataset.os;
+
+  const serverVersionInput = document.getElementById('install-server-version');
+  if (serverVersionInput) {
+    serverVersionInput.addEventListener('input', (e) => checkCustomVersion(e.target.value));
+    // Also check on initial load
+    checkCustomVersion(serverVersionInput.value);
+  }
 
   document
     .getElementById('install-server-btn')

@@ -15,7 +15,6 @@ from ..plugins import plugin_method
 
 # Local application imports.
 from ..core import prune_old_downloads
-from ..instances import get_settings_instance
 from ..error import (
     BSMError,
     UserInputError,
@@ -92,10 +91,7 @@ def prune_download_cache(
             # Determine the number of files to keep, prioritizing the function
             # argument over the global setting.
             if keep_count is None:
-                if app_context:
-                    settings = app_context.settings
-                else:
-                    settings = get_settings_instance()
+                settings = app_context.settings
                 keep_setting = settings.get("retention.downloads", 3)
                 effective_keep = int(keep_setting)
             else:

@@ -1,6 +1,10 @@
 # bedrock_server_manager/web/routers/setup.py
 """
 FastAPI router for the initial setup of the application.
+
+This module provides endpoints for:
+- Serving the initial setup page.
+- Handling the creation of the first user (System Admin).
 """
 import logging
 from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
@@ -8,13 +12,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from ...db.models import User
 from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
-    pwd_context,
     get_current_user_optional,
     create_access_token,
+    get_password_hash,
 )
 from ..schemas import User as UserSchema
 from ...context import AppContext
@@ -46,10 +51,15 @@ async def setup_page(
     )
 
 
-from pydantic import BaseModel
-
-
 class CreateFirstUserRequest(BaseModel):
+    """
+    Request payload for creating the first user (admin).
+
+    Attributes:
+        username (str): The desired username.
+        password (str): The desired password.
+    """
+
     username: str
     password: str
 
@@ -73,7 +83,7 @@ async def create_first_user(
                 },
             )
 
-        hashed_password = pwd_context.hash(data.password)
+        hashed_password = get_password_hash(data.password)
         user = User(
             username=data.username, hashed_password=hashed_password, role="admin"
         )
