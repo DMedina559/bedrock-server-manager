@@ -1,7 +1,11 @@
-import os
-import logging
-from typing import Dict, Any, List, Optional
+# src/bedrock_server_manager/web/routers/content.py
+"""
+API routes for content management.
 
+This module provides endpoints for listing, installing, and managing content
+such as worlds (.mcworld) and addons (.mcaddon, .mcpack) for Bedrock servers.
+It includes both HTML view routes and JSON API routes.
+"""
 import os
 import logging
 from typing import Dict, Any, List, Optional
@@ -37,10 +41,24 @@ router = APIRouter()
 
 # --- Pydantic Models ---
 class FileNamePayload(BaseModel):
+    """
+    Payload for file-based operations.
+
+    Attributes:
+        filename (str): The name of the file to operate on.
+    """
+
     filename: str
 
 
 class ContentListResponse(BaseApiResponse):
+    """
+    Response model for content listing endpoints.
+
+    Attributes:
+        files (Optional[List[str]]): A list of filenames found.
+    """
+
     # status: str -> Inherited
     # message: Optional[str] = None -> Inherited
     files: Optional[List[str]] = None

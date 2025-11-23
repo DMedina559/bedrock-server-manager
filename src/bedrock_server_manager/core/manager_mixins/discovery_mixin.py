@@ -1,3 +1,11 @@
+# src/bedrock_server_manager/core/manager_mixins/discovery_mixin.py
+"""
+Mixin for server discovery and validation.
+
+This module provides the :class:`~.DiscoveryMixin` class, which is used by the
+:class:`~.core.manager.BedrockServerManager` to scan the filesystem for
+existing server installations and gather their basic status.
+"""
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,6 +43,7 @@ class DiscoveryMixin:
         Args:
             server_name (str): The name of the server to validate. This should
                 correspond to a subdirectory within the main server base directory.
+            app_context (AppContext): The application context.
 
         Returns:
             bool: ``True`` if the server exists and is a valid installation
@@ -91,6 +100,9 @@ class DiscoveryMixin:
         returned separately, allowing the method to succeed even if some server
         directories are corrupted or misconfigured. The final list of server
         data is sorted alphabetically by server name.
+
+        Args:
+            app_context (AppContext): The application context.
 
         Returns:
             Tuple[List[Dict[str, Any]], List[str]]: A tuple containing two lists:

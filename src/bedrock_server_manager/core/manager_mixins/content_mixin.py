@@ -1,3 +1,11 @@
+# src/bedrock_server_manager/core/manager_mixins/content_mixin.py
+"""
+Mixin for managing content (worlds, addons).
+
+This module provides the :class:`~.ContentMixin` class, which handles operations
+related to downloading, listing, and managing game content like .mcworld and
+.mcaddon files.
+"""
 import glob
 import logging
 import os

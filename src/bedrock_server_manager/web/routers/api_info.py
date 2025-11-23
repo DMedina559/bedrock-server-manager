@@ -40,6 +40,16 @@ router = APIRouter()
 
 # --- Pydantic Models ---
 class ServerSchema(BaseModel):
+    """
+    Schema representing server information in lists.
+
+    Attributes:
+        name (str): The server's name.
+        status (str): The server's status (e.g., "Running", "Stopped").
+        version (str): The installed version of the server.
+        player_count (int): The number of players currently online.
+    """
+
     name: str
     status: str
     version: str
