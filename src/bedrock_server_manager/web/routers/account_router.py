@@ -1,3 +1,14 @@
+# bedrock_server_manager/web/routers/account_router.py
+"""
+FastAPI router for user account management.
+
+This module provides endpoints for:
+- Viewing the account profile page.
+- Retrieving account details via API.
+- Updating user themes.
+- Updating profile information (name, email).
+- Changing passwords.
+"""
 import os
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -18,15 +29,38 @@ router = APIRouter()
 
 
 class ThemeUpdate(BaseModel):
+    """
+    Request payload for updating the user's theme.
+
+    Attributes:
+        theme (str): The new theme name.
+    """
+
     theme: str
 
 
 class ProfileUpdate(BaseModel):
+    """
+    Request payload for updating user profile details.
+
+    Attributes:
+        full_name (str): The user's full name.
+        email (str): The user's email address.
+    """
+
     full_name: str
     email: str
 
 
 class ChangePasswordRequest(BaseModel):
+    """
+    Request payload for changing the user's password.
+
+    Attributes:
+        current_password (str): The current password for verification.
+        new_password (str): The new password.
+    """
+
     current_password: str
     new_password: str
 
@@ -41,11 +75,17 @@ async def account_page(
     user: UserSchema = Depends(get_current_user),
     templates: Jinja2Templates = Depends(get_templates),
 ):
+    """
+    Serves the user account profile page.
+    """
     return templates.TemplateResponse(request, "account.html", {"current_user": user})
 
 
 @router.get("/api/account", response_model=UserSchema)
 async def account_api(user: UserSchema = Depends(get_current_user)):
+    """
+    Retrieves the current user's account details.
+    """
     return user
 
 
@@ -55,6 +95,9 @@ async def update_theme(
     user: UserSchema = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
+    """
+    Updates the current user's preferred theme.
+    """
     with app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
@@ -74,6 +117,9 @@ async def update_profile(
     user: UserSchema = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
+    """
+    Updates the current user's profile information (name, email).
+    """
     with app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
@@ -94,6 +140,9 @@ async def change_password(
     user: UserSchema = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
+    """
+    Changes the current user's password.
+    """
     with app_context.db.session_manager() as db:
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()

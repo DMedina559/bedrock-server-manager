@@ -1,6 +1,11 @@
 # bedrock_server_manager/web/routers/register.py
 """
-FastAPI router for user registration.
+FastAPI router for user registration management.
+
+This module provides endpoints for:
+- Generating registration tokens (Admin only).
+- Serving the registration page.
+- Handling user registration submissions.
 """
 import logging
 import secrets
@@ -9,6 +14,7 @@ from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from ...db.models import User, RegistrationToken
 from ..dependencies import get_templates, get_app_context
@@ -29,10 +35,14 @@ router = APIRouter(
 )
 
 
-from pydantic import BaseModel
-
-
 class GenerateTokenRequest(BaseModel):
+    """
+    Request payload for generating a registration token.
+
+    Attributes:
+        role (str): The role to assign to the user registering with this token.
+    """
+
     role: str
 
 
@@ -98,6 +108,14 @@ async def registration_page(
 
 
 class RegisterUserRequest(BaseModel):
+    """
+    Request payload for user registration.
+
+    Attributes:
+        username (str): The desired username.
+        password (str): The desired password.
+    """
+
     username: str
     password: str
 
