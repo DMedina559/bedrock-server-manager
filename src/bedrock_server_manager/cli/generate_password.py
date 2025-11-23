@@ -15,7 +15,7 @@ stored or directly used in configurations.
 import click
 
 from ..config import env_name
-from ..web.auth_utils import pwd_context
+from ..web.auth_utils import get_password_hash
 
 
 @click.command("generate-password")
@@ -24,7 +24,7 @@ def generate_password_hash_command():
 
     This interactive command securely prompts the user to enter a new password
     and then confirm it. Upon successful confirmation, it generates a bcrypt
-    hash of the password using the application's configured `passlib.context.CryptContext`.
+    hash of the password.
 
     The output is the generated hash, which is intended to be used as the value
     for the ``BSM_PASSWORD`` (or equivalent, based on
@@ -53,7 +53,7 @@ def generate_password_hash_command():
 
         click.echo("\nGenerating password hash using...")
 
-        hashed_password = pwd_context.hash(plaintext_password)
+        hashed_password = get_password_hash(plaintext_password)
 
         click.secho("Hash generated successfully.", fg="green")
 

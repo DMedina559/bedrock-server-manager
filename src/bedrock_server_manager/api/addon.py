@@ -26,7 +26,6 @@ from typing import Dict, Optional
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import get_server_instance
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -53,9 +52,9 @@ from ..plugins.event_trigger import trigger_plugin_event
 def import_addon(
     server_name: str,
     addon_file_path: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
     restart_only_on_success: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Installs an addon to a specified Bedrock server.
 
@@ -123,10 +122,7 @@ def import_addon(
             raise AppFileNotFoundError(addon_file_path, "Addon file")
 
         try:
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = app_context.get_server(server_name)
 
             # If the server is running, send a warning message to players.
             if server.is_running():

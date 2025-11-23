@@ -33,6 +33,7 @@ Browse through the sections below to find various information about Bedrock Serv
    extras/docker.md
    extras/install_content.md
    extras/web_extras.md
+   extras/websockets.md
    web/theming.md
 
 .. toctree::

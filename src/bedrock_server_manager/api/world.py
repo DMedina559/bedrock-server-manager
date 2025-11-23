@@ -32,10 +32,6 @@ from typing import Dict, Optional, Any
 from ..plugins import plugin_method
 
 # Local application imports.
-from ..instances import (
-    get_settings_instance,
-    get_server_instance,
-)
 from .utils import server_lifecycle_manager
 from ..error import (
     BSMError,
@@ -54,9 +50,7 @@ _world_lock = threading.Lock()
 
 
 @plugin_method("get_world_name")
-def get_world_name(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, Any]:
+def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
     This function reads the `server.properties` file to get the name of the
@@ -84,10 +78,7 @@ def get_world_name(
 
     logger.debug(f"API: Attempting to get world name for server '{server_name}'...")
     try:
-        if app_context:
-            server = app_context.get_server(server_name)
-        else:
-            server = get_server_instance(server_name)
+        server = app_context.get_server(server_name)
         world_name_str = server.get_world_name()
         logger.info(
             f"API: Retrieved world name for '{server_name}': '{world_name_str}'"
@@ -116,9 +107,9 @@ from ..plugins.event_trigger import trigger_plugin_event
 @trigger_plugin_event(before="before_world_export", after="after_world_export")
 def export_world(
     server_name: str,
+    app_context: AppContext,
     export_dir: Optional[str] = None,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """Exports the server's currently active world to a .mcworld archive.
 
@@ -171,10 +162,7 @@ def export_world(
         if export_dir:
             effective_export_dir = export_dir
         else:
-            if app_context:
-                settings = app_context.settings
-            else:
-                settings = get_settings_instance()
+            settings = app_context.settings
             content_base_dir = settings.get("paths.content")
             if not content_base_dir:
                 raise FileOperationError(
@@ -187,10 +175,7 @@ def export_world(
         )
 
         try:
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = app_context.get_server(server_name)
 
             os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = server.get_world_name()
@@ -242,8 +227,8 @@ def export_world(
 def import_world(
     server_name: str,
     selected_file_path: str,
+    app_context: AppContext,
     stop_start_server: bool = True,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, str]:
     """Imports a world from a .mcworld file, replacing the active world.
 
@@ -301,10 +286,7 @@ def import_world(
         )
 
         try:
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = app_context.get_server(server_name)
             if not os.path.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
@@ -351,9 +333,7 @@ def import_world(
 
 @plugin_method("reset_world")
 @trigger_plugin_event(before="before_world_reset", after="after_world_reset")
-def reset_world(
-    server_name: str, app_context: Optional[AppContext] = None
-) -> Dict[str, str]:
+def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 
     This is a destructive action. Upon next start, the server will generate
@@ -402,10 +382,7 @@ def reset_world(
         logger.info(f"API: Initiating world reset for server '{server_name}'...")
 
         try:
-            if app_context:
-                server = app_context.get_server(server_name)
-            else:
-                server = get_server_instance(server_name)
+            server = app_context.get_server(server_name)
             world_name_for_msg = server.get_world_name()
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,

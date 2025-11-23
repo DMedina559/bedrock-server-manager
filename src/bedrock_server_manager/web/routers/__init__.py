@@ -18,8 +18,10 @@ from .account_router import router as account_router
 from .users import router as users_router
 from .register import router as register_router
 from .audit_log import router as audit_log_router
+from .websocket_router import router as websocket_router
 
 __all__ = [
+    "websocket_router",
     "api_info_router",
     "auth_router",
     "backup_restore_router",

@@ -21,7 +21,6 @@ for use by administrative interfaces like a web UI or CLI.
 import logging
 from typing import Dict, Any, Optional
 
-from ..instances import get_app_context
 from ..plugins import plugin_method
 from ..error import UserInputError
 from ..context import AppContext
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("get_plugin_statuses")
-def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
+def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
     """
     Retrieves the statuses and metadata of all discovered plugins.
 
@@ -52,10 +51,7 @@ def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, A
     """
     logger.debug("API: Attempting to get plugin statuses.")
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_app_context().plugin_manager
+        pm = app_context.plugin_manager
         pm._synchronize_config_with_disk()
         statuses = pm.plugin_config
         logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
@@ -66,9 +62,9 @@ def get_plugin_statuses(app_context: Optional[AppContext] = None) -> Dict[str, A
 
 
 def set_plugin_status(
-    plugin_name: str = None,
-    enabled: bool = None,
-    app_context: Optional[AppContext] = None,
+    plugin_name: str,
+    enabled: bool,
+    app_context: AppContext,
 ) -> Dict[str, Any]:
     """
     Sets the enabled/disabled status for a specific plugin.
@@ -102,10 +98,7 @@ def set_plugin_status(
 
     logger.info(f"API: Setting status for plugin '{plugin_name}' to {enabled}.")
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_app_context().plugin_manager
+        pm = app_context.plugin_manager
         pm._synchronize_config_with_disk()
 
         if plugin_name not in pm.plugin_config:
@@ -140,7 +133,7 @@ def set_plugin_status(
         }
 
 
-def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
+def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
     """
     Triggers the plugin manager to unload all active plugins and
     then reload all plugins based on the current configuration.
@@ -158,10 +151,7 @@ def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
     """
     logger.info("API: Attempting to reload all plugins.")
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_app_context().plugin_manager
+        pm = app_context.plugin_manager
         pm.reload()
         logger.info("API: Plugins reloaded successfully.")
         return {
@@ -177,9 +167,9 @@ def reload_plugins(app_context: Optional[AppContext] = None) -> Dict[str, Any]:
 
 
 def trigger_external_plugin_event_api(
-    event_name: str = None,
+    event_name: str,
+    app_context: AppContext,
     payload: Dict[str, Any] = None,
-    app_context: Optional[AppContext] = None,
 ) -> Dict[str, Any]:
     """
     Allows an external source (like a web route or CLI) to trigger a custom plugin event.
@@ -214,10 +204,7 @@ def trigger_external_plugin_event_api(
         f"API: Attempting to trigger custom plugin event '{event_name}' externally."
     )
     try:
-        if app_context:
-            pm = app_context.plugin_manager
-        else:
-            pm = get_app_context().plugin_manager
+        pm = app_context.plugin_manager
         actual_payload = payload if payload is not None else {}
         pm.trigger_custom_plugin_event(
             event_name, "external_api_trigger", **actual_payload

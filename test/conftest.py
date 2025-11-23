@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 from bedrock_server_manager.web.dependencies import validate_server_exists
 from bedrock_server_manager.web.auth_utils import (
     create_access_token,
-    pwd_context,
     get_current_user_optional,
+    get_password_hash,
 )
 from datetime import timedelta
 from bedrock_server_manager.db.models import User as UserModel
@@ -171,7 +171,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
     from bedrock_server_manager.context import AppContext
     from bedrock_server_manager.config.settings import Settings
     from bedrock_server_manager.core.manager import BedrockServerManager
-    from bedrock_server_manager.instances import set_app_context
     from bedrock_server_manager.plugins.plugin_manager import PluginManager
     from bedrock_server_manager.db.database import Database
     import os
@@ -232,7 +231,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
 
     context = AppContext(settings=settings, manager=manager, db=db)
     context.load()
-    set_app_context(context)
 
     # Load plugins
     context.plugin_manager.plugin_dirs = [plugins_dir]
@@ -246,10 +244,10 @@ TEST_PASSWORD = "testpassword"
 
 
 @pytest.fixture
-def app(app_context):
+def app(app_context, mocker):
     """Create a FastAPI app instance for testing."""
-    # The app_context fixture is defined in the root conftest.py
-    # and is available to all tests.
+    # Mock the resource monitor to prevent its background task from running during most tests
+    mocker.patch("bedrock_server_manager.web.resource_monitor.ResourceMonitor.start")
     _app = create_web_app(app_context)
     return _app
 
@@ -286,7 +284,7 @@ def client(app):
 def authenticated_user(db_session):
     user = UserModel(
         username=TEST_USER,
-        hashed_password=pwd_context.hash(TEST_PASSWORD),
+        hashed_password=get_password_hash(TEST_PASSWORD),
         role="admin",
     )
     db_session.add(user)

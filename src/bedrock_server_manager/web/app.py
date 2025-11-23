@@ -4,6 +4,7 @@ import sys
 import atexit
 from pathlib import Path
 import os
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -31,10 +32,13 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Startup logic goes here
+        app_context = app.state.app_context
+        app_context.loop = asyncio.get_running_loop()
+        app_context.resource_monitor.start()
         yield
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
-        app_context = app.state.app_context
+        app_context.resource_monitor.stop()
         # Shut down the task manager gracefully
         if (
             hasattr(app_context, "_task_manager")
@@ -90,9 +94,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:
             "/openapi.json",
         ]
 
-        if bcm_config.needs_setup(
-            request.app.state.app_context
-        ) and not any(request.url.path.startswith(p) for p in allowed_paths):
+        if bcm_config.needs_setup(request.app.state.app_context) and not any(
+            request.url.path.startswith(p) for p in allowed_paths
+        ):
             return RedirectResponse(url="/setup")
 
         # Manually handle authentication to bypass it for static files
@@ -131,6 +135,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     app.include_router(routers.account_router)
     app.include_router(routers.audit_log_router)
     app.include_router(routers.server_settings_router)
+    app.include_router(routers.websocket_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:

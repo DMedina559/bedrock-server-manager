@@ -17,8 +17,12 @@ import { handleQueryParameters } from './query_param_handler.js';
 import { initializeUsersPage } from './users.js';
 import { initializeRegisterPage } from './register.js';
 import { initializeSetupPage } from './setup.js';
+import webSocketClient from './websocket_client.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Establish WebSocket connection for the entire app
+  webSocketClient.connect();
+
   // General initializations
   initializeSidebarNav();
   handleQueryParameters();

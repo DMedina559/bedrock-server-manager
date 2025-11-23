@@ -45,7 +45,9 @@ class TestPluginAPI:
             app_context.plugin_manager, "trigger_custom_plugin_event"
         ) as mock_trigger:
             result = trigger_external_plugin_event_api(
-                "my_event:test", {"key": "value"}, app_context=app_context
+                event_name="my_event:test",
+                payload={"key": "value"},
+                app_context=app_context,
             )
             assert result["status"] == "success"
             mock_trigger.assert_called_once_with(
@@ -57,7 +59,7 @@ class TestPluginAPI:
             app_context.plugin_manager, "trigger_custom_plugin_event"
         ) as mock_trigger:
             result = trigger_external_plugin_event_api(
-                "my_event:test", app_context=app_context
+                event_name="my_event:test", app_context=app_context
             )
             assert result["status"] == "success"
             mock_trigger.assert_called_once_with(

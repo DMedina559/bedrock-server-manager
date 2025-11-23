@@ -1,3 +1,11 @@
+# src/bedrock_server_manager/core/manager_mixins/system_mixin.py
+"""
+Mixin for system-level capabilities and checks.
+
+This module provides the :class:`~.SystemMixin` class, which includes methods
+for checking system capabilities (like cron availability) and managing
+system-level resources.
+"""
 import logging
 import platform
 import shutil
