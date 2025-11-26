@@ -65,13 +65,17 @@ def load_config() -> Dict[str, Any]:
     env_data_dir = os.getenv(f"{env_name}_DATA_DIR")
     if env_data_dir:
         final_data_dir = env_data_dir
-        logger.info(f"Using BSM_DATA_DIR environment variable for data_dir: {env_data_dir}")
+        logger.info(
+            f"Using BSM_DATA_DIR environment variable for data_dir: {env_data_dir}"
+        )
     elif "data_dir" in config and config["data_dir"]:
         final_data_dir = config["data_dir"]
     else:
         final_data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
         config_for_saving["data_dir"] = final_data_dir
-        logger.info(f"Configuration 'data_dir' not set. Defaulting to {final_data_dir}.")
+        logger.info(
+            f"Configuration 'data_dir' not set. Defaulting to {final_data_dir}."
+        )
         config_changed = True
 
     # Determine db_url
@@ -84,7 +88,9 @@ def load_config() -> Dict[str, Any]:
     else:
         config_dir = os.path.join(final_data_dir, ".config")
         os.makedirs(config_dir, exist_ok=True)
-        final_db_url = f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
+        final_db_url = (
+            f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
+        )
         config_for_saving["db_url"] = final_db_url
         logger.info(f"Configuration 'db_url' not set. Defaulting to {final_db_url}.")
         config_changed = True
