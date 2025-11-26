@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING, Dict, Any, Optional
 from ..db.models import Player, User, Server, Plugin
 from ..error import ConfigurationError
 from ..config import bcm_config
-from ..config.const import env_name
 
 if TYPE_CHECKING:
     from ..context import AppContext
 
 logger = logging.getLogger(__name__)
+
+old_env_name = "BEDROCK_SERVER_MANAGER"
 
 
 def migrate_players_json_to_db(app_context: AppContext):
@@ -137,8 +138,8 @@ def migrate_env_auth_to_db(app_context: AppContext):
     env = os.environ.copy()
     env.update(systemd_env)
 
-    username = env.get(f"{env_name}_USERNAME")
-    password = env.get(f"{env_name}_PASSWORD")
+    username = env.get(f"{old_env_name}_USERNAME")
+    password = env.get(f"{old_env_name}_PASSWORD")
 
     if not username or not password:
         return  # Environment variables not set, no migration needed.
@@ -266,7 +267,7 @@ def migrate_settings_v1_to_v2(
 
 def migrate_env_token_to_db(app_context: AppContext):
     """Migrates the JWT token from an environment variable to the database."""
-    token = os.environ.get(f"{env_name}_TOKEN")
+    token = os.environ.get(f"{old_env_name}_TOKEN")
     if not token:
         return
 
@@ -450,7 +451,7 @@ def migrate_services_to_db(app_context: AppContext = None):
 
 def migrate_env_vars_to_config_file():
     """Migrates DATA_DIR from environment variables to the config file."""
-    data_dir_env_var = f"{env_name}_DATA_DIR"
+    data_dir_env_var = f"{old_env_name}_DATA_DIR"
     data_dir_value = os.environ.get(data_dir_env_var)
 
     if not data_dir_value:
