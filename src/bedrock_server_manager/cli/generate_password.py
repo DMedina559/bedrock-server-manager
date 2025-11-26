@@ -14,8 +14,9 @@ stored or directly used in configurations.
 
 import click
 
-from ..config import env_name
 from ..web.auth_utils import get_password_hash
+
+old_env_name = "BEDROCK_SERVER_MANAGER"
 
 
 @click.command("generate-password")
@@ -61,13 +62,13 @@ def generate_password_hash_command():
         click.echo("=" * 60)
         click.echo("\nSet the following environment variable to secure your web UI:")
         click.echo(
-            f"\n  {click.style(f'{env_name}_PASSWORD', fg='yellow')}='{hashed_password}'\n"
+            f"\n  {click.style(f'{old_env_name}_PASSWORD', fg='yellow')}='{hashed_password}'\n"
         )
         click.echo(
             "Note: Enclose the value in single quotes if setting it manually in a shell."
         )
         click.echo(
-            f"You must also set '{click.style(f'{env_name}_USERNAME', fg='yellow')}' "
+            f"You must also set '{click.style(f'{old_env_name}_USERNAME', fg='yellow')}' "
             "to your desired username."
         )
         click.echo("\n" + "=" * 60)
