@@ -29,7 +29,7 @@ class WebSocketClient {
 
     console.log('WebSocketClient.connect(): Attempting to establish connection...');
     this.connectionState = 'connecting';
-    const protocol = window.location.protocol === 'https' ? 'wss' : 'ws';
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const token = localStorage.getItem('jwt_token');
 
     if (!token) {
