@@ -67,15 +67,23 @@ Uptime       : ${processInfo.uptime ?? 'N/A'}
       }
     });
 
-    document.addEventListener('websocket-fallback', () => {
-      console.warn('Monitor Page: WebSocket connection failed. Falling back to polling.');
+    const startPolling = () => {
       if (!pollingIntervalId) {
+        console.warn('Monitor Page: Starting polling (fallback).');
         pollStatus(); // Initial poll
         pollingIntervalId = setInterval(pollStatus, 2000);
       }
-    });
+    };
 
-    webSocketClient.subscribe(topic);
+    if (webSocketClient.shouldUseFallback()) {
+      startPolling();
+    } else {
+      document.addEventListener('websocket-fallback', () => {
+        startPolling();
+      });
+
+      webSocketClient.subscribe(topic);
+    }
   }
 
   // Initial load and setup
