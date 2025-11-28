@@ -25,7 +25,7 @@ executable_name: str = package_name
 app_name_title: str = package_name.replace("-", " ").title()
 """A user-friendly, title-cased version of the application name."""
 
-env_name: str = package_name.replace("-", "_").upper()
+env_name: str = "BSM"
 """The prefix used for environment variables related to this application (e.g., BSM_PASSWORD)."""
 
 # --- Package Information ---
