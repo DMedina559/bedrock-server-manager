@@ -80,7 +80,7 @@ mariadb = [
 ]
 
 postgresql = [
-    "psycopg>=3.2.9,<3.3",
+    "psycopg>=3.2.9,<3.4",
 ]
 
 [tool.setuptools.packages.find]
