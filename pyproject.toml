@@ -56,6 +56,8 @@ dev = [
     "flake8 >=7.3.0,<7.4",
     "httpx >=0.28.0,<0.29",
     "pytest-asyncio >=1.1.0,<1.4",
+    "isort >=5.13.0,<5.14",
+    "mypy >=1.10.0,<1.11",
 ]
 
 cli = [
@@ -112,3 +114,15 @@ asyncio_mode = "auto"
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"
+
+[tool.black]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
