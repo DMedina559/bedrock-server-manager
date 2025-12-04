@@ -5,7 +5,7 @@
  * It handles connection, disconnection, message passing, and a fallback mechanism.
  */
 
-class WebSocketClient {
+export class WebSocketClient {
   constructor() {
     this.socket = null;
     this.connectionState = 'disconnected'; // 'disconnected', 'connecting', 'connected'
