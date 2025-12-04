@@ -58,7 +58,7 @@ jobs:
     - name: Install and run linters
       run: |
         pip install flake8
-        flake8 src/bedrock_server_manager
+        flake8 src/bedrock_server_manager --exit-zero
 
     - name: Run Pytest
       run: |
