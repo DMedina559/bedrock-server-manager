@@ -17,7 +17,7 @@ class WebSocketClient {
    * Attempts to establish a WebSocket connection.
    * If a connection is already established or in progress, this does nothing.
    */
-  connect() {
+  async connect() {
     if (this.socket || this.connectionState === 'connecting') {
       console.log('WebSocketClient.connect(): Connection attempt already in progress or established.');
       return;
@@ -29,11 +29,31 @@ class WebSocketClient {
 
     console.log('WebSocketClient.connect(): Attempting to establish connection...');
     this.connectionState = 'connecting';
-    const protocol = window.location.protocol === 'https' ? 'wss' : 'ws';
-    const token = localStorage.getItem('jwt_token');
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    let token = localStorage.getItem('jwt_token');
+
+    // If token is missing, try to refresh it from the backend using the session cookie
+    if (!token) {
+      console.warn('WebSocketClient.connect(): JWT token not found in localStorage. Attempting to refresh token...');
+      try {
+        const response = await fetch('/auth/refresh-token');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.access_token) {
+            token = data.access_token;
+            localStorage.setItem('jwt_token', token);
+            console.log('WebSocketClient.connect(): Token refreshed successfully.');
+          }
+        } else {
+          console.warn(`WebSocketClient.connect(): Failed to refresh token. Status: ${response.status}`);
+        }
+      } catch (e) {
+        console.error('WebSocketClient.connect(): Error refreshing token:', e);
+      }
+    }
 
     if (!token) {
-      console.error('WebSocketClient.connect(): JWT token not found in localStorage. Cannot authenticate.');
+      console.error('WebSocketClient.connect(): JWT token not found or recoverable. Cannot authenticate.');
       this.handleConnectionFailure();
       return;
     }
@@ -146,6 +166,22 @@ class WebSocketClient {
    */
   shouldUseFallback() {
     return this.useFallback;
+  }
+
+  /**
+   * Checks if the client is currently connected.
+   * @returns {boolean}
+   */
+  isConnected() {
+    return this.connectionState === 'connected';
+  }
+
+  /**
+   * Checks if the client is currently attempting to connect.
+   * @returns {boolean}
+   */
+  isConnecting() {
+    return this.connectionState === 'connecting';
   }
 }
 

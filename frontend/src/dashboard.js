@@ -230,16 +230,24 @@ export function initializeDashboard() {
       }
     });
 
-    // Handle fallback to polling if WebSocket connection fails
-    document.addEventListener('websocket-fallback', () => {
-      console.warn(`${functionName}: WebSocket connection failed. Falling back to polling.`);
+    const startPolling = () => {
       if (!pollingIntervalId) {
+        console.warn(`${functionName}: Starting polling (fallback).`);
         pollingIntervalId = setInterval(updateDashboard, POLLING_INTERVAL_MS);
         console.log(`${functionName}: Polling started as a fallback.`);
       }
-    });
+    };
 
-    refreshTopics.forEach(topic => webSocketClient.subscribe(topic));
+    if (webSocketClient.shouldUseFallback()) {
+      startPolling();
+    } else {
+      // Handle fallback to polling if WebSocket connection fails
+      document.addEventListener('websocket-fallback', () => {
+        startPolling();
+      });
+
+      refreshTopics.forEach((topic) => webSocketClient.subscribe(topic));
+    }
   }
 
 
