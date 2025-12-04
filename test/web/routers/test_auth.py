@@ -55,3 +55,17 @@ def test_logout_success(authenticated_client: TestClient):
     assert response.status_code == 200
     assert len(response.history) > 0
     assert response.history[0].status_code == 302
+
+
+def test_refresh_token_success(authenticated_client: TestClient):
+    """Test the refresh token route with a valid session cookie."""
+    response = authenticated_client.get("/auth/refresh-token")
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+    assert response.json()["token_type"] == "bearer"
+
+
+def test_refresh_token_unauthenticated(client: TestClient, mock_dependencies):
+    """Test the refresh token route without authentication."""
+    response = client.get("/auth/refresh-token")
+    assert response.status_code == 401
