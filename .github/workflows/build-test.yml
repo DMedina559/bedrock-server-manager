@@ -55,6 +55,10 @@ jobs:
         chmod +x build.sh
         ./build.sh
 
+    - name: Run Frontend Tests
+      working-directory: ./frontend
+      run: npm test
+
     - name: Install and run linters
       run: |
         pip install flake8
