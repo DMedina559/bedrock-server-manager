@@ -75,14 +75,22 @@ Uptime       : ${processInfo.uptime ?? 'N/A'}
       }
     };
 
+    // Check initial state
     if (webSocketClient.shouldUseFallback()) {
       startPolling();
     } else {
+      // Listen for fallback event (in case it happens later)
       document.addEventListener('websocket-fallback', () => {
         startPolling();
       });
 
-      webSocketClient.subscribe(topic);
+      // Double-check state to handle race conditions where the event might
+      // have fired before the listener was attached.
+      if (webSocketClient.shouldUseFallback()) {
+        startPolling();
+      } else {
+        webSocketClient.subscribe(topic);
+      }
     }
   }
 
