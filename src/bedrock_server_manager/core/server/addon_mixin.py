@@ -370,7 +370,23 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 ) from e
 
             # Delegate to the installation method.
-            self._install_pack_from_extracted_data(temp_dir, mcpack_file_path)
+            # Handle cases where the pack content is nested in a subdirectory (common in some zips)
+            install_source_dir = temp_dir
+            if not os.path.isfile(os.path.join(temp_dir, "manifest.json")):
+                entries = os.listdir(temp_dir)
+                if len(entries) == 1 and os.path.isdir(
+                    os.path.join(temp_dir, entries[0])
+                ):
+                    potential_nested_dir = os.path.join(temp_dir, entries[0])
+                    if os.path.isfile(
+                        os.path.join(potential_nested_dir, "manifest.json")
+                    ):
+                        self.logger.info(
+                            f"Detected nested pack directory: '{entries[0]}'. Adjusting source."
+                        )
+                        install_source_dir = potential_nested_dir
+
+            self._install_pack_from_extracted_data(install_source_dir, mcpack_file_path)
 
         finally:
             if os.path.isdir(temp_dir):
