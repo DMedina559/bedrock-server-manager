@@ -5,9 +5,25 @@
 :width: 200px
 :align: center
 ```
+
+## 3.7.1
+
+### New Features:
+1. Re added environment variable support for data_dir and db_url
+    - `BSM_DATA_DIR`
+    - `BSM_DB_URL`
+2. Added support for `.mcaddon`, `.mcpack`, and `.mcworld` file installations that starts with a top level folder
+
+### Bug Fixes:
+3. Fixed various WebSocket issues
+
 ## 3.7.0
+
+### New Features:
 1. Added WebSocket support
    - Various polling elements from the frontend has been replaced with WebSocket connections for real-time updates
+
+### Backend Changes:
 2. BREAKING CHANGE: Removed `instances.py` module
     - Plugins and other modules should now access the `AppContext` object via dependency injection in FastAPI
 3. Fixed Custom Downloads installs
