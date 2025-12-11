@@ -68,13 +68,20 @@ pip install git+https://github.com/DMedina559/bedrock-server-manager.git@name-of
 
 ---
 
-## 4. Database Configuration
+## 4. Environment Variables
+
+You can configure the application using environment variables. These variables take precedence over the configuration file.
+
+*   `BSM_DATA_DIR`: Overrides the default directory where the application stores data (servers, backups, etc.).
+*   `BSM_DB_URL`: Overrides the database connection URL found in the configuration file.
+
+## 5. Database Configuration
 
 Bedrock Server Manager uses SQLAlchemy to connect to a database. By default, it uses a SQLite database, but you can configure it to use other databases like MySQL, MariaDB, or PostgreSQL.
 
 To use a different database, you need to:
 1.  Install the necessary database driver.
-2.  Set the `db_url` in your configuration file to the correct database connection string.
+2.  Set the `db_url` in your configuration file OR set the `BSM_DB_URL` environment variable to the correct database connection string.
 
 ### Installing Database Drivers
 
