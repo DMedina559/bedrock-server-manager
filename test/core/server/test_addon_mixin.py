@@ -136,3 +136,69 @@ def test_remove_addon(real_bedrock_server):
     with open(os.path.join(world_dir, "world_resource_packs.json"), "r") as f:
         data = json.load(f)
         assert len(data) == 0
+
+def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
+    server = real_bedrock_server
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
+    os.makedirs(world_dir, exist_ok=True)
+
+    # 1. Create a temporary structure for the addon
+    # addon_root/
+    #   behavior/
+    #     manifest.json
+    #   resource/
+    #     manifest.json
+    
+    addon_build_dir = tmp_path / "addon_build"
+    addon_build_dir.mkdir()
+    
+    bp_dir = addon_build_dir / "behavior"
+    bp_dir.mkdir()
+    with open(bp_dir / "manifest.json", "w") as f:
+        json.dump(
+            {
+                "header": {"name": "bp1", "uuid": "bp1_uuid", "version": [1, 0, 0]},
+                "modules": [{"type": "data"}],
+            },
+            f,
+        )
+
+    rp_dir = addon_build_dir / "resource"
+    rp_dir.mkdir()
+    with open(rp_dir / "manifest.json", "w") as f:
+        json.dump(
+            {
+                "header": {"name": "rp1", "uuid": "rp1_uuid", "version": [1, 0, 0]},
+                "modules": [{"type": "resources"}],
+            },
+            f,
+        )
+
+    # 2. Zip it into an .mcaddon file
+    mcaddon_path = tmp_path / "folder_structure.mcaddon"
+    with zipfile.ZipFile(mcaddon_path, "w") as zf:
+        # Add behavior pack
+        for root, _, files in os.walk(bp_dir):
+            for file in files:
+                zf.write(os.path.join(root, file), os.path.join("behavior", file))
+        
+        # Add resource pack
+        for root, _, files in os.walk(rp_dir):
+            for file in files:
+                zf.write(os.path.join(root, file), os.path.join("resource", file))
+
+    # 3. Process the addon file
+    server.process_addon_file(str(mcaddon_path))
+
+    # 4. Verify that packs are installed
+    addons = server.list_world_addons()
+    
+    # Check behavior packs
+    bps = [bp for bp in addons["behavior_packs"] if bp["uuid"] == "bp1_uuid"]
+    assert len(bps) == 1, "Behavior pack not installed"
+    assert bps[0]["status"] == "ACTIVE"
+
+    # Check resource packs
+    rps = [rp for rp in addons["resource_packs"] if rp["uuid"] == "rp1_uuid"]
+    assert len(rps) == 1, "Resource pack not installed"
+    assert rps[0]["status"] == "ACTIVE"

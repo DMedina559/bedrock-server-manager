@@ -196,6 +196,29 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         try:
             with zipfile.ZipFile(mcworld_file_path, "r") as zip_ref:
                 zip_ref.extractall(full_target_extract_dir)
+
+            # Check for nested extraction: If level.dat (or level.txt) is not in the root
+            # but is inside a single subdirectory, move contents up.
+            entries = os.listdir(full_target_extract_dir)
+            has_level_dat = any(
+                f.lower() in ("level.dat", "level.txt") for f in entries
+            )
+
+            if not has_level_dat and len(entries) == 1:
+                nested_dir_name = entries[0]
+                nested_dir_path = os.path.join(full_target_extract_dir, nested_dir_name)
+                if os.path.isdir(nested_dir_path):
+                    self.logger.info(
+                        f"Detected nested world directory '{nested_dir_name}'. flattening structure..."
+                    )
+                    # Move everything from nested dir to target dir
+                    for item in os.listdir(nested_dir_path):
+                        shutil.move(
+                            os.path.join(nested_dir_path, item), full_target_extract_dir
+                        )
+                    os.rmdir(nested_dir_path)
+                    self.logger.debug("Flattened nested world directory structure.")
+
             self.logger.info(
                 f"Server '{self.server_name}': Successfully extracted world to '{full_target_extract_dir}'."
             )

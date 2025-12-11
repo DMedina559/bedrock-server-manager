@@ -287,9 +287,38 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         f"Failed processing pack '{pack_filename_basename}' from .mcaddon for server '{self.server_name}': {e}"
                     ) from e
 
-        if not mcworld_files_found and not mcpack_files_found:
+        # Process any folders that look like packs (contain manifest.json).
+        found_pack_folders = []
+        for item in os.listdir(temp_dir_with_extracted_files):
+            item_path = os.path.join(temp_dir_with_extracted_files, item)
+            if os.path.isdir(item_path) and os.path.isfile(
+                os.path.join(item_path, "manifest.json")
+            ):
+                found_pack_folders.append(item_path)
+
+        if found_pack_folders:
+            self.logger.info(
+                f"Found {len(found_pack_folders)} pack folder(s) in .mcaddon."
+            )
+            for pack_folder_path in found_pack_folders:
+                folder_name = os.path.basename(pack_folder_path)
+                self.logger.info(f"Processing extracted pack folder: '{folder_name}'.")
+                try:
+                    self._install_pack_from_extracted_data(
+                        pack_folder_path, pack_folder_path
+                    )
+                except Exception as e:
+                    raise FileOperationError(
+                        f"Failed processing pack folder '{folder_name}' from .mcaddon for server '{self.server_name}': {e}"
+                    ) from e
+
+        if (
+            not mcworld_files_found
+            and not mcpack_files_found
+            and not found_pack_folders
+        ):
             self.logger.warning(
-                f"No .mcworld or .mcpack files found in extracted .mcaddon at '{temp_dir_with_extracted_files}'."
+                f"No .mcworld, .mcpack files, or pack folders found in extracted .mcaddon at '{temp_dir_with_extracted_files}'."
             )
 
     def _process_mcpack_archive(self, mcpack_file_path: str) -> None:
@@ -341,7 +370,23 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 ) from e
 
             # Delegate to the installation method.
-            self._install_pack_from_extracted_data(temp_dir, mcpack_file_path)
+            # Handle cases where the pack content is nested in a subdirectory (common in some zips)
+            install_source_dir = temp_dir
+            if not os.path.isfile(os.path.join(temp_dir, "manifest.json")):
+                entries = os.listdir(temp_dir)
+                if len(entries) == 1 and os.path.isdir(
+                    os.path.join(temp_dir, entries[0])
+                ):
+                    potential_nested_dir = os.path.join(temp_dir, entries[0])
+                    if os.path.isfile(
+                        os.path.join(potential_nested_dir, "manifest.json")
+                    ):
+                        self.logger.info(
+                            f"Detected nested pack directory: '{entries[0]}'. Adjusting source."
+                        )
+                        install_source_dir = potential_nested_dir
+
+            self._install_pack_from_extracted_data(install_source_dir, mcpack_file_path)
 
         finally:
             if os.path.isdir(temp_dir):

@@ -89,7 +89,14 @@ docker run -d \
 
 ### Overriding Environment Variables
 
-You can override the default `HOST` and `PORT` for the web server by passing environment variables to the container. If these variables are not set, the application will use the default values (`HOST=0.0.0.0`, `PORT=11325`). For example, to change the web server port to `8080`:
+You can configure the application by passing environment variables to the container.
+
+*   `HOST`: The host for the web server (default: `0.0.0.0`).
+*   `PORT`: The port for the web server (default: `11325`).
+*   `BSM_DATA_DIR`: The path to the data directory within the container (default: `/root/bedrock-server-manager`). **Note**: If you change this, make sure to update your volume mounts accordingly.
+*   `BSM_DB_URL`: The database connection URL. Setting this overrides the value in the configuration file.
+
+For example, to change the web server port to `8080` and use a custom database:
 
 ```bash
 docker run -d \
@@ -98,6 +105,7 @@ docker run -d \
   --name bsm-container \
   -e PORT=8080 \
   -e HOST=0.0.0.0 \
+  -e BSM_DB_URL="mysql://user:pass@host/db" \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
   dmedina559/bedrock-server-manager:stable
@@ -131,6 +139,7 @@ services:
     environment: # Optional
       - HOST=0.0.0.0                                    # Which host to bind the web server to
       - PORT=11325                                      # Port for the web server
+      # - BSM_DB_URL=mysql://user:pass@host/db          # Custom database URL
     volumes:
       - bsm_config:/root/.config/bedrock-server-manager
       - bsm_data:/root/bedrock-server-manager
@@ -160,9 +169,9 @@ docker exec -it bsm-container /bin/bash
 
 ### Changing the Database URL
 
-The database URL is stored in the configuration file. If you are using the recommended volume setup, you can find the file in the `bsm_config` volume.
+The easiest way to change the database URL is to set the `BSM_DB_URL` environment variable as described in the **Overriding Environment Variables** section.
 
-To change the database URL:
+Alternatively, you can edit the configuration file stored in the `bsm_config` volume:
 1.  Stop the container: `docker stop bsm-container`
 2.  Locate and edit the `bedrock_server_manager.json` file inside the `bsm_config` volume. The exact location on your host will depend on your Docker setup. You can use `docker volume inspect bsm_config` to find the mountpoint.
 3.  Change the `db_url` value in the JSON file.
