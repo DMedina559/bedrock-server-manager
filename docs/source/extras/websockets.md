@@ -79,3 +79,30 @@ Event topics broadcast a message when a specific event occurs on the server. The
 ### Resource Monitor Topics
 
 Resource monitor topics broadcast resource usage information for a specific server. The topic name is in the format `resource-monitor:{server_name}`. Replace `{server_name}` with the name of the server you want to monitor.
+
+### Task Manager Topics
+
+The Task Manager is responsible for handling background tasks and notifying the user of their progress. Unlike event topics or resource monitor topics, the client does not need to explicitly subscribe to task topics. Instead, the server automatically pushes updates to the user who initiated the task.
+
+The message structure for task updates is as follows:
+
+```json
+{
+    "type": "task_update",
+    "topic": "task:{task_id}",
+    "data": {
+        "status": "in_progress" | "success" | "error",
+        "message": "Task is running." | "Task completed successfully." | "error message",
+        "result": null | object,
+        "username": "username"
+    }
+}
+```
+
+-   `type`: Indicates the type of message. For task updates, this is always `task_update`.
+-   `topic`: The topic of the message. This follows the format `task:{task_id}`, where `{task_id}` is the unique identifier of the task.
+-   `data`: An object containing details about the task:
+    -   `status`: The current status of the task (`in_progress`, `success`, or `error`).
+    -   `message`: A human-readable message describing the status.
+    -   `result`: The result of the task, if any.
+    -   `username`: The username of the user who initiated the task.
