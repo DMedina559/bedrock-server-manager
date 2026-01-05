@@ -66,5 +66,5 @@ jobs:
 
     - name: Run Pytest
       run: |
-        pip install -e .[dev]
+        pip install --upgrade -e .[dev]
         python -m pytest
