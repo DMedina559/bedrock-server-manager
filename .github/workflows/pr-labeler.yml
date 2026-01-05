@@ -30,7 +30,7 @@ jobs:
               { label: 'perf', regex: /^(perf|performance)(\/|:|\s|\()/i },
               { label: 'test', regex: /^(test|tests)(\/|:|\s|\()/i },
               { label: 'build', regex: /^(build)(\/|:|\s|\()/i },
-              { label: 'ci', regex: /^(ci|workflow|actions)(\/|:|\s|\()/i },
+              { label: 'ci', regex: /^(ci|workflow|actions|action)(\/|:|\s|\()/i },
               { label: 'chore', regex: /^(chore|misc|remove)(\/|:|\s|\()/i },
               { label: 'dependencies', regex: /^(deps|dep|depbot|dependencies)(\/|:|\s|\()/i }
             ];
