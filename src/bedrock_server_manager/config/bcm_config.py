@@ -87,7 +87,11 @@ def load_config() -> Dict[str, Any]:
         final_db_url = config["db_url"]
     else:
         config_dir = os.path.join(final_data_dir, ".config")
-        os.makedirs(config_dir, exist_ok=True)
+        try:
+            os.makedirs(config_dir, exist_ok=True)
+        except OSError as e:
+            logger.error(f"Failed to create config directory at {config_dir}: {e}")
+
         final_db_url = (
             f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
         )
