@@ -13,6 +13,8 @@ assignees: ''
 *   Please search [existing issues](https://github.com/DMedina559/bedrock-server-manager/issues) to ensure a similar feature request hasn't already been submitted or discussed.
     *   If a similar feature has been requested, please add your thoughts or upvote that existing issue.
 *   Consider if this feature aligns with the general purpose and scope of Bedrock Server Manager.
+    *  Consider opening a [discussion](https://github.com/DMedina559/bedrock-server-manager/discussions/categories/ideas) first if you're unsure.
+*   Do not remove any sections from this template. Incomplete reports may be closed, delayed or may require more information.
 
 ---
 
