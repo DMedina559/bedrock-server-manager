@@ -40,3 +40,5 @@ html_static_path = ["../sphinx_build/_static"]
 html_favicon = "../sphinx_build/_static/favicon.ico"
 html_logo = "../sphinx_build/_static/favicon-96x96.png"
 html_css_files = ["css/custom_sphinx_styles.css"]
+
+sphinx_github_changelog_token = os.environ.get("SPHINX_GITHUB_CHANGELOG_TOKEN") or os.environ.get("GITHUB_TOKEN")
