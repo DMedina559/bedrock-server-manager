@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Auto Labeler
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             // Helper to add labels
