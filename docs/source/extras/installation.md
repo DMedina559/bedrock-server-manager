@@ -50,21 +50,61 @@ The `dev` branch is where all beta developments are merged before being bundled 
 
 ---
 
-## 3. Development Versions (For Advanced Users & Contributors)
+## 3. Advanced Installation (For Developers & Contributors)
 
-These versions are at the cutting edge and reflect the latest code, but they are not guaranteed to be stable. Use them if you want to test a specific new feature that isn't in a beta yet, or if you are contributing to the project.
+These instructions are for advanced users who want to run the absolute latest code or contribute to the project. Since the project includes a compiled frontend, you cannot simply install directly from the git URL anymore.
 
-**Install Directly from a GitHub Branch**
+**Prerequisites:**
+*   **Python:** Version 3.10 or higher.
+*   **Node.js:** Version 20 or higher (required for building the frontend).
+*   **Git:** To clone the repository.
 
-This is the way to test the code from a specific branch.
+**Step-by-Step Build & Install:**
 
-```bash
-# Install the latest code from the 'main' branch
-pip install git+https://github.com/DMedina559/bedrock-server-manager.git@main
+1.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/DMedina559/bedrock-server-manager.git
+    cd bedrock-server-manager
+    ```
 
-# Or install from a specific feature branch
-pip install git+https://github.com/DMedina559/bedrock-server-manager.git@name-of-the-branch
-```
+2.  **Checkout the Desired Branch:**
+    *   `main`: Stable code.
+    *   `dev`: Latest features and changes (unstable).
+    ```bash
+    git checkout dev
+    ```
+
+3.  **Build the Project:**
+    The project uses a build script to compile the frontend assets (React/JS) and prepare the Python package.
+    
+    *   **Linux/macOS:**
+        ```bash
+        chmod +x build.sh
+        ./build.sh
+        ```
+    *   **Windows:**
+        ```cmd
+        build.bat
+        ```
+    
+    This process will:
+    *   Install npm dependencies in `frontend/`.
+    *   Build the static assets to `src/bedrock_server_manager/web/static/js/dist/`.
+    *   Build the Python package using `build`.
+
+4.  **Install the Local Package:**
+    Once built, you can install the package in editable mode (recommended for development) or as a standard package.
+
+    ```bash
+    # Editable install (changes to python code reflect immediately)
+    pip install -e .
+
+    # OR Standard install
+    pip install .
+    ```
+
+**Note on Versioning:**
+The project uses `setuptools-scm` for dynamic versioning. The version number is automatically derived from the latest git tag. If you are working on a purely local copy without git metadata, you may need to set the `SETUPTOOLS_SCM_PRETEND_VERSION` environment variable during build.
 
 ---
 
