@@ -9,7 +9,7 @@
 project = "Bedrock Server Manager"
 copyright = "2025, DMedina559"
 author = "DMedina559"
-release = "3.6.0"
+release = "3.7.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -25,6 +25,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "myst_parser",
+    "sphinx_github_changelog",
 ]
 
 templates_path = ["_templates"]
