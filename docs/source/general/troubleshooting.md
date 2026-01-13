@@ -65,11 +65,12 @@ Before creating a new report, please [**search the open issues**](https://github
 
 If no existing issue describes your problem, please [**open a new bug report**](https://github.com/DMedina559/bedrock-server-manager/issues/new/choose).
 
-When filing a report, be sure to:
-*   **Use the Bug Report template.** It is structured to provide all the information we need.
-*   **Provide a clear and concise title.**
-*   **Include detailed steps** to reproduce the bug.
-*   **Attach relevant logs.** Copy and paste the debug logs gathered in Step 4. Please remove any sensitive information before posting.
+**Important Issue Reporting Guidelines:**
+
+*   **Strict Template Usage:** You **must** use the provided templates (Bug Report or Feature Request). Issues opened without a template or with deleted sections will be **closed without review**.
+*   **Fill All Fields:** We cannot debug issues without your **Environment Details** (OS, BSM Version) and **Logs**. If a section isn't relevant, mark it as "N/A" rather than removing it.
+*   **CLI Issues:** If your issue is related to the Command Line Interface, please post it in the [**bsm-api-client repository**](https://github.com/DMedina559/bsm-api-client/issues).
+*   **Attach Logs:** Copy and paste the debug logs gathered in Step 4. Please remove any sensitive information before posting.
 
 ## For Developers
 
