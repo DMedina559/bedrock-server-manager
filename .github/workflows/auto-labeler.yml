@@ -63,6 +63,12 @@ jobs:
                   labelsToAdd.add(label);
                 }
               }
+
+              // Check for breaking changes
+              if (/^[a-z]+(\([^)]+\))?![:\s]/i.test(title)) {
+                labelsToAdd.add('breaking');
+              }
+
               await addLabels(labelsToAdd);
             }
             
