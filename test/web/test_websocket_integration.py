@@ -68,3 +68,27 @@ async def test_send_to_user_integration(test_app):
         # Assert that the client received the message.
         received_message = websocket.receive_json()
         assert received_message == test_message
+
+async def test_wildcard_subscription(test_app):
+    """
+    Tests that a client subscribed to '*' receives messages from other topics.
+    """
+    client = TestClient(test_app)
+    app_context = test_app.state.app_context
+
+    with client.websocket_connect("/ws") as websocket:
+        # Subscribe to wildcard
+        websocket.send_json({"action": "subscribe", "topic": "*"})
+        # Consume the "success" confirmation message
+        confirmation = websocket.receive_json()
+        assert confirmation["status"] == "success"
+
+        await asyncio.sleep(0.01)
+
+        # Broadcast to a specific topic
+        test_message = {"data": "broadcast message"}
+        await app_context.connection_manager.broadcast_to_topic("event:some_event", test_message)
+
+        # Client should receive it because of wildcard
+        received_message = websocket.receive_json()
+        assert received_message == test_message

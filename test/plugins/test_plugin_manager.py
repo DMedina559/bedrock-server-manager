@@ -76,9 +76,36 @@ class TestPluginManager:
         mock_plugin.on_unload.__name__ = (
             "on_unload"  # Add __name__ attribute to the mock
         )
+        # Mock wildcard as well to verify it's called
+        mock_plugin.on_any_event = MagicMock()
+        mock_plugin.on_any_event.__name__ = "on_any_event"
 
         pm.trigger_event("on_unload")
         mock_plugin.on_unload.assert_called_once()
+        mock_plugin.on_any_event.assert_called_once()
+
+    def test_wildcard_event_dispatch_only(self, app_context):
+        """Tests that wildcard hook is called even if specific hook is missing."""
+        pm = app_context.plugin_manager
+        pm.plugin_config = {"plugin1": {"enabled": True, "version": "1.0"}}
+
+        with patch.object(pm, "_synchronize_config_with_disk"):
+            pm.load_plugins()
+
+        mock_plugin = pm.plugins[0]
+        # Remove specific handler if it exists on the mock (or just verify for an event it doesn't have)
+        if hasattr(mock_plugin, "some_unknown_event"):
+            delattr(mock_plugin, "some_unknown_event")
+        
+        mock_plugin.on_any_event = MagicMock()
+        mock_plugin.on_any_event.__name__ = "on_any_event"
+
+        pm.trigger_event("some_unknown_event", arg="test")
+        
+        mock_plugin.on_any_event.assert_called_once()
+        args, kwargs = mock_plugin.on_any_event.call_args
+        assert args[0] == "some_unknown_event"
+        assert kwargs.get("arg") == "test"
 
     def test_custom_event_system(self, app_context):
         """Tests the custom inter-plugin event system."""
