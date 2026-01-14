@@ -95,6 +95,8 @@ class TestConcretePlugin:
                     "result": {"status": "success"},
                 },
             ),
+            # Test new wildcard hook
+            ("on_any_event", {"event_name": "test_event", "arg": "value"}),
         ]
 
         for hook_name, kwargs in hooks:

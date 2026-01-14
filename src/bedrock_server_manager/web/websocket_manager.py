@@ -76,11 +76,18 @@ class ConnectionManager:
 
     async def broadcast_to_topic(self, topic: str, data: Any):
         """Broadcasts a JSON message to all clients subscribed to a topic."""
+        clients_to_notify = set()
+
         if topic in self.subscriptions:
-            # Create a copy of the list to avoid issues if a client disconnects mid-broadcast
-            client_ids = list(self.subscriptions[topic])
-            for client_id in client_ids:
-                await self.send_to_client(data, client_id)
+            clients_to_notify.update(self.subscriptions[topic])
+
+        if "*" in self.subscriptions:
+            clients_to_notify.update(self.subscriptions["*"])
+
+        # Create a copy of the list to avoid issues if a client disconnects mid-broadcast
+        client_ids = list(clients_to_notify)
+        for client_id in client_ids:
+            await self.send_to_client(data, client_id)
 
     async def send_to_user(self, username: str, data: Any):
         """Sends a JSON message to all active connections for a specific user."""
