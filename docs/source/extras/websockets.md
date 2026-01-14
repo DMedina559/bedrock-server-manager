@@ -21,6 +21,12 @@ The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/we
 -   **Topic-Based Subscriptions**: Manages which clients are subscribed to which topics.
 -   **Message Broadcasting**: Provides methods for sending messages to a single client, all clients subscribed to a specific topic, or all clients for a specific user.
 
+### Wildcard Subscription
+
+Clients can subscribe to the wildcard topic `*`. A client subscribed to `*` will receive **all** broadcast messages sent to any specific topic. This is useful for monitoring tools or dashboards that need a global view of system activity.
+
+If a client is subscribed to both a specific topic (e.g., `event:server_start`) and the wildcard `*`, the system ensures the client only receives the message once.
+
 ### Architecture
 
 1.  A client connects to the `/ws` endpoint.

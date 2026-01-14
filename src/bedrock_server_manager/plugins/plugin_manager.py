@@ -996,6 +996,16 @@ class PluginManager:
                 f"Plugin '{target_plugin.name}' does not have a handler method for event '{event}'. Skipping."
             )
 
+        # Dispatch to the wildcard 'on_any_event' handler, if implemented (default in base is pass)
+        try:
+            target_plugin.on_any_event(event, *args, **kwargs)
+        except Exception as e:
+            logger.error(
+                f"Error encountered in plugin '{target_plugin.name}' during wildcard event handler "
+                f"'on_any_event' for event '{event}': {e}",
+                exc_info=True,
+            )
+
     def _generate_event_key(self, event_name: str, **kwargs) -> str:
         """Generates a unique key for an event instance for re-entrancy checking.
 
