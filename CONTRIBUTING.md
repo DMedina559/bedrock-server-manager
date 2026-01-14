@@ -256,8 +256,25 @@ pytest
 
 ## Reporting Bugs or Requesting Features
 
-*   **Bugs:** If you find a bug, please open an issue on GitHub. Include steps to reproduce, expected behavior, actual behavior, and your environment details.
-*   **Features:** If you have an idea for a new feature, please open a [discussions thread](https://github.com/DMedina559/bedrock-server-manager/discussions) to discuss it before starting development. This helps ensure it aligns with the project's goals.
+To ensure Bedrock Server Manager is maintained effectively, we have an updated issue reporting policy.
+
+**Important:** Any issue or feature request that does not use the provided templates will be closed without review.
+
+### 1. Use the Correct Template
+
+*   🐛 **Bug Report:** Use this for issues with the server manager itself.
+*   ✨ **Feature Request:** Use this for proposing new ideas or enhancements.
+*   **Unsure?** Open a [Discussion](https://github.com/DMedina559/bedrock-server-manager/discussions) instead.
+
+### 2. Fill Out All Required Fields
+
+*   **Environment Details & Logs:** We cannot debug issues without your Environment Details (OS, BSM Version) and Logs.
+*   **Do Not Delete Sections:** Do not delete sections from the template. If a section isn't relevant, mark it as "N/A" rather than removing it.
+
+### 3. Check Before Posting
+
+*   **CLI Issues:** If your issue is related to the CLI, please post it in the [bsm-api-client repository](https://github.com/DMedina559/bsm-api-client/issues).
+*   **Search First:** Always search existing issues and read the [Troubleshooting Docs](https://bedrock-server-manager.readthedocs.io/en/latest/general/troubleshooting.html) before posting.
 
 ## Questions?
 

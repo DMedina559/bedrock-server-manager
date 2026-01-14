@@ -3,47 +3,31 @@ changelog:
     - title: 🚀 Features
       labels:
         - feat
-        - feature
-        - enhancement
-        - Feat
     - title: 🐛 Bug Fixes
       labels:
         - fix
-        - bug
-        - Fix
     - title: 📚 Documentation
       labels:
         - docs
-        - doc
-        - documentation
-        - Docs
     - title: 💄 Style & Refactoring
       labels:
         - style
         - refactor
-        - format
+        - remove
     - title: ⚡ Performance
       labels:
         - perf
-        - performance
     - title: 🧪 Tests
       labels:
         - test
-        - tests
     - title: 📦 Build & CI
       labels:
         - build
         - ci
-        - workflow
-        - actions
     - title: ⬆️ Dependencies
       labels:
         - dependencies
-        - deps
-        - dep
-        - depbot
     - title: 🧹 Chore
       labels:
         - chore
         - misc
-        - remove

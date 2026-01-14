@@ -18,6 +18,8 @@ jobs:
       uses: sphinx-notes/pages@v3
       with:
         documentation_path: ./docs/source
+      env:
+        SPHINX_GITHUB_CHANGELOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 concurrency:
   group: ${{ github.ref }}
