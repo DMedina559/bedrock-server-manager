@@ -55,7 +55,7 @@ The `dev` branch is where all beta developments are merged before being bundled 
 These instructions are for advanced users who want to run the absolute latest code or contribute to the project. Since the project includes a compiled frontend, you cannot simply install directly from the git URL anymore.
 
 **Prerequisites:**
-*   **Python:** Version 3.10 or higher.
+*   **Python:** Version 3.11 or higher.
 *   **Node.js:** Version 20 or higher (required for building the frontend).
 *   **Git:** To clone the repository.
 

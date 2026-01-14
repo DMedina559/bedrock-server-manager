@@ -26,7 +26,7 @@ def startup_checks(
     """
     Performs initial checks and setup when the application starts.
 
-    - Verifies Python version compatibility (>= 3.10).
+    - Verifies Python version compatibility (>= 3.11).
     - Creates essential application directories based on settings.
     - Note: colorama initialization is no longer needed as `click.secho` handles it.
 
@@ -35,8 +35,8 @@ def startup_checks(
         version: The version of the application to display in logs.
     """
     # Python Version Check
-    if sys.version_info < (3, 10):
-        message = "Python version 3.10 or later is required. You are running {}.{}.{}.".format(
+    if sys.version_info < (3, 11):
+        message = "Python version 3.11 or later is required. You are running {}.{}.{}.".format(
             sys.version_info.major, sys.version_info.minor, sys.version_info.micro
         )
         logger.critical(message)
