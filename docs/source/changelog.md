@@ -9,7 +9,7 @@
 
 ```{note}
    **Format Change:** As of version 3.7.2, we have moved to automated changelog generation.
-   Detailed implementation notes are now located within the linked GitHub Pull Requests.
+   Detailed implementation notes are now located within the linked GitHub Pull Requests. (ie. #159)
    ```
 ---
 
