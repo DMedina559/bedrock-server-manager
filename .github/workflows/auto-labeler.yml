@@ -65,7 +65,7 @@ jobs:
               }
 
               // Check for breaking changes
-              if (/^[a-z]+(\([^)]+\))?![:\s]/i.test(title)) {
+              if (/^[a-zA-Z0-9_-]+(\([^)]+\))?\s?!([:\s\/]|$)/i.test(title)) {
                 labelsToAdd.add('breaking');
               }
 
