@@ -40,7 +40,7 @@ Bedrock Server Manager is also available as a docker image. See the [Docker Guid
 ### Step 1: Installation
 
 ```{note}
-This app requires **Python 3.10** or later, and you will need **pip** installed.
+This app requires **Python 3.11** or later, and you will need **pip** installed.
 ```
 
 First, install the main application package from PyPI:
