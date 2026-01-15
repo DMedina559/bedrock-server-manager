@@ -16,24 +16,18 @@ Key components:
 
 """
 
-import os
-import json
-import logging
 import collections.abc
-from typing import Any, Dict, TYPE_CHECKING, Optional
-
+import logging
+import os
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from ..db.database import Database
-from ..db.models import Setting, Base
+
+from ..db.models import Setting
 from ..error import ConfigurationError
-from .const import (
-    package_name,
-    env_name,
-    app_author,
-    get_installed_version,
-)
 from . import bcm_config
+from .const import get_installed_version
 
 logger = logging.getLogger(__name__)
 

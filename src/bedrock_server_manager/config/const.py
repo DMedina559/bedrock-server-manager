@@ -6,8 +6,8 @@ This module centralizes common identifiers, names, paths, and version informatio
 used throughout the Bedrock Server Manager application.
 """
 import os
+from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, Tuple
-from importlib.metadata import version, PackageNotFoundError
 
 # Local imports
 from ..utils import package_finder
