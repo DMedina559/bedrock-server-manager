@@ -209,7 +209,6 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         manager = app_context.manager
         pid_file_path = manager.get_web_ui_pid_path()
         expected_exe = manager.get_web_ui_executable_path()
-        expected_arg = manager.get_web_ui_expected_start_arg()
 
         # Read the PID from the file.
         pid = system_process_utils.read_pid_from_file(pid_file_path)
