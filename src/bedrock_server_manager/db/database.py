@@ -7,14 +7,13 @@ to the database (SQLite, PostgreSQL, etc.) using SQLAlchemy. It manages session
 creation and lifecycle.
 """
 
-import warnings
 from contextlib import contextmanager
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.orm import declarative_base
 
-from ..config.const import package_name
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
 from ..config import bcm_config
+from ..config.const import package_name
 
 Base = declarative_base()
 

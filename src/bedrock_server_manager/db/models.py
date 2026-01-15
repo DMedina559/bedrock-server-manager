@@ -7,8 +7,10 @@ registration tokens, players, and audit logs.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime, Boolean
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
+
 from .database import Base
 
 
