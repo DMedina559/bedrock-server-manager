@@ -1,15 +1,15 @@
 // frontend/src/manage_plugins.js
-import { sendServerActionRequest, showStatusMessage } from './utils.js';
+import { sendServerActionRequest, showStatusMessage } from "./utils.js";
 
 export function initializeManagePluginsPage() {
-  const functionName = 'PluginManagerUI';
+  const functionName = "PluginManagerUI";
 
-  const pluginList = document.getElementById('plugin-list');
-  const pluginItemTemplate = document.getElementById('plugin-item-template');
-  const noPluginsTemplate = document.getElementById('no-plugins-template');
-  const loadErrorTemplate = document.getElementById('load-error-template');
-  const pluginLoader = document.getElementById('plugin-loader');
-  const reloadPluginsBtn = document.getElementById('reload-plugins-btn');
+  const pluginList = document.getElementById("plugin-list");
+  const pluginItemTemplate = document.getElementById("plugin-item-template");
+  const noPluginsTemplate = document.getElementById("no-plugins-template");
+  const loadErrorTemplate = document.getElementById("load-error-template");
+  const pluginLoader = document.getElementById("plugin-loader");
+  const reloadPluginsBtn = document.getElementById("reload-plugins-btn");
 
   if (
     !pluginList ||
@@ -20,14 +20,14 @@ export function initializeManagePluginsPage() {
     !reloadPluginsBtn
   ) {
     console.error(`${functionName}: Critical page elements missing.`);
-    if (pluginList) pluginList.innerHTML = '<li>Page setup error.</li>';
+    if (pluginList) pluginList.innerHTML = "<li>Page setup error.</li>";
     return;
   }
 
   // Check for 'in_setup' parameter and display banner if present
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.has('in_setup')) {
-    const bannerContainer = document.getElementById('setup-banner-container');
+  if (urlParams.has("in_setup")) {
+    const bannerContainer = document.getElementById("setup-banner-container");
     if (bannerContainer) {
       bannerContainer.innerHTML = `
         <div class="setup-banner">
@@ -42,16 +42,23 @@ export function initializeManagePluginsPage() {
     }
   }
 
-  reloadPluginsBtn.addEventListener('click', handleReloadClick);
+  reloadPluginsBtn.addEventListener("click", handleReloadClick);
 
   async function handleReloadClick() {
     reloadPluginsBtn.disabled = true;
     const originalButtonText = reloadPluginsBtn.innerHTML;
-    reloadPluginsBtn.innerHTML = '<div class="spinner-small"></div> Reloading...';
+    reloadPluginsBtn.innerHTML =
+      '<div class="spinner-small"></div> Reloading...';
 
     try {
-      const result = await sendServerActionRequest(null, '/api/plugins/reload', 'PUT', null, reloadPluginsBtn);
-      if (result && result.status === 'success') {
+      const result = await sendServerActionRequest(
+        null,
+        "/api/plugins/reload",
+        "PUT",
+        null,
+        reloadPluginsBtn,
+      );
+      if (result && result.status === "success") {
         await fetchAndRenderPlugins();
       }
     } finally {
@@ -61,14 +68,23 @@ export function initializeManagePluginsPage() {
   }
 
   async function fetchAndRenderPlugins() {
-    pluginLoader.style.display = 'flex';
-    pluginList.querySelectorAll('li:not(#plugin-loader)').forEach((el) => el.remove());
+    pluginLoader.style.display = "flex";
+    pluginList
+      .querySelectorAll("li:not(#plugin-loader)")
+      .forEach((el) => el.remove());
 
     try {
-      const data = await sendServerActionRequest(null, '/api/plugins', 'GET', null, null, true);
-      pluginLoader.style.display = 'none';
+      const data = await sendServerActionRequest(
+        null,
+        "/api/plugins",
+        "GET",
+        null,
+        null,
+        true,
+      );
+      pluginLoader.style.display = "none";
 
-      if (data && data.status === 'success') {
+      if (data && data.status === "success") {
         const plugins = data.data;
         if (plugins && Object.keys(plugins).length > 0) {
           Object.keys(plugins)
@@ -76,12 +92,15 @@ export function initializeManagePluginsPage() {
             .forEach((pluginName) => {
               const pluginData = plugins[pluginName];
               const itemClone = pluginItemTemplate.content.cloneNode(true);
-              itemClone.querySelector('.plugin-name').textContent = pluginName;
-              itemClone.querySelector('.plugin-version').textContent = `v${pluginData.version || 'N/A'}`;
-              const toggleSwitch = itemClone.querySelector('.plugin-toggle-switch');
+              itemClone.querySelector(".plugin-name").textContent = pluginName;
+              itemClone.querySelector(".plugin-version").textContent =
+                `v${pluginData.version || "N/A"}`;
+              const toggleSwitch = itemClone.querySelector(
+                ".plugin-toggle-switch",
+              );
               toggleSwitch.checked = pluginData.enabled;
               toggleSwitch.dataset.pluginName = pluginName;
-              toggleSwitch.addEventListener('change', handlePluginToggle);
+              toggleSwitch.addEventListener("change", handlePluginToggle);
               pluginList.appendChild(itemClone);
             });
         } else {
@@ -91,9 +110,12 @@ export function initializeManagePluginsPage() {
         pluginList.appendChild(loadErrorTemplate.content.cloneNode(true));
       }
     } catch (error) {
-      pluginLoader.style.display = 'none';
+      pluginLoader.style.display = "none";
       pluginList.appendChild(loadErrorTemplate.content.cloneNode(true));
-      showStatusMessage(`Unexpected error fetching plugin data: ${error.message}`, 'error');
+      showStatusMessage(
+        `Unexpected error fetching plugin data: ${error.message}`,
+        "error",
+      );
     }
   }
 
@@ -105,11 +127,11 @@ export function initializeManagePluginsPage() {
     const result = await sendServerActionRequest(
       null,
       `/api/plugins/${pluginName}`,
-      'POST',
+      "POST",
       { enabled: isEnabled },
       toggleSwitch,
     );
-    if (!result || result.status !== 'success') {
+    if (!result || result.status !== "success") {
       toggleSwitch.checked = !isEnabled; // Revert on error
     }
   }

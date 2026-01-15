@@ -2,20 +2,23 @@
  * @fileoverview Frontend JavaScript for the server resource usage monitor page.
  */
 
-import { showStatusMessage } from './utils.js';
-import webSocketClient from './websocket_client.js';
+import { showStatusMessage } from "./utils.js";
+import webSocketClient from "./websocket_client.js";
 
 export function initializeMonitorUsagePage() {
-  const statusElement = document.getElementById('status-info');
+  const statusElement = document.getElementById("status-info");
   if (!statusElement) {
-    console.error('Monitor page error: #status-info element not found.');
+    console.error("Monitor page error: #status-info element not found.");
     return;
   }
 
   const serverName = statusElement.dataset.serverName;
   if (!serverName) {
-    statusElement.textContent = 'Configuration Error: Server name missing.';
-    showStatusMessage('Could not initialize monitoring: server name not found on page.', 'error');
+    statusElement.textContent = "Configuration Error: Server name missing.";
+    showStatusMessage(
+      "Could not initialize monitoring: server name not found on page.",
+      "error",
+    );
     return;
   }
 
@@ -24,29 +27,32 @@ export function initializeMonitorUsagePage() {
   function updateStatusDisplay(processInfo) {
     if (processInfo) {
       statusElement.textContent = `
-PID          : ${processInfo.pid ?? 'N/A'}
-CPU Usage    : ${processInfo.cpu_percent != null ? processInfo.cpu_percent.toFixed(1) + '%' : 'N/A'}
-Memory Usage : ${processInfo.memory_mb != null ? processInfo.memory_mb.toFixed(1) + ' MB' : 'N/A'}
-Uptime       : ${processInfo.uptime ?? 'N/A'}
+PID          : ${processInfo.pid ?? "N/A"}
+CPU Usage    : ${processInfo.cpu_percent != null ? processInfo.cpu_percent.toFixed(1) + "%" : "N/A"}
+Memory Usage : ${processInfo.memory_mb != null ? processInfo.memory_mb.toFixed(1) + " MB" : "N/A"}
+Uptime       : ${processInfo.uptime ?? "N/A"}
             `.trim();
     } else {
-      statusElement.textContent = 'Server Status: STOPPED or process info not found.';
+      statusElement.textContent =
+        "Server Status: STOPPED or process info not found.";
     }
   }
 
   async function pollStatus() {
     try {
       // Use fetch directly as sendServerActionRequest is for actions, not silent polling
-      const response = await fetch(`/api/server/${encodeURIComponent(serverName)}/process_info`);
+      const response = await fetch(
+        `/api/server/${encodeURIComponent(serverName)}/process_info`,
+      );
       if (!response.ok) {
         throw new Error(`API request failed with status ${response.status}`);
       }
       const data = await response.json();
 
-      if (data && data.status === 'success') {
+      if (data && data.status === "success") {
         updateStatusDisplay(data.data?.process_info);
-      } else if (data && data.status === 'error') {
-        statusElement.textContent = `Error: ${data.message || 'API error.'}`;
+      } else if (data && data.status === "error") {
+        statusElement.textContent = `Error: ${data.message || "API error."}`;
       } else {
         updateStatusDisplay(null);
       }
@@ -59,9 +65,13 @@ Uptime       : ${processInfo.uptime ?? 'N/A'}
   function setupWebSocket() {
     const topic = `resource-monitor:${serverName}`;
 
-    document.addEventListener('websocket-message', (event) => {
+    document.addEventListener("websocket-message", (event) => {
       const message = event.detail;
-      if (message && message.topic === topic && message.type === 'resource_update') {
+      if (
+        message &&
+        message.topic === topic &&
+        message.type === "resource_update"
+      ) {
         const processInfo = message.data?.process_info;
         updateStatusDisplay(processInfo);
       }
@@ -69,7 +79,7 @@ Uptime       : ${processInfo.uptime ?? 'N/A'}
 
     const startPolling = () => {
       if (!pollingIntervalId) {
-        console.warn('Monitor Page: Starting polling (fallback).');
+        console.warn("Monitor Page: Starting polling (fallback).");
         pollStatus(); // Initial poll
         pollingIntervalId = setInterval(pollStatus, 2000);
       }
@@ -80,7 +90,7 @@ Uptime       : ${processInfo.uptime ?? 'N/A'}
       startPolling();
     } else {
       // Listen for fallback event (in case it happens later)
-      document.addEventListener('websocket-fallback', () => {
+      document.addEventListener("websocket-fallback", () => {
         startPolling();
       });
 
@@ -98,7 +108,7 @@ Uptime       : ${processInfo.uptime ?? 'N/A'}
   setupWebSocket();
 
   // Cleanup on page unload
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener("beforeunload", () => {
     if (pollingIntervalId) {
       clearInterval(pollingIntervalId);
     }
