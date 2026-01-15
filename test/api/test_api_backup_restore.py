@@ -1,8 +1,6 @@
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from bedrock_server_manager.api.backup_restore import (
     backup_all,
@@ -14,7 +12,6 @@ from bedrock_server_manager.api.backup_restore import (
     restore_config_file,
     restore_world,
 )
-from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentError
 
 
 class TestBackupRestore:
@@ -87,7 +84,6 @@ class TestBackupRestore:
         assert result["status"] == "success"
 
     def test_restore_world(self, app_context, tmp_path):
-        server = app_context.get_server("test_server")
         backup_file = tmp_path / "world.mcworld"
         with open(backup_file, "wb") as f:
             import zipfile
@@ -104,7 +100,6 @@ class TestBackupRestore:
         assert result["status"] == "success"
 
     def test_restore_config_file(self, app_context, tmp_path):
-        server = app_context.get_server("test_server")
         backup_file = tmp_path / "server.properties_backup_20230101_000000.properties"
         backup_file.touch()
 

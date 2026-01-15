@@ -40,6 +40,7 @@ from ..error import (
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 # Local application imports.
 from .utils import server_lifecycle_manager
@@ -100,9 +101,6 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
             "status": "error",
             "message": f"Unexpected error getting world name: {e}",
         }
-
-
-from ..plugins.event_trigger import trigger_plugin_event
 
 
 @plugin_method("export_world")

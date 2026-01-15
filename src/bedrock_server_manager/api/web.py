@@ -17,10 +17,10 @@ often used by CLI commands or service management scripts.
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 try:
-    import psutil
+    import psutil  # noqa: F401
 
     PSUTIL_AVAILABLE = True
 except ImportError:
@@ -40,17 +40,15 @@ from ..error import (
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 logger = logging.getLogger(__name__)
 
 
-from ..plugins.event_trigger import trigger_plugin_event
-
-
 @trigger_plugin_event(before="before_web_server_start", after="after_web_server_start")
-def start_web_server_api(
+def start_web_server_api(  # noqa: C901
     app_context: AppContext,
-    host: str = None,
+    host: Optional[str] = None,
     port: Optional[int] = None,
     debug: bool = False,
     mode: str = "direct",
@@ -119,7 +117,6 @@ def start_web_server_api(
             logger.info("API: Starting web server in detached mode...")
             pid_file_path = manager.get_web_ui_pid_path()
             expected_exe = manager.get_web_ui_executable_path()
-            expected_arg = manager.get_web_ui_expected_start_arg()
 
             # Check for an existing, valid PID file.
             existing_pid = None
@@ -132,7 +129,9 @@ def start_web_server_api(
             if existing_pid and system_process_utils.is_process_running(existing_pid):
                 try:
                     system_process_utils.verify_process_identity(
-                        existing_pid, expected_exe, expected_arg
+                        existing_pid,
+                        expected_exe,
+                        manager.get_web_ui_expected_start_arg(),  # type: ignore[arg-type]
                     )
                     # If verification passes, the server is already running.
                     raise ServerProcessError(
@@ -253,7 +252,9 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
 
 
 @plugin_method("get_web_server_status")
-def get_web_server_status_api(app_context: AppContext) -> Dict[str, Any]:
+def get_web_server_status_api(  # noqa: C901
+    app_context: AppContext,
+) -> Dict[str, Any]:
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
@@ -324,7 +325,7 @@ def get_web_server_status_api(app_context: AppContext) -> Dict[str, Any]:
         # Case: Process is running, verify it's the correct one.
         try:
             system_process_utils.verify_process_identity(
-                pid, expected_exe, expected_arg
+                pid, expected_exe, expected_arg  # type: ignore[arg-type]
             )
             return {
                 "status": "RUNNING",

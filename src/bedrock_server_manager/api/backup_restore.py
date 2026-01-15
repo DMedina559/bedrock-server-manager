@@ -26,7 +26,7 @@ to safely stop and restart the server. All functions are exposed to the plugin s
 import logging
 import os
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ..context import AppContext
 from ..error import (
@@ -162,7 +162,7 @@ def backup_world(
                 backup_file = server._backup_world_data_internal()
             return {
                 "status": "success",
-                "message": f"World backup '{os.path.basename(backup_file)}' created successfully for server '{server_name}'.",
+                "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
             }
 
         except BSMError as e:
@@ -257,7 +257,7 @@ def backup_config_file(
                 backup_file = server._backup_config_file_internal(filename_base)
             return {
                 "status": "success",
-                "message": f"Config file '{filename_base}' backed up as '{os.path.basename(backup_file)}' successfully.",
+                "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
             }
 
         except (BSMError, FileNotFoundError) as e:
@@ -650,7 +650,7 @@ def restore_config_file(
 
             return {
                 "status": "success",
-                "message": f"Config file '{os.path.basename(restored_file)}' restored successfully from '{backup_filename}'.",
+                "message": f"Config file '{os.path.basename(str(restored_file))}' restored successfully from '{backup_filename}'.",
             }
 
         except (BSMError, FileNotFoundError) as e:
@@ -675,7 +675,9 @@ def restore_config_file(
 
 @plugin_method("prune_old_backups")
 @trigger_plugin_event(before="before_prune_backups", after="after_prune_backups")
-def prune_old_backups(server_name: str, app_context: AppContext) -> Dict[str, str]:
+def prune_old_backups(  # noqa: C901
+    server_name: str, app_context: AppContext
+) -> Dict[str, str]:
     """Prunes old backups for a server based on retention settings.
 
     This operation is thread-safe and guarded by a lock. It iteratively calls

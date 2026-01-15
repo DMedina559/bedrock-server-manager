@@ -17,19 +17,18 @@ and by triggering various plugin events during server operations.
 """
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Local application imports.
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
-from ..core.system import get_bedrock_launcher_pid_file_path, remove_pid_file_if_exists
+from ..core.system import remove_pid_file_if_exists
 from ..error import (
     BlockedCommandError,
     BSMError,
     InvalidServerNameError,
     MissingArgumentError,
     ServerError,
-    UserInputError,
 )
 
 # Plugin system imports to bridge API functionality.
@@ -72,18 +71,18 @@ def get_server_setting(
         server = app_context.get_server(server_name)
         # Use the internal method to access any key
         value = server._manage_json_config(key, "read")
-        return {"status": "success", "value": value}
+        return {"status": "success", "value": value}  # type: ignore[no-any-return]
     except BSMError as e:
         logger.error(
             f"API: Error reading setting '{key}' for server '{server_name}': {e}"
         )
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": str(e)}  # type: ignore[no-any-return]
     except Exception as e:
         logger.error(
             f"API: Unexpected error reading setting for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": "An unexpected error occurred."}
+        return {"status": "error", "message": "An unexpected error occurred."}  # type: ignore[no-any-return]
 
 
 def set_server_setting(
@@ -233,7 +232,7 @@ def get_all_server_settings(
 
 @plugin_method("start_server")
 @trigger_plugin_event(before="before_server_start", after="after_server_start")
-def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+def start_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -277,7 +276,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 @plugin_method("stop_server")
 @trigger_plugin_event(before="before_server_stop", after="after_server_stop")
-def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
+def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Stops the specified Bedrock server.
 
     Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
@@ -323,13 +322,13 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
         return {
             "status": "success",
             "message": f"Server '{server_name}' stopped successfully.",
-        }
+        }  # type: ignore[no-any-return]
     except BSMError as e:
         logger.error(f"API: Failed to stop server '{server_name}': {e}", exc_info=True)
         return {
             "status": "error",
             "message": f"Failed to stop server '{server_name}': {e}",
-        }
+        }  # type: ignore[no-any-return]
     except Exception as e:
         logger.error(
             f"API: Unexpected error stopping server '{server_name}': {e}", exc_info=True
@@ -337,7 +336,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
         return {
             "status": "error",
             "message": f"Unexpected error stopping server '{server_name}': {e}",
-        }
+        }  # type: ignore[no-any-return]
     finally:
         # Always attempt to clean up the PID file as a final step.
         if server:
@@ -352,11 +351,11 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
 
 
 @plugin_method("restart_server")
-def restart_server(
+def restart_server(  # noqa: C901
     server_name: str,
     app_context: AppContext,
     send_message: bool = True,
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """Restarts the specified Bedrock server by orchestrating stop and start.
 
     This function internally calls :func:`~.stop_server` and then
@@ -438,19 +437,19 @@ def restart_server(
         return {
             "status": "success",
             "message": f"Server '{server_name}' restarted successfully.",
-        }
+        }  # type: ignore[no-any-return]
 
     except BSMError as e:
         logger.error(
             f"API: Failed to restart server '{server_name}': {e}", exc_info=True
         )
-        return {"status": "error", "message": f"Restart failed: {e}"}
+        return {"status": "error", "message": f"Restart failed: {e}"}  # type: ignore[no-any-return]
     except Exception as e:
         logger.error(
             f"API: Unexpected error during restart for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": f"Unexpected error during restart: {e}"}
+        return {"status": "error", "message": f"Unexpected error during restart: {e}"}  # type: ignore[no-any-return]
 
 
 @plugin_method("send_command")

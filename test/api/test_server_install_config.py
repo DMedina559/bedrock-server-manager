@@ -1,8 +1,6 @@
 import json
 import os
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from bedrock_server_manager.api.server_install_config import (
     add_players_to_allowlist_api,
@@ -16,7 +14,6 @@ from bedrock_server_manager.api.server_install_config import (
     update_server,
     validate_server_property_value,
 )
-from bedrock_server_manager.error import UserInputError
 
 
 class TestAllowlist:

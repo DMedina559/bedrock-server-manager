@@ -18,7 +18,7 @@ to manage player data globally across all server instances.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..context import AppContext
 

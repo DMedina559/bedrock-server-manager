@@ -12,7 +12,7 @@ plugins (via methods exposed by
 programmatically access and modify these global settings.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ..context import AppContext
 

@@ -121,7 +121,7 @@ def set_plugin_status(
             "status": "success",
             "message": f"Plugin '{plugin_name}' has been {action}. Reload plugins for changes to take full effect.",
         }
-    except UserInputError as e:
+    except UserInputError:
         raise
     except Exception as e:
         logger.error(
@@ -169,7 +169,7 @@ def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
 def trigger_external_plugin_event_api(
     event_name: str,
     app_context: AppContext,
-    payload: Dict[str, Any] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Allows an external source (like a web route or CLI) to trigger a custom plugin event.

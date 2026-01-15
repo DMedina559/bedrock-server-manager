@@ -20,7 +20,7 @@ These functions are exposed to the plugin system via
 intended for use by UIs, CLIs, or other high-level components.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ..context import AppContext
 

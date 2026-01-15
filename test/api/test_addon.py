@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,7 +15,6 @@ class TestImportAddon:
     ):
         addon_file = tmp_path / "test.mcpack"
         addon_file.write_text("dummy content")
-        server = app_context.get_server("test_server")
 
         result = import_addon("test_server", str(addon_file), app_context=app_context)
         assert result["status"] == "success"
@@ -30,7 +29,6 @@ class TestImportAddon:
     ):
         addon_file = tmp_path / "test.mcpack"
         addon_file.write_text("dummy content")
-        server = app_context.get_server("test_server")
 
         result = import_addon(
             "test_server",

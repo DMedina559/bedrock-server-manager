@@ -1,5 +1,5 @@
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -10,7 +10,6 @@ from bedrock_server_manager.api.utils import (
     validate_server_exist,
     validate_server_name_format,
 )
-from bedrock_server_manager.error import BSMError, ServerStartError
 
 
 class TestServerValidation:

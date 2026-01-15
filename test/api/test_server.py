@@ -1,6 +1,5 @@
-import json
 import os
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -20,8 +19,6 @@ from bedrock_server_manager.error import BlockedCommandError, ServerNotRunningEr
 
 class TestServerSettings:
     def test_get_server_setting(self, app_context, db_session):
-        from bedrock_server_manager.db.models import Server
-
         # First, set a value so we have something to get
         set_server_setting(
             "test_server", "custom.some_key", "some_value", app_context=app_context

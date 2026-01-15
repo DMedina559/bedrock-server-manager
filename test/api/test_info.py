@@ -1,6 +1,4 @@
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from bedrock_server_manager.api.info import (
     get_server_config_status,

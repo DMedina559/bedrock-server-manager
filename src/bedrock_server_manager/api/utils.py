@@ -21,7 +21,7 @@ application logic to encapsulate common or complex operations.
 """
 import logging
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ..context import AppContext
 
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @plugin_method("validate_server_exist")
-def validate_server_exist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+def validate_server_exist(server_name: Any, app_context: AppContext) -> Dict[str, Any]:
     """Validates if a server is correctly installed.
 
     This function checks for the existence of the server's directory and its
@@ -66,7 +66,7 @@ def validate_server_exist(server_name: str, app_context: AppContext) -> Dict[str
     logger.debug(f"API: Validating existence of server '{server_name}'...")
     try:
         # Instantiating BedrockServer also validates underlying configurations.
-        server = app_context.get_server(server_name)
+        server = app_context.get_server(str(server_name))
 
         # is_installed() returns a simple boolean.
         if server.is_installed():
@@ -345,7 +345,7 @@ def server_lifecycle_manager(
                 try:
                     # Use the API function to ensure detached mode and proper handling.
                     start_result = api_start_server(
-                        server_name, app_context=app_context
+                        str(server_name), app_context=app_context
                     )
                     if start_result.get("status") == "error":
                         raise ServerStartError(
