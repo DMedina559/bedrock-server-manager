@@ -3,10 +3,9 @@
 Provides utility helper functions for gettings various variables.
 """
 
-import platform
 import logging
+import platform
 import random
-from typing import Optional
 
 # Local imports
 from bedrock_server_manager.config.splash_text import SPLASH_TEXTS

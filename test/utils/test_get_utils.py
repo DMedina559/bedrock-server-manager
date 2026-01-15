@@ -1,11 +1,12 @@
-import pytest
 from unittest.mock import patch
 
+import pytest
+
+from bedrock_server_manager.error import SystemError
 from bedrock_server_manager.utils.get_utils import (
     _get_splash_text,
     get_operating_system_type,
 )
-from bedrock_server_manager.error import SystemError
 
 
 class TestGetSplashText:

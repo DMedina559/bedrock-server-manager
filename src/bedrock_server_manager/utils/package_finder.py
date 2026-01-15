@@ -7,10 +7,10 @@ installation schemes (system-wide, user).
 """
 
 import importlib.metadata
-import sys
 import logging
 import platform
 import site
+import sys
 from pathlib import Path
 from typing import Optional
 

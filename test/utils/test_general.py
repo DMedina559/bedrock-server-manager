@@ -1,10 +1,10 @@
-import pytest
 import os
-import sys
-from unittest.mock import patch, MagicMock
 from collections import namedtuple
+from unittest.mock import MagicMock, patch
 
-from bedrock_server_manager.utils.general import startup_checks, get_timestamp
+import pytest
+
+from bedrock_server_manager.utils.general import get_timestamp, startup_checks
 
 
 class TestStartupChecks:

@@ -5,15 +5,13 @@ Provides general utility functions for the application.
 Includes startup checks, timestamp generation, and interactive prompts.
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 from datetime import datetime
 from typing import Optional
 
-
 from ..context import AppContext
-
 
 logger = logging.getLogger(__name__)
 
