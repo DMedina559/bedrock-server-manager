@@ -37,7 +37,7 @@ dependencies = [
     "sqlalchemy >=2.0.0,<2.1",
     "appdirs >=1.4.4,<1.5",
     "alembic >=1.16,<1.19",
-    "mcstatus >=12.0,<12.1",
+    "mcstatus >=12.0,<12.2",
 ]
 
 keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "fastapi"]
