@@ -1,7 +1,7 @@
 import os
-import subprocess
 from unittest.mock import MagicMock, patch
 
+import psutil
 import pytest
 
 from bedrock_server_manager.core.system.process import (
@@ -19,12 +19,8 @@ from bedrock_server_manager.core.system.process import (
     write_pid_to_file,
 )
 from bedrock_server_manager.error import (
-    AppFileNotFoundError,
     FileOperationError,
-    MissingArgumentError,
-    PermissionsError,
     ServerProcessError,
-    SystemError,
 )
 
 
@@ -165,9 +161,6 @@ def test_launch_detached_process(mock_guarded_process):
         pid = launch_detached_process(["my_command"], "launcher.pid")
         assert pid == 12345
         mock_write_pid.assert_called_once_with("launcher.pid", 12345)
-
-
-import psutil
 
 
 @patch("bedrock_server_manager.core.system.process.PSUTIL_AVAILABLE", True)

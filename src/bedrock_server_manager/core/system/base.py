@@ -115,7 +115,7 @@ def check_internet_connectivity(
         raise InternetConnectivityError(error_msg) from e
 
 
-def set_server_folder_permissions(server_dir: str) -> None:
+def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
     """Sets appropriate permissions for a Bedrock server installation directory.
 
     This function adjusts permissions recursively for the specified `server_dir`

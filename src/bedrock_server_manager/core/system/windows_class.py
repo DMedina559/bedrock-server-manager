@@ -17,12 +17,10 @@ functionality.
 """
 import logging
 import os
-import re
-import subprocess
 import sys
 import threading
-import time
-from typing import Any, Dict, List, Optional
+
+# typing imports removed as they were unused
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:

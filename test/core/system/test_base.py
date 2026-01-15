@@ -2,6 +2,7 @@ import os
 import shutil
 import stat
 import tempfile
+from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -141,7 +142,6 @@ def test_delete_path_robustly_non_existent_path(temp_server_dir):
 
 
 # Tests for ResourceMonitor
-from collections import namedtuple
 
 
 @patch("bedrock_server_manager.core.system.base.PSUTIL_AVAILABLE", True)

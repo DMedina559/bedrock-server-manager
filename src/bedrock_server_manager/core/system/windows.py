@@ -392,7 +392,7 @@ def disable_windows_service(service_name: str) -> None:
             win32service.CloseServiceHandle(scm_handle)
 
 
-def delete_windows_service(service_name: str) -> None:
+def delete_windows_service(service_name: str) -> None:  # noqa: C901
     """Deletes a Windows service and performs associated cleanup.
 
     This function interacts with the Windows Service Control Manager (SCM) to

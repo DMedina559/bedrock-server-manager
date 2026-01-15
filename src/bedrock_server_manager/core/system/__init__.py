@@ -31,6 +31,7 @@ __all__ = [
     # From process.py
     "GuardedProcess",
     "get_pid_file_path",
+    "get_bedrock_launcher_pid_file_path",
     "read_pid_from_file",
     "write_pid_to_file",
     "is_process_running",
