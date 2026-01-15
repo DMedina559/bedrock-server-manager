@@ -1,4 +1,3 @@
-import unittest
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +9,6 @@ from bedrock_server_manager.cli.service import (
     enable_web_service_cli,
     remove_web_service_cli,
     status_web_service_cli,
-    service,
 )
 
 

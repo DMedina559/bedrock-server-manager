@@ -1,6 +1,7 @@
+from unittest.mock import MagicMock, call
+
 import pytest
 from click.testing import CliRunner
-from unittest.mock import MagicMock, patch
 
 from bedrock_server_manager.cli.database import upgrade
 from bedrock_server_manager.db.models import User
@@ -22,9 +23,6 @@ def mock_app_context(mocker):
     # This is the key change to fix the unit tests
     mock_app_context.db.get_database_url.return_value = "sqlite:////fake/db.sqlite3"
     return mock_app_context, mock_db_session
-
-
-from unittest.mock import call
 
 
 def test_upgrade_sqlite_backup_success(runner, mock_app_context, mocker):
@@ -185,10 +183,12 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
     on an unmanaged database, ensuring the app's full startup sequence is tested.
     """
     import json
-    from sqlalchemy import create_engine, inspect
-    from bedrock_server_manager.db.models import Base
-    from bedrock_server_manager.__main__ import create_cli_app
+
     from click.testing import CliRunner
+    from sqlalchemy import create_engine, inspect
+
+    from bedrock_server_manager.__main__ import create_cli_app
+    from bedrock_server_manager.db.models import Base
 
     # 1. Setup Environment
     config_dir = tmp_path / "config"
@@ -210,8 +210,9 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
     )
 
     # Reload the config module to ensure it uses the monkeypatched path
-    from bedrock_server_manager.config import bcm_config
     import importlib
+
+    from bedrock_server_manager.config import bcm_config
 
     importlib.reload(bcm_config)
 
@@ -244,10 +245,12 @@ def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
     table exists but is empty (contains NULL).
     """
     import json
-    from sqlalchemy import create_engine, inspect, text
-    from bedrock_server_manager.db.models import Base
-    from bedrock_server_manager.__main__ import create_cli_app
+
     from click.testing import CliRunner
+    from sqlalchemy import create_engine, inspect, text
+
+    from bedrock_server_manager.__main__ import create_cli_app
+    from bedrock_server_manager.db.models import Base
 
     # 1. Setup Environment
     config_dir = tmp_path / "config"
@@ -264,8 +267,9 @@ def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
     )
 
     # Reload the config module to ensure it uses the monkeypatched path
-    from bedrock_server_manager.config import bcm_config
     import importlib
+
+    from bedrock_server_manager.config import bcm_config
 
     importlib.reload(bcm_config)
 

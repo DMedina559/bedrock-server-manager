@@ -1,8 +1,5 @@
-from unittest.mock import patch, MagicMock
-import pytest
-
-
 import os
+from unittest.mock import MagicMock, patch
 
 
 def test_list_worlds_api_route_success(authenticated_client, app_context):

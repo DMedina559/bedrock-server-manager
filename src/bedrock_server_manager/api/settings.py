@@ -12,18 +12,16 @@ plugins (via methods exposed by
 programmatically access and modify these global settings.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
+
+from ..context import AppContext
+
+# Local application imports.
+from ..error import BSMError, MissingArgumentError
+from ..logging import setup_logging
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
-from ..logging import setup_logging
-
-# Local application imports.
-from ..error import (
-    BSMError,
-    MissingArgumentError,
-)
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 

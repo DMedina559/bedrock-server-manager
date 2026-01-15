@@ -1,9 +1,8 @@
-import time
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 from bedrock_server_manager.core.bedrock_process_manager import BedrockProcessManager
-from bedrock_server_manager.error import ServerStartError
 
 
 @pytest.fixture

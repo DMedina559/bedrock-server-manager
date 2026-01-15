@@ -17,30 +17,23 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction, inc
     - Providing a mechanism to reload all plugins.
 
 """
-import os
 import importlib.util
 import inspect
 import logging
+import os
 import threading
-import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Type, Callable, Tuple, TYPE_CHECKING
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
 if TYPE_CHECKING:
     from ..context import AppContext
 
+from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
-from ..config import (
-    GUARD_VARIABLE,
-    DEFAULT_ENABLED_PLUGINS,
-    EVENT_IDENTITY_KEYS,
-)
 from ..config.settings import Settings
 from ..db.models import Plugin
-from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
+from .plugin_base import PluginBase
 
 # Standard logger for this module.
 logger = logging.getLogger(__name__)
@@ -120,7 +113,7 @@ class PluginManager:
             Returns an empty dict if loading fails or the file is not found.
         """
         assert self.app_context is not None
-        with self.app_context.db.session_manager() as db:
+        with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
             return {plugin.plugin_name: plugin.config for plugin in plugins}
 
@@ -267,7 +260,7 @@ class PluginManager:
             )
         return None
 
-    def _synchronize_config_with_disk(self):
+    def _synchronize_config_with_disk(self):  # noqa: C901
         """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
 
         This crucial method ensures the ``plugins.json`` configuration file is
@@ -484,7 +477,7 @@ class PluginManager:
                 "Plugin configuration synchronization complete. No changes detected."
             )
 
-    def load_plugins(self):
+    def load_plugins(self):  # noqa: C901
         """Discovers, validates, and loads all enabled plugins.
 
         This method orchestrates the entire plugin loading process:

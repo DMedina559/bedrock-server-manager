@@ -3,12 +3,12 @@
  * @fileoverview Handles frontend authentication logic, specifically login.
  */
 
-import { showStatusMessage } from './utils.js';
+import { showStatusMessage } from "./utils.js";
 
 export function initializeLoginPage() {
-  const loginForm = document.getElementById('login-form');
+  const loginForm = document.getElementById("login-form");
   if (loginForm) {
-    loginForm.addEventListener('submit', (event) => {
+    loginForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const loginButton = loginForm.querySelector('button[type="submit"]');
       handleLoginAttempt(loginButton);
@@ -17,15 +17,18 @@ export function initializeLoginPage() {
 }
 
 async function handleLoginAttempt(buttonElement) {
-  const functionName = 'handleLoginAttempt';
+  const functionName = "handleLoginAttempt";
   console.log(`${functionName}: Initiated.`);
 
-  const usernameInput = document.getElementById('username');
-  const passwordInput = document.getElementById('password');
+  const usernameInput = document.getElementById("username");
+  const passwordInput = document.getElementById("password");
 
   if (!usernameInput || !passwordInput) {
     console.error(`${functionName}: Login form elements not found.`);
-    showStatusMessage('Internal page error: Login form elements missing.', 'error');
+    showStatusMessage(
+      "Internal page error: Login form elements missing.",
+      "error",
+    );
     return;
   }
 
@@ -33,29 +36,29 @@ async function handleLoginAttempt(buttonElement) {
   const password = passwordInput.value;
 
   if (!username) {
-    showStatusMessage('Username is required.', 'warning');
+    showStatusMessage("Username is required.", "warning");
     usernameInput.focus();
     return;
   }
   if (!password) {
-    showStatusMessage('Password is required.', 'warning');
+    showStatusMessage("Password is required.", "warning");
     passwordInput.focus();
     return;
   }
 
   if (buttonElement) buttonElement.disabled = true;
-  showStatusMessage('Attempting login...', 'info');
+  showStatusMessage("Attempting login...", "info");
 
   const formData = new FormData();
-  formData.append('username', username);
-  formData.append('password', password);
+  formData.append("username", username);
+  formData.append("password", password);
 
   try {
-    const response = await fetch('/auth/token', {
-      method: 'POST',
+    const response = await fetch("/auth/token", {
+      method: "POST",
       body: formData,
       headers: {
-        Accept: 'application/json',
+        Accept: "application/json",
       },
     });
 
@@ -63,24 +66,28 @@ async function handleLoginAttempt(buttonElement) {
 
     if (response.ok && responseData.access_token) {
       if (responseData.access_token) {
-        localStorage.setItem('jwt_token', responseData.access_token);
+        localStorage.setItem("jwt_token", responseData.access_token);
       }
-      showStatusMessage(responseData.message || 'Login successful! Redirecting...', 'success');
+      showStatusMessage(
+        responseData.message || "Login successful! Redirecting...",
+        "success",
+      );
 
-      const nextUrl = new URLSearchParams(window.location.search).get('next');
+      const nextUrl = new URLSearchParams(window.location.search).get("next");
       setTimeout(() => {
-        window.location.href = nextUrl || '/';
+        window.location.href = nextUrl || "/";
       }, 500);
     } else {
-      const errorMessage = responseData.detail || responseData.message || 'Login failed.';
-      showStatusMessage(errorMessage, 'error');
-      if (passwordInput) passwordInput.value = '';
+      const errorMessage =
+        responseData.detail || responseData.message || "Login failed.";
+      showStatusMessage(errorMessage, "error");
+      if (passwordInput) passwordInput.value = "";
       if (buttonElement) buttonElement.disabled = false;
     }
   } catch (error) {
     const errorMsg = `Network or processing error during login: ${error.message}`;
-    showStatusMessage(errorMsg, 'error');
-    if (passwordInput) passwordInput.value = '';
+    showStatusMessage(errorMsg, "error");
+    if (passwordInput) passwordInput.value = "";
     if (buttonElement) buttonElement.disabled = false;
   }
 }

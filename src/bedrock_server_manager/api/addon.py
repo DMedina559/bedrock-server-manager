@@ -17,24 +17,26 @@ optionally manage the server's state (stopping and restarting) during these
 operations to ensure data integrity. All primary functions are exposed to the
 plugin system.
 """
-import os
 import logging
+import os
 import threading
-from typing import Dict, Optional
+from typing import Dict
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
-
-# Local application imports.
-from .utils import server_lifecycle_manager
+from ..context import AppContext
 from ..error import (
+    AppFileNotFoundError,
     BSMError,
     MissingArgumentError,
-    AppFileNotFoundError,
     SendCommandError,
     ServerNotRunningError,
 )
-from ..context import AppContext
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
+
+# Local application imports.
+from .utils import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +46,9 @@ logger = logging.getLogger(__name__)
 _addon_lock = threading.Lock()
 
 
-from ..plugins.event_trigger import trigger_plugin_event
-
-
 @plugin_method("import_addon")
 @trigger_plugin_event(before="before_addon_import", after="after_addon_import")
-def import_addon(
+def import_addon(  # noqa: C901
     server_name: str,
     addon_file_path: str,
     app_context: AppContext,

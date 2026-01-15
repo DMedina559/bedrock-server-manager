@@ -9,24 +9,24 @@ via lazy loading and property accessors.
 """
 from __future__ import annotations
 
-import asyncio
-from typing import TYPE_CHECKING, Dict, Optional
-
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
+    from asyncio import AbstractEventLoop
+
+    from fastapi.templating import Jinja2Templates
+
     from .config.settings import Settings
+    from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
     from .core.manager import BedrockServerManager
-    from .plugins.plugin_manager import PluginManager
-    from .core.bedrock_process_manager import BedrockProcessManager
     from .db.database import Database
+    from .plugins.plugin_manager import PluginManager
+    from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
-    from .web.resource_monitor import ResourceMonitor
-    from fastapi.templating import Jinja2Templates
-    from asyncio import AbstractEventLoop
 
 
 class AppContext:
@@ -240,7 +240,8 @@ class AppContext:
         """
         if self._templates is None:
             from fastapi.templating import Jinja2Templates
-            from .config import get_installed_version, app_name_title, SCRIPT_DIR
+
+            from .config import SCRIPT_DIR, app_name_title, get_installed_version
             from .utils import get_utils
 
             app_path = os.path.join(SCRIPT_DIR, "web", "app.py")

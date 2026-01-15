@@ -1,6 +1,7 @@
 # autostart_servers.py
-from bedrock_server_manager import PluginBase
 from typing import Any
+
+from bedrock_server_manager import PluginBase
 
 
 class AutostartServers(PluginBase):

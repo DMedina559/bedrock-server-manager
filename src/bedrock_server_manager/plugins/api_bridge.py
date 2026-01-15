@@ -9,18 +9,16 @@ then provided with an instance of the `PluginAPI` class, which grants dynamic,
 safe, and version-agnostic access to these registered functions. It also
 facilitates inter-plugin communication through a custom event system.
 """
-import logging
-import inspect
 import functools
-from typing import Dict, Any, Callable, TYPE_CHECKING, TypeVar, List
-
-from typing import Optional
+import inspect
+import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar
 
 if TYPE_CHECKING:
     # Used for type hinting to avoid circular import at runtime.
     # The PluginManager is central to plugin operations and event handling.
-    from .plugin_manager import PluginManager
     from ..context import AppContext
+    from .plugin_manager import PluginManager
 
 # Initialize a logger for this module.
 # Log messages will be prefixed with "bedrock_server_manager.plugins.api_bridge".

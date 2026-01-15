@@ -1,8 +1,6 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from bedrock_server_manager.api.misc import prune_download_cache
-from bedrock_server_manager.error import MissingArgumentError, UserInputError
 
 
 class TestPruneDownloadCache:

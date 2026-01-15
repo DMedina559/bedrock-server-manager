@@ -6,33 +6,24 @@ This module provides endpoints for listing, installing, and managing content
 such as worlds (.mcworld) and addons (.mcaddon, .mcpack) for Bedrock servers.
 It includes both HTML view routes and JSON API routes.
 """
-import os
 import logging
-from typing import Dict, Any, List, Optional
+import os
+from typing import List, Optional
 
-from fastapi import (
-    APIRouter,
-    Request,
-    Depends,
-    HTTPException,
-    status,
-    Path,
-)
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
-from ..schemas import ActionResponse, BaseApiResponse, User
-from ..dependencies import get_templates, get_app_context, validate_server_exists
-from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
-from ...api import (
-    world as world_api,
-    addon as addon_api,
-    application as app_api,
-    utils as utils_api,
-)
-from ...error import BSMError, UserInputError
+from ...api import addon as addon_api
+from ...api import application as app_api
+from ...api import utils as utils_api
+from ...api import world as world_api
 from ...context import AppContext
+from ...error import BSMError, UserInputError
+from ..auth_utils import get_admin_user, get_moderator_user
+from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..schemas import ActionResponse, BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
 

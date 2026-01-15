@@ -1,5 +1,5 @@
-from unittest.mock import patch, MagicMock
-import pytest
+import os
+from unittest.mock import MagicMock, patch
 
 
 def test_get_server_running_status_api_route_success(
@@ -166,9 +166,6 @@ def test_get_all_players_api_route_failure(mock_get_players, authenticated_clien
         "A critical unexpected server error occurred while fetching players."
         in response.json()["detail"]
     )
-
-
-import os
 
 
 def test_prune_downloads_api_route_success(authenticated_client, app_context):

@@ -1,21 +1,9 @@
-import pytest
 import os
-import shutil
-import tempfile
-import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from bedrock_server_manager.core.server.state_mixin import ServerStateMixin
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.core.server.config_management_mixin import (
-    ServerConfigManagementMixin,
-)
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import (
-    UserInputError,
-    AppFileNotFoundError,
-    ConfigParseError,
-)
+import pytest
+
+from bedrock_server_manager.error import AppFileNotFoundError, ConfigParseError
 
 
 def test_get_status_running(real_bedrock_server):

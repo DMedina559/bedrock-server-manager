@@ -1,4 +1,4 @@
-import { showStatusMessage, sendServerActionRequest } from '../utils';
+import { showStatusMessage, sendServerActionRequest } from "../utils";
 
 // Mock fetch globally
 global.fetch = jest.fn();
@@ -19,12 +19,12 @@ const localStorageMock = (function () {
     }),
   };
 })();
-Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
-describe('utils.js', () => {
+describe("utils.js", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    document.body.innerHTML = ''; // Clean up DOM
+    document.body.innerHTML = ""; // Clean up DOM
     jest.useFakeTimers();
   });
 
@@ -32,179 +32,184 @@ describe('utils.js', () => {
     jest.useRealTimers();
   });
 
-  describe('showStatusMessage', () => {
-    test('displays message in #status-message-area and sets correct class', () => {
-      const messageArea = document.createElement('div');
-      messageArea.id = 'status-message-area';
+  describe("showStatusMessage", () => {
+    test("displays message in #status-message-area and sets correct class", () => {
+      const messageArea = document.createElement("div");
+      messageArea.id = "status-message-area";
       document.body.appendChild(messageArea);
 
-      showStatusMessage('Operation successful', 'success');
+      showStatusMessage("Operation successful", "success");
 
-      expect(messageArea.textContent).toBe('Operation successful');
-      expect(messageArea.className).toBe('message-box message-success');
-      expect(messageArea.style.opacity).toBe('1');
+      expect(messageArea.textContent).toBe("Operation successful");
+      expect(messageArea.className).toBe("message-box message-success");
+      expect(messageArea.style.opacity).toBe("1");
     });
 
-    test('fades out and clears message after timeout', () => {
-      const messageArea = document.createElement('div');
-      messageArea.id = 'status-message-area';
+    test("fades out and clears message after timeout", () => {
+      const messageArea = document.createElement("div");
+      messageArea.id = "status-message-area";
       document.body.appendChild(messageArea);
 
-      showStatusMessage('Fading message', 'info');
+      showStatusMessage("Fading message", "info");
 
       // Fast-forward past the 5000ms delay
       jest.advanceTimersByTime(5000);
 
-      expect(messageArea.style.opacity).toBe('0');
-      expect(messageArea.style.transition).toBe('opacity 0.5s ease-out');
+      expect(messageArea.style.opacity).toBe("0");
+      expect(messageArea.style.transition).toBe("opacity 0.5s ease-out");
 
       // Fast-forward past the fade out animation (500ms)
       jest.advanceTimersByTime(500);
 
-      expect(messageArea.textContent).toBe('');
-      expect(messageArea.className).toBe('message-box');
+      expect(messageArea.textContent).toBe("");
+      expect(messageArea.className).toBe("message-box");
     });
 
-    test('falls back to alert if #status-message-area is missing', () => {
-      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    test("falls back to alert if #status-message-area is missing", () => {
+      const alertSpy = jest.spyOn(window, "alert").mockImplementation(() => {});
 
-      showStatusMessage('Critical Error', 'error');
+      showStatusMessage("Critical Error", "error");
 
-      expect(alertSpy).toHaveBeenCalledWith('ERROR: Critical Error');
+      expect(alertSpy).toHaveBeenCalledWith("ERROR: Critical Error");
       alertSpy.mockRestore();
     });
   });
 
-  describe('sendServerActionRequest', () => {
+  describe("sendServerActionRequest", () => {
     // Helper to setup DOM elements usually involved
     let button;
     beforeEach(() => {
-      button = document.createElement('button');
+      button = document.createElement("button");
       // We also need status message area to avoid console warnings or alerts in tests unless expected
-      const messageArea = document.createElement('div');
-      messageArea.id = 'status-message-area';
+      const messageArea = document.createElement("div");
+      messageArea.id = "status-message-area";
       document.body.appendChild(messageArea);
     });
 
-    test('constructs correct relative URL and sends POST request', async () => {
+    test("constructs correct relative URL and sends POST request", async () => {
       fetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        headers: { get: () => 'application/json' },
-        json: async () => ({ status: 'success', message: 'OK' }),
+        headers: { get: () => "application/json" },
+        json: async () => ({ status: "success", message: "OK" }),
       });
 
-      const body = { action: 'start' };
-      const result = await sendServerActionRequest('my-server', 'start', 'POST', body);
+      const body = { action: "start" };
+      const result = await sendServerActionRequest(
+        "my-server",
+        "start",
+        "POST",
+        body,
+      );
 
       expect(fetch).toHaveBeenCalledWith(
-        '/api/server/my-server/start',
+        "/api/server/my-server/start",
         expect.objectContaining({
-          method: 'POST',
+          method: "POST",
           headers: expect.objectContaining({
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+            "Content-Type": "application/json",
+            Accept: "application/json",
           }),
           body: JSON.stringify(body),
-        })
+        }),
       );
-      expect(result).toEqual({ status: 'success', message: 'OK' });
+      expect(result).toEqual({ status: "success", message: "OK" });
     });
 
-    test('adds Authorization header if JWT token exists', async () => {
-      localStorageMock.getItem.mockReturnValue('fake-jwt-token');
+    test("adds Authorization header if JWT token exists", async () => {
+      localStorageMock.getItem.mockReturnValue("fake-jwt-token");
       fetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        headers: { get: () => 'application/json' },
-        json: async () => ({ status: 'success' }),
+        headers: { get: () => "application/json" },
+        json: async () => ({ status: "success" }),
       });
 
-      await sendServerActionRequest('s1', 'a1');
+      await sendServerActionRequest("s1", "a1");
 
       expect(fetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: 'Bearer fake-jwt-token',
+            Authorization: "Bearer fake-jwt-token",
           }),
-        })
+        }),
       );
     });
 
-    test('disables and re-enables button', async () => {
-        fetch.mockResolvedValueOnce({
-            ok: true,
-            status: 200,
-            headers: { get: () => 'application/json' },
-            json: async () => ({ status: 'success' }),
-        });
+    test("disables and re-enables button", async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        json: async () => ({ status: "success" }),
+      });
 
-        const promise = sendServerActionRequest('s1', 'a1', 'POST', null, button);
-        
-        // Button should be disabled immediately
-        expect(button.disabled).toBe(true);
+      const promise = sendServerActionRequest("s1", "a1", "POST", null, button);
 
-        await promise;
+      // Button should be disabled immediately
+      expect(button.disabled).toBe(true);
 
-        // Button should be enabled after
-        expect(button.disabled).toBe(false);
+      await promise;
+
+      // Button should be enabled after
+      expect(button.disabled).toBe(false);
     });
 
-    test('handles 204 No Content correctly', async () => {
-        fetch.mockResolvedValueOnce({
-            ok: true,
-            status: 204,
-            headers: { get: () => null },
-            json: async () => ({}), // Should not be called
-        });
+    test("handles 204 No Content correctly", async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        headers: { get: () => null },
+        json: async () => ({}), // Should not be called
+      });
 
-        const result = await sendServerActionRequest('s1', 'a1');
-        
-        expect(result).toEqual({
-            status: 'success', 
-            message: expect.stringContaining('successful (No Content)')
-        });
+      const result = await sendServerActionRequest("s1", "a1");
+
+      expect(result).toEqual({
+        status: "success",
+        message: expect.stringContaining("successful (No Content)"),
+      });
     });
 
-    test('handles HTTP errors (non-2xx)', async () => {
-        fetch.mockResolvedValueOnce({
-            ok: false,
-            status: 404,
-            headers: { get: () => 'application/json' },
-            json: async () => ({ message: 'Not Found' }),
-        });
+    test("handles HTTP errors (non-2xx)", async () => {
+      fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        headers: { get: () => "application/json" },
+        json: async () => ({ message: "Not Found" }),
+      });
 
-        const result = await sendServerActionRequest('s1', 'a1');
+      const result = await sendServerActionRequest("s1", "a1");
 
-        expect(result).toBe(false);
-        // Verify status message updated (we know it calls showStatusMessage)
-        const messageArea = document.getElementById('status-message-area');
-        expect(messageArea.textContent).toBe('Not Found');
-        expect(messageArea.className).toContain('message-error');
+      expect(result).toBe(false);
+      // Verify status message updated (we know it calls showStatusMessage)
+      const messageArea = document.getElementById("status-message-area");
+      expect(messageArea.textContent).toBe("Not Found");
+      expect(messageArea.className).toContain("message-error");
     });
 
-    test('handles invalid JSON response', async () => {
-        fetch.mockResolvedValueOnce({
-            ok: true, // HTTP success but bad content
-            status: 200,
-            headers: { get: () => 'text/html' }, // Unexpected content type
-            text: async () => '<html>...</html>',
-        });
+    test("handles invalid JSON response", async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true, // HTTP success but bad content
+        status: 200,
+        headers: { get: () => "text/html" }, // Unexpected content type
+        text: async () => "<html>...</html>",
+      });
 
-        const result = await sendServerActionRequest('s1', 'a1');
-        
-        expect(result).toBe(false);
+      const result = await sendServerActionRequest("s1", "a1");
+
+      expect(result).toBe(false);
     });
 
-    test('handles network failure', async () => {
-        fetch.mockRejectedValueOnce(new Error('Network error'));
+    test("handles network failure", async () => {
+      fetch.mockRejectedValueOnce(new Error("Network error"));
 
-        const result = await sendServerActionRequest('s1', 'a1');
+      const result = await sendServerActionRequest("s1", "a1");
 
-        expect(result).toBe(false);
-        const messageArea = document.getElementById('status-message-area');
-        expect(messageArea.textContent).toContain('Network error');
+      expect(result).toBe(false);
+      const messageArea = document.getElementById("status-message-area");
+      expect(messageArea.textContent).toContain("Network error");
     });
   });
 });

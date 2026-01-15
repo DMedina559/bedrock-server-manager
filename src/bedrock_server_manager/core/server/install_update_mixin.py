@@ -21,24 +21,23 @@ Key functionalities include:
 
 """
 import os
-from typing import Optional, Any
+from typing import Any, Optional
+
+from ...error import (
+    AppFileNotFoundError,
+    BSMError,
+    DownloadError,
+    ExtractError,
+    FileError,
+    FileOperationError,
+    MissingArgumentError,
+    PermissionsError,
+    ServerStopError,
+)
+from ..downloader import BedrockDownloader
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ..downloader import (
-    BedrockDownloader,
-)
-from ...error import (
-    MissingArgumentError,
-    DownloadError,
-    ExtractError,
-    FileOperationError,
-    PermissionsError,
-    ServerStopError,
-    AppFileNotFoundError,
-    FileError,
-    BSMError,
-)
 
 
 class ServerInstallUpdateMixin(BedrockServerBaseMixin):
@@ -181,7 +180,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 f"Unexpected error setting permissions for '{self.server_dir}'."
             ) from e_perm
 
-    def is_update_needed(self, target_version_specification: str) -> bool:
+    def is_update_needed(self, target_version_specification: str) -> bool:  # noqa: C901
         """Checks if the server's installed version requires an update to meet the target.
 
         This method compares the server's currently installed version (obtained via
@@ -324,7 +323,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             )
             return True  # Fail-safe: assume update needed
 
-    def install_or_update(
+    def install_or_update(  # noqa: C901
         self,
         target_version_specification: str,
         force_reinstall: bool = False,

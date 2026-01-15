@@ -4,10 +4,10 @@ A plugin to provide a web UI for uploading .mcworld, .mcpack, and .mcaddon files
 """
 import os
 import shutil
-from typing import Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, File, UploadFile, Depends
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase
@@ -77,7 +77,7 @@ class ContentUploaderPlugin(PluginBase):
                 exc_info=True,
             )
 
-    def _define_routes(self):
+    def _define_routes(self):  # noqa: C901
         @self.router.get(
             "/content/upload",
             response_class=HTMLResponse,
@@ -127,6 +127,9 @@ class ContentUploaderPlugin(PluginBase):
                     )
                     message_type = "error"
                     raise ValueError("MODULE_CONTENT_DIR_PATH not set")
+
+                if not filename:
+                    raise ValueError("Filename is missing")
 
                 file_ext = Path(filename).suffix.lower()
                 target_subdir_name = ""

@@ -8,25 +8,18 @@ handling catch-all routes for undefined paths. These endpoints often involve
 file system interactions and fallbacks to default assets if custom ones are
 not found.
 """
-import os
 import logging
-from typing import Dict, Any
+import os
+from typing import Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status, Path
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 
-from ..auth_utils import (
-    get_current_user,
-    get_current_user_optional,
-)
-from ..schemas import User
-from ..dependencies import validate_server_exists, get_app_context
-from ...error import (
-    BSMError,
-    AppFileNotFoundError,
-    InvalidServerNameError,
-)
 from ...context import AppContext
+from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
+from ..auth_utils import get_current_user, get_current_user_optional
+from ..dependencies import get_app_context, validate_server_exists
+from ..schemas import User
 
 WEB_APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(WEB_APP_ROOT))
@@ -173,9 +166,6 @@ async def get_root_favicon():
 
 
 # --- Catch-all Route ---
-from typing import Optional
-
-
 @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
 async def catch_all_api_route(
     request: Request,

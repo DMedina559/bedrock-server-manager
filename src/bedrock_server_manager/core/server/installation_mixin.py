@@ -21,20 +21,19 @@ Key responsibilities include:
 lead to irreversible data loss if not used carefully.
 """
 import os
-import shutil
-import subprocess
 from typing import Any, Dict, List, Optional
 
-# Local application imports.
-from .base_server_mixin import BedrockServerBaseMixin
-from ..system import base as system_base
 from ...error import (
     AppFileNotFoundError,
-    MissingArgumentError,
     FileOperationError,
+    MissingArgumentError,
     PermissionsError,
     ServerStopError,
 )
+from ..system import base as system_base
+
+# Local application imports.
+from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerInstallationMixin(BedrockServerBaseMixin):
@@ -215,7 +214,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             )
         return success
 
-    def delete_all_data(self) -> None:
+    def delete_all_data(self) -> None:  # noqa: C901
         """Deletes **ALL** data associated with this Bedrock server instance.
 
         .. danger::

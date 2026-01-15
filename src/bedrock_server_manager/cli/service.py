@@ -25,6 +25,7 @@ systemd, `pywin32` for Windows Services). The commands use functions from
 
 import functools
 import logging
+import platform
 import sys
 from typing import Callable, Optional
 
@@ -32,13 +33,9 @@ import click
 import questionary
 
 from ..api import web as web_api
-from .utils import handle_api_response as _handle_api_response
 from ..context import AppContext
-from ..core import BedrockServerManager
-from ..error import (
-    BSMError,
-    MissingArgumentError,
-)
+from ..error import BSMError, MissingArgumentError
+from .utils import handle_api_response as _handle_api_response
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +146,7 @@ def _perform_web_service_configuration(
             _handle_api_response(response, "Web UI service disabled successfully.")
 
 
-def interactive_web_service_workflow(app_context: AppContext):
+def interactive_web_service_workflow(app_context: AppContext):  # noqa: C901
     """
     Guides the user through an interactive session to configure the Web UI system service.
 
@@ -505,22 +502,18 @@ def status_web_service_cli(ctx: click.Context, system_flag: bool):
             if response.get("message"):
                 click.secho(f"  Info: {response.get('message')}", fg="yellow")
         else:
-            _handle_api_response(response)
+            _handle_api_response(response, "Service status retrieved.")
     except BSMError as e:
         click.secho(f"Failed to get Web UI service status: {e}", fg="red")
         raise click.Abort()
 
 
 # --- Windows Service Support ---
-import platform
-
 if platform.system() == "Windows":
-    import win32serviceutil
     import servicemanager
-    from ..core.system.windows_class import (
-        WebServerWindowsService,
-        PYWIN32_AVAILABLE,
-    )
+    import win32serviceutil
+
+    from ..core.system.windows_class import PYWIN32_AVAILABLE, WebServerWindowsService
 
     @service.command(
         "_run-web",

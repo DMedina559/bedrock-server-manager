@@ -36,13 +36,11 @@ Key Functionality Groups:
 Constants:
     - :const:`PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported.
 """
-import os
 import logging
-import subprocess
+import os
 import platform
-import sys
-from typing import Optional, List, Dict, Union, Any
-
+import subprocess
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 # psutil is an optional dependency, but required for most functions here.
 try:
@@ -61,13 +59,13 @@ except ImportError:
 
 from ...config import GUARD_VARIABLE
 from ...error import (
-    FileOperationError,
-    SystemError,
-    ServerProcessError,
     AppFileNotFoundError,
+    FileOperationError,
     MissingArgumentError,
     PermissionsError,
+    ServerProcessError,
     ServerStopError,
+    SystemError,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,11 +99,11 @@ class GuardedProcess:
             guard variable added.
     """
 
-    def __init__(self, command: List[Union[str, os.PathLike]]):
+    def __init__(self, command: Sequence[Union[str, os.PathLike]]):
         """Initializes the GuardedProcess with the command to be run.
 
         Args:
-            command (List[Union[str, os.PathLike]]): A list representing the
+            command (Sequence[Union[str, os.PathLike]]): A list representing the
                 command and its arguments (e.g., ``['python', 'app.py', '--start-server']``).
         """
         self.command = command
@@ -392,7 +390,7 @@ def is_process_running(pid: int) -> bool:
         )
     if not isinstance(pid, int):
         raise MissingArgumentError("PID must be an integer.")
-    return psutil.pid_exists(pid)
+    return bool(psutil.pid_exists(pid))
 
 
 def launch_detached_process(command: List[str], launcher_pid_file_path: str) -> int:
@@ -448,7 +446,8 @@ def launch_detached_process(command: List[str], launcher_pid_file_path: str) -> 
     start_new_session = False
     if platform.system() == "Windows":
         # Prevents the new process from opening a console window.
-        creation_flags = subprocess.CREATE_NO_WINDOW
+        # Use getattr to avoid MyPy errors on non-Windows systems where this attribute is missing.
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
     else:  # Linux, Darwin, etc.
         # Ensures the child process does not terminate when the parent does.
         start_new_session = True
@@ -473,7 +472,7 @@ def launch_detached_process(command: List[str], launcher_pid_file_path: str) -> 
     return pid
 
 
-def verify_process_identity(
+def verify_process_identity(  # noqa: C901
     pid: int,
     expected_executable_path: Optional[str] = None,
     expected_cwd: Optional[str] = None,
@@ -581,7 +580,7 @@ def verify_process_identity(
     )
 
 
-def get_verified_bedrock_process(
+def get_verified_bedrock_process(  # noqa: C901
     server_name: str, server_dir: str, config_dir: str
 ) -> Optional["psutil.Process"]:
     """Finds, verifies, and returns the Bedrock server process using its PID file.
@@ -709,7 +708,7 @@ def get_verified_bedrock_process(
         return None
 
 
-def terminate_process_by_pid(
+def terminate_process_by_pid(  # noqa: C901
     pid: int, terminate_timeout: int = 5, kill_timeout: int = 2
 ):
     """Attempts to gracefully terminate, then forcefully kill, a process by PID.

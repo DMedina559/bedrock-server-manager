@@ -1,27 +1,24 @@
-import pytest
-import tempfile
-import shutil
 import os
 import sys
+from datetime import timedelta
 from unittest.mock import MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
+
 from bedrock_server_manager.core.bedrock_server import BedrockServer
 from bedrock_server_manager.core.manager import BedrockServerManager
-from fastapi.testclient import TestClient
-from bedrock_server_manager.web.dependencies import validate_server_exists
+from bedrock_server_manager.db.models import User as UserModel
+from bedrock_server_manager.web.app import create_web_app
 from bedrock_server_manager.web.auth_utils import (
     create_access_token,
     get_current_user_optional,
     get_password_hash,
 )
-from datetime import timedelta
-from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.web.app import create_web_app
+from bedrock_server_manager.web.dependencies import validate_server_exists
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-
-from appdirs import user_config_dir
 
 
 @pytest.fixture(autouse=True)
@@ -59,8 +56,9 @@ def isolated_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("BSM_DATA_DIR", str(test_data_dir))
 
     # Reload the bcm_config module to ensure the new mocked paths are used
-    import bedrock_server_manager.config.bcm_config as bcm_config
     import importlib
+
+    import bedrock_server_manager.config.bcm_config as bcm_config
 
     importlib.reload(bcm_config)
 
@@ -168,13 +166,13 @@ def real_manager(app_context):
 @pytest.fixture(autouse=True)
 def app_context(isolated_settings, tmp_path, monkeypatch):
     """Fixture for a real AppContext instance."""
-    from bedrock_server_manager.context import AppContext
-    from bedrock_server_manager.config.settings import Settings
-    from bedrock_server_manager.core.manager import BedrockServerManager
-    from bedrock_server_manager.plugins.plugin_manager import PluginManager
-    from bedrock_server_manager.db.database import Database
     import os
     import platform
+
+    from bedrock_server_manager.config.settings import Settings
+    from bedrock_server_manager.context import AppContext
+    from bedrock_server_manager.core.manager import BedrockServerManager
+    from bedrock_server_manager.db.database import Database
 
     # Setup: initialize the database with a test-specific URL
     db_path = tmp_path / "test.db"

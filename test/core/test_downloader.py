@@ -1,38 +1,34 @@
 # Test cases for bedrock_server_manager.core.downloader
-import pytest
-import os
 import json
-import zipfile
-import shutil
 import logging
+import os
 import platform
 import re
+import shutil
+import zipfile
 from pathlib import Path
-from unittest import (
-    mock,
-)  # Will use pytest-mock which provides the 'mocker' fixture, but mock can be useful too.
+
+import pytest
+
+# For mocking requests
+import requests  # type: ignore
 
 # Imports from the application
 from bedrock_server_manager.core.downloader import (
     BedrockDownloader,
     prune_old_downloads,
 )
-from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.error import (
-    DownloadError,
-    ExtractError,
-    MissingArgumentError,
-    InternetConnectivityError,
-    FileOperationError,
     AppFileNotFoundError,
     ConfigurationError,
-    UserInputError,
+    DownloadError,
+    ExtractError,
+    FileOperationError,
+    InternetConnectivityError,
+    MissingArgumentError,
     SystemError,
+    UserInputError,
 )
-
-# For mocking requests
-import requests
-
 
 # --- Fixtures ---
 
@@ -71,7 +67,7 @@ def downloader_instance(app_context, temp_server_dir, temp_download_base_dir, mo
 # --- Helper Functions ---
 
 
-def create_dummy_zip(zip_path: Path, file_list: dict = None):
+def create_dummy_zip(zip_path: Path, file_list: dict = None):  # type: ignore
     """Creates a dummy ZIP file with specified content.
 
     Args:
@@ -1115,9 +1111,7 @@ def test_downloader_getters_after_version_lookup(
     mock_response.raise_for_status = mocker.Mock()
     mock_requests_get.return_value = mock_response
 
-    resolved_version = (
-        downloader.get_version_for_target_spec()
-    )  # This populates some attributes
+    downloader.get_version_for_target_spec()  # This populates some attributes
 
     assert downloader.get_actual_version() == target_version
     assert downloader.get_resolved_download_url() is not None

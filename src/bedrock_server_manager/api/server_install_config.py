@@ -23,34 +23,30 @@ handle operations related to:
 Functions in this module typically return structured dictionary responses suitable for
 use by web routes or CLI commands and integrate with the plugin system for extensibility.
 """
-import os
 import logging
+import os
 import re
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
+from ..context import AppContext
+from ..error import (
+    AppFileNotFoundError,
+    BSMError,
+    FileOperationError,
+    InvalidServerNameError,
+    MissingArgumentError,
+    UserInputError,
+)
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 # Local application imports.
 from . import player as player_api
-from .utils import (
-    server_lifecycle_manager,
-    validate_server_name_format,
-)
-from ..error import (
-    BSMError,
-    InvalidServerNameError,
-    FileOperationError,
-    MissingArgumentError,
-    UserInputError,
-    AppFileNotFoundError,
-)
-from ..context import AppContext
+from .utils import server_lifecycle_manager, validate_server_name_format
 
 logger = logging.getLogger(__name__)
-
-
-from ..plugins.event_trigger import trigger_plugin_event
 
 
 # --- Allowlist ---
@@ -424,7 +420,9 @@ def get_server_properties_api(
 
 
 @plugin_method("validate_server_property_value")
-def validate_server_property_value(property_name: str, value: str) -> Dict[str, str]:
+def validate_server_property_value(  # noqa: C901
+    property_name: str, value: str
+) -> Dict[str, str]:
     """Validates a single server property value based on known rules.
 
     This is a stateless helper function used before modifying properties. It checks

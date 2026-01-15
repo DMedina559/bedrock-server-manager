@@ -1,20 +1,21 @@
-import pytest
-from jose import jwt
 from datetime import timedelta
-from bedrock_server_manager.web.auth_utils import (
-    verify_password,
-    create_access_token,
-    get_current_user_optional,
-    get_current_user,
-    get_password_hash,
-    ALGORITHM,
-)
-from fastapi import Request, FastAPI, Depends
+
+import pytest
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
+from jose import jwt
+
 from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.web.schemas import User
-from bedrock_server_manager.context import AppContext
+from bedrock_server_manager.web.auth_utils import (
+    ALGORITHM,
+    create_access_token,
+    get_current_user,
+    get_current_user_optional,
+    get_password_hash,
+    verify_password,
+)
 from bedrock_server_manager.web.routers import auth_router, users_router
+from bedrock_server_manager.web.schemas import User
 
 # Test data
 TEST_USER = "testuser"

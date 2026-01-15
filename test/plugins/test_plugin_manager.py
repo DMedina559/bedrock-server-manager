@@ -1,5 +1,5 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
@@ -96,12 +96,12 @@ class TestPluginManager:
         # Remove specific handler if it exists on the mock (or just verify for an event it doesn't have)
         if hasattr(mock_plugin, "some_unknown_event"):
             delattr(mock_plugin, "some_unknown_event")
-        
+
         mock_plugin.on_any_event = MagicMock()
         mock_plugin.on_any_event.__name__ = "on_any_event"
 
         pm.trigger_event("some_unknown_event", arg="test")
-        
+
         mock_plugin.on_any_event.assert_called_once()
         args, kwargs = mock_plugin.on_any_event.call_args
         assert args[0] == "some_unknown_event"

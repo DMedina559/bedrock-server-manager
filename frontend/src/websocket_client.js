@@ -8,7 +8,7 @@
 export class WebSocketClient {
   constructor() {
     this.socket = null;
-    this.connectionState = 'disconnected'; // 'disconnected', 'connecting', 'connected'
+    this.connectionState = "disconnected"; // 'disconnected', 'connecting', 'connected'
     this.useFallback = false;
     this.pendingSubscriptions = [];
   }
@@ -18,42 +18,56 @@ export class WebSocketClient {
    * If a connection is already established or in progress, this does nothing.
    */
   async connect() {
-    if (this.socket || this.connectionState === 'connecting') {
-      console.log('WebSocketClient.connect(): Connection attempt already in progress or established.');
+    if (this.socket || this.connectionState === "connecting") {
+      console.log(
+        "WebSocketClient.connect(): Connection attempt already in progress or established.",
+      );
       return;
     }
     if (this.useFallback) {
-      console.log('WebSocketClient.connect(): Fallback is active, not attempting to connect.');
+      console.log(
+        "WebSocketClient.connect(): Fallback is active, not attempting to connect.",
+      );
       return;
     }
 
-    console.log('WebSocketClient.connect(): Attempting to establish connection...');
-    this.connectionState = 'connecting';
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    let token = localStorage.getItem('jwt_token');
+    console.log(
+      "WebSocketClient.connect(): Attempting to establish connection...",
+    );
+    this.connectionState = "connecting";
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    let token = localStorage.getItem("jwt_token");
 
     // If token is missing, try to refresh it from the backend using the session cookie
     if (!token) {
-      console.warn('WebSocketClient.connect(): JWT token not found in localStorage. Attempting to refresh token...');
+      console.warn(
+        "WebSocketClient.connect(): JWT token not found in localStorage. Attempting to refresh token...",
+      );
       try {
-        const response = await fetch('/auth/refresh-token');
+        const response = await fetch("/auth/refresh-token");
         if (response.ok) {
           const data = await response.json();
           if (data.access_token) {
             token = data.access_token;
-            localStorage.setItem('jwt_token', token);
-            console.log('WebSocketClient.connect(): Token refreshed successfully.');
+            localStorage.setItem("jwt_token", token);
+            console.log(
+              "WebSocketClient.connect(): Token refreshed successfully.",
+            );
           }
         } else {
-          console.warn(`WebSocketClient.connect(): Failed to refresh token. Status: ${response.status}`);
+          console.warn(
+            `WebSocketClient.connect(): Failed to refresh token. Status: ${response.status}`,
+          );
         }
       } catch (e) {
-        console.error('WebSocketClient.connect(): Error refreshing token:', e);
+        console.error("WebSocketClient.connect(): Error refreshing token:", e);
       }
     }
 
     if (!token) {
-      console.error('WebSocketClient.connect(): JWT token not found or recoverable. Cannot authenticate.');
+      console.error(
+        "WebSocketClient.connect(): JWT token not found or recoverable. Cannot authenticate.",
+      );
       this.handleConnectionFailure();
       return;
     }
@@ -64,22 +78,29 @@ export class WebSocketClient {
     try {
       this.socket = new WebSocket(wsUrl);
     } catch (error) {
-      console.error('WebSocketClient.connect(): WebSocket initialization failed:', error);
+      console.error(
+        "WebSocketClient.connect(): WebSocket initialization failed:",
+        error,
+      );
       this.handleConnectionFailure();
       return;
     }
 
     this.socket.onopen = () => {
-      console.log('WebSocketClient.onopen: Connection established successfully.');
-      this.connectionState = 'connected';
+      console.log(
+        "WebSocketClient.onopen: Connection established successfully.",
+      );
+      this.connectionState = "connected";
       // Subscribe to any topics that were requested before the connection was ready
       this.pendingSubscriptions.forEach((topic) => this.subscribe(topic));
       this.pendingSubscriptions = [];
     };
 
     this.socket.onclose = (event) => {
-      console.log(`WebSocketClient.onclose: Connection closed. Code: ${event.code}, Reason: "${event.reason}", Clean: ${event.wasClean}`);
-      this.connectionState = 'disconnected';
+      console.log(
+        `WebSocketClient.onclose: Connection closed. Code: ${event.code}, Reason: "${event.reason}", Clean: ${event.wasClean}`,
+      );
+      this.connectionState = "disconnected";
       this.socket = null;
       // If the connection was not closed cleanly, we activate the fallback.
       if (!event.wasClean) {
@@ -90,7 +111,10 @@ export class WebSocketClient {
     };
 
     this.socket.onerror = (error) => {
-      console.error('WebSocketClient.onerror: An error occurred with the WebSocket.', error);
+      console.error(
+        "WebSocketClient.onerror: An error occurred with the WebSocket.",
+        error,
+      );
       this.handleConnectionFailure();
     };
 
@@ -99,12 +123,12 @@ export class WebSocketClient {
         const message = JSON.parse(event.data);
         // Dispatch a generic event that includes the topic and data from the server.
         // UI components can listen for this event to get real-time updates.
-        const customEvent = new CustomEvent('websocket-message', {
+        const customEvent = new CustomEvent("websocket-message", {
           detail: message,
         });
         document.dispatchEvent(customEvent);
       } catch (e) {
-        console.error('Failed to parse WebSocket message:', e);
+        console.error("Failed to parse WebSocket message:", e);
       }
     };
   }
@@ -116,12 +140,14 @@ export class WebSocketClient {
     // Prevent multiple fallback triggers
     if (this.useFallback) return;
 
-    console.warn('WebSocketClient.handleConnectionFailure(): WebSocket connection failed. Activating fallback.');
-    this.connectionState = 'disconnected';
+    console.warn(
+      "WebSocketClient.handleConnectionFailure(): WebSocket connection failed. Activating fallback.",
+    );
+    this.connectionState = "disconnected";
     this.useFallback = true;
     this.socket = null;
     // Dispatch an event to notify the app that WS failed and it should use polling
-    document.dispatchEvent(new CustomEvent('websocket-fallback'));
+    document.dispatchEvent(new CustomEvent("websocket-fallback"));
   }
 
   /**
@@ -129,7 +155,7 @@ export class WebSocketClient {
    * @param {object} message - The message object to send.
    */
   sendMessage(message) {
-    if (this.connectionState !== 'connected' || !this.socket) {
+    if (this.connectionState !== "connected" || !this.socket) {
       // If not connected, don't log an error, as this might be expected
       // if the connection is in progress or has failed.
       return;
@@ -143,13 +169,13 @@ export class WebSocketClient {
    */
   subscribe(topic) {
     // If not connected yet, queue the subscription
-    if (this.connectionState !== 'connected') {
+    if (this.connectionState !== "connected") {
       if (!this.pendingSubscriptions.includes(topic)) {
         this.pendingSubscriptions.push(topic);
       }
       return;
     }
-    this.sendMessage({ action: 'subscribe', topic });
+    this.sendMessage({ action: "subscribe", topic });
   }
 
   /**
@@ -157,7 +183,7 @@ export class WebSocketClient {
    * @param {string} topic - The topic to unsubscribe from.
    */
   unsubscribe(topic) {
-    this.sendMessage({ action: 'unsubscribe', topic });
+    this.sendMessage({ action: "unsubscribe", topic });
   }
 
   /**
@@ -173,7 +199,7 @@ export class WebSocketClient {
    * @returns {boolean}
    */
   isConnected() {
-    return this.connectionState === 'connected';
+    return this.connectionState === "connected";
   }
 
   /**
@@ -181,7 +207,7 @@ export class WebSocketClient {
    * @returns {boolean}
    */
   isConnecting() {
-    return this.connectionState === 'connecting';
+    return this.connectionState === "connecting";
   }
 }
 

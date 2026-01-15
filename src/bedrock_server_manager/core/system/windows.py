@@ -31,10 +31,10 @@ from typing import Optional
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
-    import win32pipe
-    import win32file
-    import win32service
     import pywintypes
+    import win32file
+    import win32pipe
+    import win32service
 
     PYWIN32_AVAILABLE = True
 except ImportError:
@@ -55,11 +55,7 @@ except ImportError:
     PYWIN32_HAS_OPTIONAL_MODULES = False
 
 # Local application imports.
-from ...error import (
-    MissingArgumentError,
-    SystemError,
-    PermissionsError,
-)
+from ...error import MissingArgumentError, PermissionsError, SystemError
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +392,7 @@ def disable_windows_service(service_name: str) -> None:
             win32service.CloseServiceHandle(scm_handle)
 
 
-def delete_windows_service(service_name: str) -> None:
+def delete_windows_service(service_name: str) -> None:  # noqa: C901
     """Deletes a Windows service and performs associated cleanup.
 
     This function interacts with the Windows Service Control Manager (SCM) to

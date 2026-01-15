@@ -2,14 +2,14 @@ import click
 
 from ..context import AppContext
 from ..utils.migration import (
-    migrate_env_vars_to_config_file,
-    migrate_players_json_to_db,
     migrate_env_auth_to_db,
     migrate_env_token_to_db,
+    migrate_env_vars_to_config_file,
+    migrate_global_theme_to_admin_user,
     migrate_json_configs_to_db,
     migrate_json_settings_to_db,
+    migrate_players_json_to_db,
     migrate_services_to_db,
-    migrate_global_theme_to_admin_user,
 )
 
 
@@ -21,7 +21,7 @@ def migrate():
 
 @migrate.command("old-config")
 @click.pass_context
-def migrate_old_config(ctx: click.Context):
+def migrate_old_config(ctx: click.Context):  # noqa: C901
     """Migrates settings from environment variables and old formats to the database."""
     app_context: AppContext = ctx.obj["app_context"]
     try:

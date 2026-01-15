@@ -21,51 +21,28 @@ Key responsibilities include:
     - Checking and reporting system capabilities relevant to the application's features.
 
 """
-import os
-import json
-import shutil
-import glob
 import logging
-import platform
-import subprocess
-from typing import Optional, List, Dict, Any, Union, Tuple
+from typing import Any
 
 # Local application imports.
-from ..config import Settings
-from ..context import AppContext
-from ..config import EXPATH, app_name_title, package_name
-from ..error import (
-    ConfigurationError,
-    FileOperationError,
-    UserInputError,
-    SystemError,
-    CommandNotFoundError,
-    PermissionsError,
-    AppFileNotFoundError,
-    InvalidServerNameError,
-    MissingArgumentError,
-)
+from ..config import EXPATH, Settings, app_name_title, package_name
+from ..error import ConfigurationError
+from .manager_mixins.content_mixin import ContentMixin
+from .manager_mixins.discovery_mixin import DiscoveryMixin
 from .manager_mixins.player_mixin import PlayerMixin
+from .manager_mixins.system_mixin import SystemMixin
 from .manager_mixins.web_process_mixin import WebProcessMixin
 from .manager_mixins.web_service_mixin import WebServiceMixin
-from .manager_mixins.content_mixin import ContentMixin
-from .manager_mixins.system_mixin import SystemMixin
-from .manager_mixins.discovery_mixin import DiscoveryMixin
-
-if platform.system() == "Linux":
-    from .system import linux as system_linux_utils
-elif platform.system() == "Windows":
-    from .system import windows as system_windows_utils
 
 logger = logging.getLogger(__name__)
 
 
 class BedrockServerManager(
+    SystemMixin,
     PlayerMixin,
     WebProcessMixin,
     WebServiceMixin,
     ContentMixin,
-    SystemMixin,
     DiscoveryMixin,
 ):
     """
@@ -117,6 +94,20 @@ class BedrockServerManager(
         _WEB_SERVICE_WINDOWS_DISPLAY_NAME (str): Display name for the Web UI Windows service.
     """
 
+    _config_dir: str
+    _app_data_dir: str
+    _app_name_title: str
+    _package_name: str
+    _expath: str
+    _base_dir: str
+    _content_dir: str | None
+    _app_version: str
+    _WEB_SERVER_PID_FILENAME: str
+    _WEB_SERVER_START_ARG: list[str]
+    _WEB_SERVICE_SYSTEMD_NAME: str
+    _WEB_SERVICE_WINDOWS_NAME_INTERNAL: str
+    _WEB_SERVICE_WINDOWS_DISPLAY_NAME: str
+
     def __init__(self, settings: Settings) -> None:
         """
         Initializes the BedrockServerManager instance.
@@ -148,13 +139,14 @@ class BedrockServerManager(
                 constants cannot be accessed.
         """
         self.settings = settings
-        self.capabilities = {}
-        self._config_dir = None
-        self._app_data_dir = None
-        self._app_name_title = None
-        self._package_name = None
-        self._expath = None
-        self._base_dir = None
+        self.capabilities: dict[str, bool] = {}
+        # Initializing to empty/default values, will be populated in load()
+        self._config_dir = ""
+        self._app_data_dir = ""
+        self._app_name_title = ""
+        self._package_name = ""
+        self._expath = ""
+        self._base_dir = ""
         self._content_dir = None
         self._app_version = "0.0.0"
         self._WEB_SERVER_PID_FILENAME = "web_server.pid"
@@ -183,8 +175,11 @@ class BedrockServerManager(
             raise ConfigurationError(f"Settings object is misconfigured: {e}") from e
 
         self._base_dir = self.settings.get("paths.servers")
+        if self._base_dir is None:
+            self._base_dir = ""
         self._content_dir = self.settings.get("paths.content")
 
+        assert self._package_name is not None
         _clean_package_name_for_systemd = (
             self._package_name.lower().replace("_", "-").replace(" ", "-")
         )
@@ -193,6 +188,7 @@ class BedrockServerManager(
         )
 
         # Ensure app_name_title is suitable for Windows service name
+        assert self._app_name_title is not None
         _clean_app_title_for_windows = "".join(
             c for c in self._app_name_title if c.isalnum()
         )

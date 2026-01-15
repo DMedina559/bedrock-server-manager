@@ -1,6 +1,5 @@
 import click
 
-from ..context import AppContext
 from ..db.models import User
 from ..web.auth_utils import get_password_hash
 

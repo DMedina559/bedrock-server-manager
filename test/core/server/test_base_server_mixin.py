@@ -1,13 +1,11 @@
-import pytest
 import os
 import platform
-import tempfile
-import shutil
-from unittest.mock import MagicMock, patch
 
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
+import pytest
+
 from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import MissingArgumentError, ConfigurationError
+from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
+from bedrock_server_manager.error import ConfigurationError, MissingArgumentError
 
 
 def test_initialization(real_bedrock_server):
@@ -38,7 +36,7 @@ def test_missing_base_dir_setting(real_bedrock_server):
 
 
 def test_missing_config_dir_setting(real_bedrock_server, monkeypatch):
-    monkeypatch.setattr(real_bedrock_server.settings, "_config_dir_path", None)
+    monkeypatch.setattr(Settings, "config_dir", property(lambda self: None))
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
             server_name="test_server", settings_instance=real_bedrock_server.settings
@@ -97,7 +95,7 @@ def test_init_no_base_dir(real_bedrock_server):
 
 
 def test_init_no_app_config_dir(real_bedrock_server, monkeypatch):
-    monkeypatch.setattr(real_bedrock_server.settings, "_config_dir_path", None)
+    monkeypatch.setattr(Settings, "config_dir", property(lambda self: None))
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
             server_name="test_server", settings_instance=real_bedrock_server.settings

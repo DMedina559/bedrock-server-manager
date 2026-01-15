@@ -1,13 +1,18 @@
+import shutil
+from datetime import datetime
+from importlib.resources import files
+from typing import Any
+
 import click
 import questionary
-from alembic.config import Config
 from alembic import command
-from importlib.resources import files
+from alembic.config import Config
+from sqlalchemy import inspect
 
 from ..config import bcm_config
-from ..db.database import Database
-from ..db import models
 from ..context import AppContext
+from ..db import models
+from ..db.database import Database
 
 
 @click.group()
@@ -16,14 +21,9 @@ def database():
     pass
 
 
-import shutil
-from datetime import datetime
-from sqlalchemy import inspect
-
-
 @database.command()
 @click.pass_context
-def upgrade(ctx: click.Context):
+def upgrade(ctx: click.Context):  # noqa: C901
     """Upgrades the database to the latest version, stamping it if necessary."""
     app_context: AppContext = ctx.obj["app_context"]
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
@@ -58,6 +58,9 @@ def upgrade(ctx: click.Context):
     # --- Run Migrations ---
     try:
         engine = app_context.db.engine
+        if engine is None:
+            raise click.Abort("Database engine is not available.")
+
         with engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
 
@@ -92,7 +95,7 @@ def upgrade(ctx: click.Context):
             click.echo("Database upgrade complete.")
 
         # --- Check for Admin User ---
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             admin_user = (
                 db.query(models.User).filter(models.User.role == "admin").first()
             )
@@ -114,7 +117,7 @@ def upgrade(ctx: click.Context):
 
 @database.command(name="migrate")
 @click.pass_context
-def migrate_db(ctx: click.Context):
+def migrate_db(ctx: click.Context):  # noqa: C901
     """Migrates all data from the current database to a new database."""
     app_context: AppContext = ctx.obj["app_context"]
     source_db = app_context.db
@@ -154,7 +157,7 @@ def migrate_db(ctx: click.Context):
     try:
         dest_db.initialize()
         # Test connection and create tables
-        with dest_db.session_manager() as db:
+        with dest_db.session_manager():
             click.echo(
                 "Successfully connected to the destination database and created tables."
             )
@@ -175,14 +178,14 @@ def migrate_db(ctx: click.Context):
 
     try:
         with (
-            source_db.session_manager() as source_session,
-            dest_db.session_manager() as dest_session,
+            source_db.session_manager() as source_session,  # type: ignore
+            dest_db.session_manager() as dest_session,  # type: ignore
         ):
             for model in MODELS_TO_MIGRATE:
                 model_name = model.__name__
                 click.echo(f"Migrating table: {model_name}...")
 
-                objects_to_migrate = source_session.query(model).all()
+                objects_to_migrate: Any = source_session.query(model).all()
 
                 if not objects_to_migrate:
                     click.echo(f"  No records to migrate for {model_name}.")

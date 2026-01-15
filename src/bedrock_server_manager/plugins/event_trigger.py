@@ -6,8 +6,8 @@ Provides a decorator for triggering plugin events and broadcasting them.
 import asyncio
 import functools
 import inspect
-from typing import Callable, Optional, Any, Dict
 import logging
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def _sanitize_for_json(data: Any) -> Any:
         return f"<Unserializable object of type {type(data).__name__}>"
 
 
-def trigger_plugin_event(
+def trigger_plugin_event(  # noqa: C901
     _func: Optional[Callable] = None,
     *,
     before: Optional[str] = None,
@@ -103,13 +103,13 @@ def trigger_plugin_event(
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
 
-            if before:
+            if before and app_context:
                 app_context.plugin_manager.trigger_event(before, **event_kwargs)
                 _broadcast_event(app_context, before, event_kwargs)
 
             result = func(*args, **kwargs)
 
-            if after:
+            if after and app_context:
                 event_kwargs["result"] = result
                 app_context.plugin_manager.trigger_event(after, **event_kwargs)
                 _broadcast_event(app_context, after, event_kwargs)
@@ -121,13 +121,13 @@ def trigger_plugin_event(
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
 
-            if before:
+            if before and app_context:
                 app_context.plugin_manager.trigger_event(before, **event_kwargs)
                 await _async_broadcast_event(app_context, before, event_kwargs)
 
             result = await func(*args, **kwargs)
 
-            if after:
+            if after and app_context:
                 event_kwargs["result"] = result
                 app_context.plugin_manager.trigger_event(after, **event_kwargs)
                 await _async_broadcast_event(app_context, after, event_kwargs)

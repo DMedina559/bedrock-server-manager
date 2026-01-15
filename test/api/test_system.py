@@ -1,10 +1,8 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from bedrock_server_manager.api.system import (
-    get_bedrock_process_info,
-    set_autoupdate,
-)
+import pytest
+
+from bedrock_server_manager.api.system import get_bedrock_process_info, set_autoupdate
 from bedrock_server_manager.error import UserInputError
 
 

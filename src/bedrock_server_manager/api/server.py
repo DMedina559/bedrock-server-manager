@@ -16,29 +16,24 @@ APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.plugin_m
 and by triggering various plugin events during server operations.
 """
 import logging
-from typing import Dict, Any, Optional
 import os
-
-
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+from typing import Any, Dict
 
 # Local application imports.
 from ..config import API_COMMAND_BLACKLIST
-from ..plugins.event_trigger import trigger_plugin_event
-from ..core.system import (
-    get_bedrock_launcher_pid_file_path,
-    remove_pid_file_if_exists,
-)
+from ..context import AppContext
+from ..core.system import remove_pid_file_if_exists
 from ..error import (
+    BlockedCommandError,
     BSMError,
     InvalidServerNameError,
-    UserInputError,
-    ServerError,
-    BlockedCommandError,
     MissingArgumentError,
+    ServerError,
 )
-from ..context import AppContext
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 logger = logging.getLogger(__name__)
 
@@ -76,18 +71,24 @@ def get_server_setting(
         server = app_context.get_server(server_name)
         # Use the internal method to access any key
         value = server._manage_json_config(key, "read")
-        return {"status": "success", "value": value}
+        success_response: Dict[str, Any] = {"status": "success", "value": value}
+        return success_response
     except BSMError as e:
         logger.error(
             f"API: Error reading setting '{key}' for server '{server_name}': {e}"
         )
-        return {"status": "error", "message": str(e)}
+        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
+        return error_response
     except Exception as e:
         logger.error(
             f"API: Unexpected error reading setting for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": "An unexpected error occurred."}
+        generic_error: Dict[str, Any] = {
+            "status": "error",
+            "message": "An unexpected error occurred.",
+        }
+        return generic_error
 
 
 def set_server_setting(
@@ -127,19 +128,25 @@ def set_server_setting(
         server = app_context.get_server(server_name)
         # Use the internal method to write to any key
         server._manage_json_config(key, "write", value)
-        return {
+        success_response: Dict[str, Any] = {
             "status": "success",
             "message": f"Setting '{key}' updated for server '{server_name}'.",
         }
+        return success_response
     except BSMError as e:
         logger.error(f"API: Error setting '{key}' for server '{server_name}': {e}")
-        return {"status": "error", "message": str(e)}
+        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
+        return error_response
     except Exception as e:
         logger.error(
             f"API: Unexpected error setting value for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": "An unexpected error occurred."}
+        generic_error: Dict[str, Any] = {
+            "status": "error",
+            "message": "An unexpected error occurred.",
+        }
+        return generic_error
 
 
 @plugin_method("set_server_custom_value")
@@ -177,21 +184,27 @@ def set_server_custom_value(
         server = app_context.get_server(server_name)
         # This method is sandboxed to the 'custom' section
         server.set_custom_config_value(key, value)
-        return {
+        success_response: Dict[str, Any] = {
             "status": "success",
             "message": f"Custom value '{key}' updated for server '{server_name}'.",
         }
+        return success_response
     except BSMError as e:
         logger.error(
             f"API (Plugin): Error setting custom value for '{server_name}': {e}"
         )
-        return {"status": "error", "message": str(e)}
+        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
+        return error_response
     except Exception as e:
         logger.error(
             f"API (Plugin): Unexpected error setting custom value for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": "An unexpected error occurred."}
+        generic_error: Dict[str, Any] = {
+            "status": "error",
+            "message": "An unexpected error occurred.",
+        }
+        return generic_error
 
 
 @plugin_method("get_all_server_settings")
@@ -223,21 +236,30 @@ def get_all_server_settings(
         server = app_context.get_server(server_name)
         # _load_server_config handles loading and migration
         all_settings = server._load_server_config()
-        return {"status": "success", "data": all_settings}
+        success_response: Dict[str, Any] = {
+            "status": "success",
+            "data": all_settings,
+        }
+        return success_response  # type: ignore[no-any-return]
     except BSMError as e:
         logger.error(f"API: Error reading all settings for server '{server_name}': {e}")
-        return {"status": "error", "message": str(e)}
+        error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
+        return error_response  # type: ignore[no-any-return]
     except Exception as e:
         logger.error(
             f"API: Unexpected error reading all settings for '{server_name}': {e}",
             exc_info=True,
         )
-        return {"status": "error", "message": "An unexpected error occurred."}
+        generic_error: Dict[str, Any] = {
+            "status": "error",
+            "message": "An unexpected error occurred.",
+        }
+        return generic_error  # type: ignore[no-any-return]
 
 
 @plugin_method("start_server")
 @trigger_plugin_event(before="before_server_start", after="after_server_start")
-def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+def start_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -281,7 +303,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 @plugin_method("stop_server")
 @trigger_plugin_event(before="before_server_stop", after="after_server_stop")
-def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
+def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Stops the specified Bedrock server.
 
     Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
@@ -327,13 +349,13 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
         return {
             "status": "success",
             "message": f"Server '{server_name}' stopped successfully.",
-        }
+        }  # type: ignore[no-any-return]
     except BSMError as e:
         logger.error(f"API: Failed to stop server '{server_name}': {e}", exc_info=True)
         return {
             "status": "error",
             "message": f"Failed to stop server '{server_name}': {e}",
-        }
+        }  # type: ignore[no-any-return]
     except Exception as e:
         logger.error(
             f"API: Unexpected error stopping server '{server_name}': {e}", exc_info=True
@@ -341,7 +363,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
         return {
             "status": "error",
             "message": f"Unexpected error stopping server '{server_name}': {e}",
-        }
+        }  # type: ignore[no-any-return]
     finally:
         # Always attempt to clean up the PID file as a final step.
         if server:
@@ -356,11 +378,11 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
 
 
 @plugin_method("restart_server")
-def restart_server(
+def restart_server(  # noqa: C901
     server_name: str,
     app_context: AppContext,
     send_message: bool = True,
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """Restarts the specified Bedrock server by orchestrating stop and start.
 
     This function internally calls :func:`~.stop_server` and then

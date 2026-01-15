@@ -1,14 +1,15 @@
-import pytest
 import asyncio
 from unittest.mock import MagicMock
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.context import AppContext
+from bedrock_server_manager.web.auth_utils import User, get_current_user_for_websocket
 from bedrock_server_manager.web.routers.websocket_router import (
     router as websocket_router,
 )
-from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.web.auth_utils import User, get_current_user_for_websocket
 from bedrock_server_manager.web.websocket_manager import ConnectionManager
 
 pytestmark = pytest.mark.asyncio
@@ -69,6 +70,7 @@ async def test_send_to_user_integration(test_app):
         received_message = websocket.receive_json()
         assert received_message == test_message
 
+
 async def test_wildcard_subscription(test_app):
     """
     Tests that a client subscribed to '*' receives messages from other topics.
@@ -87,7 +89,9 @@ async def test_wildcard_subscription(test_app):
 
         # Broadcast to a specific topic
         test_message = {"data": "broadcast message"}
-        await app_context.connection_manager.broadcast_to_topic("event:some_event", test_message)
+        await app_context.connection_manager.broadcast_to_topic(
+            "event:some_event", test_message
+        )
 
         # Client should receive it because of wildcard
         received_message = websocket.receive_json()

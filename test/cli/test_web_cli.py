@@ -1,13 +1,9 @@
-import unittest
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from bedrock_server_manager.cli.web import (
-    start_web_server,
-    stop_web_server,
-)
+from bedrock_server_manager.cli.web import start_web_server, stop_web_server
 
 
 @pytest.fixture

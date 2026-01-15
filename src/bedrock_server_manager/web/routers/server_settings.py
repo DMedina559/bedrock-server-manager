@@ -3,23 +3,21 @@
 FastAPI router for managing server-specific settings.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status, Path
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
-from fastapi.templating import Jinja2Templates
 
-from ..schemas import BaseApiResponse, User
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import get_current_user, get_admin_user
+from ...context import AppContext
 from ...error import (
     BSMError,
-    UserInputError,
-    MissingArgumentError,
     InvalidServerNameError,
+    MissingArgumentError,
+    UserInputError,
 )
-from ...context import AppContext
+from ..auth_utils import get_admin_user, get_current_user
+from ..dependencies import get_app_context
+from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
 

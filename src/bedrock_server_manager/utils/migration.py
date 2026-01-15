@@ -1,15 +1,19 @@
 from __future__ import annotations
-import os
+
 import json
 import logging
-from ..web.auth_utils import get_password_hash
+import os
 import platform
 import subprocess
-from typing import TYPE_CHECKING, Dict, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ..db.models import Player, User, Server, Plugin
-from ..error import ConfigurationError
+from sqlalchemy.orm import Session
+
 from ..config import bcm_config
+from ..config.settings import deep_merge
+from ..db.models import Player, Plugin, Server, Setting, User
+from ..error import ConfigurationError
+from ..web.auth_utils import get_password_hash
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -19,7 +23,7 @@ logger = logging.getLogger(__name__)
 old_env_name = "BEDROCK_SERVER_MANAGER"
 
 
-def migrate_players_json_to_db(app_context: AppContext):
+def migrate_players_json_to_db(app_context: AppContext):  # noqa: C901
     """Migrates players from players.json to the database if the file exists."""
     players_json_path = os.path.join(app_context.settings.config_dir, "players.json")
     logger.info(f"Checking for players.json at {players_json_path}")
@@ -49,28 +53,33 @@ def migrate_players_json_to_db(app_context: AppContext):
     try:
         os.rename(players_json_path, backup_path)
         logger.info(f"Old players.json file backed up to {backup_path}")
-    except OSError as e:
+    except OSError:
         logger.error(
             f"Failed to back up players.json to {backup_path}. "
             "Migration aborted. Please check file permissions."
         )
         return
 
-    db = None
+    db: Session | None = None
     try:
-        with app_context.db.session_manager() as db:
-            for player_data in players:
-                # Check if player already exists to ensure idempotency
-                if not db.query(Player).filter_by(xuid=player_data.get("xuid")).first():
-                    player = Player(
-                        player_name=player_data.get("name"),
-                        xuid=player_data.get("xuid"),
-                    )
-                    db.add(player)
-            db.commit()
-            logger.info(
-                "Successfully migrated players from players.json to the database."
-            )
+        with app_context.db.session_manager() as db:  # type: ignore
+            if db:
+                for player_data in players:
+                    # Check if player already exists to ensure idempotency
+                    if (
+                        not db.query(Player)
+                        .filter_by(xuid=player_data.get("xuid"))
+                        .first()
+                    ):
+                        player = Player(
+                            player_name=player_data.get("name"),
+                            xuid=player_data.get("xuid"),
+                        )
+                        db.add(player)
+                db.commit()
+                logger.info(
+                    "Successfully migrated players from players.json to the database."
+                )
     except Exception as e:
         if db:
             db.rollback()
@@ -84,7 +93,7 @@ def migrate_players_json_to_db(app_context: AppContext):
             logger.error(f"Failed to restore backup file: {restore_e}")
 
 
-def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:
+def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:  # noqa: C901
     """
     Loads environment variables from the EnvironmentFile of a systemd service.
     """
@@ -148,36 +157,37 @@ def migrate_env_auth_to_db(app_context: AppContext):
         f"Attempting to migrate user '{username}' from environment variables..."
     )
 
-    db = None
+    db: Session | None = None
     try:
-        with app_context.db.session_manager() as db:
-            # Check if the user already exists
-            if db.query(User).filter_by(username=username).first():
-                logger.info(
-                    f"User '{username}' already exists in the database. Skipping migration."
+        with app_context.db.session_manager() as db:  # type: ignore
+            if db:
+                # Check if the user already exists
+                if db.query(User).filter_by(username=username).first():
+                    logger.info(
+                        f"User '{username}' already exists in the database. Skipping migration."
+                    )
+                    return
+
+                try:
+                    is_hashed = password.startswith(("$2a$", "$2b$", "$2y$"))
+                except AttributeError:
+                    is_hashed = False
+
+                if is_hashed:
+                    logger.info("Password is already hashed.")
+                    hashed_password = password
+                else:
+                    logger.info("Password is not hashed. Hashing now.")
+                    hashed_password = get_password_hash(password)
+
+                user = User(
+                    username=username, hashed_password=hashed_password, role="admin"
                 )
-                return
-
-            try:
-                is_hashed = password.startswith(("$2a$", "$2b$", "$2y$"))
-            except AttributeError:
-                is_hashed = False
-
-            if is_hashed:
-                logger.info("Password is already hashed.")
-                hashed_password = password
-            else:
-                logger.info("Password is not hashed. Hashing now.")
-                hashed_password = get_password_hash(password)
-
-            user = User(
-                username=username, hashed_password=hashed_password, role="admin"
-            )
-            db.add(user)
-            db.commit()
-            logger.info(
-                f"Successfully migrated user '{username}' from environment variables to the database."
-            )
+                db.add(user)
+                db.commit()
+                logger.info(
+                    f"Successfully migrated user '{username}' from environment variables to the database."
+                )
     except Exception as e:
         if db:
             db.rollback()
@@ -305,7 +315,7 @@ def migrate_plugin_config_to_db(app_context: AppContext, config_dir: str):
     try:
         os.rename(config_file_path, backup_path)
         logger.info(f"Old plugin config file backed up to {backup_path}")
-    except OSError as e:
+    except OSError:
         logger.error(
             f"Failed to back up plugin config file '{config_file_path}' to '{backup_path}'. "
             "Migration aborted. Please check file permissions."
@@ -316,10 +326,10 @@ def migrate_plugin_config_to_db(app_context: AppContext, config_dir: str):
         with open(backup_path, "r", encoding="utf-8") as f:
             all_plugins_config = json.load(f)
 
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             for plugin_name, config_data in all_plugins_config.items():
                 # Find the existing plugin entry.
-                plugin_entry = (
+                plugin_entry: Plugin | None = (
                     db.query(Plugin).filter_by(plugin_name=plugin_name).first()
                 )
 
@@ -364,7 +374,7 @@ def migrate_server_config_to_db(
     try:
         os.rename(config_file_path, backup_path)
         logger.info(f"Old server config file backed up to {backup_path}")
-    except OSError as e:
+    except OSError:
         logger.error(
             f"Failed to back up server config file to {backup_path}. "
             "Migration aborted. Please check file permissions."
@@ -374,7 +384,7 @@ def migrate_server_config_to_db(
     try:
         with open(backup_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             # Check if config already exists
             if not db.query(Server).filter_by(server_name=server_name).first():
                 server_entry = Server(server_name=server_name, config=config_data)
@@ -394,8 +404,11 @@ def migrate_server_config_to_db(
             logger.error(f"Failed to restore server config backup: {restore_e}")
 
 
-def migrate_services_to_db(app_context: AppContext = None):
+def migrate_services_to_db(app_context: Optional[AppContext] = None):  # noqa: C901
     """Migrates systemd/Windows service autostart status to the database."""
+
+    if app_context is None:
+        return
 
     logger.info("Checking for system services to migrate autostart status...")
     try:
@@ -492,9 +505,6 @@ def migrate_json_configs_to_db(app_context: AppContext):
     migrate_plugin_config_to_db(app_context, config_dir)
 
 
-from ..db.models import Setting
-
-
 def migrate_global_theme_to_admin_user(app_context: AppContext):
     """Migrates the global theme setting to the first admin user's preferences."""
 
@@ -508,8 +518,8 @@ def migrate_global_theme_to_admin_user(app_context: AppContext):
             logger.debug("No global theme set. Skipping migration.")
             return
 
-        with app_context.db.session_manager() as db:
-            admin_user = db.query(User).filter_by(role="admin").first()
+        with app_context.db.session_manager() as db:  # type: ignore
+            admin_user: User | None = db.query(User).filter_by(role="admin").first()
             if admin_user:
                 admin_user.theme = global_theme
                 db.commit()
@@ -526,10 +536,7 @@ def migrate_global_theme_to_admin_user(app_context: AppContext):
         logger.error(f"Failed to migrate global theme to admin user: {e}")
 
 
-from ..config.settings import deep_merge
-
-
-def migrate_json_settings_to_db(app_context: AppContext):
+def migrate_json_settings_to_db(app_context: AppContext):  # noqa: C901
     """Migrates settings from a file-based bedrock_server_manager.json to the database."""
     config_path = os.path.join(
         app_context.settings.config_dir, "bedrock_server_manager.json"
@@ -553,15 +560,15 @@ def migrate_json_settings_to_db(app_context: AppContext):
         return
 
     try:
-        with app_context.db.session_manager() as db:
-            current_db_settings = {}
-            for s in db.query(Setting).all():
+        with app_context.db.session_manager() as db:  # type: ignore
+            current_db_settings: dict[str, Any] = {}
+            for s in db.query(Setting).all():  # type: ignore
                 current_db_settings[s.key] = s.value
 
             merged_config = deep_merge(config_data, current_db_settings)
 
             for key, value in merged_config.items():
-                setting = db.query(Setting).filter_by(key=key).first()
+                setting: Setting | None = db.query(Setting).filter_by(key=key).first()
                 if setting:
                     if setting.value != value:
                         setting.value = value

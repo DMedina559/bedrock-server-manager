@@ -1,17 +1,10 @@
-import pytest
 import os
-import shutil
 import zipfile
-import tempfile
 from unittest.mock import patch
 
-from bedrock_server_manager.core.server.world_mixin import ServerWorldMixin
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.core.server.config_management_mixin import (
-    ServerConfigManagementMixin,
-)
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import ExtractError, AppFileNotFoundError
+import pytest
+
+from bedrock_server_manager.error import AppFileNotFoundError, ExtractError
 
 
 def zip_dir(path, zip_path):

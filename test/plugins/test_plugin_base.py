@@ -1,10 +1,10 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import logging
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from bedrock_server_manager.plugins.plugin_base import PluginBase
+import pytest
+
 from bedrock_server_manager.plugins.api_bridge import PluginAPI
+from bedrock_server_manager.plugins.plugin_base import PluginBase
 
 
 @pytest.fixture

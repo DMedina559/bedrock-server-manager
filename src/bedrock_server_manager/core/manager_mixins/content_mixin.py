@@ -21,6 +21,8 @@ class ContentMixin:
     Mixin class for BedrockServerManager that handles global content management.
     """
 
+    _content_dir: str | None
+
     def _list_content_files(self, sub_folder: str, extensions: List[str]) -> List[str]:
         """
         Internal helper to list files with specified extensions from a sub-folder

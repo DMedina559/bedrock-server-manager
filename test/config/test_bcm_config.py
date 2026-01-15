@@ -1,7 +1,7 @@
 # test/config/test_bcm_config.py
 import os
-import json
 from unittest.mock import patch
+
 from bedrock_server_manager.config import bcm_config
 
 # Test data

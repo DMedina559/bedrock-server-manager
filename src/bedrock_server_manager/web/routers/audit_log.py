@@ -3,15 +3,17 @@
 FastAPI router for viewing audit logs.
 """
 import logging
-from fastapi import APIRouter, Request, Depends
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ...db.models import AuditLog
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import get_admin_user
-from ..schemas import User as UserSchema
 from ...context import AppContext
+from ...db.models import AuditLog
+from ..auth_utils import get_admin_user
+from ..dependencies import get_app_context, get_templates
+from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +23,16 @@ router = APIRouter(
 )
 
 
-def create_audit_log(app_context, user_id: int, action: str, details: dict = None):
+def create_audit_log(
+    app_context,
+    user_id: int,
+    action: str,
+    details: Optional[Dict[Any, Any]] = None,
+):
     """
     Creates an audit log entry.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         log = AuditLog(user_id=user_id, action=action, details=details)
         db.add(log)
         db.commit()
@@ -41,7 +48,7 @@ async def audit_log_page(
     """
     Serves the audit log page.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()
     return templates.TemplateResponse(
         request,

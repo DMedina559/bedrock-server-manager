@@ -51,7 +51,7 @@ class AppAndPluginFilter(logging.Filter):
         return False
 
 
-def setup_logging(
+def setup_logging(  # noqa: C901
     log_dir: str = DEFAULT_LOG_DIR,
     log_filename: str = "bedrock_server_manager.log",
     log_keep: int = DEFAULT_LOG_KEEP,
@@ -186,7 +186,7 @@ def setup_logging(
     return root_logger
 
 
-def log_separator(
+def log_separator(  # noqa: C901
     logger: logging.Logger,
     app_name: Optional[str] = "BedrockServerManager",
     app_version: str = "0.0.0",

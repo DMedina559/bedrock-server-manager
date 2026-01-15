@@ -13,16 +13,12 @@ Key command groups and commands include:
 
 """
 import logging
-from typing import Tuple
 
 import click
-import questionary
 
 from ..api import web as web_api
+from ..error import BSMError
 from .utils import handle_api_response as _handle_api_response
-from ..error import (
-    BSMError,
-)
 
 logger = logging.getLogger(__name__)
 

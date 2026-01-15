@@ -1,9 +1,11 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
+
 from bedrock_server_manager.plugins.api_bridge import (
-    plugin_method,
     PluginAPI,
     _api_registry,
+    plugin_method,
 )
 
 

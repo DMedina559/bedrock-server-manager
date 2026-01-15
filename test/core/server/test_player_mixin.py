@@ -1,12 +1,4 @@
-import pytest
 import os
-import shutil
-import tempfile
-from unittest.mock import patch
-
-from bedrock_server_manager.core.server.player_mixin import ServerPlayerMixin
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.config.settings import Settings
 
 
 def test_scan_log_for_players_success(real_bedrock_server):
@@ -35,7 +27,7 @@ def test_scan_log_for_players_no_log(real_bedrock_server):
 def test_scan_log_for_players_empty_log(real_bedrock_server):
     server = real_bedrock_server
     log_path = os.path.join(server.server_dir, "server_output.txt")
-    with open(log_path, "w") as f:
+    with open(log_path, "w"):
         pass
     players = server.scan_log_for_players()
     assert players == []

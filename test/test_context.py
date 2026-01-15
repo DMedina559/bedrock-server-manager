@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock
+
 from bedrock_server_manager.context import AppContext
 
 
-def test_remove_server(app_context: AppContext):
+def test_remove_server(app_context: AppContext, monkeypatch):
     """
     Tests that the remove_server method stops a running server and removes it from the cache.
     """
@@ -12,15 +13,17 @@ def test_remove_server(app_context: AppContext):
     server_instance = app_context.get_server(server_name)
 
     # Mock the server's methods
-    server_instance.is_running = MagicMock(return_value=True)
-    server_instance.stop = MagicMock()
+    is_running_mock = MagicMock(return_value=True)
+    stop_mock = MagicMock()
+    monkeypatch.setattr(server_instance, "is_running", is_running_mock)
+    monkeypatch.setattr(server_instance, "stop", stop_mock)
 
     # Call remove_server
     app_context.remove_server(server_name)
 
     # Assert that the methods were called
-    server_instance.is_running.assert_called_once()
-    server_instance.stop.assert_called_once()
+    is_running_mock.assert_called_once()
+    stop_mock.assert_called_once()
 
     # Assert that the server is removed from the cache
     # We can't directly access _servers, so we check by getting a new instance
@@ -28,7 +31,7 @@ def test_remove_server(app_context: AppContext):
     assert new_server_instance is not server_instance
 
 
-def test_remove_server_not_running(app_context: AppContext):
+def test_remove_server_not_running(app_context: AppContext, monkeypatch):
     """
     Tests that remove_server does not call stop() on a non-running server.
     """
@@ -38,29 +41,37 @@ def test_remove_server_not_running(app_context: AppContext):
     server_instance = app_context.get_server(server_name)
 
     # Mock the server's methods
-    server_instance.is_running = MagicMock(return_value=False)
-    server_instance.stop = MagicMock()
+    is_running_mock = MagicMock(return_value=False)
+    stop_mock = MagicMock()
+    monkeypatch.setattr(server_instance, "is_running", is_running_mock)
+    monkeypatch.setattr(server_instance, "stop", stop_mock)
 
     # Call remove_server
     app_context.remove_server(server_name)
 
     # Assert that is_running was called but stop was not
-    server_instance.is_running.assert_called_once()
-    server_instance.stop.assert_not_called()
+    is_running_mock.assert_called_once()
+    stop_mock.assert_not_called()
 
     # Assert that the server is removed from the cache
     new_server_instance = app_context.get_server(server_name)
     assert new_server_instance is not server_instance
 
 
-def test_reload(app_context: AppContext):
+def test_reload(app_context: AppContext, monkeypatch):
     """
     Tests that the reload method reloads all components and clears caches.
     """
     # Mock reload methods
-    app_context.settings.reload = MagicMock()
-    app_context.manager.reload = MagicMock()
-    app_context.plugin_manager.reload = MagicMock()
+    settings_reload_mock = MagicMock()
+    manager_reload_mock = MagicMock()
+    plugin_manager_reload_mock = MagicMock()
+
+    monkeypatch.setattr(app_context.settings, "reload", settings_reload_mock)
+    monkeypatch.setattr(app_context.manager, "reload", manager_reload_mock)
+    monkeypatch.setattr(
+        app_context.plugin_manager, "reload", plugin_manager_reload_mock
+    )
 
     # Get a server instance to cache it
     # server_instance = app_context.get_server("test_server")
@@ -69,9 +80,9 @@ def test_reload(app_context: AppContext):
     app_context.reload()
 
     # Assert that reload methods were called
-    app_context.settings.reload.assert_called_once()
-    app_context.manager.reload.assert_called_once()
-    app_context.plugin_manager.reload.assert_called_once()
+    settings_reload_mock.assert_called_once()
+    manager_reload_mock.assert_called_once()
+    plugin_manager_reload_mock.assert_called_once()
 
     # Assert that server cache is cleared
     # new_server_instance = app_context.get_server("test_server")

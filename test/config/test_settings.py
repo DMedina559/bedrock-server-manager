@@ -1,19 +1,10 @@
 import os
+from unittest.mock import patch
+
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from bedrock_server_manager.config.const import package_name, env_name
-from bedrock_server_manager.config.settings import (
-    Settings,
-    CONFIG_SCHEMA_VERSION,
-    deep_merge,
-)
-from bedrock_server_manager.db.database import Base
+from bedrock_server_manager.config.settings import CONFIG_SCHEMA_VERSION, deep_merge
 from bedrock_server_manager.db.models import Setting
-
-
-from unittest.mock import MagicMock
 
 
 @pytest.fixture
@@ -88,12 +79,6 @@ def test_set_with_new_key(settings):
     """Test that the set method can create a new key."""
     settings.set("new_key", "new_value")
     assert settings.get("new_key") == "new_value"
-
-
-from unittest.mock import patch
-
-
-from unittest.mock import patch
 
 
 def test_determine_app_data_dir_uses_config(settings, monkeypatch, tmp_path):

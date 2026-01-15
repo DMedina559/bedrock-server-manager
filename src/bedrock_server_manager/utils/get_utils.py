@@ -3,10 +3,9 @@
 Provides utility helper functions for gettings various variables.
 """
 
-import platform
 import logging
+import platform
 import random
-from typing import Optional
 
 # Local imports
 from bedrock_server_manager.config.splash_text import SPLASH_TEXTS
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 # --- Helper Functions ---
 
 
-def _get_splash_text() -> str:
+def _get_splash_text() -> str:  # noqa: C901
     """
     Selects and returns a random splash text message.
 

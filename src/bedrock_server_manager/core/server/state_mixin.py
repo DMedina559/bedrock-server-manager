@@ -26,22 +26,18 @@ Key functionalities:
 
 """
 import os
-import json
-from typing import Optional, Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
-from sqlalchemy.orm import Session
+from ...db.models import Server
+from ...error import (
+    AppFileNotFoundError,
+    ConfigParseError,
+    MissingArgumentError,
+    UserInputError,
+)
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ...db.models import Server
-from ...error import (
-    MissingArgumentError,
-    UserInputError,
-    FileOperationError,
-    ConfigParseError,
-    AppFileNotFoundError,
-)
-
 
 # Version for the server-specific JSON config schema
 SERVER_CONFIG_SCHEMA_VERSION: int = 2
@@ -146,12 +142,16 @@ class ServerStateMixin(BedrockServerBaseMixin):
             FileOperationError: If directory creation or file reading fails due
                 to ``OSError``.
         """
-        with self.settings.db.session_manager() as db:
+        # Type check for self.settings.db being present
+        if self.settings.db is None:
+            raise RuntimeError("Database connection not initialized.")
+
+        with self.settings.db.session_manager() as db:  # type: ignore
             server = (
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )
             if server:
-                return server.config
+                return dict(server.config)
 
             # Create new server config in DB
             self.logger.info(
@@ -162,7 +162,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
             db.add(server)
             db.commit()
             db.refresh(server)
-            return server.config
+            return dict(server.config)
 
     def _save_server_config(self, config_data: Dict[str, Any]) -> None:
         """Saves the server configuration data to the database.
@@ -170,7 +170,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
         Args:
             config_data (Dict[str, Any]): The server configuration dictionary to save.
         """
-        with self.settings.db.session_manager() as db:
+        if self.settings.db is None:
+            raise RuntimeError("Database connection not initialized.")
+
+        with self.settings.db.session_manager() as db:  # type: ignore
             server = (
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )
@@ -178,7 +181,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 server.config = config_data
                 db.commit()
 
-    def _manage_json_config(
+    def _manage_json_config(  # noqa: C901
         self,
         key: str,
         operation: str,
@@ -637,7 +640,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
             f"'level-name' property not found in {self.server_properties_path}"
         )
 
-    def get_status(self) -> str:
+    def get_status(self) -> str:  # noqa: C901
         """Determines and returns the current reconciled operational status of the server.
 
         This method attempts to determine if the server process is actually running

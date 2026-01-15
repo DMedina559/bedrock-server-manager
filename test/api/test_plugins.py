@@ -1,10 +1,11 @@
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.plugins import (
     get_plugin_statuses,
-    set_plugin_status,
     reload_plugins,
+    set_plugin_status,
     trigger_external_plugin_event_api,
 )
 from bedrock_server_manager.error import UserInputError

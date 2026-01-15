@@ -1,15 +1,15 @@
+import os
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.utils import (
-    validate_server_exist,
-    validate_server_name_format,
-    update_server_statuses,
     get_system_and_app_info,
     server_lifecycle_manager,
+    update_server_statuses,
+    validate_server_exist,
+    validate_server_name_format,
 )
-from bedrock_server_manager.error import BSMError, ServerStartError
-import os
 
 
 class TestServerValidation:

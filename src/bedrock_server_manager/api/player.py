@@ -18,18 +18,16 @@ to manage player data globally across all server instances.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List
+
+from ..context import AppContext
+
+# Local application imports.
+from ..error import BSMError, UserInputError
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
-
-# Local application imports.
-from ..error import (
-    BSMError,
-    UserInputError,
-)
 from ..plugins.event_trigger import trigger_plugin_event
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 

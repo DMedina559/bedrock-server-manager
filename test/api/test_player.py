@@ -1,12 +1,11 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from bedrock_server_manager.api.player import (
     add_players_manually_api,
     get_all_known_players_api,
     scan_and_update_player_db_api,
 )
-from bedrock_server_manager.error import UserInputError, BSMError
+from bedrock_server_manager.error import BSMError, UserInputError
 
 
 class TestPlayerManagement:

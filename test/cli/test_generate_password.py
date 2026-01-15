@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch
+
 import pytest
 from click.testing import CliRunner
+
 from bedrock_server_manager.cli import generate_password
 
 

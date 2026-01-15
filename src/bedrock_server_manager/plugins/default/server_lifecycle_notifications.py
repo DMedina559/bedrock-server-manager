@@ -4,6 +4,7 @@ Plugin to send in-game messages and manage delays during server lifecycle events
 """
 import time
 from typing import Any
+
 from bedrock_server_manager import PluginBase
 
 
@@ -32,7 +33,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         try:
             response = self.api.get_server_running_status(server_name=server_name)
             if response and response.get("status") == "success":
-                return response.get("is_running", False)
+                return bool(response.get("is_running", False))
             self.logger.warning(
                 f"Could not determine running status for '{server_name}'. API: {response}"
             )
@@ -72,7 +73,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
     def before_server_stop(self, **kwargs: Any):
         """Sends a shutdown warning and waits before the server stops."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
 
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
@@ -105,7 +106,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
     def before_delete_server_data(self, **kwargs: Any):
         """Sends a final warning before server data is deleted if the server is running."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
 
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
@@ -120,7 +121,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
     def before_server_update(self, **kwargs: Any):
         """Notifies players before a server update begins."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         target_version = kwargs.get("target_version")
         app_context = kwargs.get("app_context")
 

@@ -1,23 +1,23 @@
-import pytest
-from unittest.mock import patch, MagicMock
-import os
 import json
-import importlib
+import os
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from bedrock_server_manager.db.models import Setting, User
+from bedrock_server_manager.error import ConfigurationError
 from bedrock_server_manager.utils.migration import (
-    migrate_env_vars_to_config_file,
-    migrate_players_json_to_db,
     migrate_env_auth_to_db,
-    migrate_server_config_v1_to_v2,
-    migrate_settings_v1_to_v2,
     migrate_env_token_to_db,
+    migrate_env_vars_to_config_file,
+    migrate_json_settings_to_db,
+    migrate_players_json_to_db,
     migrate_plugin_config_to_db,
     migrate_server_config_to_db,
+    migrate_server_config_v1_to_v2,
     migrate_services_to_db,
-    migrate_json_settings_to_db,
+    migrate_settings_v1_to_v2,
 )
-from bedrock_server_manager.db.models import Player, User, Server, Setting
-from bedrock_server_manager.error import ConfigurationError
 
 
 @pytest.fixture

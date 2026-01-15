@@ -36,6 +36,17 @@ class WebServiceMixin:
     Mixin class for BedrockServerManager that handles Web UI system service management.
     """
 
+    _app_name_title: str
+    _expath: Optional[str]
+    _app_data_dir: str
+    _WEB_SERVICE_SYSTEMD_NAME: str
+    _WEB_SERVICE_WINDOWS_NAME_INTERNAL: str
+    _WEB_SERVICE_WINDOWS_DISPLAY_NAME: str
+
+    def get_os_type(self) -> str:
+        """Returns the operating system type (e.g., 'Linux', 'Windows')."""
+        raise NotImplementedError
+
     def _ensure_linux_for_web_service(self, operation_name: str) -> None:
         """Ensures the current OS is Linux before proceeding with a Web UI systemd operation.
 
@@ -88,8 +99,10 @@ class WebServiceMixin:
         exe_path_to_use = self._expath
         # Quote executable path if it contains spaces and isn't already quoted.
         # This is particularly important for Windows `binPath`.
-        if " " in exe_path_to_use and not (
-            exe_path_to_use.startswith('"') and exe_path_to_use.endswith('"')
+        if (
+            " " in exe_path_to_use
+            and not exe_path_to_use.startswith('"')
+            and not exe_path_to_use.endswith('"')
         ):
             exe_path_to_use = f'"{exe_path_to_use}"'
 
@@ -97,7 +110,7 @@ class WebServiceMixin:
 
         return " ".join(command_parts)
 
-    def create_web_service_file(
+    def create_web_service_file(  # noqa: C901
         self,
         system: bool = False,
         username: Optional[str] = None,
@@ -147,10 +160,12 @@ class WebServiceMixin:
         if os_type == "Linux":
             self._ensure_linux_for_web_service("create_web_service_file")
 
+            assert self._expath is not None
             stop_command_exe_path = self._expath
-            if " " in stop_command_exe_path and not (
-                stop_command_exe_path.startswith('"')
-                and stop_command_exe_path.endswith('"')
+            if (
+                " " in stop_command_exe_path
+                and not stop_command_exe_path.startswith('"')
+                and not stop_command_exe_path.endswith('"')
             ):
                 stop_command_exe_path = f'"{stop_command_exe_path}"'
             stop_command = f"{stop_command_exe_path} web stop"  # Generic web stop
@@ -465,7 +480,7 @@ class WebServiceMixin:
                 f"Web UI service removal is not supported on OS: {os_type}"
             )
 
-    def is_web_service_active(self, system: bool = False) -> bool:
+    def is_web_service_active(self, system: bool = False) -> bool:  # noqa: C901
         """Checks if the Web UI system service is currently active (running).
 
         Delegates to OS-specific checks:
@@ -565,7 +580,7 @@ class WebServiceMixin:
             logger.debug(f"Web UI service active check not supported on OS: {os_type}")
             return False
 
-    def is_web_service_enabled(self, system: bool = False) -> bool:
+    def is_web_service_enabled(self, system: bool = False) -> bool:  # noqa: C901
         """Checks if the Web UI system service is enabled for automatic startup.
 
         Delegates to OS-specific checks:

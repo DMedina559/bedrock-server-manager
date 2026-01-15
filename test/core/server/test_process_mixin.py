@@ -1,15 +1,8 @@
-import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
-from bedrock_server_manager.core.server.process_mixin import ServerProcessMixin
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.error import (
-    ServerStartError,
-    ServerNotRunningError,
-    MissingArgumentError,
-    SendCommandError,
-    ServerStopError,
-)
+import pytest
+
+from bedrock_server_manager.error import ServerNotRunningError, ServerStartError
 
 
 def test_is_running(app_context):

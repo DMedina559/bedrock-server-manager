@@ -10,9 +10,9 @@ arguments and application settings to correctly configure Uvicorn's host, port,
 debug mode, and worker processes.
 """
 
-import logging
 import ipaddress
-from typing import Optional, List, Union
+import logging
+from typing import Optional
 
 import uvicorn
 
@@ -22,7 +22,7 @@ from .app import create_web_app
 logger = logging.getLogger(__name__)
 
 
-def run_web_server(
+def run_web_server(  # noqa: C901
     app_context: "AppContext",
     host: Optional[str] = None,
     port: Optional[int] = None,

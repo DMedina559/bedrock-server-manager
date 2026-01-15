@@ -14,29 +14,22 @@ FastAPI dependencies.
 """
 
 import logging
-from typing import Dict, Any
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-    Request,
-)
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..schemas import ActionResponse, User
-from ..auth_utils import get_current_user
-from ..dependencies import validate_server_exists, get_app_context
-from ..auth_utils import get_admin_user, get_moderator_user
-from ...api import server as server_api, server_install_config
-from ...error import (
-    BSMError,
-    UserInputError,
-    ServerNotRunningError,
-    BlockedCommandError,
-)
+from ...api import server as server_api
+from ...api import server_install_config
 from ...context import AppContext
+from ...error import (
+    BlockedCommandError,
+    BSMError,
+    ServerNotRunningError,
+    UserInputError,
+)
+from ..auth_utils import get_admin_user, get_moderator_user
+from ..dependencies import get_app_context, validate_server_exists
+from ..schemas import ActionResponse, User
 
 logger = logging.getLogger(__name__)
 

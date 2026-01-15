@@ -10,18 +10,15 @@ import logging
 import threading
 from typing import Dict, Optional
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+from ..context import AppContext
 
 # Local application imports.
 from ..core import prune_old_downloads
-from ..error import (
-    BSMError,
-    UserInputError,
-    MissingArgumentError,
-)
+from ..error import BSMError, MissingArgumentError, UserInputError
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +30,7 @@ _misc_lock = threading.Lock()
 @trigger_plugin_event(
     before="before_prune_download_cache", after="after_prune_download_cache"
 )
-def prune_download_cache(
+def prune_download_cache(  # noqa: C901
     download_dir: str,
     keep_count: Optional[int] = None,
     app_context: Optional[AppContext] = None,
@@ -91,9 +88,12 @@ def prune_download_cache(
             # Determine the number of files to keep, prioritizing the function
             # argument over the global setting.
             if keep_count is None:
-                settings = app_context.settings
-                keep_setting = settings.get("retention.downloads", 3)
-                effective_keep = int(keep_setting)
+                if app_context and app_context.settings:
+                    settings = app_context.settings
+                    keep_setting = settings.get("retention.downloads", 3)
+                    effective_keep = int(keep_setting)
+                else:
+                    effective_keep = 3  # Default fallback if app_context is None
             else:
                 effective_keep = int(keep_count)
 
@@ -141,6 +141,12 @@ def prune_download_cache(
     except UserInputError as e:
         # Handle the validation error for keep_count from the outer try block.
         return {"status": "error", "message": str(e)}
+
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error in prune_download_cache: {e}", exc_info=True
+        )
+        return {"status": "error", "message": f"Unexpected error: {e}"}
 
     finally:
         # Ensure the lock is always released, even if errors occur.

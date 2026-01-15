@@ -10,14 +10,12 @@ See Also:
     FastAPI Dependencies: https://fastapi.tiangolo.com/tutorial/dependencies/
 """
 import logging
-from fastapi import HTTPException, status, Path
-from sqlalchemy.orm import Session
-from ..db.models import User
-from ..api import utils as utils_api
-from ..error import InvalidServerNameError
-from fastapi import Request
 
+from fastapi import HTTPException, Path, Request, status
+
+from ..api import utils as utils_api
 from ..context import AppContext
+from ..error import InvalidServerNameError
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +24,11 @@ def get_app_context(request: Request) -> "AppContext":
     """
     FastAPI dependency to get the application context from the request state.
     """
-    return request.app.state.app_context
+    return request.app.state.app_context  # type: ignore
 
 
-from fastapi.templating import Jinja2Templates
-from fastapi import Depends
+from fastapi import Depends  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
 
 
 def get_templates(

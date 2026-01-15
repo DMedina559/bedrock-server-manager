@@ -1,5 +1,6 @@
-from bedrock_server_manager import PluginBase
 from mcstatus import BedrockServer as mc
+
+from bedrock_server_manager import PluginBase
 
 
 class UpdateVersionOnStartPlugin(PluginBase):

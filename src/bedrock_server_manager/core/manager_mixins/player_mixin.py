@@ -8,7 +8,10 @@ information from multiple servers.
 """
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List
+
+if TYPE_CHECKING:
+    from bedrock_server_manager.config.settings import Settings
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.db.models import Player
@@ -18,7 +21,6 @@ from bedrock_server_manager.error import (
     UserInputError,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -26,6 +28,10 @@ class PlayerMixin:
     """
     Mixin class for BedrockServerManager that handles player database management.
     """
+
+    if TYPE_CHECKING:
+        settings: "Settings"
+        _base_dir: str
 
     def parse_player_cli_argument(self, player_string: str) -> None:
         """Parses a comma-separated string of 'player_name:xuid' pairs and saves them to the database.
@@ -67,7 +73,7 @@ class PlayerMixin:
 
         self.save_player_data(player_list)
 
-    def save_player_data(self, players_data: List[Dict[str, str]]) -> int:
+    def save_player_data(self, players_data: List[Dict[str, str]]) -> int:  # noqa: C901
         """Saves or updates player data in the database.
 
         This method merges the provided ``players_data`` with any existing player
@@ -106,6 +112,9 @@ class PlayerMixin:
                 and p_data["xuid"]
             ):
                 raise UserInputError(f"Invalid player entry format: {p_data}")
+
+        if self.settings.db is None:
+            raise RuntimeError("Database is not initialized.")
 
         with self.settings.db.session_manager() as db:
             try:
@@ -150,13 +159,16 @@ class PlayerMixin:
             List[Dict[str, str]]: A list of player dictionaries, where each
             dictionary typically contains ``"name"`` and ``"xuid"`` keys.
         """
+        if self.settings.db is None:
+            raise RuntimeError("Database is not initialized.")
+
         with self.settings.db.session_manager() as db:
             players = db.query(Player).all()
             return [
                 {"name": player.player_name, "xuid": player.xuid} for player in players
             ]
 
-    def discover_and_store_players_from_all_server_logs(
+    def discover_and_store_players_from_all_server_logs(  # noqa: C901
         self, app_context: "AppContext"
     ) -> Dict[str, Any]:
         """Scans all server logs for player data and updates the central player database.

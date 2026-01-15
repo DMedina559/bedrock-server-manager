@@ -1,13 +1,12 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from bedrock_server_manager.api.application import (
-    get_application_info_api,
-    list_available_worlds_api,
-    list_available_addons_api,
     get_all_servers_data,
+    get_application_info_api,
+    list_available_addons_api,
+    list_available_worlds_api,
 )
-from bedrock_server_manager.error import FileError, BSMError
+from bedrock_server_manager.error import BSMError, FileError
 
 
 class TestApplicationInfo:

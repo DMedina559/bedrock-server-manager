@@ -1,5 +1,5 @@
-from unittest.mock import patch, MagicMock
-import pytest
+import os
+from unittest.mock import MagicMock, patch
 
 
 def test_manage_settings_page_route(authenticated_client):
@@ -23,9 +23,6 @@ def test_set_setting_api_route(authenticated_client, app_context):
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-
-
-import os
 
 
 def test_get_themes_api_route(authenticated_client, app_context):

@@ -23,19 +23,20 @@ with the filesystem within the server's ``worlds`` subdirectory.
 import os
 import shutil
 import zipfile
-from typing import Optional, Any
+from typing import TYPE_CHECKING, Any, Optional
+
+from ...error import (
+    AppFileNotFoundError,
+    BackupRestoreError,
+    ConfigParseError,
+    ExtractError,
+    FileOperationError,
+    MissingArgumentError,
+)
+from ..system import base as system_base_utils
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ..system import base as system_base_utils
-from ...error import (
-    MissingArgumentError,
-    ExtractError,
-    FileOperationError,
-    BackupRestoreError,
-    AppFileNotFoundError,
-    ConfigParseError,
-)
 
 
 class ServerWorldMixin(BedrockServerBaseMixin):
@@ -72,6 +73,10 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         super().__init__(*args, **kwargs)
         # Attributes from BaseMixin are available.
         # Relies on self.get_world_name() from StateMixin.
+
+    if TYPE_CHECKING:
+
+        def get_world_name(self) -> str: ...
 
     @property
     def _worlds_base_dir_in_server(self) -> str:
@@ -116,7 +121,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
         return os.path.join(self._worlds_base_dir_in_server, active_world_name)
 
-    def extract_mcworld_to_directory(
+    def extract_mcworld_to_directory(  # noqa: C901
         self, mcworld_file_path: str, target_world_dir_name: str
     ) -> str:
         """Extracts a ``.mcworld`` archive file into a specified world directory name.
@@ -239,7 +244,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Unexpected error extracting world '{mcworld_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def export_world_directory_to_mcworld(
+    def export_world_directory_to_mcworld(  # noqa: C901
         self, world_dir_name: str, target_mcworld_file_path: str
     ) -> None:
         """Exports a specified world directory into a ``.mcworld`` archive file.

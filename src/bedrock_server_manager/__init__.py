@@ -1,21 +1,21 @@
 # bedrock_server_manager/__init__.py
 # Core classes
-from .core import (
-    BedrockServerManager,
-    BedrockServer,
-    BedrockDownloader,
-    BedrockProcessManager,
-)
+from . import error as errors
 
 # Configuration
 from .config import Settings, get_installed_version
 
 # App Context
 from .context import AppContext
+from .core import (
+    BedrockDownloader,
+    BedrockProcessManager,
+    BedrockServer,
+    BedrockServerManager,
+)
 
 # Plugin system essentials
 from .plugins import PluginBase, PluginManager
-from . import error as errors
 
 # --- Version ---
 __version__ = get_installed_version()

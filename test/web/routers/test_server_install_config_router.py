@@ -1,10 +1,7 @@
-from unittest.mock import patch, MagicMock
-
-import pytest
-from bedrock_server_manager.web.dependencies import validate_server_exists
-
-
 import os
+from unittest.mock import MagicMock, patch
+
+from bedrock_server_manager.web.dependencies import validate_server_exists
 
 
 def test_get_custom_zips(authenticated_client, app_context):

@@ -14,24 +14,22 @@ a server. Responses are generally structured using the :class:`.GeneralApiRespon
 """
 import logging
 import os
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse, User
-from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
-from ..dependencies import validate_server_exists, get_app_context
-from ...api import (
-    application as app_api,
-    utils as utils_api,
-    system as system_api,
-    player as player_api,
-    info as info_api,
-)
+from ...api import application as app_api
+from ...api import info as info_api
 from ...api import misc as misc_api
-from ...error import BSMError, UserInputError
+from ...api import player as player_api
+from ...api import system as system_api
+from ...api import utils as utils_api
 from ...context import AppContext
+from ...error import BSMError, UserInputError
+from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
+from ..dependencies import get_app_context, validate_server_exists
+from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
 
