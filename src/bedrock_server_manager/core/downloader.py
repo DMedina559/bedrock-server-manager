@@ -59,9 +59,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def prune_old_downloads(  # noqa: C901
-    download_dir: str, download_keep: int
-):
+def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
     """Removes the oldest downloaded server ZIP files from a directory.
 
     This function keeps a specified number of the most recent downloads and

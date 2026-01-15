@@ -18,10 +18,7 @@ from bedrock_server_manager.core.system.process import (
     verify_process_identity,
     write_pid_to_file,
 )
-from bedrock_server_manager.error import (
-    FileOperationError,
-    ServerProcessError,
-)
+from bedrock_server_manager.error import FileOperationError, ServerProcessError
 
 
 @pytest.fixture

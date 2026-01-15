@@ -2,10 +2,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from bedrock_server_manager.error import (
-    ServerNotRunningError,
-    ServerStartError,
-)
+from bedrock_server_manager.error import ServerNotRunningError, ServerStartError
 
 
 def test_is_running(app_context):

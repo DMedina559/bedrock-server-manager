@@ -88,8 +88,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     if TYPE_CHECKING:
 
-        def get_status_from_config(self) -> str:
-            ...
+        def get_status_from_config(self) -> str: ...
 
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""

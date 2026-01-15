@@ -93,13 +93,11 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
     if TYPE_CHECKING:
 
-        def get_world_name(self) -> str:
-            ...
+        def get_world_name(self) -> str: ...
 
         def extract_mcworld_to_directory(
             self, mcworld_file_path: str, target_world_dir_name: str
-        ) -> str:
-            ...
+        ) -> str: ...
 
     def process_addon_file(self, addon_file_path: str) -> None:
         """Processes a given addon file (``.mcaddon`` or ``.mcpack``).

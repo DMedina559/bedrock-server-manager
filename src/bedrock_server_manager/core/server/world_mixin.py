@@ -76,8 +76,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
 
     if TYPE_CHECKING:
 
-        def get_world_name(self) -> str:
-            ...
+        def get_world_name(self) -> str: ...
 
     @property
     def _worlds_base_dir_in_server(self) -> str:

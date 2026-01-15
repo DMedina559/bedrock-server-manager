@@ -3,10 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from bedrock_server_manager.error import (
-    AppFileNotFoundError,
-    ConfigParseError,
-)
+from bedrock_server_manager.error import AppFileNotFoundError, ConfigParseError
 
 
 def test_get_status_running(real_bedrock_server):

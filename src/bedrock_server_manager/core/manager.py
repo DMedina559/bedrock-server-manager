@@ -26,9 +26,7 @@ from typing import Any
 
 # Local application imports.
 from ..config import EXPATH, Settings, app_name_title, package_name
-from ..error import (
-    ConfigurationError,
-)
+from ..error import ConfigurationError
 from .manager_mixins.content_mixin import ContentMixin
 from .manager_mixins.discovery_mixin import DiscoveryMixin
 from .manager_mixins.player_mixin import PlayerMixin
