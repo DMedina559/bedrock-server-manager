@@ -164,25 +164,25 @@ def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
 
     try:
         if os_name == "Linux":
-            current_uid = os.geteuid()
-            current_gid = os.getegid()
+            current_uid = os.geteuid()  # type: ignore[attr-defined]
+            current_gid = os.getegid()  # type: ignore[attr-defined]
             logger.debug(f"Setting ownership to UID={current_uid}, GID={current_gid}")
 
             for root, dirs, files in os.walk(server_dir, topdown=True):
                 for d in dirs:
                     dir_path = os.path.join(root, d)
-                    os.chown(dir_path, current_uid, current_gid)
+                    os.chown(dir_path, current_uid, current_gid)  # type: ignore[attr-defined]
                     os.chmod(dir_path, 0o775)
                 for f in files:
                     file_path = os.path.join(root, f)
-                    os.chown(file_path, current_uid, current_gid)
+                    os.chown(file_path, current_uid, current_gid)  # type: ignore[attr-defined]
                     # The main executable needs execute permissions.
                     if os.path.basename(file_path) == "bedrock_server":
                         os.chmod(file_path, 0o775)
                     else:
                         os.chmod(file_path, 0o664)
             # Set top-level permissions last.
-            os.chown(server_dir, current_uid, current_gid)
+            os.chown(server_dir, current_uid, current_gid)  # type: ignore[attr-defined]
             os.chmod(server_dir, 0o775)
             logger.info(f"Successfully set Linux permissions for: {server_dir}")
 
