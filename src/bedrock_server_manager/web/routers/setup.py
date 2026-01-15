@@ -8,12 +8,11 @@ This module provides endpoints for:
 """
 import logging
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from ...context import AppContext
 from ...db.models import User
@@ -43,7 +42,7 @@ async def setup_page(
     """
     Serves the setup page if no users exist in the database.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         if db.query(User).first():
             # If a user already exists, redirect to home page, as setup is complete
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
@@ -73,7 +72,7 @@ async def create_first_user(
     """
     Creates the first user (admin) in the database.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         if db.query(User).first():
             # If a user already exists, prevent creating another first user
             raise HTTPException(

@@ -11,19 +11,14 @@ This module provides endpoints for:
 """
 import logging
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from ...context import AppContext
 from ...db.models import User
-from ..auth_utils import (
-    get_admin_user,
-    get_current_user,
-    get_moderator_user,
-    get_password_hash,
-)
+from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
 from ..dependencies import get_app_context, get_templates
 from ..schemas import User as UserSchema
 from .audit_log import create_audit_log
@@ -46,7 +41,7 @@ async def users_page(
     """
     Serves the user management page.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         users = db.query(User).all()
     return templates.TemplateResponse(
         "users.html",
@@ -89,7 +84,7 @@ async def create_user(
     """
     Creates a new user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         # Check for existing user
         existing_user = db.query(User).filter(User.username == data.username).first()
         if existing_user:
@@ -128,7 +123,7 @@ async def delete_user(
     """
     Deletes a user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             create_audit_log(
@@ -157,13 +152,13 @@ async def disable_user(
     """
     Disables a user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             if user.role == "admin":
                 active_admins = (
                     db.query(User)
-                    .filter(User.role == "admin", User.is_active == True)
+                    .filter(User.role == "admin", User.is_active.is_(True))
                     .count()
                 )
                 if active_admins <= 1:
@@ -200,7 +195,7 @@ async def enable_user(
     """
     Enables a user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             user.is_active = True
@@ -230,13 +225,13 @@ async def update_user_role(
     """
     Updates a user's role.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             if user.role == "admin" and data.role != "admin":
                 active_admins = (
                     db.query(User)
-                    .filter(User.role == "admin", User.is_active == True)
+                    .filter(User.role == "admin", User.is_active.is_(True))
                     .count()
                 )
                 if active_admins <= 1:

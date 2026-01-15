@@ -1,6 +1,3 @@
-from unittest.mock import patch
-
-import pytest
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.web.dependencies import validate_server_exists
@@ -29,28 +26,24 @@ def test_monitor_server_route(authenticated_client: TestClient, real_bedrock_ser
 
 def test_monitor_server_route_user_input_error(authenticated_client: TestClient):
     """Test the monitor_server_route with a UserInputError."""
-    from fastapi import HTTPException
+    from fastapi import FastAPI, HTTPException
 
     async def mock_validation():
         raise HTTPException(status_code=404, detail="Server not found")
 
     # This override is specific to this test case
-    original_override = authenticated_client.app.dependency_overrides.get(
-        validate_server_exists
-    )
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        mock_validation
-    )
+    # explicit cast to FastAPI for mypy
+    app: FastAPI = authenticated_client.app  # type: ignore[assignment]
+    original_override = app.dependency_overrides.get(validate_server_exists)
+    app.dependency_overrides[validate_server_exists] = mock_validation
 
     response = authenticated_client.get("/server/test-server/monitor")
 
     # Restore original dependencies
     if original_override:
-        authenticated_client.app.dependency_overrides[validate_server_exists] = (
-            original_override
-        )
+        app.dependency_overrides[validate_server_exists] = original_override
     else:
-        del authenticated_client.app.dependency_overrides[validate_server_exists]
+        del app.dependency_overrides[validate_server_exists]
 
     assert response.status_code == 404
     assert "Server not found" in response.json()["detail"]

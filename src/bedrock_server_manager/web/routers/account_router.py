@@ -9,10 +9,8 @@ This module provides endpoints for:
 - Updating profile information (name, email).
 - Changing passwords.
 """
-import os
-
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -101,7 +99,7 @@ async def update_theme(
     """
     Updates the current user's preferred theme.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )
@@ -123,7 +121,7 @@ async def update_profile(
     """
     Updates the current user's profile information (name, email).
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )
@@ -146,7 +144,7 @@ async def change_password(
     """
     Changes the current user's password.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         db_user = (
             db.query(UserModel).filter(UserModel.username == user.username).first()
         )

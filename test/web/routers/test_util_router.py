@@ -2,8 +2,6 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-import pytest
-from fastapi.responses import FileResponse
 from fastapi.testclient import TestClient
 
 
@@ -24,7 +22,7 @@ def test_serve_custom_panorama_api_default(
     mock_isfile, authenticated_client, app_context
 ):
     """Test the serve_custom_panorama_api route with a default panorama."""
-    with tempfile.NamedTemporaryFile(suffix=".jpeg") as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".jpeg"):
         app_context.config_dir = "/fake/path"
         mock_isfile.side_effect = [False, True]
 

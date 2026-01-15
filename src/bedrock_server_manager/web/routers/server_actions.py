@@ -14,9 +14,8 @@ FastAPI dependencies.
 """
 
 import logging
-from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ...api import server as server_api
@@ -28,7 +27,7 @@ from ...error import (
     ServerNotRunningError,
     UserInputError,
 )
-from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
+from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import ActionResponse, User
 

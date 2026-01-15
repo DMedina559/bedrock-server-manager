@@ -16,10 +16,9 @@ operations, and server existence is typically validated for server-specific rout
 import logging
 import os
 import platform
-import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -30,7 +29,7 @@ from ...api import system as system_api
 from ...api import utils as utils_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
+from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, get_templates, validate_server_exists
 from ..schemas import User
 
@@ -196,7 +195,7 @@ async def install_server_page(
     response_model=InstallServerResponse,
     tags=["Server Installation API"],
 )
-async def install_server_api_route(
+async def install_server_api_route(  # noqa: C901
     payload: InstallServerPayload,
     current_user: User = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -443,7 +442,7 @@ async def configure_service_page(
 async def configure_properties_api_route(
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_moderator_user),
+    current_user: User = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -626,7 +625,7 @@ async def get_allowlist_api_route(
 async def remove_allowlist_players_api_route(
     payload: AllowlistRemovePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: Dict[str, Any] = Depends(get_moderator_user),
+    current_user: User = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -678,7 +677,7 @@ async def remove_allowlist_players_api_route(
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
-async def configure_permissions_api_route(
+async def configure_permissions_api_route(  # noqa: C901
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -736,29 +735,22 @@ async def configure_permissions_api_route(
             status.HTTP_400_BAD_REQUEST
         )  # Default for client-side type errors
 
-        has_server_error = any(
-            not isinstance(e, UserInputError) and isinstance(e, BSMError)
-            for xuid_key in errors
-            if (
-                e := getattr(errors[xuid_key], "__cause__", None)
-            )  # Trying to get original exception if wrapped
-        )
-
-        if any("not found" in err_msg.lower() for err_msg in errors.values()):
+        error_values = list(errors.values())
+        if any("not found" in err_msg.lower() for err_msg in error_values):
             final_status_code = status.HTTP_404_NOT_FOUND
 
-        is_internal_server_error = False
-        for xuid_key in errors:
-            msg = errors[xuid_key].lower()
-            if "unexpected server error" in msg or (
-                "bsmerror" in msg and "userinputerror" not in msg
-            ):
-                is_internal_server_error = True
-                break
+        is_internal_server_error = any(
+            "unexpected server error" in err_msg.lower()
+            or (
+                "bsmerror" in err_msg.lower()
+                and "userinputerror" not in err_msg.lower()
+            )
+            for err_msg in error_values
+        )
 
         if is_internal_server_error:
             final_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        elif any("not found" in err_msg.lower() for err_msg in errors.values()):
+        elif any("not found" in err_msg.lower() for err_msg in error_values):
             final_status_code = status.HTTP_404_NOT_FOUND
         # else defaults to HTTP_400_BAD_REQUEST if errors exist
 
@@ -811,7 +803,7 @@ async def get_server_permissions_api_route(
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
-async def configure_service_api_route(
+async def configure_service_api_route(  # noqa: C901
     server_name: str = Depends(validate_server_exists),
     payload: ServiceUpdatePayload = Body(...),
     current_user: User = Depends(get_admin_user),
@@ -824,7 +816,6 @@ async def configure_service_api_route(
     logger.info(
         f"API: Configure service request for '{server_name}' by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
     )
-    current_os = platform.system()
 
     if payload.autoupdate is None and payload.autostart is None:
         raise HTTPException(
@@ -833,7 +824,7 @@ async def configure_service_api_route(
         )
 
     messages = []
-    warnings = []
+    warnings: List[str] = []
 
     try:
         # Handle autoupdate first

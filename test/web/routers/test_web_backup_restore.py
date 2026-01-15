@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def test_backup_server_api_route_success(authenticated_client, real_bedrock_server):
     """Test the backup_server_api_route with a successful backup."""

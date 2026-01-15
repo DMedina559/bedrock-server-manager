@@ -1,7 +1,5 @@
 # bedrock_server_manager/web/routers/tasks.py
-from typing import Any, Dict
-
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 
 from ...context import AppContext
 from ..auth_utils import get_current_user

@@ -8,12 +8,12 @@ It includes both HTML view routes and JSON API routes.
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ...api import addon as addon_api
 from ...api import application as app_api
@@ -21,7 +21,7 @@ from ...api import utils as utils_api
 from ...api import world as world_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
+from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, get_templates, validate_server_exists
 from ..schemas import ActionResponse, BaseApiResponse, User
 

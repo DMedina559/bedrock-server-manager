@@ -1,6 +1,5 @@
 # bedrock_server_manager/web/routers/websocket_router.py
 import logging
-import uuid
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 

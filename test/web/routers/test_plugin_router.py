@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
+from bedrock_server_manager.api.plugins import set_plugin_status
 
 
 def test_manage_plugins_page_route(authenticated_client):
@@ -8,9 +8,6 @@ def test_manage_plugins_page_route(authenticated_client):
     response = authenticated_client.get("/plugins")
     assert response.status_code == 200
     assert "Bedrock Server Manager" in response.text
-
-
-from bedrock_server_manager.api.plugins import set_plugin_status
 
 
 def test_get_plugins_status_api_route_success(authenticated_client, app_context):

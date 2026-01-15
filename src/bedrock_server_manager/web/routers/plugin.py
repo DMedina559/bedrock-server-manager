@@ -16,7 +16,7 @@ These routes interface with the underlying plugin management logic in
 :mod:`~bedrock_server_manager.api.plugins` and require user authentication.
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
@@ -26,8 +26,7 @@ from pydantic import BaseModel, Field
 from ...api import plugins as plugins_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ...plugins.plugin_manager import PluginManager
-from ..auth_utils import get_admin_user, get_current_user
+from ..auth_utils import get_admin_user
 from ..dependencies import get_app_context, get_templates
 from ..schemas import BaseApiResponse, User
 

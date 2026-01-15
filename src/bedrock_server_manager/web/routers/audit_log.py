@@ -3,6 +3,7 @@
 FastAPI router for viewing audit logs.
 """
 import logging
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -22,11 +23,16 @@ router = APIRouter(
 )
 
 
-def create_audit_log(app_context, user_id: int, action: str, details: dict = None):
+def create_audit_log(
+    app_context,
+    user_id: int,
+    action: str,
+    details: Optional[Dict[Any, Any]] = None,
+):
     """
     Creates an audit log entry.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         log = AuditLog(user_id=user_id, action=action, details=details)
         db.add(log)
         db.commit()
@@ -42,7 +48,7 @@ async def audit_log_page(
     """
     Serves the audit log page.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()
     return templates.TemplateResponse(
         request,

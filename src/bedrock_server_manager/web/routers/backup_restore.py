@@ -19,7 +19,7 @@ functionality provided by :mod:`~bedrock_server_manager.api.backup_restore`.
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_current_user, get_moderator_user
+from ..auth_utils import get_moderator_user
 from ..dependencies import get_app_context, get_templates, validate_server_exists
 from ..schemas import BaseApiResponse, User
 
@@ -478,15 +478,24 @@ async def backup_action_api_route(
             detail="Missing or invalid 'file_to_backup' for config backup type.",
         )
 
-    target_func = None
+    target_func: Optional[Callable[..., Any]] = None
     kwargs = {"server_name": server_name, "app_context": app_context}
     if payload.backup_type.lower() == "world":
         target_func = backup_restore_api.backup_world
     elif payload.backup_type.lower() == "config":
         target_func = backup_restore_api.backup_config_file
-        kwargs["file_to_backup"] = payload.file_to_backup.strip()
+        # payload.file_to_backup is already checked above, but mypy needs reassurance
+        if payload.file_to_backup:
+            kwargs["file_to_backup"] = payload.file_to_backup.strip()
     elif payload.backup_type.lower() == "all":
         target_func = backup_restore_api.backup_all
+
+    if not target_func:
+        # Should not be reached due to prior validation, but satisfies mypy
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid backup configuration.",
+        )
 
     task_id = app_context.task_manager.run_task(
         target_func,
@@ -507,7 +516,7 @@ async def backup_action_api_route(
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup & Restore API"],
 )
-async def restore_action_api_route(
+async def restore_action_api_route(  # noqa: C901
     payload: RestoreActionPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: User = Depends(get_moderator_user),
@@ -549,7 +558,10 @@ async def restore_action_api_route(
             detail="Invalid 'backup_file' path.",
         )
 
-    target_func = None
+    # Re-assert for mypy that payload.backup_file is str if we continue
+    backup_file_name: str = payload.backup_file if payload.backup_file else ""
+
+    target_func: Optional[Callable[..., Any]] = None
     kwargs = {"server_name": server_name, "app_context": app_context}
 
     if restore_type_lower == "all":
@@ -564,7 +576,7 @@ async def restore_action_api_route(
 
         server_backup_dir = os.path.join(backup_base_dir, server_name)
         full_backup_path = os.path.normpath(
-            os.path.join(server_backup_dir, payload.backup_file)
+            os.path.join(server_backup_dir, backup_file_name)
         )
 
         if not os.path.abspath(full_backup_path).startswith(
@@ -572,7 +584,7 @@ async def restore_action_api_route(
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Security violation - Invalid backup path '{payload.backup_file}'.",
+                detail=f"Security violation - Invalid backup path '{backup_file_name}'.",
             )
 
         if not os.path.isfile(full_backup_path):
@@ -587,6 +599,13 @@ async def restore_action_api_route(
         elif restore_type_lower in ["properties", "allowlist", "permissions"]:
             target_func = backup_restore_api.restore_config_file
             kwargs["backup_file_path"] = full_backup_path
+
+    if not target_func:
+        # Should not be reached due to prior validation, but satisfies mypy
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid restore configuration.",
+        )
 
     task_id = app_context.task_manager.run_task(
         target_func,

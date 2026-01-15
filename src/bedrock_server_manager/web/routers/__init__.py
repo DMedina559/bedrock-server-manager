@@ -21,6 +21,7 @@ from .util import router as util_router
 from .websocket_router import router as websocket_router
 
 __all__ = [
+    "account_router",
     "websocket_router",
     "api_info_router",
     "auth_router",
@@ -30,6 +31,7 @@ __all__ = [
     "plugin_router",
     "server_actions_router",
     "server_install_config_router",
+    "server_settings_router",
     "settings_router",
     "tasks_router",
     "util_router",

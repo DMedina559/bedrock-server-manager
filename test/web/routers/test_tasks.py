@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 
 def test_get_task_status_not_found(authenticated_client):
     """Test getting the status of a task that does not exist."""

@@ -10,9 +10,9 @@ not found.
 """
 import logging
 import os
-from typing import Any, Dict
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 
 from ...context import AppContext
@@ -166,9 +166,6 @@ async def get_root_favicon():
 
 
 # --- Catch-all Route ---
-from typing import Optional
-
-
 @router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
 async def catch_all_api_route(
     request: Request,

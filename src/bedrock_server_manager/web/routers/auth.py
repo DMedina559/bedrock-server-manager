@@ -18,9 +18,9 @@ Authentication is required for most parts of the application, and these routes
 facilitate that access control.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Response as FastAPIResponse
 from fastapi import status
 from fastapi.responses import HTMLResponse, RedirectResponse
