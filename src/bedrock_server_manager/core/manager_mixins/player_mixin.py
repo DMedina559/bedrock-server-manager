@@ -73,7 +73,7 @@ class PlayerMixin:
 
         self.save_player_data(player_list)
 
-    def save_player_data(self, players_data: List[Dict[str, str]]) -> int:
+    def save_player_data(self, players_data: List[Dict[str, str]]) -> int:  # noqa: C901
         """Saves or updates player data in the database.
 
         This method merges the provided ``players_data`` with any existing player

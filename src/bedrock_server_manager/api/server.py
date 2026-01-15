@@ -17,7 +17,7 @@ and by triggering various plugin events during server operations.
 """
 import logging
 import os
-from typing import Any, Dict, cast
+from typing import Any, Dict
 
 # Local application imports.
 from ..config import API_COMMAND_BLACKLIST
@@ -72,13 +72,13 @@ def get_server_setting(
         # Use the internal method to access any key
         value = server._manage_json_config(key, "read")
         success_response: Dict[str, Any] = {"status": "success", "value": value}
-        return success_response  # type: ignore[no-any-return]
+        return success_response
     except BSMError as e:
         logger.error(
             f"API: Error reading setting '{key}' for server '{server_name}': {e}"
         )
         error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response  # type: ignore[no-any-return]
+        return error_response
     except Exception as e:
         logger.error(
             f"API: Unexpected error reading setting for '{server_name}': {e}",
@@ -88,7 +88,7 @@ def get_server_setting(
             "status": "error",
             "message": "An unexpected error occurred.",
         }
-        return generic_error  # type: ignore[no-any-return]
+        return generic_error
 
 
 def set_server_setting(
@@ -132,11 +132,11 @@ def set_server_setting(
             "status": "success",
             "message": f"Setting '{key}' updated for server '{server_name}'.",
         }
-        return success_response  # type: ignore[no-any-return]
+        return success_response
     except BSMError as e:
         logger.error(f"API: Error setting '{key}' for server '{server_name}': {e}")
         error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response  # type: ignore[no-any-return]
+        return error_response
     except Exception as e:
         logger.error(
             f"API: Unexpected error setting value for '{server_name}': {e}",
@@ -146,7 +146,7 @@ def set_server_setting(
             "status": "error",
             "message": "An unexpected error occurred.",
         }
-        return generic_error  # type: ignore[no-any-return]
+        return generic_error
 
 
 @plugin_method("set_server_custom_value")
@@ -188,13 +188,13 @@ def set_server_custom_value(
             "status": "success",
             "message": f"Custom value '{key}' updated for server '{server_name}'.",
         }
-        return success_response  # type: ignore[no-any-return]
+        return success_response
     except BSMError as e:
         logger.error(
             f"API (Plugin): Error setting custom value for '{server_name}': {e}"
         )
         error_response: Dict[str, Any] = {"status": "error", "message": str(e)}
-        return error_response  # type: ignore[no-any-return]
+        return error_response
     except Exception as e:
         logger.error(
             f"API (Plugin): Unexpected error setting custom value for '{server_name}': {e}",
@@ -204,7 +204,7 @@ def set_server_custom_value(
             "status": "error",
             "message": "An unexpected error occurred.",
         }
-        return generic_error  # type: ignore[no-any-return]
+        return generic_error
 
 
 @plugin_method("get_all_server_settings")

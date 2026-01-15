@@ -10,7 +10,7 @@ creation and lifecycle.
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from ..config import bcm_config
 from ..config.const import package_name
