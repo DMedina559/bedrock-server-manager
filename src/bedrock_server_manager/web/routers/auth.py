@@ -18,31 +18,25 @@ Authentication is required for most parts of the application, and these routes
 facilitate that access control.
 """
 import logging
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
-from fastapi import (
-    APIRouter,
-    Request,
-    Depends,
-    HTTPException,
-    Form,
-    status,
-    Response as FastAPIResponse,
-)
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import Response as FastAPIResponse
+from fastapi import status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, Field
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import (
-    create_access_token,
-    authenticate_user,
-    get_current_user_optional,
-    get_current_user,
-)
-from ..schemas import User
 from ...context import AppContext
+from ..auth_utils import (
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    get_current_user_optional,
+)
+from ..dependencies import get_app_context, get_templates
+from ..schemas import User
 
 logger = logging.getLogger(__name__)
 

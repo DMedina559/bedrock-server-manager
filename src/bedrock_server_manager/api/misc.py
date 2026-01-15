@@ -10,18 +10,15 @@ import logging
 import threading
 from typing import Dict, Optional
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+from ..context import AppContext
 
 # Local application imports.
 from ..core import prune_old_downloads
-from ..error import (
-    BSMError,
-    UserInputError,
-    MissingArgumentError,
-)
+from ..error import BSMError, MissingArgumentError, UserInputError
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 

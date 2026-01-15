@@ -16,8 +16,8 @@ These functions are intended for programmatic control of the application's web s
 often used by CLI commands or service management scripts.
 """
 import logging
-from typing import Dict, Optional, Any, List, Union
 import os
+from typing import Any, Dict, List, Optional, Union
 
 try:
     import psutil
@@ -26,8 +26,7 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+from ..context import AppContext
 
 # Local application imports.
 from ..core.system import process as system_process_utils
@@ -38,7 +37,9 @@ from ..error import (
     SystemError,
     UserInputError,
 )
-from ..context import AppContext
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
 
 logger = logging.getLogger(__name__)
 

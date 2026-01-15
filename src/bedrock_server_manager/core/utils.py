@@ -12,13 +12,11 @@ Key functions include:
     - :func:`core_validate_server_name_format`: Validates server names against a regex.
 
 """
-import re
 import logging
+import re
 
 # Local imports
-from ..error import (
-    InvalidServerNameError,
-)
+from ..error import InvalidServerNameError
 
 logger = logging.getLogger(__name__)
 

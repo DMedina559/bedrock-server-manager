@@ -5,7 +5,8 @@ This module defines the Pydantic models used for data validation and serializati
 in the web API layer.
 """
 
-from typing import Optional, Any, List, Dict
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
 
 

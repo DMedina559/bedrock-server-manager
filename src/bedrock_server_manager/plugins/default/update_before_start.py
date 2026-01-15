@@ -2,9 +2,10 @@
 """
 Plugin that automatically updates a Bedrock server to the latest version.
 """
+from typing import Any
+
 from bedrock_server_manager import PluginBase
 from bedrock_server_manager.error import BSMError
-from typing import Any
 
 
 class AutoupdatePlugin(PluginBase):

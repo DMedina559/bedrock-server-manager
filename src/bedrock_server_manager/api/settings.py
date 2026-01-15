@@ -14,16 +14,14 @@ programmatically access and modify these global settings.
 import logging
 from typing import Any, Dict, Optional
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
-from ..logging import setup_logging
+from ..context import AppContext
 
 # Local application imports.
-from ..error import (
-    BSMError,
-    MissingArgumentError,
-)
-from ..context import AppContext
+from ..error import BSMError, MissingArgumentError
+from ..logging import setup_logging
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
 
 logger = logging.getLogger(__name__)
 

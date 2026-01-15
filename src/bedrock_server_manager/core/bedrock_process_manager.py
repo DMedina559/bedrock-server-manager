@@ -7,25 +7,25 @@ for monitoring running Bedrock server instances. It detects crashes or unexpecte
 shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
+import logging
 import os
 import platform
 import subprocess
 import threading
 import time
-import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 from mcstatus import BedrockServer as mc
 
+from ..config.settings import Settings
+from ..context import AppContext
 from ..core.system import process as core_process
 from ..error import (
     BSMError,
+    FileOperationError,
     ServerNotRunningError,
     ServerStartError,
-    FileOperationError,
 )
-from ..config.settings import Settings
-from ..context import AppContext
 
 if TYPE_CHECKING:
     from .bedrock_server import BedrockServer

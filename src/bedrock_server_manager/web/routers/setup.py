@@ -7,22 +7,23 @@ This module provides endpoints for:
 - Handling the creation of the first user (System Admin).
 """
 import logging
-from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from ...context import AppContext
 from ...db.models import User
-from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
-    get_current_user_optional,
     create_access_token,
+    get_current_user_optional,
     get_password_hash,
 )
+from ..dependencies import get_app_context, get_templates
 from ..schemas import User as UserSchema
-from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 

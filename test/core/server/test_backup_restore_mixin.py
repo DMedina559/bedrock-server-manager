@@ -1,19 +1,20 @@
-import pytest
 import os
 import shutil
-import zipfile
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.core.server.backup_restore_mixin import ServerBackupMixin
 from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
 from bedrock_server_manager.core.server.config_management_mixin import (
     ServerConfigManagementMixin,
 )
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import UserInputError, AppFileNotFoundError
+from bedrock_server_manager.error import AppFileNotFoundError, UserInputError
 
 
 def test_backup_all_data(real_bedrock_server):

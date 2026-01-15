@@ -1,12 +1,13 @@
-import pytest
 import os
 import shutil
 import tempfile
 from unittest.mock import patch
 
-from bedrock_server_manager.core.server.player_mixin import ServerPlayerMixin
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
+import pytest
+
 from bedrock_server_manager.config.settings import Settings
+from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
+from bedrock_server_manager.core.server.player_mixin import ServerPlayerMixin
 
 
 def test_scan_log_for_players_success(real_bedrock_server):

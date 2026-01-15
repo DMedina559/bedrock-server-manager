@@ -14,39 +14,25 @@ HTML configuration pages to the user. Authentication is required for these
 operations, and server existence is typically validated for server-specific routes.
 """
 import logging
-import platform
 import os
-from typing import Dict, Any, List, Optional
+import platform
 import uuid
+from typing import Any, Dict, List, Optional
 
-from fastapi import (
-    APIRouter,
-    Request,
-    Depends,
-    HTTPException,
-    status,
-    Body,
-    Path,
-)
-from fastapi.responses import (
-    HTMLResponse,
-    JSONResponse,
-)
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
-from ..dependencies import get_templates, get_app_context, validate_server_exists
-from ..auth_utils import get_current_user
-from ..auth_utils import get_admin_user, get_moderator_user
-from ..schemas import User
-from ...api import (
-    server_install_config,
-    server as server_api,
-    system as system_api,
-    utils as utils_api,
-)
-from ...error import BSMError, UserInputError
+from ...api import server as server_api
+from ...api import server_install_config
+from ...api import system as system_api
+from ...api import utils as utils_api
 from ...context import AppContext
+from ...error import BSMError, UserInputError
+from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
+from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..schemas import User
 
 logger = logging.getLogger(__name__)
 

@@ -1,23 +1,21 @@
-import pytest
-import os
 import json
-from unittest.mock import patch, MagicMock, ANY
+import os
+from unittest.mock import ANY, MagicMock, patch
+
+import pytest
 
 from bedrock_server_manager.api.server import (
-    get_server_setting,
-    set_server_setting,
-    set_server_custom_value,
+    delete_server_data,
     get_all_server_settings,
-    start_server,
-    stop_server,
+    get_server_setting,
     restart_server,
     send_command,
-    delete_server_data,
+    set_server_custom_value,
+    set_server_setting,
+    start_server,
+    stop_server,
 )
-from bedrock_server_manager.error import (
-    BlockedCommandError,
-    ServerNotRunningError,
-)
+from bedrock_server_manager.error import BlockedCommandError, ServerNotRunningError
 
 
 class TestServerSettings:

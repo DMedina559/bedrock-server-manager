@@ -15,14 +15,14 @@ This module includes functions for:
 It relies on the pywin32 package for named pipe and service
 functionality.
 """
+import logging
 import os
+import re
+import subprocess
 import sys
 import threading
 import time
-import subprocess
-import logging
-import re
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:

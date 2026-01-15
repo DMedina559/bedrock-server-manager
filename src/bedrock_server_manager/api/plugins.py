@@ -19,11 +19,11 @@ These functions facilitate management and interaction with plugins, primarily
 for use by administrative interfaces like a web UI or CLI.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from ..plugins import plugin_method
-from ..error import UserInputError
 from ..context import AppContext
+from ..error import UserInputError
+from ..plugins import plugin_method
 
 logger = logging.getLogger(__name__)
 

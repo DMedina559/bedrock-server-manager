@@ -14,29 +14,29 @@ including:
 The JWT secret key and token expiration are configurable via environment variables.
 """
 import datetime
-from datetime import timezone
 import logging
-from typing import Optional, Dict, Any
 import secrets
+from datetime import timezone
+from typing import Any, Dict, Optional
 
 import bcrypt
-from jose import JWTError, jwt
 from fastapi import (
     HTTPException,
-    Security,
     Request,
-    status,
+    Security,
     WebSocket,
     WebSocketException,
+    status,
 )
-from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
+from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
+from jose import JWTError, jwt
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
+from ..config import Settings
+from ..context import AppContext
+from ..db.models import User as UserModel
 from ..error import MissingArgumentError
 from .schemas import User
-from ..db.models import User as UserModel
-from ..context import AppContext
-from ..config import Settings
 
 logger = logging.getLogger(__name__)
 

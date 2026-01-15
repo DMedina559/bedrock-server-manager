@@ -26,20 +26,20 @@ Note:
     early or behave differently if not run on a Linux system.
 """
 
-import platform
-import os
 import logging
-import subprocess
+import os
+import platform
 import shutil
+import subprocess
 from typing import Optional
 
 # Local application imports.
 from ...error import (
-    CommandNotFoundError,
-    SystemError,
-    MissingArgumentError,
-    FileOperationError,
     AppFileNotFoundError,
+    CommandNotFoundError,
+    FileOperationError,
+    MissingArgumentError,
+    SystemError,
 )
 
 logger = logging.getLogger(__name__)

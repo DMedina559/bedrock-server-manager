@@ -36,13 +36,12 @@ Key Functionality Groups:
 Constants:
     - :const:`PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported.
 """
-import os
 import logging
-import subprocess
+import os
 import platform
+import subprocess
 import sys
-from typing import Optional, List, Dict, Union, Any
-
+from typing import Any, Dict, List, Optional, Union
 
 # psutil is an optional dependency, but required for most functions here.
 try:
@@ -61,13 +60,13 @@ except ImportError:
 
 from ...config import GUARD_VARIABLE
 from ...error import (
-    FileOperationError,
-    SystemError,
-    ServerProcessError,
     AppFileNotFoundError,
+    FileOperationError,
     MissingArgumentError,
     PermissionsError,
+    ServerProcessError,
     ServerStopError,
+    SystemError,
 )
 
 logger = logging.getLogger(__name__)

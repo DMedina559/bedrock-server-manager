@@ -1,5 +1,7 @@
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import ANY, MagicMock, patch
+
 import pytest
+
 from bedrock_server_manager.web.dependencies import validate_server_exists
 
 

@@ -1,6 +1,7 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from click.testing import CliRunner
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.cli.setup import setup
 from bedrock_server_manager.config import bcm_config

@@ -1,7 +1,8 @@
-from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
-import pytest
 import json
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
 
 # Test data
 TEST_USER = "testuser"

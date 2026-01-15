@@ -21,36 +21,35 @@ Key responsibilities include:
     - Checking and reporting system capabilities relevant to the application's features.
 
 """
-import os
-import json
-import shutil
 import glob
+import json
 import logging
+import os
 import platform
+import shutil
 import subprocess
-from typing import Optional, List, Dict, Any, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Local application imports.
-from ..config import Settings
+from ..config import EXPATH, Settings, app_name_title, package_name
 from ..context import AppContext
-from ..config import EXPATH, app_name_title, package_name
 from ..error import (
+    AppFileNotFoundError,
+    CommandNotFoundError,
     ConfigurationError,
     FileOperationError,
-    UserInputError,
-    SystemError,
-    CommandNotFoundError,
-    PermissionsError,
-    AppFileNotFoundError,
     InvalidServerNameError,
     MissingArgumentError,
+    PermissionsError,
+    SystemError,
+    UserInputError,
 )
+from .manager_mixins.content_mixin import ContentMixin
+from .manager_mixins.discovery_mixin import DiscoveryMixin
 from .manager_mixins.player_mixin import PlayerMixin
+from .manager_mixins.system_mixin import SystemMixin
 from .manager_mixins.web_process_mixin import WebProcessMixin
 from .manager_mixins.web_service_mixin import WebServiceMixin
-from .manager_mixins.content_mixin import ContentMixin
-from .manager_mixins.system_mixin import SystemMixin
-from .manager_mixins.discovery_mixin import DiscoveryMixin
 
 if platform.system() == "Linux":
     from .system import linux as system_linux_utils

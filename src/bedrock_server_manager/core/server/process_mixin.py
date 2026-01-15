@@ -23,7 +23,7 @@ import os
 import platform
 import subprocess
 import time
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
@@ -31,17 +31,17 @@ if TYPE_CHECKING:
 
 
 # Local application imports.
+from ...error import (
+    BSMError,
+    MissingArgumentError,
+    SendCommandError,
+    ServerNotRunningError,
+    ServerStartError,
+    ServerStopError,
+)
 from ..system import base as system_base
 from ..system import process as system_process
 from .base_server_mixin import BedrockServerBaseMixin
-from ...error import (
-    MissingArgumentError,
-    ServerNotRunningError,
-    ServerStopError,
-    SendCommandError,
-    ServerStartError,
-    BSMError,
-)
 
 
 class ServerProcessMixin(BedrockServerBaseMixin):

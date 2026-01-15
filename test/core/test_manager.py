@@ -1,29 +1,31 @@
 # Test cases for bedrock_server_manager.core.manager
-import pytest
-import os
 import json
-import shutil
-import platform
-import subprocess  # For mocking subprocess calls if needed directly
 import logging
+import os
+import platform
+import shutil
+import subprocess  # For mocking subprocess calls if needed directly
 from pathlib import Path
 from unittest import mock  # For direct mock usage if not using mocker fixture
 
+import pytest
+
+from bedrock_server_manager.config import const as bedrock_const  # For EXPATH etc.
+from bedrock_server_manager.config.settings import Settings
+from bedrock_server_manager.core.bedrock_server import BedrockServer  # For mocking
+
 # Imports from the application
 from bedrock_server_manager.core.manager import BedrockServerManager
-from bedrock_server_manager.core.bedrock_server import BedrockServer  # For mocking
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.config import const as bedrock_const  # For EXPATH etc.
 from bedrock_server_manager.error import (
+    AppFileNotFoundError,
+    CommandNotFoundError,
     ConfigurationError,
     FileOperationError,
-    UserInputError,
-    SystemError,
-    CommandNotFoundError,
-    PermissionsError,
-    AppFileNotFoundError,
     InvalidServerNameError,
     MissingArgumentError,
+    PermissionsError,
+    SystemError,
+    UserInputError,
 )
 
 # Mock system utility modules if they are complex enough, otherwise mock specific functions

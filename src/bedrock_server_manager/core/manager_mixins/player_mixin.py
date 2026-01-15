@@ -18,7 +18,6 @@ from bedrock_server_manager.error import (
     UserInputError,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

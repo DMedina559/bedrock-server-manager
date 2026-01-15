@@ -1,15 +1,16 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.web import (
+    create_web_ui_service,
+    disable_web_ui_service,
+    enable_web_ui_service,
+    get_web_server_status_api,
+    get_web_ui_service_status,
+    remove_web_ui_service,
     start_web_server_api,
     stop_web_server_api,
-    get_web_server_status_api,
-    create_web_ui_service,
-    enable_web_ui_service,
-    disable_web_ui_service,
-    remove_web_ui_service,
-    get_web_ui_service_status,
 )
 
 

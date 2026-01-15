@@ -32,13 +32,10 @@ import click
 import questionary
 
 from ..api import web as web_api
-from .utils import handle_api_response as _handle_api_response
 from ..context import AppContext
 from ..core import BedrockServerManager
-from ..error import (
-    BSMError,
-    MissingArgumentError,
-)
+from ..error import BSMError, MissingArgumentError
+from .utils import handle_api_response as _handle_api_response
 
 logger = logging.getLogger(__name__)
 
@@ -515,12 +512,10 @@ def status_web_service_cli(ctx: click.Context, system_flag: bool):
 import platform
 
 if platform.system() == "Windows":
-    import win32serviceutil
     import servicemanager
-    from ..core.system.windows_class import (
-        WebServerWindowsService,
-        PYWIN32_AVAILABLE,
-    )
+    import win32serviceutil
+
+    from ..core.system.windows_class import PYWIN32_AVAILABLE, WebServerWindowsService
 
     @service.command(
         "_run-web",

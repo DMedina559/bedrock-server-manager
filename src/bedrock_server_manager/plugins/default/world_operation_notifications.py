@@ -2,8 +2,9 @@
 """
 Plugin to send in-game notifications before world operations like export, import, or reset.
 """
-from bedrock_server_manager import PluginBase
 from typing import Any
+
+from bedrock_server_manager import PluginBase
 
 
 class WorldOperationNotificationsPlugin(PluginBase):

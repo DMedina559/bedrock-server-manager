@@ -1,29 +1,30 @@
-import pytest
 import os
 import subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from bedrock_server_manager.core.system.process import (
-    get_pid_file_path,
-    get_bedrock_server_pid_file_path,
-    get_bedrock_launcher_pid_file_path,
-    read_pid_from_file,
-    write_pid_to_file,
-    remove_pid_file_if_exists,
-    is_process_running,
-    verify_process_identity,
-    get_verified_bedrock_process,
-    launch_detached_process,
-    terminate_process_by_pid,
     GuardedProcess,
+    get_bedrock_launcher_pid_file_path,
+    get_bedrock_server_pid_file_path,
+    get_pid_file_path,
+    get_verified_bedrock_process,
+    is_process_running,
+    launch_detached_process,
+    read_pid_from_file,
+    remove_pid_file_if_exists,
+    terminate_process_by_pid,
+    verify_process_identity,
+    write_pid_to_file,
 )
 from bedrock_server_manager.error import (
-    FileOperationError,
-    SystemError,
-    ServerProcessError,
     AppFileNotFoundError,
+    FileOperationError,
     MissingArgumentError,
     PermissionsError,
+    ServerProcessError,
+    SystemError,
 )
 
 

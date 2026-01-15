@@ -1,13 +1,14 @@
-import pytest
 import os
 import platform
-import tempfile
 import shutil
+import tempfile
 from unittest.mock import MagicMock, patch
 
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
+import pytest
+
 from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import MissingArgumentError, ConfigurationError
+from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
+from bedrock_server_manager.error import ConfigurationError, MissingArgumentError
 
 
 def test_initialization(real_bedrock_server):

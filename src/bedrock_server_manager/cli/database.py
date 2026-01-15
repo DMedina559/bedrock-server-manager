@@ -1,13 +1,14 @@
-import click
-import questionary
-from alembic.config import Config
-from alembic import command
 from importlib.resources import files
 
+import click
+import questionary
+from alembic import command
+from alembic.config import Config
+
 from ..config import bcm_config
-from ..db.database import Database
-from ..db import models
 from ..context import AppContext
+from ..db import models
+from ..db.database import Database
 
 
 @click.group()
@@ -18,6 +19,7 @@ def database():
 
 import shutil
 from datetime import datetime
+
 from sqlalchemy import inspect
 
 

@@ -1,14 +1,15 @@
-import pytest
 import os
 import shutil
 import tempfile
 from unittest.mock import patch
 
+import pytest
+
+from bedrock_server_manager.config.settings import Settings
+from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
 from bedrock_server_manager.core.server.installation_mixin import (
     ServerInstallationMixin,
 )
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.error import AppFileNotFoundError
 
 

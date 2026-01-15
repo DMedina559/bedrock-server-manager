@@ -1,21 +1,22 @@
-import pytest
 import os
 import shutil
 import stat
 import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from bedrock_server_manager.core.system.base import (
-    check_internet_connectivity,
-    set_server_folder_permissions,
-    delete_path_robustly,
     ResourceMonitor,
+    check_internet_connectivity,
+    delete_path_robustly,
     is_server_running,
+    set_server_folder_permissions,
 )
 from bedrock_server_manager.error import (
+    AppFileNotFoundError,
     InternetConnectivityError,
     PermissionsError,
-    AppFileNotFoundError,
 )
 
 

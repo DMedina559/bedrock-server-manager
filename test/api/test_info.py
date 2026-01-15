@@ -1,10 +1,11 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.info import (
-    get_server_running_status,
     get_server_config_status,
     get_server_installed_version,
+    get_server_running_status,
 )
 from bedrock_server_manager.error import BSMError
 

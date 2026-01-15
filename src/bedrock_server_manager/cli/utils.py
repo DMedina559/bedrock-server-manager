@@ -37,11 +37,9 @@ import click
 import questionary
 from questionary import ValidationError, Validator
 
-from ..api import (
-    application as api_application,
-    server_install_config as config_api,
-    utils as api_utils,
-)
+from ..api import application as api_application
+from ..api import server_install_config as config_api
+from ..api import utils as api_utils
 from ..error import BSMError
 
 logger = logging.getLogger(__name__)

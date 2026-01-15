@@ -2,14 +2,14 @@ import click
 
 from ..context import AppContext
 from ..utils.migration import (
-    migrate_env_vars_to_config_file,
-    migrate_players_json_to_db,
     migrate_env_auth_to_db,
     migrate_env_token_to_db,
+    migrate_env_vars_to_config_file,
+    migrate_global_theme_to_admin_user,
     migrate_json_configs_to_db,
     migrate_json_settings_to_db,
+    migrate_players_json_to_db,
     migrate_services_to_db,
-    migrate_global_theme_to_admin_user,
 )
 
 

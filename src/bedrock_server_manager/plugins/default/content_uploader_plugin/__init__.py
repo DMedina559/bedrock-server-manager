@@ -4,10 +4,10 @@ A plugin to provide a web UI for uploading .mcworld, .mcpack, and .mcaddon files
 """
 import os
 import shutil
-from typing import Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, File, UploadFile, Depends
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase

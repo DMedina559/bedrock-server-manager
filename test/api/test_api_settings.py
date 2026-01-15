@@ -1,12 +1,13 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.settings import (
-    get_global_setting,
     get_all_global_settings,
-    set_global_setting,
-    set_custom_global_setting,
+    get_global_setting,
     reload_global_settings,
+    set_custom_global_setting,
+    set_global_setting,
 )
 from bedrock_server_manager.error import MissingArgumentError
 

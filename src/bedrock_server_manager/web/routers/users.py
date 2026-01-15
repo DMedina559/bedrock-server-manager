@@ -10,22 +10,23 @@ This module provides endpoints for:
 - Updating user roles (Admin).
 """
 import logging
-from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from ...context import AppContext
 from ...db.models import User
-from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
-    get_current_user,
-    get_password_hash,
     get_admin_user,
+    get_current_user,
     get_moderator_user,
+    get_password_hash,
 )
+from ..dependencies import get_app_context, get_templates
 from ..schemas import User as UserSchema
 from .audit_log import create_audit_log
-from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 

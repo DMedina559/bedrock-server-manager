@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.misc import prune_download_cache
 from bedrock_server_manager.error import MissingArgumentError, UserInputError

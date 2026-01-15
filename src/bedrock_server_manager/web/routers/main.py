@@ -10,23 +10,19 @@ This module defines routes for essential parts of the user interface, including:
 Authentication is required for most routes, handled via FastAPI dependencies.
 Templates are rendered using Jinja2.
 """
-import platform
 import logging
-from typing import Dict, Any, Optional
+import platform
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from ..dependencies import get_templates, get_app_context, validate_server_exists
-from ..auth_utils import (
-    get_current_user,
-    get_current_user_optional,
-    get_admin_user,
-)
-from ..schemas import User
-from ...plugins.plugin_manager import PluginManager
 from ...context import AppContext
+from ...plugins.plugin_manager import PluginManager
+from ..auth_utils import get_admin_user, get_current_user, get_current_user_optional
+from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..schemas import User
 
 logger = logging.getLogger(__name__)
 

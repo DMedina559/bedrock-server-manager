@@ -1,8 +1,9 @@
 from unittest.mock import patch
-from fastapi.testclient import TestClient
-from bedrock_server_manager.web.dependencies import validate_server_exists
 
 import pytest
+from fastapi.testclient import TestClient
+
+from bedrock_server_manager.web.dependencies import validate_server_exists
 
 
 def test_index_authenticated(authenticated_client: TestClient):

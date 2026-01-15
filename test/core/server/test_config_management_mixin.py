@@ -1,16 +1,17 @@
-import pytest
-import os
 import json
-import tempfile
+import os
 import shutil
+import tempfile
 from unittest.mock import patch
 
+import pytest
+
+from bedrock_server_manager.config.settings import Settings
+from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
 from bedrock_server_manager.core.server.config_management_mixin import (
     ServerConfigManagementMixin,
 )
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.error import UserInputError, AppFileNotFoundError
+from bedrock_server_manager.error import AppFileNotFoundError, UserInputError
 
 
 def test_get_server_properties(real_bedrock_server):

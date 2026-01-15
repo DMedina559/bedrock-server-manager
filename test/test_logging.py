@@ -1,9 +1,10 @@
-import pytest
-import os
 import logging
-from unittest.mock import patch, MagicMock
+import os
+from unittest.mock import MagicMock, patch
 
-from bedrock_server_manager.logging import setup_logging, log_separator
+import pytest
+
+from bedrock_server_manager.logging import log_separator, setup_logging
 
 
 @pytest.fixture

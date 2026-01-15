@@ -18,22 +18,19 @@ These routes interface with the underlying settings management logic in
 """
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status
-from fastapi.responses import (
-    HTMLResponse,
-)
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse, User
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import get_current_user
-from ..auth_utils import get_admin_user
 from ...api import settings as settings_api
-from ...error import BSMError, UserInputError, MissingArgumentError
 from ...context import AppContext
+from ...error import BSMError, MissingArgumentError, UserInputError
+from ..auth_utils import get_admin_user, get_current_user
+from ..dependencies import get_app_context, get_templates
+from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
 

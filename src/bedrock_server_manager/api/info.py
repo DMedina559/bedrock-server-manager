@@ -17,17 +17,15 @@ plugin system via
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+from ..context import AppContext
+
+# Local application imports.
+from ..error import BSMError, InvalidServerNameError
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
-
-# Local application imports.
-from ..error import (
-    BSMError,
-    InvalidServerNameError,
-)
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 

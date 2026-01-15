@@ -10,22 +10,23 @@ This module provides endpoints for:
 import logging
 import secrets
 import time
-from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.exc import IntegrityError
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
-from ...db.models import User, RegistrationToken
-from ..dependencies import get_templates, get_app_context
+from ...context import AppContext
+from ...db.models import RegistrationToken, User
 from ..auth_utils import (
+    get_admin_user,
     get_current_user,
     get_current_user_optional,
-    get_admin_user,
     get_password_hash,
 )
+from ..dependencies import get_app_context, get_templates
 from ..schemas import User as UserSchema
-from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 

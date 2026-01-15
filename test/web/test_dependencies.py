@@ -1,8 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from bedrock_server_manager.web.dependencies import validate_server_exists
 from fastapi import HTTPException
+
 from bedrock_server_manager.error import InvalidServerNameError
+from bedrock_server_manager.web.dependencies import validate_server_exists
 
 # Test data
 TEST_SERVER_NAME = "test-server"

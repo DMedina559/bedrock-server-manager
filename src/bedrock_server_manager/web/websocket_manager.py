@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from fastapi import WebSocket
 

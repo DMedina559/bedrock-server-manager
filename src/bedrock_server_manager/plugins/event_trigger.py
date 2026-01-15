@@ -6,8 +6,8 @@ Provides a decorator for triggering plugin events and broadcasting them.
 import asyncio
 import functools
 import inspect
-from typing import Callable, Optional, Any, Dict
 import logging
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -1,38 +1,39 @@
 # Test cases for bedrock_server_manager.core.downloader
-import pytest
-import os
 import json
-import zipfile
-import shutil
 import logging
+import os
 import platform
 import re
+import shutil
+import zipfile
 from pathlib import Path
-from unittest import (
+from unittest import (  # Will use pytest-mock which provides the 'mocker' fixture, but mock can be useful too.
     mock,
-)  # Will use pytest-mock which provides the 'mocker' fixture, but mock can be useful too.
+)
+
+import pytest
+
+# For mocking requests
+import requests
+
+from bedrock_server_manager.config.settings import Settings
 
 # Imports from the application
 from bedrock_server_manager.core.downloader import (
     BedrockDownloader,
     prune_old_downloads,
 )
-from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.error import (
-    DownloadError,
-    ExtractError,
-    MissingArgumentError,
-    InternetConnectivityError,
-    FileOperationError,
     AppFileNotFoundError,
     ConfigurationError,
-    UserInputError,
+    DownloadError,
+    ExtractError,
+    FileOperationError,
+    InternetConnectivityError,
+    MissingArgumentError,
     SystemError,
+    UserInputError,
 )
-
-# For mocking requests
-import requests
-
 
 # --- Fixtures ---
 

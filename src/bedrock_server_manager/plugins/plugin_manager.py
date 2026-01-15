@@ -17,30 +17,26 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction, inc
     - Providing a mechanism to reload all plugins.
 
 """
-import os
 import importlib.util
 import inspect
-import logging
-import threading
 import json
+import logging
+import os
+import threading
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Type, Callable, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
 from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from ..context import AppContext
 
+from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
-from ..config import (
-    GUARD_VARIABLE,
-    DEFAULT_ENABLED_PLUGINS,
-    EVENT_IDENTITY_KEYS,
-)
 from ..config.settings import Settings
 from ..db.models import Plugin
-from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
+from .plugin_base import PluginBase
 
 # Standard logger for this module.
 logger = logging.getLogger(__name__)

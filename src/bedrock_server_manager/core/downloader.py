@@ -27,29 +27,31 @@ dealing with potential network issues, file system operations, and changes in
 download URLs or API responses.
 """
 
-import re
-import requests
-import platform
+import json
 import logging
 import os
-import json
+import platform
+import re
 import zipfile
 from pathlib import Path
-from typing import Tuple, Optional, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Set, Tuple
+
+import requests
+
+from ..error import (
+    AppFileNotFoundError,
+    ConfigurationError,
+    DownloadError,
+    ExtractError,
+    FileOperationError,
+    InternetConnectivityError,
+    MissingArgumentError,
+    SystemError,
+    UserInputError,
+)
 
 # Local application imports.
 from .system import base as system_base
-from ..error import (
-    DownloadError,
-    ExtractError,
-    MissingArgumentError,
-    InternetConnectivityError,
-    FileOperationError,
-    AppFileNotFoundError,
-    ConfigurationError,
-    UserInputError,
-    SystemError,
-)
 
 if TYPE_CHECKING:
     from ..config.settings import Settings

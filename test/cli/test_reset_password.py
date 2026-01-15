@@ -1,6 +1,7 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from click.testing import CliRunner
-from unittest.mock import MagicMock, patch
 
 from bedrock_server_manager.cli.reset_password import reset_password_command
 from bedrock_server_manager.db.models import User

@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from bedrock_server_manager.api.addon import import_addon
 from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentError

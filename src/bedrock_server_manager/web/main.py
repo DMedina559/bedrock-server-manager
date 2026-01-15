@@ -10,9 +10,9 @@ arguments and application settings to correctly configure Uvicorn's host, port,
 debug mode, and worker processes.
 """
 
-import logging
 import ipaddress
-from typing import Optional, List, Union
+import logging
+from typing import List, Optional, Union
 
 import uvicorn
 

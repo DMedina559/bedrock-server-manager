@@ -1,12 +1,10 @@
+import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.responses import FileResponse
 from fastapi.testclient import TestClient
-
-
-import os
 
 
 def test_serve_custom_panorama_api_custom(authenticated_client, app_context):

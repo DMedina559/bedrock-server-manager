@@ -10,20 +10,23 @@ This module provides endpoints for:
 - Changing passwords.
 """
 import os
-from fastapi import APIRouter, Depends, Request, Form, HTTPException, status
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from bedrock_server_manager.web.auth_utils import (
-    get_current_user,
-    verify_password,
-    get_password_hash,
-)
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from bedrock_server_manager.db.models import User as UserModel
-from ..dependencies import get_templates, get_app_context
-from pydantic import BaseModel
-from ..schemas import User as UserSchema, BaseApiResponse
+from bedrock_server_manager.web.auth_utils import (
+    get_current_user,
+    get_password_hash,
+    verify_password,
+)
+
 from ...context import AppContext
+from ..dependencies import get_app_context, get_templates
+from ..schemas import BaseApiResponse
+from ..schemas import User as UserSchema
 
 router = APIRouter()
 

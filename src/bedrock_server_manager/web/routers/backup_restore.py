@@ -17,28 +17,21 @@ immediate API responses. Operations are typically authenticated and target a
 specific server validated by a dependency. It relies on the underlying
 functionality provided by :mod:`~bedrock_server_manager.api.backup_restore`.
 """
-import os
 import logging
-from typing import Dict, Any, List, Optional
+import os
+from typing import Any, Dict, List, Optional
 
-from fastapi import (
-    APIRouter,
-    Request,
-    Depends,
-    HTTPException,
-    status,
-    Body,
-)
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel, Field
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse, User
-from ..dependencies import get_templates, get_app_context, validate_server_exists
-from ..auth_utils import get_current_user, get_moderator_user
 from ...api import backup_restore as backup_restore_api
-from ...error import BSMError, UserInputError
 from ...context import AppContext
+from ...error import BSMError, UserInputError
+from ..auth_utils import get_current_user, get_moderator_user
+from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
 

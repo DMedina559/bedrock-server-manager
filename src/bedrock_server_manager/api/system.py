@@ -20,10 +20,9 @@ These functions are designed for use by higher-level application components,
 such as the web UI or CLI, to provide system-level control and monitoring.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+from ..context import AppContext
 
 # Local application imports.
 from ..error import (
@@ -32,7 +31,9 @@ from ..error import (
     MissingArgumentError,
     UserInputError,
 )
-from ..context import AppContext
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
 
 logger = logging.getLogger(__name__)
 

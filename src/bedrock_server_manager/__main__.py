@@ -8,17 +8,18 @@ main application logic. If no command is specified, it defaults to running
 the interactive menu system.
 """
 
+import atexit
 import logging
 import sys
-import atexit
+
 import click
 
 try:
     from . import __version__
     from .config import app_name_title
+    from .context import AppContext
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
-    from .context import AppContext
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -35,13 +36,13 @@ except ImportError as e:
 # These are grouped logically for clarity.
 from .cli import (
     cleanup,
+    database,
     generate_password,
-    web,
-    setup,
-    service,
     migrate,
     reset_password,
-    database,
+    service,
+    setup,
+    web,
 )
 
 

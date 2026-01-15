@@ -1,10 +1,11 @@
 # bedrock_server_manager/web/routers/websocket_router.py
 import logging
 import uuid
-from fastapi import APIRouter, WebSocket, Depends, WebSocketDisconnect
 
-from ..auth_utils import User, get_current_user_for_websocket
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+
 from ...context import AppContext
+from ..auth_utils import User, get_current_user_for_websocket
 
 router = APIRouter(
     prefix="/ws",

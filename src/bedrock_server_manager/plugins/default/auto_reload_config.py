@@ -2,8 +2,9 @@
 """
 Plugin that automatically reloads server configurations after changes.
 """
-from bedrock_server_manager import PluginBase
 from typing import Any
+
+from bedrock_server_manager import PluginBase
 
 
 class AutoReloadPlugin(PluginBase):

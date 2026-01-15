@@ -3,15 +3,16 @@
 FastAPI router for viewing audit logs.
 """
 import logging
-from fastapi import APIRouter, Request, Depends
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ...db.models import AuditLog
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import get_admin_user
-from ..schemas import User as UserSchema
 from ...context import AppContext
+from ...db.models import AuditLog
+from ..auth_utils import get_admin_user
+from ..dependencies import get_app_context, get_templates
+from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
 

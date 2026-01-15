@@ -1,14 +1,15 @@
-import pytest
 import asyncio
 from unittest.mock import MagicMock
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.context import AppContext
+from bedrock_server_manager.web.auth_utils import User, get_current_user_for_websocket
 from bedrock_server_manager.web.routers.websocket_router import (
     router as websocket_router,
 )
-from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.web.auth_utils import User, get_current_user_for_websocket
 from bedrock_server_manager.web.websocket_manager import ConnectionManager
 
 # Mark all tests in this module as asyncio

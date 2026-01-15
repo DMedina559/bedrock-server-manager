@@ -30,16 +30,16 @@ Internal Helpers:
     - :func:`._handle_remove_readonly_onerror`: An error handler for ``shutil.rmtree``.
 """
 
+import logging
+import os
 import platform
 import shutil
-import logging
 import socket
 import stat
 import threading
-import os
 import time
 from datetime import timedelta
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 # Third-party imports. psutil is optional but required for process monitoring.
 try:
@@ -55,15 +55,16 @@ except ImportError:
     # Ensure PSUTIL_AVAILABLE is defined even if import fails for linters/type checkers.
     # The docstring above is associated with the True assignment by Sphinx.
 
+from ...error import (
+    AppFileNotFoundError,
+    InternetConnectivityError,
+    MissingArgumentError,
+    PermissionsError,
+    SystemError,
+)
+
 # Local application imports.
 from . import process as core_process
-from ...error import (
-    PermissionsError,
-    AppFileNotFoundError,
-    MissingArgumentError,
-    SystemError,
-    InternetConnectivityError,
-)
 
 logger = logging.getLogger(__name__)
 

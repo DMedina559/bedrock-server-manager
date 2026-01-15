@@ -41,7 +41,9 @@ html_favicon = "../sphinx_build/_static/favicon.ico"
 html_logo = "../sphinx_build/_static/favicon-96x96.png"
 html_css_files = ["css/custom_sphinx_styles.css"]
 
-sphinx_github_changelog_token = os.environ.get("SPHINX_GITHUB_CHANGELOG_TOKEN") or os.environ.get("GITHUB_TOKEN")
+sphinx_github_changelog_token = os.environ.get(
+    "SPHINX_GITHUB_CHANGELOG_TOKEN"
+) or os.environ.get("GITHUB_TOKEN")
 
 # MonkeyPatch sphinx_github_changelog to ignore pre-releases
 import sphinx_github_changelog
@@ -49,10 +51,11 @@ import sphinx_github_changelog.changelog
 
 original_extract_releases = sphinx_github_changelog.changelog.extract_releases
 
+
 def extract_releases_with_prerelease(owner_repo, token, graphql_url=None):
     # Overriding to include isPrerelease in the query
-    from sphinx_github_changelog.changelog import github_call, ChangelogError
-    
+    from sphinx_github_changelog.changelog import ChangelogError, github_call
+
     owner, repo = owner_repo.split("/")
     query = f"""
     query {{
@@ -81,13 +84,16 @@ def extract_releases_with_prerelease(owner_repo, token, graphql_url=None):
     except (KeyError, TypeError):
         raise ChangelogError(f"GitHub API error unexpected format:\n{result!r}")
 
+
 sphinx_github_changelog.changelog.extract_releases = extract_releases_with_prerelease
 
 original_node_for_release = sphinx_github_changelog.changelog.node_for_release
+
 
 def node_for_release_ignore_prerelease(release, pypi_name=None):
     if release.get("isPrerelease", False):
         return None
     return original_node_for_release(release, pypi_name)
+
 
 sphinx_github_changelog.changelog.node_for_release = node_for_release_ignore_prerelease

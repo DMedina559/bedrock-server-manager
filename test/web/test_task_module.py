@@ -1,9 +1,11 @@
-import pytest
-import time
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
-from bedrock_server_manager.web.tasks import TaskManager
+import time
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from bedrock_server_manager.error import BSMError
+from bedrock_server_manager.web.tasks import TaskManager
 
 
 @pytest.fixture

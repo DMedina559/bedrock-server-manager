@@ -3,10 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from bedrock_server_manager.config.settings import (
-    CONFIG_SCHEMA_VERSION,
-    deep_merge,
-)
+from bedrock_server_manager.config.settings import CONFIG_SCHEMA_VERSION, deep_merge
 from bedrock_server_manager.db.models import Setting
 
 

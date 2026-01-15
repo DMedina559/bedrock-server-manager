@@ -1,18 +1,19 @@
-import pytest
+import json
 import os
 import shutil
-import zipfile
 import tempfile
-import json
+import zipfile
 from unittest.mock import patch
 
+import pytest
+
+from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.core.server.addon_mixin import ServerAddonMixin
 from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.error import (
-    UserInputError,
-    ExtractError,
     AppFileNotFoundError,
+    ExtractError,
+    UserInputError,
 )
 
 
@@ -137,6 +138,7 @@ def test_remove_addon(real_bedrock_server):
         data = json.load(f)
         assert len(data) == 0
 
+
 def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
     server = real_bedrock_server
     world_dir = os.path.join(server.server_dir, "worlds", "world")
@@ -148,10 +150,10 @@ def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
     #     manifest.json
     #   resource/
     #     manifest.json
-    
+
     addon_build_dir = tmp_path / "addon_build"
     addon_build_dir.mkdir()
-    
+
     bp_dir = addon_build_dir / "behavior"
     bp_dir.mkdir()
     with open(bp_dir / "manifest.json", "w") as f:
@@ -181,7 +183,7 @@ def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
         for root, _, files in os.walk(bp_dir):
             for file in files:
                 zf.write(os.path.join(root, file), os.path.join("behavior", file))
-        
+
         # Add resource pack
         for root, _, files in os.walk(rp_dir):
             for file in files:
@@ -192,7 +194,7 @@ def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
 
     # 4. Verify that packs are installed
     addons = server.list_world_addons()
-    
+
     # Check behavior packs
     bps = [bp for bp in addons["behavior_packs"] if bp["uuid"] == "bp1_uuid"]
     assert len(bps) == 1, "Behavior pack not installed"

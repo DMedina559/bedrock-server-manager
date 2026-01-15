@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+
 from bedrock_server_manager.context import AppContext
 
 

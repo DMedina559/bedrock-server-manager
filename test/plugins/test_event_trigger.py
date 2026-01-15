@@ -1,6 +1,7 @@
-import pytest
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from bedrock_server_manager.plugins.event_trigger import trigger_plugin_event
 
