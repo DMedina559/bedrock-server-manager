@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 old_env_name = "BEDROCK_SERVER_MANAGER"
 
 
-def migrate_players_json_to_db(app_context: AppContext):
+def migrate_players_json_to_db(app_context: AppContext):  # noqa: C901
     """Migrates players from players.json to the database if the file exists."""
     players_json_path = os.path.join(app_context.settings.config_dir, "players.json")
     logger.info(f"Checking for players.json at {players_json_path}")
@@ -62,7 +62,7 @@ def migrate_players_json_to_db(app_context: AppContext):
 
     db: Session | None = None
     try:
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             if db:
                 for player_data in players:
                     # Check if player already exists to ensure idempotency
@@ -93,7 +93,7 @@ def migrate_players_json_to_db(app_context: AppContext):
             logger.error(f"Failed to restore backup file: {restore_e}")
 
 
-def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:
+def _load_env_from_systemd_service(service_name: str) -> Dict[str, str]:  # noqa: C901
     """
     Loads environment variables from the EnvironmentFile of a systemd service.
     """
@@ -159,7 +159,7 @@ def migrate_env_auth_to_db(app_context: AppContext):
 
     db: Session | None = None
     try:
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             if db:
                 # Check if the user already exists
                 if db.query(User).filter_by(username=username).first():
@@ -315,7 +315,7 @@ def migrate_plugin_config_to_db(app_context: AppContext, config_dir: str):
     try:
         os.rename(config_file_path, backup_path)
         logger.info(f"Old plugin config file backed up to {backup_path}")
-    except OSError as e:
+    except OSError:
         logger.error(
             f"Failed to back up plugin config file '{config_file_path}' to '{backup_path}'. "
             "Migration aborted. Please check file permissions."
@@ -326,7 +326,7 @@ def migrate_plugin_config_to_db(app_context: AppContext, config_dir: str):
         with open(backup_path, "r", encoding="utf-8") as f:
             all_plugins_config = json.load(f)
 
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             for plugin_name, config_data in all_plugins_config.items():
                 # Find the existing plugin entry.
                 plugin_entry: Plugin | None = (
@@ -374,7 +374,7 @@ def migrate_server_config_to_db(
     try:
         os.rename(config_file_path, backup_path)
         logger.info(f"Old server config file backed up to {backup_path}")
-    except OSError as e:
+    except OSError:
         logger.error(
             f"Failed to back up server config file to {backup_path}. "
             "Migration aborted. Please check file permissions."
@@ -384,7 +384,7 @@ def migrate_server_config_to_db(
     try:
         with open(backup_path, "r", encoding="utf-8") as f:
             config_data = json.load(f)
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             # Check if config already exists
             if not db.query(Server).filter_by(server_name=server_name).first():
                 server_entry = Server(server_name=server_name, config=config_data)
@@ -404,7 +404,7 @@ def migrate_server_config_to_db(
             logger.error(f"Failed to restore server config backup: {restore_e}")
 
 
-def migrate_services_to_db(app_context: Optional[AppContext] = None):
+def migrate_services_to_db(app_context: Optional[AppContext] = None):  # noqa: C901
     """Migrates systemd/Windows service autostart status to the database."""
 
     if app_context is None:
@@ -518,7 +518,7 @@ def migrate_global_theme_to_admin_user(app_context: AppContext):
             logger.debug("No global theme set. Skipping migration.")
             return
 
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             admin_user: User | None = db.query(User).filter_by(role="admin").first()
             if admin_user:
                 admin_user.theme = global_theme
@@ -536,7 +536,7 @@ def migrate_global_theme_to_admin_user(app_context: AppContext):
         logger.error(f"Failed to migrate global theme to admin user: {e}")
 
 
-def migrate_json_settings_to_db(app_context: AppContext):
+def migrate_json_settings_to_db(app_context: AppContext):  # noqa: C901
     """Migrates settings from a file-based bedrock_server_manager.json to the database."""
     config_path = os.path.join(
         app_context.settings.config_dir, "bedrock_server_manager.json"
@@ -560,9 +560,9 @@ def migrate_json_settings_to_db(app_context: AppContext):
         return
 
     try:
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             current_db_settings: dict[str, Any] = {}
-            for s in db.query(Setting).all():
+            for s in db.query(Setting).all():  # type: ignore
                 current_db_settings[s.key] = s.value
 
             merged_config = deep_merge(config_data, current_db_settings)

@@ -155,6 +155,10 @@ class Settings:
         Returns:
             str: The absolute path to the application configuration directory.
         """
+        # Ensure _app_data_dir_path is initialized
+        if self._app_data_dir_path is None:
+            self._app_data_dir_path = self._determine_app_data_dir()
+
         config_dir = os.path.join(self._app_data_dir_path, ".config")
         os.makedirs(config_dir, exist_ok=True)
         return config_dir
@@ -270,7 +274,7 @@ class Settings:
         self._settings = self.default_config
 
         assert self.db is not None
-        with self.db.session_manager() as db:
+        with self.db.session_manager() as db:  # type: ignore
             # Check if the database is empty
             if db.query(Setting).count() == 0:
                 logger.info(
@@ -422,6 +426,8 @@ class Settings:
         This is determined by :meth:`_determine_app_config_dir`.
         Example: ``~/.bedrock-server-manager/.config``
         """
+        if self._config_dir_path is None:
+            self._config_dir_path = self._determine_app_config_dir()
         return self._config_dir_path
 
     @property
@@ -431,6 +437,8 @@ class Settings:
         This is determined by :meth:`_determine_app_data_dir`.
         Example: ``~/.bedrock-server-manager``
         """
+        if self._app_data_dir_path is None:
+            self._app_data_dir_path = self._determine_app_data_dir()
         return self._app_data_dir_path
 
     @property

@@ -17,7 +17,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-def find_executable(
+def find_executable(  # noqa: C901
     package_name: str, executable_name: Optional[str] = None
 ) -> Optional[Path]:
     """

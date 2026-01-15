@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # --- Helper Functions ---
 
 
-def _get_splash_text() -> str:
+def _get_splash_text() -> str:  # noqa: C901
     """
     Selects and returns a random splash text message.
 
