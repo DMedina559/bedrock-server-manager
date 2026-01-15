@@ -28,7 +28,7 @@ class AutoupdatePlugin(PluginBase):
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.
         """
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_server_start for '{server_name}'.")
 
         try:

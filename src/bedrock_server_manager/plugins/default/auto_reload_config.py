@@ -27,7 +27,7 @@ class AutoReloadPlugin(PluginBase):
         try:
             response = self.api.get_server_running_status(server_name=server_name)
             if response and response.get("status") == "success":
-                return response.get("is_running", False)
+                return bool(response.get("is_running", False))
 
             self.logger.warning(
                 f"Could not determine running status for '{server_name}'. API response: {response}"
@@ -62,7 +62,7 @@ class AutoReloadPlugin(PluginBase):
 
     def after_allowlist_change(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
 
@@ -84,7 +84,7 @@ class AutoReloadPlugin(PluginBase):
 
     def after_permission_change(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 

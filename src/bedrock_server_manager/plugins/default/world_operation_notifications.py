@@ -24,7 +24,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
         try:
             response = self.api.get_server_running_status(server_name=server_name)
             if response and response.get("status") == "success":
-                return response.get("is_running", False)
+                return bool(response.get("is_running", False))
             self.logger.warning(
                 f"Could not determine running status for '{server_name}'. API: {response}"
             )
@@ -64,7 +64,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     def before_world_export(self, **kwargs: Any):
         """Notifies players before a world export begins."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         export_dir = kwargs.get("export_dir")
         self.logger.debug(
@@ -79,7 +79,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     def before_world_import(self, **kwargs: Any):
         """Notifies players before a world import begins."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         file_path = kwargs.get("file_path")
         self.logger.debug(
@@ -96,7 +96,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
 
     def before_world_reset(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
         self.logger.warning(

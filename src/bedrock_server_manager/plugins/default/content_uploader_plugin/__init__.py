@@ -77,7 +77,7 @@ class ContentUploaderPlugin(PluginBase):
                 exc_info=True,
             )
 
-    def _define_routes(self):
+    def _define_routes(self):  # noqa: C901
         @self.router.get(
             "/content/upload",
             response_class=HTMLResponse,
@@ -127,6 +127,9 @@ class ContentUploaderPlugin(PluginBase):
                     )
                     message_type = "error"
                     raise ValueError("MODULE_CONTENT_DIR_PATH not set")
+
+                if not filename:
+                    raise ValueError("Filename is missing")
 
                 file_ext = Path(filename).suffix.lower()
                 target_subdir_name = ""

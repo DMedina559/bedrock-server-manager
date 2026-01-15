@@ -14,7 +14,7 @@ of the server manager.
 from abc import ABC, abstractmethod
 from logging import Logger  # Used for type hinting the logger instance.
 from pathlib import Path  # For type hinting Path objects
-from typing import Any, Dict, List
+from typing import Any, List
 
 from .api_bridge import PluginAPI  # Used for type hinting the API bridge instance.
 

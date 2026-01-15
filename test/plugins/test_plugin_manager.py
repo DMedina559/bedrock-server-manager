@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 

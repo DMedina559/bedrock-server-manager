@@ -19,14 +19,11 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction, inc
 """
 import importlib.util
 import inspect
-import json
 import logging
 import os
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
-
-from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -116,7 +113,7 @@ class PluginManager:
             Returns an empty dict if loading fails or the file is not found.
         """
         assert self.app_context is not None
-        with self.app_context.db.session_manager() as db:
+        with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
             return {plugin.plugin_name: plugin.config for plugin in plugins}
 
@@ -263,7 +260,7 @@ class PluginManager:
             )
         return None
 
-    def _synchronize_config_with_disk(self):
+    def _synchronize_config_with_disk(self):  # noqa: C901
         """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
 
         This crucial method ensures the ``plugins.json`` configuration file is
@@ -480,7 +477,7 @@ class PluginManager:
                 "Plugin configuration synchronization complete. No changes detected."
             )
 
-    def load_plugins(self):
+    def load_plugins(self):  # noqa: C901
         """Discovers, validates, and loads all enabled plugins.
 
         This method orchestrates the entire plugin loading process:
