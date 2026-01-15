@@ -13,10 +13,8 @@ Key command groups and commands include:
 
 """
 import logging
-from typing import Tuple
 
 import click
-import questionary
 
 from ..api import web as web_api
 from ..error import BSMError

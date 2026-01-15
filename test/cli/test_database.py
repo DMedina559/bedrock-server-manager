@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call
 
 import pytest
 from click.testing import CliRunner
@@ -23,9 +23,6 @@ def mock_app_context(mocker):
     # This is the key change to fix the unit tests
     mock_app_context.db.get_database_url.return_value = "sqlite:////fake/db.sqlite3"
     return mock_app_context, mock_db_session
-
-
-from unittest.mock import call
 
 
 def test_upgrade_sqlite_backup_success(runner, mock_app_context, mocker):

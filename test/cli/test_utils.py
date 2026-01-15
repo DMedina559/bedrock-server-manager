@@ -1,8 +1,6 @@
 import unittest
-from unittest.mock import MagicMock, patch
 
 import click
-import pytest
 
 from bedrock_server_manager.cli import utils
 

@@ -2,7 +2,6 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from bedrock_server_manager.cli import cleanup

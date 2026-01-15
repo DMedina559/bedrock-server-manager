@@ -21,7 +21,7 @@ def migrate():
 
 @migrate.command("old-config")
 @click.pass_context
-def migrate_old_config(ctx: click.Context):
+def migrate_old_config(ctx: click.Context):  # noqa: C901
     """Migrates settings from environment variables and old formats to the database."""
     app_context: AppContext = ctx.obj["app_context"]
     try:
