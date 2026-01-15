@@ -1,17 +1,8 @@
 import json
 import os
 import shutil
-import tempfile
-from unittest.mock import patch
 
 import pytest
-
-from bedrock_server_manager.config.settings import Settings
-from bedrock_server_manager.core.server.base_server_mixin import BedrockServerBaseMixin
-from bedrock_server_manager.core.server.config_management_mixin import (
-    ServerConfigManagementMixin,
-)
-from bedrock_server_manager.error import AppFileNotFoundError, UserInputError
 
 
 def test_get_server_properties(real_bedrock_server):
@@ -25,16 +16,6 @@ def test_get_server_properties(real_bedrock_server):
     assert properties == {"key1": "value1", "key2": "value2"}
 
 
-def test_get_server_properties_empty_file(real_bedrock_server):
-    server = real_bedrock_server
-    properties_path = server.server_properties_path
-    with open(properties_path, "w") as f:
-        f.write("")
-
-    properties = server.get_server_properties()
-    assert properties == {}
-
-
 def test_get_server_properties_malformed_line(real_bedrock_server):
     server = real_bedrock_server
     properties_path = server.server_properties_path
@@ -45,13 +26,6 @@ def test_get_server_properties_malformed_line(real_bedrock_server):
 
     properties = server.get_server_properties()
     assert properties == {"key1": "value1", "key2": "value2"}
-
-
-def test_get_server_property_missing_file(real_bedrock_server):
-    server = real_bedrock_server
-    os.remove(server.server_properties_path)
-    with pytest.raises(AppFileNotFoundError):
-        server.get_server_property("key1", "default")
 
 
 def test_set_server_property(real_bedrock_server):

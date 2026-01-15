@@ -11,10 +11,8 @@ fundamental attributes are available.
 import logging
 import os
 import platform
-import subprocess
-import threading
 from functools import cached_property
-from typing import Any, Optional
+from typing import Any
 
 from ...config.settings import Settings
 from ...error import ConfigurationError, MissingArgumentError

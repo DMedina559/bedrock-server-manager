@@ -130,7 +130,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         # Sort by modification time, descending (newest first).
         return sorted(files, key=os.path.getmtime, reverse=True)
 
-    def list_backups(self, backup_type: str) -> Union[List[str], Dict[str, List[str]]]:
+    def list_backups(  # noqa: C901
+        self, backup_type: str
+    ) -> Union[List[str], Dict[str, List[str]]]:
         """Retrieves a list of available backup files for this server, sorted newest first.
 
         This method scans the server's specific backup directory (obtained via
@@ -219,6 +221,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                     if files:  # Only add category if backups exist
                         categorized_backups[f"{key}_backups"] = files
                 return categorized_backups
+            return []  # Should not be reached given earlier checks, but needed for MyPy
         except (
             OSError
         ) as e:  # Catch errors from os.path.isdir, glob.glob, os.path.getmtime
@@ -226,7 +229,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Error listing backups for '{self.server_name}' due to a filesystem issue: {e}"
             ) from e
 
-    def prune_server_backups(self, component_prefix: str, file_extension: str) -> None:
+    def prune_server_backups(  # noqa: C901
+        self, component_prefix: str, file_extension: str
+    ) -> None:
         """Removes the oldest backups for a specific component to adhere to retention policies.
 
         This method targets backup files within this server's specific backup directory
@@ -709,7 +714,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Failed to restore config '{target_filename_in_server}' for server '{self.server_name}' from backup: {e_copy}"
             ) from e_copy
 
-    def restore_all_data_from_latest(self) -> Dict[str, Optional[str]]:
+    def restore_all_data_from_latest(self) -> Dict[str, Optional[str]]:  # noqa: C901
         """Restores the server's active world and standard configuration files from their latest backups.
 
         This method attempts to restore the following components by finding their

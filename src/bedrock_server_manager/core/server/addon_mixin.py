@@ -27,7 +27,7 @@ import re
 import shutil
 import tempfile
 import zipfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ...error import (
     AppFileNotFoundError,
@@ -90,6 +90,16 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         # It also depends on methods from other mixins that will be part of the final BedrockServer class, such as:
         # - self.get_world_name() (from StateMixin)
         # - self.extract_mcworld_to_directory() (from WorldMixin)
+
+    if TYPE_CHECKING:
+
+        def get_world_name(self) -> str:
+            ...
+
+        def extract_mcworld_to_directory(
+            self, mcworld_file_path: str, target_world_dir_name: str
+        ) -> str:
+            ...
 
     def process_addon_file(self, addon_file_path: str) -> None:
         """Processes a given addon file (``.mcaddon`` or ``.mcpack``).
@@ -202,7 +212,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         exc_info=True,
                     )
 
-    def _process_extracted_mcaddon_contents(
+    def _process_extracted_mcaddon_contents(  # noqa: C901
         self, temp_dir_with_extracted_files: str
     ) -> None:
         """Processes ``.mcworld`` and ``.mcpack`` files from an extracted ``.mcaddon`` archive.
@@ -549,7 +559,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Unexpected error processing pack '{original_mcpack_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def _extract_manifest_info(
+    def _extract_manifest_info(  # noqa: C901
         self, extracted_pack_dir: str
     ) -> Tuple[str, str, List[int], str]:
         """Extracts and validates key information from a pack's ``manifest.json`` file.
@@ -657,7 +667,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Cannot read manifest file '{manifest_file}': {e}"
             ) from e
 
-    def _update_world_pack_json_file(
+    def _update_world_pack_json_file(  # noqa: C901
         self, world_json_file_path: str, pack_uuid: str, pack_version_list: List[int]
     ) -> None:
         """Adds or updates a pack entry in a world's activation JSON file.

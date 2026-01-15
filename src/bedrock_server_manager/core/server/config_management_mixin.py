@@ -272,7 +272,7 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
             return False
 
     # --- PERMISSIONS.JSON METHODS ---
-    def set_player_permission(
+    def set_player_permission(  # noqa: C901
         self, xuid: str, permission_level: str, player_name: Optional[str] = None
     ) -> None:
         """Sets or updates a player's permission level in ``permissions.json``.
@@ -474,7 +474,9 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
 
     # --- SERVER.PROPERTIES METHODS ---
 
-    def set_server_property(self, property_key: str, property_value: Any) -> None:
+    def set_server_property(  # noqa: C901
+        self, property_key: str, property_value: Any
+    ) -> None:
         """Modifies or adds a property in the server's ``server.properties`` file.
 
         This method reads the entire ``server.properties`` file line by line.

@@ -1,5 +1,4 @@
 # bedrock_server_manager/core/server/__init__.py
-import platform
 
 from .addon_mixin import ServerAddonMixin
 from .backup_restore_mixin import ServerBackupMixin

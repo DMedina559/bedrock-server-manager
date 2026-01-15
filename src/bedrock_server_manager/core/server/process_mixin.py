@@ -86,6 +86,11 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         self.failure_count: int = 0
         self.start_time: float = 0
 
+    if TYPE_CHECKING:
+
+        def get_status_from_config(self) -> str:
+            ...
+
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""
         self.logger.debug(f"Checking if server '{self.server_name}' is running.")
@@ -105,9 +110,9 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"Cannot send command: Server '{self.server_name}' is not running."
             )
 
-        if self._process is None:
+        if self._process is None or self._process.stdin is None:
             raise SendCommandError(
-                f"Cannot send command to '{self.server_name}': no process handle."
+                f"Cannot send command to '{self.server_name}': no process handle or stdin."
             )
 
         self.logger.info(
@@ -125,7 +130,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"An unexpected error occurred while sending command to '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def start(self) -> None:
+    def start(self) -> None:  # noqa: C901
         """Starts the Bedrock server process."""
         if not hasattr(self, "is_installed") or not self.is_installed():
             raise ServerStartError(
@@ -167,7 +172,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                     stdout=f,
                     stderr=subprocess.STDOUT,
                     creationflags=(
-                        subprocess.CREATE_NO_WINDOW
+                        getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
                         if platform.system() == "Windows"
                         else 0
                     ),
@@ -199,7 +204,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             )
             raise ServerStartError(f"Failed to start server '{self.server_name}': {e}")
 
-    def stop(self) -> None:
+    def stop(self) -> None:  # noqa: C901
         """Stops the Bedrock server process gracefully, with a forceful fallback."""
         if not self.is_running():
             self.logger.info(
@@ -240,8 +245,9 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         try:
             self.logger.info(f"Sending 'stop' command to server '{self.server_name}'.")
-            self._process.stdin.write(b"stop\n")
-            self._process.stdin.flush()
+            if self._process.stdin:
+                self._process.stdin.write(b"stop\n")
+                self._process.stdin.flush()
             timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
             self._process.wait(timeout=timeout)
             self.logger.info(f"Server '{self.server_name}' stopped gracefully.")

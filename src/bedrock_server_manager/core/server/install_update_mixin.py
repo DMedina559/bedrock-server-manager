@@ -180,7 +180,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 f"Unexpected error setting permissions for '{self.server_dir}'."
             ) from e_perm
 
-    def is_update_needed(self, target_version_specification: str) -> bool:
+    def is_update_needed(self, target_version_specification: str) -> bool:  # noqa: C901
         """Checks if the server's installed version requires an update to meet the target.
 
         This method compares the server's currently installed version (obtained via
@@ -323,7 +323,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             )
             return True  # Fail-safe: assume update needed
 
-    def install_or_update(
+    def install_or_update(  # noqa: C901
         self,
         target_version_specification: str,
         force_reinstall: bool = False,
