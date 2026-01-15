@@ -205,6 +205,8 @@ class BedrockDownloader:
         "server.properties",
     }
 
+    server_zip_path: str | None
+
     def __init__(
         self,
         settings_obj: "Settings",

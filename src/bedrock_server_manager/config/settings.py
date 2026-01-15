@@ -37,7 +37,9 @@ NEW_CONFIG_FILE_NAME = "bedrock_server_manager.json"
 OLD_CONFIG_FILE_NAME = "script_config.json"
 
 
-def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any, Any]:
+def deep_merge(
+    source: Dict[Any, Any] | collections.abc.Mapping, destination: Dict[Any, Any]
+) -> Dict[Any, Any]:
     """Recursively merges the ``source`` dictionary into the ``destination`` dictionary.
 
     This function iterates through the ``source`` dictionary. If a value is itself
@@ -66,7 +68,7 @@ def deep_merge(source: Dict[Any, Any], destination: Dict[Any, Any]) -> Dict[Any,
         dictionary).
     """
     for key, value in source.items():
-        if isinstance(value, collections.abc.Mapping):
+        if isinstance(value, dict):
             destination[key] = deep_merge(value, destination.get(key, {}))
         else:
             destination[key] = value
@@ -116,8 +118,8 @@ class Settings:
 
         """
         logger.debug("Initializing Settings")
-        self._app_data_dir_path = None
-        self._config_dir_path = None
+        self._app_data_dir_path: Optional[str] = None
+        self._config_dir_path: Optional[str] = None
         self.config_file_name = NEW_CONFIG_FILE_NAME
         self.config_path = None
         self._version_val = get_installed_version()
@@ -141,7 +143,7 @@ class Settings:
         data_dir = config["data_dir"]
 
         os.makedirs(data_dir, exist_ok=True)
-        return data_dir
+        return str(data_dir)
 
     def _determine_app_config_dir(self) -> str:
         """Determines the application's configuration directory.
@@ -159,6 +161,9 @@ class Settings:
         if self._app_data_dir_path is None:
             self._app_data_dir_path = self._determine_app_data_dir()
 
+        # self._app_data_dir_path is guaranteed to be str here by _determine_app_data_dir logic
+        # but type hint is Optional[str]. We can assert or cast.
+        assert self._app_data_dir_path is not None
         config_dir = os.path.join(self._app_data_dir_path, ".config")
         os.makedirs(config_dir, exist_ok=True)
         return config_dir
@@ -208,6 +213,11 @@ class Settings:
             dict: A dictionary of default settings with a nested structure.
         """
         app_data_dir_val = self._app_data_dir_path
+        if app_data_dir_val is None:
+            # Should technically be set by _determine_app_data_dir call in __init__
+            # or lazy access. But mypy doesn't know.
+            app_data_dir_val = self._determine_app_data_dir()
+
         return {
             "config_version": CONFIG_SCHEMA_VERSION,
             "paths": {
@@ -283,7 +293,7 @@ class Settings:
                 self._write_config(db)
             else:
                 try:
-                    user_config = {}
+                    user_config: Dict[str, Any] = {}
                     for setting in db.query(Setting).all():
                         user_config[setting.key] = setting.value
 
@@ -298,7 +308,7 @@ class Settings:
 
         self._ensure_dirs_exist()
 
-    def _ensure_dirs_exist(self):
+    def _ensure_dirs_exist(self) -> None:
         """Ensures that all critical directories specified in the settings exist.
 
         Iterates through the directory paths defined in ``paths`` section of the
@@ -309,7 +319,7 @@ class Settings:
             ConfigurationError: If a directory cannot be created (e.g., due to
                 permission issues).
         """
-        dirs_to_check = [
+        dirs_to_check: list[Any] = [
             self.get("paths.servers"),
             self.get("paths.content"),
             self.get("paths.downloads"),
@@ -327,7 +337,7 @@ class Settings:
                         f"Could not create critical directory: {dir_path}"
                     ) from e
 
-    def _write_config(self, db: Any):
+    def _write_config(self, db: Any) -> None:
         """Writes the current settings dictionary to the database.
 
         Raises:
@@ -363,10 +373,13 @@ class Settings:
             Any: The value associated with the key, or the ``default`` value if
             the key is not found or an intermediate key is not a dictionary.
         """
-        d = self._settings
+        d: Any = self._settings
         try:
             for k in key.split("."):
-                d = d[k]
+                if isinstance(d, dict):
+                    d = d[k]
+                else:
+                    return default
             return d
         except (KeyError, TypeError):
             return default
@@ -394,17 +407,24 @@ class Settings:
             return
 
         keys = key.split(".")
-        d = self._settings
+        d: Any = self._settings
         for k in keys[:-1]:
-            d = d.setdefault(k, {})
+            if isinstance(d, dict):
+                d = d.setdefault(k, {})
+            else:
+                # Should not happen if structure is maintained, but safety check
+                raise ConfigurationError(
+                    f"Cannot set key '{key}' because path conflict."
+                )
 
-        d[keys[-1]] = value
+        if isinstance(d, dict):
+            d[keys[-1]] = value
         if key != "web.jwt_token_secret":
             logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
         else:
             logger.info(f"Setting '{key}' updated. Saving configuration.")
         assert self.db is not None
-        with self.db.session_manager() as db:
+        with self.db.session_manager() as db:  # type: ignore
             self._write_config(db)
 
     def reload(self):
@@ -428,6 +448,8 @@ class Settings:
         """
         if self._config_dir_path is None:
             self._config_dir_path = self._determine_app_config_dir()
+        # Mypy might still see _config_dir_path as Optional[str]
+        assert self._config_dir_path is not None
         return self._config_dir_path
 
     @property
@@ -439,6 +461,8 @@ class Settings:
         """
         if self._app_data_dir_path is None:
             self._app_data_dir_path = self._determine_app_data_dir()
+        # Mypy might still see _app_data_dir_path as Optional[str]
+        assert self._app_data_dir_path is not None
         return self._app_data_dir_path
 
     @property

@@ -1,7 +1,5 @@
 import os
-import shutil
 import sys
-import tempfile
 from datetime import timedelta
 from unittest.mock import MagicMock
 
@@ -21,9 +19,6 @@ from bedrock_server_manager.web.dependencies import validate_server_exists
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-
-from appdirs import user_config_dir
 
 
 @pytest.fixture(autouse=True)
@@ -178,7 +173,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
     from bedrock_server_manager.context import AppContext
     from bedrock_server_manager.core.manager import BedrockServerManager
     from bedrock_server_manager.db.database import Database
-    from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
     # Setup: initialize the database with a test-specific URL
     db_path = tmp_path / "test.db"

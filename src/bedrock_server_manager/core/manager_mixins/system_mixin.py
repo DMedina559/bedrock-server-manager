@@ -19,6 +19,9 @@ class SystemMixin:
     Mixin class for BedrockServerManager that handles system information and capabilities.
     """
 
+    _app_version: str
+    capabilities: Dict[str, bool]
+
     def get_app_version(self) -> str:
         """Returns the application's version string.
 

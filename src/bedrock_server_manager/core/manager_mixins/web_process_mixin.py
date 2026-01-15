@@ -21,6 +21,11 @@ class WebProcessMixin:
     Mixin class for BedrockServerManager that handles direct Web UI process management.
     """
 
+    _config_dir: str
+    _WEB_SERVER_PID_FILENAME: str
+    _WEB_SERVER_START_ARG: List[str]
+    _expath: Optional[str]
+
     def start_web_ui_direct(
         self,
         app_context: AppContext,

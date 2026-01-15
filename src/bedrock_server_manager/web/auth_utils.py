@@ -17,7 +17,7 @@ import datetime
 import logging
 import secrets
 from datetime import timezone
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import bcrypt
 from fastapi import (
@@ -35,7 +35,6 @@ from starlette.authentication import AuthCredentials, AuthenticationBackend, Sim
 from ..config import Settings
 from ..context import AppContext
 from ..db.models import User as UserModel
-from ..error import MissingArgumentError
 from .schemas import User
 
 logger = logging.getLogger(__name__)
@@ -51,7 +50,7 @@ def get_jwt_secret_key(settings: Settings) -> str:
         settings.set("web.jwt_secret_key", jwt_secret_key)
         logger.info("JWT secret key not found in settings, generating a new one")
 
-    return jwt_secret_key
+    return str(jwt_secret_key)
 
 
 ALGORITHM = "HS256"
@@ -98,7 +97,7 @@ def create_access_token(
         )
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return str(encoded_jwt)
 
 
 # --- Token Verification and User Retrieval ---
@@ -147,7 +146,7 @@ async def get_current_user_optional(
         if username is None:
             return None
 
-        def get_user_from_db(db_session):
+        def get_user_from_db(db_session) -> User | None:  # type: ignore
             user = (
                 db_session.query(UserModel)
                 .filter(UserModel.username == username)
@@ -168,7 +167,7 @@ async def get_current_user_optional(
                 theme=user.theme,
             )
 
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             return get_user_from_db(db)
 
     except JWTError:
@@ -248,7 +247,7 @@ async def get_current_user_for_websocket(
                 code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token payload"
             )
 
-        def get_user_from_db(db_session):
+        def get_user_from_db(db_session) -> User | None:  # type: ignore
             user = (
                 db_session.query(UserModel)
                 .filter(UserModel.username == username)
@@ -269,7 +268,7 @@ async def get_current_user_for_websocket(
                 theme=user.theme,
             )
 
-        with app_context.db.session_manager() as db:
+        with app_context.db.session_manager() as db:  # type: ignore
             user = get_user_from_db(db)
             if user is None:
                 raise WebSocketException(
@@ -312,7 +311,7 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-from ..config import bcm_config
+from ..config import bcm_config  # noqa: E402
 
 
 class CustomAuthBackend(AuthenticationBackend):
@@ -344,13 +343,13 @@ def authenticate_user(
         Optional[str]: The username if authentication is successful,
         otherwise ``None``.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(UserModel).filter(UserModel.username == username_form).first()
         if not user:
             return None
         if not verify_password(password_form, user.hashed_password):
             return None
-        return user.username
+        return str(user.username)
 
 
 async def get_admin_user(current_user: User = Security(get_current_user)):

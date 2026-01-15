@@ -1,8 +1,3 @@
-import os
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from bedrock_server_manager.web.main import run_web_server
 
 

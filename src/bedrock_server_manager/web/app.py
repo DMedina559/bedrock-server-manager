@@ -1,16 +1,12 @@
 # bedrock_server_manager/web/app.py
 import asyncio
-import atexit
 import logging
 import os
-import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.authentication import AuthenticationMiddleware
 
 from ..config import bcm_config, get_installed_version
 from ..context import AppContext
@@ -18,7 +14,7 @@ from . import routers
 from .auth_utils import CustomAuthBackend, get_current_user_optional
 
 
-def create_web_app(app_context: AppContext) -> FastAPI:
+def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     """Creates and configures the web application."""
     logger = logging.getLogger(__name__)
     from .. import api

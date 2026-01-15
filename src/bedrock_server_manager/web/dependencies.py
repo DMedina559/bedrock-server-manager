@@ -12,11 +12,9 @@ See Also:
 import logging
 
 from fastapi import HTTPException, Path, Request, status
-from sqlalchemy.orm import Session
 
 from ..api import utils as utils_api
 from ..context import AppContext
-from ..db.models import User
 from ..error import InvalidServerNameError
 
 logger = logging.getLogger(__name__)
@@ -26,11 +24,11 @@ def get_app_context(request: Request) -> "AppContext":
     """
     FastAPI dependency to get the application context from the request state.
     """
-    return request.app.state.app_context
+    return request.app.state.app_context  # type: ignore
 
 
-from fastapi import Depends
-from fastapi.templating import Jinja2Templates
+from fastapi import Depends  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
 
 
 def get_templates(

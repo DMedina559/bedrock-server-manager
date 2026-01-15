@@ -29,7 +29,7 @@ class Database:
         _tables_created (bool): Flag indicating if tables have been created.
     """
 
-    def __init__(self, db_url: str = None):
+    def __init__(self, db_url: str | None = None):
         """
         Initializes the Database instance.
 
@@ -103,7 +103,7 @@ class Database:
             self._tables_created = True
 
     @contextmanager
-    def session_manager(self) -> Session:
+    def session_manager(self):
         """
         Context manager for database sessions.
 
@@ -113,6 +113,7 @@ class Database:
         if not self.SessionLocal:
             self.initialize()
         self._ensure_tables_created()
+        assert self.SessionLocal is not None
         db = self.SessionLocal()
         try:
             yield db

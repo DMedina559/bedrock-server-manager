@@ -27,6 +27,8 @@ class DiscoveryMixin:
     Mixin class for BedrockServerManager that handles server discovery and validation.
     """
 
+    _base_dir: str | None
+
     def validate_server(self, server_name: str, app_context: "AppContext") -> bool:
         """Validates if a given server name corresponds to a valid installation.
 

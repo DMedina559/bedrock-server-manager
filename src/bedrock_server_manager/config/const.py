@@ -29,7 +29,9 @@ env_name: str = "BSM"
 """The prefix used for environment variables related to this application (e.g., BSM_PASSWORD)."""
 
 # --- Package Information ---
-EXPATH: str = package_finder.find_executable(package_name, executable_name)
+# package_finder.find_executable returns Path or None, convert to str
+_expath_path = package_finder.find_executable(package_name, executable_name)
+EXPATH: str | None = str(_expath_path) if _expath_path else None
 """The discovered absolute path to the main application executable."""
 
 SCRIPT_DIR: str = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))

@@ -113,6 +113,9 @@ class PlayerMixin:
             ):
                 raise UserInputError(f"Invalid player entry format: {p_data}")
 
+        if self.settings.db is None:
+            raise RuntimeError("Database is not initialized.")
+
         with self.settings.db.session_manager() as db:
             try:
                 updated_count = 0
@@ -156,6 +159,9 @@ class PlayerMixin:
             List[Dict[str, str]]: A list of player dictionaries, where each
             dictionary typically contains ``"name"`` and ``"xuid"`` keys.
         """
+        if self.settings.db is None:
+            raise RuntimeError("Database is not initialized.")
+
         with self.settings.db.session_manager() as db:
             players = db.query(Player).all()
             return [

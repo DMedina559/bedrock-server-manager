@@ -5,7 +5,6 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 from jose import jwt
 
-from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.db.models import User as UserModel
 from bedrock_server_manager.web.auth_utils import (
     ALGORITHM,
