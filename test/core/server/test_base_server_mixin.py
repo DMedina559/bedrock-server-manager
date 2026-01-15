@@ -36,7 +36,7 @@ def test_missing_base_dir_setting(real_bedrock_server):
 
 
 def test_missing_config_dir_setting(real_bedrock_server, monkeypatch):
-    monkeypatch.setattr(real_bedrock_server.settings, "_config_dir_path", None)
+    monkeypatch.setattr(Settings, "config_dir", property(lambda self: None))
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
             server_name="test_server", settings_instance=real_bedrock_server.settings
@@ -95,7 +95,7 @@ def test_init_no_base_dir(real_bedrock_server):
 
 
 def test_init_no_app_config_dir(real_bedrock_server, monkeypatch):
-    monkeypatch.setattr(real_bedrock_server.settings, "_config_dir_path", None)
+    monkeypatch.setattr(Settings, "config_dir", property(lambda self: None))
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
             server_name="test_server", settings_instance=real_bedrock_server.settings
