@@ -8,7 +8,7 @@ by the application (e.g. not as a system service).
 """
 import logging
 import os
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import ConfigurationError

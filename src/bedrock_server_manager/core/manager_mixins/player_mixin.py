@@ -8,7 +8,10 @@ information from multiple servers.
 """
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List
+
+if TYPE_CHECKING:
+    from bedrock_server_manager.config.settings import Settings
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.db.models import Player
@@ -25,6 +28,10 @@ class PlayerMixin:
     """
     Mixin class for BedrockServerManager that handles player database management.
     """
+
+    if TYPE_CHECKING:
+        settings: "Settings"
+        _base_dir: str
 
     def parse_player_cli_argument(self, player_string: str) -> None:
         """Parses a comma-separated string of 'player_name:xuid' pairs and saves them to the database.
@@ -155,7 +162,7 @@ class PlayerMixin:
                 {"name": player.player_name, "xuid": player.xuid} for player in players
             ]
 
-    def discover_and_store_players_from_all_server_logs(
+    def discover_and_store_players_from_all_server_logs(  # noqa: C901
         self, app_context: "AppContext"
     ) -> Dict[str, Any]:
         """Scans all server logs for player data and updates the central player database.

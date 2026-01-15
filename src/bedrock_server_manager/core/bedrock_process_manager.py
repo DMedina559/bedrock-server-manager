@@ -8,22 +8,16 @@ shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
 import logging
-import os
-import platform
-import subprocess
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict
 
 from mcstatus import BedrockServer as mc
 
-from ..config.settings import Settings
 from ..context import AppContext
-from ..core.system import process as core_process
 from ..error import (
     BSMError,
     FileOperationError,
-    ServerNotRunningError,
     ServerStartError,
 )
 
@@ -106,7 +100,7 @@ class BedrockProcessManager:
         # Optional: wait for the thread to finish
         self.monitoring_thread.join(timeout=5)
 
-    def _monitor_servers(self):
+    def _monitor_servers(self):  # noqa: C901
         """Monitors server processes and restarts them if they crash.
 
         This method runs in a background thread. It periodically checks:

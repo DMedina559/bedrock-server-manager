@@ -8,7 +8,7 @@ existing server installations and gather their basic status.
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import (

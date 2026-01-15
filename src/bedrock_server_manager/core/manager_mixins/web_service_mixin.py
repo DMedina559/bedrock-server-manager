@@ -97,7 +97,7 @@ class WebServiceMixin:
 
         return " ".join(command_parts)
 
-    def create_web_service_file(
+    def create_web_service_file(  # noqa: C901
         self,
         system: bool = False,
         username: Optional[str] = None,
@@ -465,7 +465,7 @@ class WebServiceMixin:
                 f"Web UI service removal is not supported on OS: {os_type}"
             )
 
-    def is_web_service_active(self, system: bool = False) -> bool:
+    def is_web_service_active(self, system: bool = False) -> bool:  # noqa: C901
         """Checks if the Web UI system service is currently active (running).
 
         Delegates to OS-specific checks:
@@ -565,7 +565,7 @@ class WebServiceMixin:
             logger.debug(f"Web UI service active check not supported on OS: {os_type}")
             return False
 
-    def is_web_service_enabled(self, system: bool = False) -> bool:
+    def is_web_service_enabled(self, system: bool = False) -> bool:  # noqa: C901
         """Checks if the Web UI system service is enabled for automatic startup.
 
         Delegates to OS-specific checks:

@@ -8,7 +8,7 @@ specialized mixin classes (e.g., for process control, world management, backups)
 each contributing a distinct set of features. This compositional approach promotes
 code organization and modularity, allowing for clear separation of concerns.
 """
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..config.settings import Settings
 from ..error import ConfigParseError, FileOperationError
@@ -126,7 +126,9 @@ class BedrockServer(
         documentation for each individual mixin for a comprehensive list of its capabilities.
     """
 
-    def __init__(self, server_name: str, settings_instance: Settings = None) -> None:
+    def __init__(
+        self, server_name: str, settings_instance: Optional[Settings] = None
+    ) -> None:
         """Initializes a BedrockServer instance.
 
         This constructor is responsible for setting up a :class:`~.BedrockServer`

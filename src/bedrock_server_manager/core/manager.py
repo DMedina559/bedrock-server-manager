@@ -21,28 +21,13 @@ Key responsibilities include:
     - Checking and reporting system capabilities relevant to the application's features.
 
 """
-import glob
-import json
 import logging
-import os
-import platform
-import shutil
-import subprocess
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 # Local application imports.
 from ..config import EXPATH, Settings, app_name_title, package_name
-from ..context import AppContext
 from ..error import (
-    AppFileNotFoundError,
-    CommandNotFoundError,
     ConfigurationError,
-    FileOperationError,
-    InvalidServerNameError,
-    MissingArgumentError,
-    PermissionsError,
-    SystemError,
-    UserInputError,
 )
 from .manager_mixins.content_mixin import ContentMixin
 from .manager_mixins.discovery_mixin import DiscoveryMixin
@@ -50,11 +35,6 @@ from .manager_mixins.player_mixin import PlayerMixin
 from .manager_mixins.system_mixin import SystemMixin
 from .manager_mixins.web_process_mixin import WebProcessMixin
 from .manager_mixins.web_service_mixin import WebServiceMixin
-
-if platform.system() == "Linux":
-    from .system import linux as system_linux_utils
-elif platform.system() == "Windows":
-    from .system import windows as system_windows_utils
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +127,7 @@ class BedrockServerManager(
                 constants cannot be accessed.
         """
         self.settings = settings
-        self.capabilities = {}
+        self.capabilities: dict[str, bool] = {}
         self._config_dir = None
         self._app_data_dir = None
         self._app_name_title = None
@@ -182,6 +162,8 @@ class BedrockServerManager(
             raise ConfigurationError(f"Settings object is misconfigured: {e}") from e
 
         self._base_dir = self.settings.get("paths.servers")
+        if self._base_dir is None:
+            self._base_dir = ""
         self._content_dir = self.settings.get("paths.content")
 
         _clean_package_name_for_systemd = (
