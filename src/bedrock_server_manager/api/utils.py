@@ -241,9 +241,10 @@ def stop_all_servers(app_context: AppContext):
 
     for server_data in servers_data:
         server_name = server_data.get("name")
-        server = app_context.get_server(str(server_name))
-        if server.is_running():
-            api_stop_server(server_name, app_context=app_context)
+        if server_name:
+            server = app_context.get_server(str(server_name))
+            if server.is_running():
+                api_stop_server(str(server_name), app_context=app_context)
 
 
 @plugin_method("server_lifecycle_manager")

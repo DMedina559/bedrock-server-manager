@@ -24,7 +24,7 @@ class Client:
 class ConnectionManager:
     """Manages WebSocket connections and topic-based subscriptions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
         # Maps a topic to a list of client IDs subscribed to it

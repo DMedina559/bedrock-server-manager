@@ -7,7 +7,16 @@ import asyncio
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Optional
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Optional,
+    ParamSpec,
+    TypeVar,
+    cast,
+    overload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +39,36 @@ def _sanitize_for_json(data: Any) -> Any:
         return f"<Unserializable object of type {type(data).__name__}>"
 
 
-def trigger_plugin_event(  # noqa: C901
-    _func: Optional[Callable] = None,
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+@overload
+def trigger_plugin_event(
+    _func: Callable[P, R],
+) -> Callable[P, R]: ...
+
+
+@overload
+def trigger_plugin_event(
+    _func: None = None,
     *,
     before: Optional[str] = None,
     after: Optional[str] = None,
-):
+) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+
+
+def trigger_plugin_event(  # noqa: C901
+    _func: Optional[Callable[P, R]] = None,
+    *,
+    before: Optional[str] = None,
+    after: Optional[str] = None,
+) -> Callable[[Callable[P, R]], Callable[P, R]] | Callable[P, R]:
     """
     A decorator to trigger plugin events and broadcast them to WebSockets.
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         sig = inspect.signature(func)
 
         def get_event_kwargs(*args: Any, **kwargs: Any) -> dict:
@@ -99,7 +127,7 @@ def trigger_plugin_event(  # noqa: C901
             await connection_manager.broadcast_to_topic(f"event:{event_name}", message)
 
         @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
 
@@ -117,7 +145,7 @@ def trigger_plugin_event(  # noqa: C901
             return result
 
         @functools.wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
 
@@ -125,7 +153,7 @@ def trigger_plugin_event(  # noqa: C901
                 app_context.plugin_manager.trigger_event(before, **event_kwargs)
                 await _async_broadcast_event(app_context, before, event_kwargs)
 
-            result = await func(*args, **kwargs)
+            result = await cast(Awaitable[R], func(*args, **kwargs))
 
             if after and app_context:
                 event_kwargs["result"] = result
@@ -135,7 +163,7 @@ def trigger_plugin_event(  # noqa: C901
             return result
 
         if inspect.iscoroutinefunction(func):
-            return async_wrapper
+            return async_wrapper  # type: ignore[return-value]
         else:
             return wrapper
 
