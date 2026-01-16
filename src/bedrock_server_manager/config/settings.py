@@ -121,7 +121,7 @@ class Settings:
         self._app_data_dir_path: Optional[str] = None
         self._config_dir_path: Optional[str] = None
         self.config_file_name = NEW_CONFIG_FILE_NAME
-        self.config_path = None
+        self.config_path: Optional[str] = None
         self._version_val = get_installed_version()
         self._settings: Dict[str, Any] = {}
         self.db = db
@@ -251,7 +251,7 @@ class Settings:
             "custom": {},
         }
 
-    def load(self):
+    def load(self) -> None:
         """Loads settings from the database.
 
         The process is as follows:
@@ -384,7 +384,7 @@ class Settings:
         except (KeyError, TypeError):
             return default
 
-    def set(self, key: str, value: Any):
+    def set(self, key: str, value: Any) -> None:
         """Sets a configuration value using dot-notation and saves the change.
 
         Intermediate dictionaries are created if they do not exist along the

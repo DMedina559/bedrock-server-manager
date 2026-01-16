@@ -498,13 +498,15 @@ async def prune_downloads_api_route(
         )
 
         if result.get("status") == "success":
+            files_deleted = result.get("files_deleted")
+            files_kept = result.get("files_kept")
             return GeneralApiResponse(
                 status="success",
                 message=result.get(
                     "message", "Pruning operation completed successfully."
                 ),
-                files_deleted=result.get("files_deleted"),
-                files_kept=result.get("files_kept"),
+                files_deleted=int(files_deleted) if files_deleted is not None else None,
+                files_kept=int(files_kept) if files_kept is not None else None,
             )
         else:
             raise HTTPException(

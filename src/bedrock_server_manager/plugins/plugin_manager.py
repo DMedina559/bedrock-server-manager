@@ -260,7 +260,7 @@ class PluginManager:
             )
         return None
 
-    def _synchronize_config_with_disk(self):  # noqa: C901
+    def _synchronize_config_with_disk(self) -> None:  # noqa: C901
         """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
 
         This crucial method ensures the ``plugins.json`` configuration file is
