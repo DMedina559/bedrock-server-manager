@@ -1,9 +1,10 @@
 # <PLUGIN_DIR>/api_docs_generator.py
-import os
-from typing import Any
-from datetime import datetime
 import inspect
-from bedrock_server_manager import Settings, PluginBase, __version__
+import os
+from datetime import datetime
+from typing import Any
+
+from bedrock_server_manager import PluginBase, __version__
 
 
 class APIDocsGenerator(PluginBase):

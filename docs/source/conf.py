@@ -3,6 +3,12 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
+import sys
+
+import sphinx_github_changelog
+import sphinx_github_changelog.changelog
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -13,9 +19,6 @@ release = "3.7.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
-import os
-import sys
 
 sys.path.insert(0, os.path.abspath("../../src"))
 sys.path.insert(0, os.path.abspath("."))
@@ -46,9 +49,6 @@ sphinx_github_changelog_token = os.environ.get(
 ) or os.environ.get("GITHUB_TOKEN")
 
 # MonkeyPatch sphinx_github_changelog to ignore pre-releases
-import sphinx_github_changelog
-import sphinx_github_changelog.changelog
-
 original_extract_releases = sphinx_github_changelog.changelog.extract_releases
 
 
