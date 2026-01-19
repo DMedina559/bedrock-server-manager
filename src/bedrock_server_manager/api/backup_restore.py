@@ -23,6 +23,7 @@ this module utilizes the
 :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
 to safely stop and restart the server. All functions are exposed to the plugin system.
 """
+
 import logging
 import os
 import threading

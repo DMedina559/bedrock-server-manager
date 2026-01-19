@@ -16,6 +16,7 @@ It includes:
 These routes interface with the underlying settings management logic in
 :mod:`~bedrock_server_manager.api.settings` and require user authentication.
 """
+
 import logging
 import os
 from typing import Any, Dict, Optional

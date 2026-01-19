@@ -6,6 +6,7 @@ This module provides endpoints for listing, installing, and managing content
 such as worlds (.mcworld) and addons (.mcaddon, .mcpack) for Bedrock servers.
 It includes both HTML view routes and JSON API routes.
 """
+
 import logging
 import os
 from typing import List, Optional

@@ -15,6 +15,7 @@ integrates with the plugin system by exposing many of its functions as callable
 APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`)
 and by triggering various plugin events during server operations.
 """
+
 import logging
 import os
 from typing import Any, Dict

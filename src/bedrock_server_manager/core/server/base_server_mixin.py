@@ -8,6 +8,7 @@ operations, such as server name, directory paths, application settings, and
 the logger. All other mixins should inherit from this class to ensure these
 fundamental attributes are available.
 """
+
 import logging
 import os
 import platform

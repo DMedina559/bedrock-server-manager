@@ -21,6 +21,7 @@ Key responsibilities include:
     - Checking and reporting system capabilities relevant to the application's features.
 
 """
+
 import logging
 from typing import Any
 

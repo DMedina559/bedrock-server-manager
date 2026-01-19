@@ -7,6 +7,7 @@ This module provides endpoints for:
 - Serving the registration page.
 - Handling user registration submissions.
 """
+
 import logging
 import secrets
 import time

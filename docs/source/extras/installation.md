@@ -76,7 +76,7 @@ These instructions are for advanced users who want to run the absolute latest co
 
 3.  **Build the Project:**
     The project uses a build script to compile the frontend assets (React/JS) and prepare the Python package.
-    
+
     *   **Linux/macOS:**
         ```bash
         chmod +x build.sh
@@ -86,7 +86,7 @@ These instructions are for advanced users who want to run the absolute latest co
         ```cmd
         build.bat
         ```
-    
+
     This process will:
     *   Install npm dependencies in `frontend/`.
     *   Build the static assets to `src/bedrock_server_manager/web/static/js/dist/`.

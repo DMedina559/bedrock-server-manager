@@ -6,6 +6,7 @@ This module provides the :class:`~.PlayerMixin` class, which handles the
 central player database, including saving player data and aggregating player
 information from multiple servers.
 """
+
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List

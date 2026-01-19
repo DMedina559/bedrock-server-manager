@@ -6,6 +6,7 @@ This module provides the :class:`~.WebProcessMixin` class, which handles the
 lifecycle (start/stop) of the Web UI process when it is managed directly
 by the application (e.g. not as a system service).
 """
+
 import logging
 import os
 from typing import List, Optional

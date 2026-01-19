@@ -6,6 +6,7 @@ This module provides the :class:`~.ContentMixin` class, which handles operations
 related to downloading, listing, and managing game content like .mcworld and
 .mcaddon files.
 """
+
 import glob
 import logging
 import os

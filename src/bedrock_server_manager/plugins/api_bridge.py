@@ -9,6 +9,7 @@ then provided with an instance of the `PluginAPI` class, which grants dynamic,
 safe, and version-agnostic access to these registered functions. It also
 facilitates inter-plugin communication through a custom event system.
 """
+
 import functools
 import inspect
 import logging

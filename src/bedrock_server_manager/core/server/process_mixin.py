@@ -19,6 +19,7 @@ functions within the :mod:`~.core.system.linux` and
 The availability of ``psutil`` (for :meth:`.ServerProcessMixin.get_process_info`)
 is indicated by the :const:`.PSUTIL_AVAILABLE` flag defined in this module.
 """
+
 import os
 import platform
 import subprocess

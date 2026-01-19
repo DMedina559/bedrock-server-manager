@@ -2,6 +2,7 @@
 """
 FastAPI router for managing server-specific settings.
 """
+
 import logging
 from typing import Any, Dict, Optional
 

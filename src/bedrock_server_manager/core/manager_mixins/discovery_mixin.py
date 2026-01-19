@@ -6,6 +6,7 @@ This module provides the :class:`~.DiscoveryMixin` class, which is used by the
 :class:`~.core.manager.BedrockServerManager` to scan the filesystem for
 existing server installations and gather their basic status.
 """
+
 import logging
 import os
 from typing import Any, Dict, List, Tuple

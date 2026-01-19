@@ -13,6 +13,7 @@ including:
 
 The JWT secret key and token expiration are configurable via environment variables.
 """
+
 import datetime
 import logging
 import secrets
@@ -294,8 +295,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         bool: ``True`` if the password matches the hash, ``False`` otherwise.
     """
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    return bool(
+        bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     )
 
 
@@ -308,7 +309,9 @@ def get_password_hash(password: str) -> str:
     Returns:
         str: The hashed password.
     """
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return str(
+        bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    )
 
 
 from ..config import bcm_config  # noqa: E402

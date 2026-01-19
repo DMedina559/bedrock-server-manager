@@ -27,7 +27,7 @@ With the web server you can:
 
 ## Hosts:
 
-```{note} 
+```{note}
 As of BSM 3.5.0, the web server will only accept one host at a time, if multiple hosts are specified, the first one will be used.
 ```
 
@@ -60,7 +60,7 @@ By default Bedrock Server Manager will use port `11325`. This can be change with
 ### HTTP API:
 
 ```{note}
-As of BSM 3.5.0, the HTTP API docs are now integrated in the web server using FastAPIs Swagger UI. 
+As of BSM 3.5.0, the HTTP API docs are now integrated in the web server using FastAPIs Swagger UI.
 Visit: `http(s)://<bsm_host:port>/docs` after starting the web server.
 ```
 

@@ -6,6 +6,7 @@ This plugin listens for a specific custom event, 'pingplugin:ping', and logs
 the data it receives. It's designed to work in conjunction with PingPlugin,
 which sends this event.
 """
+
 from bedrock_server_manager import PluginBase
 
 

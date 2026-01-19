@@ -8,7 +8,7 @@
 
 This guide will walk you through creating your own plugins to extend and customize the Bedrock Server Manager. The plugin system is designed to be simple yet powerful, allowing you to hook into various application events and use the core application's functions safely.
 
-This guide assumes you have a basic understanding of Python programming. 
+This guide assumes you have a basic understanding of Python programming.
 
 For a complete list of all available event hooks, see the [Plugin Base](./plugin_base.rst).
 For a complete list of all available APIs, see the [Available APIs](../../plugins/plugin_apis.md).
@@ -17,7 +17,7 @@ For a complete list of all available APIs, see the [Available APIs](../../plugin
 
 ## 1. Getting Started: Your First Plugin
 
-1.  **Locate a `plugins` directory:** 
+1.  **Locate a `plugins` directory:**
     *   **User Plugins:** Find the application's data directory (typically `~/.bedrock-server-manager/` or where `BSM_DATA_DIR` points). Inside, there will be a `plugins` folder. This is for your custom plugins.
     *   **Default Plugins:** The application also ships with default plugins located within its installation source at `src/bedrock_server_manager/plugins/default/`. While you can look here for examples, you should place your custom plugins in the user plugins directory.
     *   **Root `plugins/` folder (for development/examples):** The main repository also contains a `plugins/` folder in its root. This is primarily for development-time examples and testing of the plugin system itself. For user-created plugins meant for regular use, the user plugins directory is preferred.
@@ -142,7 +142,7 @@ class HomeAutomationStarterPlugin(PluginBase):
     def handle_user_arrival(self, **kwargs):
         user_id = kwargs.get('user_id', 'UnknownUser')
         self.logger.info(f"Received arrival event for user '{user_id}'.")
-        
+
         status = self.api.get_server_running_status(server_name=TARGET_SERVER_NAME)
         if status.get("running"):
              self.logger.info(f"Server '{TARGET_SERVER_NAME}' is already running.")
@@ -283,7 +283,7 @@ class MyPackagedPlugin(PluginBase):
 
     def get_fastapi_routers(self):
         # Return your router that uses these templates
-        return [my_plugin_web_router] 
+        return [my_plugin_web_router]
 ```
 
 **3. Render Templates in Route Handlers:**
@@ -349,14 +349,14 @@ class MyPackagedPlugin(PluginBase):
         """Returns configurations for mounting this plugin's static file directories."""
         plugin_root_dir = Path(__file__).parent
         plugin_static_dir = plugin_root_dir / "static_files"
-        
+
         # mount_url_path: The URL path your static files will be served from.
         #                 Must be unique (e.g., include plugin name).
         # local_directory_path: The actual path to your static files.
         # mount_name: A unique name for this static route in FastAPI.
         mount_url_path = "/static/my_packaged_plugin"
         mount_name = "my_packaged_plugin_static_files"
-        
+
         if plugin_static_dir.is_dir(): # Only add if the directory exists
             return [(mount_url_path, plugin_static_dir, mount_name)]
         return []

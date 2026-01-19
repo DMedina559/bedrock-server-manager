@@ -7,6 +7,7 @@ container for application-wide objects and services, such as settings, database,
 plugin manager, and server instances. It ensures circular dependencies are managed
 via lazy loading and property accessors.
 """
+
 from __future__ import annotations
 
 import os

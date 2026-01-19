@@ -9,6 +9,7 @@ This module provides endpoints for:
 - Updating profile information (name, email).
 - Changing passwords.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates

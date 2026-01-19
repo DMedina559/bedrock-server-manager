@@ -6,6 +6,7 @@ This plugin sends a custom event, 'pingplugin:ping', when a specific
 application event occurs (e.g., after a server successfully starts).
 It's designed to work in conjunction with PongPlugin, which listens for this event.
 """
+
 import time
 from typing import Any, Dict
 

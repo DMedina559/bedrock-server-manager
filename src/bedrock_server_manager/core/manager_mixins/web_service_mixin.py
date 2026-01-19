@@ -6,6 +6,7 @@ This module provides the :class:`~.WebServiceMixin` class, which interfaces
 with the operating system's service manager (systemd, Windows Services) to
 control the Bedrock Server Manager Web UI service.
 """
+
 import logging
 import os
 import platform

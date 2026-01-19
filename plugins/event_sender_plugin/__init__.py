@@ -2,6 +2,7 @@
 """
 Plugin to provide a web UI for sending custom plugin events.
 """
+
 import json  # For parsing JSON payload
 from pathlib import Path
 from typing import Any, Dict

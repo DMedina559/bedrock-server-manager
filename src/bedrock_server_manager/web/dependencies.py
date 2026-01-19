@@ -9,6 +9,7 @@ the existence of a server instance.
 See Also:
     FastAPI Dependencies: https://fastapi.tiangolo.com/tutorial/dependencies/
 """
+
 import logging
 
 from fastapi import HTTPException, Path, Request, status

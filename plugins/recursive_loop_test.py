@@ -34,6 +34,7 @@ What to look for in the logs:
 - The "--- LOOP TEST (B): Recursive self.api.start_server() call completed..." message,
   indicating the API call didn't crash due to an event stack overflow.
 """
+
 from typing import Any
 
 from bedrock_server_manager import PluginBase

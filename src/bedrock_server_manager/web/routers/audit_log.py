@@ -2,6 +2,7 @@
 """
 FastAPI router for viewing audit logs.
 """
+
 import logging
 from typing import Any, Dict, Optional
 

@@ -12,6 +12,7 @@ This module defines API endpoints that provide read-only access to:
 Endpoints typically require authentication and often use path parameters to specify
 a server. Responses are generally structured using the :class:`.GeneralApiResponse` model.
 """
+
 import logging
 import os
 from typing import Any, Dict, List, Optional
