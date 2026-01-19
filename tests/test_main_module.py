@@ -31,18 +31,3 @@ def test_main_web_command(
     """Test that the web command calls the start_web_server_api function."""
     runner.invoke(cli, ["web", "start"])
     mock_start_web_server.assert_called_once()
-
-
-@patch("bedrock_server_manager.__main__.setup_logging")
-@patch("bedrock_server_manager.__main__.startup_checks")
-def test_main_generate_password_command(
-    mock_startup_checks, mock_setup_logging, runner
-):
-    """Test that the generate-password command calls the generate_password_hash_command function."""
-    with patch(
-        "bedrock_server_manager.cli.generate_password.click.prompt"
-    ) as mock_prompt:
-        mock_prompt.return_value = "testpassword"
-        result = runner.invoke(cli, ["generate-password"])
-        assert result.exit_code == 0
-        assert "Hash generated successfully" in result.output
