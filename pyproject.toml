@@ -36,7 +36,7 @@ dependencies = [
     "python_multipart >=0.0.20,<0.1",
     "bcrypt >=5.0.0,<5.1",
     "sqlalchemy >=2.0.0,<2.1",
-    "appdirs >=1.4.4,<1.5",
+    "platformdirs >=4.3.0,<4.4",
     "alembic >=1.16,<1.19",
     "mcstatus >=12.0,<12.2",
 ]

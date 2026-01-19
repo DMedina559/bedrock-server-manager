@@ -206,7 +206,7 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
 
     # Monkeypatch the config directory path finder
     monkeypatch.setattr(
-        "appdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
+        "platformdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
     )
 
     # Reload the config module to ensure it uses the monkeypatched path
@@ -263,7 +263,7 @@ def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
     with open(app_config_file, "w") as f:
         json.dump({"data_dir": str(data_dir), "db_url": db_url}, f)
     monkeypatch.setattr(
-        "appdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
+        "platformdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
     )
 
     # Reload the config module to ensure it uses the monkeypatched path
