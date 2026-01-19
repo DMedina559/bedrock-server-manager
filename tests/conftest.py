@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 def isolated_settings(monkeypatch, tmp_path):
     """
     This fixture creates a temporary data and config directory and mocks
-    appdirs.user_config_dir to ensure all configuration and data files
+    platformdirs.user_config_dir to ensure all configuration and data files
     are isolated to the temporary location for the duration of the test.
     """
     # Create a temporary directory for the app's data
@@ -38,7 +38,7 @@ def isolated_settings(monkeypatch, tmp_path):
 
     # Mock the user_config_dir function to return our temporary config directory
     monkeypatch.setattr(
-        "appdirs.user_config_dir", lambda *args, **kwargs: str(test_config_dir)
+        "platformdirs.user_config_dir", lambda *args, **kwargs: str(test_config_dir)
     )
 
     # We also need to set the `data_dir` in the mocked config file
