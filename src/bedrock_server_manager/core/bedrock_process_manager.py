@@ -7,6 +7,7 @@ for monitoring running Bedrock server instances. It detects crashes or unexpecte
 shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
+
 import logging
 import threading
 import time

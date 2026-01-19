@@ -1,7 +1,7 @@
 # <PLUGIN_DIR>/lifecycle_test_plugin.py
+from typing import Any, Dict
+
 from bedrock_server_manager import PluginBase
-from typing import Any
-import time
 
 
 class LifecycleTestPlugin(PluginBase):
@@ -11,8 +11,8 @@ class LifecycleTestPlugin(PluginBase):
         self.logger.info("Lifecycle Test Plugin loaded.")
 
     def after_server_start(self, **kwargs: Any):
-        server_name = kwargs.get("server_name")
-        result = kwargs.get("result")
+        server_name = str(kwargs.get("server_name"))
+        result: Dict[str, Any] = kwargs.get("result", {})
         if result.get("status") == "success":
             self.logger.info(
                 f"Server '{server_name}' started. Now testing lifecycle manager."

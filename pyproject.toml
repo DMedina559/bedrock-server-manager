@@ -52,12 +52,14 @@ Changelog = "https://bedrock-server-manager.readthedocs.io/en/latest/changelog.h
 dev = [
     "pytest >=8.4.0,<9.1",
     "pytest-mock >=3.14.0,<3.16",
-    "black >=25.1.0,<25.13",
-    "flake8 >=7.3.0,<7.4",
     "httpx >=0.28.0,<0.29",
     "pytest-asyncio >=1.1.0,<1.4",
+    "types-requests >=2.32.0,<2.34",
+    "black >=25.1.0,<25.13",
+    "flake8 >=7.3.0,<7.4",
     "isort >=5.13.0,<7.1",
     "mypy >=1.10.0,<1.20",
+    "pre-commit >=4.5.0,<5.0",
 ]
 
 cli = [
@@ -110,7 +112,7 @@ bedrock-server-manager = "bedrock_server_manager.__main__:main"
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["test"]
+testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.setuptools_scm]

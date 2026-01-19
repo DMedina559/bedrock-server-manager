@@ -11,6 +11,7 @@ plugins (via methods exposed by
 :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`), to
 programmatically access and modify these global settings.
 """
+
 import logging
 from typing import Any, Dict
 

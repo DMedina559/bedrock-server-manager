@@ -5,6 +5,7 @@ Defines application-wide constants and utility functions for accessing them.
 This module centralizes common identifiers, names, paths, and version information
 used throughout the Bedrock Server Manager application.
 """
+
 import os
 from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, Tuple

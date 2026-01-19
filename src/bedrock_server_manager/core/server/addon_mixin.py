@@ -20,6 +20,7 @@ It is designed to work in conjunction with other mixins of the
       :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
+
 import glob
 import json
 import os

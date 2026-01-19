@@ -17,6 +17,7 @@ password verification, token creation, and user retrieval from tokens.
 Authentication is required for most parts of the application, and these routes
 facilitate that access control.
 """
+
 import logging
 from typing import Optional
 

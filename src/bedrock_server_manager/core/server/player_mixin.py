@@ -9,6 +9,7 @@ Specifically, it looks for lines indicating a player connection to parse out
 player gamertags and their corresponding XUIDs. This information can be used,
 for example, to populate a player database or track server activity.
 """
+
 import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, List

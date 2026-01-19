@@ -2,6 +2,7 @@
 """
 A plugin to provide a web UI for uploading .mcworld, .mcpack, and .mcaddon files.
 """
+
 import os
 import shutil
 from pathlib import Path

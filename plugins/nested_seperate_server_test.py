@@ -46,8 +46,10 @@ What to Look For in the Logs:
   - Later, inside that, `Dispatching standard event 'before_server_start' (key: ('before_server_start', 'server2')) ...`
   - Crucially, NO "Skipping recursive trigger..." message for the "server2" event.
 """
-from bedrock_server_manager import PluginBase
+
 from typing import Any
+
+from bedrock_server_manager import PluginBase
 
 # --- Configuration for the test ---
 # These should be names of actual, configured servers in your BSM setup.

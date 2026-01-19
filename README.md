@@ -1,6 +1,6 @@
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/src/bedrock_server_manager/web/static/image/icon/favicon.svg" alt="ICON" width="200" height="200">
-</div> 
+</div>
 
 # Bedrock Server Manager
 
@@ -26,17 +26,16 @@ Quick links:
 
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/cli_menu.png" alt="ICON" width="400" height="200">
-</div> 
+</div>
 
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/main_index.png" alt="ICON" width="400" height="200">
-</div> 
+</div>
 
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/cli_manage_server_menu.png" alt="ICON" width="400" height="200">
-</div> 
+</div>
 
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/docs/images/web_install_addons.png" alt="ICON" width="400" height="200">
-</div> 
-
+</div>

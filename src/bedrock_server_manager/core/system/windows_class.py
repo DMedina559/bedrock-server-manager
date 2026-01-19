@@ -15,6 +15,7 @@ This module includes functions for:
 It relies on the pywin32 package for named pipe and service
 functionality.
 """
+
 import logging
 import os
 import sys

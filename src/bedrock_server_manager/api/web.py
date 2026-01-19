@@ -15,6 +15,7 @@ status of the built-in web UI, which is powered by FastAPI. It interfaces with t
 These functions are intended for programmatic control of the application's web server,
 often used by CLI commands or service management scripts.
 """
+
 import logging
 import os
 from typing import Any, Dict, Optional

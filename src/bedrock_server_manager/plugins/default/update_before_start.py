@@ -2,6 +2,7 @@
 """
 Plugin that automatically updates a Bedrock server to the latest version.
 """
+
 from typing import Any
 
 from bedrock_server_manager import PluginBase

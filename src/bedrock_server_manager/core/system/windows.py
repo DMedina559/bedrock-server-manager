@@ -26,6 +26,7 @@ Note:
     attempts to handle :class:`~bedrock_server_manager.error.PermissionsError`
     where appropriate.
 """
+
 import logging
 from typing import Optional
 

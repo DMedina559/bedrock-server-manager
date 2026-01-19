@@ -2,6 +2,7 @@
 """
 Plugin to automatically back up a server before it starts.
 """
+
 from typing import Any
 
 from bedrock_server_manager import PluginBase

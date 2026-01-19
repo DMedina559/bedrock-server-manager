@@ -36,6 +36,7 @@ Key Functionality Groups:
 Constants:
     - :const:`PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported.
 """
+
 import logging
 import os
 import platform

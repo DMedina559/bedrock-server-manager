@@ -12,6 +12,7 @@ Key command groups and commands include:
     -   ``bsm web stop``: Stops a detached web server process.
 
 """
+
 import logging
 
 import click

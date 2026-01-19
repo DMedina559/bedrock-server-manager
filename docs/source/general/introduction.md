@@ -66,7 +66,7 @@ To get started with the web server, its recommended to run the setup command fir
 bedrock-server-manager setup
 ```
 
-This command will prompt you for the necessary configuration details, such as: 
+This command will prompt you for the necessary configuration details, such as:
 
 -   **Data Directory**: The location where the application will store its data (default is `$HOME/bedrock-server-manager`).
 -   **Databse URL**: The URL for the database connection (default is `sqlite:///<data_dir>/bedrock_server_manager.db`).

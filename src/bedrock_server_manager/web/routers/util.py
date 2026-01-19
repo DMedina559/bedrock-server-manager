@@ -8,6 +8,7 @@ handling catch-all routes for undefined paths. These endpoints often involve
 file system interactions and fallbacks to default assets if custom ones are
 not found.
 """
+
 import logging
 import os
 from typing import Optional

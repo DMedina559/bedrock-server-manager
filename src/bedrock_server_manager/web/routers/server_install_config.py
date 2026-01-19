@@ -13,6 +13,7 @@ It provides both an API for programmatic interaction and routes for serving
 HTML configuration pages to the user. Authentication is required for these
 operations, and server existence is typically validated for server-specific routes.
 """
+
 import logging
 import os
 import platform

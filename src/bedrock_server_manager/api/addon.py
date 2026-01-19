@@ -17,6 +17,7 @@ optionally manage the server's state (stopping and restarting) during these
 operations to ensure data integrity. All primary functions are exposed to the
 plugin system.
 """
+
 import logging
 import os
 import threading

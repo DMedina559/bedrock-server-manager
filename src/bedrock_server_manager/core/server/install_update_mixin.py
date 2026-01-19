@@ -20,6 +20,7 @@ Key functionalities include:
         - Updating the server's persisted version and status information.
 
 """
+
 import os
 from typing import Any, Optional
 

@@ -4,7 +4,7 @@ This project includes a `Dockerfile` that allows you to build and run the Bedroc
 
 ## Image Location
 
-The official Docker image is hosted on both the GitHub Container Registry and Docker Hub. 
+The official Docker image is hosted on both the GitHub Container Registry and Docker Hub.
 
 * **Docker Hub**: `dmedina559/bedrock-server-manager:stable`
 * **GitHub Container Registry**: `ghcr.io/dmedina559/bedrock-server-manager:stable`

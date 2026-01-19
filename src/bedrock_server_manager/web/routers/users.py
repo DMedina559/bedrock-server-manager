@@ -9,6 +9,7 @@ This module provides endpoints for:
 - Enabling/Disabling users (Admin).
 - Updating user roles (Admin).
 """
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status

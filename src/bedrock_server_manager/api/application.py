@@ -19,6 +19,7 @@ These functions are exposed to the plugin system via
 :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method` and are
 intended for use by UIs, CLIs, or other high-level components.
 """
+
 import logging
 from typing import Any, Dict
 

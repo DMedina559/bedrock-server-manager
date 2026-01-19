@@ -10,6 +10,7 @@ This module defines routes for essential parts of the user interface, including:
 Authentication is required for most routes, handled via FastAPI dependencies.
 Templates are rendered using Jinja2.
 """
+
 import logging
 from typing import Optional
 

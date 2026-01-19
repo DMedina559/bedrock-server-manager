@@ -6,6 +6,7 @@ This module provides endpoints for:
 - Serving the initial setup page.
 - Handling the creation of the first user (System Admin).
 """
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status

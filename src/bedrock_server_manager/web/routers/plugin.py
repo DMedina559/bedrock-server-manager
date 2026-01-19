@@ -15,6 +15,7 @@ It provides:
 These routes interface with the underlying plugin management logic in
 :mod:`~bedrock_server_manager.api.plugins` and require user authentication.
 """
+
 import logging
 from typing import Any, Dict, Optional
 
