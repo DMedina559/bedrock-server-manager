@@ -54,6 +54,7 @@ dev = [
     "pytest-mock >=3.14.0,<3.16",
     "httpx >=0.28.0,<0.29",
     "pytest-asyncio >=1.1.0,<1.4",
+    "types-requests >=2.32.0,<2.34",
     "black >=25.1.0,<25.13",
     "flake8 >=7.3.0,<7.4",
     "isort >=5.13.0,<7.1",
