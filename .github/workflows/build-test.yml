@@ -67,18 +67,18 @@ jobs:
       run: pip install --upgrade -e .[dev]
 
     - name: Run Black
-      run: black --check src/bedrock_server_manager test
+      run: black --check src/bedrock_server_manager tests
 
     - name: Run Isort
-      run: isort --check-only src/bedrock_server_manager test
+      run: isort --check-only src/bedrock_server_manager tests
 
     - name: Run Mypy
       continue-on-error: true
-      run: mypy src/bedrock_server_manager
+      run: mypy src/bedrock_server_manager tests
 
     - name: Run Flake8
       continue-on-error: true
-      run: flake8 src/bedrock_server_manager test
+      run: flake8 src/bedrock_server_manager tests
 
     - name: Run Pytest
       run: python -m pytest
