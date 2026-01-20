@@ -9,7 +9,8 @@
 <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bedrock-server-manager?label=Version&color=green">
 <img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/bedrock-server-manager?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=YELLOW&left_text=PYPI+Installs">
 <img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/dmedina559/bedrock-server-manager?label=Docker%20Pulls&color=pink">
-<img alt="GitHub License" src="https://img.shields.io/github/license/dmedina559/bedrock-server-manager?label=License&color=orange">
+<img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dmedina559/bedrock-server-manager/build-test.yml?branch=dev&label=Test
+">
 
 Bedrock Server Manager is a comprehensive python server designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease, compatible with Linux/Windows.
 
