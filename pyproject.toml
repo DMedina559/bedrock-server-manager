@@ -36,7 +36,7 @@ dependencies = [
     "python_multipart >=0.0.20,<0.1",
     "bcrypt >=5.0.0,<5.1",
     "sqlalchemy >=2.0.0,<2.1",
-    "platformdirs >=4.3.0,<4.4",
+    "platformdirs >=4.3.0,<4.6",
     "alembic >=1.16,<1.19",
     "mcstatus >=12.0,<12.2",
 ]
@@ -55,7 +55,7 @@ dev = [
     "httpx >=0.28.0,<0.29",
     "pytest-asyncio >=1.1.0,<1.4",
     "types-requests >=2.32.0,<2.34",
-    "black >=25.1.0,<25.13",
+    "black >=25.1.0,<26.2",
     "flake8 >=7.3.0,<7.4",
     "isort >=5.13.0,<7.1",
     "mypy >=1.10.0,<1.20",
