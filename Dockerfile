@@ -27,4 +27,6 @@ RUN for f in /app/dist/*.whl; do pip install "$f[mysql,mariadb,postgresql]"; don
 ENV HOST=0.0.0.0
 ENV PORT=11325
 EXPOSE 11325
+EXPOSE 19132/udp
+EXPOSE 19133/udp
 CMD ["/bin/sh", "-c", "exec bedrock-server-manager web start --host $HOST --port $PORT"]
