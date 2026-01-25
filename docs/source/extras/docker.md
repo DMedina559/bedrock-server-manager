@@ -65,6 +65,7 @@ This is the easiest and most recommended way to manage the data. Docker will man
 docker run -d \
   -p 11325:11325 \
   -p 19132:19132/udp \
+  -p 19133:19133/udp \
   --name bsm-container \
   -v bsm_config:/root/.config/bedrock-server-manager \
   -v bsm_data:/root/bedrock-server-manager \
@@ -81,6 +82,7 @@ Alternatively, you can mount directories from your host machine.
 docker run -d \
   -p 11325:11325 \
   -p 19132:19132/udp \
+  -p 19133:19133/udp \
   --name bsm-container \
   -v /path/on/host/bsm_config:/root/.config/bedrock-server-manager \
   -v /path/on/host/bsm_data:/root/bedrock-server-manager \
@@ -102,6 +104,7 @@ For example, to change the web server port to `8080` and use a custom database:
 docker run -d \
   -p 8080:8080 \
   -p 19132:19132/udp \
+  -p 19133:19133/udp \
   --name bsm-container \
   -e PORT=8080 \
   -e HOST=0.0.0.0 \
@@ -113,11 +116,16 @@ docker run -d \
 
 ### Exposing Minecraft Server Ports
 
-For players to be able to connect to your Minecraft servers, you must expose the corresponding UDP ports from the container. The default Minecraft Bedrock port is `19132/udp`.
+For players to be able to connect to your Minecraft servers, you must expose the corresponding UDP ports from the container. The default Minecraft Bedrock ports are `19132/udp` (IPv4) and `19133/udp` (IPv6).
 
 If you run multiple servers, you will need to map a port for each one. See the example above for how to add more `-p` flags.
 
-#### Alternative: Host Networking
+**Note on LAN Discovery (Broadcast):**
+By default, Docker containers run in a bridge network which isolates broadcast traffic. This means servers running in Docker **will not appear in the "Worlds" tab** (LAN games) of Minecraft clients on the same network, even if the ports are mapped correctly. Players will need to add the server manually using the "Servers" tab -> "Add Server" button and entering the host's IP address and port.
+
+#### Alternative: Host Networking (Required for LAN Discovery)
+
+To enable automatic LAN discovery (so the server appears in the Worlds list), you must use **Host Networking**. This bypasses Docker's network isolation and allows broadcast packets to reach the LAN.
 
 A simpler, but less isolated, approach is to use host networking by adding `--network host` to your `docker run` command. Note that when using host networking, you do not need to map individual ports.
 
@@ -132,10 +140,12 @@ services:
     image: dmedina559/bedrock-server-manager:stable     # Use desired tag here (e.g., stable, latest, 3.7.0)
     container_name: bsm-container                       # Name of the container
     restart: unless-stopped                             # Restart policy
+    # network_mode: "host"                              # Use host networking for LAN discovery
     ports:
       - "11325:11325"                                   # Web server port
-      - "19132:19132/udp"                               # Default Minecraft Bedrock server port
-      # - "19132:19132/udp"                             # Add more ports as needed for additional servers
+      - "19132:19132/udp"                               # Default Minecraft Bedrock server port (IPv4)
+      - "19133:19133/udp"                               # Default Minecraft Bedrock server port (IPv6)
+      # - "19100:19100/udp"                             # Add more ports as needed for additional servers
     environment: # Optional
       - HOST=0.0.0.0                                    # Which host to bind the web server to
       - PORT=11325                                      # Port for the web server
