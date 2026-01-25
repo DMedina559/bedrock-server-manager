@@ -140,11 +140,12 @@ services:
     image: dmedina559/bedrock-server-manager:stable     # Use desired tag here (e.g., stable, latest, 3.7.0)
     container_name: bsm-container                       # Name of the container
     restart: unless-stopped                             # Restart policy
+    # network_mode: "host"                              # Use host networking for LAN discovery
     ports:
       - "11325:11325"                                   # Web server port
       - "19132:19132/udp"                               # Default Minecraft Bedrock server port (IPv4)
       - "19133:19133/udp"                               # Default Minecraft Bedrock server port (IPv6)
-      # - "19132:19132/udp"                             # Add more ports as needed for additional servers
+      # - "19100:19100/udp"                             # Add more ports as needed for additional servers
     environment: # Optional
       - HOST=0.0.0.0                                    # Which host to bind the web server to
       - PORT=11325                                      # Port for the web server
