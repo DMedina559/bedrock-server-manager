@@ -198,3 +198,26 @@ def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
     rps = [rp for rp in addons["resource_packs"] if rp["uuid"] == "rp1_uuid"]
     assert len(rps) == 1, "Resource pack not installed"
     assert rps[0]["status"] == "ACTIVE"
+
+
+def test_process_addon_file_script_type(real_bedrock_server, tmp_path):
+    server = real_bedrock_server
+    world_dir = os.path.join(server.server_dir, "worlds", "world")
+    os.makedirs(world_dir, exist_ok=True)
+
+    # Create a dummy addon file with script type
+    addon_path = tmp_path / "test_script_addon.mcpack"
+    with zipfile.ZipFile(addon_path, "w") as zf:
+        zf.writestr(
+            "manifest.json",
+            '{"header": {"name": "test script addon", "uuid": "script_uuid", "version": [1,0,0]}, "modules": [{"type": "script"}]}',
+        )
+
+    # This should now succeed
+    server.process_addon_file(str(addon_path))
+
+    # Verify it is installed as a behavior pack
+    addons = server.list_world_addons()
+    bps = [bp for bp in addons["behavior_packs"] if bp["uuid"] == "script_uuid"]
+    assert len(bps) == 1
+    assert bps[0]["status"] == "ACTIVE"
