@@ -498,7 +498,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             target_world_json_file: str
             pack_type_friendly_name: str
 
-            if pack_type == "data":  # Behavior pack
+            if pack_type in ("data", "script"):  # Behavior pack
                 target_install_path = os.path.join(
                     behavior_packs_target_base, safe_addon_folder_name
                 )
@@ -566,7 +566,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         This method reads the ``manifest.json`` located in the ``extracted_pack_dir``,
         parses its JSON content, and extracts essential metadata about the pack.
         It specifically looks for the pack's display name, UUID, version (as a
-        three-part integer list), and type ('data' for behavior packs,
+        three-part integer list), and type ('data' or 'script' for behavior packs,
         'resources' for resource packs).
 
         Args:
@@ -592,7 +592,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             FileOperationError: If an OS-level error occurs while trying to read
                 the ``manifest.json`` file (e.g., permission issues).
             UserInputError: If the pack type specified in the manifest's module
-                section is not 'data' or 'resources' (case-insensitive).
+                section is not 'data', 'script' or 'resources' (case-insensitive).
         """
         manifest_file = os.path.join(extracted_pack_dir, "manifest.json")
         self.logger.debug(f"Attempting to read manifest file: {manifest_file}")
@@ -646,10 +646,10 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
 
             pack_type_cleaned = pack_type_val.lower()
-            # Minecraft uses 'data' for behavior packs and 'resources' for resource packs.
-            if pack_type_cleaned not in ("data", "resources"):
+            # Minecraft uses 'data' (or 'script') for behavior packs and 'resources' for resource packs.
+            if pack_type_cleaned not in ("data", "resources", "script"):
                 raise UserInputError(
-                    f"Pack type '{pack_type_cleaned}' from manifest is not 'data' or 'resources'."
+                    f"Pack type '{pack_type_cleaned}' from manifest is not 'data', 'script' or 'resources'."
                 )
 
             self.logger.debug(
