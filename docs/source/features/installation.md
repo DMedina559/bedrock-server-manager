@@ -37,7 +37,7 @@ Mojang frequently releases updates for Minecraft Bedrock. BSM helps you stay cur
 
 ### Manual Update
 
-1.  On the dashboard,choose a server from the dropdown list.
+1.  Select the server from the dropdown menu in the web dashboard.
 2.  Click the **Update** button.
 3.  BSM will:
     *   Stop the server safely (if it was running).
@@ -51,6 +51,8 @@ Mojang frequently releases updates for Minecraft Bedrock. BSM helps you stay cur
 If **Auto Update** is enabled for a server instance:
 *   BSM checks for updates durring the bedrock server startup.
 *   If a new version is detected, it will perform the update process automatically.
+
+**Tip:** Enable the `Update Before Start` default plugin to have BSM automatically check for updates each time the server starts. (Must have `autoupdate: true` set in the server configuration).
 
 ## Custom Versions
 

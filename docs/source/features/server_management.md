@@ -65,14 +65,3 @@ The **Monitor** page provides real-time visibility into the performance of your 
 ### Auto-Refresh
 
 The monitor page automatically refreshes data periodically (typically every few seconds) to give you an up-to-date view of your infrastructure.
-
-## Server Updates
-
-BSM can check for and install updates to the Bedrock Dedicated Server software.
-
-1.  Select the server from the dropdown menu in the web dashboard.
-2.  Click the **Update** button.
-3.  BSM will check the latest version available from Mojang.
-4.  If a newer version is found, the server will be stopped (if running), the new binaries will be downloaded and installed, and the server will optionally be restarted.
-
-**Tip:** Enable the `Update Before Start` default plugin to have BSM automatically check for updates each time the server starts. (Must have `autoupdate: true` set in the server configuration).
