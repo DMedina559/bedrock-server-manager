@@ -8,8 +8,9 @@ def test_start_server_route(authenticated_client, real_bedrock_server):
     response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/start"
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
+    assert response.status_code == 202
+    assert response.json()["status"] == "pending"
+    assert "initiated in background" in response.json()["message"]
 
 
 def test_stop_server_route(authenticated_client, real_bedrock_server):

@@ -49,7 +49,7 @@ class CommandPayload(BaseModel):
 @router.post(
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Start a server instance",
     tags=["Server Actions API"],
 )
@@ -59,28 +59,25 @@ async def start_server_route(
     app_context: AppContext = Depends(get_app_context),
 ):
     """
-    Starts a specific Bedrock server instance.
+    Initiates starting a specific Bedrock server instance in the background.
+
+    The server start operation is performed as a background task.
+    This endpoint immediately returns a 202 Accepted response.
     """
     identity = current_user.username
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
+    task_id = app_context.task_manager.run_task(
+        server_api.start_server,
+        username=current_user.username,
+        server_name=server_name,
+        app_context=app_context,
+    )
 
-    try:
-        result = server_api.start_server(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ActionResponse(
-                message=result.get("message") or "Server started successfully"
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("message"),
-            )
-    except BSMError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+    return ActionResponse(
+        status="pending",
+        message=f"Start operation for server '{server_name}' initiated in background.",
+        task_id=task_id,
+    )
 
 
 @router.post(
