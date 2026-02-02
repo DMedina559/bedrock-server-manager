@@ -330,15 +330,21 @@ export async function sendServerActionRequest(
         `${functionName}: HTTP request successful (Status: ${response.status}). Checking application status in response...`,
       );
       // Check 'status' field within the JSON response data
-      if (responseData && responseData.status === "success") {
+      if (
+        responseData &&
+        (responseData.status === "success" || responseData.status === "pending")
+      ) {
         const successMsg =
           responseData.message || `Action at ${apiUrl} completed successfully.`;
         console.info(
-          `${functionName}: Application success. Message: "${successMsg}"`,
+          `${functionName}: Application success/pending. Message: "${successMsg}"`,
         );
         if (!suppressSuccessPopup) {
           // Only show popup if not suppressed
-          showStatusMessage(successMsg, "success");
+          // Use 'info' for pending, 'success' for success if distinction is needed
+          const msgType =
+            responseData.status === "pending" ? "info" : "success";
+          showStatusMessage(successMsg, msgType);
         }
         // Optionally trigger UI updates based on success here if needed
       } else if (responseData && responseData.status === "confirm_needed") {
