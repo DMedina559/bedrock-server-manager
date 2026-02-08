@@ -21,6 +21,13 @@ def task_manager(mocker):
         loop = asyncio.new_event_loop()
     mock_app_context.loop = loop
 
+    if isinstance(loop, asyncio.AbstractEventLoop):
+        mock_loop = MagicMock(wraps=loop)
+        mock_loop.is_running.return_value = True
+        mock_app_context.loop = mock_loop
+    else:
+        mock_app_context.loop.is_running.return_value = True
+
     tm = TaskManager(app_context=mock_app_context)
     yield tm
     tm.shutdown()

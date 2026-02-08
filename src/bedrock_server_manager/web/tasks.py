@@ -21,11 +21,11 @@ class TaskManager:
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.futures: Dict[str, Future] = {}
         self._shutdown_started = False
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+            self._loop = None
 
     def _notify_client_of_update(self, task_id: str):
         """Sends a WebSocket notification to the user associated with the task."""
@@ -41,10 +41,27 @@ class TaskManager:
                 "topic": f"task:{task_id}",
                 "data": task_details,
             }
-            # Use run_coroutine_threadsafe because this function is called from a worker thread
-            asyncio.run_coroutine_threadsafe(
-                connection_manager.send_to_user(username, message), self._loop
-            )
+
+            # Determine the correct event loop to use for scheduling the notification.
+            # Prefer the main application loop if available and running.
+            target_loop = None
+            if self.app_context.loop and self.app_context.loop.is_running():
+                target_loop = self.app_context.loop
+            elif self._loop and self._loop.is_running():
+                # Fallback to the loop captured at init if it's running (unlikely if created manually)
+                target_loop = self._loop
+
+            if target_loop:
+                # Use run_coroutine_threadsafe because this function is called from a worker thread
+                asyncio.run_coroutine_threadsafe(
+                    connection_manager.send_to_user(username, message), target_loop
+                )
+            else:
+                # This is expected during early startup (e.g., autostart plugin) when no
+                # WebSocket client is connected yet and the main loop isn't running.
+                logger.debug(
+                    f"Skipping task update notification for task {task_id}: No running event loop available."
+                )
 
     def _update_task(
         self, task_id: str, status: str, message: str, result: Optional[Any] = None
