@@ -33,7 +33,6 @@ class WebProcessMixin:
         host: Optional[str] = None,
         port: Optional[int] = None,
         debug: bool = False,
-        threads: Optional[int] = None,
     ) -> None:
         """Starts the Web UI application directly in the current process (blocking).
 
@@ -53,9 +52,6 @@ class WebProcessMixin:
             debug (bool): If ``True``, runs the underlying Uvicorn/FastAPI app
                 in debug mode (e.g., with auto-reload). Passed directly to
                 :func:`~.web.app.run_web_server`. Defaults to ``False``.
-            threads (Optional[int]): Specifies the number of worker processes for Uvicorn
-
-                Only used for Windows Service
 
         Raises:
             RuntimeError: If :func:`~.web.app.run_web_server` raises a RuntimeError
@@ -80,7 +76,6 @@ class WebProcessMixin:
                 host=host,
                 port=port,
                 debug=debug,
-                threads=threads,
             )
             logger.info("BSM: Web application (direct mode) shut down.")
         except (RuntimeError, ImportError) as e:

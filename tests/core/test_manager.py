@@ -294,7 +294,6 @@ def test_start_web_ui_direct_success(app_context, mocker):
         host="0.0.0.0",
         port=None,
         debug=True,
-        threads=None,
     )
 
 

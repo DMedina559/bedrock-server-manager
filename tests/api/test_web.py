@@ -27,7 +27,7 @@ class TestWebServerLifecycle:
         app_context.manager.start_web_ui_direct = MagicMock()
         start_web_server_api(mode="direct", app_context=app_context)
         app_context.manager.start_web_ui_direct.assert_called_once_with(
-            app_context, None, None, False, None
+            app_context, None, None, False
         )
 
     @patch("bedrock_server_manager.api.web.system_process_utils")
