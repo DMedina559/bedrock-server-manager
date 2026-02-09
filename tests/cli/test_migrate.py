@@ -10,6 +10,10 @@ def test_migrate_old_config_json_structure(app_context):
     """
     # 1. Setup Data with "web" and "logging" rows containing the deprecated keys
     with app_context.db.session_manager() as db:
+        # Clear existing 'web' and 'logging' settings to avoid conflicts with default settings
+        db.query(Setting).filter_by(key="web").delete()
+        db.query(Setting).filter_by(key="logging").delete()
+
         # Add 'web' setting (JSON object)
         db.add(Setting(key="web", value={"host": "0.0.0.0", "threads": 4}))
 
