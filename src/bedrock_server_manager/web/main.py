@@ -128,7 +128,7 @@ def run_web_server(  # noqa: C901
         uvicorn_log_level = "debug"
         reload_enabled = True
     else:
-        logger.info("Uvicorn production mode with 1 worker(s).")
+        logger.info("Uvicorn production mode with 1 worker.")
 
     server_mode = (
         "DEBUG (Uvicorn with reload)" if reload_enabled else "PRODUCTION (Uvicorn)"
