@@ -1,27 +1,36 @@
-// frontend/src/account.js
 /**
  * @fileoverview Frontend JavaScript for the account management page.
  * Handles theme selection and other account-related settings.
  */
 
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import {
+  getUserProfile,
+  updateUserProfile,
+  changePassword as changePasswordApi,
+  getThemes,
+  setUserTheme,
+} from "./account_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
-function loadUserProfile() {
-  sendServerActionRequest(null, "/api/account", "GET", null, null, true).then(
-    (response) => {
-      if (response) {
-        document.getElementById("full_name").value = response.full_name || "";
-        document.getElementById("email").value = response.email || "";
-      }
-    },
-  );
+async function loadUserProfile() {
+  try {
+    const response = await getUserProfile();
+    if (response) {
+      const fullNameInput = document.getElementById("full_name");
+      const emailInput = document.getElementById("email");
+      if (fullNameInput) fullNameInput.value = response.full_name || "";
+      if (emailInput) emailInput.value = response.email || "";
+    }
+  } catch (error) {
+    console.error("Failed to load user profile:", error);
+    showStatusMessage("Failed to load user profile.", "error");
+  }
 }
 
-function changePassword() {
-  const form = document.getElementById("change-password-form");
-  const currentPassword = form.elements["current_password"].value;
-  const newPassword = form.elements["new_password"].value;
-  const confirmNewPassword = form.elements["confirm_new_password"].value;
+async function handleChangePassword(formElement) {
+  const currentPassword = formElement.elements["current_password"].value;
+  const newPassword = formElement.elements["new_password"].value;
+  const confirmNewPassword = formElement.elements["confirm_new_password"].value;
 
   if (newPassword !== confirmNewPassword) {
     showStatusMessage("New passwords do not match.", "error");
@@ -33,39 +42,42 @@ function changePassword() {
     new_password: newPassword,
   };
 
-  sendServerActionRequest(
-    null,
-    "/api/account/change-password",
-    "POST",
-    data,
-  ).then((response) => {
+  const submitButton = formElement.querySelector('button[type="submit"]');
+
+  await handleApiAction(submitButton, async () => {
+    const response = await changePasswordApi(data);
     if (response && response.status === "success") {
-      form.reset();
+      formElement.reset();
     }
+    return response;
   });
 }
 
-function updateProfile() {
-  const form = document.getElementById("profile-form");
-  const fullName = form.elements["full_name"].value;
-  const email = form.elements["email"].value;
+async function handleUpdateProfile(formElement) {
+  const fullName = formElement.elements["full_name"].value;
+  const email = formElement.elements["email"].value;
 
   const data = {
     full_name: fullName,
     email: email,
   };
 
-  sendServerActionRequest(null, "/api/account/profile", "POST", data);
+  const submitButton = formElement.querySelector('button[type="submit"]');
+
+  await handleApiAction(submitButton, async () => {
+    return await updateUserProfile(data);
+  });
 }
 
 export function initializeAccountPage() {
   loadUserProfile();
+
   // --- Theme Selector Logic ---
   const themeSelect = document.getElementById("theme-select");
   if (themeSelect) {
     // Populate theme options
-    sendServerActionRequest(null, "/api/themes", "GET", null, null, true).then(
-      (themes) => {
+    getThemes()
+      .then((themes) => {
         if (themes) {
           Object.keys(themes).forEach((themeName) => {
             const option = document.createElement("option");
@@ -76,43 +88,36 @@ export function initializeAccountPage() {
           });
         }
 
-        // Set initial value from the data attribute on the select element
         const currentTheme = themeSelect.dataset.currentTheme;
         if (currentTheme) {
           themeSelect.value = currentTheme;
         }
-      },
-    );
+      })
+      .catch((err) => console.error("Failed to load themes:", err));
 
     themeSelect.addEventListener("change", async (event) => {
       const newTheme = event.target.value;
       const themeStylesheet = document.getElementById("theme-stylesheet");
-      if (themeStylesheet) {
-        const themes = await sendServerActionRequest(
-          null,
-          `/api/themes`,
-          "GET",
-          null,
-          null,
-          true,
-        );
-        if (themes) {
-          themeStylesheet.href = themes[newTheme];
-        }
-      }
 
-      // Save the new theme setting for the user
-      await sendServerActionRequest(
-        null,
-        "/api/account/theme",
-        "POST",
-        { theme: newTheme },
-        null,
-      );
+      try {
+        if (themeStylesheet) {
+          const themes = await getThemes();
+          if (themes && themes[newTheme]) {
+            themeStylesheet.href = themes[newTheme];
+          }
+        }
+
+        // Save the new theme setting for the user
+        await setUserTheme(newTheme);
+      } catch (error) {
+        console.error("Failed to set theme:", error);
+        showStatusMessage("Failed to save theme preference.", "warning");
+      }
     });
   }
 
   // --- Sidebar Navigation ---
+  // This logic is purely UI navigation (tab switching) and doesn't involve API calls.
   const navLinks = document.querySelectorAll(".sidebar-nav .nav-link");
   const contentSections = document.querySelectorAll(
     ".main-content .content-section",
@@ -120,7 +125,6 @@ export function initializeAccountPage() {
 
   navLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
-      // Check if it's a link to another page
       if (!link.getAttribute("data-target")) {
         return;
       }
@@ -128,11 +132,9 @@ export function initializeAccountPage() {
       event.preventDefault();
       const targetId = link.getAttribute("data-target");
 
-      // Deactivate all links and sections
       navLinks.forEach((navLink) => navLink.classList.remove("active"));
       contentSections.forEach((section) => section.classList.remove("active"));
 
-      // Activate the clicked link and target section
       link.classList.add("active");
       const targetSection = document.getElementById(targetId);
       if (targetSection) {
@@ -146,7 +148,7 @@ export function initializeAccountPage() {
   if (changePasswordForm) {
     changePasswordForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      changePassword();
+      handleChangePassword(changePasswordForm);
     });
   }
 
@@ -154,7 +156,7 @@ export function initializeAccountPage() {
   if (profileForm) {
     profileForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      updateProfile();
+      handleUpdateProfile(profileForm);
     });
   }
 }

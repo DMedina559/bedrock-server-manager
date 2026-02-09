@@ -1,5 +1,6 @@
 // frontend/src/register.js
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import { registerUser } from "./register_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
 function submitForm() {
   const form = document.getElementById("register-form");
@@ -21,14 +22,15 @@ function submitForm() {
   const data = Object.fromEntries(formData.entries());
 
   const token = document.getElementById("register-form").dataset.token;
+  const submitButton = form.querySelector('button[type="submit"]');
 
-  sendServerActionRequest(null, `/register/${token}`, "POST", data).then(
-    (response) => {
-      if (response && response.status === "success") {
-        window.location.href = response.redirect_url;
-      }
-    },
-  );
+  handleApiAction(submitButton, async () => {
+    const response = await registerUser(token, data);
+    if (response && response.status === "success") {
+      window.location.href = response.redirect_url;
+    }
+    return response;
+  });
 }
 
 export function initializeRegisterPage() {

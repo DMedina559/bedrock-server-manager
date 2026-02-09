@@ -2,216 +2,102 @@ import {
   startServer,
   stopServer,
   restartServer,
-  promptCommand,
+  sendCommand,
   deleteServer,
-  triggerServerUpdate,
+  updateServer,
+  fetchServers,
+  getServerUsage,
 } from "../server_actions";
-import { sendServerActionRequest, showStatusMessage } from "../utils";
+import { request } from "../api";
 
-// Mock utils
-jest.mock("../utils", () => ({
-  sendServerActionRequest: jest.fn(),
-  showStatusMessage: jest.fn(),
+// Mock request
+jest.mock("../api", () => ({
+  request: jest.fn(),
 }));
 
-describe("server_actions.js", () => {
-  let button;
-  let serverSelect;
-
+describe("server_actions.js (API)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    document.body.innerHTML = `
-            <select id="server-select">
-                <option value="">-- Select --</option>
-                <option value="Server1">Server1</option>
-            </select>
-            <button id="action-btn">Action</button>
-        `;
-    button = document.getElementById("action-btn");
-    serverSelect = document.getElementById("server-select");
-  });
-
-  describe("helper getSelectedServer", () => {
-    // Since getSelectedServer is internal, we test it via the exported functions that use it
-
-    test("shows warning if no server selected", () => {
-      serverSelect.value = "";
-      startServer(button);
-
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        expect.stringContaining("Please select a server"),
-        "warning",
-      );
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
-    });
-
-    test("shows error if dropdown missing", () => {
-      document.body.innerHTML = ""; // Remove dropdown
-      const btn = document.createElement("button");
-      startServer(btn);
-
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        expect.stringContaining("Server selection dropdown element"),
-        "error",
-      );
-    });
   });
 
   describe("startServer", () => {
-    test("calls sendServerActionRequest with correct params", () => {
-      serverSelect.value = "Server1";
-      startServer(button);
+    test("calls request with correct params", () => {
+      startServer("Server1");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/start", {
+        method: "POST",
+      });
+    });
 
-      expect(sendServerActionRequest).toHaveBeenCalledWith(
-        "Server1",
-        "start",
-        "POST",
-        null,
-        button,
-      );
+    test("throws if server name missing", () => {
+      expect(() => startServer()).toThrow("Server name is required");
     });
   });
 
   describe("stopServer", () => {
-    test("calls sendServerActionRequest with correct params", () => {
-      serverSelect.value = "Server1";
-      stopServer(button);
-
-      expect(sendServerActionRequest).toHaveBeenCalledWith(
-        "Server1",
-        "stop",
-        "POST",
-        null,
-        button,
-      );
+    test("calls request with correct params", () => {
+      stopServer("Server1");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/stop", {
+        method: "POST",
+      });
     });
   });
 
   describe("restartServer", () => {
-    test("calls sendServerActionRequest with correct params", () => {
-      serverSelect.value = "Server1";
-      restartServer(button);
-
-      expect(sendServerActionRequest).toHaveBeenCalledWith(
-        "Server1",
-        "restart",
-        "POST",
-        null,
-        button,
-      );
+    test("calls request with correct params", () => {
+      restartServer("Server1");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/restart", {
+        method: "POST",
+      });
     });
   });
 
-  describe("promptCommand", () => {
-    test("aborts if no server selected", () => {
-      serverSelect.value = "";
-      const promptSpy = jest.spyOn(window, "prompt").mockReturnValue("cmd");
-
-      promptCommand(button);
-
-      expect(promptSpy).not.toHaveBeenCalled();
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
+  describe("sendCommand", () => {
+    test("calls request with command in body", () => {
+      sendCommand("Server1", "say hello");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/send_command", {
+        method: "POST",
+        body: { command: "say hello" },
+      });
     });
 
-    test("sends command if input valid", () => {
-      serverSelect.value = "Server1";
-      jest.spyOn(window, "prompt").mockReturnValue("say hello");
-
-      promptCommand(button);
-
-      expect(sendServerActionRequest).toHaveBeenCalledWith(
-        "Server1",
-        "send_command",
-        "POST",
-        { command: "say hello" },
-        button,
+    test("throws if command empty", () => {
+      expect(() => sendCommand("Server1", "")).toThrow(
+        "Command cannot be empty",
       );
-    });
-
-    test("handles cancel (null input)", () => {
-      serverSelect.value = "Server1";
-      jest.spyOn(window, "prompt").mockReturnValue(null);
-
-      promptCommand(button);
-
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        "Command input cancelled.",
-        "info",
-      );
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
-    });
-
-    test("handles empty input", () => {
-      serverSelect.value = "Server1";
-      jest.spyOn(window, "prompt").mockReturnValue("   ");
-
-      promptCommand(button);
-
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        "Command cannot be empty.",
-        "warning",
-      );
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
     });
   });
 
   describe("deleteServer", () => {
-    test("sends delete request if confirmed", () => {
-      jest.spyOn(window, "confirm").mockReturnValue(true);
-
-      deleteServer(button, "ServerToDelete");
-
-      expect(sendServerActionRequest).toHaveBeenCalledWith(
-        "ServerToDelete",
-        "delete",
-        "DELETE",
-        null,
-        button,
-      );
-    });
-
-    test("aborts if cancelled", () => {
-      jest.spyOn(window, "confirm").mockReturnValue(false);
-
-      deleteServer(button, "ServerToDelete");
-
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        "Deletion cancelled.",
-        "info",
-      );
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
-    });
-
-    test("handles missing server name", () => {
-      deleteServer(button, "");
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        expect.stringContaining("Server name is missing"),
-        "error",
-      );
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
+    test("calls request with DELETE method", () => {
+      deleteServer("Server1");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/delete", {
+        method: "DELETE",
+      });
     });
   });
 
-  describe("triggerServerUpdate", () => {
-    test("calls sendServerActionRequest with correct params", () => {
-      triggerServerUpdate(button, "Server1");
-
-      expect(sendServerActionRequest).toHaveBeenCalledWith(
-        "Server1",
-        "update",
-        "POST",
-        null,
-        button,
-      );
+  describe("updateServer", () => {
+    test("calls request with correct params", () => {
+      updateServer("Server1");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/update", {
+        method: "POST",
+      });
     });
+  });
 
-    test("handles missing server name", () => {
-      triggerServerUpdate(button, null);
-      expect(showStatusMessage).toHaveBeenCalledWith(
-        expect.stringContaining("Server name is missing"),
-        "error",
-      );
-      expect(sendServerActionRequest).not.toHaveBeenCalled();
+  describe("fetchServers", () => {
+    test("calls request for server list", () => {
+      fetchServers();
+      expect(request).toHaveBeenCalledWith("/api/servers", { method: "GET" });
+    });
+  });
+
+  describe("getServerUsage", () => {
+    test("calls request for process info", () => {
+      getServerUsage("Server1");
+      expect(request).toHaveBeenCalledWith("/api/server/Server1/process_info", {
+        method: "GET",
+      });
     });
   });
 });

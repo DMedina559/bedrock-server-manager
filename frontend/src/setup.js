@@ -1,5 +1,6 @@
 // frontend/src/setup.js
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import { createFirstUser } from "./setup_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
 function submitForm() {
   const form = document.getElementById("setup-form");
@@ -17,16 +18,17 @@ function submitForm() {
     return;
   }
 
+  const submitButton = form.querySelector('button[type="submit"]');
   const formData = new FormData(form);
   const data = Object.fromEntries(formData.entries());
 
-  sendServerActionRequest(null, "/setup/create-first-user", "POST", data).then(
-    (response) => {
-      if (response && response.status === "success") {
-        window.location.href = response.redirect_url;
-      }
-    },
-  );
+  handleApiAction(submitButton, async () => {
+    const response = await createFirstUser(data);
+    if (response && response.status === "success") {
+      window.location.href = response.redirect_url;
+    }
+    return response;
+  });
 }
 
 export function initializeSetupPage() {

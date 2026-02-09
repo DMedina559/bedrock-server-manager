@@ -1,9 +1,12 @@
-// frontend/src/server_settings.js
 /**
  * @fileoverview Frontend JavaScript for the server-specific settings management page.
  */
 
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import {
+  getServerSettings,
+  updateServerSetting,
+} from "./server_settings_api.js";
+import { showStatusMessage } from "./ui_utils.js";
 
 export function initializeServerSettingsPage() {
   const settingsFormContainer = document.getElementById(
@@ -25,7 +28,6 @@ export function initializeServerSettingsPage() {
 
   const getServerNameFromPath = () => {
     const pathParts = window.location.pathname.split("/");
-    // Expected URL: /servers/{server_name}/settings
     const serverNameIndex = pathParts.indexOf("servers") + 1;
     return pathParts.length > serverNameIndex
       ? pathParts[serverNameIndex]
@@ -58,7 +60,6 @@ export function initializeServerSettingsPage() {
     settingsSidebar.innerHTML = "";
     let totalFieldsRendered = 0;
 
-    // Define the order of categories
     const categoryOrder = ["server_info", "settings", "custom"];
 
     categoryOrder.forEach((categoryKey) => {
@@ -170,26 +171,22 @@ export function initializeServerSettingsPage() {
         .map((s) => s.trim())
         .filter(Boolean);
     }
-    await sendServerActionRequest(
-      null,
-      `/api/servers/${serverName}/settings`,
-      "POST",
-      { key: input.name, value },
-      null,
-    );
+
+    try {
+      await updateServerSetting(serverName, input.name, value);
+      showStatusMessage("Server setting saved.", "success");
+    } catch (error) {
+      showStatusMessage(
+        `Failed to save server setting: ${error.message}`,
+        "error",
+      );
+    }
   }
 
   const loadAndRenderSettings = async () => {
     showLoader(true);
     try {
-      const result = await sendServerActionRequest(
-        null,
-        `/api/servers/${serverName}/settings`,
-        "GET",
-        null,
-        null,
-        true,
-      );
+      const result = await getServerSettings(serverName);
       if (result && result.status === "success" && result.settings) {
         renderSettings(result.settings);
       } else {

@@ -3,7 +3,7 @@
  * @fileoverview Handles reading URL query parameters and displaying status messages.
  */
 
-import { showStatusMessage } from "./utils.js";
+import { showStatusMessage } from "./ui_utils.js";
 
 export function handleQueryParameters() {
   const urlParams = new URLSearchParams(window.location.search);

@@ -1,5 +1,6 @@
 // frontend/src/manage_plugins.js
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import { getPlugins, reloadPlugins, setPluginState } from "./plugins_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
 export function initializeManagePluginsPage() {
   const functionName = "PluginManagerUI";
@@ -24,7 +25,7 @@ export function initializeManagePluginsPage() {
     return;
   }
 
-  // Check for 'in_setup' parameter and display banner if present
+  // Banner Logic
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has("in_setup")) {
     const bannerContainer = document.getElementById("setup-banner-container");
@@ -45,26 +46,17 @@ export function initializeManagePluginsPage() {
   reloadPluginsBtn.addEventListener("click", handleReloadClick);
 
   async function handleReloadClick() {
-    reloadPluginsBtn.disabled = true;
-    const originalButtonText = reloadPluginsBtn.innerHTML;
-    reloadPluginsBtn.innerHTML =
-      '<div class="spinner-small"></div> Reloading...';
-
-    try {
-      const result = await sendServerActionRequest(
-        null,
-        "/api/plugins/reload",
-        "PUT",
-        null,
-        reloadPluginsBtn,
-      );
-      if (result && result.status === "success") {
-        await fetchAndRenderPlugins();
-      }
-    } finally {
-      reloadPluginsBtn.innerHTML = originalButtonText;
-      if (reloadPluginsBtn.disabled) reloadPluginsBtn.disabled = false;
-    }
+    await handleApiAction(
+      reloadPluginsBtn,
+      async () => {
+        const result = await reloadPlugins();
+        if (result && result.status === "success") {
+          await fetchAndRenderPlugins();
+        }
+        return result;
+      },
+      "Reloading...",
+    );
   }
 
   async function fetchAndRenderPlugins() {
@@ -74,14 +66,7 @@ export function initializeManagePluginsPage() {
       .forEach((el) => el.remove());
 
     try {
-      const data = await sendServerActionRequest(
-        null,
-        "/api/plugins",
-        "GET",
-        null,
-        null,
-        true,
-      );
+      const data = await getPlugins();
       pluginLoader.style.display = "none";
 
       if (data && data.status === "success") {
@@ -124,15 +109,29 @@ export function initializeManagePluginsPage() {
     const pluginName = toggleSwitch.dataset.pluginName;
     const isEnabled = toggleSwitch.checked;
 
-    const result = await sendServerActionRequest(
-      null,
-      `/api/plugins/${pluginName}`,
-      "POST",
-      { enabled: isEnabled },
-      toggleSwitch,
-    );
-    if (!result || result.status !== "success") {
-      toggleSwitch.checked = !isEnabled; // Revert on error
+    // We can't use handleApiAction directly on a toggle switch because it's not a button (disabling it might look weird or interrupt interaction).
+    // But we should handle the async nature and revert if it fails.
+    toggleSwitch.disabled = true;
+
+    try {
+      const result = await setPluginState(pluginName, isEnabled);
+      if (result && result.status === "success") {
+        showStatusMessage(
+          `Plugin '${pluginName}' ${isEnabled ? "enabled" : "disabled"}.`,
+          "success",
+        );
+      } else {
+        toggleSwitch.checked = !isEnabled; // Revert
+        showStatusMessage(
+          result?.message || "Failed to toggle plugin.",
+          "error",
+        );
+      }
+    } catch (error) {
+      toggleSwitch.checked = !isEnabled; // Revert
+      showStatusMessage(`Error: ${error.message}`, "error");
+    } finally {
+      toggleSwitch.disabled = false;
     }
   }
 

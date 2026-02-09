@@ -2,7 +2,8 @@
  * @fileoverview Frontend JavaScript for the server resource usage monitor page.
  */
 
-import { showStatusMessage } from "./utils.js";
+import { getServerUsage } from "./server_actions.js";
+import { showStatusMessage } from "./ui_utils.js";
 import webSocketClient from "./websocket_client.js";
 
 export function initializeMonitorUsagePage() {
@@ -40,42 +41,45 @@ Uptime       : ${processInfo.uptime ?? "N/A"}
 
   async function pollStatus() {
     try {
-      // Use fetch directly as sendServerActionRequest is for actions, not silent polling
-      const response = await fetch(
-        `/api/server/${encodeURIComponent(serverName)}/process_info`,
-      );
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await getServerUsage(serverName);
 
       if (data && data.status === "success") {
         updateStatusDisplay(data.data?.process_info);
-      } else if (data && data.status === "error") {
-        statusElement.textContent = `Error: ${data.message || "API error."}`;
       } else {
+        // Handle application error or stopped status if returned structurally
         updateStatusDisplay(null);
       }
     } catch (error) {
-      statusElement.textContent = `Client-side error: ${error.message}`;
-      if (pollingIntervalId) clearInterval(pollingIntervalId);
+      // Handle ApiError or network error
+      console.warn("Polling error:", error);
+      statusElement.textContent = `Error polling status: ${error.message}`;
+      // Do NOT stop polling on transient errors, but maybe we should if it's a 404?
+      if (error.status === 404) {
+        clearInterval(pollingIntervalId);
+        statusElement.textContent = "Server not found.";
+      }
     }
   }
 
   function setupWebSocket() {
     const topic = `resource-monitor:${serverName}`;
 
-    document.addEventListener("websocket-message", (event) => {
+    const handleMessage = (event) => {
       const message = event.detail;
+      // We need to parse the message structure correctly based on what backend sends
+      // Assuming backend sends: { topic: ..., type: 'resource_update', data: { process_info: ... } }
       if (
         message &&
         message.topic === topic &&
         message.type === "resource_update"
       ) {
-        const processInfo = message.data?.process_info;
-        updateStatusDisplay(processInfo);
+        // The structure in original code was message.data?.process_info
+        // Let's assume message.data contains the payload
+        updateStatusDisplay(message.data?.process_info);
       }
-    });
+    };
+
+    document.addEventListener("websocket-message", handleMessage);
 
     const startPolling = () => {
       if (!pollingIntervalId) {
@@ -85,37 +89,30 @@ Uptime       : ${processInfo.uptime ?? "N/A"}
       }
     };
 
-    // Check initial state
     if (webSocketClient.shouldUseFallback()) {
       startPolling();
     } else {
-      // Listen for fallback event (in case it happens later)
+      // Listen for fallback event
       document.addEventListener("websocket-fallback", () => {
         startPolling();
       });
 
-      // Double-check state to handle race conditions where the event might
-      // have fired before the listener was attached.
-      if (webSocketClient.shouldUseFallback()) {
-        startPolling();
-      } else {
-        webSocketClient.subscribe(topic);
-      }
+      webSocketClient.subscribe(topic);
     }
+
+    // Cleanup function
+    return () => {
+      if (pollingIntervalId) clearInterval(pollingIntervalId);
+      webSocketClient.unsubscribe(topic);
+      document.removeEventListener("websocket-message", handleMessage);
+    };
   }
 
   // Initial load and setup
-  setupWebSocket();
+  const cleanup = setupWebSocket();
 
   // Cleanup on page unload
-  window.addEventListener("beforeunload", () => {
-    if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
-    }
-    // The websocket client handles its own connection state, but we can unsubscribe
-    const topic = `resource-monitor:${serverName}`;
-    webSocketClient.unsubscribe(topic);
-  });
+  window.addEventListener("beforeunload", cleanup);
 
   console.log(`Monitoring started for server: ${serverName}`);
 }

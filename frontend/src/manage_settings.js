@@ -1,9 +1,9 @@
-// frontend/src/manage_settings.js
 /**
  * @fileoverview Frontend JavaScript for the global settings management page.
  */
 
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import { getSettings, updateSetting, reloadSettings } from "./settings_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
 export function initializeManageSettingsPage() {
   const settingsFormContainer = document.getElementById(
@@ -25,7 +25,7 @@ export function initializeManageSettingsPage() {
     return;
   }
 
-  // Check for 'in_setup' parameter and display banner if present
+  // Banner Logic
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has("in_setup")) {
     const bannerContainer = document.getElementById("setup-banner-container");
@@ -125,7 +125,6 @@ export function initializeManageSettingsPage() {
     let inputElement;
 
     if (typeof value === "boolean") {
-      // simplified toggle creation
       formGroup.classList.add("form-group-toggle-container");
       inputElement = document.createElement("input");
       inputElement.type = "checkbox";
@@ -170,41 +169,36 @@ export function initializeManageSettingsPage() {
         .map((s) => s.trim())
         .filter(Boolean);
     }
-    await sendServerActionRequest(
-      null,
-      "/api/settings",
-      "POST",
-      { key: input.name, value },
-      null,
-    );
+
+    // We don't block the UI for every keystroke/change, just fire and forget or show minimal feedback?
+    // The original code used sendServerActionRequest which shows a popup.
+    // Let's use handleApiAction but suppress the button disabling part since there's no button here, just an input.
+    // Or we can just call updateSetting and catch errors.
+
+    try {
+      await updateSetting(input.name, value);
+      showStatusMessage("Setting saved.", "success");
+    } catch (error) {
+      showStatusMessage(`Failed to save setting: ${error.message}`, "error");
+    }
   }
 
   reloadButton.addEventListener("click", async () => {
     if (confirm("Discard unsaved changes and reload from file?")) {
-      const result = await sendServerActionRequest(
-        null,
-        "/api/settings/reload",
-        "POST",
-        null,
-        reloadButton,
-      );
-      if (result && result.status === "success") {
-        await loadAndRenderSettings();
-      }
+      await handleApiAction(reloadButton, async () => {
+        const result = await reloadSettings();
+        if (result && result.status === "success") {
+          await loadAndRenderSettings();
+        }
+        return result;
+      });
     }
   });
 
   const loadAndRenderSettings = async () => {
     showLoader(true);
     try {
-      const result = await sendServerActionRequest(
-        null,
-        "/api/settings",
-        "GET",
-        null,
-        null,
-        true,
-      );
+      const result = await getSettings();
       if (result && result.status === "success" && result.settings) {
         renderSettings(result.settings);
       } else {

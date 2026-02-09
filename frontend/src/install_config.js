@@ -3,8 +3,17 @@
  * and configuration process.
  */
 
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 import webSocketClient from "./websocket_client.js";
+import { installServer, listCustomZips, getTaskStatus } from "./install_api.js";
+import {
+  getServerProperties,
+  setServerProperties,
+  getServerPermissions,
+  setServerPermissions,
+  updateServiceSettings,
+} from "./server_config_api.js";
+import { startServer } from "./server_actions.js";
 
 function _clearValidationErrors() {
   const errorArea = document.getElementById("validation-error-area");
@@ -34,17 +43,8 @@ function _handleInstallSuccessNavigation(apiResponseData) {
 function pollTaskStatus(taskId, successCallback) {
   const intervalId = setInterval(async () => {
     try {
-      const response = await fetch(`/api/tasks/status/${taskId}`);
-      if (!response.ok) {
-        clearInterval(intervalId);
-        showStatusMessage(
-          `Error checking task status: ${response.statusText}`,
-          "error",
-        );
-        return;
-      }
-      const data = await response.json();
-      if (data.status === "success") {
+      const data = await getTaskStatus(taskId);
+      if (data && data.status === "success") {
         clearInterval(intervalId);
         if (successCallback) successCallback(data.result);
         else
@@ -52,11 +52,10 @@ function pollTaskStatus(taskId, successCallback) {
             data.message || "Task completed successfully.",
             "success",
           );
-      } else if (data.status === "error") {
+      } else if (data && data.status === "error") {
         clearInterval(intervalId);
         showStatusMessage(`Task failed: ${data.message}`, "error");
       }
-      // No "in_progress" message spam for polling
     } catch (error) {
       clearInterval(intervalId);
       showStatusMessage(`Error polling task status: ${error.message}`, "error");
@@ -140,35 +139,31 @@ export async function triggerInstallServer(buttonElement) {
     }
   };
 
-  const initialResponse = await sendServerActionRequest(
-    null,
-    "/api/server/install",
-    "POST",
-    requestBody,
-    buttonElement,
-  );
+  // We use handleApiAction to manage button state and errors, but we handle the 'confirm_needed'
+  // logic inside the async function or by checking result.
+  // Actually, handleApiAction returns the result. We can check it.
 
-  if (initialResponse) {
-    if (initialResponse.status === "confirm_needed") {
-      if (confirm(initialResponse.message)) {
-        const finalResponse = await sendServerActionRequest(
-          null,
-          "/api/server/install",
-          "POST",
-          { ...requestBody, overwrite: true },
-          buttonElement,
-        );
-        if (finalResponse && finalResponse.status === "pending") {
-          startMonitoring(finalResponse);
-        }
+  await handleApiAction(buttonElement, async () => {
+    let response = await installServer(requestBody);
+
+    if (response && response.status === "confirm_needed") {
+      if (confirm(response.message)) {
+        // If confirmed, make the request again with overwrite=true
+        // Note: we need to return this new promise so handleApiAction waits for it?
+        // No, handleApiAction waits for the initial function.
+        // We can just await it here.
+        response = await installServer({ ...requestBody, overwrite: true });
       } else {
         showStatusMessage("Installation cancelled.", "info");
-        if (buttonElement) buttonElement.disabled = false;
+        return null; // Cancelled
       }
-    } else if (initialResponse.status === "pending") {
-      startMonitoring(initialResponse);
     }
-  }
+
+    if (response && response.status === "pending") {
+      startMonitoring(response);
+    }
+    return response;
+  });
 }
 
 export async function saveProperties(buttonElement, serverName, isNewInstall) {
@@ -188,27 +183,25 @@ export async function saveProperties(buttonElement, serverName, isNewInstall) {
   });
 
   _clearValidationErrors();
-  const response = await sendServerActionRequest(
-    null,
-    `/api/server/${serverName}/properties/set`,
-    "POST",
-    { properties: propertiesData },
-    buttonElement,
-  );
 
-  if (response && response.status === "success") {
-    const message = response.message || "Properties saved.";
-    if (isNewInstall) {
-      showStatusMessage(`${message} Proceeding to Allowlist...`, "success");
-      setTimeout(
-        () =>
-          (window.location.href = `/server/${encodeURIComponent(serverName)}/configure_allowlist?new_install=True`),
-        1500,
-      );
-    } else {
-      showStatusMessage(message, "success");
+  await handleApiAction(buttonElement, async () => {
+    const response = await setServerProperties(serverName, propertiesData);
+
+    if (response && response.status === "success") {
+      const message = response.message || "Properties saved.";
+      if (isNewInstall) {
+        showStatusMessage(`${message} Proceeding to Allowlist...`, "success");
+        setTimeout(
+          () =>
+            (window.location.href = `/server/${encodeURIComponent(serverName)}/configure_allowlist?new_install=True`),
+          1500,
+        );
+      } else {
+        showStatusMessage(message, "success");
+      }
     }
-  }
+    return response;
+  });
 }
 
 async function loadPermissions() {
@@ -223,14 +216,7 @@ async function loadPermissions() {
   }
 
   try {
-    const data = await sendServerActionRequest(
-      serverName,
-      "permissions/get",
-      "GET",
-      null,
-      null,
-      true,
-    );
+    const data = await getServerPermissions(serverName);
     tableBody.innerHTML = ""; // Clear loader/previous content
 
     if (
@@ -286,30 +272,28 @@ export async function savePermissions(buttonElement, serverName, isNewInstall) {
   }));
 
   _clearValidationErrors();
-  const response = await sendServerActionRequest(
-    null,
-    `/api/server/${serverName}/permissions/set`,
-    "PUT",
-    { permissions },
-    buttonElement,
-  );
 
-  if (response && response.status === "success") {
-    const message = response.message || "Permissions saved.";
-    if (isNewInstall) {
-      showStatusMessage(
-        `${message} Proceeding to Service Config...`,
-        "success",
-      );
-      setTimeout(
-        () =>
-          (window.location.href = `/server/${encodeURIComponent(serverName)}/configure_service?new_install=True`),
-        1500,
-      );
-    } else {
-      showStatusMessage(message, "success");
+  await handleApiAction(buttonElement, async () => {
+    const response = await setServerPermissions(serverName, permissions);
+
+    if (response && response.status === "success") {
+      const message = response.message || "Permissions saved.";
+      if (isNewInstall) {
+        showStatusMessage(
+          `${message} Proceeding to Service Config...`,
+          "success",
+        );
+        setTimeout(
+          () =>
+            (window.location.href = `/server/${encodeURIComponent(serverName)}/configure_service?new_install=True`),
+          1500,
+        );
+      } else {
+        showStatusMessage(message, "success");
+      }
     }
-  }
+    return response;
+  });
 }
 
 export async function saveServiceSettings(
@@ -326,50 +310,44 @@ export async function saveServiceSettings(
     isNewInstall && document.getElementById("service-start-server").checked;
 
   _clearValidationErrors();
-  const saveResponse = await sendServerActionRequest(
-    null,
-    `/api/server/${serverName}/service/update`,
-    "POST",
-    settings,
-    buttonElement,
-  );
 
-  if (
-    saveResponse &&
-    ["success", "success_with_warning"].includes(saveResponse.status)
-  ) {
-    const message = saveResponse.message || "Service settings saved.";
-    if (startAfter) {
-      showStatusMessage(`${message} Starting server...`, "info");
-      const startResponse = await sendServerActionRequest(
-        serverName,
-        "start",
-        "POST",
-        null,
-        buttonElement,
-      );
-      if (startResponse && startResponse.status === "success") {
+  await handleApiAction(buttonElement, async () => {
+    const saveResponse = await updateServiceSettings(serverName, settings);
+
+    if (
+      saveResponse &&
+      ["success", "success_with_warning"].includes(saveResponse.status)
+    ) {
+      const message = saveResponse.message || "Service settings saved.";
+      if (startAfter) {
+        showStatusMessage(`${message} Starting server...`, "info");
+        // Chain the start server call
+        const startResponse = await startServer(serverName);
+
+        if (startResponse && startResponse.status === "success") {
+          showStatusMessage(
+            "Server started! Installation complete. Redirecting...",
+            "success",
+          );
+          setTimeout(() => (window.location.href = "/"), 2000);
+        } else {
+          showStatusMessage(
+            `Settings saved, but server failed to start: ${startResponse?.message || "Unknown error"}`,
+            "warning",
+          );
+        }
+      } else if (isNewInstall) {
         showStatusMessage(
-          "Server started! Installation complete. Redirecting...",
+          `${message} Installation complete! Redirecting...`,
           "success",
         );
-        setTimeout(() => (window.location.href = "/"), 2000);
+        setTimeout(() => (window.location.href = "/"), 1500);
       } else {
-        showStatusMessage(
-          `Settings saved, but server failed to start: ${startResponse?.message || "Unknown error"}`,
-          "warning",
-        );
+        showStatusMessage(message, "success");
       }
-    } else if (isNewInstall) {
-      showStatusMessage(
-        `${message} Installation complete! Redirecting...`,
-        "success",
-      );
-      setTimeout(() => (window.location.href = "/"), 1500);
-    } else {
-      showStatusMessage(message, "success");
     }
-  }
+    return saveResponse;
+  });
 }
 
 async function checkCustomVersion(version) {
@@ -379,49 +357,47 @@ async function checkCustomVersion(version) {
 
   if (version.toUpperCase() === "CUSTOM") {
     customZipGroup.style.display = "block";
-    const data = await sendServerActionRequest(
-      null,
-      "/api/downloads/list",
-      "GET",
-      null,
-      null,
-      true,
-    );
-    zipListContainer.innerHTML = "";
-    hiddenInput.value = "";
+    try {
+      const data = await listCustomZips();
+      zipListContainer.innerHTML = "";
+      hiddenInput.value = "";
 
-    if (data && data.custom_zips && data.custom_zips.length > 0) {
-      data.custom_zips.forEach((zip, index) => {
-        const radioId = `custom-zip-${index}`;
-        const radioWrapper = document.createElement("div");
-        radioWrapper.classList.add("radio-item");
+      if (data && data.custom_zips && data.custom_zips.length > 0) {
+        data.custom_zips.forEach((zip, index) => {
+          const radioId = `custom-zip-${index}`;
+          const radioWrapper = document.createElement("div");
+          radioWrapper.classList.add("radio-item");
 
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.id = radioId;
-        input.name = "custom-zip-selection";
-        input.value = zip;
-        input.addEventListener("change", () => {
-          hiddenInput.value = zip;
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.id = radioId;
+          input.name = "custom-zip-selection";
+          input.value = zip;
+          input.addEventListener("change", () => {
+            hiddenInput.value = zip;
+          });
+
+          const label = document.createElement("label");
+          label.htmlFor = radioId;
+          label.textContent = zip;
+
+          radioWrapper.appendChild(input);
+          radioWrapper.appendChild(label);
+          zipListContainer.appendChild(radioWrapper);
+
+          // Pre-select the first item
+          if (index === 0) {
+            input.checked = true;
+            hiddenInput.value = zip;
+          }
         });
-
-        const label = document.createElement("label");
-        label.htmlFor = radioId;
-        label.textContent = zip;
-
-        radioWrapper.appendChild(input);
-        radioWrapper.appendChild(label);
-        zipListContainer.appendChild(radioWrapper);
-
-        // Pre-select the first item
-        if (index === 0) {
-          input.checked = true;
-          hiddenInput.value = zip;
-        }
-      });
-    } else {
-      zipListContainer.innerHTML =
-        "<p>No custom zips found in the downloads/custom directory.</p>";
+      } else {
+        zipListContainer.innerHTML =
+          "<p>No custom zips found in the downloads/custom directory.</p>";
+      }
+    } catch (error) {
+      console.error("Failed to list custom zips:", error);
+      zipListContainer.innerHTML = "<p>Error loading custom zips.</p>";
     }
   } else {
     customZipGroup.style.display = "none";
@@ -595,13 +571,7 @@ export function initializeInstallConfigPage() {
     const loader = document.getElementById("properties-loader");
     const formContainer = document.getElementById("properties-form-container");
     try {
-      const data = await sendServerActionRequest(
-        serverName,
-        "properties/get",
-        "GET",
-        null,
-        null,
-      );
+      const data = await getServerProperties(serverName);
       if (data && data.status === "success" && data.properties) {
         populateForm(data.properties);
         if (formContainer) formContainer.style.display = "block";

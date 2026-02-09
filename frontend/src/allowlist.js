@@ -1,10 +1,14 @@
-// frontend/src/allowlist.js
 /**
  * @fileoverview Frontend JavaScript for managing the server allowlist.
  * Handles user input, interacts with the allowlist API endpoints, and updates the UI.
  */
 
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+import {
+  getAllowlist,
+  addPlayersToAllowlist,
+  removePlayersFromAllowlist,
+} from "./allowlist_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
 export function initializeAllowlistPage() {
   const functionName = "AllowlistManager";
@@ -26,17 +30,14 @@ export function initializeAllowlistPage() {
   }
 
   async function addAllowlistPlayers(buttonElement) {
-    const functionName = "addAllowlistPlayers";
-    console.log(`${functionName}: Initiated. Server: ${serverName}`);
-    console.debug(`${functionName}: Button Element:`, buttonElement);
-
     const textArea = document.getElementById("player-names-add");
     const ignoreLimitCheckbox = document.getElementById("ignore-limit-add");
 
     if (!textArea || !ignoreLimitCheckbox) {
-      const errorMsg = "Required 'add player' form elements not found.";
-      console.error(`${functionName}: ${errorMsg}`);
-      showStatusMessage(`Internal page error: ${errorMsg}`, "error");
+      showStatusMessage(
+        "Required 'add player' form elements not found.",
+        "error",
+      );
       return;
     }
 
@@ -47,41 +48,29 @@ export function initializeAllowlistPage() {
       .filter((name) => name.length > 0);
 
     if (playersToAdd.length === 0) {
-      const warnMsg = "No player names entered.";
-      console.warn(`${functionName}: ${warnMsg}`);
-      showStatusMessage(warnMsg, "warning");
+      showStatusMessage("No player names entered.", "warning");
       return;
     }
 
     const ignoresPlayerLimit = ignoreLimitCheckbox.checked;
-    const requestBody = {
-      players: playersToAdd,
-      ignoresPlayerLimit: ignoresPlayerLimit,
-    };
 
-    const apiResponseData = await sendServerActionRequest(
-      serverName,
-      "allowlist/add",
-      "POST",
-      requestBody,
-      buttonElement,
-    );
-
-    if (apiResponseData && apiResponseData.status === "success") {
-      const message = apiResponseData.message || "Players processed.";
-      showStatusMessage(message, "success");
-      textArea.value = "";
-      await fetchAndUpdateAllowlistDisplay();
-    }
+    await handleApiAction(buttonElement, async () => {
+      const response = await addPlayersToAllowlist(
+        serverName,
+        playersToAdd,
+        ignoresPlayerLimit,
+      );
+      if (response && response.status === "success") {
+        textArea.value = "";
+        await fetchAndUpdateAllowlistDisplay();
+      }
+      return response;
+    });
   }
 
   async function fetchAndUpdateAllowlistDisplay() {
-    const functionName = "fetchAndUpdateAllowlistDisplay";
-    console.log(`${functionName}: Initiating for server: ${serverName}`);
-
     const displayList = document.getElementById("current-allowlist-display");
     if (!displayList) {
-      console.error(`${functionName}: Target display element not found.`);
       showStatusMessage(
         "Internal page error: Allowlist display area not found.",
         "error",
@@ -92,30 +81,23 @@ export function initializeAllowlistPage() {
     displayList.innerHTML = "<li><i>Loading allowlist...</i></li>";
 
     try {
-      const apiResponseData = await sendServerActionRequest(
-        serverName,
-        "allowlist/get",
-        "GET",
-        null,
-        null,
-        true,
-      );
+      const response = await getAllowlist(serverName);
       displayList.innerHTML = "";
 
       if (
-        apiResponseData &&
-        apiResponseData.status === "success" &&
-        Array.isArray(apiResponseData.players)
+        response &&
+        response.status === "success" &&
+        Array.isArray(response.players)
       ) {
-        const players = apiResponseData.players;
+        const players = response.players;
         if (players.length > 0) {
           players.forEach((player) => {
             const li = document.createElement("li");
             li.className = "allowlist-player-item";
             li.innerHTML = `
-                            <span class="player-name">${player.name || "Unnamed Player"}</span>
-                            <span class="player-meta"> (Ignores Limit: ${player.ignoresPlayerLimit ? "Yes" : "No"})</span>
-                        `;
+                <span class="player-name">${player.name || "Unnamed Player"}</span>
+                <span class="player-meta"> (Ignores Limit: ${player.ignoresPlayerLimit ? "Yes" : "No"})</span>
+            `;
             const removeButton = document.createElement("button");
             removeButton.type = "button";
             removeButton.textContent = "Remove";
@@ -123,7 +105,6 @@ export function initializeAllowlistPage() {
               "action-button remove-button danger-button";
             removeButton.title = `Remove ${player.name || "this player"}`;
             if (player.name) {
-              // Use data attribute instead of onclick
               removeButton.dataset.playerName = player.name;
             } else {
               removeButton.disabled = true;
@@ -136,15 +117,14 @@ export function initializeAllowlistPage() {
             "<li><i>No players currently in allowlist.</i></li>";
         }
       } else {
-        const errorMsg = `Could not refresh allowlist: ${apiResponseData.message || "API returned an error."}`;
-        showStatusMessage(errorMsg, "error");
+        showStatusMessage(
+          `Could not refresh allowlist: ${response.message || "API error."}`,
+          "error",
+        );
       }
     } catch (error) {
       console.error(`${functionName}: Unexpected error:`, error);
-      showStatusMessage(
-        `Client-side error updating allowlist: ${error.message}`,
-        "error",
-      );
+      showStatusMessage(`Error updating allowlist: ${error.message}`, "error");
       displayList.innerHTML =
         '<li><i style="color: red;">Error updating display.</i></li>';
     }
@@ -160,22 +140,15 @@ export function initializeAllowlistPage() {
       return;
     }
 
-    const requestBody = { players: [playerName] };
-    const apiResponseData = await sendServerActionRequest(
-      serverName,
-      "allowlist/remove",
-      "DELETE",
-      requestBody,
-      buttonElement,
-    );
-
-    if (apiResponseData && apiResponseData.status === "success") {
-      await fetchAndUpdateAllowlistDisplay();
-      showStatusMessage(
-        apiResponseData.message || `Player ${playerName} processed.`,
-        "success",
-      );
-    }
+    await handleApiAction(buttonElement, async () => {
+      const response = await removePlayersFromAllowlist(serverName, [
+        playerName,
+      ]);
+      if (response && response.status === "success") {
+        await fetchAndUpdateAllowlistDisplay();
+      }
+      return response;
+    });
   }
 
   // Attach event listeners
@@ -186,7 +159,6 @@ export function initializeAllowlistPage() {
     );
   }
 
-  // Event delegation for remove buttons
   const displayList = document.getElementById("current-allowlist-display");
   if (displayList) {
     displayList.addEventListener("click", (event) => {
@@ -200,6 +172,5 @@ export function initializeAllowlistPage() {
     });
   }
 
-  // Initial fetch
   fetchAndUpdateAllowlistDisplay();
 }
