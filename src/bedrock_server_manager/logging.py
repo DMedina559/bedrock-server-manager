@@ -55,8 +55,7 @@ def setup_logging(  # noqa: C901
     log_dir: str = DEFAULT_LOG_DIR,
     log_filename: str = "bedrock_server_manager.log",
     log_keep: int = DEFAULT_LOG_KEEP,
-    file_log_level: int = logging.INFO,
-    cli_log_level: int = logging.WARN,
+    log_level: int = logging.INFO,
     when: str = "midnight",
     interval: int = 1,
     force_reconfigure: bool = False,
@@ -73,8 +72,7 @@ def setup_logging(  # noqa: C901
         log_dir: Directory to store log files.
         log_filename: The base name of the log file.
         log_keep: Number of backup log files to keep.
-        file_log_level: The minimum log level for the file handler.
-        cli_log_level: The minimum log level for the console handler.
+        log_level: The log level for both file and console handlers.
         when: Time interval for rotation (e.g., 'midnight', 'h', 'd').
         interval: The interval number based on 'when'.
         force_reconfigure: If True, remove existing handlers and re-apply
@@ -87,7 +85,7 @@ def setup_logging(  # noqa: C901
 
     # Configure root logger first
     root_logger = logging.getLogger()
-    root_logger.setLevel(min(file_log_level, cli_log_level))
+    root_logger.setLevel(log_level)
 
     # If already configured and not forcing a reconfigure, do nothing.
     if _logging_configured and not force_reconfigure:
@@ -126,12 +124,12 @@ def setup_logging(  # noqa: C901
         # Attempt a minimal console-only setup
         if not root_logger.hasHandlers():
             console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setLevel(cli_log_level)
+            console_handler.setLevel(log_level)
             console_handler.setFormatter(
                 logging.Formatter("%(levelname)s: %(message)s")
             )
             root_logger.addHandler(console_handler)
-            root_logger.setLevel(cli_log_level)
+            root_logger.setLevel(log_level)
             root_logger.warning(
                 f"File logging disabled due to directory error for '{log_dir}'."
             )
@@ -155,14 +153,14 @@ def setup_logging(  # noqa: C901
             backupCount=log_keep,
             encoding="utf-8",
         )
-        file_handler.setLevel(file_log_level)
+        file_handler.setLevel(log_level)
         file_handler.setFormatter(file_formatter)
         file_handler.addFilter(app_and_plugin_filter)
         root_logger.addHandler(file_handler)
 
         # --- Console Handler ---
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(cli_log_level)
+        console_handler.setLevel(log_level)
         console_handler.setFormatter(console_formatter)
         console_handler.addFilter(app_and_plugin_filter)
         root_logger.addHandler(console_handler)
@@ -170,8 +168,7 @@ def setup_logging(  # noqa: C901
         _logging_configured = True
         root_logger.info(
             f"Logging has been {'re' if force_reconfigure else ''}configured. "
-            f"CLI Level: '{logging.getLevelName(cli_log_level)}', "
-            f"File Level: '{logging.getLevelName(file_log_level)}'"
+            f"Level: '{logging.getLevelName(log_level)}'"
         )
 
     except Exception as e:

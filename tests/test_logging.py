@@ -33,7 +33,7 @@ class TestLogging:
 
         console_handler = handlers[1]
         assert isinstance(console_handler, logging.StreamHandler)
-        assert console_handler.level == logging.WARN
+        assert console_handler.level == logging.INFO
 
     def test_setup_logging_reconfigure(self, temp_log_dir):
         """Tests that logging can be reconfigured."""
@@ -43,8 +43,7 @@ class TestLogging:
         # Reconfigure with different levels
         logger = setup_logging(
             log_dir=temp_log_dir,
-            file_log_level=logging.DEBUG,
-            cli_log_level=logging.ERROR,
+            log_level=logging.DEBUG,
             force_reconfigure=True,
         )
 
@@ -55,14 +54,14 @@ class TestLogging:
         ]
         assert len(handlers) == 2
         assert handlers[0].level == logging.DEBUG
-        assert handlers[1].level == logging.ERROR
+        assert handlers[1].level == logging.DEBUG
 
     @patch("os.makedirs", side_effect=OSError)
     def test_setup_logging_dir_creation_error(self, mock_makedirs, capsys):
         """Tests that logging handles directory creation errors."""
         logger = setup_logging(
             log_dir="/non/existent/dir",
-            cli_log_level=logging.WARNING,
+            log_level=logging.WARNING,
             force_reconfigure=True,
         )
 

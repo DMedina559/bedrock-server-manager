@@ -197,15 +197,19 @@ class Settings:
                     "logs": 3,
                 },
                 "logging": {
-                    "file_level": logging.INFO,
-                    "cli_level": logging.WARN,
+                    "level": logging.INFO,
                 },
                 "web": {
                     "host": "127.0.0.1",
+                    "jwt_secret_key": "randomly_generated_key",
                     "port": 11325,
                     "token_expires_weeks": 4,
-                    "threads": 4,
                 },
+                "server_monitoring": {
+                    "player_log_monitoring_enabled": True,
+                    "player_log_monitoring_interval": 60, // Seconds
+
+                }
                 "custom": {}
             }
 
@@ -235,8 +239,7 @@ class Settings:
                 "logs": 3,
             },
             "logging": {
-                "file_level": logging.INFO,
-                "cli_level": logging.WARN,
+                "level": logging.INFO,
             },
             "server_monitoring": {
                 "player_log_monitoring_enabled": True,
@@ -246,7 +249,6 @@ class Settings:
                 "host": "127.0.0.1",
                 "port": 11325,
                 "token_expires_weeks": 4,
-                "threads": 4,
             },
             "custom": {},
         }

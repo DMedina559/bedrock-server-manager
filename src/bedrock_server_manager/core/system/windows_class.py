@@ -97,7 +97,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
             web_thread = threading.Thread(
                 target=start_web_server_api,
-                kwargs={"mode": "direct", "threads": 1},  # Run in production mode
+                kwargs={"mode": "direct"},  # Run in production mode
                 daemon=True,
             )
             web_thread.start()

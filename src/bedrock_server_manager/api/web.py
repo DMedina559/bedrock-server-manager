@@ -53,7 +53,6 @@ def start_web_server_api(  # noqa: C901
     port: Optional[int] = None,
     debug: bool = False,
     mode: str = "direct",
-    threads: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Starts the application's web server.
 
@@ -76,9 +75,6 @@ def start_web_server_api(  # noqa: C901
             debug mode (e.g., with auto-reload). Defaults to ``False``.
         mode (str, optional): The start mode, either 'direct' or 'detached'.
             Defaults to 'direct'.
-        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
-
-            Only used for Windows Service
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -102,7 +98,7 @@ def start_web_server_api(  # noqa: C901
         manager = app_context.manager
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            manager.start_web_ui_direct(app_context, host, port, debug, threads)
+            manager.start_web_ui_direct(app_context, host, port, debug)
             return {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",

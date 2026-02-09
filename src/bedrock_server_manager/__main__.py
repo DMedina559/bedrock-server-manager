@@ -94,8 +94,7 @@ def create_cli_app():
                 logger = setup_logging(
                     log_dir=log_dir,
                     log_keep=app_context.settings.get("retention.logs"),
-                    file_log_level=app_context.settings.get("logging.file_level"),
-                    cli_log_level=app_context.settings.get("logging.cli_level"),
+                    log_level=app_context.settings.get("logging.level"),
                     force_reconfigure=True,
                     plugin_dir=app_context.settings.get("paths.plugins"),
                 )
