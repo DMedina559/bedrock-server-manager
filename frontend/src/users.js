@@ -1,112 +1,136 @@
-// frontend/src/users.js
-import { sendServerActionRequest } from "./utils.js";
+/**
+ * @fileoverview User management page scripts.
+ */
+
+import * as UsersApi from "./users_api.js";
+import { handleApiAction, showStatusMessage } from "./ui_utils.js";
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text).then(
     () => {
-      alert("Copied to clipboard");
+      showStatusMessage("Copied to clipboard", "success");
     },
     (err) => {
-      alert("Could not copy text: ", err);
+      console.error("Could not copy text: ", err);
+      showStatusMessage("Could not copy text.", "error");
     },
   );
 }
 
-function generateToken() {
+function handleGenerateToken(buttonElement) {
   const form = document.getElementById("generate-token-form");
+  if (!form) return;
+
   const formData = new FormData(form);
   const data = Object.fromEntries(formData.entries());
 
-  sendServerActionRequest(null, "/register/generate-token", "POST", data).then(
-    (response) => {
-      if (response && response.status === "success") {
-        window.location.href = response.redirect_url;
-      }
-    },
-  );
+  handleApiAction(buttonElement, async () => {
+    const response = await UsersApi.generateRegistrationToken(data);
+    if (response && response.status === "success" && response.redirect_url) {
+      window.location.href = response.redirect_url;
+    } else if (response && response.status === "success") {
+      // Fallback if no redirect, though the backend seems to redirect
+      window.location.reload();
+    }
+    return response;
+  });
 }
 
-function disableUser(userId) {
+function handleDisableUser(buttonElement) {
+  const userId = buttonElement.dataset.userId;
   if (confirm("Are you sure you want to disable this user?")) {
-    sendServerActionRequest(null, `/users/${userId}/disable`, "POST").then(
-      (response) => {
-        if (response && response.status === "success") {
-          window.location.reload();
-        }
-      },
-    );
-  }
-}
-
-function enableUser(userId) {
-  if (confirm("Are you sure you want to enable this user?")) {
-    sendServerActionRequest(null, `/users/${userId}/enable`, "POST").then(
-      (response) => {
-        if (response && response.status === "success") {
-          window.location.reload();
-        }
-      },
-    );
-  }
-}
-
-function deleteUser(userId) {
-  if (confirm("Are you sure you want to delete this user?")) {
-    sendServerActionRequest(null, `/users/${userId}/delete`, "POST").then(
-      (response) => {
-        if (response && response.status === "success") {
-          window.location.reload();
-        }
-      },
-    );
-  }
-}
-
-function updateUserRole(userId) {
-  const role = document.getElementById(`role-${userId}`).value;
-  const data = { role: role };
-
-  sendServerActionRequest(null, `/users/${userId}/role`, "POST", data).then(
-    (response) => {
+    handleApiAction(buttonElement, async () => {
+      const response = await UsersApi.disableUser(userId);
       if (response && response.status === "success") {
         window.location.reload();
       }
-    },
-  );
+      return response;
+    });
+  }
+}
+
+function handleEnableUser(buttonElement) {
+  const userId = buttonElement.dataset.userId;
+  if (confirm("Are you sure you want to enable this user?")) {
+    handleApiAction(buttonElement, async () => {
+      const response = await UsersApi.enableUser(userId);
+      if (response && response.status === "success") {
+        window.location.reload();
+      }
+      return response;
+    });
+  }
+}
+
+function handleDeleteUser(buttonElement) {
+  const userId = buttonElement.dataset.userId;
+  if (confirm("Are you sure you want to delete this user?")) {
+    handleApiAction(buttonElement, async () => {
+      const response = await UsersApi.deleteUser(userId);
+      if (response && response.status === "success") {
+        window.location.reload();
+      }
+      return response;
+    });
+  }
+}
+
+function handleUpdateUserRole(buttonElement) {
+  const userId = buttonElement.dataset.userId;
+  const selectElement = document.getElementById(`role-${userId}`);
+  const role = selectElement ? selectElement.value : null;
+
+  if (!role) {
+    showStatusMessage("Error: Role not selected.", "error");
+    return;
+  }
+
+  handleApiAction(buttonElement, async () => {
+    const response = await UsersApi.updateUserRole(userId, role);
+    if (response && response.status === "success") {
+      window.location.reload();
+    }
+    return response;
+  });
 }
 
 export function initializeUsersPage() {
-  document
-    .getElementById("generate-token-btn")
-    ?.addEventListener("click", generateToken);
+  const generateTokenBtn = document.getElementById("generate-token-btn");
+  if (generateTokenBtn) {
+    generateTokenBtn.addEventListener("click", (e) =>
+      handleGenerateToken(e.currentTarget),
+    );
+  }
 
   document.querySelectorAll(".copy-link-btn").forEach((button) => {
     button.addEventListener("click", (e) => {
-      copyToClipboard(e.currentTarget.dataset.link);
+      // The link is in the data-link attribute
+      const link = e.currentTarget.dataset.link;
+      if (link) copyToClipboard(link);
     });
   });
 
   document.querySelectorAll(".update-role-btn").forEach((button) => {
     button.addEventListener("click", (e) => {
-      updateUserRole(e.currentTarget.dataset.userId);
+      handleUpdateUserRole(e.currentTarget);
     });
   });
 
   document.querySelectorAll(".disable-user-btn").forEach((button) => {
     button.addEventListener("click", (e) => {
-      disableUser(e.currentTarget.dataset.userId);
+      handleDisableUser(e.currentTarget);
     });
   });
 
   document.querySelectorAll(".enable-user-btn").forEach((button) => {
     button.addEventListener("click", (e) => {
-      enableUser(e.currentTarget.dataset.userId);
+      handleEnableUser(e.currentTarget);
     });
   });
 
   document.querySelectorAll(".delete-user-btn").forEach((button) => {
     button.addEventListener("click", (e) => {
-      deleteUser(e.currentTarget.dataset.userId);
+      handleDeleteUser(e.currentTarget);
     });
   });
 }

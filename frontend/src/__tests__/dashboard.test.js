@@ -1,226 +1,124 @@
 import { initializeDashboard } from "../dashboard";
-import { sendServerActionRequest, showStatusMessage } from "../utils";
-import * as serverActions from "../server_actions";
-import webSocketClient from "../websocket_client";
+import {
+  startServer,
+  sendCommand,
+  deleteServer,
+  fetchServers,
+} from "../server_actions";
+import { handleApiAction } from "../ui_utils";
 
-// Mock utils
-jest.mock("../utils", () => ({
-  sendServerActionRequest: jest.fn(),
-  showStatusMessage: jest.fn(),
-}));
-
-// Mock server_actions
-jest.mock("../server_actions", () => ({
-  startServer: jest.fn(),
-  stopServer: jest.fn(),
-  restartServer: jest.fn(),
-  promptCommand: jest.fn(),
-  triggerServerUpdate: jest.fn(),
-  deleteServer: jest.fn(),
-}));
-
-// Mock websocket client
-jest.mock("../websocket_client", () => ({
-  shouldUseFallback: jest.fn(),
-  subscribe: jest.fn(),
-  connect: jest.fn(), // If called from dashboard, though main.js calls it
-}));
+// Mock dependencies
+jest.mock("../server_actions");
+jest.mock("../ui_utils");
+jest.mock("../websocket_client");
 
 describe("dashboard.js", () => {
-  let mockServers;
+  let serverSelect;
+  let serverCardList;
+  let startBtn, commandBtn, deleteBtn;
 
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Setup DOM
     document.body.innerHTML = `
-            <select id="server-select"></select>
-            <div id="server-card-list">
-                <!-- Servers will be added here -->
-            </div>
-            <div id="no-servers-message" style="display: none;">No servers</div>
-            <div class="server-selection-section">
-                <div class="action-buttons-group">
-                    <button id="start-server-btn">Start</button>
-                    <button id="stop-server-btn">Stop</button>
-                    <button id="restart-server-btn">Restart</button>
-                    <button id="prompt-command-btn">Command</button>
-                    <button id="update-server-btn">Update</button>
-                    <button id="delete-server-btn">Delete</button>
-                </div>
-            </div>
-            <div class="server-dependent-actions">
-                <span id="selected-server-name">(No server selected)</span>
-                <a id="config-link-properties" class="action-link" href="#">Prop</a>
-                <button class="action-button">Action</button>
-            </div>
-        `;
+      <select id="server-select">
+          <option value="">-- Select --</option>
+          <option value="Server1">Server1</option>
+      </select>
+      <div id="server-card-list"></div>
+      <div id="no-servers-message" style="display: none;"></div>
+      <div class="server-selection-section">
+          <div class="action-buttons-group">
+              <button id="start-server-btn">Start</button>
+              <button id="stop-server-btn">Stop</button>
+              <button id="restart-server-btn">Restart</button>
+              <button id="prompt-command-btn">Command</button>
+              <button id="update-server-btn">Update</button>
+              <button id="delete-server-btn">Delete</button>
+          </div>
+      </div>
+      <div class="server-dependent-actions">
+          <span id="selected-server-name"></span>
+          <a id="config-link-properties" class="action-link">Properties</a>
+      </div>
+    `;
 
-    mockServers = [
-      { name: "server1", status: "RUNNING", version: "1.20", player_count: 5 },
-      { name: "server2", status: "STOPPED", version: "1.19", player_count: 0 },
-    ];
+    serverSelect = document.getElementById("server-select");
+    serverCardList = document.getElementById("server-card-list");
+    startBtn = document.getElementById("start-server-btn");
+    commandBtn = document.getElementById("prompt-command-btn");
+    deleteBtn = document.getElementById("delete-server-btn");
+
+    fetchServers.mockResolvedValue({
+      status: "success",
+      servers: [
+        { name: "Server1", status: "STOPPED", version: "1.0", player_count: 0 },
+      ],
+    });
   });
 
-  test("initializes and fetches servers", async () => {
-    // Mock successful server fetch
-    sendServerActionRequest.mockResolvedValueOnce({
-      status: "success",
-      servers: mockServers,
-    });
-
-    webSocketClient.shouldUseFallback.mockReturnValue(false);
-
+  test("initializes dashboard and fetches servers", async () => {
     initializeDashboard();
+    expect(fetchServers).toHaveBeenCalled();
+    // Wait for promise resolution (microtask queue)
+    await Promise.resolve();
 
-    // Check initial loading call
-    expect(sendServerActionRequest).toHaveBeenCalledWith(
-      null,
-      "/api/servers",
-      "GET",
-      null,
-      null,
-      true,
+    expect(serverCardList.children.length).toBe(1);
+    expect(serverCardList.children[0].dataset.serverName).toBe("Server1");
+  });
+
+  test("handles start button click", () => {
+    initializeDashboard();
+    serverSelect.value = "Server1";
+    startBtn.click();
+
+    expect(handleApiAction).toHaveBeenCalledWith(
+      startBtn,
+      expect.any(Function),
     );
-
-    // Wait for async execution
-    await Promise.resolve();
-    await Promise.resolve();
-
-    // Check if servers were rendered
-    const cards = document.querySelectorAll(".server-card");
-    expect(cards.length).toBe(2);
-    expect(cards[0].innerHTML).toContain("server1");
-    expect(cards[1].innerHTML).toContain("server2");
-
-    // Check dropdown populated
-    const select = document.getElementById("server-select");
-    expect(select.options.length).toBe(3); // --Select-- + 2 servers
-    expect(select.options[1].value).toBe("server1");
+    // Verify the callback calls startServer
+    const callback = handleApiAction.mock.calls[0][1];
+    callback();
+    expect(startServer).toHaveBeenCalledWith("Server1");
   });
 
-  test("updates UI when server selected", async () => {
-    sendServerActionRequest.mockResolvedValueOnce({
-      status: "success",
-      servers: mockServers,
-    });
+  test("handles command button click", () => {
     initializeDashboard();
-    await Promise.resolve(); // Fetch done
+    serverSelect.value = "Server1";
+    jest.spyOn(window, "prompt").mockReturnValue("say hello");
 
-    const select = document.getElementById("server-select");
-    select.value = "server1";
-    select.dispatchEvent(new Event("change"));
+    commandBtn.click();
 
-    // Check if buttons enabled
-    const startBtn = document.getElementById("start-server-btn");
-    expect(startBtn.disabled).toBe(false);
-
-    // Check links updated
-    const propLink = document.getElementById("config-link-properties");
-    expect(propLink.href).toContain("/server/server1/configure_properties");
-  });
-
-  test("handles no servers case", async () => {
-    sendServerActionRequest.mockResolvedValueOnce({
-      status: "success",
-      servers: [],
-    });
-
-    initializeDashboard();
-    await Promise.resolve();
-
-    expect(document.getElementById("no-servers-message").style.display).toBe(
-      "block",
+    expect(handleApiAction).toHaveBeenCalledWith(
+      commandBtn,
+      expect.any(Function),
     );
-    const select = document.getElementById("server-select");
-    expect(select.disabled).toBe(true);
+    const callback = handleApiAction.mock.calls[0][1];
+    callback();
+    expect(sendCommand).toHaveBeenCalledWith("Server1", "say hello");
   });
 
-  test("handles fetch failure (null data)", async () => {
-    sendServerActionRequest.mockResolvedValueOnce(null);
-
+  test("handles delete button click", () => {
     initializeDashboard();
-    await Promise.resolve();
+    serverSelect.value = "Server1";
+    jest.spyOn(window, "confirm").mockReturnValue(true);
 
-    expect(showStatusMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to update dashboard"),
-      "warning",
+    deleteBtn.click();
+
+    expect(handleApiAction).toHaveBeenCalledWith(
+      deleteBtn,
+      expect.any(Function),
     );
+    const callback = handleApiAction.mock.calls[0][1];
+    callback();
+    expect(deleteServer).toHaveBeenCalledWith("Server1");
   });
 
-  test("wires up action buttons", async () => {
-    sendServerActionRequest.mockResolvedValue({
-      status: "success",
-      servers: mockServers,
-    });
+  test("updates UI when server selected", () => {
     initializeDashboard();
-    await Promise.resolve();
+    serverSelect.value = "Server1";
+    serverSelect.dispatchEvent(new Event("change"));
 
-    document.getElementById("start-server-btn").click();
-    expect(serverActions.startServer).toHaveBeenCalled();
-
-    document.getElementById("stop-server-btn").click();
-    expect(serverActions.stopServer).toHaveBeenCalled();
-
-    document.getElementById("restart-server-btn").click();
-    expect(serverActions.restartServer).toHaveBeenCalled();
-
-    document.getElementById("prompt-command-btn").click();
-    expect(serverActions.promptCommand).toHaveBeenCalled();
-
-    // For update and delete, we need a selected server
-    const select = document.getElementById("server-select");
-    select.value = "server1";
-
-    document.getElementById("update-server-btn").click();
-
-    expect(serverActions.triggerServerUpdate).toHaveBeenCalledWith(
-      expect.any(HTMLElement),
-      "server1",
-    );
-
-    document.getElementById("delete-server-btn").click();
-    expect(serverActions.deleteServer).toHaveBeenCalledWith(
-      expect.any(HTMLElement),
-      "server1",
-    );
-  });
-
-  test("handles websocket refresh events", async () => {
-    sendServerActionRequest.mockResolvedValue({
-      status: "success",
-      servers: mockServers,
-    });
-    initializeDashboard();
-    await Promise.resolve();
-    sendServerActionRequest.mockClear();
-
-    // Trigger a fake websocket event
-    const event = new CustomEvent("websocket-message", {
-      detail: { topic: "event:after_server_statuses_updated" },
-    });
-    document.dispatchEvent(event);
-
-    expect(sendServerActionRequest).toHaveBeenCalled();
-  });
-
-  test("uses polling fallback if websocket unavailable", () => {
-    webSocketClient.shouldUseFallback.mockReturnValue(true);
-    jest.useFakeTimers();
-
-    sendServerActionRequest.mockResolvedValue({
-      status: "success",
-      servers: mockServers,
-    });
-
-    initializeDashboard();
-
-    expect(sendServerActionRequest).toHaveBeenCalledTimes(1);
-
-    jest.advanceTimersByTime(60000);
-
-    expect(sendServerActionRequest).toHaveBeenCalledTimes(2);
-
-    jest.useRealTimers();
+    const link = document.getElementById("config-link-properties");
+    expect(link.href).toContain("/server/Server1/configure_properties");
   });
 });

@@ -1,9 +1,9 @@
-// frontend/src/auth.js
 /**
  * @fileoverview Handles frontend authentication logic, specifically login.
  */
 
-import { showStatusMessage } from "./utils.js";
+import { login } from "./auth_api.js";
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 
 export function initializeLoginPage() {
   const loginForm = document.getElementById("login-form");
@@ -11,12 +11,12 @@ export function initializeLoginPage() {
     loginForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const loginButton = loginForm.querySelector('button[type="submit"]');
-      handleLoginAttempt(loginButton);
+      handleLoginAttempt(loginButton, loginForm);
     });
   }
 }
 
-async function handleLoginAttempt(buttonElement) {
+async function handleLoginAttempt(buttonElement, formElement) {
   const functionName = "handleLoginAttempt";
   console.log(`${functionName}: Initiated.`);
 
@@ -46,48 +46,26 @@ async function handleLoginAttempt(buttonElement) {
     return;
   }
 
-  if (buttonElement) buttonElement.disabled = true;
-  showStatusMessage("Attempting login...", "info");
+  const formData = new FormData(formElement);
 
-  const formData = new FormData();
-  formData.append("username", username);
-  formData.append("password", password);
+  await handleApiAction(
+    buttonElement,
+    async () => {
+      const response = await login(formData);
 
-  try {
-    const response = await fetch("/auth/token", {
-      method: "POST",
-      body: formData,
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    const responseData = await response.json();
-
-    if (response.ok && responseData.access_token) {
-      if (responseData.access_token) {
-        localStorage.setItem("jwt_token", responseData.access_token);
+      if (response && response.access_token) {
+        localStorage.setItem("jwt_token", response.access_token);
+        showStatusMessage(
+          response.message || "Login successful! Redirecting...",
+          "success",
+        );
+        const nextUrl = new URLSearchParams(window.location.search).get("next");
+        setTimeout(() => {
+          window.location.href = nextUrl || "/";
+        }, 500);
       }
-      showStatusMessage(
-        responseData.message || "Login successful! Redirecting...",
-        "success",
-      );
-
-      const nextUrl = new URLSearchParams(window.location.search).get("next");
-      setTimeout(() => {
-        window.location.href = nextUrl || "/";
-      }, 500);
-    } else {
-      const errorMessage =
-        responseData.detail || responseData.message || "Login failed.";
-      showStatusMessage(errorMessage, "error");
-      if (passwordInput) passwordInput.value = "";
-      if (buttonElement) buttonElement.disabled = false;
-    }
-  } catch (error) {
-    const errorMsg = `Network or processing error during login: ${error.message}`;
-    showStatusMessage(errorMsg, "error");
-    if (passwordInput) passwordInput.value = "";
-    if (buttonElement) buttonElement.disabled = false;
-  }
+      return response;
+    },
+    "Attempting login...",
+  );
 }

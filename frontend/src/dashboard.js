@@ -1,13 +1,39 @@
-import { sendServerActionRequest, showStatusMessage } from "./utils.js";
+/**
+ * @fileoverview Main dashboard logic.
+ * Handles UI updates, user interactions, and orchestrates API calls via pure logic modules.
+ */
+
+import { showStatusMessage, handleApiAction } from "./ui_utils.js";
 import {
   startServer,
   stopServer,
   restartServer,
-  promptCommand,
-  triggerServerUpdate,
+  sendCommand,
   deleteServer,
+  updateServer,
+  fetchServers,
 } from "./server_actions.js";
 import webSocketClient from "./websocket_client.js";
+
+// --- Helper: Get Selected Server ---
+function getSelectedServer() {
+  const serverSelect = document.getElementById("server-select");
+  if (!serverSelect) {
+    console.error(
+      "Server selection dropdown element ('#server-select') not found.",
+    );
+    return null;
+  }
+  const selectedServer = serverSelect.value;
+  if (!selectedServer || selectedServer === "") {
+    showStatusMessage(
+      "Please select a server from the dropdown list first.",
+      "warning",
+    );
+    return null;
+  }
+  return selectedServer;
+}
 
 export function initializeDashboard() {
   const functionName = "DashboardManager";
@@ -31,19 +57,10 @@ export function initializeDashboard() {
     console.error(
       `${functionName}: A critical element for the dashboard is missing. Functionality may be impaired.`,
     );
-    if (typeof showStatusMessage === "function") {
-      showStatusMessage(
-        "Dashboard Error: Critical page elements missing.",
-        "error",
-      );
-    } else {
-      const body = document.querySelector("body");
-      if (body)
-        body.insertAdjacentHTML(
-          "afterbegin",
-          '<p style="color:red; text-align:center; padding:10px; background:lightyellow; border:1px solid red;">Critical Dashboard Error: Page elements missing.</p>',
-        );
-    }
+    showStatusMessage(
+      "Dashboard Error: Critical page elements missing.",
+      "error",
+    );
     return;
   }
 
@@ -69,7 +86,6 @@ export function initializeDashboard() {
         if (action.tagName === "A" && action.id && hasSelection) {
           let targetUrl = "#";
           switch (action.id) {
-            // Routes without router prefix (or handled by main_router)
             case "config-link-properties":
               targetUrl = `/server/${serverNameEncoded}/configure_properties`;
               break;
@@ -87,29 +103,21 @@ export function initializeDashboard() {
               break;
             case "task-scheduler-menu":
               targetUrl = `/server/${serverNameEncoded}/scheduler`;
-              break; // This redirects via main_router
-
-            // Routes with /content prefix
+              break;
             case "content-link-world":
               targetUrl = `/server/${serverNameEncoded}/install_world`;
               break;
             case "content-link-addon":
               targetUrl = `/server/${serverNameEncoded}/install_addon`;
               break;
-
-            // Routes with /backup-restore prefix
             case "backup-link-menu":
               targetUrl = `/server/${serverNameEncoded}/backup`;
               break;
             case "restore-link-menu":
               targetUrl = `/server/${serverNameEncoded}/restore`;
               break;
-
             default:
-              console.warn(
-                `${functionName}: No URL map for link ID '${action.id}'.`,
-              );
-              targetUrl = "#"; // Ensure it's a safe default
+              targetUrl = "#";
               break;
           }
           action.href = targetUrl;
@@ -168,30 +176,9 @@ export function initializeDashboard() {
 
   async function updateDashboard() {
     try {
-      // Use sendServerActionRequest and suppress success pop-up for polling
-      const data = await sendServerActionRequest(
-        null,
-        "/api/servers",
-        "GET",
-        null,
-        null,
-        true,
-      );
-
+      const data = await fetchServers();
       if (!data || data.status !== "success" || !Array.isArray(data.servers)) {
-        console.warn(
-          `${functionName}: API call to /api/servers did not return success or valid server data. Message:`,
-          data?.message,
-        );
-        if (
-          typeof showStatusMessage === "function" &&
-          !(data && data.message && data.status === "error")
-        ) {
-          showStatusMessage(
-            "Failed to update dashboard: Could not retrieve server list.",
-            "warning",
-          );
-        }
+        console.warn(`${functionName}: Invalid server data received.`);
         return;
       }
 
@@ -199,9 +186,6 @@ export function initializeDashboard() {
       const newServerMap = new Map(newServers.map((s) => [s.name, s]));
       const existingCardElements =
         serverCardList.querySelectorAll(".server-card");
-      const existingServerNames = new Set(
-        Array.from(existingCardElements).map((card) => card.dataset.serverName),
-      );
 
       existingCardElements.forEach((card) => {
         const serverName = card.dataset.serverName;
@@ -228,6 +212,10 @@ export function initializeDashboard() {
         }
       });
 
+      const existingServerNames = new Set(
+        Array.from(existingCardElements).map((card) => card.dataset.serverName),
+      );
+
       newServers.forEach((server) => {
         if (!existingServerNames.has(server.name)) {
           serverCardList.appendChild(createServerCardElement(server));
@@ -238,91 +226,126 @@ export function initializeDashboard() {
       noServersMessage.style.display =
         newServers.length === 0 ? "block" : "none";
     } catch (error) {
-      console.error(
-        `${functionName}: Client-side error during dashboard update:`,
-        error,
-      );
-      if (typeof showStatusMessage === "function") {
-        showStatusMessage(`Dashboard update error: ${error.message}`, "error");
-      }
+      console.error(`${functionName}: Error updating dashboard:`, error);
+      // Suppress UI error for polling/background updates unless critical
     }
   }
 
   function setupWebSocket() {
-    // Topics that trigger a full dashboard refresh
     const refreshTopics = [
       "event:after_server_statuses_updated",
       "event:after_server_start",
       "event:after_server_stop",
       "event:after_delete_server_data",
       "event:after_server_updated",
-      // Any other events that should trigger a refresh
     ];
 
     document.addEventListener("websocket-message", (event) => {
       const message = event.detail;
       if (message && message.topic && refreshTopics.includes(message.topic)) {
-        console.log(
-          `${functionName}: Received relevant WebSocket event on topic '${message.topic}'. Refreshing dashboard.`,
-        );
         updateDashboard();
       }
     });
 
     const startPolling = () => {
       if (!pollingIntervalId) {
-        console.warn(`${functionName}: Starting polling (fallback).`);
         pollingIntervalId = setInterval(updateDashboard, POLLING_INTERVAL_MS);
-        console.log(`${functionName}: Polling started as a fallback.`);
       }
     };
 
     if (webSocketClient.shouldUseFallback()) {
       startPolling();
     } else {
-      // Handle fallback to polling if WebSocket connection fails
-      document.addEventListener("websocket-fallback", () => {
-        startPolling();
-      });
-
+      document.addEventListener("websocket-fallback", () => startPolling());
       refreshTopics.forEach((topic) => webSocketClient.subscribe(topic));
     }
   }
+
+  // --- Event Handlers for Action Buttons ---
+
+  // Start
+  document
+    .getElementById("start-server-btn")
+    ?.addEventListener("click", (e) => {
+      const serverName = getSelectedServer();
+      if (serverName) {
+        handleApiAction(e.currentTarget, () => startServer(serverName));
+      }
+    });
+
+  // Stop
+  document.getElementById("stop-server-btn")?.addEventListener("click", (e) => {
+    const serverName = getSelectedServer();
+    if (serverName) {
+      handleApiAction(e.currentTarget, () => stopServer(serverName));
+    }
+  });
+
+  // Restart
+  document
+    .getElementById("restart-server-btn")
+    ?.addEventListener("click", (e) => {
+      const serverName = getSelectedServer();
+      if (serverName) {
+        handleApiAction(e.currentTarget, () => restartServer(serverName));
+      }
+    });
+
+  // Command
+  document
+    .getElementById("prompt-command-btn")
+    ?.addEventListener("click", (e) => {
+      const serverName = getSelectedServer();
+      if (!serverName) return;
+
+      const command = prompt(
+        `Enter command to send to server '${serverName}':`,
+      );
+      if (command === null) {
+        showStatusMessage("Command input cancelled.", "info");
+        return;
+      }
+      const trimmedCommand = command.trim();
+      if (!trimmedCommand) {
+        showStatusMessage("Command cannot be empty.", "warning");
+        return;
+      }
+
+      handleApiAction(e.currentTarget, () =>
+        sendCommand(serverName, trimmedCommand),
+      );
+    });
+
+  // Update
+  document
+    .getElementById("update-server-btn")
+    ?.addEventListener("click", (e) => {
+      const serverName = getSelectedServer();
+      if (serverName) {
+        handleApiAction(e.currentTarget, () => updateServer(serverName));
+      }
+    });
+
+  // Delete
+  document
+    .getElementById("delete-server-btn")
+    ?.addEventListener("click", (e) => {
+      const serverName = getSelectedServer(); // Or pass explicitly if needed, but here we use selected
+      if (!serverName) return;
+
+      const confirmationMessage = `Are you absolutely sure you want to delete ALL data for server '${serverName}'?\n\nThis includes installation, configuration, and backups and cannot be undone!`;
+      if (confirm(confirmationMessage)) {
+        handleApiAction(e.currentTarget, () => deleteServer(serverName));
+      } else {
+        showStatusMessage("Deletion cancelled.", "info");
+      }
+    });
 
   serverSelect.addEventListener("change", (event) => {
     updateActionStates(event.target.value);
   });
 
-  // Attach event listeners to buttons
-  document
-    .getElementById("start-server-btn")
-    ?.addEventListener("click", (e) => startServer(e.currentTarget));
-  document
-    .getElementById("stop-server-btn")
-    ?.addEventListener("click", (e) => stopServer(e.currentTarget));
-  document
-    .getElementById("restart-server-btn")
-    ?.addEventListener("click", (e) => restartServer(e.currentTarget));
-  document
-    .getElementById("prompt-command-btn")
-    ?.addEventListener("click", (e) => promptCommand(e.currentTarget));
-  document
-    .getElementById("update-server-btn")
-    ?.addEventListener("click", (e) =>
-      triggerServerUpdate(e.currentTarget, serverSelect.value),
-    );
-  document
-    .getElementById("delete-server-btn")
-    ?.addEventListener("click", (e) =>
-      deleteServer(e.currentTarget, serverSelect.value),
-    );
-
   // Initial load
   updateDashboard();
-
-  // Setup WebSocket connection and listeners
   setupWebSocket();
-
-  // The global 'websocket-fallback' event listener in setupWebSocket will handle starting polling if needed.
-  console.log(`${functionName}: Initialization complete.`);
 }
