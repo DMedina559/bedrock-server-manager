@@ -1,0 +1,542 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/base.css */
+/**
+ * Base styling for the Bedrock Server Manager web interface.
+ * Includes basic resets, layout, typography, header, specific component styles,
+ * and responsive adjustments.
+ */
+
+/* ==========================================================================
+   CSS Variables for Theming
+   ========================================================================== */
+
+:root {
+    --background-image: url('/api/panorama');
+    --background-overlay-color: rgba(34, 34, 34, 0.25);
+    --text-color: #eee;
+    --container-background-color: rgba(51, 51, 51, 0.92);
+    --border-color: #555;
+    --header-text-color: #eee;
+    --monitor-output-background-color: #111;
+    --monitor-output-text-color: #00dd00;
+    --monitor-output-border-color: #444;
+    --splash-text-color: #FFFF00;
+    /* Buttons */
+    --button-background-color: #555;
+    --button-border-color: #777;
+    --button-text-color: #eee;
+    --button-hover-background-color: #777;
+    --button-hover-border-color: #999;
+    --button-hover-text-color: #fff;
+    --button-active-background-color: #4a4a4a;
+    --button-active-border-color: #666;
+    --primary-button-background-color: #4CAF50;
+    --primary-button-border-color: #66BB6A;
+    --primary-button-text-color: #fff;
+    --primary-button-hover-background-color: #6fcf97;
+    --primary-button-hover-border-color: #81e0aa;
+    --primary-button-active-background-color: #388E3C;
+    --primary-button-active-border-color: #4CAF50;
+    --danger-button-background-color: #D32F2F;
+    --danger-button-border-color: #E57373;
+    --danger-button-text-color: #fff;
+    --danger-button-hover-background-color: #E53935;
+    --danger-button-hover-border-color: #EF9A9A;
+    --danger-button-active-background-color: #B71C1C;
+    --danger-button-active-border-color: #D32F2F;
+    /* Forms */
+    --form-input-background-color: #444;
+    --form-input-border-color: #555;
+    --form-input-text-color: #eee;
+    --form-input-focus-border-color: #888;
+    --form-label-text-color: #ddd;
+    --validation-error-text-color: #ef9a9a;
+    --form-input-invalid-border-color: #D32F2F;
+    --form-input-invalid-background-color: #503a3a;
+    /* Tables */
+    --table-header-background-color: #444;
+    --table-header-text-color: #eee;
+    --table-border-color: #555;
+    --table-row-hover-background-color: #404040;
+    /* Tabs */
+    --tab-background-color: #444;
+    --tab-border-color: #555;
+    --tab-text-color: #ccc;
+    --tab-hover-background-color: #505050;
+    --tab-hover-text-color: #eee;
+    --tab-active-background-color: #3a3a3a;
+    --tab-active-text-color: #fff;
+    /* Messages */
+    --message-success-background-color: #388E3C;
+    --message-success-border-color: #4CAF50;
+    --message-success-text-color: #E8F5E9;
+    --message-error-background-color: #b71c1c;
+    --message-error-border-color: #d32f2f;
+    --message-error-text-color: #FFEBEE;
+    --message-warning-background-color: #FFA000;
+    --message-warning-border-color: #FFB74D;
+    --message-warning-text-color: #212121;
+    /* Layout */
+    --sidebar-background-color: #3a3a3a;
+    --sidebar-border-color: #555;
+    --sidebar-link-text-color: #ccc;
+    --sidebar-link-hover-background-color: #444;
+    --sidebar-link-hover-text-color: #fff;
+    --sidebar-link-active-background-color: #484848;
+    --sidebar-link-active-border-color: #4CAF50;
+    --server-card-background-color: #444;
+    --server-card-border-color: #555;
+    --server-card-hover-background-color: #4a4a4a;
+    --server-card-info-text-color: #ccc;
+    --server-card-info-label-color: #ddd;
+    /* Controls */
+    --toggle-switch-off-background-color: #555;
+    --toggle-switch-off-border-color: #777;
+    --toggle-switch-off-handle-background-color: #bbb;
+    --toggle-switch-off-handle-border-color: #999;
+    --toggle-switch-on-background-color: #4CAF50;
+    --toggle-switch-on-border-color: #66BB6A;
+    --toggle-switch-on-handle-background-color: #fff;
+    --toggle-switch-on-handle-border-color: #eee;
+}
+
+/* ==========================================================================
+   Panorama Background Animation
+   ========================================================================== */
+
+@keyframes panoramaScroll {
+    0% {
+        /* Start position (e.g., right edge aligned with viewport right) */
+        background-position: 0% 50%;
+    }
+
+    100% {
+        /* End position (e.g., scroll one full image width to the left) */
+        /* Use a large percentage to ensure smooth repeat with repeat-x */
+        /* The exact value depends slightly on image aspect and background-size, */
+        /* but a large value like 200% or more usually works for horizontal scroll. */
+        /* Or calculate based on image width if known and fixed. */
+        background-position: 200% 50%;
+    }
+}
+
+/* ==========================================================================
+   Basic Reset, Body Styling, Background & Overlay
+   ========================================================================== */
+
+body {
+    /* Font Stack & Typography */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--text-color); /* Default light text color on dark background */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Reset */
+    margin: 0;
+    padding: 0;
+    /* --- Panorama Background --- */
+    /* Sets the background image */
+    /* url('../image/panorama.jpeg') assumes the image is in static/image relative to CSS */
+    /* Use url_for('static', filename='image/panorama.jpeg') in template or adjust path */
+    background-image: var(--background-image); /* Default Panorama */
+    /* Custom panorama URL will override this via inline style if set */
+    /* Sizing: Height fills viewport, width adjusts automatically. */
+    /* 'cover' or 'contain' or fixed px values are alternatives */
+    background-size: auto 200%;
+    /* Repeat horizontally to cover wide screens and enable scrolling effect */
+    background-repeat: repeat-x;
+    /* Keep background fixed relative to viewport during page scroll */
+    background-attachment: fixed;
+    /* --- Panorama Animation --- */
+    animation-name: panoramaScroll;
+    animation-duration: 380s; /* <<<=== ADJUST DURATION for scroll speed (longer = slower) */
+    animation-timing-function: linear; /* Constant speed */
+    animation-iteration-count: infinite; /* Loop forever */
+    animation-play-state: running; /* Animation is active */
+    /* Ensure body takes at least full viewport height */
+    min-height: 200%;
+    position: relative; /* Needed for pseudo-element positioning */
+}
+
+    /* --- Dark Overlay --- */
+    /* Creates a semi-transparent overlay between the background image and content */
+    body::before {
+        content: ""; /* Required for pseudo-element */
+        position: fixed; /* Cover the entire viewport */
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        /* Dark color with transparency (adjust alpha for darkness) */
+        background-color: var(--background-overlay-color); /* Example: #222 at 65% opacity */
+        /* Place overlay behind the main content (.container) but above the background image */
+        z-index: -1;
+    }
+
+
+/* ==========================================================================
+   Splash Text
+   ========================================================================== */
+
+.anchor-word {
+    position: relative;
+    display: inline-block;
+}
+
+.splash-text {
+    position: absolute; /* Position relative to nearest positioned ancestor (.anchor-word) */
+    z-index: 5; /* Ensure it's visually on top */
+    white-space: nowrap; /* Prevent splash text itself from wrapping */
+    pointer-events: none; /* Clicks pass through */
+    user-select: none; /* Prevent text selection */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* --- Anchored Positioning --- */
+    top: 49%;
+    right: 15%;
+    margin-left: 5px;
+    */ /* Add a small gap */
+    transform: translateY(-50%) rotate(-15deg);
+    */ /* Center vertically & rotate */
+    transform-origin: left center;
+    */
+    /* --- Visual Styling --- */
+    font-family: "Arial Black", Gadget, sans-serif;
+    font-weight: bold;
+    font-size: 0.3em; /* Adjust size as needed */
+    color: var(--splash-text-color);
+    padding: 2px 5px;
+    /* text-shadow: 1px 1px 0px rgba(0, 0, 0, 0.6); */ /* Uncomment if desired */
+    /* --- Animation --- */
+    /* Note: The transform in the keyframes needs to match the base transform */
+    animation: splashPulse 2.5s infinite ease-in-out;
+}
+
+
+@keyframes splashPulse {
+    0% {
+        /* Match transform from .splash-text rule (Option 1) */
+        transform: scale(1) rotate(-15deg);
+        /* Match transform from .splash-text rule (Option 2 - if used) */
+        /* transform: translateY(-50%) scale(1) rotate(-15deg); */
+    }
+
+    50% {
+        /* Match transform from .splash-text rule (Option 1) */
+        transform: scale(1.1) rotate(-15deg);
+        /* Match transform from .splash-text rule (Option 2 - if used) */
+        /* transform: translateY(-50%) scale(1.1) rotate(-15deg); */
+    }
+
+    100% {
+        /* Match transform from .splash-text rule (Option 1) */
+        transform: scale(1) rotate(-15deg);
+        /* Match transform from .splash-text rule (Option 2 - if used) */
+        /* transform: translateY(-50%) scale(1) rotate(-15deg); */
+    }
+}
+
+
+/* ==========================================================================
+   Main Container Layout
+   ========================================================================== */
+
+.container {
+    width: 90%; /* Responsive width */
+    max-width: 1200px; /* Maximum width for large screens */
+    margin: 20px auto; /* Center horizontally, add top/bottom margin */
+    padding: 25px; /* Inner spacing */
+    /* Background for content readability over the panorama */
+    /* Semi-transparent background */
+    background-color: var(--container-background-color); /* #333 at 92% opacity */
+    /* Or use a solid color: */
+    /* background-color: #333; */
+
+    border: 1px solid var(--border-color); /* Subtle border */
+    border-radius: 0px; /* Sharp corners */
+    box-sizing: border-box; /* Include padding and border in width/height */
+    /* Positioning context for absolute children if needed */
+    position: relative;
+    /* Ensure container is above the body::before overlay */
+    z-index: 1;
+}
+
+/* ==========================================================================
+   Header Styles
+   ========================================================================== */
+
+.header {
+    margin-bottom: 30px; /* Space below header */
+    padding-bottom: 20px; /* Space above border */
+    border-bottom: 1px solid var(--border-color); /* Separator line */
+    /* Flexbox for centering the logo and title block */
+    display: flex;
+    justify-content: center; /* Center items horizontally */
+    align-items: center; /* Align items vertically */
+}
+
+.header-link {
+    /* Container for logo and h1, acts as a single link */
+    display: inline-flex; /* Align logo and title inline */
+    align-items: center; /* Vertically center logo and title */
+    text-decoration: none; /* Remove link underline */
+    color: inherit; /* Use body text color */
+    gap: 15px; /* Space between logo and title */
+}
+
+.header-logo {
+    height: 70px; /* Control logo size */
+    width: auto; /* Maintain aspect ratio */
+    /* flex-shrink: 0; */ /* Prevent logo from shrinking if title is very long */
+}
+
+.header h1 {
+    /* Main application title */
+    font-size: 2.2em; /* Large size */
+    letter-spacing: 1px;
+    font-weight: 600; /* Semi-bold */
+    color: var(--header-text-color); /* Ensure high contrast */
+    word-wrap: break-word; /* Allow wrapping if needed, although less likely with flex */
+    margin: 0; /* Remove default margin */
+    text-shadow: none; /* Ensure no shadow if previously applied */
+}
+
+
+/* ==========================================================================
+   Monitor Page Specific Styles
+   ========================================================================== */
+
+/* Style for the preformatted text block showing server output */
+pre.monitor-output {
+    background-color: var(--monitor-output-background-color); /* Very dark background */
+    color: var(--monitor-output-text-color); /* Bright green text (classic console look) */
+    border: 1px solid var(--monitor-output-border-color); /* Subtle border, slightly darker than container */
+    padding: 15px;
+    font-family: "Consolas", "Monaco", "Courier New", monospace; /* Monospaced font */
+    font-size: 0.9em; /* Slightly smaller than body text */
+    line-height: 1.4;
+    overflow-x: auto; /* Allow horizontal scrolling for long lines */
+    white-space: pre; /* Preserve whitespace and line breaks */
+    min-height: 200px; /* Minimum height */
+    max-height: 500px; /* Maximum height, enable vertical scroll beyond this */
+    overflow-y: auto; /* Enable vertical scrollbar when needed */
+    border-radius: 0px; /* Consistent sharp corners */
+    /* box-shadow: none; */ /* Removed inset shadow */
+}
+
+/* Container for buttons below the monitor output */
+.monitor-actions {
+    border-top: none; /* No top border needed if below pre */
+    margin-top: 15px; /* Space above buttons */
+    text-align: center; /* Center buttons */
+}
+
+    /* Ensure monitor action buttons don't have extra left margin if reusing main-button class */
+    .monitor-actions .main-button {
+        margin-left: 5px; /* Adjust spacing between buttons if needed */
+        margin-right: 5px;
+    }
+/* If only one button, center it implicitly via text-align: center; */
+
+
+/* ==========================================================================
+   Responsive Adjustments (Mobile)
+   ========================================================================== */
+
+@media (max-width: 768px) { /* Tablet and smaller */
+    .container {
+        width: 95%; /* Slightly wider */
+        padding: 20px;
+        margin-top: 15px;
+        margin-bottom: 15px;
+    }
+
+    .header {
+        margin-bottom: 25px;
+        padding-bottom: 15px;
+        gap: 10px; /* Reduce gap */
+    }
+
+    .header-logo {
+        height: 50px; /* Smaller logo */
+    }
+
+    .header h1 {
+        font-size: 1.8em; /* Smaller title */
+        letter-spacing: 0.5px;
+    }
+
+    .splash-text {
+        font-size: 0.2em; /* Smaller font */
+        top: 6em; /* Adjust position slightly */
+        right: 14%; /* Adjust position slightly */
+        transform: rotate(-12deg); /* Maybe less rotation */
+        /* Keep other styles */
+        animation: splashPulseMobile 2.5s infinite ease-in-out; /* Use mobile animation if different */
+    }
+
+
+    pre.monitor-output {
+        padding: 10px;
+        font-size: 0.85em;
+        min-height: 150px;
+        max-height: 400px;
+    }
+}
+
+@media (max-width: 480px) { /* Mobile phones */
+    body {
+        font-size: 15px; /* Slightly smaller base font */
+        /* Reduce animation speed on potentially weaker devices? Optional. */
+        /* animation-duration: 240s; */
+    }
+
+    .container {
+        width: 100%; /* Full width */
+        margin-top: 10px;
+        margin-bottom: 10px;
+        padding: 15px;
+        border-left: none;
+        border-right: none;
+        border-radius: 0; /* No radius on full width */
+    }
+
+    .header {
+        gap: 8px;
+        flex-direction: column; /* Stack logo and title vertically */
+        text-align: center; /* Re-center text when stacked */
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+
+    .header-link {
+        flex-direction: column; /* Stack logo/title in link */
+        gap: 5px; /* Reduce gap further */
+    }
+
+    .header-logo {
+        height: 45px; /* Even smaller logo */
+        margin-bottom: 5px; /* Add space below logo when stacked */
+    }
+
+    .header h1 {
+        font-size: 1.6em; /* Further reduced size */
+    }
+
+    .splash-text {
+        /* Option 1: Hide it completely */
+        display: none;
+    }
+
+    pre.monitor-output {
+        font-size: 0.8em;
+        padding: 8px;
+        min-height: 100px;
+        max-height: 300px;
+    }
+}
+
+@keyframes splashPulseMobile {
+    0% {
+        transform: scale(1) rotate(-12deg); /* Match tablet rotation */
+        /* transform: rotate(-10deg); /* Match mobile rotation */
+    }
+
+    50% {
+        transform: scale(1.05) rotate(-12deg); /* Match tablet rotation */
+        /* transform: rotate(-10deg); /* Match mobile rotation */
+    }
+
+    100% {
+        transform: scale(1) rotate(-12deg); /* Match tablet rotation */
+        /* transform: rotate(-10deg); /* Match mobile rotation */
+    }
+}
+
+
+.header {
+    position: relative;
+    /* Keep existing styles */
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: center;
+}
+
+/* ==========================================================================
+   Modal Styles
+   ========================================================================== */
+
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 100; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+}
+
+.modal-content {
+    background-color: var(--container-background-color);
+    margin: 15% auto; /* 15% from the top and centered */
+    padding: 25px;
+    border: 1px solid var(--border-color);
+    width: 80%; /* Could be more or less, depending on screen size */
+    max-width: 500px;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.modal-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: #fff;
+    text-decoration: none;
+}
+
+/* Secondary button style */
+.action-button.secondary {
+    background-color: var(--button-background-color);
+    border-color: var(--button-border-color);
+    color: var(--button-text-color);
+}
+
+.action-button.secondary:hover {
+    background-color: var(--button-hover-background-color);
+    border-color: var(--button-hover-border-color);
+}
+
+/* ==========================================================================
+   Setup Flow Banner
+   ========================================================================== */
+.setup-banner {
+    background-color: rgba(40, 40, 90, 0.85);
+    border: 1px solid rgba(100, 100, 255, 0.7);
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.setup-banner p {
+    margin: 0 0 10px 0;
+}

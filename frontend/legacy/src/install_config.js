@@ -139,19 +139,11 @@ export async function triggerInstallServer(buttonElement) {
     }
   };
 
-  // We use handleApiAction to manage button state and errors, but we handle the 'confirm_needed'
-  // logic inside the async function or by checking result.
-  // Actually, handleApiAction returns the result. We can check it.
-
   await handleApiAction(buttonElement, async () => {
     let response = await installServer(requestBody);
 
     if (response && response.status === "confirm_needed") {
       if (confirm(response.message)) {
-        // If confirmed, make the request again with overwrite=true
-        // Note: we need to return this new promise so handleApiAction waits for it?
-        // No, handleApiAction waits for the initial function.
-        // We can just await it here.
         response = await installServer({ ...requestBody, overwrite: true });
       } else {
         showStatusMessage("Installation cancelled.", "info");

@@ -53,7 +53,6 @@ Uptime       : ${processInfo.uptime ?? "N/A"}
       // Handle ApiError or network error
       console.warn("Polling error:", error);
       statusElement.textContent = `Error polling status: ${error.message}`;
-      // Do NOT stop polling on transient errors, but maybe we should if it's a 404?
       if (error.status === 404) {
         clearInterval(pollingIntervalId);
         statusElement.textContent = "Server not found.";
@@ -66,15 +65,11 @@ Uptime       : ${processInfo.uptime ?? "N/A"}
 
     const handleMessage = (event) => {
       const message = event.detail;
-      // We need to parse the message structure correctly based on what backend sends
-      // Assuming backend sends: { topic: ..., type: 'resource_update', data: { process_info: ... } }
       if (
         message &&
         message.topic === topic &&
         message.type === "resource_update"
       ) {
-        // The structure in original code was message.data?.process_info
-        // Let's assume message.data contains the payload
         updateStatusDisplay(message.data?.process_info);
       }
     };

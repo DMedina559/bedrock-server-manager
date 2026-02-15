@@ -170,11 +170,6 @@ export function initializeManageSettingsPage() {
         .filter(Boolean);
     }
 
-    // We don't block the UI for every keystroke/change, just fire and forget or show minimal feedback?
-    // The original code used sendServerActionRequest which shows a popup.
-    // Let's use handleApiAction but suppress the button disabling part since there's no button here, just an input.
-    // Or we can just call updateSetting and catch errors.
-
     try {
       await updateSetting(input.name, value);
       showStatusMessage("Setting saved.", "success");

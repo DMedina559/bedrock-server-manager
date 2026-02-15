@@ -1,0 +1,108 @@
+/* Add to frontend/v2/src/styles/v2-global.css or base.css via <style> injection */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 250px;
+  height: 100vh;
+  background-color: var(--sidebar-background-color, #333);
+  border-right: 1px solid var(--sidebar-border-color, #555);
+  display: flex;
+  flex-direction: column;
+  padding-top: 20px;
+  transition: transform 0.3s ease;
+  z-index: 100;
+}
+
+.sidebar-header {
+  padding: 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--sidebar-border-color, #555);
+  margin-bottom: 10px;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--header-text-color, #eee);
+}
+
+.nav-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  color: var(--sidebar-link-text-color, #ccc);
+  text-decoration: none;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.nav-link:hover {
+  background-color: var(--sidebar-link-hover-background-color, #444);
+  color: var(--sidebar-link-hover-text-color, #fff);
+}
+
+.nav-link.active {
+  background-color: var(--sidebar-link-active-background-color, #555);
+  color: var(--sidebar-link-active-text-color, #fff);
+  border-right: 4px solid var(--primary-button-background-color, #4caf50);
+}
+
+.sidebar-footer {
+  padding: 20px;
+  border-top: 1px solid var(--sidebar-border-color, #555);
+  text-align: center;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.main-content {
+  margin-left: 250px;
+  padding: 20px;
+  min-height: 100vh;
+  transition: margin-left 0.3s ease;
+  box-sizing: border-box;
+}
+
+.menu-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .main-content {
+    margin-left: 0;
+    padding-top: 60px; /* Space for toggle button */
+  }
+  .menu-toggle {
+    display: block;
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 101;
+    background: var(--button-background-color, #444);
+    border: 1px solid var(--button-border-color, #666);
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+}

@@ -109,8 +109,6 @@ export function initializeManagePluginsPage() {
     const pluginName = toggleSwitch.dataset.pluginName;
     const isEnabled = toggleSwitch.checked;
 
-    // We can't use handleApiAction directly on a toggle switch because it's not a button (disabling it might look weird or interrupt interaction).
-    // But we should handle the async nature and revert if it fails.
     toggleSwitch.disabled = true;
 
     try {

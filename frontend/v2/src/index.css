@@ -1,0 +1,9 @@
+/* Global CSS for V2 */
+body {
+  margin: 0;
+  padding: 0;
+  /* Basic font stack if not provided by theme */
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+}
