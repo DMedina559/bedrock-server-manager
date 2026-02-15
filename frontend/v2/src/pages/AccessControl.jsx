@@ -12,6 +12,7 @@ const AccessControl = () => {
   const [loading, setLoading] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [permissionLevel, setPermissionLevel] = useState("member");
+  const [ignoresPlayerLimit, setIgnoresPlayerLimit] = useState(false);
   const { addToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -74,7 +75,7 @@ const AccessControl = () => {
       if (activeTab === "allowlist") {
         await post(`/api/server/${selectedServer}/allowlist/add`, {
           players: [newItemName],
-          ignoresPlayerLimit: false,
+          ignoresPlayerLimit: ignoresPlayerLimit,
         });
       } else {
 
@@ -85,6 +86,7 @@ const AccessControl = () => {
 
       addToast("Item added successfully.", "success");
       setNewItemName("");
+      setIgnoresPlayerLimit(false);
       fetchItems();
     } catch (error) {
       addToast(error.message || "Failed to add item.", "error");
@@ -198,6 +200,19 @@ const AccessControl = () => {
             </div>
           )}
 
+          {activeTab === "allowlist" && (
+             <div style={{ display: "flex", alignItems: "center", marginBottom: "10px", minWidth: "150px" }}>
+                 <input
+                     type="checkbox"
+                     id="ignoreLimit"
+                     checked={ignoresPlayerLimit}
+                     onChange={(e) => setIgnoresPlayerLimit(e.target.checked)}
+                     style={{ marginRight: "10px" }}
+                 />
+                 <label htmlFor="ignoreLimit" className="form-label" style={{ marginBottom: 0, cursor: "pointer" }}>Ignore Limit</label>
+             </div>
+          )}
+
           <button type="submit" className="action-button" disabled={loading || !newItemName}>
             <Plus size={16} style={{ marginRight: "5px" }} /> Add
           </button>
@@ -215,6 +230,7 @@ const AccessControl = () => {
               <tr>
                 <th>Name</th>
                 <th>XUID</th>
+                {activeTab === "allowlist" && <th>Ignores Limit</th>}
                 {activeTab === "permissions" && <th>Permission</th>}
                 <th style={{ width: "100px" }}>Actions</th>
               </tr>
@@ -225,6 +241,13 @@ const AccessControl = () => {
                   <tr key={idx}>
                     <td>{item.name || "Unknown"}</td>
                     <td>{item.xuid || "N/A"}</td>
+                    {activeTab === "allowlist" && (
+                        <td>
+                            {item.ignoresPlayerLimit ? (
+                                <span style={{ color: "var(--success-color, #4CAF50)" }}>Yes</span>
+                            ) : "No"}
+                        </td>
+                    )}
                     {activeTab === "permissions" && <td>{item.permission_level || item.permission}</td>}
                     <td>
                       {activeTab === "allowlist" && (
@@ -242,7 +265,7 @@ const AccessControl = () => {
                 ))
               ) : (
                 <tr className="no-servers-row">
-                  <td colSpan={activeTab === "permissions" ? 4 : 3} className="no-servers" style={{ textAlign: "center", color: "#888", fontStyle: "italic", padding: "15px" }}>
+                  <td colSpan={activeTab === "permissions" ? 4 : (activeTab === "allowlist" ? 4 : 3)} className="no-servers" style={{ textAlign: "center", color: "#888", fontStyle: "italic", padding: "15px" }}>
                     No entries found in {activeTab}. Use the form above to add one.
                   </td>
                 </tr>

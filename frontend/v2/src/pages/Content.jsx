@@ -79,35 +79,27 @@ const Content = () => {
 
   const handleUpload = async (e) => {
       e.preventDefault();
-      // Upload is handled via FormData to /api/content/upload
-      // This endpoint is provided by a plugin usually.
       const fileInput = e.target.files[0];
       if (!fileInput) return;
 
       const formData = new FormData();
-      formData.append("files", fileInput); // Legacy uses 'files' field?
-      // Need to verify upload endpoint signature.
-      // Assuming standard upload.
+      formData.append("file", fileInput);
 
       addToast("Uploading...", "info");
       try {
-          const response = await fetch("/api/content/upload", {
-              method: "POST",
-              headers: {
-                  "Authorization": `Bearer ${localStorage.getItem("jwt_token")}`
-              },
-              body: formData
-          });
+          // Use the API helper which handles Authorization headers
+          const response = await post("/api/content/upload", formData);
 
-          if (response.ok) {
+          if (response && response.status === "success") {
               addToast("Upload successful.", "success");
               fetchItems();
           } else {
-              const resData = await response.json();
-              addToast(resData.message || "Upload failed.", "error");
+              addToast(response?.message || "Upload failed.", "error");
           }
       } catch (err) {
-          addToast("Upload error.", "error");
+          addToast(err.message || "Upload error.", "error");
+      } finally {
+          e.target.value = null; // Reset input
       }
   };
 
@@ -147,7 +139,6 @@ const Content = () => {
         </button>
       </div>
 
-      {/* Explicitly using a div for tab content, ensuring styles are applied */}
       <div className="tab-content" style={{ background: "var(--container-background-color, #333)", padding: "20px", border: "1px solid var(--border-color, #555)", borderTop: "none", minHeight: "200px" }}>
 
         {/* Actions Area */}

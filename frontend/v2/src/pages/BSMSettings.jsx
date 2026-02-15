@@ -36,12 +36,21 @@ const BSMSettings = () => {
       // Flatten settings to get key-value pairs
       const flattened = flattenObject(settings);
       for (const [key, value] of Object.entries(flattened)) {
-          await post("/api/settings/update", { key, value });
+          // Use POST /api/settings
+          // Ensure key is trimmed
+          const cleanKey = key.trim();
+          await post("/api/settings", { key: cleanKey, value });
       }
 
       addToast("Settings saved successfully.", "success");
     } catch (error) {
-      addToast(error.message || "Failed to save settings.", "error");
+      console.error("Save settings error:", error);
+      // If error is 405 Method Not Allowed, it will be caught here
+      if (error.status === 405) {
+          addToast("Server Error: Method Not Allowed (405). Check backend configuration.", "error");
+      } else {
+          addToast(error.message || "Failed to save settings.", "error");
+      }
     } finally {
       setLoading(false);
     }
@@ -171,7 +180,7 @@ const BSMSettings = () => {
                              </div>
                         )
                     }
-                    return null; // Top level primitives usually don't exist in BSM config structure (usually nested under 'web', 'logging', etc.)
+                    return null;
                 })}
             </div>
 

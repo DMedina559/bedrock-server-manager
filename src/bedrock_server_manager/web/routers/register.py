@@ -76,6 +76,27 @@ async def generate_token(
     }
 
 
+@router.get("/validate/{token}", include_in_schema=False)
+async def validate_token(
+    token: str,
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Checks if a registration token is valid.
+    """
+    with app_context.db.session_manager() as db:  # type: ignore
+        registration_token = (
+            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+        )
+        if not registration_token or registration_token.expires < int(time.time()):
+            return JSONResponse(
+                content={"status": "error", "message": "Invalid or expired token."},
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        return JSONResponse(content={"status": "success", "message": "Token is valid."})
+
+
 @router.get("/{token}", response_class=HTMLResponse, include_in_schema=False)
 async def registration_page(
     request: Request,

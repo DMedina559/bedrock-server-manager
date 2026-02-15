@@ -7,6 +7,7 @@ import { useAuth } from "../AuthContext";
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -55,17 +56,22 @@ const Users = () => {
 
     if (!confirm(`Are you sure you want to delete user ${userToDelete.username}?`)) return;
 
+    setActionLoading(true);
     try {
       await post(`/users/${userToDelete.id}/delete`);
       addToast(`User ${userToDelete.username} deleted.`, "success");
-      fetchUsers();
+      await fetchUsers();
     } catch (error) {
+      console.error("Delete failed:", error);
       addToast(error.message || "Failed to delete user.", "error");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleGenerateLink = async (e) => {
     e.preventDefault();
+    setActionLoading(true);
     try {
       const response = await post("/register/generate-token", { role: inviteRole });
 
@@ -86,10 +92,16 @@ const Users = () => {
       }
     } catch (error) {
       addToast(error.message || "Failed to generate invitation link.", "error");
+    } finally {
+        setActionLoading(false);
     }
   };
 
   const openEditModal = (user) => {
+      if (user.id === currentUser?.id) {
+          addToast("You cannot edit your own role/status here. Go to 'Account' page.", "warning");
+          return;
+      }
       setEditingUser(user);
       setEditRole(user.role);
       setEditActive(user.is_active);
@@ -99,6 +111,7 @@ const Users = () => {
   const saveUserChanges = async () => {
       if (!editingUser) return;
 
+      setActionLoading(true);
       try {
           let updated = false;
           // Update Role if changed
@@ -118,13 +131,16 @@ const Users = () => {
               addToast(`User ${editingUser.username} updated.`, "success");
               setShowEditModal(false);
               setEditingUser(null);
-              fetchUsers();
+              await fetchUsers();
           } else {
               setShowEditModal(false);
           }
 
       } catch (error) {
+          console.error("Update failed:", error);
           addToast(error.message || "Failed to update user.", "error");
+      } finally {
+          setActionLoading(false);
       }
   };
 
@@ -157,7 +173,7 @@ const Users = () => {
             <button
             className="action-button secondary"
             onClick={fetchUsers}
-            disabled={loading}
+            disabled={loading || actionLoading}
             >
             <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
             </button>
@@ -165,6 +181,7 @@ const Users = () => {
             <button
             className="action-button"
             onClick={() => setShowInviteModal(true)}
+            disabled={actionLoading}
             >
             <UserPlus size={16} style={{ marginRight: "5px" }} /> Invite User
             </button>
@@ -210,7 +227,7 @@ const Users = () => {
                         onClick={() => openEditModal(user)}
                         title="Edit User"
                         style={{ padding: "5px 10px" }}
-                        disabled={user.id === currentUser?.id}
+                        disabled={actionLoading}
                         >
                         <UserCog size={14} />
                         </button>
@@ -219,7 +236,7 @@ const Users = () => {
                         onClick={() => handleDelete(user)}
                         title="Delete User"
                         style={{ padding: "5px 10px" }}
-                        disabled={user.role === 'admin' && users.filter(u => u.role === 'admin' && u.is_active).length <= 1}
+                        disabled={actionLoading}
                         >
                         <Trash2 size={14} />
                         </button>
@@ -263,7 +280,7 @@ const Users = () => {
                     >
                     Cancel
                     </button>
-                    <button type="submit" className="action-button">
+                    <button type="submit" className="action-button" disabled={actionLoading}>
                     Generate Link
                     </button>
                 </div>
@@ -310,7 +327,7 @@ const Users = () => {
                         value={editRole}
                         onChange={(e) => setEditRole(e.target.value)}
                         style={{ width: "100%", marginBottom: "15px" }}
-                        disabled={editingUser.id === currentUser?.id}
+                        disabled={editingUser.id === currentUser?.id || actionLoading}
                     >
                         <option value="user">User (Read Only)</option>
                         <option value="moderator">Moderator</option>
@@ -332,7 +349,7 @@ const Users = () => {
                                 gap: "5px",
                                 fontSize: "1rem"
                             }}
-                            disabled={editingUser.id === currentUser?.id}
+                            disabled={editingUser.id === currentUser?.id || actionLoading}
                         >
                             {editActive ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
                             {editActive ? "Active" : "Disabled"}
@@ -344,10 +361,11 @@ const Users = () => {
                         type="button"
                         className="action-button secondary"
                         onClick={() => { setShowEditModal(false); setEditingUser(null); }}
+                        disabled={actionLoading}
                     >
                         Cancel
                     </button>
-                    <button type="button" className="action-button" onClick={saveUserChanges}>
+                    <button type="button" className="action-button" onClick={saveUserChanges} disabled={actionLoading}>
                         Save Changes
                     </button>
                 </div>

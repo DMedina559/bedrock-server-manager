@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "../ToastContext";
-import { post } from "../api";
 
 const Register = () => {
   const { token } = useParams();
@@ -10,8 +9,26 @@ const Register = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tokenValid, setTokenValid] = useState(null);
   const { addToast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const validateToken = async () => {
+        if (!token) return;
+        try {
+            const response = await fetch(`/register/validate/${token}`);
+            if (response.ok) {
+                setTokenValid(true);
+            } else {
+                setTokenValid(false);
+            }
+        } catch (e) {
+            setTokenValid(false);
+        }
+    };
+    validateToken();
+  }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,8 +42,8 @@ const Register = () => {
       return;
     }
 
-    if (!token) {
-        addToast("Invalid registration link (missing token).", "error");
+    if (!tokenValid) {
+        addToast("Invalid registration link.", "error");
         return;
     }
 
@@ -69,6 +86,24 @@ const Register = () => {
               <div className="message-box message-error">
                   Invalid registration link. Token is missing.
               </div>
+          </div>
+      );
+  }
+
+  if (tokenValid === false) {
+      return (
+          <div className="container" style={{ marginTop: "100px", textAlign: "center" }}>
+              <div className="message-box message-error">
+                  Invalid or expired registration link.
+              </div>
+          </div>
+      );
+  }
+
+  if (tokenValid === null) {
+      return (
+          <div className="container" style={{ marginTop: "100px", textAlign: "center" }}>
+              <div className="spinner" style={{display: 'inline-block', marginRight: '10px'}}></div> Checking registration link...
           </div>
       );
   }
