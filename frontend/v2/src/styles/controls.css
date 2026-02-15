@@ -1,0 +1,222 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/controls.css */
+/**
+ * Custom Form Control Styles
+ *
+ * Defines styles for non-standard form elements like segmented button controls
+ * and toggle switches, aiming for a look consistent with the application theme.
+ * Also includes styles for related UI elements like step indicators.
+ */
+
+/* ==========================================================================
+   Segmented Controls (Radio-like Button Group)
+   ========================================================================== */
+
+/* Container for the group of segments */
+.segmented-control {
+    display: inline-flex; /* Arrange segments horizontally, touching */
+    border: 1px solid var(--border-color); /* Outer border for the group */
+    border-radius: 0; /* Sharp corners */
+    overflow: hidden; /* Clip child borders cleanly */
+    margin: 4px 0; /* Add some vertical margin */
+}
+
+    /* Individual segment (styled button) */
+    .segmented-control .segment {
+        /* Reset browser button styles */
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        border: none; /* Remove individual button borders */
+        /* Add right border as separator (except last) */
+        border-right: 1px solid var(--border-color);
+        margin: 0;
+        padding: 7px 14px; /* Inner spacing */
+        /* Default (inactive) state appearance */
+        background-color: var(--button-background-color); /* Dark background */
+        color: var(--button-text-color); /* Light grey text */
+        /* Text & Font */
+        font-family: inherit; /* Use body font */
+        font-size: 0.95em;
+        font-weight: 600; /* Semi-bold */
+        line-height: 1.4;
+        cursor: pointer; /* Indicate clickability */
+        /* Smooth transitions */
+        transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+        /* Remove border from the very last segment in the group */
+        .segmented-control .segment:last-child {
+            border-right: none;
+        }
+
+        /* Hover state for inactive segments */
+        .segmented-control .segment:hover {
+            background-color: var(--button-hover-background-color); /* Slightly lighter background */
+            color: var(--button-hover-text-color);
+        }
+
+        /* Active (selected) segment state */
+        .segmented-control .segment.active {
+            background-color: var(--primary-button-background-color); /* Use primary green for active state */
+            color: var(--primary-button-text-color); /* White text */
+            cursor: default; /* Indicate it's already selected */
+        }
+            /* Keep active state style even when hovering over the active segment */
+            .segmented-control .segment.active:hover {
+                background-color: var(--primary-button-background-color);
+                color: var(--primary-button-text-color);
+            }
+
+
+/* ==========================================================================
+   Toggle Switches (Checkbox Styled as Switch)
+   ========================================================================== */
+
+/* Container for the entire toggle group (label, help text, switch) */
+.form-group-toggle-container {
+    display: flex; /* Align label group and switch horizontally */
+    align-items: center; /* Align items vertically centered */
+    justify-content: space-between; /* Push switch to the right */
+    padding: 8px 0; /* Vertical padding */
+    /* Optional separator */
+    /* border-bottom: 1px solid #484848; */
+}
+    /* Adjust spacing for validation errors appearing after toggle */
+    .form-group-toggle-container + .validation-error {
+        margin-top: -5px;
+    }
+
+/* Group for the label and optional help text */
+.form-label-group {
+    padding-right: 15px; /* Space between text and the switch */
+}
+
+    .form-label-group .form-label {
+        display: block; /* Ensure label is block for margin */
+        margin-bottom: 2px; /* Small space below main label */
+        font-weight: 600;
+    }
+
+    .form-label-group .form-help-text {
+        display: block; /* Ensure help text is block */
+        margin-top: 0;
+        font-size: 0.9em; /* Smaller help text */
+        color: #bbb; /* Lighter color */
+        line-height: 1.3; /* Adjust line height if needed */
+    }
+
+/* Hide the actual checkbox visually but keep accessible */
+.toggle-input {
+    position: absolute; /* Remove from layout flow */
+    opacity: 0; /* Make invisible */
+    width: 0;
+    height: 0;
+    pointer-events: none; /* Not interactive directly */
+}
+
+/* Container for the visual switch label */
+/* Allows consistent sizing and positioning, prevents shrinking */
+.toggle-switch-container {
+    flex-shrink: 0;
+}
+
+/* The clickable label that acts as the switch track */
+.toggle-switch {
+    display: inline-block; /* Allow interaction */
+    position: relative; /* Positioning context for the handle */
+    width: 50px; /* Track width */
+    height: 26px; /* Track height */
+    background-color: var(--toggle-switch-off-background-color); /* Default OFF track color */
+    border: 1px solid var(--toggle-switch-off-border-color);
+    border-radius: 0px; /* Sharp corners */
+    cursor: pointer;
+    vertical-align: middle; /* Align nicely if next to text */
+    transition: background-color 0.2s ease; /* Smooth color change */
+}
+
+    /* The sliding handle (pseudo-element) */
+    .toggle-switch::before {
+        content: "";
+        position: absolute;
+        /* Positioning for OFF state */
+        left: 2px; /* Padding from left */
+        top: 50%;
+        transform: translateY(-50%); /* Vertical centering */
+        /* Handle dimensions */
+        width: 20px;
+        height: 20px;
+        /* Handle appearance (OFF state) */
+        background-color: var(--toggle-switch-off-handle-background-color); /* Grey handle */
+        border: 1px solid var(--toggle-switch-off-handle-border-color);
+        border-radius: 0px; /* Sharp corners */
+        /* Smooth transition for movement and color */
+        transition: transform 0.2s ease, background-color 0.2s ease;
+    }
+
+/* --- Styles when the hidden checkbox is CHECKED --- */
+
+/* Change track background when checked */
+.toggle-input:checked + .toggle-switch {
+    background-color: var(--toggle-switch-on-background-color); /* Green track */
+    border-color: var(--toggle-switch-on-border-color);
+}
+
+    /* Move and style handle when checked */
+    .toggle-input:checked + .toggle-switch::before {
+        /* Move handle to the right side */
+        /* Calculation: track_width - handle_width - (2 * padding_left) */
+        /* 50px - 20px - (2 * 2px) = 26px. Adjust slightly (e.g., 24px) for visual centering. */
+        transform: translate(24px, -50%);
+        /* Change handle appearance (ON state) */
+        background-color: var(--toggle-switch-on-handle-background-color); /* White handle */
+        border-color: var(--toggle-switch-on-handle-border-color);
+    }
+
+/* --- Focus state for accessibility --- */
+/* Add outline/shadow when the hidden checkbox receives focus */
+.toggle-input:focus + .toggle-switch {
+    /* Example: subtle green glow matching active color */
+    outline: none; /* Remove default outline */
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.5); /* Green glow */
+}
+
+/* The hidden input used to submit 'false' when checkbox is unchecked */
+/* This input should have no visual appearance */
+.toggle-hidden-false {
+    display: none; /* Visually hidden */
+}
+/* IMPORTANT: The corresponding JS (`install_config.js`) handles enabling/disabling */
+/* this hidden input based on the checkbox state, so only one value (true or false) is submitted. */
+
+
+/* ==========================================================================
+   Step Indicator (Used in multi-step forms)
+   ========================================================================== */
+
+.step-indicator {
+    font-size: 0.9em;
+    color: #bbb; /* Lighter text */
+    font-style: italic;
+    margin-top: 3px;
+    margin-bottom: 15px; /* Add space below indicator */
+    display: block; /* Ensure it takes its own line */
+}
+
+/* ==========================================================================
+   Form Grid Adjustments (Optional)
+   ========================================================================== */
+
+/* If using a CSS Grid layout for forms (.form-grid), make toggle groups span full width */
+/* This prevents the switch from being pushed far right in a multi-column grid */
+.form-grid .form-group-toggle-container {
+    grid-column: 1 / -1; /* Span from first to last column line */
+}
+
+/* Alternative if not using grid-column span: */
+/* If toggle container should align within a single grid cell */
+/*
+.form-grid > .form-group-toggle-container {
+     display: flex;
+     align-items: center;
+}
+*/

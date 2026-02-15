@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "../ToastContext";
-import { Trash2, UserPlus, Shield } from "lucide-react";
+import { get, post } from "../api";
+import { Trash2, UserPlus, Shield, RefreshCw } from "lucide-react";
 
 const Users = () => {
   const [users, setUsers] = useState([]);
@@ -18,125 +19,96 @@ const Users = () => {
   }, []);
 
   const fetchUsers = async () => {
+    setLoading(true);
     try {
-      const response = await fetch("/api/users");
-      if (response.ok) {
-        const data = await response.json();
+      const data = await get("/users/list");
+      if (Array.isArray(data)) {
         setUsers(data);
       } else {
         addToast("Failed to fetch users", "error");
+        setUsers([]);
       }
     } catch (error) {
-      addToast("Error fetching users", "error");
+      addToast(error.message || "Error fetching users", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (username) => {
-    if (!confirm(`Are you sure you want to delete user ${username}?`)) return;
+  const handleDelete = async (user) => {
+    if (!confirm(`Are you sure you want to delete user ${user.username}?`)) return;
 
     try {
-      const response = await fetch(`/api/users/${username}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        addToast(`User ${username} deleted.`, "success");
-        fetchUsers();
-      } else {
-        const data = await response.json();
-        addToast(data.detail || "Failed to delete user.", "error");
-      }
+      await post(`/users/${user.id}/delete`);
+      addToast(`User ${user.username} deleted.`, "success");
+      fetchUsers();
     } catch (error) {
-      addToast("Error deleting user.", "error");
+      addToast(error.message || "Failed to delete user.", "error");
     }
   };
 
   const handleAddUser = async (e) => {
     e.preventDefault();
     try {
-      // Check API expected format. Usually JSON for FastAPI.
-      const response = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newUser),
-      });
-
-      if (response.ok) {
-        addToast("User created successfully.", "success");
-        setShowModal(false);
-        setNewUser({ username: "", password: "", role: "admin" });
-        fetchUsers();
-      } else {
-        const data = await response.json();
-        addToast(data.detail || "Failed to create user.", "error");
-      }
+      await post("/users/create", newUser);
+      addToast("User created successfully.", "success");
+      setShowModal(false);
+      setNewUser({ username: "", password: "", role: "admin" });
+      fetchUsers();
     } catch (error) {
-      addToast("Error creating user.", "error");
+      addToast(error.message || "Failed to create user.", "error");
     }
   };
 
-  if (loading) return <div className="container">Loading users...</div>;
+  if (loading && users.length === 0) return (
+      <div className="container" style={{ textAlign: "center", padding: "20px" }}>Loading users...</div>
+  );
 
   return (
-    <div className="container" style={{ padding: "20px" }}>
-      <div
-        className="header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
+    <div className="container">
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>User Management</h1>
-        <button
-          className="button button-primary"
-          onClick={() => setShowModal(true)}
-          style={{ display: "flex", alignItems: "center", gap: "5px" }}
-        >
-          <UserPlus size={18} /> Add User
-        </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+            <button
+            className="action-button secondary"
+            onClick={fetchUsers}
+            >
+            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+            </button>
+            <button
+            className="action-button"
+            onClick={() => setShowModal(true)}
+            >
+            <UserPlus size={16} style={{ marginRight: "5px" }} /> Add User
+            </button>
+        </div>
       </div>
 
-      <table
-        className="table"
-        style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}
-      >
+      <table className="table" style={{ width: "100%" }}>
         <thead>
-          <tr
-            style={{
-              background: "var(--table-header-background-color)",
-              textAlign: "left",
-            }}
-          >
-            <th style={{ padding: "10px" }}>Username</th>
-            <th style={{ padding: "10px" }}>Role</th>
-            <th style={{ padding: "10px" }}>Actions</th>
+          <tr>
+            <th>Username</th>
+            <th>Role</th>
+            <th style={{ width: "100px" }}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {users.map((user) => (
-            <tr
-              key={user.username}
-              style={{ borderBottom: "1px solid var(--table-border-color)" }}
-            >
-              <td style={{ padding: "10px" }}>{user.username}</td>
-              <td style={{ padding: "10px" }}>
-                <span
-                  style={{ display: "flex", alignItems: "center", gap: "5px" }}
-                >
-                  <Shield size={16} /> {user.role}
+            <tr key={user.id}>
+              <td>{user.username}</td>
+              <td>
+                <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <Shield size={14} /> {user.role}
                 </span>
               </td>
-              <td style={{ padding: "10px" }}>
+              <td>
                 <button
-                  className="button button-danger"
-                  onClick={() => handleDelete(user.username)}
+                  className="action-button danger-button"
+                  onClick={() => handleDelete(user)}
                   title="Delete User"
                   style={{ padding: "5px 10px" }}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={14} />
                 </button>
               </td>
             </tr>
@@ -147,9 +119,6 @@ const Users = () => {
       {showModal && (
         <div className="modal" style={{ display: "block" }}>
           <div className="modal-content">
-            <span className="close-button" onClick={() => setShowModal(false)}>
-              &times;
-            </span>
             <h2>Add New User</h2>
             <form onSubmit={handleAddUser}>
               <div style={{ marginBottom: "15px", textAlign: "left" }}>
@@ -195,12 +164,12 @@ const Users = () => {
               <div className="modal-actions">
                 <button
                   type="button"
-                  className="button"
+                  className="action-button secondary"
                   onClick={() => setShowModal(false)}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="button button-primary">
+                <button type="submit" className="action-button">
                   Create User
                 </button>
               </div>

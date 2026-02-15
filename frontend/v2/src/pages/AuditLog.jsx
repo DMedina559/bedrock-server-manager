@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "../ToastContext";
+import { get } from "../api";
+import { RefreshCw } from "lucide-react";
 
 const AuditLog = () => {
   const [logs, setLogs] = useState([]);
@@ -13,87 +15,68 @@ const AuditLog = () => {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/audit-log");
-      if (response.ok) {
-        const data = await response.json();
-        // Check if data is array or object. Legacy might return list.
+      const data = await get("/audit-log/list");
+      if (Array.isArray(data)) {
         setLogs(data);
       } else {
         addToast("Failed to fetch audit logs", "error");
+        setLogs([]);
       }
     } catch (error) {
-      addToast("Error fetching audit logs", "error");
+      addToast(error.message || "Error fetching audit logs", "error");
     } finally {
       setLoading(false);
     }
   };
 
+  const formatDate = (dateString) => {
+      try {
+          return new Date(dateString).toLocaleString();
+      } catch (e) {
+          return dateString;
+      }
+  };
+
+  if (loading && logs.length === 0) return <div className="container" style={{ textAlign: "center", padding: "20px" }}>Loading logs...</div>;
+
   return (
-    <div className="container" style={{ padding: "20px" }}>
-      <div className="header">
+    <div className="container">
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Audit Log</h1>
+        <button className="action-button secondary" onClick={fetchLogs}>
+            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+        </button>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table
-            className="table"
-            style={{
-              width: "100%",
-              marginTop: "20px",
-              borderCollapse: "collapse",
-              fontSize: "0.9em",
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  background: "var(--table-header-background-color)",
-                  textAlign: "left",
-                }}
-              >
-                <th style={{ padding: "10px" }}>Timestamp</th>
-                <th style={{ padding: "10px" }}>User</th>
-                <th style={{ padding: "10px" }}>Action</th>
-                <th style={{ padding: "10px" }}>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log, index) => (
-                <tr
-                  key={index}
-                  style={{
-                    borderBottom: "1px solid var(--table-border-color)",
-                  }}
-                >
-                  <td style={{ padding: "10px", whiteSpace: "nowrap" }}>
-                    {new Date(log.timestamp).toLocaleString()}
-                  </td>
-                  <td style={{ padding: "10px" }}>{log.username}</td>
-                  <td style={{ padding: "10px" }}>{log.action}</td>
-                  <td style={{ padding: "10px" }}>{log.details}</td>
-                </tr>
-              ))}
-              {logs.length === 0 && (
-                <tr>
-                  <td
-                    colSpan="4"
-                    style={{
-                      textAlign: "center",
-                      padding: "20px",
-                      color: "#888",
-                    }}
-                  >
-                    No audit logs found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div style={{ overflowX: "auto" }}>
+      <table className="table" style={{ width: "100%", fontSize: "0.9em" }}>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>User ID</th>
+            <th>Action</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {logs.map((log) => (
+            <tr key={log.id}>
+              <td>{formatDate(log.timestamp)}</td>
+              <td>{log.user_id}</td>
+              <td>{log.action}</td>
+              <td>
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap", maxHeight: "100px", overflowY: "auto", background: "rgba(0,0,0,0.2)", padding: "5px", borderRadius: "4px" }}>
+                    {JSON.stringify(log.details, null, 2)}
+                </pre>
+              </td>
+            </tr>
+          ))}
+          {logs.length === 0 && (
+              <tr><td colSpan="4" style={{ textAlign: "center", padding: "20px", color: "#888" }}>No audit logs found.</td></tr>
+          )}
+        </tbody>
+      </table>
+      </div>
     </div>
   );
 };

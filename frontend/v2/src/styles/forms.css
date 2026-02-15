@@ -1,0 +1,696 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/forms.css */
+/**
+ * Form Element Styling
+ *
+ * Defines styles for standard HTML form elements (inputs, textareas, selects, labels),
+ * form layout structure (groups, grid, actions), validation states, item lists,
+ * login form specifics, and task trigger groups. Aims for consistency with the
+ * application theme.
+ */
+
+/* ==========================================================================
+   Base Form Input Style (Inspired by Ore UI)
+   ========================================================================== */
+
+/* Common base style for various input types */
+.form-input,
+input[type="text"].form-input,
+input[type="email"].form-input,
+input[type="password"].form-input,
+input[type="number"].form-input,
+input[type="date"].form-input,
+input[type="time"].form-input,
+input[type="datetime-local"].form-input, /* Added datetime-local */
+textarea.form-input,
+select.form-input,
+.server-dropdown /* Apply to specific select class too */ {
+    /* Display & Box Model */
+    display: inline-block; /* Default display */
+    width: auto; /* Default width (overridden below for text types) */
+    padding: 8px 12px; /* Inner spacing */
+    margin: 0; /* Reset default margins */
+    border: 1px solid var(--form-input-border-color); /* Standard border */
+    border-radius: 0; /* Sharp corners */
+    background-color: var(--form-input-background-color); /* Dark background */
+    color: var(--form-input-text-color); /* Light text */
+    vertical-align: middle; /* Align with adjacent elements */
+    box-sizing: border-box; /* Consistent box model */
+    /* Typography */
+    font-family: inherit; /* Use body font */
+    font-size: 1em; /* Use base font size */
+    line-height: 1.4; /* Consistent line height */
+    /* Transitions & Appearance */
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: none; /* Remove default shadows */
+    appearance: none; /* Remove default system appearance for selects etc. */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+
+/* Default block behavior and full width for text-based inputs */
+input[type="text"].form-input,
+input[type="email"].form-input,
+input[type="password"].form-input,
+input[type="number"].form-input,
+input[type="date"].form-input,
+input[type="time"].form-input,
+input[type="datetime-local"].form-input,
+textarea.form-input {
+    display: block; /* Take full width of container */
+    width: 100%;
+    cursor: text; /* Indicate text input */
+    /* Removed max-width - let container control width */
+}
+
+textarea.form-input {
+    min-height: 80px; /* Default height for textareas */
+    resize: vertical; /* Allow vertical resizing */
+}
+
+
+/* Select Dropdown Specific Styles */
+select.form-input,
+.server-dropdown {
+    cursor: pointer;
+    /* Custom dropdown arrow using SVG background */
+    /* Encoded SVG for a simple down arrow, color #CCCCCC */
+    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23CCCCCC%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+    background-repeat: no-repeat;
+    background-position: right 10px center; /* Position arrow */
+    background-size: 10px 10px; /* Arrow size */
+    padding-right: 30px; /* Add padding to prevent text overlapping arrow */
+}
+
+    /* Focus State for all inputs */
+    .form-input:focus,
+    input[type="text"].form-input:focus,
+    input[type="email"].form-input:focus,
+    input[type="password"].form-input:focus,
+    input[type="number"].form-input:focus,
+    input[type="date"].form-input:focus,
+    input[type="time"].form-input:focus,
+    input[type="datetime-local"].form-input:focus,
+    select.form-input:focus,
+    textarea.form-input:focus,
+    .server-dropdown:focus {
+        outline: none; /* Remove default browser outline */
+        border-color: var(--form-input-focus-border-color); /* Slightly lighter border on focus */
+        /* Optional focus glow: */
+        /* box-shadow: 0 0 0 2px rgba(136, 136, 136, 0.3); */
+    }
+
+
+/* ==========================================================================
+   Form Labels
+   ========================================================================== */
+
+/* Standard block label above input */
+.form-label {
+    display: block; /* Takes its own line */
+    margin-bottom: 6px; /* Space below label */
+    font-weight: 600; /* Semi-bold */
+    color: var(--form-label-text-color); /* Slightly lighter than body text */
+    font-family: inherit;
+    font-size: 1em;
+    text-shadow: none; /* Ensure no shadow */
+}
+
+/* Label specifically for select dropdowns (can be inline) */
+.select-label {
+    display: inline-block; /* Allow next to dropdown */
+    margin-right: 8px; /* Space after label */
+    vertical-align: middle; /* Align with dropdown */
+    font-weight: 600;
+    color: var(--form-label-text-color);
+}
+
+/* Label used for checkboxes/radios (inline with control) */
+.form-label-inline {
+    display: inline-block;
+    font-weight: normal; /* Normal weight */
+    color: var(--form-label-text-color);
+    font-family: inherit;
+    cursor: pointer; /* Indicate clickable label */
+    margin-bottom: 5px; /* Consistent spacing */
+    vertical-align: middle; /* Align with checkbox/radio */
+    margin-left: 4px; /* Space before label text */
+}
+
+
+/* ==========================================================================
+   Form Structure & Layout Helpers
+   ========================================================================== */
+
+/* Container for a label + input + help text/validation */
+.form-group {
+    margin-bottom: 18px; /* Space between form groups */
+    padding: 0; /* Reset padding */
+}
+
+/* CSS Grid layout for forms */
+.form-grid {
+    display: grid;
+    /* Responsive columns: Fit as many columns >= 280px as possible */
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px 25px; /* Row gap, Column gap */
+    margin-bottom: 25px; /* Space below grid */
+}
+
+/* Container for form submission buttons */
+.form-actions {
+    margin-top: 25px; /* Space above actions */
+    padding-top: 20px; /* Space above separator line */
+    border-top: 1px solid var(--form-input-border-color); /* Separator line */
+    text-align: right; /* Align buttons to the right */
+}
+    /* Spacing between buttons in the actions area */
+    .form-actions .main-button,
+    .form-actions .action-button,
+    .form-actions .action-link {
+        margin-left: 10px;
+    }
+    /* Remove left margin from the first button/link */
+    .form-actions > *:first-child {
+        margin-left: 0;
+    }
+
+
+/* ==========================================================================
+   Server Selection Section (Top Bar)
+   ========================================================================== */
+
+.server-selection-section {
+    margin-bottom: 25px; /* Increased spacing */
+    padding: 15px 20px;
+    background-color: var(--container-background-color); /* Slightly different background */
+    border: 1px solid var(--form-input-border-color);
+    border-radius: 0;
+    box-sizing: border-box;
+    text-align: left; /* Align content left by default */
+    /* Flexbox could be used for more complex alignment */
+    /* display: flex; align-items: center; flex-wrap: wrap; gap: 15px; */
+}
+
+/* Group for label + dropdown */
+.select-server-group {
+    display: inline-block;
+    margin-right: 15px; /* Spacing between dropdown and buttons */
+    vertical-align: middle;
+    margin-bottom: 5px; /* Allow wrapping nicely */
+}
+
+/* Group for action buttons next to dropdown */
+.action-buttons-group {
+    display: inline-block;
+    vertical-align: middle;
+    margin-bottom: 5px; /* Allow wrapping nicely */
+}
+    /* Adjust button size within this group */
+    .action-buttons-group .action-button,
+    .action-buttons_group .start-button,
+    .action-buttons_group .danger-button {
+        padding: 6px 10px;
+        font-size: 0.9em;
+    }
+
+
+/* ==========================================================================
+   Base Checkbox/Radio (Usually Hidden by Custom Controls)
+   ========================================================================== */
+
+.form-input[type="checkbox"],
+.form-input[type="radio"] {
+    /* These are often visually hidden and replaced by custom controls */
+    /* like toggle switches or styled labels. */
+    /* Provide basic accessible styling if custom controls fail to load */
+    display: inline-block;
+    width: auto;
+    margin-right: 5px;
+    vertical-align: middle;
+    cursor: pointer;
+    /* Basic styling */
+    accent-color: #4CAF50; /* Use theme color if browser supports */
+}
+/* Example: Hide if not part of a specific custom control setup */
+/* label > input[type="checkbox"]:not(.toggle-input) { display: none; } */
+
+
+/* ==========================================================================
+   Help Text & Validation Errors
+   ========================================================================== */
+
+/* Subtext providing hints or instructions below an input */
+.form-help-text {
+    display: block; /* Ensure it takes its own line */
+    font-size: 0.9em;
+    color: #bbb; /* Lighter grey */
+    margin-top: 5px; /* Space above */
+    line-height: 1.4;
+}
+/* Prevent indentation if associated label is inline (e.g., checkbox label) */
+/* .form-label-inline + .form-help-text { margin-left: 0; } */
+
+/* Style for validation error messages */
+.validation-error,
+.form-error /* Used by Flask-WTF? */ {
+    color: var(--validation-error-text-color); /* Light red */
+    font-size: 0.9em;
+    padding-top: 4px; /* Space above message */
+    display: block; /* Take its own line */
+    min-height: 1.2em; /* Prevent layout shift */
+    font-weight: normal;
+    line-height: 1.4;
+}
+/* Style if error is a list (e.g., from Flask-WTF) */
+.form-error {
+    list-style: none; /* Remove bullets */
+    padding-left: 0;
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+    .form-error li {
+        margin-bottom: 2px;
+    }
+/* Specific style for inline validation errors (e.g., in tables) */
+.validation-error.inline-error {
+    display: inline-block;
+    margin-left: 10px;
+    /* Adjust styling as needed */
+}
+
+/* Style for input fields marked as invalid */
+.form-input.is-invalid {
+    border-color: var(--form-input-invalid-border-color); /* Red border */
+    background-color: var(--form-input-invalid-background-color); /* Dark red background tint */
+}
+
+    .form-input.is-invalid:focus {
+        border-color: var(--danger-button-border-color); /* Lighter red border on focus */
+        box-shadow: none; /* Remove focus glow for invalid state */
+    }
+
+
+/* ==========================================================================
+   Item List Styling (e.g., Allowlist, Permissions List)
+   ========================================================================== */
+
+/* Section containing a list */
+.list-section {
+    margin-top: 30px;
+    padding-top: 15px;
+    border-top: 1px solid var(--form-input-border-color); /* Separator line */
+}
+    /* Heading within list section */
+    .list-section h2 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--form-input-border-color);
+        font-size: 1.4em;
+        font-weight: 600;
+        color: var(--form-label-text-color);
+        text-shadow: none;
+    }
+
+/* The list itself */
+.item-list {
+    list-style: none; /* Remove default bullets */
+    padding: 0;
+    margin: 0;
+}
+    /* Individual list items */
+    .item-list li {
+        background-color: var(--form-input-background-color);
+        padding: 10px 15px;
+        margin-bottom: 6px;
+        border: 1px solid var(--form-input-border-color);
+        border-radius: 0; /* Sharp corners */
+        /* Flex layout for item content alignment */
+        display: flex;
+        justify-content: space-between; /* Push button to right */
+        align-items: center;
+        flex-wrap: wrap; /* Allow wrapping on small screens */
+        gap: 5px 10px; /* Vertical and horizontal gap */
+    }
+        /* Optional: subtle background striping */
+        .item-list li:nth-child(even) {
+            background-color: var(--form-input-invalid-background-color);
+        }
+    /* Player name part */
+    .item-list .player-name {
+        font-weight: 600;
+        flex-grow: 1; /* Allow name to take available space */
+        margin-right: 10px; /* Space before meta/button */
+        word-break: break-all; /* Break long names */
+    }
+    /* Additional player info (e.g., ignores limit) */
+    .item-list .player-meta {
+        font-size: 0.9em;
+        color: #bbb;
+        margin-right: 10px; /* Space before button */
+        flex-shrink: 0; /* Prevent shrinking */
+    }
+/* Special styling for the "No players" message */
+#no-players-message {
+    font-style: italic;
+    color: #aaa;
+    background-color: transparent !important; /* Override striping */
+    border: none;
+    padding: 10px 15px;
+    justify-content: center; /* Center the text */
+}
+
+/* Remove button within list items */
+.item-list .remove-button {
+    /* Inherits base from buttons.css, specific overrides here */
+    padding: 3px 8px;
+    margin: 0; /* Reset margin from base button style */
+    font-size: 0.85em;
+    line-height: 1.2;
+    /* Colors already defined in buttons.css (.danger-button) */
+    flex-shrink: 0; /* Prevent shrinking */
+}
+/* Hover/Active states defined in buttons.css */
+
+
+/* ==========================================================================
+   Login Form Specific Styles
+   ========================================================================== */
+
+/* Wrapper for the login form for centering and styling */
+.login-wrapper {
+    max-width: 450px; /* Limit width */
+    margin: 40px auto; /* Center horizontally */
+    padding: 25px 30px;
+    background-color: var(--container-background-color); /* Slightly different background */
+    border: 1px solid var(--form-input-border-color);
+    border-radius: 0;
+}
+
+/* Container for the login submit button */
+.login-actions {
+    text-align: center; /* Center button */
+    border-top: none; /* No separator line needed */
+    padding-top: 10px;
+    margin-top: 15px;
+}
+    /* Style the login button itself */
+    .login-actions .main-button { /* Assuming login uses .main-button */
+        margin-left: 0; /* Reset margin if centered */
+        width: 100%; /* Full width button */
+        padding: 10px 15px; /* Larger padding */
+    }
+
+/* ==========================================================================
+   Task Scheduler Trigger Group Styling
+   Moved from controls.css as it relates to form layout
+   ========================================================================== */
+
+/* Container for a single trigger definition */
+.trigger-group {
+    border: 1px solid var(--form-input-border-color);
+    padding: 18px 20px;
+    margin-bottom: 20px; /* Space between trigger groups */
+    background-color: var(--container-background-color); /* Slightly different background */
+    border-radius: 0;
+    box-sizing: border-box;
+    position: relative; /* For absolute positioning of remove button */
+}
+
+    /* Header within the trigger group */
+    /* H3 is used in the JS, ensure it exists or adjust selector */
+    .trigger-group h3 {
+        margin: 0 0 15px 0; /* Space below title */
+        font-size: 1.2em;
+        font-weight: 600;
+        color: var(--form-label-text-color);
+        border-bottom: 1px solid var(--form-input-border-color);
+        padding-bottom: 10px;
+    }
+
+/* Remove button for trigger group */
+.remove-trigger-btn { /* Renamed class for clarity */
+    /* Style as a small danger button */
+    display: inline-block;
+    padding: 2px 6px;
+    margin: 0;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 0;
+    cursor: pointer;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    vertical-align: middle;
+    box-sizing: border-box;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    text-shadow: none;
+    box-shadow: none;
+    font-size: 1.1em;
+    line-height: 1;
+    background-color: #D32F2F;
+    border-color: #E57373;
+    color: #fff;
+    /* Position top-right */
+    position: absolute;
+    top: 10px; /* Adjust as needed */
+    right: 10px; /* Adjust as needed */
+}
+
+    .remove-trigger-btn:hover {
+        background-color: #E53935;
+        border-color: #EF9A9A;
+    }
+
+    .remove-trigger-btn:active {
+        background-color: #B71C1C;
+        border-color: #D32F2F;
+    }
+
+/* Container for dynamically added trigger fields */
+.trigger-fields-container {
+    padding-left: 0; /* Reset padding */
+    margin-top: 15px; /* Space below type selector */
+}
+
+/* "Add Trigger" button style */
+.add-trigger-btn { /* Renamed class */
+    /* Style as a primary (green) button */
+    display: inline-block;
+    padding: 8px 16px;
+    margin: 10px 0 20px 0;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 0;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    vertical-align: middle;
+    box-sizing: border-box;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.1s ease;
+    text-shadow: none;
+    box-shadow: none;
+    background-color: #4CAF50;
+    border-color: #66BB6A;
+    color: #fff;
+}
+
+    .add-trigger-btn:hover {
+        background-color: #6fcf97;
+        border-color: #81e0aa;
+    }
+
+    .add-trigger-btn:active {
+        background-color: #388E3C;
+        border-color: #4CAF50;
+    }
+/* Ensure consistent styling with other buttons */
+
+
+/* ==========================================================================
+   Mobile Responsive Adjustments for Forms
+   ========================================================================== */
+
+@media (max-width: 768px) { /* Tablets */
+    /* Make most inputs full width for easier tapping */
+    .form-input,
+    input[type="text"].form-input,
+    input[type="email"].form-input,
+    input[type="password"].form-input,
+    input[type="number"].form-input,
+    input[type="date"].form-input,
+    input[type="time"].form-input,
+    input[type="datetime-local"].form-input,
+    textarea.form-input,
+    select.form-input,
+    .server-dropdown {
+        width: 100%; /* Override default 'auto' width */
+        max-width: 100%; /* Ensure it doesn't exceed container */
+        padding: 10px 12px; /* Slightly larger padding */
+    }
+
+    select.form-input, .server-dropdown {
+        padding-right: 30px; /* Maintain space for arrow */
+    }
+
+
+    .form-grid {
+        /* Grid might wrap naturally, adjust minmax if needed */
+        /* grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); */
+        gap: 15px 20px; /* Reduce gaps */
+    }
+
+    .form-actions {
+        text-align: center; /* Center action buttons */
+    }
+
+        .form-actions .main-button,
+        .form-actions .action-button,
+        .form-actions .action-link {
+            margin: 5px; /* Adjust margin */
+            display: inline-block; /* Ensure they align if enough space */
+        }
+
+    /* Server Selection adjustments */
+    .server-selection-section {
+        text-align: center;
+    }
+
+    .select-server-group, .action-buttons-group {
+        display: block; /* Stack elements vertically */
+        margin-right: 0;
+        margin-bottom: 10px;
+        width: 100%;
+    }
+
+    .select-label {
+        display: block;
+        text-align: center;
+        margin-bottom: 5px;
+    }
+
+    .server-dropdown {
+        display: block; /* Make dropdown block */
+        width: 100%; /* Full width */
+        max-width: 90%; /* Limit width */
+        margin: 0 auto; /* Center */
+    }
+
+    .action-buttons-group .action-button, /* Target buttons inside */
+    .action-buttons-group .start-button,
+    .action-buttons-group .danger-button {
+        display: inline-block; /* Keep buttons inline */
+        margin: 3px;
+    }
+
+    /* Item List adjustments */
+    .item-list li {
+        padding: 8px 12px;
+    }
+    /* Stack list item content */
+    .item-list .player-name {
+        flex-basis: 100%;
+        margin-bottom: 3px;
+    }
+
+    .item-list .player-meta {
+        flex-basis: auto;
+        margin-right: 10px;
+    }
+
+    .item-list .remove-button {
+        margin-left: auto;
+    }
+    /* Push button right */
+
+
+    /* Login Form adjustments */
+    .login-wrapper {
+        margin: 20px 15px;
+        padding: 20px;
+    }
+    /* Reduce margins/padding */
+}
+
+@media (max-width: 600px) { /* Smaller tablets / Large phones */
+    .form-grid {
+        grid-template-columns: 1fr; /* Force single column */
+        gap: 15px 0;
+    }
+        /* Ensure form groups take full width in single column */
+        .form-grid > .form-group {
+            width: 100%;
+        }
+
+    /* Make toggle switch layout potentially stack label above */
+    .form-group-toggle-container {
+        flex-direction: column; /* Stack label group and switch */
+        align-items: flex-start; /* Align left */
+        padding: 8px 0;
+    }
+
+    .form-label-group {
+        padding-right: 0; /* No need for right padding */
+        margin-bottom: 8px; /* Space below text */
+    }
+
+    .toggle-switch-container {
+        margin-left: 0; /* Reset margin */
+    }
+}
+
+@media (max-width: 480px) { /* Mobile phones */
+    /* Further adjust fonts/padding if needed */
+    body {
+        font-size: 15px;
+    }
+    /* Reduce base font slightly */
+    .form-input, input[type=text].form-input {
+        font-size: 1em;
+        padding: 9px 10px;
+    }
+    /* Use relative font size */
+    .form-actions .main-button {
+        font-size: 0.95em;
+        padding: 8px 12px;
+    }
+
+    .item-list li {
+        padding: 8px 10px;
+    }
+}
+
+
+/* ==========================================================================
+   Table Input Styling (If using inputs directly within tables)
+   ========================================================================== */
+
+/* Style inputs used inside table cells */
+.server-table td .form-input {
+    width: auto; /* Allow shrinking */
+    min-width: 100px; /* Prevent becoming too small */
+    display: inline-block; /* Keep inline unless cell forces block */
+    vertical-align: middle;
+    margin: 0; /* Reset margin */
+    padding: 5px 8px; /* Smaller padding */
+    font-size: 0.9em; /* Match typical table font size */
+}
+
+/* Adjustments for stacked table view (using data-label) */
+.server-table td[data-label] .form-input {
+    width: auto; /* Reset width if needed */
+    max-width: 60%; /* Prevent taking full pseudo-row width */
+    float: right; /* Example: Align input to the right */
+    /* Adjust display, float, width as needed for stacked layout */
+}
+/* Ensure validation errors clear floats in stacked view */
+.server-table td[data-label] .validation-error,
+.server-table td[data-label] .form-error {
+    clear: both;
+    padding-top: 5px;
+    float: none;
+    text-align: right; /* Match input alignment if floated right */
+}

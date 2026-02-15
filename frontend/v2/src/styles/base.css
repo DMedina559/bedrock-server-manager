@@ -195,12 +195,9 @@ body {
     /* --- Anchored Positioning --- */
     top: 49%;
     right: 15%;
-    margin-left: 5px;
-    */ /* Add a small gap */
-    transform: translateY(-50%) rotate(-15deg);
-    */ /* Center vertically & rotate */
+    margin-left: 5px; /* Add a small gap */
+    transform: translateY(-50%) rotate(-15deg); /* Center vertically & rotate */
     transform-origin: left center;
-    */
     /* --- Visual Styling --- */
     font-family: "Arial Black", Gadget, sans-serif;
     font-weight: bold;

@@ -4,11 +4,12 @@ FastAPI router for viewing audit logs.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, ConfigDict
 
 from ...context import AppContext
 from ...db.models import AuditLog
@@ -22,6 +23,16 @@ router = APIRouter(
     prefix="/audit-log",
     tags=["Audit Log"],
 )
+
+
+class AuditLogResponse(BaseModel):
+    id: int
+    user_id: int
+    action: str
+    details: Optional[Dict[str, Any]] = None
+    timestamp: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 def create_audit_log(
@@ -56,3 +67,17 @@ async def audit_log_page(
         "audit_log.html",
         {"logs": logs, "current_user": current_user},
     )
+
+
+@router.get("/list", response_model=List[AuditLogResponse])
+async def list_audit_logs_api(
+    current_user: UserSchema = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves audit logs as JSON.
+    """
+    with app_context.db.session_manager() as db:  # type: ignore
+        logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()
+        # Convert timestamp to string if needed, or Pydantic handles datetime
+        return logs

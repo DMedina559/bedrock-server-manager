@@ -1,28 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "../ToastContext";
-import { useTheme } from "../ThemeContext";
+import { get, post } from "../api";
+import { Save, RefreshCw } from "lucide-react";
 
 const BSMSettings = () => {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
-  const { changeTheme } = useTheme();
 
   useEffect(() => {
     fetchSettings();
   }, []);
 
   const fetchSettings = async () => {
+    setLoading(true);
     try {
-      const response = await fetch("/api/settings");
-      if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
+      const data = await get("/api/settings");
+      if (data && data.settings) {
+        setSettings(data.settings);
       } else {
         addToast("Failed to load settings", "error");
       }
     } catch (error) {
-      addToast("Error fetching settings", "error");
+      addToast(error.message || "Error fetching settings", "error");
     } finally {
       setLoading(false);
     }
@@ -33,37 +33,35 @@ const BSMSettings = () => {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(settings),
-      });
-
-      if (response.ok) {
-        addToast("Settings saved successfully.", "success");
-      } else {
-        addToast("Failed to save settings.", "error");
-      }
+      await post("/api/settings", settings);
+      addToast("Settings saved successfully.", "success");
     } catch (error) {
-      addToast("Error saving settings.", "error");
+      addToast(error.message || "Failed to save settings.", "error");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleReload = async () => {
+      setLoading(true);
+      try {
+          await post("/api/settings/reload");
+          addToast("Settings reloaded from disk.", "success");
+          fetchSettings();
+      } catch (error) {
+          addToast(error.message || "Failed to reload settings.", "error");
+          setLoading(false);
+      }
+  };
+
   const handleChange = (key, value) => {
-    // Handle nested keys if necessary, but API likely returns flat or we flatten it.
-    // The API returns a dict.
     setSettings((prev) => ({
       ...prev,
       [key]: value,
     }));
   };
 
-  // Helper to categorize settings if possible, otherwise render list
-  // Legacy UI groups them by prefixes like 'web.', 'backup.', etc.
+  // Group settings by prefix
   const groupedSettings = Object.entries(settings).reduce(
     (acc, [key, value]) => {
       const prefix = key.split(".")[0];
@@ -74,105 +72,68 @@ const BSMSettings = () => {
     {},
   );
 
-  if (loading && Object.keys(settings).length === 0)
-    return (
-      <div className="container" style={{ padding: "20px" }}>
-        Loading...
-      </div>
-    );
-
   return (
-    <div className="container" style={{ padding: "20px" }}>
-      <div className="header" style={{ marginBottom: "20px" }}>
+    <div className="container">
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>BSM Settings</h1>
+        <button className="action-button secondary" onClick={handleReload} disabled={loading}>
+            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Reload from Disk
+        </button>
       </div>
 
-      <form onSubmit={handleSave} className="form-group">
-        {Object.entries(groupedSettings).map(([group, items]) => (
-          <div key={group} style={{ marginBottom: "30px" }}>
-            <h2
-              style={{
-                textTransform: "capitalize",
-                borderBottom: "1px solid var(--border-color)",
-                paddingBottom: "10px",
-                marginBottom: "15px",
-              }}
-            >
-              {group} Settings
-            </h2>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-                gap: "20px",
-                background: "var(--container-background-color)",
-                padding: "20px",
-                borderRadius: "8px",
-                border: "1px solid var(--border-color)",
-              }}
-            >
-              {items.map((item) => (
-                <div
-                  key={item.key}
-                  style={{ display: "flex", flexDirection: "column" }}
-                >
-                  <label
-                    htmlFor={item.key}
-                    className="form-label"
-                    style={{
-                      marginBottom: "5px",
-                      fontWeight: "bold",
-                      fontSize: "0.9em",
-                    }}
-                  >
-                    {item.key}
-                  </label>
-                  {typeof item.value === "boolean" ? (
-                    <select
-                      id={item.key}
-                      className="form-input"
-                      value={item.value.toString()}
-                      onChange={(e) =>
-                        handleChange(item.key, e.target.value === "true")
-                      }
-                      style={{ width: "100%", padding: "8px" }}
+      {loading && Object.keys(settings).length === 0 ? (
+        <div style={{ textAlign: "center", padding: "20px" }}>Loading...</div>
+      ) : (
+        <form onSubmit={handleSave} className="form-group">
+            {Object.entries(groupedSettings).map(([group, items]) => (
+            <div key={group} style={{ marginBottom: "30px", background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+                <h3 style={{ textTransform: "capitalize", margin: "0 0 15px 0", paddingBottom: "10px", borderBottom: "1px solid var(--border-color)" }}>
+                {group} Settings
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
+                {items.map((item) => (
+                    <div key={item.key} style={{ display: "flex", flexDirection: "column" }}>
+                    <label
+                        htmlFor={item.key}
+                        className="form-label"
+                        style={{ marginBottom: "5px", fontWeight: "bold", fontSize: "0.9em" }}
                     >
-                      <option value="true">True</option>
-                      <option value="false">False</option>
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      id={item.key}
-                      className="form-input"
-                      value={item.value}
-                      onChange={(e) => handleChange(item.key, e.target.value)}
-                      style={{ width: "100%", padding: "8px" }}
-                    />
-                  )}
+                        {item.key}
+                    </label>
+                    {typeof item.value === "boolean" ? (
+                        <select
+                        id={item.key}
+                        className="form-input"
+                        value={item.value.toString()}
+                        onChange={(e) =>
+                            handleChange(item.key, e.target.value === "true")
+                        }
+                        >
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                        </select>
+                    ) : (
+                        <input
+                        type="text"
+                        id={item.key}
+                        className="form-input"
+                        value={item.value}
+                        onChange={(e) => handleChange(item.key, e.target.value)}
+                        />
+                    )}
+                    </div>
+                ))}
                 </div>
-              ))}
             </div>
-          </div>
-        ))}
+            ))}
 
-        <div
-          style={{
-            marginTop: "20px",
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <button
-            type="submit"
-            className="button button-primary"
-            disabled={loading}
-            style={{ padding: "10px 20px", fontSize: "1em" }}
-          >
-            Save Settings
-          </button>
-        </div>
-      </form>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button type="submit" className="action-button" disabled={loading}>
+                <Save size={16} style={{ marginRight: "5px" }} /> Save Settings
+            </button>
+            </div>
+        </form>
+      )}
     </div>
   );
 };

@@ -11,6 +11,7 @@ This module provides endpoints for:
 """
 
 import logging
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
@@ -50,6 +51,19 @@ async def users_page(
     )
 
 
+@router.get("/list", response_model=List[UserSchema])
+async def list_users_api(
+    current_user: UserSchema = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves the list of users as JSON.
+    """
+    with app_context.db.session_manager() as db:  # type: ignore
+        users = db.query(User).all()
+        return users
+
+
 class CreateUserRequest(BaseModel):
     """
     Request payload for creating a new user.
@@ -76,7 +90,7 @@ class UpdateUserRoleRequest(BaseModel):
     role: str
 
 
-@router.post("/create", include_in_schema=False)
+@router.post("/create")
 async def create_user(
     data: CreateUserRequest,
     current_user: UserSchema = Depends(get_admin_user),
@@ -115,7 +129,7 @@ async def create_user(
         return {"status": "success"}
 
 
-@router.post("/{user_id}/delete", include_in_schema=False)
+@router.post("/{user_id}/delete")
 async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -144,7 +158,7 @@ async def delete_user(
     )
 
 
-@router.post("/{user_id}/disable", include_in_schema=False)
+@router.post("/{user_id}/disable")
 async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -187,7 +201,7 @@ async def disable_user(
     )
 
 
-@router.post("/{user_id}/enable", include_in_schema=False)
+@router.post("/{user_id}/enable")
 async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -216,7 +230,7 @@ async def enable_user(
     )
 
 
-@router.post("/{user_id}/role", include_in_schema=False)
+@router.post("/{user_id}/role")
 async def update_user_role(
     user_id: int,
     data: UpdateUserRoleRequest,

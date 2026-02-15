@@ -1,0 +1,346 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/buttons.css */
+/**
+ * Button and Action Link Styles
+ *
+ * Defines various button styles inspired by Minecraft's Ore UI,
+ * including default, primary (start), danger (stop/delete),
+ * main menu, and navigation action styles. Includes hover/active states
+ * and responsive adjustments.
+ */
+
+/* ==========================================================================
+   Base Button/Link Style (Ore UI Inspired)
+   ========================================================================== */
+
+/* Apply base styles to all common button/link classes used for actions */
+.action-button, /* Generic action button */
+.start-button, /* Primary action (e.g., Start) */
+.danger-button, /* Destructive action (e.g., Stop, Delete) */
+.action-link, /* Links styled as buttons */
+.main-menu-buttons button.main-button, /* Buttons specifically in main menu */
+.main-menu-buttons a.main-button, /* Links styled as buttons in main menu */
+.item-list .remove-button, /* Small remove buttons */
+.nav-action-button /* Buttons in sidebar/navigation */ {
+    /* --- Display & Box Model --- */
+    display: inline-block; /* Allow margin/padding, flow inline */
+    margin: 4px; /* Default spacing around buttons */
+    border-width: 1px; /* Standard border width */
+    border-style: solid; /* Solid border */
+    border-radius: 0; /* Sharp corners */
+    box-sizing: border-box; /* Include padding/border in element's total width/height */
+    /* --- Appearance & Text --- */
+    padding: 8px 16px; /* Default inner spacing (top/bottom, left/right) */
+    cursor: pointer; /* Indicate interactivity */
+    font-size: 1em; /* Use base font size */
+    font-weight: 600; /* Semi-bold text */
+    line-height: 1.4; /* Consistent line height */
+    text-align: center; /* Center text within button */
+    text-decoration: none; /* Remove underline from links styled as buttons */
+    vertical-align: middle; /* Align nicely with adjacent inline elements */
+    white-space: nowrap; /* Prevent text from wrapping onto multiple lines */
+    user-select: none; /* Prevent text selection on buttons */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* --- Transitions --- */
+    /* Smooth transitions for hover/active states */
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.1s ease;
+    /* --- Reset Browser Defaults --- */
+    text-shadow: none; /* Remove default text shadows */
+    box-shadow: none; /* Remove default box shadows */
+    appearance: none; /* Remove default OS styling for <button> elements */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    /* --- Default Color Theme (Dark Grey Button) --- */
+    /* This is the fallback if no specific color class is applied */
+    background-color: var(--button-background-color); /* Medium-dark grey background */
+    border-color: var(--button-border-color); /* Slightly lighter border */
+    color: var(--button-text-color); /* Light text color */
+}
+
+
+    /* ==========================================================================
+   Hover & Active States
+   ========================================================================== */
+
+    /* --- Default (Grey) --- */
+    .action-button:hover,
+    .action-link:hover {
+        background-color: var(--button-hover-background-color); /* Lighter grey on hover */
+        border-color: var(--button-hover-border-color);
+        color: var(--button-hover-text-color); /* Ensure text stays bright */
+    }
+
+    .action-button:active,
+    .action-link:active {
+        background-color: var(--button-active-background-color); /* Slightly darker grey when clicked */
+        border-color: var(--button-active-border-color);
+        /* Consider adding a subtle inset shadow for pressed effect if desired */
+        /* box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); */
+    }
+
+    /* --- Primary (Green) --- */
+    /* Applied to .start-button and default .nav-action-button */
+    .start-button:hover,
+    .nav-action-button:hover:not(.danger-button) { /* Exclude danger variant */
+        background-color: var(--primary-button-hover-background-color); /* Brighter green on hover */
+        border-color: var(--primary-button-hover-border-color);
+        color: var(--primary-button-text-color);
+    }
+
+    .start-button:active,
+    .nav-action-button:active:not(.danger-button) {
+        background-color: var(--primary-button-active-background-color); /* Darker green when clicked */
+        border-color: var(--primary-button-active-border-color); /* Slightly lighter border than active bg */
+        /* box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); */
+    }
+
+    /* --- Danger (Red) --- */
+    /* Applied to .danger-button, .remove-button, .nav-action-button.danger-button */
+    .danger-button:hover,
+    .item-list .remove-button:hover,
+    .nav-action-button.danger-button:hover {
+        background-color: var(--danger-button-hover-background-color); /* Brighter red on hover */
+        border-color: var(--danger-button-hover-border-color);
+        color: var(--danger-button-text-color);
+    }
+
+    .danger-button:active,
+    .item-list .remove-button:active,
+    .nav-action-button.danger-button:active {
+        background-color: var(--danger-button-active-background-color); /* Darker red when clicked */
+        border-color: var(--danger-button-active-border-color); /* Slightly lighter border than active bg */
+        color: var(--danger-button-text-color);
+        /* box-shadow: inset 0 1px 2px rgba(0,0,0,0.25); */
+    }
+
+    /* --- Main Menu (Light Grey) --- */
+    .main-menu-buttons button.main-button:hover,
+    .main-menu-buttons a.main-button:hover {
+        background-color: var(--button-hover-background-color); /* Lighter grey on hover */
+        border-color: var(--button-hover-border-color);
+        color: var(--button-hover-text-color); /* Darker text for contrast */
+    }
+
+    .main-menu-buttons button.main-button:active,
+    .main-menu-buttons a.main-button:active {
+        background-color: var(--button-active-background-color); /* Darker grey when clicked */
+        border-color: var(--button-active-border-color);
+        /* box-shadow: inset 0 1px 2px rgba(0,0,0,0.1); */
+    }
+
+
+/* ==========================================================================
+   Specific Button Color Styles (Resting State)
+   ========================================================================== */
+
+/* Primary / Start Button (Green) */
+.start-button {
+    background-color: var(--primary-button-background-color); /* Primary green */
+    border-color: var(--primary-button-border-color); /* Slightly lighter green border */
+    color: var(--primary-button-text-color);
+}
+
+/* Danger / Stop / Delete Button (Red) */
+.danger-button,
+.item-list .remove-button { /* Style remove button as danger */
+    background-color: var(--danger-button-background-color); /* Primary red */
+    border-color: var(--danger-button-border-color); /* Slightly lighter red border */
+    color: var(--danger-button-text-color);
+}
+
+/* Main Menu Buttons (Distinct Light Grey Style) */
+.main-menu-buttons button.main-button,
+.main-menu-buttons a.main-button {
+    background-color: var(--button-background-color); /* Lighter grey background */
+    border-color: var(--button-border-color); /* Even lighter border */
+    color: var(--button-text-color); /* Dark text */
+    font-weight: 600; /* Ensure consistent weight */
+}
+
+/* Navigation Action Button (Sidebar/Header) */
+.nav-action-button {
+    /* Specific layout adjustments */
+    margin: 15px 15px 5px 15px; /* Custom margins */
+    padding-top: 8px;
+    padding-bottom: 8px;
+    text-align: center;
+    font-weight: bold;
+    /* Default color is Green (Primary) */
+    background-color: var(--primary-button-background-color);
+    border: 1px solid var(--primary-button-border-color);
+    border-left: 3px solid var(--primary-button-background-color); /* Distinctive left border */
+    color: var(--primary-button-text-color);
+    display: block; /* Make it block level for full width */
+    width: auto; /* Reset width if block */
+}
+    /* Danger variant for Navigation Action Button */
+    .nav-action-button.danger-button {
+        background-color: var(--danger-button-background-color); /* Red */
+        border-color: var(--danger-button-border-color);
+        border-left-color: var(--danger-button-background-color); /* Match background */
+        color: var(--danger-button-text-color);
+    }
+
+    .nav-action-button.install-server-button {
+        color: var(--primary-button-text-color);
+    }
+
+
+/* ==========================================================================
+   Contextual / Size Overrides
+   ========================================================================== */
+
+/* Smaller buttons used within lists (e.g., remove item) */
+.item-list .remove-button {
+    padding: 3px 8px; /* Reduced padding */
+    margin: 0 0 0 5px; /* Specific margin (only left) */
+    font-size: 0.85em; /* Smaller font */
+    line-height: 1.2; /* Adjust line height for smaller size */
+    vertical-align: baseline; /* Align better with text */
+}
+
+/* Smaller buttons within server status cards */
+.server-card-actions .action-link,
+.server-card-actions .action-button,
+.server-card-actions .start-button,
+.server-card-actions .danger-button {
+    margin: 1px; /* Tighter margin */
+    padding: 3px 6px; /* Smaller padding */
+    font-size: 0.8em; /* Smaller font */
+    line-height: 1.2;
+}
+
+/* Buttons within generic action sections (e.g., below forms) */
+.section-actions .action-link,
+.section-actions .action-button,
+.section-actions .start-button,
+.section-actions .danger-button {
+    /* Use default padding/size unless specific override needed */
+    margin: 4px; /* Default margin */
+    /* Example override: Maybe larger bottom margin */
+    /* margin-bottom: 10px; */
+}
+
+
+/* ==========================================================================
+   Layout Helpers for Button Groups
+   ========================================================================== */
+
+/* Container for inline action buttons often found in table rows */
+.actions {
+    margin: -2px; /* Negative margin to counteract individual button margins for tighter grouping */
+    display: inline-block; /* Don't take full width */
+    line-height: 1; /* Prevent container from becoming too tall */
+}
+
+    .actions > * { /* Direct children (buttons/links) */
+        margin: 2px; /* Restore standard margin for spacing between elements */
+        vertical-align: middle; /* Align nicely on the same line */
+    }
+
+/* General container for grouping related buttons */
+.button-group {
+    margin-bottom: 15px; /* Space below the group */
+    /* Optional Flex layout for alignment control */
+    /* display: flex; */
+    /* flex-wrap: wrap; */ /* Allow wrapping on small screens */
+    /* gap: 8px; */ /* Spacing between buttons in flex */
+}
+    /* Ensure buttons inside group have standard margin */
+    .button-group .action-link,
+    .button-group .action-button,
+    .button-group .main-button {
+        margin: 4px;
+    }
+
+/* Link often used for navigating back */
+.navigation-link {
+    display: block; /* Make it block for centering */
+    margin-top: 25px; /* Space above */
+    text-align: center;
+}
+
+/* Container specifically for main menu buttons */
+.main-menu-buttons {
+    text-align: center;
+    padding: 10px 0; /* Add some vertical padding */
+}
+
+
+/* ==========================================================================
+   Responsive Adjustments (Mobile)
+   ========================================================================== */
+
+@media (max-width: 768px) { /* Tablets and smaller */
+    /* Slightly smaller buttons overall */
+    .action-button, .start-button, .danger-button, .action-link,
+    .main-menu-buttons button.main-button,
+    .main-menu-buttons a.main-button,
+    .nav-action-button {
+        padding: 6px 12px;
+        margin: 3px;
+        font-size: 0.95em;
+    }
+
+    /* Adjust specific context overrides */
+    .item-list .remove-button {
+        padding: 2px 6px;
+        font-size: 0.8em;
+    }
+
+    .server-card-actions .action-link,
+    .server-card-actions .action-button,
+    .server-card-actions .start-button,
+    .server-card-actions .danger-button {
+        padding: 3px 6px; /* Keep padding same as other small buttons */
+        font-size: 0.8em; /* Keep size same as other small buttons */
+    }
+
+    /* Center align button groups and actions containers */
+    .button-group {
+        text-align: center;
+    }
+
+    .actions {
+        display: block;
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) { /* Mobile phones */
+    /* Further reduce padding/size */
+    .action-button, .start-button, .danger-button, .action-link,
+    .main-menu-buttons button.main-button,
+    .main-menu-buttons a.main-button,
+    .nav-action-button {
+        padding: 6px 10px; /* Increase padding slightly for touch targets */
+        font-size: 0.9em;
+    }
+
+    /* Adjust overrides */
+    .item-list .remove-button {
+        padding: 3px 6px; /* Slightly larger touch target */
+        font-size: 0.8em;
+    }
+
+    .server-card-actions .action-link,
+    .server-card-actions .action-button,
+    .server-card-actions .start-button,
+    .server-card-actions .danger-button {
+        padding: 3px 7px;
+        font-size: 0.75em;
+    }
+
+    /* Stack main menu buttons for better mobile layout */
+    .main-menu-buttons button.main-button,
+    .main-menu-buttons a.main-button {
+        display: block; /* Make them full width */
+        width: 90%; /* Control width */
+        max-width: 300px; /* Max width */
+        margin-left: auto;
+        margin-right: auto;
+        margin-top: 10px; /* Increase vertical spacing */
+        margin-bottom: 10px;
+    }
+}

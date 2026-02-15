@@ -1,0 +1,298 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/tables.css */
+/**
+ * Table Styling
+ *
+ * Defines styles for tables used in the application, primarily the server status list.
+ * Includes base Ore UI-inspired styling, a responsive wrapper for horizontal scrolling,
+ * and an optional, commented-out pattern for stacking table content on mobile devices.
+ */
+
+/* ==========================================================================
+   Responsive Wrapper & Server List Section
+   ========================================================================== */
+
+/* Container for the entire server list section */
+.server-list-section {
+    margin-bottom: 25px; /* Space below the table section */
+    box-sizing: border-box;
+}
+
+/* Wrapper to enable horizontal scrolling on smaller screens */
+.table-responsive-wrapper {
+    overflow-x: auto; /* Add horizontal scrollbar when content overflows */
+    width: 100%; /* Take full width of its container */
+    border: 1px solid var(--table-border-color); /* Border around the scrollable area */
+    border-radius: 0; /* Sharp corners */
+    background-color: var(--container-background-color); /* Background for the table area */
+    -webkit-overflow-scrolling: touch; /* Smoother scrolling on iOS */
+}
+
+/* ==========================================================================
+   Base Table Styles (Ore UI Inspired)
+   ========================================================================== */
+
+.server-table {
+    width: 100%; /* Try to take full width of wrapper */
+    /* Min-width ensures table doesn't collapse too much before scrollbar appears */
+    min-width: 600px; /* Adjust based on content */
+    border-collapse: collapse; /* Merge cell borders for cleaner look */
+    background-color: transparent; /* Let wrapper handle background */
+    border: none; /* Remove default table border */
+    table-layout: auto; /* Column widths adjust to content */
+    box-sizing: border-box;
+}
+
+    /* ==========================================================================
+   Table Header (<th>) Styles
+   ========================================================================== */
+
+    .server-table th {
+        background-color: var(--table-header-background-color); /* Header background */
+        color: var(--table-header-text-color); /* Header text color */
+        font-weight: 600; /* Semi-bold */
+        text-align: left; /* Align text left */
+        padding: 12px 15px; /* Header cell padding */
+        /* Separator below header */
+        border-bottom: 2px solid var(--table-border-color);
+        /* Vertical separator between headers */
+        border-right: 1px solid var(--table-border-color);
+        vertical-align: middle; /* Center content vertically */
+        white-space: nowrap; /* Prevent header text wrapping */
+        box-sizing: border-box;
+        text-shadow: none; /* Remove any inherited shadow */
+    }
+        /* Remove right border from the last header cell */
+        .server-table th:last-child {
+            border-right: none;
+        }
+
+    /* ==========================================================================
+   Table Cells (<td>) Styles
+   ========================================================================== */
+
+    .server-table td {
+        border-bottom: 1px solid var(--table-border-color); /* Horizontal line between rows */
+        border-right: 1px solid var(--table-border-color); /* Vertical line between cells */
+        padding: 10px 15px; /* Cell padding */
+        text-align: left; /* Align text left */
+        font-size: 1em; /* Standard font size */
+        color: var(--text-color); /* Standard text color */
+        vertical-align: middle; /* Align content vertically */
+        /* Allow long words/content to break to prevent table distortion */
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        box-sizing: border-box;
+    }
+        /* Remove right border from the last cell in a row */
+        .server-table td:last-child {
+            border-right: none;
+        }
+
+    /* ==========================================================================
+   Table Row Styling
+   ========================================================================== */
+
+    /* Remove default browser striping */
+    .server-table tbody tr:nth-child(even) {
+        background-color: transparent;
+    }
+    /* Optional: Add a subtle background change on row hover */
+    .server-table tbody tr:hover {
+        background-color: var(--table-row-hover-background-color);
+    }
+
+    /* ==========================================================================
+   "No Servers Found" Message Styling
+   ========================================================================== */
+
+    /* Option 1: Style a dedicated row within the table */
+    /* Requires <tr class="no-servers-row"><td class="no-servers" colspan="X">...</td></tr> */
+    .server-table tr.no-servers-row td.no-servers {
+        text-align: center;
+        font-style: italic;
+        color: #aaa; /* Lighter grey */
+        background-color: transparent !important; /* Override hover/striping */
+        border: none; /* Remove cell borders for this row */
+        padding: 25px; /* More padding for emphasis */
+    }
+
+/* Option 2: Style a separate element placed after the table wrapper */
+/* Example: <div class="no-servers-message">...</div> */
+.no-servers-message {
+    padding: 20px;
+    text-align: center;
+    font-style: italic;
+    color: #aaa;
+    background-color: #3a3a3a; /* Match table wrapper bg */
+    border: 1px dashed #666; /* Dashed border */
+    border-radius: 0;
+    margin-top: 15px; /* Space above message */
+}
+
+
+/* ==========================================================================
+   Mobile Responsive Adjustments (Standard Table)
+   ========================================================================== */
+
+@media (max-width: 768px) { /* Tablets and smaller */
+    /* Adjust min-width to trigger horizontal scroll sooner if needed */
+    .server-table {
+        min-width: 550px;
+    }
+
+        /* Reduce padding and font size slightly */
+        .server-table th {
+            padding: 10px 12px;
+            font-size: 0.95em;
+        }
+
+        .server-table td {
+            padding: 8px 12px;
+            font-size: 0.95em;
+        }
+
+        /* Adjust padding for "no servers" message */
+        .no-servers-message,
+        .server-table tr.no-servers-row td.no-servers {
+            padding: 20px;
+            font-size: 0.95em;
+        }
+}
+
+
+@media (max-width: 480px) { /* Mobile phones */
+    /* Further adjust min-width if necessary */
+    .server-table {
+        min-width: 450px;
+    }
+
+        /* Further reduce padding/font size */
+        .server-table th {
+            padding: 8px 10px;
+            font-size: 0.9em;
+        }
+
+        .server-table td {
+            padding: 6px 10px;
+            font-size: 0.9em;
+        }
+
+        .no-servers-message,
+        .server-table tr.no-servers-row td.no-servers {
+            padding: 15px;
+            font-size: 0.9em;
+        }
+}
+
+/* ==========================================================================
+   OPTIONAL: Stacking Table Pattern (Alternative Mobile View)
+   ========================================================================== */
+/*
+   To use this pattern:
+   1. Uncomment this entire section.
+   2. Add the `data-label="..."` attribute to every `<td>` in your HTML table,
+      matching the corresponding `<th>` text.
+   3. Ensure the `.table-responsive-wrapper` exists around your table.
+   4. Consider hiding the standard "No Servers" table row (`.no-servers-row`)
+      and showing the separate `.no-servers-message` element instead in this view.
+*/
+/*
+@media (max-width: 768px) { // Adjust breakpoint as needed
+
+    // Disable horizontal scrolling on the wrapper when stacking
+    .table-responsive-wrapper {
+        overflow-x: visible;
+        border: none;
+        background-color: transparent;
+    }
+
+    // Reset table defaults for stacking layout
+    .server-table {
+        border: none;
+        min-width: initial; // Remove min-width
+        width: 100%;
+    }
+
+    // Hide the original table header (labels provided by ::before)
+    .server-table thead {
+        display: none;
+    }
+
+    // Style each table row like a card
+    .server-table tr {
+        display: block; // Stack rows vertically
+        margin-bottom: 15px; // Space between cards
+        border: 1px solid #555;
+        background-color: #404040; // Card background
+        border-radius: 0;
+    }
+    // Adjust hover effect for card-like rows
+    .server-table tbody tr:hover {
+        background-color: #484848;
+    }
+     // Remove background striping if it was applied
+    .server-table tbody tr:nth-child(even) {
+         background-color: #404040; // Same background for all cards
+     }
+
+    // Style table cells for stacking layout
+    .server-table td {
+        display: block; // Each cell takes full width
+        text-align: right; // Align cell content (value) to the right
+        padding-left: 45%; // Indent content to make space for the label (adjust %)
+        position: relative; // Needed for absolute positioning of the ::before label
+        border: none; // Remove default cell borders
+        border-bottom: 1px solid #555; // Separator line between 'fields' within a card
+        padding-top: 10px;
+        padding-bottom: 10px;
+        padding-right: 15px;
+        font-size: 1em; // Restore base font size if mobile reduced it
+        color: #eee;
+    }
+    // Remove bottom border from the last cell in each card
+    .server-table tr td:last-child {
+        border-bottom: none;
+    }
+
+    // Create labels using the ::before pseudo-element and data-label attribute
+    .server-table td::before {
+        content: attr(data-label); // Get text from data-label attribute in HTML
+        position: absolute;
+        // Position the label on the left side
+        left: 15px;
+        top: 10px; // Align with top padding
+        width: 40%; // Width for the label text (adjust %)
+        padding-right: 10px; // Space between label and value
+        white-space: nowrap; // Prevent label wrapping
+        text-align: left; // Align label text left
+        font-weight: 600; // Make label bold
+        color: #ccc; // Label color
+    }
+
+    // Specific adjustments for the 'Actions' column/cell in stacked view
+    .server-table td[data-label="Actions"] {
+        text-align: left; // Align action buttons left (or center)
+        padding-left: 15px; // Reset padding for actions cell
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+    .server-table td[data-label="Actions"]::before {
+         display: none; // Hide the "Actions:" label itself
+     }
+     // Adjust spacing for action buttons within the stacked cell
+     .server-table td[data-label="Actions"] button, // Target specific button classes if needed
+     .server-table td[data-label="Actions"] a {     // Or just button/a tags
+         margin: 2px 4px 2px 0; // Space out buttons
+         // Buttons should inherit styles from buttons.css
+     }
+
+     // Hide the table row version of "No Servers" in stacked view
+     .server-table tr.no-servers-row {
+         display: none;
+     }
+     // Ensure the separate "No Servers" message element is visible
+     .no-servers-message {
+          display: block;
+     }
+}
+*/

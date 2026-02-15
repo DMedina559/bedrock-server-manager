@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import useWebSocket from "../hooks/useWebSocket";
 import { useAuth } from "../AuthContext";
+import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
+import { post, get } from "../api";
 import {
   LineChart,
   Line,
@@ -9,285 +11,213 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  CartesianGrid,
 } from "recharts";
+import { Play, Square, RotateCcw, Terminal } from "lucide-react";
 
 const Monitor = () => {
-  const { isConnected, lastMessage, subscribe, unsubscribe, sendMessage } =
-    useWebSocket();
+  const { isConnected, lastMessage, subscribe, unsubscribe } = useWebSocket();
   const { user } = useAuth();
+  const { selectedServer } = useServer();
   const { addToast } = useToast();
-  const [logs, setLogs] = useState([]);
-  const [serverStatus, setServerStatus] = useState(null);
-  const [usageData, setUsageData] = useState([]);
+
+  const [processInfo, setProcessInfo] = useState(null);
+  const [usageHistory, setUsageHistory] = useState([]);
   const [command, setCommand] = useState("");
-  const logsEndRef = useRef(null);
   const [loadingAction, setLoadingAction] = useState(false);
 
-  useEffect(() => {
-    if (isConnected) {
-      subscribe("server_log");
-      subscribe("server_status");
-      subscribe("server_usage")
-    }
-
-    return () => {
-      if (isConnected) {
-        unsubscribe("server_log");
-        unsubscribe("server_status");
-        unsubscribe("server_usage");
+  const fetchStatus = useCallback(async () => {
+      if (!selectedServer) return;
+      try {
+          const data = await get(`/api/server/${selectedServer}/process_info`);
+          if (data && data.status === "success" && data.data?.process_info) {
+              setProcessInfo(data.data.process_info);
+          } else {
+              setProcessInfo(null);
+          }
+      } catch (error) {
+          console.warn("Failed to fetch initial status", error);
+          // Don't clear processInfo on error to avoid flickering, unless 404
+          if (error.status === 404) setProcessInfo(null);
       }
-    };
-  }, [isConnected]);
+  }, [selectedServer]);
 
+  // Subscribe to resource usage updates
   useEffect(() => {
-    if (lastMessage) {
-      if (lastMessage.topic === "server_log") {
-        setLogs((prev) => [...prev, lastMessage.data]);
-      } else if (lastMessage.topic === "server_status") {
-        setServerStatus(lastMessage.data);
-      } else if (lastMessage.topic === "server_usage") {
-        setUsageData((prev) => {
-          const newData = [
-            ...prev,
-            { ...lastMessage.data, time: new Date().toLocaleTimeString() },
-          ];
-          if (newData.length > 20) newData.shift(); // Keep last 20 points
-          return newData;
-        });
+    if (isConnected && selectedServer) {
+      const topic = `resource-monitor:${selectedServer}`;
+      subscribe(topic);
+
+      fetchStatus();
+
+      return () => {
+        unsubscribe(topic);
+      };
+    }
+  }, [isConnected, selectedServer, subscribe, unsubscribe, fetchStatus]);
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (lastMessage && selectedServer) {
+      const topic = `resource-monitor:${selectedServer}`;
+      if (lastMessage.topic === topic && lastMessage.type === "resource_update") {
+        const info = lastMessage.data?.process_info;
+        if (info) {
+          setProcessInfo(info);
+          setUsageHistory((prev) => {
+            const newPoint = {
+              time: new Date().toLocaleTimeString(),
+              cpu: info.cpu_percent || 0,
+              memory: info.memory_mb || 0,
+            };
+            // Limit history
+            const newData = [...prev, newPoint];
+            if (newData.length > 20) newData.shift();
+            return newData;
+          });
+        } else {
+            setProcessInfo(null);
+        }
       }
     }
-  }, [lastMessage]);
+  }, [lastMessage, selectedServer]);
 
-  // Auto-scroll
-  useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [logs]);
 
-  const handleCommand = (e) => {
+  const handleCommand = async (e) => {
     e.preventDefault();
-    if (command.trim()) {
-      sendMessage({ action: "command", command: command });
-      setCommand("");
-    }
-  };
+    if (!command.trim()) return;
+    if (!selectedServer) return;
 
-  const sendAction = async (action) => {
-    if (loadingAction) return;
     setLoadingAction(true);
-    addToast(`Sending ${action} command...`, "info");
-
     try {
-      const response = await fetch(`/api/server/${action}`, { method: "POST" });
-      if (response.ok) {
-        addToast(`Server ${action} command sent successfully.`, "success");
-      } else {
-        const data = await response.json();
-        addToast(
-          `Failed to ${action} server: ${data.detail || "Unknown error"}`,
-          "error",
-        );
-      }
+      await post(`/api/server/${selectedServer}/send_command`, { command: command.trim() });
+      addToast("Command sent successfully.", "success");
+      setCommand("");
     } catch (error) {
-      addToast(`Error communicating with backend.`, "error");
+      addToast(error.message || "Failed to send command.", "error");
     } finally {
       setLoadingAction(false);
     }
   };
 
+  const sendAction = async (action) => {
+    if (loadingAction || !selectedServer) return;
+
+    setLoadingAction(true);
+    addToast(`Sending ${action} signal...`, "info");
+
+    try {
+      await post(`/api/server/${selectedServer}/${action}`);
+      addToast(`Server ${action} signal sent.`, "success");
+    } catch (error) {
+      addToast(error.message || `Failed to ${action} server.`, "error");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  if (!selectedServer) {
+    return (
+      <div className="container">
+        <div className="message-box message-warning" style={{ textAlign: "center", marginTop: "50px", padding: "20px", border: "1px solid orange", color: "orange" }}>
+          Please select a server from the sidebar to view its monitor.
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="container"
-      style={{ padding: "20px", maxWidth: "100%", margin: "0 auto" }}
-    >
-      <div
-        className="header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "20px",
-        }}
-      >
-        <h1>Server Monitor</h1>
-        <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-          <span
-            style={{
-              color: isConnected ? "lightgreen" : "red",
-              fontWeight: "bold",
-            }}
+    <div className="container">
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>Server Monitor: {selectedServer}</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+             <span
+            className={`status-text ${isConnected ? "status-running" : "status-stopped"}`}
+            style={{ fontWeight: "bold", color: isConnected ? "lightgreen" : "red" }}
           >
-            {isConnected ? "• Connected" : "• Disconnected"}
+            {isConnected ? "• Live" : "• Disconnected"}
           </span>
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "20px",
-          marginBottom: "20px",
-        }}
-      >
-        <div
-          className="status-panel"
-          style={{
-            background: "var(--container-background-color, #444)",
-            border: "1px solid var(--border-color, #555)",
-            padding: "20px",
-            borderRadius: "5px",
-            color: "#fff",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Server Status</h3>
-          {serverStatus ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                gap: "15px",
-              }}
-            >
-              <div>
-                <strong>State:</strong> {serverStatus.status || "Unknown"}
-              </div>
-              <div>
-                <strong>Players:</strong> {serverStatus.online_players || 0} /{" "}
-                {serverStatus.max_players || "?"}
-              </div>
-              <div>
-                <strong>Version:</strong> {serverStatus.version || "Unknown"}
-              </div>
-              <div>
-                <strong>Level:</strong> {serverStatus.level_name || "Unknown"}
+      <div className="grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "20px", marginBottom: "20px" }}>
+
+        {/* Status Panel */}
+        <div style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)" }}>
+          <h3>Process Status</h3>
+          {processInfo ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "0.9em" }}>
+              <div><strong>PID:</strong> {processInfo.pid ?? "N/A"}</div>
+              <div><strong>Uptime:</strong> {processInfo.uptime ?? "N/A"}</div>
+              <div><strong>CPU:</strong> {processInfo.cpu_percent != null ? processInfo.cpu_percent.toFixed(1) + "%" : "N/A"}</div>
+              <div><strong>Memory:</strong> {processInfo.memory_mb != null ? processInfo.memory_mb.toFixed(1) + " MB" : "N/A"}</div>
+              <div style={{ gridColumn: "1 / -1", marginTop: "10px" }}>
+                  <strong>Status:</strong> <span style={{ color: processInfo.pid ? "lightgreen" : "red", fontWeight: "bold" }}>{processInfo.pid ? "RUNNING" : "STOPPED"}</span>
               </div>
             </div>
           ) : (
-            <div>Waiting for server status...</div>
+            <div style={{ color: "#aaa", fontStyle: "italic" }}>Server process not running or status unavailable.</div>
           )}
         </div>
 
-        <div
-          className="usage-panel"
-          style={{
-            background: "var(--container-background-color, #444)",
-            border: "1px solid var(--border-color, #555)",
-            padding: "20px",
-            borderRadius: "5px",
-            color: "#fff",
-            minHeight: "200px",
-          }}
-        >
-          <h3 style={{ marginTop: 0 }}>Resource Usage</h3>
-          <div style={{ height: "150px" }}>
+        {/* Chart Panel */}
+        <div style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)", minHeight: "250px" }}>
+          <h3>Resource Usage</h3>
+          <div style={{ height: "200px", width: "100%" }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={usageData}>
+              <LineChart data={usageHistory}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#444" />
                 <XAxis dataKey="time" hide />
-                <YAxis domain={[0, 100]} />
+                <YAxis yAxisId="left" domain={[0, 100]} stroke="#888" width={40} />
+                <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" width={40} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#333",
-                    border: "1px solid #555",
-                  }}
+                  contentStyle={{ backgroundColor: "#333", border: "1px solid #555" }}
+                  labelStyle={{ color: "#ccc" }}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="cpu"
-                  stroke="#8884d8"
-                  name="CPU %"
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="ram"
-                  stroke="#82ca9d"
-                  name="RAM %"
-                  dot={false}
-                />
+                <Line yAxisId="left" type="monotone" dataKey="cpu" stroke="#8884d8" name="CPU %" dot={false} isAnimationActive={false} />
+                <Line yAxisId="right" type="monotone" dataKey="memory" stroke="#82ca9d" name="RAM (MB)" dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      <div className="logs-panel">
-        <h3 style={{ color: "#fff" }}>Console Output</h3>
-        <div
-          className="monitor-output"
-          style={{
-            height: "500px",
-            overflowY: "auto",
-            background: "#111",
-            color: "#0f0",
-            padding: "10px",
-            fontFamily: "monospace",
-            border: "1px solid #333",
-            borderRadius: "4px",
-            marginBottom: "20px",
-          }}
-        >
-          {logs.map((log, index) => (
-            <div
-              key={index}
-              style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-            >
-              {typeof log === "string" ? log : JSON.stringify(log)}
-            </div>
-          ))}
-          <div ref={logsEndRef} />
+      {/* Controls */}
+      <div className="controls-section" style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)", marginBottom: "20px" }}>
+        <h3>Lifecycle Controls</h3>
+        <div className="button-group" style={{ display: "flex", gap: "10px" }}>
+          <button className="action-button start-button" onClick={() => sendAction("start")} disabled={loadingAction || (processInfo && processInfo.pid)}>
+             <Play size={16} style={{ marginRight: "5px" }} /> Start
+          </button>
+          <button className="action-button danger-button" onClick={() => sendAction("stop")} disabled={loadingAction || !(processInfo && processInfo.pid)}>
+             <Square size={16} style={{ marginRight: "5px" }} /> Stop
+          </button>
+          <button className="action-button warning-button" onClick={() => sendAction("restart")} disabled={loadingAction || !(processInfo && processInfo.pid)}>
+             <RotateCcw size={16} style={{ marginRight: "5px" }} /> Restart
+          </button>
         </div>
       </div>
 
-      <div
-        className="controls"
-        style={{
-          marginTop: "20px",
-          display: "flex",
-          gap: "10px",
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          className="button button-success"
-          disabled={loadingAction}
-          onClick={() => sendAction("start")}
-        >
-          Start
-        </button>
-        <button
-          className="button button-danger"
-          disabled={loadingAction}
-          onClick={() => sendAction("stop")}
-        >
-          Stop
-        </button>
-        <button
-          className="button button-warning"
-          disabled={loadingAction}
-          onClick={() => sendAction("restart")}
-        >
-          Restart
-        </button>
-
-        <form
-          onSubmit={handleCommand}
-          style={{ flexGrow: 1, display: "flex", gap: "5px" }}
-        >
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Enter command..."
-            style={{ flexGrow: 1 }}
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-          />
-          <button type="submit" className="button button-primary">
-            Send
-          </button>
+      {/* Command Console */}
+      <div className="console-section" style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)" }}>
+        <h3>Send Command</h3>
+        <form onSubmit={handleCommand} style={{ display: "flex", gap: "10px" }}>
+            <div style={{ flexGrow: 1, position: "relative" }}>
+                <Terminal size={18} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#aaa" }} />
+                <input
+                    type="text"
+                    className="form-input"
+                    value={command}
+                    onChange={(e) => setCommand(e.target.value)}
+                    placeholder="Enter command..."
+                    style={{ width: "100%", paddingLeft: "35px" }}
+                    disabled={loadingAction || !(processInfo && processInfo.pid)}
+                />
+            </div>
+            <button type="submit" className="action-button" disabled={loadingAction || !command || !(processInfo && processInfo.pid)}>Send</button>
         </form>
       </div>
+
     </div>
   );
 };

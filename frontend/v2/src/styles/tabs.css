@@ -1,0 +1,202 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/tabs.css */
+/**
+ * Tab Navigation and Content Styles
+ *
+ * Defines styles for creating tabbed interfaces, including the navigation bar,
+ * individual tab links (active and inactive states), and the corresponding
+ * content panes. Aims for a look consistent with the application theme.
+ */
+
+/* ==========================================================================
+   Tab Navigation Container
+   ========================================================================== */
+
+.tab-navigation {
+    /* Enable horizontal scrolling if tabs exceed container width */
+    overflow-x: auto;
+    /* Prevent vertical scrolling issues */
+    overflow-y: hidden;
+    /* Prevent text wrapping, force single line for scrolling */
+    white-space: nowrap;
+    /* Optional: Visually hide the scrollbar (still scrollable) */
+    /* -ms-overflow-style: none; */ /* IE and Edge */
+    /* scrollbar-width: none; */ /* Firefox */
+    /* &::-webkit-scrollbar { display: none; } */ /* Chrome, Safari, Opera */
+    /* Layout and Appearance */
+    border-bottom: 1px solid var(--tab-border-color); /* Line below the tabs */
+    margin-bottom: 0; /* Remove default margin */
+    padding: 0 5px; /* Small horizontal padding */
+    display: flex; /* Arrange tabs horizontally */
+    gap: 4px; /* Small space between tabs */
+    box-sizing: border-box;
+}
+
+/* ==========================================================================
+   Individual Tab Link Styling
+   ========================================================================== */
+
+.tab-link {
+    flex-shrink: 0; /* Prevent tabs from shrinking when scrolling */
+    /* Appearance */
+    background-color: var(--tab-background-color); /* Default inactive tab background */
+    border: 1px solid var(--tab-border-color); /* Default border */
+    border-bottom: none; /* Remove bottom border initially */
+    border-radius: 0; /* Sharp corners */
+    padding: 8px 16px; /* Tab inner spacing */
+    cursor: pointer; /* Indicate clickable */
+    color: var(--tab-text-color); /* Default inactive text color */
+    /* Typography */
+    font-size: 1em;
+    font-weight: 600; /* Semi-bold */
+    font-family: inherit; /* Use standard page font */
+    line-height: 1.5;
+    text-align: center;
+    text-decoration: none; /* Remove underline if used on <a> */
+    /* Positioning and Transitions */
+    position: relative; /* Needed for z-index */
+    z-index: 0; /* Default stack order */
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    box-sizing: border-box;
+    text-shadow: none; /* Remove any inherited shadow */
+    margin-bottom: 0; /* Ensure no bottom margin */
+}
+
+    /* Hover state for inactive tabs */
+    .tab-link:hover {
+        background-color: var(--tab-hover-background-color); /* Slightly lighter background */
+        color: var(--tab-hover-text-color);
+        border-color: var(--tab-border-color);
+        border-bottom: none; /* Keep bottom border removed */
+    }
+
+    /* ==========================================================================
+   Active Tab Styling
+   ========================================================================== */
+
+    .tab-link.active {
+        /* Match the content pane background for seamless connection */
+        background-color: var(--tab-active-background-color);
+        color: var(--tab-active-text-color); /* Brighter text */
+        border-color: var(--tab-border-color); /* Match content pane border */
+        /* Remove the bottom border to merge with the content pane visually */
+        border-bottom-color: transparent; /* Or match content bg: #3a3a3a */
+        /* Bring the active tab above the navigation border-bottom */
+        position: relative; /* Ensure z-index works */
+        z-index: 1;
+        /* Optional: Slightly adjust vertical position if needed */
+        /* margin-bottom: -1px; */ /* Pulls it down over the border */
+    }
+        /* Ensure active state persists on hover */
+        .tab-link.active:hover {
+            background-color: var(--tab-active-background-color);
+            color: var(--tab-active-text-color);
+            border-color: var(--tab-border-color);
+            border-bottom-color: transparent;
+        }
+
+/* ==========================================================================
+   Tab Content Pane Styling
+   ========================================================================== */
+
+.tab-content {
+    display: none; /* Hide inactive content panes */
+    padding: 25px; /* Increased padding inside content */
+    border: 1px solid var(--tab-border-color); /* Match active tab border */
+    border-top: none; /* Remove top border to connect with active tab */
+    background-color: var(--tab-active-background-color); /* Match active tab background */
+    border-radius: 0; /* Sharp corners */
+    color: var(--text-color); /* Default text color */
+    font-family: inherit;
+    box-sizing: border-box;
+    margin-top: -1px; /* Overlap slightly with tab bottom border space */
+    position: relative; /* Ensure content is below active tab (z-index 0) */
+    z-index: 0;
+}
+
+    /* Show the active content pane */
+    .tab-content.active {
+        display: block;
+    }
+
+    /* ==========================================================================
+   Content Inside Tabs (Headers, Text, Forms)
+   ========================================================================== */
+
+    /* Styling for H2 headers within tab content */
+    .tab-content h2 {
+        margin-top: 0;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #555;
+        padding-bottom: 15px;
+        color: #eee;
+        font-size: 1.6em;
+        font-weight: 600;
+        font-family: inherit;
+        text-shadow: none;
+    }
+
+    /* Ensure standard text elements inherit base styles */
+    .tab-content p,
+    .tab-content label, /* Includes .form-label */
+    .tab-content ul,
+    .tab-content ol,
+    .tab-content li {
+        font-family: inherit;
+        color: inherit;
+        line-height: 1.6; /* Consistent line height */
+        /* Specific margins for lists if needed */
+        /* .tab-content ul, .tab-content ol { margin-bottom: 15px; } */
+    }
+
+/* --- Remove specific input styling within tabs --- */
+/* Input elements (.form-input, select, textarea) within .tab-content */
+/* should inherit their styles directly from forms.css or base.css */
+/* This ensures visual consistency across the entire application. */
+/* DO NOT add specific input, select, textarea styles here. */
+
+
+/* ==========================================================================
+   Mobile Responsive Adjustments
+   ========================================================================== */
+
+@media (max-width: 768px) { /* Tablets and smaller */
+    .tab-navigation {
+        padding: 0 2px; /* Reduce padding */
+        gap: 3px; /* Reduce gap */
+    }
+
+    .tab-link {
+        padding: 7px 13px; /* Adjust padding */
+        font-size: 0.95em;
+    }
+
+    .tab-content {
+        padding: 18px; /* Reduce padding */
+    }
+
+        .tab-content h2 {
+            font-size: 1.45em; /* Adjust heading size */
+            margin-bottom: 18px;
+            padding-bottom: 12px;
+        }
+}
+
+
+@media (max-width: 480px) { /* Mobile phones */
+    .tab-navigation {
+        gap: 2px;
+    }
+
+    .tab-link {
+        padding: 6px 10px; /* Further adjust padding */
+        font-size: 0.9em;
+    }
+
+    .tab-content {
+        padding: 15px;
+    }
+
+        .tab-content h2 {
+            font-size: 1.3em;
+        }
+}

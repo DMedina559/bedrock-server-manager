@@ -1,195 +1,191 @@
 import React, { useState, useEffect } from "react";
+import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
-import { Archive, Trash2, RotateCcw, Plus, Upload } from "lucide-react";
+import { post, get } from "../api";
+import { Archive, Trash2, RotateCcw, Plus, RefreshCw } from "lucide-react";
 
 const Backups = () => {
-  const [backups, setBackups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { selectedServer } = useServer();
+  const [backups, setBackups] = useState({});
+  const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
-    fetchBackups();
-  }, []);
+    if (selectedServer) {
+      fetchBackups();
+    }
+  }, [selectedServer]);
 
   const fetchBackups = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/backups");
-      if (response.ok) {
-        const data = await response.json();
-        // Sort by date desc
-        data.sort((a, b) => new Date(b.date) - new Date(a.date));
-        setBackups(data);
+      const data = await get(`/api/server/${selectedServer}/backup/list/all`);
+      if (data && data.status === "success" && data.details?.all_backups) {
+        setBackups(data.details.all_backups);
       } else {
-        addToast("Failed to fetch backups", "error");
+        addToast("Failed to fetch backups list", "error");
+        setBackups({});
       }
     } catch (error) {
-      addToast("Error fetching backups", "error");
+      addToast(error.message || "Error fetching backups", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateBackup = async () => {
-    addToast("Starting backup...", "info");
-    try {
-      const response = await fetch("/api/backups", { method: "POST" });
-      if (response.ok) {
-        addToast("Backup created successfully.", "success");
-        fetchBackups();
-      } else {
-        const data = await response.json();
-        addToast(data.detail || "Failed to create backup.", "error");
-      }
-    } catch (error) {
-      addToast("Error creating backup.", "error");
+  const getBackupFilename = (type) => {
+    switch (type) {
+      case "properties": return "server.properties";
+      case "allowlist": return "allowlist.json";
+      case "permissions": return "permissions.json";
+      default: return null;
     }
   };
 
-  const handleDelete = async (filename) => {
-    if (!confirm(`Are you sure you want to delete backup ${filename}?`)) return;
+  const handleCreateBackup = async (type) => {
+    if (!selectedServer) return;
 
-    try {
-      const response = await fetch(`/api/backups/${filename}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
-        addToast("Backup deleted.", "success");
-        fetchBackups();
-      } else {
-        addToast("Failed to delete backup.", "error");
+    // Map internal type to API expected type/filename
+    let backupType = "world";
+    let fileToBackup = null;
+
+    if (type !== "world") {
+      backupType = "config";
+      fileToBackup = getBackupFilename(type);
+      if (!fileToBackup) {
+          addToast("Invalid backup type selected", "error");
+          return;
       }
+    }
+
+    addToast(`Starting ${type} backup...`, "info");
+    try {
+      const payload = { backup_type: backupType };
+      if (fileToBackup) payload.file_to_backup = fileToBackup;
+
+      await post(`/api/server/${selectedServer}/backup/action`, payload);
+      addToast("Backup task started. Check logs for completion.", "success");
     } catch (error) {
-      addToast("Error deleting backup.", "error");
+      addToast(error.message || "Failed to start backup.", "error");
     }
   };
 
-  const handleRestore = async (filename) => {
+  const handleRestore = async (type, filename) => {
+    if (!selectedServer) return;
     if (
       !confirm(
-        `WARNING: This will overwrite your current world with backup ${filename}. Are you sure?`,
+        `WARNING: This will overwrite your current ${type} with backup '${filename}'.\nThe server may restart. Are you sure?`,
       )
     )
       return;
 
-    addToast("Restoring backup... Server will stop.", "info");
+    addToast("Restoring backup...", "info");
     try {
-      const response = await fetch(`/api/backups/${filename}/restore`, {
-        method: "POST",
+      await post(`/api/server/${selectedServer}/restore/action`, {
+        restore_type: type,
+        backup_file: filename,
       });
-      if (response.ok) {
-        addToast("Restore initiated. Check server logs.", "success");
-      } else {
-        addToast("Failed to initiate restore.", "error");
-      }
+      addToast("Restore task started.", "success");
     } catch (error) {
-      addToast("Error restoring backup.", "error");
+      addToast(error.message || "Failed to start restore.", "error");
     }
   };
 
-  return (
-    <div className="container" style={{ padding: "20px" }}>
-      <div
-        className="header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h1>Backups</h1>
-        <button
-          className="button button-primary"
-          onClick={handleCreateBackup}
-          style={{ display: "flex", alignItems: "center", gap: "5px" }}
-        >
-          <Plus size={18} /> Create Backup
+  const handlePrune = async () => {
+      if (!selectedServer) return;
+      if (!confirm("Prune old backups based on retention policy?")) return;
+
+      try {
+          await post(`/api/server/${selectedServer}/backups/prune`, {});
+          addToast("Pruning task started.", "success");
+      } catch (error) {
+          addToast(error.message || "Failed to prune backups.", "error");
+      }
+  };
+
+  if (!selectedServer) {
+    return (
+      <div className="container">
+        <div className="message-box message-warning" style={{ textAlign: "center", marginTop: "50px", padding: "20px", border: "1px solid orange", color: "orange" }}>
+          Please select a server to manage backups.
+        </div>
+      </div>
+    );
+  }
+
+  // Helper to render a table for a specific backup category
+  const renderBackupTable = (title, type, files) => (
+    <div style={{ marginBottom: "30px", background: "var(--container-background-color)", padding: "15px", border: "1px solid var(--border-color)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>
+        <h3 style={{ margin: 0 }}>{title} Backups</h3>
+        <button className="action-button" onClick={() => handleCreateBackup(type)}>
+            <Plus size={16} style={{ marginRight: "5px" }} /> New {title} Backup
         </button>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <table
-          className="table"
-          style={{
-            width: "100%",
-            marginTop: "20px",
-            borderCollapse: "collapse",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "var(--table-header-background-color)",
-                textAlign: "left",
-              }}
-            >
-              <th style={{ padding: "10px" }}>Filename</th>
-              <th style={{ padding: "10px" }}>Date</th>
-              <th style={{ padding: "10px" }}>Size</th>
-              <th style={{ padding: "10px" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {backups.map((backup) => (
-              <tr
-                key={backup.filename}
-                style={{ borderBottom: "1px solid var(--table-border-color)" }}
-              >
-                <td style={{ padding: "10px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                    }}
-                  >
-                    <Archive size={18} /> {backup.filename}
+      <table className="table" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th style={{ width: "100px", textAlign: "right" }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {files && files.length > 0 ? (
+            files.map((file) => (
+              <tr key={file}>
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <Archive size={16} /> {file}
                   </div>
                 </td>
-                <td style={{ padding: "10px" }}>
-                  {new Date(backup.date).toLocaleString()}
-                </td>
-                <td style={{ padding: "10px" }}>
-                  {backup.size_str || backup.size}
-                </td>
-                <td style={{ padding: "10px", display: "flex", gap: "10px" }}>
+                <td style={{ textAlign: "right" }}>
                   <button
-                    className="button button-warning"
-                    onClick={() => handleRestore(backup.filename)}
+                    className="action-button warning-button"
+                    onClick={() => handleRestore(type, file)}
                     title="Restore"
-                    style={{ padding: "5px" }}
+                    style={{ padding: "5px 10px", fontSize: "0.8em" }}
                   >
-                    <RotateCcw size={16} />
-                  </button>
-                  <button
-                    className="button button-danger"
-                    onClick={() => handleDelete(backup.filename)}
-                    title="Delete"
-                    style={{ padding: "5px" }}
-                  >
-                    <Trash2 size={16} />
+                    <RotateCcw size={14} style={{ marginRight: "5px" }} /> Restore
                   </button>
                 </td>
               </tr>
-            ))}
-            {backups.length === 0 && (
-              <tr>
-                <td
-                  colSpan="4"
-                  style={{
-                    textAlign: "center",
-                    padding: "20px",
-                    color: "#888",
-                  }}
-                >
-                  No backups found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="2" style={{ textAlign: "center", color: "#888", fontStyle: "italic", padding: "15px" }}>
+                No backups found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="container">
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>Backups: {selectedServer}</h1>
+        <div style={{ display: "flex", gap: "10px" }}>
+             <button className="action-button danger-button" onClick={handlePrune} title="Prune old backups">
+                 <Trash2 size={16} style={{ marginRight: "5px" }} /> Prune Old
+             </button>
+             <button className="action-button secondary" onClick={fetchBackups} title="Refresh List">
+                 <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+             </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: "20px", textAlign: "center" }}>Loading backups...</div>
+      ) : (
+        <>
+          {renderBackupTable("World", "world", backups.world)}
+          {renderBackupTable("Properties", "properties", backups.properties)}
+          {renderBackupTable("Allowlist", "allowlist", backups.allowlist)}
+          {renderBackupTable("Permissions", "permissions", backups.permissions)}
+        </>
       )}
     </div>
   );

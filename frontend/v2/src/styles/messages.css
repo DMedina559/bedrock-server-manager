@@ -1,0 +1,99 @@
+/* bedrock-server-manager/bedrock_server_manager/web/static/css/messages.css */
+/**
+ * Status Message Box Styles
+ *
+ * Defines styles for displaying feedback messages (e.g., success, error, warning)
+ * to the user, often used for flash messages or dynamic status updates.
+ * Aims for clear visual distinction between message types.
+ */
+
+/* ==========================================================================
+   Base Message Box Style
+   ========================================================================== */
+
+/* Common styling applied to all message boxes */
+.message-box {
+    /* Box Model & Layout */
+    padding: 12px 18px; /* Inner spacing */
+    margin-bottom: 20px; /* Space below the message */
+    border-width: 1px; /* Standard border width */
+    border-style: solid;
+    border-radius: 0; /* Sharp corners */
+    box-sizing: border-box;
+    display: block; /* Ensure it takes block layout */
+    /* Typography */
+    color: #eee; /* Default light text (overridden by specific types) */
+    font-weight: 600; /* Semi-bold text */
+    font-size: 0.95em; /* Slightly smaller than base body text */
+    line-height: 1.5;
+    font-family: inherit; /* Use standard page font */
+    /* Reset inherited styles */
+    text-shadow: none;
+    box-shadow: none;
+}
+
+/* ==========================================================================
+   Message Type Specific Styles
+   ========================================================================== */
+
+/* --- Default / Success Style (Green) --- */
+/* Applied directly to .message-box for default appearance */
+/* If a distinct 'info' or 'success' style is needed later, create */
+/* .message-info and .message-success classes. */
+.message-box {
+    background-color: var(--message-success-background-color); /* Darker green background (good contrast) */
+    border-color: var(--message-success-border-color); /* Medium green border */
+    color: var(--message-success-text-color); /* Very light green/off-white text */
+}
+
+/* --- Error Style (Red) --- */
+/* Applied by adding the .message-error class */
+.message-error {
+    background-color: var(--message-error-background-color); /* Darker red background */
+    border-color: var(--message-error-border-color); /* Medium red border */
+    color: var(--message-error-text-color); /* Very light red/off-white text */
+}
+
+/* --- Warning Style (Orange/Amber) --- */
+/* Applied by adding the .message-warning class */
+.message-warning {
+    background-color: var(--message-warning-background-color); /* Dark Amber background */
+    border-color: var(--message-warning-border-color); /* Lighter Amber border */
+    color: var(--message-warning-text-color); /* Dark text for readability on yellow/orange */
+}
+
+/* --- Info Style (Blue - Optional) --- */
+/* Example: Add if needed for non-success informational messages */
+/*
+.message-info {
+    background-color: #1565C0; // Darker blue background
+    border-color: #1E88E5;     // Medium blue border
+    color: #E3F2FD;            // Very light blue/off-white text
+}
+*/
+
+/* ==========================================================================
+   Mobile Responsive Adjustments
+   ========================================================================== */
+
+@media (max-width: 768px) { /* Tablets and smaller */
+    .message-box,
+    .message-error,
+    .message-warning
+    /* Add .message-info if created */ {
+        padding: 10px 15px; /* Slightly reduce padding */
+        margin-bottom: 15px; /* Reduce bottom margin */
+    }
+}
+
+
+@media (max-width: 480px) { /* Mobile phones */
+    .message-box,
+    .message-error,
+    .message-warning
+    /* Add .message-info if created */ {
+        padding: 8px 12px; /* Further reduce padding */
+        margin-bottom: 12px; /* Reduce bottom margin */
+        font-size: 0.9em; /* Slightly smaller font */
+    }
+}

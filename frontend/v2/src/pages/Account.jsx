@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../ThemeContext";
 import { useToast } from "../ToastContext";
+import { post } from "../api";
+import { Save, User } from "lucide-react";
 
 const Account = () => {
   const { user } = useAuth();
@@ -28,6 +30,11 @@ const Account = () => {
 
   const handleThemeChange = (newTheme) => {
     changeTheme(newTheme);
+    try {
+        post("/api/account/theme", { theme: newTheme });
+    } catch (e) {
+        console.error("Failed to save theme preference");
+    }
     addToast(`Theme changed to ${newTheme}`, "info");
   };
 
@@ -39,30 +46,19 @@ const Account = () => {
     }
 
     try {
-
-      const formData = new FormData();
-      formData.append("current_password", passwords.currentPassword);
-      formData.append("new_password", passwords.newPassword);
-      formData.append("confirm_password", passwords.confirmPassword);
-
-      const response = await fetch("/api/account/password", {
-        method: "POST",
-        body: formData,
+      await post("/api/account/change-password", {
+        current_password: passwords.currentPassword,
+        new_password: passwords.newPassword,
       });
 
-      if (response.ok) {
-        addToast("Password updated successfully.", "success");
-        setPasswords({
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
-        });
-      } else {
-        const data = await response.json();
-        addToast(data.detail || "Failed to update password.", "error");
-      }
+      addToast("Password updated successfully.", "success");
+      setPasswords({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
     } catch (error) {
-      addToast("Error updating password.", "error");
+      addToast(error.message || "Failed to update password.", "error");
     }
   };
 
@@ -72,47 +68,25 @@ const Account = () => {
         <h1>My Account</h1>
       </div>
 
-      <div
-        className="grid"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "20px",
-        }}
-      >
+      <div className="grid" style={{ display: "grid", gap: "20px", gridTemplateColumns: "1fr" }}>
+
         {/* Profile Info */}
-        <div
-          style={{
-            background: "var(--container-background-color)",
-            padding: "20px",
-            borderRadius: "5px",
-            border: "1px solid var(--border-color)",
-          }}
-        >
-          <h2>Profile</h2>
-          <p>
-            <strong>Username:</strong> {user?.username}
-          </p>
-          <p>
-            <strong>Role:</strong> {user?.role}
-          </p>
+        <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+          <h2 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: "10px" }}><User /> Profile</h2>
+          <div style={{ marginLeft: "10px" }}>
+            <p><strong>Username:</strong> {user?.username}</p>
+            <p><strong>Role:</strong> {user?.role}</p>
+          </div>
         </div>
 
         {/* Theme Selection */}
-        <div
-          style={{
-            background: "var(--container-background-color)",
-            padding: "20px",
-            borderRadius: "5px",
-            border: "1px solid var(--border-color)",
-          }}
-        >
-          <h2>Theme</h2>
+        <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+          <h2 style={{ marginTop: 0 }}>Theme</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
             {themes.map((t) => (
               <button
                 key={t}
-                className={`button ${theme === t ? "button-primary" : ""}`}
+                className={`action-button ${theme === t ? "" : "secondary"}`}
                 onClick={() => handleThemeChange(t)}
                 style={{ textTransform: "capitalize" }}
               >
@@ -123,20 +97,9 @@ const Account = () => {
         </div>
 
         {/* Password Change */}
-        <div
-          style={{
-            background: "var(--container-background-color)",
-            padding: "20px",
-            borderRadius: "5px",
-            border: "1px solid var(--border-color)",
-            gridColumn: "1 / -1",
-          }}
-        >
-          <h2>Change Password</h2>
-          <form
-            onSubmit={handlePasswordChange}
-            style={{ display: "grid", gap: "15px", maxWidth: "400px" }}
-          >
+        <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+          <h2 style={{ marginTop: 0 }}>Change Password</h2>
+          <form onSubmit={handlePasswordChange} className="form-group" style={{ maxWidth: "400px" }}>
             <div>
               <label className="form-label">Current Password</label>
               <input
@@ -182,9 +145,11 @@ const Account = () => {
                 style={{ width: "100%" }}
               />
             </div>
-            <button type="submit" className="button button-primary">
-              Update Password
-            </button>
+            <div style={{ marginTop: "15px" }}>
+                <button type="submit" className="action-button">
+                <Save size={16} style={{ marginRight: "5px" }} /> Update Password
+                </button>
+            </div>
           </form>
         </div>
       </div>
