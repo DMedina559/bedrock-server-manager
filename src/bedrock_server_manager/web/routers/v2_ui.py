@@ -1,9 +1,15 @@
 import os
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 router = APIRouter(prefix="/v2", tags=["v2_ui"])
+
+
+@router.get("", include_in_schema=False)
+async def redirect_root():
+    """Redirects /v2 to /v2/ so the SPA is served correctly."""
+    return RedirectResponse(url="/v2/")
 
 
 @router.get("/{full_path:path}")
