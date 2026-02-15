@@ -21,7 +21,14 @@ const Backups = () => {
     try {
       const data = await get(`/api/server/${selectedServer}/backup/list/all`);
       if (data && data.status === "success" && data.details?.all_backups) {
-        setBackups(data.details.all_backups);
+        // Map API keys to local keys
+        const apiBackups = data.details.all_backups;
+        setBackups({
+            world: apiBackups.world_backups || [],
+            properties: apiBackups.properties_backups || [],
+            allowlist: apiBackups.allowlist_backups || [],
+            permissions: apiBackups.permissions_backups || []
+        });
       } else {
         addToast("Failed to fetch backups list", "error");
         setBackups({});

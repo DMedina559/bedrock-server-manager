@@ -104,6 +104,7 @@ const Account = () => {
               <label className="form-label">Current Password</label>
               <input
                 type="password"
+                name="current-password"
                 className="form-input"
                 value={passwords.currentPassword}
                 onChange={(e) =>
@@ -113,6 +114,7 @@ const Account = () => {
                   })
                 }
                 required
+                autoComplete="current-password"
                 style={{ width: "100%" }}
               />
             </div>
@@ -120,12 +122,14 @@ const Account = () => {
               <label className="form-label">New Password</label>
               <input
                 type="password"
+                name="new-password"
                 className="form-input"
                 value={passwords.newPassword}
                 onChange={(e) =>
                   setPasswords({ ...passwords, newPassword: e.target.value })
                 }
                 required
+                autoComplete="new-password"
                 style={{ width: "100%" }}
               />
             </div>
@@ -133,6 +137,7 @@ const Account = () => {
               <label className="form-label">Confirm New Password</label>
               <input
                 type="password"
+                name="confirm-password"
                 className="form-input"
                 value={passwords.confirmPassword}
                 onChange={(e) =>
@@ -142,6 +147,7 @@ const Account = () => {
                   })
                 }
                 required
+                autoComplete="new-password"
                 style={{ width: "100%" }}
               />
             </div>

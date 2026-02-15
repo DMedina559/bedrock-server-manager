@@ -1,7 +1,8 @@
-import React from "react";
-import { NavLink } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { NavLink, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useServer } from "../ServerContext";
+import { get } from "../api";
 import {
   LayoutDashboard,
   Users,
@@ -16,8 +17,8 @@ import {
   Wrench,
   Shield,
   RefreshCw,
+  PlusSquare
 } from "lucide-react";
-// Styles are global
 
 const Sidebar = () => {
   const { logout, user } = useAuth();
@@ -25,20 +26,35 @@ const Sidebar = () => {
     servers,
     selectedServer,
     setSelectedServer,
-    refreshServers,
+    fetchServers,
     loading,
   } = useServer();
+  const [pluginPages, setPluginPages] = useState([]);
+
+  useEffect(() => {
+    fetchPluginPages();
+  }, []);
+
+  const fetchPluginPages = async () => {
+    try {
+      const response = await get("/api/plugins/pages");
+      if (response && response.status === "success") {
+        setPluginPages(response.data || []);
+      }
+    } catch (error) {
+      console.warn("Failed to fetch plugin pages", error);
+    }
+  };
 
   const handleServerChange = (e) => {
     setSelectedServer(e.target.value);
   };
 
-  // Grouped Navigation Items
   const serverNavItems = [
     { path: "/", label: "Monitor", icon: <LayoutDashboard size={20} /> },
     {
       path: "/server-config",
-      label: "Config",
+      label: "Settings",
       icon: <Wrench size={20} />,
     },
     {
@@ -58,7 +74,7 @@ const Sidebar = () => {
   const globalNavItems = [
     { path: "/plugins", label: "Plugins", icon: <Plug size={20} /> },
     { path: "/users", label: "Users", icon: <Users size={20} /> },
-    { path: "/bsm-settings", label: "Settings", icon: <Settings size={20} /> },
+    { path: "/bsm-settings", label: "BSM Settings", icon: <Settings size={20} /> },
     { path: "/audit-log", label: "Audit Log", icon: <ScrollText size={20} /> },
   ];
 
@@ -68,8 +84,7 @@ const Sidebar = () => {
         <h2 style={{ margin: 0, fontSize: "1.2em", color: "var(--header-text-color)" }}>BSM V2</h2>
       </div>
 
-      {/* Server Selector Section */}
-      <div style={{ padding: "15px 15px 5px" }}>
+      <div style={{ padding: "15px 15px 10px" }}>
         <label
           htmlFor="server-select"
           style={{
@@ -81,12 +96,12 @@ const Sidebar = () => {
         >
           Selected Server:
         </label>
-        <div style={{ display: "flex", gap: "5px" }}>
+        <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
           <select
             id="server-select"
             value={selectedServer || ""}
             onChange={handleServerChange}
-            disabled={loading || servers.length === 0}
+            disabled={loading}
             className="form-input"
             style={{
               width: "100%",
@@ -112,12 +127,16 @@ const Sidebar = () => {
             )}
           </select>
           <button
-            onClick={refreshServers}
+            onClick={fetchServers}
             title="Refresh Server List"
             className="action-button secondary"
             style={{
-              padding: "5px 8px",
-              margin: 0
+              padding: "6px",
+              margin: 0,
+              height: "32px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
             }}
           >
             <RefreshCw size={14} />
@@ -125,19 +144,8 @@ const Sidebar = () => {
         </div>
       </div>
 
-        {/* Server Management Section */}
-          <div
-            style={{
-              padding: "10px 20px 5px",
-              textTransform: "uppercase",
-              fontSize: "0.75em",
-              color: "#666",
-              fontWeight: "bold",
-            }}
-            className="nav-section-label"
-          >
-            Server Management
-          </div>
+      <div className="nav-group">
+          <div className="nav-section-label">Server Management</div>
           {serverNavItems.map((item) => {
             const isDisabled = !selectedServer;
             return (
@@ -150,31 +158,18 @@ const Sidebar = () => {
                 onClick={(e) => {
                   if (isDisabled) e.preventDefault();
                 }}
-                style={{
-                  opacity: isDisabled ? 0.5 : 1,
-                  cursor: isDisabled ? "not-allowed" : "pointer",
-                }}
               >
-                {item.icon}
-                <span style={{ marginLeft: "10px" }}>{item.label}</span>
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label">{item.label}</span>
               </NavLink>
             );
           })}
+      </div>
 
-        {/* Global Management Section */}
-          <hr className="nav-separator" />
-          <div
-            style={{
-              padding: "5px 20px 5px",
-              textTransform: "uppercase",
-              fontSize: "0.75em",
-              color: "#666",
-              fontWeight: "bold",
-            }}
-            className="nav-section-label"
-          >
-            Global
-          </div>
+      <hr className="nav-separator" />
+
+      <div className="nav-group">
+          <div className="nav-section-label">Global</div>
           {globalNavItems.map((item) => (
             <NavLink
               key={item.path}
@@ -183,33 +178,62 @@ const Sidebar = () => {
                 `nav-link ${isActive ? "active" : ""}`
               }
             >
-              {item.icon}
-              <span style={{ marginLeft: "10px" }}>{item.label}</span>
+              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}
 
-        <hr className="nav-separator" />
+          {user?.role === "admin" && (
+             <NavLink
+                to="/server-install"
+                className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+             >
+                <span className="nav-icon"><PlusSquare size={20} /></span>
+                <span className="nav-label">Install Server</span>
+             </NavLink>
+          )}
+      </div>
 
+      {pluginPages.length > 0 && (
+          <>
+            <hr className="nav-separator" />
+            <div className="nav-group">
+                <div className="nav-section-label">From Plugins</div>
+                {pluginPages.map((page) => (
+                    <a
+                        key={page.path}
+                        href={page.path}
+                        className="nav-link"
+                    >
+                         <span className="nav-icon"><Plug size={20} /></span>
+                         <span className="nav-label">{page.name}</span>
+                    </a>
+                ))}
+            </div>
+          </>
+      )}
+
+      <hr className="nav-separator" />
+
+      <div className="nav-group footer-nav">
           <NavLink
             to="/account"
             className={({ isActive }) =>
               `nav-link ${isActive ? "active" : ""}`
             }
           >
-            <User size={20} />
-            <span style={{ marginLeft: "10px" }}>Account ({user?.username})</span>
+            <span className="nav-icon"><User size={20} /></span>
+            <span className="nav-label">Account ({user?.username})</span>
           </NavLink>
-          <a
-            href="#"
-            className="nav-link"
-            onClick={(e) => {
-              e.preventDefault();
-              logout();
-            }}
+          <button
+            className="nav-link logout-button"
+            onClick={logout}
+            style={{ border: "none", background: "transparent", width: "100%", textAlign: "left", fontSize: "1em", color: "inherit" }}
           >
-            <LogOut size={20} />
-            <span style={{ marginLeft: "10px" }}>Logout</span>
-          </a>
+            <span className="nav-icon"><LogOut size={20} /></span>
+            <span className="nav-label">Logout</span>
+          </button>
+      </div>
     </aside>
   );
 };

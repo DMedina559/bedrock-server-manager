@@ -2,17 +2,26 @@ import React, { useState, useEffect } from "react";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
-import { Save, RefreshCw } from "lucide-react";
+import { Save, RefreshCw, ArrowRight } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const ServerProperties = () => {
   const { selectedServer } = useServer();
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const setupFlow = location.state?.setupFlow;
 
   useEffect(() => {
     if (selectedServer) {
       fetchProperties();
+    } else {
+
+        if (setupFlow) {
+            setLoading(true);
+        }
     }
   }, [selectedServer]);
 
@@ -54,6 +63,11 @@ const ServerProperties = () => {
         properties: propsObj,
       });
       addToast("Server properties saved successfully.", "success");
+
+      if (setupFlow) {
+          navigate("/access-control", { state: { setupFlow: true, tab: 'allowlist' } });
+      }
+
     } catch (error) {
       addToast(error.message || "Failed to save properties.", "error");
     } finally {
@@ -145,10 +159,18 @@ const ServerProperties = () => {
     <div className="container">
       <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Server Properties: {selectedServer}</h1>
-        <button className="action-button secondary" onClick={fetchProperties} disabled={loading}>
-            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
-        </button>
+        {!setupFlow && (
+            <button className="action-button secondary" onClick={fetchProperties} disabled={loading}>
+                <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+            </button>
+        )}
       </div>
+
+      {setupFlow && (
+          <div className="message-box message-info" style={{ marginBottom: "20px" }}>
+              <strong>Setup Wizard (Step 1/4):</strong> Configure your server properties below.
+          </div>
+      )}
 
       {loading && properties.length === 0 ? (
         <div style={{ textAlign: "center", padding: "20px" }}>Loading properties...</div>
@@ -183,7 +205,11 @@ const ServerProperties = () => {
                 className="action-button"
                 disabled={loading}
             >
-                <Save size={16} style={{ marginRight: "5px" }} /> Save Changes
+                {setupFlow ? (
+                    <>Save & Continue <ArrowRight size={16} style={{ marginLeft: "5px" }} /></>
+                ) : (
+                    <><Save size={16} style={{ marginRight: "5px" }} /> Save Changes</>
+                )}
             </button>
             </div>
         </form>

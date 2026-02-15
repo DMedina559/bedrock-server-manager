@@ -33,7 +33,12 @@ const BSMSettings = () => {
     setLoading(true);
 
     try {
-      await post("/api/settings", settings);
+      // Flatten settings to get key-value pairs
+      const flattened = flattenObject(settings);
+      for (const [key, value] of Object.entries(flattened)) {
+          await post("/api/settings/update", { key, value });
+      }
+
       addToast("Settings saved successfully.", "success");
     } catch (error) {
       addToast(error.message || "Failed to save settings.", "error");
@@ -54,23 +59,91 @@ const BSMSettings = () => {
       }
   };
 
-  const handleChange = (key, value) => {
-    setSettings((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+  const handleChange = (path, value) => {
+      // Update nested state
+      setSettings(prev => {
+          const newSettings = { ...prev };
+          let current = newSettings;
+          const keys = path.split('.');
+          const lastKey = keys.pop();
+
+          keys.forEach(key => {
+              current[key] = { ...current[key] };
+              current = current[key];
+          });
+
+          current[lastKey] = value;
+          return newSettings;
+      });
   };
 
-  // Group settings by prefix
-  const groupedSettings = Object.entries(settings).reduce(
-    (acc, [key, value]) => {
-      const prefix = key.split(".")[0];
-      if (!acc[prefix]) acc[prefix] = [];
-      acc[prefix].push({ key, value });
+  // Helper to flatten object for sending to API
+  const flattenObject = (obj, prefix = '') => {
+    return Object.keys(obj).reduce((acc, k) => {
+      const pre = prefix.length ? prefix + '.' : '';
+      if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
+        Object.assign(acc, flattenObject(obj[k], pre + k));
+      } else {
+        acc[pre + k] = obj[k];
+      }
       return acc;
-    },
-    {},
-  );
+    }, {});
+  };
+
+  const renderFields = (obj, prefix = '') => {
+      return Object.entries(obj).map(([key, value]) => {
+          const fullPath = prefix ? `${prefix}.${key}` : key;
+
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+              return (
+                  <div key={fullPath} style={{ marginBottom: "20px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "2px solid var(--border-color)" }}>
+                      <h4 style={{ textTransform: "capitalize", margin: "10px 0" }}>{key.replace(/_/g, ' ')}</h4>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "15px" }}>
+                        {renderFields(value, fullPath)}
+                      </div>
+                  </div>
+              );
+          }
+
+          return (
+            <div key={fullPath} style={{ display: "flex", flexDirection: "column" }}>
+                <label
+                    htmlFor={fullPath}
+                    className="form-label"
+                    style={{ marginBottom: "5px", fontWeight: "bold", fontSize: "0.9em" }}
+                >
+                    {key.replace(/_/g, " ")}
+                </label>
+                {typeof value === "boolean" ? (
+                    <select
+                        id={fullPath}
+                        className="form-input"
+                        value={value.toString()}
+                        onChange={(e) => handleChange(fullPath, e.target.value === "true")}
+                    >
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+                ) : (
+                    <input
+                        type="text"
+                        id={fullPath}
+                        className="form-input"
+                        value={Array.isArray(value) ? value.join(", ") : value}
+                        onChange={(e) => {
+                            let val = e.target.value;
+                            if (Array.isArray(value)) {
+                                val = val.split(",").map(s => s.trim());
+                            }
+                            handleChange(fullPath, val);
+                        }}
+                    />
+                )}
+            </div>
+          );
+      });
+  };
+
 
   return (
     <div className="container">
@@ -85,49 +158,24 @@ const BSMSettings = () => {
         <div style={{ textAlign: "center", padding: "20px" }}>Loading...</div>
       ) : (
         <form onSubmit={handleSave} className="form-group">
-            {Object.entries(groupedSettings).map(([group, items]) => (
-            <div key={group} style={{ marginBottom: "30px", background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
-                <h3 style={{ textTransform: "capitalize", margin: "0 0 15px 0", paddingBottom: "10px", borderBottom: "1px solid var(--border-color)" }}>
-                {group} Settings
-                </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
-                {items.map((item) => (
-                    <div key={item.key} style={{ display: "flex", flexDirection: "column" }}>
-                    <label
-                        htmlFor={item.key}
-                        className="form-label"
-                        style={{ marginBottom: "5px", fontWeight: "bold", fontSize: "0.9em" }}
-                    >
-                        {item.key}
-                    </label>
-                    {typeof item.value === "boolean" ? (
-                        <select
-                        id={item.key}
-                        className="form-input"
-                        value={item.value.toString()}
-                        onChange={(e) =>
-                            handleChange(item.key, e.target.value === "true")
-                        }
-                        >
-                        <option value="true">True</option>
-                        <option value="false">False</option>
-                        </select>
-                    ) : (
-                        <input
-                        type="text"
-                        id={item.key}
-                        className="form-input"
-                        value={item.value}
-                        onChange={(e) => handleChange(item.key, e.target.value)}
-                        />
-                    )}
-                    </div>
-                ))}
-                </div>
+            <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+                {/* Recursively render settings */}
+                {Object.entries(settings).map(([group, groupData]) => {
+                    if (typeof groupData === 'object' && groupData !== null && !Array.isArray(groupData)) {
+                        return (
+                             <div key={group} style={{ marginBottom: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "20px" }}>
+                                <h3 style={{ textTransform: "capitalize", margin: "0 0 15px 0" }}>{group} Settings</h3>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
+                                    {renderFields(groupData, group)}
+                                </div>
+                             </div>
+                        )
+                    }
+                    return null; // Top level primitives usually don't exist in BSM config structure (usually nested under 'web', 'logging', etc.)
+                })}
             </div>
-            ))}
 
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
             <button type="submit" className="action-button" disabled={loading}>
                 <Save size={16} style={{ marginRight: "5px" }} /> Save Settings
             </button>

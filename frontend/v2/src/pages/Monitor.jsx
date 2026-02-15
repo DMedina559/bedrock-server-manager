@@ -166,7 +166,8 @@ const Monitor = () => {
                 {/* Chart Panel */}
                 <div style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)", minHeight: "250px" }}>
                     <h3>Resource Usage</h3>
-                    <div style={{ height: "200px", width: "100%" }}>
+                    {/* Fixed dimensions container for ResponsiveContainer to calculate from */}
+                    <div style={{ height: "200px", width: "100%", minHeight: "200px" }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={usageHistory}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#444" />

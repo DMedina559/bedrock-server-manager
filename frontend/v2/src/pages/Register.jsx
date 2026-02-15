@@ -1,122 +1,128 @@
-import React, { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "../ToastContext";
+import { post } from "../api";
 
 const Register = () => {
+  const { token } = useParams();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [searchParams] = useSearchParams();
-  const [token, setToken] = useState(searchParams.get("token") || "");
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!username || !password || !confirmPassword) {
+      addToast("All fields are required", "error");
+      return;
+    }
 
     if (password !== confirmPassword) {
       addToast("Passwords do not match", "error");
       return;
     }
 
+    if (!token) {
+        addToast("Invalid registration link (missing token).", "error");
+        return;
+    }
+
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append("username", username);
-      formData.append("password", password);
-      formData.append("token", token);
 
-      const response = await fetch("/api/register", {
-        method: "POST",
-        body: formData,
+      const response = await fetch(`/register/${token}`, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
       });
 
-      if (response.ok) {
-        addToast("Registration successful! Please login.", "success");
-        navigate("/login");
-      } else {
-        const data = await response.json();
-        addToast(data.detail || "Registration failed.", "error");
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+          data = null;
       }
+
+      if (response.ok) {
+          addToast("Registration successful! Please login.", "success");
+          navigate("/login");
+      } else {
+          const msg = data?.detail?.message || data?.detail || "Registration failed.";
+          addToast(msg, "error");
+      }
+
     } catch (error) {
-      addToast("Error during registration.", "error");
+      addToast("Network error during registration.", "error");
     } finally {
       setLoading(false);
     }
   };
 
+  if (!token) {
+      return (
+          <div className="container" style={{ marginTop: "100px", textAlign: "center" }}>
+              <div className="message-box message-error">
+                  Invalid registration link. Token is missing.
+              </div>
+          </div>
+      );
+  }
+
   return (
-    <div className="container" style={{ maxWidth: "400px", marginTop: "50px" }}>
-      <div className="header" style={{ flexDirection: "column" }}>
+    <div className="container" style={{ maxWidth: "400px", marginTop: "100px" }}>
+      <div className="header">
         <h1>Register</h1>
-        <p>Create a new account</p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="form-group"
-        style={{ display: "flex", flexDirection: "column", gap: "15px" }}
-      >
-        <div>
-          <label className="form-label">Registration Token</label>
+      <form onSubmit={handleSubmit} className="form-group">
+        <div style={{ marginBottom: "15px" }}>
+          <label className="form-label" htmlFor="username">Username</label>
           <input
             type="text"
-            className="form-input"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            required
-            placeholder="Enter invite token"
-          />
-        </div>
-        <div>
-          <label className="form-label">Username</label>
-          <input
-            type="text"
+            id="username"
             className="form-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
-            minLength={3}
+            autoComplete="username"
           />
         </div>
-        <div>
-          <label className="form-label">Password</label>
+
+        <div style={{ marginBottom: "15px" }}>
+          <label className="form-label" htmlFor="password">Password</label>
           <input
             type="password"
+            id="password"
             className="form-input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={8}
+            autoComplete="new-password"
           />
         </div>
-        <div>
-          <label className="form-label">Confirm Password</label>
+
+        <div style={{ marginBottom: "20px" }}>
+          <label className="form-label" htmlFor="confirmPassword">Confirm Password</label>
           <input
             type="password"
+            id="confirmPassword"
             className="form-input"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            minLength={8}
+            autoComplete="new-password"
           />
         </div>
 
-        <button
-          type="submit"
-          className="button button-primary"
-          disabled={loading}
-        >
+        <button type="submit" className="action-button" disabled={loading} style={{ width: "100%", justifyContent: "center" }}>
           {loading ? "Registering..." : "Register"}
         </button>
       </form>
-
-      <div style={{ textAlign: "center", marginTop: "15px" }}>
-        <a href="/login" style={{ color: "var(--text-color)" }}>
-          Already have an account? Login
-        </a>
-      </div>
     </div>
   );
 };

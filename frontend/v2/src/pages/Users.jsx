@@ -125,12 +125,14 @@ const Users = () => {
                 <label className="form-label">Username</label>
                 <input
                   type="text"
+                  name="new-username"
                   className="form-input"
                   value={newUser.username}
                   onChange={(e) =>
                     setNewUser({ ...newUser, username: e.target.value })
                   }
                   required
+                  autoComplete="new-username"
                   style={{ width: "100%" }}
                 />
               </div>
@@ -138,12 +140,14 @@ const Users = () => {
                 <label className="form-label">Password</label>
                 <input
                   type="password"
+                  name="new-password"
                   className="form-input"
                   value={newUser.password}
                   onChange={(e) =>
                     setNewUser({ ...newUser, password: e.target.value })
                   }
                   required
+                  autoComplete="new-password"
                   style={{ width: "100%" }}
                 />
               </div>

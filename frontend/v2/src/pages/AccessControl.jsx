@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { get, post, del } from "../api";
-import { Trash2, Plus, RefreshCw } from "lucide-react";
+import { Trash2, Plus, RefreshCw, ArrowRight } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const AccessControl = () => {
   const { selectedServer } = useServer();
@@ -12,6 +13,15 @@ const AccessControl = () => {
   const [newItemName, setNewItemName] = useState("");
   const [permissionLevel, setPermissionLevel] = useState("member");
   const { addToast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const setupFlow = location.state?.setupFlow;
+
+  useEffect(() => {
+    if (location.state?.tab) {
+        setActiveTab(location.state.tab);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     if (selectedServer) {
@@ -28,16 +38,29 @@ const AccessControl = () => {
 
       const data = await get(endpoint);
       if (data && data.status === "success") {
-        setItems(data.data || []);
+        if (activeTab === "allowlist") {
+            setItems(data.players || []);
+        } else {
+            setItems(data.data?.permissions || []);
+        }
       } else {
         addToast(`Failed to load ${activeTab}`, "error");
         setItems([]);
       }
     } catch (error) {
       addToast(error.message || `Error fetching ${activeTab}`, "error");
+      setItems([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleNextStep = () => {
+      if (activeTab === "allowlist") {
+          setActiveTab("permissions");
+      } else {
+          navigate("/server-config", { state: { setupFlow: true } });
+      }
   };
 
   const handleAdd = async (e) => {
@@ -99,10 +122,25 @@ const AccessControl = () => {
     <div className="container">
       <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Access Control: {selectedServer}</h1>
-        <button className="action-button secondary" onClick={fetchItems} disabled={loading}>
-            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
-        </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+            {!setupFlow && (
+                <button className="action-button secondary" onClick={fetchItems} disabled={loading}>
+                    <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+                </button>
+            )}
+            {setupFlow && (
+                <button className="action-button" onClick={handleNextStep}>
+                    Next Step <ArrowRight size={16} style={{ marginLeft: "5px" }} />
+                </button>
+            )}
+        </div>
       </div>
+
+      {setupFlow && (
+          <div className="message-box message-info" style={{ marginBottom: "20px" }}>
+              <strong>Setup Wizard (Step {activeTab === 'allowlist' ? '2' : '3'}/4):</strong> Configure {activeTab}.
+          </div>
+      )}
 
       <div className="tabs">
         <button
@@ -174,7 +212,7 @@ const AccessControl = () => {
                   <tr key={idx}>
                     <td>{item.name || "Unknown"}</td>
                     <td>{item.xuid || "N/A"}</td>
-                    {activeTab === "permissions" && <td>{item.permission}</td>}
+                    {activeTab === "permissions" && <td>{item.permission_level || item.permission}</td>}
                     <td>
                       {activeTab === "allowlist" && (
                         <button

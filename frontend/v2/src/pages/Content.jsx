@@ -145,10 +145,11 @@ const Content = () => {
         </button>
       </div>
 
-      <div className="tab-content" style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)", borderTop: "none" }}>
+      {/* Explicitly using a div for tab content, ensuring styles are applied */}
+      <div className="tab-content" style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)", borderTop: "none", minHeight: "200px" }}>
 
         {/* Actions Area */}
-        <div style={{ marginBottom: "20px", padding: "15px", background: "#444", borderRadius: "5px", display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ marginBottom: "20px", padding: "15px", background: "var(--server-card-background-color)", borderRadius: "5px", display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center", border: "1px solid var(--border-color)" }}>
             <div style={{ marginRight: "auto" }}>
                 <label className="action-button secondary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
                     <Upload size={16} style={{ marginRight: "5px" }} /> Upload .mcworld/.mcaddon
@@ -170,7 +171,7 @@ const Content = () => {
 
         {/* List */}
         {loading ? (
-          <div>Loading...</div>
+          <div style={{ padding: "20px", textAlign: "center" }}>Loading...</div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "15px" }}>
             {items && items.length > 0 ? (

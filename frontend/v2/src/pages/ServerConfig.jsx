@@ -1,33 +1,41 @@
 import React, { useState, useEffect } from "react";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
-import { post, get } from "../api";
-import { Download, Save } from "lucide-react";
+import { get, post } from "../api";
+import { Save, RefreshCw, Download, CheckCircle } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const ServerConfig = () => {
   const { selectedServer } = useServer();
-  const [config, setConfig] = useState({ autostart: false, autoupdate: false });
-  const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState({});
+  const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const setupFlow = location.state?.setupFlow;
 
-  // Legacy doesn't have a specific "get service config" endpoint that returns JSON?
-  // server_install_config.py -> configure_service_page renders HTML with initial values.
-  // But there is no API to GET current autostart/autoupdate status?
-  // Wait, system_api.is_autostart_enabled(server_name) exists in backend logic but maybe not exposed as JSON API?
-  // Let's check server_install_config.py again.
-  // It renders "configure_service.html" with "autostart_enabled": ..., "autoupdate_enabled": ...
-  // But no API endpoint to get it?
+  useEffect(() => {
+    if (selectedServer) {
+      fetchSettings();
+    }
+  }, [selectedServer]);
 
-  // If no API endpoint exists to GET, we can't pre-fill the form correctly in SPA.
-  // This is a gap. I might need to add an endpoint or just assume false (bad UX).
-  // Or maybe I missed the endpoint.
-
-  // I'll assume for now we can't fetch it easily without adding an endpoint,
-  // so I'll just show the controls and maybe they default to unchecked or I can try to fetch them if I find a way.
-  // Actually, I can use the new api.js to fetch the HTML page and parse it? No, that's ugly.
-  // Let's look for an API endpoint.
-
-  // If there isn't one, I'll just provide the "Set" functionality.
+  const fetchSettings = async () => {
+    setLoading(true);
+    try {
+      const data = await get(`/api/servers/${selectedServer}/settings`);
+      if (data && data.status === "success" && data.settings) {
+        setSettings(data.settings);
+      } else {
+        addToast("Failed to load server settings", "error");
+        setSettings({});
+      }
+    } catch (error) {
+      addToast(error.message || "Error fetching server settings", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -35,29 +43,131 @@ const ServerConfig = () => {
 
     setLoading(true);
     try {
-      await post(`/api/server/${selectedServer}/service/update`, {
-        autostart: config.autostart,
-        autoupdate: config.autoupdate,
-      });
-      addToast("Service configuration saved.", "success");
+      const flattened = flattenObject(settings);
+
+      for (const [key, value] of Object.entries(flattened)) {
+          if (key === "config_schema_version") continue;
+
+          await post(`/api/servers/${selectedServer}/settings`, {
+              key: key,
+              value: value
+          });
+      }
+
+      addToast("Server settings saved successfully.", "success");
+      fetchSettings();
     } catch (error) {
-      addToast(error.message || "Failed to save configuration.", "error");
+      addToast(error.message || "Failed to save settings.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateServer = async () => {
-    if (!selectedServer) return;
-    if (!confirm("This will stop the server and update it to the latest version. Continue?")) return;
+  const handleFinishSetup = async () => {
+      if (confirm("Setup complete! Would you like to start the server now?")) {
+          addToast("Starting server...", "info");
+          try {
+              await post(`/api/server/${selectedServer}/start`);
+              addToast("Server start signal sent.", "success");
+          } catch (error) {
+              addToast("Failed to start server: " + error.message, "error");
+          }
+      }
+      navigate("/");
+      addToast("Server setup complete!", "success");
+  };
 
-    addToast("Updating server...", "info");
-    try {
-      await post(`/api/server/${selectedServer}/update`, {});
-      addToast("Update task started. Check logs.", "success");
-    } catch (error) {
-      addToast(error.message || "Failed to start update.", "error");
-    }
+  const handleUpdateServer = async () => {
+      if (!selectedServer) return;
+      if (!confirm("This will stop the server and update it to the latest version. Continue?")) return;
+
+      addToast("Updating server...", "info");
+      try {
+        await post(`/api/server/${selectedServer}/update`, {});
+        addToast("Update task started. Check logs.", "success");
+      } catch (error) {
+        addToast(error.message || "Failed to start update.", "error");
+      }
+    };
+
+  const handleChange = (path, value) => {
+    setSettings(prev => {
+        const newSettings = JSON.parse(JSON.stringify(prev));
+        let current = newSettings;
+        const keys = path.split('.');
+        const lastKey = keys.pop();
+
+        keys.forEach(key => {
+            if (!current[key]) current[key] = {};
+            current = current[key];
+        });
+
+        current[lastKey] = value;
+        return newSettings;
+    });
+  };
+
+  const flattenObject = (obj, prefix = '') => {
+    return Object.keys(obj).reduce((acc, k) => {
+      const pre = prefix.length ? prefix + '.' : '';
+      if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
+        Object.assign(acc, flattenObject(obj[k], pre + k));
+      } else {
+        acc[pre + k] = obj[k];
+      }
+      return acc;
+    }, {});
+  };
+
+  const renderFields = (obj, prefix = '') => {
+      return Object.entries(obj).map(([key, value]) => {
+          const fullPath = prefix ? `${prefix}.${key}` : key;
+
+          if (key === "config_schema_version") return null;
+
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+              return (
+                  <div key={fullPath} style={{ marginBottom: "20px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "2px solid var(--border-color)" }}>
+                      <h4 style={{ textTransform: "capitalize", margin: "10px 0" }}>{key.replace(/_/g, ' ')}</h4>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "15px" }}>
+                        {renderFields(value, fullPath)}
+                      </div>
+                  </div>
+              );
+          }
+
+          return (
+            <div key={fullPath} style={{ display: "flex", flexDirection: "column" }}>
+                <label
+                    htmlFor={fullPath}
+                    className="form-label"
+                    style={{ marginBottom: "5px", fontWeight: "bold", fontSize: "0.9em" }}
+                >
+                    {key.replace(/_/g, " ")}
+                </label>
+                {typeof value === "boolean" ? (
+                    <select
+                        id={fullPath}
+                        className="form-input"
+                        value={value.toString()}
+                        onChange={(e) => handleChange(fullPath, e.target.value === "true")}
+                    >
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                    </select>
+                ) : (
+                    <input
+                        type="text"
+                        id={fullPath}
+                        className="form-input"
+                        value={value || ""}
+                        readOnly={prefix.includes("server_info") && (key === "status" || key === "installed_version")}
+                        onChange={(e) => handleChange(fullPath, e.target.value)}
+                    />
+                )}
+            </div>
+          );
+      });
   };
 
   if (!selectedServer) {
@@ -72,99 +182,69 @@ const ServerConfig = () => {
 
   return (
     <div className="container">
-      <div className="header">
-        <h1>Server Configuration: {selectedServer}</h1>
-      </div>
-
-      <div
-        className="grid"
-        style={{
-          display: "grid",
-          gap: "30px",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-        }}
-      >
-        {/* Actions Panel */}
-        <div
-          style={{
-            background: "var(--container-background-color)",
-            padding: "20px",
-            border: "1px solid var(--border-color)",
-          }}
-        >
-          <h3>Update Server</h3>
-          <p>Update the server to the latest Bedrock version.</p>
-          <button
-            className="action-button"
-            onClick={handleUpdateServer}
-            disabled={loading}
-          >
-            <Download size={16} style={{ marginRight: "5px" }} /> Update Server Now
-          </button>
-        </div>
-
-        {/* Configuration Form */}
-        <div
-          style={{
-            background: "var(--container-background-color)",
-            padding: "20px",
-            border: "1px solid var(--border-color)",
-          }}
-        >
-          <h3>Service Settings</h3>
-          <p style={{ fontSize: "0.9em", color: "#aaa", marginBottom: "15px" }}>
-            Configure automatic startup and updates. (Current state retrieval not supported via API)
-          </p>
-          <form onSubmit={handleSave}>
-            <div className="form-group">
-              <label
-                className="form-label"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={config.autostart}
-                  onChange={(e) =>
-                    setConfig({ ...config, autostart: e.target.checked })
-                  }
-                  className="form-checkbox"
-                  // form-checkbox class might not be in forms.css, let's stick to default
-                />
-                Auto-Start Server on Boot
-              </label>
-            </div>
-            <div className="form-group">
-              <label
-                className="form-label"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={config.autoupdate}
-                  onChange={(e) =>
-                    setConfig({ ...config, autoupdate: e.target.checked })
-                  }
-                />
-                Auto-Update Server
-              </label>
-            </div>
-
-            <button type="submit" className="action-button" disabled={loading}>
-              <Save size={16} style={{ marginRight: "5px" }} /> Save Settings
-            </button>
-          </form>
+      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>Server Settings: {selectedServer}</h1>
+        <div style={{ display: "flex", gap: "10px" }}>
+            {!setupFlow && (
+                <button className="action-button secondary" onClick={fetchSettings} disabled={loading}>
+                    <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+                </button>
+            )}
+            {setupFlow && (
+                <button className="action-button success-button" onClick={handleFinishSetup}>
+                    <CheckCircle size={16} style={{ marginRight: "5px" }} /> Finish Setup
+                </button>
+            )}
         </div>
       </div>
+
+      {setupFlow && (
+          <div className="message-box message-info" style={{ marginBottom: "20px" }}>
+              <strong>Setup Wizard (Step 4/4):</strong> Configure BSM settings for this server.
+          </div>
+      )}
+
+      {loading && Object.keys(settings).length === 0 ? (
+        <div style={{ textAlign: "center", padding: "20px" }}>Loading settings...</div>
+      ) : (
+        <div className="grid" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+
+             {!setupFlow && (
+                <div style={{ padding: "15px", background: "#444", borderRadius: "5px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ color: "#eee" }}>
+                        <strong>Quick Actions:</strong>
+                    </div>
+                    <button className="action-button" onClick={handleUpdateServer}>
+                        <Download size={16} style={{ marginRight: "5px" }} /> Update Server Software
+                    </button>
+                </div>
+             )}
+
+            <form onSubmit={handleSave} className="form-group">
+                <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+                    {Object.entries(settings).map(([group, groupData]) => {
+                        if (typeof groupData === 'object' && groupData !== null && !Array.isArray(groupData)) {
+                            return (
+                                <div key={group} style={{ marginBottom: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "20px" }}>
+                                    <h3 style={{ textTransform: "capitalize", margin: "0 0 15px 0" }}>{group.replace(/_/g, ' ')}</h3>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
+                                        {renderFields(groupData, group)}
+                                    </div>
+                                </div>
+                            )
+                        }
+                        return null;
+                    })}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
+                    <button type="submit" className="action-button" disabled={loading}>
+                        <Save size={16} style={{ marginRight: "5px" }} /> Save Settings
+                    </button>
+                </div>
+            </form>
+        </div>
+      )}
     </div>
   );
 };

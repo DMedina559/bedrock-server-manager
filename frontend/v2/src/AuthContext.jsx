@@ -12,26 +12,29 @@ export const AuthProvider = ({ children }) => {
     const [needsSetup, setNeedsSetup] = useState(false);
 
     const checkUser = async () => {
+        // Always check setup status first if not logged in or to ensure correctness
+        try {
+            const setupRes = await fetch("/setup/status");
+            if (setupRes.ok) {
+                const setupData = await setupRes.json();
+                setNeedsSetup(setupData.needs_setup);
+                if (setupData.needs_setup) {
+                    setLoading(false);
+                    return; // Stop if setup is needed
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to check setup status", e);
+        }
+
         try {
             const userData = await request("/api/account", { method: "GET" });
             setUser(userData);
-            setNeedsSetup(false);
         } catch (error) {
             console.error("Failed to check user status", error);
-
             if (error.status === 401) {
                 setUser(null);
             }
-
-            if (!user) {
-                try {
-                    const probe = await fetch("/api/account", { redirect: 'follow' });
-                    if (probe.url && probe.url.includes("/setup")) {
-                        setNeedsSetup(true);
-                    }
-                } catch (e) { /* ignore */ }
-            }
-
             setUser(null);
         } finally {
             setLoading(false);

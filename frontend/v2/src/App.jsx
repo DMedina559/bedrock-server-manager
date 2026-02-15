@@ -18,6 +18,7 @@ import Account from "./pages/Account";
 import Plugins from "./pages/Plugins";
 import ServerConfig from "./pages/ServerConfig";
 import AccessControl from "./pages/AccessControl";
+import ServerInstall from "./pages/ServerInstall";
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, needsSetup } = useAuth();
@@ -51,8 +52,11 @@ const AppRoutes = () => {
         path="/login"
         element={needsSetup ? <Navigate to="/setup" /> : <Login />}
       />
-      <Route path="/setup" element={<Setup />} />
-      <Route path="/register" element={<Register />} /> {/* Public route */}
+      <Route
+        path="/setup"
+        element={needsSetup ? <Setup /> : <Navigate to="/" replace />}
+      />
+      <Route path="/register/:token" element={<Register />} /> {/* Public route with token */}
       <Route
         path="/"
         element={
@@ -72,6 +76,7 @@ const AppRoutes = () => {
         <Route path="users" element={<Users />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="account" element={<Account />} />
+        <Route path="server-install" element={<ServerInstall />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

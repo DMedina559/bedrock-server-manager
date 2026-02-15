@@ -45,10 +45,12 @@ const Login = () => {
           <input
             type="text"
             id="username"
+            name="username"
             className="form-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
+            autoComplete="username"
           />
         </div>
         <div>
@@ -58,10 +60,12 @@ const Login = () => {
           <input
             type="password"
             id="password"
+            name="password"
             className="form-input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
           />
         </div>
 
