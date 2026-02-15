@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { request } from "./api";
 
 const AuthContext = createContext();
 
@@ -12,27 +13,25 @@ export const AuthProvider = ({ children }) => {
 
     const checkUser = async () => {
         try {
-            const response = await fetch("/api/account");
-
-            // If the response URL is /setup, we need setup.
-            // Note: response.url might be absolute, so we check inclusion.
-            if (response.url && response.url.includes("/setup")) {
-                setNeedsSetup(true);
-                setLoading(false);
-                return;
-            }
-
-            if (response.ok) {
-                const userData = await response.json();
-                setUser(userData);
-                setNeedsSetup(false);
-            } else {
-                setUser(null);
-                setNeedsSetup(false);
-            }
+            const userData = await request("/api/account", { method: "GET" });
+            setUser(userData);
+            setNeedsSetup(false);
         } catch (error) {
             console.error("Failed to check user status", error);
-            // In case of error, assume no user logged in.
+
+            if (error.status === 401) {
+                setUser(null);
+            }
+
+            if (!user) {
+                try {
+                    const probe = await fetch("/api/account", { redirect: 'follow' });
+                    if (probe.url && probe.url.includes("/setup")) {
+                        setNeedsSetup(true);
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
             setUser(null);
         } finally {
             setLoading(false);
@@ -70,7 +69,11 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
-        await fetch("/auth/logout");
+        try {
+            await fetch("/auth/logout");
+        } catch (e) {
+            console.warn("Logout failed", e);
+        }
         localStorage.removeItem("jwt_token");
         setUser(null);
     };

@@ -93,6 +93,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/auth/token",
             "/docs",
             "/openapi.json",
+            "/v2",
         ]
 
         if bcm_config.needs_setup(request.app.state.app_context) and not any(
