@@ -55,7 +55,7 @@ class User(BaseModel):
 
     id: int
     username: str
-    identity_type: str
+    identity_type: Optional[str] = None
     role: str
     is_active: bool
     theme: str = "default"
