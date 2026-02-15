@@ -30,6 +30,7 @@ const AccessControl = () => {
   }, [selectedServer, activeTab]);
 
   const fetchItems = async () => {
+    if (!selectedServer) return;
     setLoading(true);
     try {
       const endpoint = activeTab === "allowlist"
@@ -41,13 +42,15 @@ const AccessControl = () => {
         if (activeTab === "allowlist") {
             setItems(data.players || []);
         } else {
+            // Permissions data is nested in data.data.permissions
             setItems(data.data?.permissions || []);
         }
       } else {
-        addToast(`Failed to load ${activeTab}`, "error");
+        addToast(`Failed to load ${activeTab}: ${data?.message || "Unknown error"}`, "error");
         setItems([]);
       }
     } catch (error) {
+      console.error(`Error fetching ${activeTab}:`, error);
       addToast(error.message || `Error fetching ${activeTab}`, "error");
       setItems([]);
     } finally {
@@ -124,8 +127,13 @@ const AccessControl = () => {
         <h1>Access Control: {selectedServer}</h1>
         <div style={{ display: "flex", gap: "10px" }}>
             {!setupFlow && (
-                <button className="action-button secondary" onClick={fetchItems} disabled={loading}>
-                    <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+                <button
+                  className="action-button secondary"
+                  onClick={fetchItems}
+                  disabled={loading}
+                  title="Reload current list"
+                >
+                    <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
                 </button>
             )}
             {setupFlow && (
@@ -157,11 +165,11 @@ const AccessControl = () => {
         </button>
       </div>
 
-      <div className="tab-content" style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)", borderTop: "none" }}>
+      <div className="tab-content" style={{ background: "var(--container-background-color, #333)", padding: "20px", border: "1px solid var(--border-color, #555)", borderTop: "none", minHeight: "200px" }}>
 
         {/* Add Form */}
-        <form onSubmit={handleAdd} className="form-group" style={{ display: "flex", gap: "10px", alignItems: "flex-end", marginBottom: "20px" }}>
-          <div style={{ flexGrow: 1 }}>
+        <form onSubmit={handleAdd} className="form-group" style={{ display: "flex", gap: "10px", alignItems: "flex-end", marginBottom: "20px", flexWrap: "wrap" }}>
+          <div style={{ flexGrow: 1, minWidth: "200px" }}>
             <label className="form-label">Player Name (Gamertag)</label>
             <input
               type="text"
@@ -170,16 +178,18 @@ const AccessControl = () => {
               onChange={(e) => setNewItemName(e.target.value)}
               required
               style={{ width: "100%" }}
+              placeholder={activeTab === "allowlist" ? "Enter Gamertag to allow" : "Enter Gamertag for permissions"}
             />
           </div>
 
           {activeTab === "permissions" && (
-            <div>
+            <div style={{ minWidth: "150px" }}>
               <label className="form-label">Level</label>
               <select
                 className="form-input"
                 value={permissionLevel}
                 onChange={(e) => setPermissionLevel(e.target.value)}
+                style={{ width: "100%" }}
               >
                 <option value="visitor">Visitor</option>
                 <option value="member">Member</option>
@@ -188,16 +198,19 @@ const AccessControl = () => {
             </div>
           )}
 
-          <button type="submit" className="action-button">
+          <button type="submit" className="action-button" disabled={loading || !newItemName}>
             <Plus size={16} style={{ marginRight: "5px" }} /> Add
           </button>
         </form>
 
         {/* List */}
         {loading ? (
-          <div>Loading...</div>
+          <div style={{ padding: "20px", textAlign: "center", color: "#ccc" }}>
+            <RefreshCw className="spin" style={{ display: "inline-block", marginRight: "10px" }} /> Loading data...
+          </div>
         ) : (
-          <table className="table" style={{ width: "100%" }}>
+          <div className="table-responsive-wrapper">
+          <table className="server-table" style={{ width: "100%" }}>
             <thead>
               <tr>
                 <th>Name</th>
@@ -228,14 +241,15 @@ const AccessControl = () => {
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td colSpan={activeTab === "permissions" ? 4 : 3} style={{ textAlign: "center", color: "#888", fontStyle: "italic", padding: "15px" }}>
-                    No entries found.
+                <tr className="no-servers-row">
+                  <td colSpan={activeTab === "permissions" ? 4 : 3} className="no-servers" style={{ textAlign: "center", color: "#888", fontStyle: "italic", padding: "15px" }}>
+                    No entries found in {activeTab}. Use the form above to add one.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

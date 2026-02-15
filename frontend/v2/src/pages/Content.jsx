@@ -18,6 +18,7 @@ const Content = () => {
   }, [selectedServer, activeTab]);
 
   const fetchItems = async () => {
+    if (!selectedServer) return;
     setLoading(true);
     try {
       const endpoint = activeTab === "worlds" ? "/api/content/worlds" : "/api/content/addons";
@@ -25,11 +26,12 @@ const Content = () => {
       if (data && data.status === "success") {
         setItems(data.files || []);
       } else {
-        addToast(`Failed to load ${activeTab}`, "error");
+        addToast(`Failed to load ${activeTab}: ${data?.message || "Unknown error"}`, "error");
         setItems([]);
       }
     } catch (error) {
       addToast(error.message || `Error fetching ${activeTab}`, "error");
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -125,7 +127,7 @@ const Content = () => {
         <h1>Content Management: {selectedServer}</h1>
         <div style={{ display: "flex", gap: "10px" }}>
             <button className="action-button secondary" onClick={fetchItems} disabled={loading}>
-                <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+                <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
             </button>
         </div>
       </div>
@@ -146,10 +148,10 @@ const Content = () => {
       </div>
 
       {/* Explicitly using a div for tab content, ensuring styles are applied */}
-      <div className="tab-content" style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)", borderTop: "none", minHeight: "200px" }}>
+      <div className="tab-content" style={{ background: "var(--container-background-color, #333)", padding: "20px", border: "1px solid var(--border-color, #555)", borderTop: "none", minHeight: "200px" }}>
 
         {/* Actions Area */}
-        <div style={{ marginBottom: "20px", padding: "15px", background: "var(--server-card-background-color)", borderRadius: "5px", display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center", border: "1px solid var(--border-color)" }}>
+        <div style={{ marginBottom: "20px", padding: "15px", background: "var(--server-card-background-color, #444)", borderRadius: "5px", display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center", border: "1px solid var(--border-color, #555)" }}>
             <div style={{ marginRight: "auto" }}>
                 <label className="action-button secondary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
                     <Upload size={16} style={{ marginRight: "5px" }} /> Upload .mcworld/.mcaddon
@@ -171,12 +173,14 @@ const Content = () => {
 
         {/* List */}
         {loading ? (
-          <div style={{ padding: "20px", textAlign: "center" }}>Loading...</div>
+          <div style={{ padding: "20px", textAlign: "center" }}>
+            <RefreshCw className="spin" style={{ display: "inline-block", marginRight: "10px" }} /> Loading content...
+          </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "15px" }}>
             {items && items.length > 0 ? (
               items.map((filename) => (
-                <div key={filename} style={{ background: "var(--server-card-background-color)", border: "1px solid var(--server-card-border-color)", padding: "15px", borderRadius: "5px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+                <div key={filename} style={{ background: "var(--server-card-background-color, #444)", border: "1px solid var(--server-card-border-color, #555)", padding: "15px", borderRadius: "5px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                     {activeTab === "worlds" ? <Globe size={32} style={{ marginBottom: "10px", color: "#4CAF50" }} /> : <Package size={32} style={{ marginBottom: "10px", color: "#2196F3" }} />}
                     <div style={{ fontWeight: "bold", marginBottom: "10px", wordBreak: "break-all" }}>{filename}</div>
                     <button className="action-button" style={{ marginTop: "auto", width: "100%" }} onClick={() => handleInstall(filename)}>
@@ -185,8 +189,8 @@ const Content = () => {
                 </div>
               ))
             ) : (
-                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "30px", color: "#888" }}>
-                    No {activeTab} available. Upload one to get started.
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "30px", color: "#888", fontStyle: "italic" }}>
+                    No {activeTab} available. Upload one or check the `downloads` folder.
                 </div>
             )}
           </div>

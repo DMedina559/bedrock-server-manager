@@ -1,18 +1,27 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
-import { Trash2, UserPlus, Shield, RefreshCw } from "lucide-react";
+import { Trash2, UserPlus, Shield, RefreshCw, Copy, Check, ToggleLeft, ToggleRight, UserCog } from "lucide-react";
+import { useAuth } from "../AuthContext";
 
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [newUser, setNewUser] = useState({
-    username: "",
-    password: "",
-    role: "admin",
-  });
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+
+  // Invite state
+  const [inviteRole, setInviteRole] = useState("user");
+  const [generatedLink, setGeneratedLink] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  // Edit state
+  const [editRole, setEditRole] = useState("");
+  const [editActive, setEditActive] = useState(false);
+
   const { addToast } = useToast();
+  const { user: currentUser } = useAuth();
 
   useEffect(() => {
     fetchUsers();
@@ -35,34 +44,110 @@ const Users = () => {
     }
   };
 
-  const handleDelete = async (user) => {
-    if (!confirm(`Are you sure you want to delete user ${user.username}?`)) return;
+  const handleDelete = async (userToDelete) => {
+    if (userToDelete.role === 'admin') {
+        const adminCount = users.filter(u => u.role === 'admin' && u.is_active).length;
+        if (adminCount <= 1) {
+            addToast("Cannot delete the last active administrator account.", "error");
+            return;
+        }
+    }
+
+    if (!confirm(`Are you sure you want to delete user ${userToDelete.username}?`)) return;
 
     try {
-      await post(`/users/${user.id}/delete`);
-      addToast(`User ${user.username} deleted.`, "success");
+      await post(`/users/${userToDelete.id}/delete`);
+      addToast(`User ${userToDelete.username} deleted.`, "success");
       fetchUsers();
     } catch (error) {
       addToast(error.message || "Failed to delete user.", "error");
     }
   };
 
-  const handleAddUser = async (e) => {
+  const handleGenerateLink = async (e) => {
     e.preventDefault();
     try {
-      await post("/users/create", newUser);
-      addToast("User created successfully.", "success");
-      setShowModal(false);
-      setNewUser({ username: "", password: "", role: "admin" });
-      fetchUsers();
+      const response = await post("/register/generate-token", { role: inviteRole });
+
+      if (response && response.redirect_url) {
+          // Extract token from "Registration link generated: http://.../register/<token>"
+          const match = response.redirect_url.match(/register\/([a-zA-Z0-9_\-]+)/);
+          if (match && match[1]) {
+              const token = match[1];
+              // Construct V2 link
+              const v2Link = `${window.location.origin}/v2/register/${token}`;
+              setGeneratedLink(v2Link);
+              addToast("Invitation link generated.", "success");
+          } else {
+               addToast("Link generated but could not be parsed.", "warning");
+          }
+      } else {
+          addToast("Failed to generate link.", "error");
+      }
     } catch (error) {
-      addToast(error.message || "Failed to create user.", "error");
+      addToast(error.message || "Failed to generate invitation link.", "error");
     }
+  };
+
+  const openEditModal = (user) => {
+      setEditingUser(user);
+      setEditRole(user.role);
+      setEditActive(user.is_active);
+      setShowEditModal(true);
+  };
+
+  const saveUserChanges = async () => {
+      if (!editingUser) return;
+
+      try {
+          let updated = false;
+          // Update Role if changed
+          if (editRole !== editingUser.role) {
+             await post(`/users/${editingUser.id}/role`, { role: editRole });
+             updated = true;
+          }
+
+          // Update Status if changed
+          if (editActive !== editingUser.is_active) {
+              const endpoint = editActive ? "enable" : "disable";
+              await post(`/users/${editingUser.id}/${endpoint}`);
+              updated = true;
+          }
+
+          if (updated) {
+              addToast(`User ${editingUser.username} updated.`, "success");
+              setShowEditModal(false);
+              setEditingUser(null);
+              fetchUsers();
+          } else {
+              setShowEditModal(false);
+          }
+
+      } catch (error) {
+          addToast(error.message || "Failed to update user.", "error");
+      }
+  };
+
+  const copyToClipboard = () => {
+      if (generatedLink) {
+          navigator.clipboard.writeText(generatedLink);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+          addToast("Link copied to clipboard", "success");
+      }
+  };
+
+  const closeInviteModal = () => {
+      setShowInviteModal(false);
+      setGeneratedLink(null);
+      setInviteRole("user");
   };
 
   if (loading && users.length === 0) return (
       <div className="container" style={{ textAlign: "center", padding: "20px" }}>Loading users...</div>
   );
+
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <div className="container">
@@ -72,15 +157,18 @@ const Users = () => {
             <button
             className="action-button secondary"
             onClick={fetchUsers}
+            disabled={loading}
             >
-            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+            <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
             </button>
+            {isAdmin && (
             <button
             className="action-button"
-            onClick={() => setShowModal(true)}
+            onClick={() => setShowInviteModal(true)}
             >
-            <UserPlus size={16} style={{ marginRight: "5px" }} /> Add User
+            <UserPlus size={16} style={{ marginRight: "5px" }} /> Invite User
             </button>
+            )}
         </div>
       </div>
 
@@ -89,96 +177,181 @@ const Users = () => {
           <tr>
             <th>Username</th>
             <th>Role</th>
-            <th style={{ width: "100px" }}>Actions</th>
+            <th>Status</th>
+            <th style={{ width: "150px" }}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {users.map((user) => (
-            <tr key={user.id}>
-              <td>{user.username}</td>
+            <tr key={user.id} style={{ opacity: user.is_active ? 1 : 0.6 }}>
+              <td>{user.username} {currentUser && currentUser.id === user.id && "(You)"}</td>
               <td>
                 <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                   <Shield size={14} /> {user.role}
                 </span>
               </td>
               <td>
-                <button
-                  className="action-button danger-button"
-                  onClick={() => handleDelete(user)}
-                  title="Delete User"
-                  style={{ padding: "5px 10px" }}
-                >
-                  <Trash2 size={14} />
-                </button>
+                  {user.is_active ? (
+                      <span style={{ color: "var(--success-color, #4CAF50)", display: "flex", alignItems: "center", gap: "5px" }}>
+                          <Check size={14} /> Active
+                      </span>
+                  ) : (
+                      <span style={{ color: "var(--error-color, #f44336)", display: "flex", alignItems: "center", gap: "5px" }}>
+                           Disabled
+                      </span>
+                  )}
+              </td>
+              <td>
+                <div style={{ display: "flex", gap: "5px" }}>
+                    {isAdmin && (
+                        <>
+                        <button
+                        className="action-button secondary"
+                        onClick={() => openEditModal(user)}
+                        title="Edit User"
+                        style={{ padding: "5px 10px" }}
+                        disabled={user.id === currentUser?.id}
+                        >
+                        <UserCog size={14} />
+                        </button>
+                        <button
+                        className="action-button danger-button"
+                        onClick={() => handleDelete(user)}
+                        title="Delete User"
+                        style={{ padding: "5px 10px" }}
+                        disabled={user.role === 'admin' && users.filter(u => u.role === 'admin' && u.is_active).length <= 1}
+                        >
+                        <Trash2 size={14} />
+                        </button>
+                        </>
+                    )}
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {showModal && (
+      {/* Invite Modal */}
+      {showInviteModal && (
         <div className="modal" style={{ display: "block" }}>
           <div className="modal-content">
-            <h2>Add New User</h2>
-            <form onSubmit={handleAddUser}>
-              <div style={{ marginBottom: "15px", textAlign: "left" }}>
-                <label className="form-label">Username</label>
-                <input
-                  type="text"
-                  name="new-username"
-                  className="form-input"
-                  value={newUser.username}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, username: e.target.value })
-                  }
-                  required
-                  autoComplete="new-username"
-                  style={{ width: "100%" }}
-                />
-              </div>
-              <div style={{ marginBottom: "15px", textAlign: "left" }}>
-                <label className="form-label">Password</label>
-                <input
-                  type="password"
-                  name="new-password"
-                  className="form-input"
-                  value={newUser.password}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, password: e.target.value })
-                  }
-                  required
-                  autoComplete="new-password"
-                  style={{ width: "100%" }}
-                />
-              </div>
-              <div style={{ marginBottom: "15px", textAlign: "left" }}>
-                <label className="form-label">Role</label>
-                <select
-                  className="form-input"
-                  value={newUser.role}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, role: e.target.value })
-                  }
-                  style={{ width: "100%" }}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="user">User (Read Only)</option>
-                </select>
-              </div>
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="action-button secondary"
-                  onClick={() => setShowModal(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="action-button">
-                  Create User
-                </button>
-              </div>
-            </form>
+            <h2>Invite New User</h2>
+            {!generatedLink ? (
+                <form onSubmit={handleGenerateLink}>
+                <div style={{ marginBottom: "15px", textAlign: "left" }}>
+                    <p style={{marginBottom: "10px", color: "#ccc"}}>
+                        Generate a registration link to send to a new user. This link will be valid for 24 hours.
+                    </p>
+                    <label className="form-label">Role</label>
+                    <select
+                    className="form-input"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    style={{ width: "100%" }}
+                    >
+                    <option value="user">User (Read Only)</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div className="modal-actions">
+                    <button
+                    type="button"
+                    className="action-button secondary"
+                    onClick={closeInviteModal}
+                    >
+                    Cancel
+                    </button>
+                    <button type="submit" className="action-button">
+                    Generate Link
+                    </button>
+                </div>
+                </form>
+            ) : (
+                <div style={{ textAlign: "left" }}>
+                    <p style={{marginBottom: "10px", color: "#4CAF50"}}>Link generated successfully!</p>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            value={generatedLink}
+                            readOnly
+                            style={{ flexGrow: 1 }}
+                        />
+                        <button className="action-button" onClick={copyToClipboard} title="Copy to clipboard">
+                            {copied ? <Check size={16} /> : <Copy size={16} />}
+                        </button>
+                    </div>
+                    <div className="modal-actions">
+                        <button
+                        type="button"
+                        className="action-button secondary"
+                        onClick={closeInviteModal}
+                        >
+                        Close
+                        </button>
+                    </div>
+                </div>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && editingUser && (
+        <div className="modal" style={{ display: "block" }}>
+            <div className="modal-content">
+                <h2>Edit User: {editingUser.username}</h2>
+                <div style={{ marginBottom: "15px", textAlign: "left" }}>
+                    <label className="form-label">Role</label>
+                    <select
+                        className="form-input"
+                        value={editRole}
+                        onChange={(e) => setEditRole(e.target.value)}
+                        style={{ width: "100%", marginBottom: "15px" }}
+                        disabled={editingUser.id === currentUser?.id}
+                    >
+                        <option value="user">User (Read Only)</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Admin</option>
+                    </select>
+
+                    <label className="form-label" style={{display: "block", marginBottom: "5px"}}>Status</label>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <button
+                            type="button"
+                            onClick={() => setEditActive(!editActive)}
+                            style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: editActive ? "var(--success-color, #4CAF50)" : "var(--error-color, #f44336)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                fontSize: "1rem"
+                            }}
+                            disabled={editingUser.id === currentUser?.id}
+                        >
+                            {editActive ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                            {editActive ? "Active" : "Disabled"}
+                        </button>
+                    </div>
+                </div>
+                <div className="modal-actions">
+                    <button
+                        type="button"
+                        className="action-button secondary"
+                        onClick={() => { setShowEditModal(false); setEditingUser(null); }}
+                    >
+                        Cancel
+                    </button>
+                    <button type="button" className="action-button" onClick={saveUserChanges}>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
         </div>
       )}
     </div>

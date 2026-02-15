@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -6,12 +6,19 @@ const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Where to redirect after login
   const from = location.state?.from?.pathname || "/";
+
+  useEffect(() => {
+    // If user is already logged in, redirect them
+    if (user) {
+        navigate("/", { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

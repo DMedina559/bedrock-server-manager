@@ -16,16 +16,12 @@ const ServerProperties = () => {
 
   useEffect(() => {
     if (selectedServer) {
-      fetchProperties();
-    } else {
-
-        if (setupFlow) {
-            setLoading(true);
-        }
+      // Initial fetch
+      fetchProperties(false);
     }
   }, [selectedServer]);
 
-  const fetchProperties = async () => {
+  const fetchProperties = async (showToast = true) => {
     setLoading(true);
     try {
       const data = await get(`/api/server/${selectedServer}/properties/get`);
@@ -37,6 +33,7 @@ const ServerProperties = () => {
         }));
         propsArray.sort((a, b) => a.key.localeCompare(b.key));
         setProperties(propsArray);
+        if (showToast) addToast("Properties refreshed.", "success");
       } else {
         addToast("Failed to load server properties", "error");
         setProperties([]);
@@ -160,8 +157,13 @@ const ServerProperties = () => {
       <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Server Properties: {selectedServer}</h1>
         {!setupFlow && (
-            <button className="action-button secondary" onClick={fetchProperties} disabled={loading}>
-                <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
+            <button
+              className="action-button secondary"
+              onClick={() => fetchProperties(true)}
+              disabled={loading}
+              title="Reload properties"
+            >
+                <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
             </button>
         )}
       </div>
@@ -173,16 +175,18 @@ const ServerProperties = () => {
       )}
 
       {loading && properties.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "20px" }}>Loading properties...</div>
+        <div style={{ textAlign: "center", padding: "20px" }}>
+             <RefreshCw className="spin" style={{ display: "inline-block", marginRight: "10px" }} /> Loading properties...
+        </div>
       ) : (
         <form onSubmit={handleSave} className="form-group">
             <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
                 gap: "20px",
-                background: "var(--container-background-color)",
+                background: "var(--container-background-color, #333)",
                 padding: "20px",
-                border: "1px solid var(--border-color)",
+                border: "1px solid var(--border-color, #555)",
                 marginBottom: "20px"
             }}>
             {properties.map((prop) => (

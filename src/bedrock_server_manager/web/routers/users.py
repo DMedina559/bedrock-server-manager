@@ -141,6 +141,19 @@ async def delete_user(
     with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
+            # Prevent deleting the last admin
+            if user.role == "admin":
+                active_admins = (
+                    db.query(User)
+                    .filter(User.role == "admin", User.is_active.is_(True))
+                    .count()
+                )
+                if active_admins <= 1:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Cannot delete the last active admin.",
+                    )
+
             create_audit_log(
                 app_context,
                 current_user.id,

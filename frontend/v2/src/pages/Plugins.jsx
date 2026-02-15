@@ -38,7 +38,6 @@ const Plugins = () => {
     addToast("Reloading plugins...", "info");
     try {
       await put("/api/plugins/reload");
-
       addToast("Plugins reloaded successfully", "success");
       fetchPlugins();
     } catch (error) {
@@ -49,15 +48,17 @@ const Plugins = () => {
   const handleToggle = async (pluginName, currentEnabled) => {
     const newEnabled = !currentEnabled;
     try {
-      await put(`/api/plugins/${pluginName}`, { enabled: newEnabled });
+      // API expects POST for setting status
+      await post(`/api/plugins/${pluginName}`, { enabled: newEnabled });
       addToast(`Plugin ${pluginName} ${newEnabled ? "enabled" : "disabled"}.`, "success");
 
-      // Optimistic update or refetch
+      // Optimistic update
       setPlugins(prev => prev.map(p =>
         p.name === pluginName ? { ...p, enabled: newEnabled } : p
       ));
     } catch (error) {
       addToast(error.message || `Failed to toggle plugin ${pluginName}`, "error");
+      fetchPlugins(); // Fetch fresh state to be sure.
     }
   };
 
@@ -68,13 +69,17 @@ const Plugins = () => {
         <button
           className="action-button secondary"
           onClick={handleReload}
+          disabled={loading}
+          title="Reload all plugins"
         >
-          <RefreshCw size={16} style={{ marginRight: "5px" }} /> Reload Plugins
+          <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Reload Plugins
         </button>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "20px" }}>Loading...</div>
+        <div style={{ textAlign: "center", padding: "20px" }}>
+            <RefreshCw className="spin" style={{ display: "inline-block", marginRight: "10px" }} /> Loading plugins...
+        </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px", marginTop: "20px" }}>
           {plugins.length === 0 ? (
@@ -84,8 +89,8 @@ const Plugins = () => {
               <div
                 key={plugin.name}
                 style={{
-                  background: "var(--container-background-color)",
-                  border: "1px solid var(--border-color)",
+                  background: "var(--container-background-color, #333)",
+                  border: "1px solid var(--border-color, #555)",
                   padding: "15px",
                   display: "flex",
                   flexDirection: "column"
@@ -110,7 +115,7 @@ const Plugins = () => {
                   {plugin.description || "No description provided."}
                 </p>
 
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "15px", fontSize: "0.85em", color: "#888", borderTop: "1px solid var(--border-color)", paddingTop: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "15px", fontSize: "0.85em", color: "#888", borderTop: "1px solid var(--border-color, #555)", paddingTop: "10px" }}>
                   <span>v{plugin.version || "N/A"}</span>
                   <span>{plugin.author || "Unknown Author"}</span>
                 </div>

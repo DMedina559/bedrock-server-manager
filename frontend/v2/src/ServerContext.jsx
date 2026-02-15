@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { request } from "./api";
 import { useAuth } from "./AuthContext";
+import useWebSocket from "./hooks/useWebSocket";
 
 const ServerContext = createContext();
 
@@ -14,6 +15,8 @@ export const ServerProvider = ({ children }) => {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const { isConnected, lastMessage, subscribe, unsubscribe } = useWebSocket();
 
   // Wrapper for setting selected server to also persist to localStorage
   const setSelectedServer = (serverName) => {
@@ -77,6 +80,45 @@ export const ServerProvider = ({ children }) => {
         setSelectedServer(null);
     }
   }, [user]);
+
+  // Handle WebSocket subscriptions for server updates
+  useEffect(() => {
+    if (isConnected && user) {
+        const refreshTopics = [
+            "event:after_server_statuses_updated",
+            "event:after_server_start",
+            "event:after_server_stop",
+            "event:after_delete_server_data",
+            "event:after_server_updated",
+            "event:server_install_complete"
+        ];
+
+        refreshTopics.forEach(topic => subscribe(topic));
+
+        return () => {
+            refreshTopics.forEach(topic => unsubscribe(topic));
+        };
+    }
+  }, [isConnected, user, subscribe, unsubscribe]);
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+      if (lastMessage) {
+          const refreshTopics = [
+            "event:after_server_statuses_updated",
+            "event:after_server_start",
+            "event:after_server_stop",
+            "event:after_delete_server_data",
+            "event:after_server_updated",
+            "event:server_install_complete"
+          ];
+
+          if (refreshTopics.includes(lastMessage.topic)) {
+              console.log("Refreshing servers due to WS event:", lastMessage.topic);
+              fetchServers();
+          }
+      }
+  }, [lastMessage]);
 
   const refreshServers = () => {
     return fetchServers();
