@@ -56,11 +56,11 @@ jobs:
         ./build.sh
 
     - name: Run Frontend Lint
-      working-directory: ./frontend
+      working-directory: ./frontend/legacy
       run: npm run lint
 
     - name: Run Frontend Tests
-      working-directory: ./frontend
+      working-directory: ./frontend/legacy
       run: npm test
 
     - name: Install Development Dependencies
