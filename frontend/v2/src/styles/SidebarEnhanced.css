@@ -5,6 +5,7 @@
     display: flex;
     flex-direction: column;
     height: 100vh; /* Full viewport height or appropriate max height */
+    flex-shrink: 0; /* Prevent shrinking in flex layout */
     position: sticky;
     top: 0;
     overflow-y: auto;
@@ -12,29 +13,67 @@
     /* Custom scrollbar for webkit */
     scrollbar-width: thin;
     scrollbar-color: var(--border-color) transparent;
+    color: #ccc; /* Default text color */
 }
 
-.sidebar-nav::-webkit-scrollbar {
-    width: 6px;
-}
+    .sidebar-nav::-webkit-scrollbar {
+        width: 6px;
+    }
 
-.sidebar-nav::-webkit-scrollbar-thumb {
-    background-color: var(--border-color);
-    border-radius: 3px;
-}
+    .sidebar-nav::-webkit-scrollbar-thumb {
+        background-color: var(--border-color);
+        border-radius: 3px;
+    }
 
-/* Nav Item Container - Center icons when collapsed */
-.sidebar-nav.collapsed .nav-link {
-    justify-content: center !important;
-    padding: 10px 0; /* Adjust padding for collapsed state */
-}
+    /* Nav Links - Global styling for sidebar links */
+    .sidebar-nav a.nav-link,
+    .sidebar-nav button.nav-link {
+        display: flex;
+        align-items: center;
+        padding: 10px 15px;
+        color: #ccc; /* Ensure text is not blue */
+        text-decoration: none; /* Remove underline */
+        border-radius: 4px;
+        margin: 2px 10px;
+        transition: background-color 0.2s, color 0.2s;
+        font-size: 0.95rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 
-/* Tooltip behavior for collapsed sidebar */
-.sidebar-nav.collapsed .nav-link[title]:hover::after {
-    /* Optional: CSS-only tooltip if not using title attribute directly */
-    /* content: attr(title); */
-    /* Implementation depends on preference, browser title usually sufficient */
-}
+        .sidebar-nav a.nav-link:hover,
+        .sidebar-nav button.nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .sidebar-nav a.nav-link.active {
+            background-color: var(--primary-color, #4CAF50); /* Use theme primary or fallback */
+            color: #fff;
+        }
+
+        .sidebar-nav a.nav-link.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: transparent !important;
+            color: #888 !important;
+        }
+
+    /* Nav Item Container - Center icons when collapsed */
+    .sidebar-nav.collapsed .nav-link {
+        justify-content: center !important;
+        padding: 10px 0; /* Adjust padding for collapsed state */
+        margin: 5px; /* Tighter margins */
+    }
+
+        /* Tooltip behavior for collapsed sidebar */
+        .sidebar-nav.collapsed .nav-link[title]:hover::after {
+            /* Optional: CSS-only tooltip if not using title attribute directly */
+            /* content: attr(title); */
+            /* Implementation depends on preference, browser title usually sufficient */
+        }
 
 /* Icon centering */
 .nav-icon {
@@ -42,6 +81,12 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    width: 24px; /* Fixed width for alignment */
+    margin-right: 10px;
+}
+
+.sidebar-nav.collapsed .nav-icon {
+    margin-right: 0;
 }
 
 /* Fix blank space by ensuring nav groups take appropriate space */
@@ -51,8 +96,23 @@
     flex-direction: column;
 }
 
-/* Footer Nav pushed to bottom if needed, though current layout uses flex-grow on content instead */
-/* If you want the footer nav always at bottom: */
+.nav-section-label {
+    padding: 10px 25px 5px;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    color: #666;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+/* Separator styling */
+.nav-separator {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 10px 15px;
+}
+
+/* Footer Nav pushed to bottom if needed */
 .footer-nav {
     margin-top: auto !important;
     padding-bottom: 20px;
@@ -73,4 +133,5 @@
     background-color: var(--sidebar-bg-custom);
     /* Improve contrast if needed, or rely on ThemeContext */
     backdrop-filter: blur(5px); /* Modern touch if background has transparency */
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
