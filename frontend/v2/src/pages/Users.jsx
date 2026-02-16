@@ -36,16 +36,26 @@ const Users = () => {
       const data = await get("/users/list");
       if (Array.isArray(data)) {
         setUsers(data);
+        return true;
       } else {
         addToast("Failed to fetch users", "error");
         setUsers([]);
+        return false;
       }
     } catch (error) {
       console.error("Error fetching users:", error);
       addToast(error.message || "Error fetching users", "error");
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+      const success = await fetchUsers();
+      if (success) {
+          addToast("Users list refreshed", "success");
+      }
   };
 
   const handleDelete = async (userToDelete) => {
@@ -173,7 +183,7 @@ const Users = () => {
         <div style={{ display: "flex", gap: "10px" }}>
             <button
             className="action-button secondary"
-            onClick={fetchUsers}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             >
             <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh

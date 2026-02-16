@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useServer } from "../ServerContext";
+import { useToast } from "../ToastContext";
 import { get } from "../api";
 import {
     LayoutDashboard,
@@ -29,11 +30,12 @@ import "../styles/SidebarEnhanced.css"; // Import enhanced styles
 
 const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     const { logout, user } = useAuth();
+    const { addToast } = useToast();
     const {
         servers,
         selectedServer,
         setSelectedServer,
-        fetchServers,
+        refreshServers,
         loading,
     } = useServer();
     const [pluginPages, setPluginPages] = useState([]);
@@ -95,6 +97,13 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
 
     const handleServerChange = (e) => {
         setSelectedServer(e.target.value);
+    };
+
+    const handleRefreshServers = async () => {
+        const success = await refreshServers();
+        if (success) {
+            addToast("Server list refreshed", "success");
+        }
     };
 
     const toggleSidebar = () => {
@@ -253,7 +262,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                                 )}
                             </select>
                             <button
-                                onClick={fetchServers}
+                                onClick={handleRefreshServers}
                                 title="Refresh Server List"
                                 className="action-button secondary"
                                 disabled={loading}

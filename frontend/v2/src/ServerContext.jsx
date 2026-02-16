@@ -58,14 +58,17 @@ export const ServerProvider = ({ children }) => {
           // No servers available
           setSelectedServer(null);
         }
+        return true;
       } else {
         setServers([]);
         // If data.servers is missing, something is wrong.
         setError("Invalid server data received.");
+        return false;
       }
     } catch (err) {
       console.error("Error fetching servers:", err);
       setError(err.message || "Failed to fetch servers");
+      return false;
     } finally {
       setLoading(false);
     }

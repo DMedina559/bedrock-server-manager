@@ -20,15 +20,25 @@ const AuditLog = () => {
       const data = await get("/audit-log/list");
       if (Array.isArray(data)) {
         setLogs(data);
+        return true;
       } else {
         addToast("Failed to fetch audit logs", "error");
         setLogs([]);
+        return false;
       }
     } catch (error) {
       addToast(error.message || "Error fetching audit logs", "error");
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+      const success = await fetchLogs();
+      if (success) {
+          addToast("Audit logs refreshed", "success");
+      }
   };
 
   const formatDate = (dateString) => {
@@ -43,7 +53,7 @@ const AuditLog = () => {
     <div className="container">
       <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Audit Log</h1>
-        <button className="action-button secondary" onClick={fetchLogs} disabled={loading}>
+        <button className="action-button secondary" onClick={handleRefresh} disabled={loading}>
             <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
         </button>
       </div>

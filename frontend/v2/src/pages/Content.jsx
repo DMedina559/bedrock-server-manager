@@ -38,7 +38,7 @@ const Content = () => {
     };
 
     const fetchItems = async () => {
-        if (!selectedServer) return;
+        if (!selectedServer) return false;
         setLoading(true);
         try {
             let endpoint = "";
@@ -58,16 +58,26 @@ const Content = () => {
                     type: activeTab
                 }));
                 setItems(mappedItems);
+                return true;
             } else {
                 addToast(`Failed to load ${activeTab}: ${data.message || "Unknown error"}`, "error");
                 setItems([]);
+                return false;
             }
         } catch (error) {
             console.error(`Error fetching ${activeTab}:`, error);
             addToast(`Error fetching ${activeTab}`, "error");
             setItems([]);
+            return false;
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRefresh = async () => {
+        const success = await fetchItems();
+        if (success) {
+            addToast(`${activeTab === "worlds" ? "Worlds" : "Addons"} list refreshed`, "success");
         }
     };
 
@@ -177,7 +187,7 @@ const Content = () => {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
                     <button
                         className="action-button secondary"
-                        onClick={fetchItems}
+                        onClick={handleRefresh}
                         disabled={loading || actionLoading}
                     >
                         <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
