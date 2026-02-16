@@ -4,6 +4,7 @@ FastAPI router for viewing audit logs.
 """
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -30,7 +31,7 @@ class AuditLogResponse(BaseModel):
     user_id: int
     action: str
     details: Optional[Dict[str, Any]] = None
-    timestamp: str
+    timestamp: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

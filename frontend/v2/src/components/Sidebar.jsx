@@ -17,7 +17,8 @@ import {
   Wrench,
   Shield,
   RefreshCw,
-  PlusSquare
+  PlusSquare,
+  Gamepad2
 } from "lucide-react";
 
 const Sidebar = () => {
@@ -72,6 +73,7 @@ const Sidebar = () => {
   ];
 
   const globalNavItems = [
+    { path: "/global-players", label: "Players", icon: <Gamepad2 size={20} /> },
     { path: "/plugins", label: "Plugins", icon: <Plug size={20} /> },
     { path: "/users", label: "Users", icon: <Users size={20} /> },
     { path: "/bsm-settings", label: "BSM Settings", icon: <Settings size={20} /> },

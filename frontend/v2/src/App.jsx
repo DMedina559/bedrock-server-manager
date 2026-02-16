@@ -19,6 +19,7 @@ import Plugins from "./pages/Plugins";
 import ServerConfig from "./pages/ServerConfig";
 import AccessControl from "./pages/AccessControl";
 import ServerInstall from "./pages/ServerInstall";
+import GlobalPlayers from "./pages/GlobalPlayers";
 
 const PrivateRoute = ({ children }) => {
   const { user, loading, needsSetup } = useAuth();
@@ -74,6 +75,7 @@ const AppRoutes = () => {
         <Route path="content" element={<Content />} />
         <Route path="plugins" element={<Plugins />} />
         <Route path="users" element={<Users />} />
+        <Route path="global-players" element={<GlobalPlayers />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="account" element={<Account />} />
         <Route path="server-install" element={<ServerInstall />} />

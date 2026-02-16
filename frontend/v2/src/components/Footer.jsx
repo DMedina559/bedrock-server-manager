@@ -11,8 +11,8 @@ const Footer = () => {
     const fetchInfo = async () => {
       try {
         const data = await get("/api/info");
-        if (data && data.status === "success" && data.data) {
-          setAppVersion(data.data.app_version);
+        if (data && data.status === "success" && data.info) {
+          setAppVersion(data.info.app_version);
         }
       } catch (error) {
         console.error("Failed to fetch app info for footer:", error);
