@@ -180,7 +180,7 @@ const ServerInstall = () => {
                                 className="form-input"
                                 value={specificVersion}
                                 onChange={(e) => setSpecificVersion(e.target.value)}
-                                placeholder="e.g., 1.21.1 or 1.21.30.22"
+                                placeholder="e.g., 1.21.114.1 or 1.21.130.22-preview"
                                 required
                                 disabled={loading}
                             />
