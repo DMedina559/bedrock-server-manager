@@ -4,7 +4,7 @@ import { useAuth } from "../AuthContext";
 import { useToast } from "../ToastContext";
 import { useNavigate } from "react-router-dom";
 import { post } from "../api";
-import { Play, Square, RotateCcw, Users } from "lucide-react";
+import { Play, Square, RotateCcw, Users, Download, Terminal } from "lucide-react";
 
 const Overview = () => {
     const { servers, setSelectedServer, refreshServers } = useServer();
@@ -47,6 +47,39 @@ const Overview = () => {
             addToast(`Signal ${action} sent to ${serverName}.`, "success");
         } catch (error) {
             addToast(error.message || `Failed to ${action} server.`, "error");
+        } finally {
+            setActionLoading(prev => ({ ...prev, [serverName]: false }));
+        }
+    };
+
+    const handleUpdate = async (e, serverName) => {
+        e.stopPropagation();
+        if (!confirm(`Are you sure you want to update ${serverName}? The server will stop if running.`)) return;
+
+        setActionLoading(prev => ({ ...prev, [serverName]: true }));
+        addToast(`Updating ${serverName}...`, "info");
+        try {
+            await post(`/api/server/${serverName}/update`);
+            addToast(`Update initiated for ${serverName}.`, "success");
+        } catch (error) {
+            addToast(error.message || `Failed to update ${serverName}.`, "error");
+        } finally {
+            setActionLoading(prev => ({ ...prev, [serverName]: false }));
+        }
+    };
+
+    const handleSendCommand = async (e, serverName) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const command = window.prompt(`Enter command to send to ${serverName}:`);
+        if (!command) return;
+
+        setActionLoading(prev => ({ ...prev, [serverName]: true }));
+        try {
+            await post(`/api/server/${serverName}/send_command`, { command });
+            addToast(`Command sent to ${serverName}.`, "success");
+        } catch (error) {
+            addToast(error.message || `Failed to send command to ${serverName}.`, "error");
         } finally {
             setActionLoading(prev => ({ ...prev, [serverName]: false }));
         }
@@ -178,6 +211,24 @@ const Overview = () => {
                                     title="Restart Server"
                                 >
                                     <RotateCcw size={14} />
+                                </button>
+                                <button
+                                    className="action-button secondary"
+                                    style={{ padding: "6px 12px", fontSize: "0.8em" }}
+                                    onClick={(e) => handleUpdate(e, server.name)}
+                                    disabled={actionLoading[server.name]}
+                                    title="Update Server"
+                                >
+                                    <Download size={14} />
+                                </button>
+                                <button
+                                    className="action-button secondary"
+                                    style={{ padding: "6px 12px", fontSize: "0.8em" }}
+                                    onClick={(e) => handleSendCommand(e, server.name)}
+                                    disabled={actionLoading[server.name] || server.status?.toLowerCase() !== "running"}
+                                    title="Send Command"
+                                >
+                                    <Terminal size={14} />
                                 </button>
                             </div>
                         </div>
