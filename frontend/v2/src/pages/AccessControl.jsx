@@ -92,7 +92,7 @@ const AccessControl = () => {
             } else {
                 await put(`/api/server/${selectedServer}/permissions/set`, {
                     // Permission endpoint expects a list of objects
-                    permissions: [{ xuid: playerXuid, name: playerName, permission: permissionLevel }]
+                    permissions: [{ xuid: playerXuid, name: playerName, permission_level: permissionLevel }]
                 });
             }
 
@@ -140,7 +140,7 @@ const AccessControl = () => {
                 permissions: [{
                     xuid: item.xuid,
                     name: item.name,
-                    permission: newLevel // Fix: backend expects 'permission', not 'permission_level' in the dict items
+                    permission_level: newLevel
                 }]
             });
             addToast(`Updated permission for ${item.name} to ${newLevel}`, "success");
