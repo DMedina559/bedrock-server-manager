@@ -456,8 +456,11 @@ class ServerConfigManagementMixin(BedrockServerBaseMixin):
         for entry in raw_permissions:
             if isinstance(entry, dict) and "xuid" in entry and "permission" in entry:
                 xuid = str(entry["xuid"])
-                # Use the provided map to find the player's name, or fall back to a default.
-                name = player_xuid_to_name_map.get(xuid, f"Unknown (XUID: {xuid})")
+                # Use the provided map to find the player's name, or fall back to
+                # the name in the permissions file itself, or a default.
+                name = player_xuid_to_name_map.get(
+                    xuid, entry.get("name", f"Unknown (XUID: {xuid})")
+                )
                 processed_list.append(
                     {
                         "xuid": xuid,
