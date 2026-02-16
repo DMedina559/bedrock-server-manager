@@ -28,29 +28,40 @@ const BSMSettings = () => {
     }
   };
 
+  const flattenObject = (obj, prefix = '') => {
+    return Object.keys(obj).reduce((acc, k) => {
+      const pre = prefix.length ? prefix + '.' : '';
+      if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
+        Object.assign(acc, flattenObject(obj[k], pre + k));
+      } else {
+        acc[pre + k] = obj[k];
+      }
+      return acc;
+    }, {});
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Flatten settings to get key-value pairs
       const flattened = flattenObject(settings);
+
+      // Iterate through keys and save each one individually as the API expects
+      // POST /api/settings with body { key: "...", value: ... }
       for (const [key, value] of Object.entries(flattened)) {
-          // Use POST /api/settings
-          // Ensure key is trimmed
-          const cleanKey = key.trim();
-          await post("/api/settings", { key: cleanKey, value });
+          try {
+             await post("/api/settings", { key: key, value: value });
+          } catch (err) {
+              console.error(`Failed to save setting ${key}:`, err);
+              throw err; // Re-throw to be caught by outer block
+          }
       }
 
       addToast("Settings saved successfully.", "success");
     } catch (error) {
       console.error("Save settings error:", error);
-      // If error is 405 Method Not Allowed, it will be caught here
-      if (error.status === 405) {
-          addToast("Server Error: Method Not Allowed (405). Check backend configuration.", "error");
-      } else {
-          addToast(error.message || "Failed to save settings.", "error");
-      }
+      addToast(error.message || "Failed to save settings.", "error");
     } finally {
       setLoading(false);
     }
@@ -69,128 +80,155 @@ const BSMSettings = () => {
   };
 
   const handleChange = (path, value) => {
-      // Update nested state
       setSettings(prev => {
-          const newSettings = { ...prev };
-          let current = newSettings;
+          const newSettings = JSON.parse(JSON.stringify(prev)); // Deep copy
           const keys = path.split('.');
-          const lastKey = keys.pop();
+          let current = newSettings;
 
-          keys.forEach(key => {
-              current[key] = { ...current[key] };
-              current = current[key];
-          });
+          for (let i = 0; i < keys.length - 1; i++) {
+              if (!current[keys[i]]) current[keys[i]] = {};
+              current = current[keys[i]];
+          }
 
-          current[lastKey] = value;
+          current[keys[keys.length - 1]] = value;
           return newSettings;
       });
   };
 
-  // Helper to flatten object for sending to API
-  const flattenObject = (obj, prefix = '') => {
-    return Object.keys(obj).reduce((acc, k) => {
-      const pre = prefix.length ? prefix + '.' : '';
-      if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
-        Object.assign(acc, flattenObject(obj[k], pre + k));
-      } else {
-        acc[pre + k] = obj[k];
-      }
-      return acc;
-    }, {});
-  };
+  const renderField = (key, value, fullPath) => {
+      const label = key.replace(/_/g, " ");
 
-  const renderFields = (obj, prefix = '') => {
-      return Object.entries(obj).map(([key, value]) => {
-          const fullPath = prefix ? `${prefix}.${key}` : key;
-
-          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-              return (
-                  <div key={fullPath} style={{ marginBottom: "20px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "2px solid var(--border-color)" }}>
-                      <h4 style={{ textTransform: "capitalize", margin: "10px 0" }}>{key.replace(/_/g, ' ')}</h4>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "15px" }}>
-                        {renderFields(value, fullPath)}
-                      </div>
-                  </div>
-              );
-          }
-
+      if (typeof value === "boolean") {
           return (
-            <div key={fullPath} style={{ display: "flex", flexDirection: "column" }}>
-                <label
-                    htmlFor={fullPath}
-                    className="form-label"
-                    style={{ marginBottom: "5px", fontWeight: "bold", fontSize: "0.9em" }}
-                >
-                    {key.replace(/_/g, " ")}
-                </label>
-                {typeof value === "boolean" ? (
-                    <select
-                        id={fullPath}
-                        className="form-input"
-                        value={value.toString()}
-                        onChange={(e) => handleChange(fullPath, e.target.value === "true")}
-                    >
-                        <option value="true">True</option>
-                        <option value="false">False</option>
-                    </select>
-                ) : (
-                    <input
-                        type="text"
-                        id={fullPath}
-                        className="form-input"
-                        value={Array.isArray(value) ? value.join(", ") : value}
-                        onChange={(e) => {
-                            let val = e.target.value;
-                            if (Array.isArray(value)) {
-                                val = val.split(",").map(s => s.trim());
-                            }
-                            handleChange(fullPath, val);
-                        }}
-                    />
-                )}
-            </div>
+              <div key={fullPath} className="setting-item">
+                  <label htmlFor={fullPath} className="form-label">{label}</label>
+                  <select
+                      id={fullPath}
+                      className="form-input"
+                      value={value.toString()}
+                      onChange={(e) => handleChange(fullPath, e.target.value === "true")}
+                  >
+                      <option value="true">True</option>
+                      <option value="false">False</option>
+                  </select>
+              </div>
           );
-      });
+      } else if (Array.isArray(value)) {
+           return (
+              <div key={fullPath} className="setting-item">
+                  <label htmlFor={fullPath} className="form-label">{label}</label>
+                  <input
+                      type="text"
+                      id={fullPath}
+                      className="form-input"
+                      value={value.join(", ")}
+                      onChange={(e) => handleChange(fullPath, e.target.value.split(",").map(s => s.trim()))}
+                  />
+                  <small className="form-text text-muted">Comma-separated values</small>
+              </div>
+          );
+      } else {
+          return (
+              <div key={fullPath} className="setting-item">
+                  <label htmlFor={fullPath} className="form-label">{label}</label>
+                  <input
+                      type="text"
+                      id={fullPath}
+                      className="form-input"
+                      value={value || ""}
+                      onChange={(e) => handleChange(fullPath, e.target.value)}
+                  />
+              </div>
+          );
+      }
   };
 
+  const renderGroup = (groupName, data, prefix = "") => {
+      return (
+          <div key={prefix ? `${prefix}.${groupName}` : groupName} className="settings-group">
+              <h3 className="settings-group-title">{groupName.replace(/_/g, ' ')}</h3>
+              <div className="settings-grid">
+                  {Object.entries(data).map(([key, value]) => {
+                      const currentPath = prefix ? `${prefix}.${groupName}.${key}` : `${groupName}.${key}`;
+                      // Check if value is nested object (and not array)
+                      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                          return renderGroup(key, value, prefix ? `${prefix}.${groupName}` : groupName);
+                      }
+                      return renderField(key, value, currentPath);
+                  })}
+              </div>
+          </div>
+      );
+  };
 
   return (
     <div className="container">
       <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>BSM Settings</h1>
+        <h1>Global Settings</h1>
         <button className="action-button secondary" onClick={handleReload} disabled={loading}>
-            <RefreshCw size={16} style={{ marginRight: "5px" }} /> Reload from Disk
+            <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Reload
         </button>
       </div>
 
       {loading && Object.keys(settings).length === 0 ? (
-        <div style={{ textAlign: "center", padding: "20px" }}>Loading...</div>
+        <div style={{ textAlign: "center", padding: "40px" }}>
+            <div className="spinner"></div> Loading settings...
+        </div>
       ) : (
-        <form onSubmit={handleSave} className="form-group">
-            <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
-                {/* Recursively render settings */}
+        <form onSubmit={handleSave} className="settings-form">
+            <div className="settings-container">
                 {Object.entries(settings).map(([group, groupData]) => {
                     if (typeof groupData === 'object' && groupData !== null && !Array.isArray(groupData)) {
-                        return (
-                             <div key={group} style={{ marginBottom: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "20px" }}>
-                                <h3 style={{ textTransform: "capitalize", margin: "0 0 15px 0" }}>{group} Settings</h3>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
-                                    {renderFields(groupData, group)}
-                                </div>
-                             </div>
-                        )
+                         return renderGroup(group, groupData);
                     }
                     return null;
                 })}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
-            <button type="submit" className="action-button" disabled={loading}>
-                <Save size={16} style={{ marginRight: "5px" }} /> Save Settings
-            </button>
+            <div className="form-actions" style={{ marginTop: "20px", borderTop: "1px solid var(--border-color)", paddingTop: "20px" }}>
+                <button type="submit" className="action-button" disabled={loading}>
+                    <Save size={16} style={{ marginRight: "5px" }} /> Save Changes
+                </button>
             </div>
         </form>
       )}
+
+      <style>{`
+        .settings-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .settings-group {
+            background: var(--input-background-color);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .settings-group-title {
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-transform: capitalize;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            font-size: 1.2rem;
+            color: var(--text-color);
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .setting-item label {
+            margin-bottom: 5px;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+      `}</style>
     </div>
   );
 };

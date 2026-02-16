@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
-import { Trash2, UserPlus, Shield, RefreshCw, Copy, Check, ToggleLeft, ToggleRight, UserCog } from "lucide-react";
+import { Trash2, UserPlus, Shield, RefreshCw, Copy, Check, UserCog, Ban, Lock, Unlock } from "lucide-react";
 import { useAuth } from "../AuthContext";
 
 const Users = () => {
@@ -19,7 +19,7 @@ const Users = () => {
 
   // Edit state
   const [editRole, setEditRole] = useState("");
-  const [editActive, setEditActive] = useState(false);
+  const [editActive, setEditActive] = useState(true);
 
   const { addToast } = useToast();
   const { user: currentUser } = useAuth();
@@ -76,16 +76,16 @@ const Users = () => {
       const response = await post("/register/generate-token", { role: inviteRole });
 
       if (response && response.redirect_url) {
-          // Extract token from "Registration link generated: http://.../register/<token>"
           const match = response.redirect_url.match(/register\/([a-zA-Z0-9_\-]+)/);
           if (match && match[1]) {
               const token = match[1];
-              // Construct V2 link
               const v2Link = `${window.location.origin}/v2/register/${token}`;
               setGeneratedLink(v2Link);
               addToast("Invitation link generated.", "success");
           } else {
-               addToast("Link generated but could not be parsed.", "warning");
+               // Fallback if parsing fails but backend returned success
+               setGeneratedLink(response.redirect_url);
+               addToast("Link generated.", "success");
           }
       } else {
           addToast("Failed to generate link.", "error");
@@ -114,6 +114,7 @@ const Users = () => {
       setActionLoading(true);
       try {
           let updated = false;
+
           // Update Role if changed
           if (editRole !== editingUser.role) {
              await post(`/users/${editingUser.id}/role`, { role: editRole });
@@ -128,11 +129,12 @@ const Users = () => {
           }
 
           if (updated) {
-              addToast(`User ${editingUser.username} updated.`, "success");
+              addToast(`User ${editingUser.username} updated successfully.`, "success");
               setShowEditModal(false);
               setEditingUser(null);
               await fetchUsers();
           } else {
+              addToast("No changes made.", "info");
               setShowEditModal(false);
           }
 
@@ -158,10 +160,6 @@ const Users = () => {
       setGeneratedLink(null);
       setInviteRole("user");
   };
-
-  if (loading && users.length === 0) return (
-      <div className="container" style={{ textAlign: "center", padding: "20px" }}>Loading users...</div>
-  );
 
   const isAdmin = currentUser?.role === 'admin';
 
@@ -189,7 +187,13 @@ const Users = () => {
         </div>
       </div>
 
-      <table className="table" style={{ width: "100%" }}>
+      {loading && users.length === 0 ? (
+           <div style={{ textAlign: "center", padding: "40px" }}>
+               <div className="spinner"></div> Loading users...
+           </div>
+      ) : (
+      <div className="table-responsive-wrapper">
+      <table className="server-table" style={{ width: "100%" }}>
         <thead>
           <tr>
             <th>Username</th>
@@ -201,20 +205,23 @@ const Users = () => {
         <tbody>
           {users.map((user) => (
             <tr key={user.id} style={{ opacity: user.is_active ? 1 : 0.6 }}>
-              <td>{user.username} {currentUser && currentUser.id === user.id && "(You)"}</td>
               <td>
-                <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                  <Shield size={14} /> {user.role}
+                  <span style={{ fontWeight: "bold" }}>{user.username}</span>
+                  {currentUser && currentUser.id === user.id && <span style={{ marginLeft: "5px", fontSize: "0.8em", color: "var(--primary-color)" }}>(You)</span>}
+              </td>
+              <td>
+                <span className={`badge badge-${user.role}`}>
+                  <Shield size={12} style={{marginRight: "4px"}}/> {user.role}
                 </span>
               </td>
               <td>
                   {user.is_active ? (
-                      <span style={{ color: "var(--success-color, #4CAF50)", display: "flex", alignItems: "center", gap: "5px" }}>
+                      <span className="status-indicator status-running" style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
                           <Check size={14} /> Active
                       </span>
                   ) : (
-                      <span style={{ color: "var(--error-color, #f44336)", display: "flex", alignItems: "center", gap: "5px" }}>
-                           Disabled
+                      <span className="status-indicator status-stopped" style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                           <Ban size={14} /> Disabled
                       </span>
                   )}
               </td>
@@ -227,7 +234,7 @@ const Users = () => {
                         onClick={() => openEditModal(user)}
                         title="Edit User"
                         style={{ padding: "5px 10px" }}
-                        disabled={actionLoading}
+                        disabled={actionLoading || user.id === currentUser?.id}
                         >
                         <UserCog size={14} />
                         </button>
@@ -236,7 +243,7 @@ const Users = () => {
                         onClick={() => handleDelete(user)}
                         title="Delete User"
                         style={{ padding: "5px 10px" }}
-                        disabled={actionLoading}
+                        disabled={actionLoading || user.id === currentUser?.id}
                         >
                         <Trash2 size={14} />
                         </button>
@@ -246,37 +253,46 @@ const Users = () => {
               </td>
             </tr>
           ))}
+          {users.length === 0 && (
+              <tr>
+                  <td colSpan="4" style={{ textAlign: "center", padding: "20px", fontStyle: "italic", color: "#888" }}>
+                      No users found.
+                  </td>
+              </tr>
+          )}
         </tbody>
       </table>
+      </div>
+      )}
 
       {/* Invite Modal */}
       {showInviteModal && (
-        <div className="modal" style={{ display: "block" }}>
-          <div className="modal-content">
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "500px" }}>
             <h2>Invite New User</h2>
             {!generatedLink ? (
                 <form onSubmit={handleGenerateLink}>
-                <div style={{ marginBottom: "15px", textAlign: "left" }}>
-                    <p style={{marginBottom: "10px", color: "#ccc"}}>
-                        Generate a registration link to send to a new user. This link will be valid for 24 hours.
+                <div style={{ marginBottom: "20px", textAlign: "left" }}>
+                    <p style={{marginBottom: "15px", color: "var(--text-color-secondary)", lineHeight: "1.5"}}>
+                        Generate a secure registration link to send to a new user. This link will be valid for 24 hours.
                     </p>
-                    <label className="form-label">Role</label>
+                    <label className="form-label" style={{display: "block", marginBottom: "5px"}}>Select Role</label>
                     <select
-                    className="form-input"
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    style={{ width: "100%" }}
+                        className="form-input"
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value)}
+                        style={{ width: "100%" }}
                     >
-                    <option value="user">User (Read Only)</option>
-                    <option value="moderator">Moderator</option>
-                    <option value="admin">Admin</option>
+                        <option value="user">User (Read Only)</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Admin</option>
                     </select>
                 </div>
-                <div className="modal-actions">
+                <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
                     <button
-                    type="button"
-                    className="action-button secondary"
-                    onClick={closeInviteModal}
+                        type="button"
+                        className="action-button secondary"
+                        onClick={closeInviteModal}
                     >
                     Cancel
                     </button>
@@ -287,7 +303,7 @@ const Users = () => {
                 </form>
             ) : (
                 <div style={{ textAlign: "left" }}>
-                    <p style={{marginBottom: "10px", color: "#4CAF50"}}>Link generated successfully!</p>
+                    <p style={{marginBottom: "10px", color: "var(--success-color)", fontWeight: "bold"}}>Link generated successfully!</p>
                     <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
                         <input
                             type="text"
@@ -300,7 +316,7 @@ const Users = () => {
                             {copied ? <Check size={16} /> : <Copy size={16} />}
                         </button>
                     </div>
-                    <div className="modal-actions">
+                    <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button
                         type="button"
                         className="action-button secondary"
@@ -317,46 +333,46 @@ const Users = () => {
 
       {/* Edit User Modal */}
       {showEditModal && editingUser && (
-        <div className="modal" style={{ display: "block" }}>
-            <div className="modal-content">
+        <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: "400px" }}>
                 <h2>Edit User: {editingUser.username}</h2>
-                <div style={{ marginBottom: "15px", textAlign: "left" }}>
-                    <label className="form-label">Role</label>
-                    <select
-                        className="form-input"
-                        value={editRole}
-                        onChange={(e) => setEditRole(e.target.value)}
-                        style={{ width: "100%", marginBottom: "15px" }}
-                        disabled={editingUser.id === currentUser?.id || actionLoading}
-                    >
-                        <option value="user">User (Read Only)</option>
-                        <option value="moderator">Moderator</option>
-                        <option value="admin">Admin</option>
-                    </select>
-
-                    <label className="form-label" style={{display: "block", marginBottom: "5px"}}>Status</label>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <button
-                            type="button"
-                            onClick={() => setEditActive(!editActive)}
-                            style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: editActive ? "var(--success-color, #4CAF50)" : "var(--error-color, #f44336)",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "5px",
-                                fontSize: "1rem"
-                            }}
+                <div style={{ marginBottom: "20px", textAlign: "left" }}>
+                    <div style={{ marginBottom: "15px" }}>
+                        <label className="form-label" style={{ display: "block", marginBottom: "5px" }}>Role</label>
+                        <select
+                            className="form-input"
+                            value={editRole}
+                            onChange={(e) => setEditRole(e.target.value)}
+                            style={{ width: "100%" }}
                             disabled={editingUser.id === currentUser?.id || actionLoading}
                         >
-                            {editActive ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
-                            {editActive ? "Active" : "Disabled"}
+                            <option value="user">User (Read Only)</option>
+                            <option value="moderator">Moderator</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="form-label" style={{display: "block", marginBottom: "5px"}}>Account Status</label>
+                        <button
+                            type="button"
+                            className={`action-button ${editActive ? "success-button" : "danger-button"}`}
+                            onClick={() => setEditActive(!editActive)}
+                            style={{ width: "100%", justifyContent: "center" }}
+                            disabled={editingUser.id === currentUser?.id || actionLoading}
+                        >
+                            {editActive ? (
+                                <><Unlock size={16} style={{marginRight: "5px"}}/> Account Active</>
+                            ) : (
+                                <><Lock size={16} style={{marginRight: "5px"}}/> Account Disabled</>
+                            )}
                         </button>
+                        <small style={{ display: "block", marginTop: "5px", color: "var(--text-color-secondary)" }}>
+                            {editActive ? "User can log in." : "User cannot log in."}
+                        </small>
                     </div>
                 </div>
-                <div className="modal-actions">
+                <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
                     <button
                         type="button"
                         className="action-button secondary"
@@ -372,6 +388,50 @@ const Users = () => {
             </div>
         </div>
       )}
+
+      <style>{`
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        .badge-admin { background-color: rgba(255, 193, 7, 0.2); color: #ffc107; border: 1px solid rgba(255, 193, 7, 0.4); }
+        .badge-moderator { background-color: rgba(33, 150, 243, 0.2); color: #2196f3; border: 1px solid rgba(33, 150, 243, 0.4); }
+        .badge-user { background-color: rgba(158, 158, 158, 0.2); color: #9e9e9e; border: 1px solid rgba(158, 158, 158, 0.4); }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: var(--container-background-color);
+            padding: 25px;
+            border-radius: 8px;
+            width: 100%;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+        .success-button {
+            background-color: var(--success-color);
+            color: white;
+            border: none;
+        }
+        .success-button:hover {
+            background-color: #45a049;
+        }
+      `}</style>
     </div>
   );
 };

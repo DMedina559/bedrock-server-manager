@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { get, post, del } from "../api";
-import { Trash2, Plus, RefreshCw, ArrowRight } from "lucide-react";
+import { Trash2, Plus, RefreshCw, ArrowRight, Scan, Shield } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const AccessControl = () => {
@@ -10,9 +10,13 @@ const AccessControl = () => {
   const [activeTab, setActiveTab] = useState("allowlist");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
+
+  // Add Form State
+  const [playerName, setPlayerName] = useState("");
   const [permissionLevel, setPermissionLevel] = useState("member");
   const [ignoresPlayerLimit, setIgnoresPlayerLimit] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const { addToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -60,6 +64,7 @@ const AccessControl = () => {
   };
 
   const handleNextStep = () => {
+      // In setup flow, permissions usually follows allowlist, then config
       if (activeTab === "allowlist") {
           setActiveTab("permissions");
       } else {
@@ -69,48 +74,73 @@ const AccessControl = () => {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (!selectedServer || !newItemName) return;
+    if (!selectedServer || !playerName) return;
 
+    setActionLoading(true);
     try {
       if (activeTab === "allowlist") {
         await post(`/api/server/${selectedServer}/allowlist/add`, {
-          players: [newItemName],
+          players: [playerName],
           ignoresPlayerLimit: ignoresPlayerLimit,
         });
       } else {
-
         await post(`/api/server/${selectedServer}/permissions/set`, {
-          permissions: [{ xuid: "", name: newItemName, permission_level: permissionLevel }],
+            // Permission endpoint expects a list of objects
+            permissions: [{ xuid: "", name: playerName, permission: permissionLevel }]
         });
       }
 
-      addToast("Item added successfully.", "success");
-      setNewItemName("");
+      addToast(`${playerName} added to ${activeTab}.`, "success");
+      setPlayerName("");
       setIgnoresPlayerLimit(false);
       fetchItems();
     } catch (error) {
       addToast(error.message || "Failed to add item.", "error");
+    } finally {
+        setActionLoading(false);
     }
   };
 
   const handleRemove = async (item) => {
     if (!selectedServer) return;
-    if (!confirm(`Remove ${item.name || item.xuid}?`)) return;
+    const name = item.name || item.xuid || "Unknown";
+    if (!confirm(`Remove ${name} from ${activeTab}?`)) return;
 
+    setActionLoading(true);
     try {
       if (activeTab === "allowlist") {
-        await del(`/api/server/${selectedServer}/allowlist/remove`, {
-            body: { players: [item.name] }
+        await post(`/api/server/${selectedServer}/allowlist/remove`, {
+            players: [item.name || item.xuid]
         });
+        addToast("Player removed from allowlist.", "success");
+        fetchItems();
       } else {
-        addToast("To remove permission, set level to default (Member/Visitor).", "info");
-        return;
+         // To remove permission, usually one sets it to default (member) or removes entry
+         // The API for removing permission might be implicit or explicit delete
+         // Checking backend: permissions/set with 'member' effectively resets it if default
+         // But usually removing is preferred. Let's try to set to 'member' or 'visitor' as default?
+         // Actually, let's just warn for now or implement if delete exists.
+         // Assuming allowlist remove pattern might work if implemented, but let's stick to knowns.
+         addToast("To remove permission, please set level to 'Member' (Default).", "info");
       }
-      addToast("Item removed.", "success");
-      fetchItems();
     } catch (error) {
       addToast(error.message || "Failed to remove item.", "error");
+    } finally {
+        setActionLoading(false);
     }
+  };
+
+  const handleScanPlayers = async () => {
+      setActionLoading(true);
+      try {
+          await post("/api/players/scan");
+          addToast("Player scan initiated. Logs are being processed.", "success");
+          // Optionally refresh, though scan is async and updates global DB, might not affect local list immediately
+      } catch (error) {
+          addToast(error.message || "Failed to scan players.", "error");
+      } finally {
+          setActionLoading(false);
+      }
   };
 
   if (!selectedServer) {
@@ -129,14 +159,24 @@ const AccessControl = () => {
         <h1>Access Control: {selectedServer}</h1>
         <div style={{ display: "flex", gap: "10px" }}>
             {!setupFlow && (
+                <>
+                <button
+                    className="action-button secondary"
+                    onClick={handleScanPlayers}
+                    disabled={actionLoading}
+                    title="Scan server logs for player history"
+                >
+                    <Scan size={16} style={{ marginRight: "5px" }} /> Scan Players
+                </button>
                 <button
                   className="action-button secondary"
                   onClick={fetchItems}
-                  disabled={loading}
+                  disabled={loading || actionLoading}
                   title="Reload current list"
                 >
                     <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh
                 </button>
+                </>
             )}
             {setupFlow && (
                 <button className="action-button" onClick={handleNextStep}>
@@ -167,26 +207,26 @@ const AccessControl = () => {
         </button>
       </div>
 
-      <div className="tab-content" style={{ background: "var(--container-background-color, #333)", padding: "20px", border: "1px solid var(--border-color, #555)", borderTop: "none", minHeight: "200px" }}>
+      <div className="tab-content" style={{ background: "var(--input-background-color)", padding: "20px", borderRadius: "0 0 5px 5px", border: "1px solid var(--border-color)", borderTop: "none" }}>
 
         {/* Add Form */}
-        <form onSubmit={handleAdd} className="form-group" style={{ display: "flex", gap: "10px", alignItems: "flex-end", marginBottom: "20px", flexWrap: "wrap" }}>
+        <form onSubmit={handleAdd} className="form-group" style={{ display: "flex", gap: "10px", alignItems: "flex-end", marginBottom: "20px", flexWrap: "wrap", background: "rgba(0,0,0,0.1)", padding: "15px", borderRadius: "5px" }}>
           <div style={{ flexGrow: 1, minWidth: "200px" }}>
-            <label className="form-label">Player Name (Gamertag)</label>
+            <label className="form-label" style={{display: "block", marginBottom: "5px"}}>Player Name (Gamertag)</label>
             <input
               type="text"
               className="form-input"
-              value={newItemName}
-              onChange={(e) => setNewItemName(e.target.value)}
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
               required
               style={{ width: "100%" }}
-              placeholder={activeTab === "allowlist" ? "Enter Gamertag to allow" : "Enter Gamertag for permissions"}
+              placeholder={activeTab === "allowlist" ? "Enter Gamertag to allow..." : "Enter Gamertag for permissions..."}
             />
           </div>
 
           {activeTab === "permissions" && (
             <div style={{ minWidth: "150px" }}>
-              <label className="form-label">Level</label>
+              <label className="form-label" style={{display: "block", marginBottom: "5px"}}>Permission Level</label>
               <select
                 className="form-input"
                 value={permissionLevel}
@@ -202,26 +242,27 @@ const AccessControl = () => {
 
           {activeTab === "allowlist" && (
              <div style={{ display: "flex", alignItems: "center", marginBottom: "10px", minWidth: "150px" }}>
-                 <input
-                     type="checkbox"
-                     id="ignoreLimit"
-                     checked={ignoresPlayerLimit}
-                     onChange={(e) => setIgnoresPlayerLimit(e.target.checked)}
-                     style={{ marginRight: "10px" }}
-                 />
-                 <label htmlFor="ignoreLimit" className="form-label" style={{ marginBottom: 0, cursor: "pointer" }}>Ignore Limit</label>
+                 <label className="checkbox-container" style={{display: "flex", alignItems: "center", cursor: "pointer"}}>
+                     <input
+                         type="checkbox"
+                         checked={ignoresPlayerLimit}
+                         onChange={(e) => setIgnoresPlayerLimit(e.target.checked)}
+                         style={{ marginRight: "10px" }}
+                     />
+                     <span style={{fontSize: "0.9em"}}>Ignore Player Limit</span>
+                 </label>
              </div>
           )}
 
-          <button type="submit" className="action-button" disabled={loading || !newItemName}>
+          <button type="submit" className="action-button" disabled={loading || actionLoading || !playerName} style={{height: "38px"}}>
             <Plus size={16} style={{ marginRight: "5px" }} /> Add
           </button>
         </form>
 
         {/* List */}
         {loading ? (
-          <div style={{ padding: "20px", textAlign: "center", color: "#ccc" }}>
-            <RefreshCw className="spin" style={{ display: "inline-block", marginRight: "10px" }} /> Loading data...
+          <div style={{ padding: "40px", textAlign: "center", color: "var(--text-color-secondary)" }}>
+            <div className="spinner"></div> Loading {activeTab}...
           </div>
         ) : (
           <div className="table-responsive-wrapper">
@@ -230,8 +271,8 @@ const AccessControl = () => {
               <tr>
                 <th>Name</th>
                 <th>XUID</th>
-                {activeTab === "allowlist" && <th>Ignores Limit</th>}
-                {activeTab === "permissions" && <th>Permission</th>}
+                {activeTab === "allowlist" && <th>Attributes</th>}
+                {activeTab === "permissions" && <th>Permission Level</th>}
                 <th style={{ width: "100px" }}>Actions</th>
               </tr>
             </thead>
@@ -239,23 +280,35 @@ const AccessControl = () => {
               {items && items.length > 0 ? (
                 items.map((item, idx) => (
                   <tr key={idx}>
-                    <td>{item.name || "Unknown"}</td>
-                    <td>{item.xuid || "N/A"}</td>
+                    <td>
+                        <span style={{fontWeight: "bold"}}>{item.name || "Unknown"}</span>
+                    </td>
+                    <td><span className="mono-text" style={{fontSize: "0.85em", color: "var(--text-color-secondary)"}}>{item.xuid || "N/A"}</span></td>
+
                     {activeTab === "allowlist" && (
                         <td>
                             {item.ignoresPlayerLimit ? (
-                                <span style={{ color: "var(--success-color, #4CAF50)" }}>Yes</span>
-                            ) : "No"}
+                                <span className="badge badge-success" style={{fontSize: "0.8em"}}>Bypasses Limit</span>
+                            ) : <span style={{color: "var(--text-color-secondary)", fontSize: "0.8em"}}>-</span>}
                         </td>
                     )}
-                    {activeTab === "permissions" && <td>{item.permission_level || item.permission}</td>}
+
+                    {activeTab === "permissions" && (
+                        <td>
+                            <span className={`badge badge-${(item.permission || item.permission_level) === 'operator' ? 'admin' : 'user'}`}>
+                                <Shield size={12} style={{marginRight: "4px"}}/> {item.permission || item.permission_level}
+                            </span>
+                        </td>
+                    )}
+
                     <td>
                       {activeTab === "allowlist" && (
                         <button
                           className="action-button danger-button"
                           onClick={() => handleRemove(item)}
-                          title="Remove"
+                          title="Remove from allowlist"
                           style={{ padding: "5px 10px" }}
+                          disabled={actionLoading}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -265,7 +318,7 @@ const AccessControl = () => {
                 ))
               ) : (
                 <tr className="no-servers-row">
-                  <td colSpan={activeTab === "permissions" ? 4 : (activeTab === "allowlist" ? 4 : 3)} className="no-servers" style={{ textAlign: "center", color: "#888", fontStyle: "italic", padding: "15px" }}>
+                  <td colSpan={5} className="no-servers" style={{ textAlign: "center", color: "var(--text-color-secondary)", fontStyle: "italic", padding: "30px" }}>
                     No entries found in {activeTab}. Use the form above to add one.
                   </td>
                 </tr>
@@ -275,6 +328,10 @@ const AccessControl = () => {
           </div>
         )}
       </div>
+
+      <style>{`
+        .badge-success { background-color: rgba(76, 175, 80, 0.2); color: #4caf50; border: 1px solid rgba(76, 175, 80, 0.4); padding: 2px 6px; border-radius: 4px; }
+      `}</style>
     </div>
   );
 };
