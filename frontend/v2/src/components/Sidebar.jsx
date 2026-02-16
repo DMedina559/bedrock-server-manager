@@ -195,8 +195,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                                         fontSize: "0.85em",
                                         fontStyle: "italic",
                                         color: "#FFD700",
-                                        display: "inline-block",
-                                        paddingLeft: "5px"
+                                        display: "inline-block"
                                     }}>
                                         {splashText}
                                     </span>

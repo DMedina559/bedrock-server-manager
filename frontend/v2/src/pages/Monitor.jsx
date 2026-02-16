@@ -49,7 +49,10 @@ const Monitor = () => {
     // Auto-scroll logs
     useEffect(() => {
         if (logEndRef.current) {
-            logEndRef.current.scrollIntoView({ behavior: "smooth" });
+            const container = logEndRef.current.parentElement;
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
         }
     }, [logLines]);
 

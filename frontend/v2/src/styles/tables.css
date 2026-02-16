@@ -129,6 +129,16 @@
     margin-top: 15px; /* Space above message */
 }
 
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+
+.scrollable-field {
+    max-width: 200px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
 
 /* ==========================================================================
    Mobile Responsive Adjustments (Standard Table)
