@@ -1,46 +1,46 @@
 /* Layout container */
 .page-layout {
-    display: flex;
-    min-height: 100vh;
-    width: 100%;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
 }
 
 /* Main Content Area */
 .main-content {
-    flex-grow: 1; /* Take up remaining space */
-    padding: 20px;
-    min-height: 100vh;
-    box-sizing: border-box;
-    overflow-x: hidden; /* Prevent horizontal scrolling if content is too wide */
-    /* Remove fixed margin since flexbox handles spacing */
-    margin-left: 0;
+  flex-grow: 1; /* Take up remaining space */
+  padding: 20px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  overflow-x: hidden; /* Prevent horizontal scrolling if content is too wide */
+  /* Remove fixed margin since flexbox handles spacing */
+  margin-left: 0;
 }
 
 /* Menu Toggle for mobile (if still needed) */
 .menu-toggle {
-    display: none;
+  display: none;
 }
 
 @media (max-width: 768px) {
-    .page-layout {
-        flex-direction: column; /* Stack on mobile if desired, or keep row and hide sidebar */
-    }
+  .page-layout {
+    flex-direction: column; /* Stack on mobile if desired, or keep row and hide sidebar */
+  }
 
-    .main-content {
-        padding-top: 60px; /* Space for toggle button */
-    }
+  .main-content {
+    padding-top: 60px; /* Space for toggle button */
+  }
 
-    .menu-toggle {
-        display: block;
-        position: fixed;
-        top: 15px;
-        left: 15px;
-        z-index: 101;
-        background: var(--button-background-color, #444);
-        border: 1px solid var(--button-border-color, #666);
-        color: #fff;
-        padding: 5px 10px;
-        border-radius: 4px;
-        cursor: pointer;
-    }
+  .menu-toggle {
+    display: block;
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 101;
+    background: var(--button-background-color, #444);
+    border: 1px solid var(--button-border-color, #666);
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
 }

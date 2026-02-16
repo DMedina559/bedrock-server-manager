@@ -22,11 +22,12 @@ import {
   List,
   ChevronLeft,
   ChevronRight,
-  Palette
+  Palette,
+  X
 } from "lucide-react";
 import "../styles/SidebarEnhanced.css"; // Import enhanced styles
 
-const Sidebar = () => {
+const Sidebar = ({ mobileOpen, setMobileOpen }) => {
   const { logout, user } = useAuth();
   const {
     servers,
@@ -122,12 +123,20 @@ const Sidebar = () => {
   ];
 
   return (
-    <aside className={`sidebar-nav ${isCollapsed ? "collapsed" : ""}`} style={{
-        width: isCollapsed ? "60px" : "220px",
-        transition: "width 0.2s ease-out",
+    <aside
+      className={`sidebar-nav ${isCollapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}
+      style={{
+        // Width removed (handled by CSS)
+        // transition: "width 0.2s ease-out", // Handled by CSS
         overflowX: "hidden",
         backgroundColor: "var(--sidebar-bg-custom)" // Apply custom color
-    }}>
+      }}
+    >
+      {/* Close Button for Mobile */}
+      <button className="sidebar-close-btn" onClick={() => setMobileOpen && setMobileOpen(false)}>
+          <X size={24} />
+      </button>
+
       <div className="sidebar-header" style={{
           padding: "15px 0",
           textAlign: "center",
@@ -141,12 +150,11 @@ const Sidebar = () => {
       }}>
         {!isCollapsed && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                 <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "24px", height: "24px" }} />
-                 <h2 style={{ margin: 0, fontSize: "1.1em", color: "var(--header-text-color)", whiteSpace: "nowrap" }}>BSM V2</h2>
+                 <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "96px", height: "96px" }} />
             </div>
         )}
         {isCollapsed && (
-             <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "24px", height: "24px" }} />
+             <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "30px", height: "30px" }} />
         )}
         <button onClick={toggleSidebar} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px" }}>
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -299,15 +307,15 @@ const Sidebar = () => {
             <div className="nav-group">
                 {!isCollapsed && <div className="nav-section-label">From Plugins</div>}
                 {pluginPages.map((page) => (
-                    <a
+                    <NavLink
                         key={page.path}
-                        href={page.path}
-                        className="nav-link"
+                        to={`/plugin-view?url=${encodeURIComponent(page.path)}`}
+                        className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                         title={isCollapsed ? page.name : ""}
                     >
                          <span className="nav-icon"><Plug size={20} /></span>
                          {!isCollapsed && <span className="nav-label">{page.name}</span>}
-                    </a>
+                    </NavLink>
                 ))}
             </div>
           </>
