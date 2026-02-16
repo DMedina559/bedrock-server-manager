@@ -29,21 +29,25 @@ const Backups = () => {
                     allowlist: apiBackups.allowlist_backups || [],
                     permissions: apiBackups.permissions_backups || []
                 });
+                return true;
             } else {
                 addToast("Failed to fetch backups list", "error");
                 setBackups({});
+                return false;
             }
         } catch (error) {
             addToast(error.message || "Error fetching backups", "error");
+            return false;
         } finally {
             setLoading(false);
         }
     };
 
     const handleRefresh = async () => {
-        addToast("Refreshing backups...", "info");
-        await fetchBackups();
-        addToast("Backups refreshed.", "success");
+        const success = await fetchBackups();
+        if (success) {
+            addToast("Backups refreshed.", "success");
+        }
     };
 
     const getBackupFilename = (type) => {

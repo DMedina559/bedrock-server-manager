@@ -24,14 +24,24 @@ const GlobalPlayers = () => {
             const response = await get("/api/players/get");
             if (response && response.status === "success") {
                 setPlayers(response.players || []);
+                return true;
             } else {
                 addToast(response?.message || "Failed to fetch players.", "error");
+                return false;
             }
         } catch (error) {
             console.error("Error fetching players:", error);
             addToast("Error fetching players.", "error");
+            return false;
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRefresh = async () => {
+        const success = await fetchPlayers();
+        if (success) {
+            addToast("Players list refreshed.", "success");
         }
     };
 
@@ -94,7 +104,7 @@ const GlobalPlayers = () => {
                     </button>
                     <button
                         className="action-button secondary"
-                        onClick={fetchPlayers}
+                        onClick={handleRefresh}
                         disabled={loading}
                     >
                         <RefreshCw size={16} style={{ marginRight: "5px" }} className={loading ? "spin" : ""} /> Refresh

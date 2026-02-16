@@ -26,15 +26,25 @@ const ServerConfig = () => {
       const data = await get(`/api/servers/${selectedServer}/settings`);
       if (data && data.status === "success" && data.settings) {
         setSettings(data.settings);
+        return true;
       } else {
         addToast("Failed to load server settings", "error");
         setSettings({});
+        return false;
       }
     } catch (error) {
       addToast(error.message || "Error fetching server settings", "error");
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+      const success = await fetchSettings();
+      if (success) {
+          addToast("Settings refreshed", "success");
+      }
   };
 
   const handleSave = async (e) => {
@@ -186,7 +196,7 @@ const ServerConfig = () => {
         <h1>Server Settings: {selectedServer}</h1>
         <div style={{ display: "flex", gap: "10px" }}>
             {!setupFlow && (
-                <button className="action-button secondary" onClick={fetchSettings} disabled={loading}>
+                <button className="action-button secondary" onClick={handleRefresh} disabled={loading}>
                     <RefreshCw size={16} style={{ marginRight: "5px" }} /> Refresh
                 </button>
             )}

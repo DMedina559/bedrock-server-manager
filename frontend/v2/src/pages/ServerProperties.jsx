@@ -53,11 +53,11 @@ const ServerProperties = () => {
     useEffect(() => {
         if (selectedServer) {
             // Initial fetch
-            fetchProperties(false);
+            fetchProperties();
         }
     }, [selectedServer]);
 
-    const fetchProperties = async (showToast = true) => {
+    const fetchProperties = async () => {
         setLoading(true);
         try {
             const data = await get(`/api/server/${selectedServer}/properties/get`);
@@ -69,15 +69,24 @@ const ServerProperties = () => {
                 }));
                 propsArray.sort((a, b) => a.key.localeCompare(b.key));
                 setProperties(propsArray);
-                if (showToast) addToast("Properties refreshed.", "success");
+                return true;
             } else {
                 addToast("Failed to load server properties", "error");
                 setProperties([]);
+                return false;
             }
         } catch (error) {
             addToast(error.message || "Error fetching properties", "error");
+            return false;
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRefresh = async () => {
+        const success = await fetchProperties();
+        if (success) {
+            addToast("Properties refreshed", "success");
         }
     };
 
@@ -333,7 +342,7 @@ const ServerProperties = () => {
                     {!setupFlow && (
                         <button
                             className="action-button secondary"
-                            onClick={() => fetchProperties(true)}
+                            onClick={handleRefresh}
                             disabled={loading}
                             title="Reload properties"
                         >
