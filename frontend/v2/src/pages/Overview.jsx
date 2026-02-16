@@ -34,7 +34,9 @@ const Overview = () => {
     };
 
     const handleAction = async (e, serverName, action) => {
+        // Prevent click from bubbling up to the card click handler
         e.stopPropagation();
+
         if (actionLoading[serverName]) return;
 
         setActionLoading(prev => ({ ...prev, [serverName]: true }));
@@ -46,7 +48,7 @@ const Overview = () => {
         } catch (error) {
             addToast(error.message || `Failed to ${action} server.`, "error");
         } finally {
-             setActionLoading(prev => ({ ...prev, [serverName]: false }));
+            setActionLoading(prev => ({ ...prev, [serverName]: false }));
         }
     };
 
@@ -85,24 +87,24 @@ const Overview = () => {
                 }}>
                     {servers.map(server => (
                         <div key={server.name}
-                             className="server-card"
-                             onClick={() => handleServerClick(server.name)}
-                             style={{
-                                 background: "var(--container-background-color)",
-                                 border: "1px solid var(--border-color)",
-                                 cursor: "pointer",
-                                 transition: "transform 0.2s, box-shadow 0.2s",
-                                 position: "relative",
-                                 overflow: "hidden"
-                             }}
-                             onMouseEnter={(e) => {
-                                 e.currentTarget.style.transform = "translateY(-2px)";
-                                 e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.2)";
-                             }}
-                             onMouseLeave={(e) => {
-                                 e.currentTarget.style.transform = "none";
-                                 e.currentTarget.style.boxShadow = "none";
-                             }}
+                            className="server-card"
+                            onClick={() => handleServerClick(server.name)}
+                            style={{
+                                background: "var(--container-background-color)",
+                                border: "1px solid var(--border-color)",
+                                cursor: "pointer",
+                                transition: "transform 0.2s, box-shadow 0.2s",
+                                position: "relative",
+                                overflow: "hidden"
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = "translateY(-2px)";
+                                e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.2)";
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = "none";
+                                e.currentTarget.style.boxShadow = "none";
+                            }}
                         >
                             <div className="card-header" style={{ padding: "15px", display: "flex", gap: "15px", alignItems: "center", borderBottom: "1px solid var(--border-color)" }}>
                                 <img
@@ -141,7 +143,15 @@ const Overview = () => {
                                 </div>
                             </div>
 
-                            <div className="card-actions" style={{ padding: "10px 15px", background: "rgba(0,0,0,0.2)", display: "flex", justifyContent: "space-around" }}>
+                            {/* Move click handler to buttons explicitly to ensure stopPropagation works if it was an issue with bubbling order, though stopPropagation is already correct.
+                                Also, sometimes a div click handler can interfere if not handled carefully.
+                                The main issue reported "navigates to the monitor pages instead of performing the action" implies bubbling.
+                                `e.stopPropagation()` was already there, but let's double check if there are other overlays or if the button itself is causing navigation.
+                            */}
+                            <div className="card-actions"
+                                style={{ padding: "10px 15px", background: "rgba(0,0,0,0.2)", display: "flex", justifyContent: "space-around" }}
+                                onClick={(e) => e.stopPropagation()} /* Extra safety: stop clicks in the action bar from bubbling to card */
+                            >
                                 <button
                                     className="action-button start-button"
                                     style={{ padding: "6px 12px", fontSize: "0.8em" }}
