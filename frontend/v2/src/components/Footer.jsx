@@ -46,7 +46,7 @@ const Footer = () => {
         Version {appVersion} © MIT 2025
       </p>
 
-     <a href="/" target="_blank" rel="noopener noreferrer">Old UI</a>
+     <a href="/">Old UI</a>
     </footer>
   );
 };
