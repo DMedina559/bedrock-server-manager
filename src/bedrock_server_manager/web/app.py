@@ -30,9 +30,22 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context = app.state.app_context
         app_context.loop = asyncio.get_running_loop()
         app_context.resource_monitor.start()
+
+        # Initialize and start LogStreamer
+        from .log_streamer import LogStreamer
+
+        log_streamer = LogStreamer(app_context)
+        # We store it in app_context to keep it alive and accessible if needed
+        app_context.log_streamer = log_streamer
+        log_streamer.start()
+
         yield
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
+
+        if hasattr(app_context, "log_streamer"):
+            app_context.log_streamer.stop()
+
         app_context.resource_monitor.stop()
         # Shut down the task manager gracefully
         if (

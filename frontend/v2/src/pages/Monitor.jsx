@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import useWebSocket from "../hooks/useWebSocket";
 import { useAuth } from "../AuthContext";
 import { useServer } from "../ServerContext";
@@ -13,7 +13,7 @@ import {
     ResponsiveContainer,
     CartesianGrid,
 } from "recharts";
-import { Play, Square, RotateCcw, Terminal } from "lucide-react";
+import { Play, Square, RotateCcw, Terminal, FileText } from "lucide-react";
 
 const Monitor = () => {
     const { isConnected, lastMessage, subscribe, unsubscribe } = useWebSocket();
@@ -25,6 +25,8 @@ const Monitor = () => {
     const [usageHistory, setUsageHistory] = useState([]);
     const [command, setCommand] = useState("");
     const [loadingAction, setLoadingAction] = useState(false);
+    const [logLines, setLogLines] = useState([]);
+    const logEndRef = useRef(null);
 
     const fetchStatus = useCallback(async () => {
         if (!selectedServer) return;
@@ -44,17 +46,33 @@ const Monitor = () => {
         }
     }, [selectedServer]);
 
+    // Auto-scroll logs
+    useEffect(() => {
+        if (logEndRef.current) {
+            logEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [logLines]);
+
+    // Clear logs on server switch
+    useEffect(() => {
+        setLogLines([]);
+    }, [selectedServer]);
+
     // Handle WebSocket subscriptions
     useEffect(() => {
         if (isConnected && selectedServer) {
             const topic = `resource-monitor:${selectedServer}`;
+            const logTopic = `server_log:${selectedServer}`;
+
             subscribe(topic);
+            subscribe(logTopic);
 
             // Perform an initial fetch of the status when we connect or switch servers
             fetchStatus();
 
             return () => {
                 unsubscribe(topic);
+                unsubscribe(logTopic);
             };
         }
     }, [isConnected, selectedServer, subscribe, unsubscribe, fetchStatus]);
@@ -62,8 +80,10 @@ const Monitor = () => {
     // Handle incoming WebSocket messages
     useEffect(() => {
         if (lastMessage && selectedServer) {
-            const topic = `resource-monitor:${selectedServer}`;
-            if (lastMessage.topic === topic && lastMessage.type === "resource_update") {
+            const resourceTopic = `resource-monitor:${selectedServer}`;
+            const logTopic = `server_log:${selectedServer}`;
+
+            if (lastMessage.topic === resourceTopic && lastMessage.type === "resource_update") {
                 const info = lastMessage.data?.process_info;
                 if (info) {
                     setProcessInfo(info);
@@ -80,6 +100,20 @@ const Monitor = () => {
                     });
                 } else {
                     setProcessInfo(null);
+                }
+            } else if (lastMessage.topic === logTopic && lastMessage.type === "log_update") {
+                if (lastMessage.data) {
+                     setLogLines(prev => {
+                         // Split by newline but keep empty lines if needed, or filter.
+                         // Usually log files end with newline, so split gives empty string at end.
+                         const newLines = lastMessage.data.split('\n');
+                         // Filter out last empty string if data ends with newline
+                         if (newLines.length > 0 && newLines[newLines.length - 1] === "") {
+                             newLines.pop();
+                         }
+                         const updated = [...prev, ...newLines].slice(-1000); // Keep last 1000 lines
+                         return updated;
+                     });
                 }
             }
         }
@@ -189,19 +223,51 @@ const Monitor = () => {
                 </div>
             </div>
 
-            {/* Controls */}
-            <div className="controls-section" style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)", marginBottom: "20px" }}>
-                <h3>Lifecycle Controls</h3>
-                <div className="button-group" style={{ display: "flex", gap: "10px" }}>
-                    <button className="action-button start-button" onClick={() => sendAction("start")} disabled={loadingAction || isRunning}>
-                        <Play size={16} style={{ marginRight: "5px" }} /> Start
-                    </button>
-                    <button className="action-button danger-button" onClick={() => sendAction("stop")} disabled={loadingAction || !isRunning}>
-                        <Square size={16} style={{ marginRight: "5px" }} /> Stop
-                    </button>
-                    <button className="action-button warning-button" onClick={() => sendAction("restart")} disabled={loadingAction}>
-                        <RotateCcw size={16} style={{ marginRight: "5px" }} /> Restart
-                    </button>
+            <div className="grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px", marginBottom: "20px" }}>
+                {/* Controls (Half Card) */}
+                <div className="controls-section" style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)" }}>
+                    <h3>Quick Actions</h3>
+                    <div className="button-group" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                         <div style={{ display: "flex", gap: "10px" }}>
+                            <button className="action-button start-button" onClick={() => sendAction("start")} disabled={loadingAction || isRunning} style={{ flex: 1, justifyContent: "center" }}>
+                                <Play size={16} style={{ marginRight: "5px" }} /> Start
+                            </button>
+                            <button className="action-button danger-button" onClick={() => sendAction("stop")} disabled={loadingAction || !isRunning} style={{ flex: 1, justifyContent: "center" }}>
+                                <Square size={16} style={{ marginRight: "5px" }} /> Stop
+                            </button>
+                        </div>
+                        <button className="action-button warning-button" onClick={() => sendAction("restart")} disabled={loadingAction} style={{ width: "100%", justifyContent: "center" }}>
+                            <RotateCcw size={16} style={{ marginRight: "5px" }} /> Restart
+                        </button>
+                    </div>
+                </div>
+
+                {/* Server Log Stream (Half Card) */}
+                <div style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)", display: "flex", flexDirection: "column" }}>
+                    <h3 style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <FileText size={18} /> Server Log
+                    </h3>
+                    <div style={{
+                        flexGrow: 1,
+                        background: "#1e1e1e",
+                        color: "#d4d4d4",
+                        padding: "10px",
+                        fontFamily: "monospace",
+                        fontSize: "0.85em",
+                        overflowY: "auto",
+                        height: "150px",
+                        borderRadius: "4px",
+                        whiteSpace: "pre-wrap"
+                    }}>
+                        {logLines.length === 0 ? (
+                            <div style={{ color: "#666", fontStyle: "italic" }}>Waiting for logs...</div>
+                        ) : (
+                            logLines.map((line, idx) => (
+                                <div key={idx} style={{ minHeight: "1.2em" }}>{line}</div>
+                            ))
+                        )}
+                        <div ref={logEndRef} />
+                    </div>
                 </div>
             </div>
 
