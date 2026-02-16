@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Setup from "./pages/Setup";
 import Register from "./pages/Register";
 import Monitor from "./pages/Monitor";
+import Overview from "./pages/Overview";
 import Backups from "./pages/Backups";
 import ServerProperties from "./pages/ServerProperties";
 import BSMSettings from "./pages/BSMSettings";
@@ -66,7 +67,8 @@ const AppRoutes = () => {
           </PrivateRoute>
         }
       >
-        <Route index element={<Monitor />} />
+        <Route index element={<Overview />} />
+        <Route path="monitor" element={<Monitor />} />
         <Route path="backups" element={<Backups />} />
         <Route path="server-properties" element={<ServerProperties />} />
         <Route path="server-config" element={<ServerConfig />} />

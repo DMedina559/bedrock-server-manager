@@ -140,7 +140,7 @@ const AccessControl = () => {
                 permissions: [{
                     xuid: item.xuid,
                     name: item.name,
-                    permission_level: newLevel
+                    permission: newLevel // Fix: backend expects 'permission', not 'permission_level' in the dict items
                 }]
             });
             addToast(`Updated permission for ${item.name} to ${newLevel}`, "success");
@@ -167,6 +167,14 @@ const AccessControl = () => {
         } finally {
             setActionLoading(false);
         }
+    };
+
+    // New helper to handle refresh with user feedback
+    const handleRefresh = async () => {
+        setLoading(true);
+        addToast(`Refreshing ${activeTab}...`, "info");
+        await fetchItems();
+        addToast(`${activeTab} refreshed.`, "success");
     };
 
     if (!selectedServer) {
@@ -196,7 +204,7 @@ const AccessControl = () => {
                             </button>
                             <button
                                 className="action-button secondary"
-                                onClick={fetchItems}
+                                onClick={handleRefresh}
                                 disabled={loading || actionLoading}
                                 title="Reload current list"
                             >

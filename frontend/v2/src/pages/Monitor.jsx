@@ -57,7 +57,7 @@ const Monitor = () => {
                 unsubscribe(topic);
             };
         }
-    }, [isConnected, selectedServer, subscribe, unsubscribe]); // fetchStatus intentionally omitted to avoid loops if it changes (though it shouldn't)
+    }, [isConnected, selectedServer, subscribe, unsubscribe, fetchStatus]);
 
     // Handle incoming WebSocket messages
     useEffect(() => {
@@ -110,7 +110,8 @@ const Monitor = () => {
         addToast(`Sending ${action} signal...`, "info");
 
         try {
-            await post(`/api/server/${selectedServer}/${action}`);
+            // Pass empty body explicitely to ensure headers are set if needed, though usually not required for this endpoint
+            await post(`/api/server/${selectedServer}/${action}`, {});
             addToast(`Server ${action} signal sent.`, "success");
         } catch (error) {
             addToast(error.message || `Failed to ${action} server.`, "error");
@@ -128,6 +129,8 @@ const Monitor = () => {
             </div>
         );
     }
+
+    const isRunning = processInfo && processInfo.pid;
 
     return (
         <div className="container">
@@ -190,13 +193,13 @@ const Monitor = () => {
             <div className="controls-section" style={{ background: "var(--container-background-color, #444)", padding: "20px", border: "1px solid var(--border-color, #555)", marginBottom: "20px" }}>
                 <h3>Lifecycle Controls</h3>
                 <div className="button-group" style={{ display: "flex", gap: "10px" }}>
-                    <button className="action-button start-button" onClick={() => sendAction("start")} disabled={loadingAction || (processInfo && processInfo.pid)}>
+                    <button className="action-button start-button" onClick={() => sendAction("start")} disabled={loadingAction || isRunning}>
                         <Play size={16} style={{ marginRight: "5px" }} /> Start
                     </button>
-                    <button className="action-button danger-button" onClick={() => sendAction("stop")} disabled={loadingAction || !(processInfo && processInfo.pid)}>
+                    <button className="action-button danger-button" onClick={() => sendAction("stop")} disabled={loadingAction || !isRunning}>
                         <Square size={16} style={{ marginRight: "5px" }} /> Stop
                     </button>
-                    <button className="action-button warning-button" onClick={() => sendAction("restart")} disabled={loadingAction || !(processInfo && processInfo.pid)}>
+                    <button className="action-button warning-button" onClick={() => sendAction("restart")} disabled={loadingAction}>
                         <RotateCcw size={16} style={{ marginRight: "5px" }} /> Restart
                     </button>
                 </div>
@@ -215,10 +218,10 @@ const Monitor = () => {
                             onChange={(e) => setCommand(e.target.value)}
                             placeholder="Enter command..."
                             style={{ width: "100%", paddingLeft: "35px" }}
-                            disabled={loadingAction || !(processInfo && processInfo.pid)}
+                            disabled={loadingAction || !isRunning}
                         />
                     </div>
-                    <button type="submit" className="action-button" disabled={loadingAction || !command || !(processInfo && processInfo.pid)}>Send</button>
+                    <button type="submit" className="action-button" disabled={loadingAction || !command || !isRunning}>Send</button>
                 </form>
             </div>
 

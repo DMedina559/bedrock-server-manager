@@ -18,8 +18,13 @@ import {
   Shield,
   RefreshCw,
   PlusSquare,
-  Gamepad2
+  Gamepad2,
+  List,
+  ChevronLeft,
+  ChevronRight,
+  Palette
 } from "lucide-react";
+import "../styles/SidebarEnhanced.css"; // Import enhanced styles
 
 const Sidebar = () => {
   const { logout, user } = useAuth();
@@ -31,10 +36,33 @@ const Sidebar = () => {
     loading,
   } = useServer();
   const [pluginPages, setPluginPages] = useState([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Customization State
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [sidebarColor, setSidebarColor] = useState(
+      localStorage.getItem("sidebarColor") || "#3a3a3a"
+  );
+  const [sidebarOpacity, setSidebarOpacity] = useState(
+      localStorage.getItem("sidebarOpacity") || "1"
+  );
 
   useEffect(() => {
     fetchPluginPages();
+    const storedCollapsed = localStorage.getItem("sidebarCollapsed");
+    if (storedCollapsed === "true") {
+      setIsCollapsed(true);
+    }
   }, []);
+
+  // Update CSS variable when color changes
+  useEffect(() => {
+      const r = parseInt(sidebarColor.slice(1, 3), 16);
+      const g = parseInt(sidebarColor.slice(3, 5), 16);
+      const b = parseInt(sidebarColor.slice(5, 7), 16);
+      const rgba = `rgba(${r}, ${g}, ${b}, ${sidebarOpacity})`;
+      document.documentElement.style.setProperty('--sidebar-bg-custom', rgba);
+  }, [sidebarColor, sidebarOpacity]);
 
   const fetchPluginPages = async () => {
     try {
@@ -51,8 +79,21 @@ const Sidebar = () => {
     setSelectedServer(e.target.value);
   };
 
+  const toggleSidebar = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem("sidebarCollapsed", newState);
+  };
+
+  const saveColorSettings = (color, opacity) => {
+      setSidebarColor(color);
+      setSidebarOpacity(opacity);
+      localStorage.setItem("sidebarColor", color);
+      localStorage.setItem("sidebarOpacity", opacity);
+  };
+
   const serverNavItems = [
-    { path: "/", label: "Monitor", icon: <LayoutDashboard size={20} /> },
+    { path: "/monitor", label: "Monitor", icon: <LayoutDashboard size={20} /> },
     {
       path: "/server-config",
       label: "Settings",
@@ -81,73 +122,126 @@ const Sidebar = () => {
   ];
 
   return (
-    <aside className="sidebar-nav">
-      <div className="sidebar-header" style={{ padding: "15px 0", textAlign: "center", borderBottom: "1px solid var(--sidebar-border-color)" }}>
-        <h2 style={{ margin: 0, fontSize: "1.2em", color: "var(--header-text-color)" }}>BSM V2</h2>
+    <aside className={`sidebar-nav ${isCollapsed ? "collapsed" : ""}`} style={{
+        width: isCollapsed ? "60px" : "220px",
+        transition: "width 0.2s ease-out",
+        overflowX: "hidden",
+        backgroundColor: "var(--sidebar-bg-custom)" // Apply custom color
+    }}>
+      <div className="sidebar-header" style={{
+          padding: "15px 0",
+          textAlign: "center",
+          borderBottom: "1px solid var(--sidebar-border-color)",
+          display: "flex",
+          justifyContent: isCollapsed ? "center" : "space-between",
+          alignItems: "center",
+          paddingLeft: isCollapsed ? "0" : "15px",
+          paddingRight: isCollapsed ? "0" : "15px",
+          height: "60px"
+      }}>
+        {!isCollapsed && (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                 <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "24px", height: "24px" }} />
+                 <h2 style={{ margin: 0, fontSize: "1.1em", color: "var(--header-text-color)", whiteSpace: "nowrap" }}>BSM V2</h2>
+            </div>
+        )}
+        {isCollapsed && (
+             <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "24px", height: "24px" }} />
+        )}
+        <button onClick={toggleSidebar} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px" }}>
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
       </div>
 
-      <div style={{ padding: "15px 15px 10px" }}>
-        <label
-          htmlFor="server-select"
-          style={{
-            display: "block",
-            marginBottom: "5px",
-            color: "#aaa",
-            fontSize: "0.85em",
-          }}
-        >
-          Selected Server:
-        </label>
-        <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
-          <select
-            id="server-select"
-            value={selectedServer || ""}
-            onChange={handleServerChange}
-            disabled={loading}
-            className="form-input"
-            style={{
-              width: "100%",
-              padding: "6px",
-              fontSize: "0.9em"
-            }}
-          >
-            {loading ? (
-              <option value="">Loading...</option>
-            ) : servers.length === 0 ? (
-              <option value="">No Servers</option>
-            ) : (
-              <>
-                <option value="" disabled>
-                  -- Select --
-                </option>
-                {servers.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
-          <button
-            onClick={fetchServers}
-            title="Refresh Server List"
-            className="action-button secondary"
-            style={{
-              padding: "6px",
-              margin: 0,
-              height: "32px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
+      <div style={{ padding: isCollapsed ? "10px 5px" : "15px 15px 10px", display: "flex", flexDirection: "column", gap: "10px" }}>
+        {!isCollapsed ? (
+            <>
+                <label
+                  htmlFor="server-select"
+                  style={{
+                    display: "block",
+                    marginBottom: "5px",
+                    color: "#aaa",
+                    fontSize: "0.85em",
+                  }}
+                >
+                  Selected Server:
+                </label>
+                <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
+                  <select
+                    id="server-select"
+                    value={selectedServer || ""}
+                    onChange={handleServerChange}
+                    disabled={loading}
+                    className="form-input"
+                    style={{
+                      width: "100%",
+                      padding: "6px",
+                      fontSize: "0.9em"
+                    }}
+                  >
+                    {loading ? (
+                      <option value="">Loading...</option>
+                    ) : servers.length === 0 ? (
+                      <option value="">No Servers</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>
+                          -- Select --
+                        </option>
+                        {servers.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                  <button
+                    onClick={fetchServers}
+                    title="Refresh Server List"
+                    className="action-button secondary"
+                    style={{
+                      padding: "6px",
+                      margin: 0,
+                      height: "32px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                </div>
+            </>
+        ) : (
+             <div style={{ textAlign: "center" }} title={selectedServer || "No Server Selected"}>
+                 <div style={{
+                     width: "32px", height: "32px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", margin: "0 auto",
+                     display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-color)",
+                     fontSize: "0.9em", fontWeight: "bold", color: "#fff"
+                 }}>
+                     {selectedServer ? selectedServer.substring(0, 2).toUpperCase() : "-"}
+                 </div>
+             </div>
+        )}
       </div>
 
       <div className="nav-group">
-          <div className="nav-section-label">Server Management</div>
+           <NavLink
+                to="/"
+                className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                title={isCollapsed ? "Overview" : ""}
+           >
+              <span className="nav-icon"><List size={20} /></span>
+              {!isCollapsed && <span className="nav-label">Overview</span>}
+           </NavLink>
+      </div>
+
+      <hr className="nav-separator" />
+
+      <div className="nav-group">
+          {!isCollapsed && <div className="nav-section-label">Server Management</div>}
           {serverNavItems.map((item) => {
             const isDisabled = !selectedServer;
             return (
@@ -160,9 +254,10 @@ const Sidebar = () => {
                 onClick={(e) => {
                   if (isDisabled) e.preventDefault();
                 }}
+                title={isCollapsed ? item.label : ""}
               >
                 <span className="nav-icon">{item.icon}</span>
-                <span className="nav-label">{item.label}</span>
+                {!isCollapsed && <span className="nav-label">{item.label}</span>}
               </NavLink>
             );
           })}
@@ -171,7 +266,7 @@ const Sidebar = () => {
       <hr className="nav-separator" />
 
       <div className="nav-group">
-          <div className="nav-section-label">Global</div>
+          {!isCollapsed && <div className="nav-section-label">Global</div>}
           {globalNavItems.map((item) => (
             <NavLink
               key={item.path}
@@ -179,9 +274,10 @@ const Sidebar = () => {
               className={({ isActive }) =>
                 `nav-link ${isActive ? "active" : ""}`
               }
+              title={isCollapsed ? item.label : ""}
             >
               <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
+              {!isCollapsed && <span className="nav-label">{item.label}</span>}
             </NavLink>
           ))}
 
@@ -189,9 +285,10 @@ const Sidebar = () => {
              <NavLink
                 to="/server-install"
                 className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                title={isCollapsed ? "Install Server" : ""}
              >
                 <span className="nav-icon"><PlusSquare size={20} /></span>
-                <span className="nav-label">Install Server</span>
+                {!isCollapsed && <span className="nav-label">Install Server</span>}
              </NavLink>
           )}
       </div>
@@ -200,15 +297,16 @@ const Sidebar = () => {
           <>
             <hr className="nav-separator" />
             <div className="nav-group">
-                <div className="nav-section-label">From Plugins</div>
+                {!isCollapsed && <div className="nav-section-label">From Plugins</div>}
                 {pluginPages.map((page) => (
                     <a
                         key={page.path}
                         href={page.path}
                         className="nav-link"
+                        title={isCollapsed ? page.name : ""}
                     >
                          <span className="nav-icon"><Plug size={20} /></span>
-                         <span className="nav-label">{page.name}</span>
+                         {!isCollapsed && <span className="nav-label">{page.name}</span>}
                     </a>
                 ))}
             </div>
@@ -217,23 +315,74 @@ const Sidebar = () => {
 
       <hr className="nav-separator" />
 
+      {/* Settings Toggle */}
+      <div className="nav-group">
+          <button
+            className="nav-link"
+            onClick={() => setShowColorPicker(!showColorPicker)}
+            style={{background: "transparent", border: "none", width: "100%", textAlign: "left", cursor: "pointer", color: "inherit"}}
+            title={isCollapsed ? "Customize Sidebar" : ""}
+          >
+              <span className="nav-icon"><Palette size={20} /></span>
+              {!isCollapsed && <span className="nav-label">Customize Appearance</span>}
+          </button>
+
+          {showColorPicker && !isCollapsed && (
+              <div style={{padding: "10px 15px", background: "rgba(0,0,0,0.2)", margin: "0 10px 10px", borderRadius: "4px"}}>
+                  <div style={{marginBottom: "5px"}}>
+                      <label style={{fontSize: "0.8em", display: "block"}}>Background Color</label>
+                      <input
+                        type="color"
+                        value={sidebarColor}
+                        onChange={(e) => saveColorSettings(e.target.value, sidebarOpacity)}
+                        style={{width: "100%", height: "30px", border: "none", cursor: "pointer"}}
+                      />
+                  </div>
+                  <div>
+                      <label style={{fontSize: "0.8em", display: "block"}}>Opacity ({Math.round(sidebarOpacity * 100)}%)</label>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="1"
+                        step="0.05"
+                        value={sidebarOpacity}
+                        onChange={(e) => saveColorSettings(sidebarColor, e.target.value)}
+                        style={{width: "100%"}}
+                      />
+                  </div>
+              </div>
+          )}
+      </div>
+
       <div className="nav-group footer-nav">
           <NavLink
             to="/account"
             className={({ isActive }) =>
               `nav-link ${isActive ? "active" : ""}`
             }
+            title={isCollapsed ? `Account (${user?.username})` : ""}
           >
             <span className="nav-icon"><User size={20} /></span>
-            <span className="nav-label">Account ({user?.username})</span>
+            {!isCollapsed && <span className="nav-label">Account ({user?.username})</span>}
           </NavLink>
           <button
             className="nav-link logout-button"
             onClick={logout}
-            style={{ border: "none", background: "transparent", width: "100%", textAlign: "left", fontSize: "1em", color: "inherit" }}
+            style={{
+                border: "none",
+                background: "transparent",
+                width: "100%",
+                textAlign: isCollapsed ? "center" : "left",
+                fontSize: "1em",
+                color: "inherit",
+                display: "flex",
+                justifyContent: isCollapsed ? "center" : "flex-start",
+                padding: "10px 20px"
+            }}
+            title={isCollapsed ? "Logout" : ""}
           >
             <span className="nav-icon"><LogOut size={20} /></span>
-            <span className="nav-label">Logout</span>
+            {!isCollapsed && <span className="nav-label">Logout</span>}
           </button>
       </div>
     </aside>

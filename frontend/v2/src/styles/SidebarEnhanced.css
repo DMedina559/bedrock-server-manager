@@ -1,0 +1,76 @@
+/* Enhanced Sidebar Styles */
+
+/* Ensure the sidebar nav is a flex container for better layout control */
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Full viewport height or appropriate max height */
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Custom scrollbar for webkit */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+}
+
+/* Nav Item Container - Center icons when collapsed */
+.sidebar-nav.collapsed .nav-link {
+    justify-content: center !important;
+    padding: 10px 0; /* Adjust padding for collapsed state */
+}
+
+/* Tooltip behavior for collapsed sidebar */
+.sidebar-nav.collapsed .nav-link[title]:hover::after {
+    /* Optional: CSS-only tooltip if not using title attribute directly */
+    /* content: attr(title); */
+    /* Implementation depends on preference, browser title usually sufficient */
+}
+
+/* Icon centering */
+.nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Fix blank space by ensuring nav groups take appropriate space */
+.nav-group {
+    /* No extra margin by default */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Footer Nav pushed to bottom if needed, though current layout uses flex-grow on content instead */
+/* If you want the footer nav always at bottom: */
+.footer-nav {
+    margin-top: auto !important;
+    padding-bottom: 20px;
+}
+
+/* Ensure separators look good in collapsed mode */
+.sidebar-nav.collapsed .nav-separator {
+    margin: 10px 5px;
+}
+
+/* Customizeable Background handling via inline styles in component,
+   but defaults can be improved here */
+:root {
+    --sidebar-bg-custom: var(--sidebar-background-color);
+}
+
+.sidebar-nav {
+    background-color: var(--sidebar-bg-custom);
+    /* Improve contrast if needed, or rely on ThemeContext */
+    backdrop-filter: blur(5px); /* Modern touch if background has transparency */
+}
