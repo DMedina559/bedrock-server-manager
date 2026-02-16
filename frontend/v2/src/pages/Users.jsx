@@ -31,6 +31,8 @@ const Users = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
+      // Small delay to ensure the spinner is visible for feedback
+      await new Promise(resolve => setTimeout(resolve, 300));
       const data = await get("/users/list");
       if (Array.isArray(data)) {
         setUsers(data);
@@ -39,6 +41,7 @@ const Users = () => {
         setUsers([]);
       }
     } catch (error) {
+      console.error("Error fetching users:", error);
       addToast(error.message || "Error fetching users", "error");
     } finally {
       setLoading(false);

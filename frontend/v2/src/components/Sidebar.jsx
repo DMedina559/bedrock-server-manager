@@ -38,6 +38,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     } = useServer();
     const [pluginPages, setPluginPages] = useState([]);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [splashText, setSplashText] = useState("");
 
     // Customization State
     const [showColorPicker, setShowColorPicker] = useState(false);
@@ -50,6 +51,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
 
     useEffect(() => {
         fetchPluginPages();
+        fetchSplashText();
         const storedCollapsed = localStorage.getItem("sidebarCollapsed");
         if (storedCollapsed === "true") {
             setIsCollapsed(true);
@@ -73,6 +75,21 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
             }
         } catch (error) {
             console.warn("Failed to fetch plugin pages", error);
+        }
+    };
+
+    const fetchSplashText = async () => {
+        try {
+            const response = await get("/api/info");
+            // API returns { status: "success", info: { splash_text: "..." } } based on API definition
+            if (response && response.status === "success" && response.info) {
+                setSplashText(response.info.splash_text || "");
+            } else if (response && response.data && response.data.splash_text) {
+                // Fallback in case api.js unwraps it differently or structure changes
+                setSplashText(response.data.splash_text);
+            }
+        } catch (error) {
+            console.warn("Failed to fetch splash text", error);
         }
     };
 
@@ -150,19 +167,45 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                 alignItems: "center",
                 paddingLeft: effectiveCollapsed ? "0" : "15px",
                 paddingRight: effectiveCollapsed ? "0" : "15px",
-                height: "60px"
+                height: effectiveCollapsed ? "60px" : "auto",
+                minHeight: "60px",
+                flexDirection: effectiveCollapsed ? "row" : "column"
             }}>
-                {!effectiveCollapsed && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "96px", height: "96px" }} />
+                {!effectiveCollapsed ? (
+                    <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "5px", overflow: "hidden", width: "100%", paddingRight: "5px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "15px", marginBottom: "5px" }}>
+                                <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "64px", height: "64px" }} />
+                                <div style={{ overflow: "hidden", whiteSpace: "nowrap" }}>
+                                    <span className="scrolling-text" style={{ fontWeight: "bold", fontSize: "1.1em", color: "#fff", display: "block" }}>Bedrock Server Manager</span>
+                                </div>
+                            </div>
+                            {splashText && (
+                                <div style={{ overflow: "hidden", width: "100%", whiteSpace: "nowrap" }}>
+                                    <span className="scrolling-text" style={{
+                                        fontSize: "0.85em",
+                                        fontStyle: "italic",
+                                        color: "#FFD700",
+                                        display: "inline-block",
+                                        paddingLeft: "5px"
+                                    }}>
+                                        {splashText}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={toggleSidebar} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px", flexShrink: 0 }}>
+                            <ChevronLeft size={16} />
+                        </button>
                     </div>
+                ) : (
+                    <>
+                        <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "30px", height: "30px" }} />
+                        <button onClick={toggleSidebar} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px" }}>
+                            <ChevronRight size={16} />
+                        </button>
+                    </>
                 )}
-                {effectiveCollapsed && (
-                    <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "30px", height: "30px" }} />
-                )}
-                <button onClick={toggleSidebar} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px" }}>
-                    {effectiveCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-                </button>
             </div>
 
             <div style={{ padding: effectiveCollapsed ? "10px 5px" : "15px 15px 10px", display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -213,6 +256,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                                 onClick={fetchServers}
                                 title="Refresh Server List"
                                 className="action-button secondary"
+                                disabled={loading}
                                 style={{
                                     padding: "6px",
                                     margin: 0,
@@ -222,7 +266,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                                     justifyContent: "center"
                                 }}
                             >
-                                <RefreshCw size={14} />
+                                <RefreshCw size={14} className={loading ? "spin" : ""} />
                             </button>
                         </div>
                     </>

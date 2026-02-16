@@ -10,13 +10,32 @@ const Content = () => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+    const [isUploadEnabled, setIsUploadEnabled] = useState(false);
     const { addToast } = useToast();
 
     useEffect(() => {
+        checkUploadPluginStatus();
         if (selectedServer) {
             fetchItems();
         }
     }, [selectedServer, activeTab]);
+
+    const checkUploadPluginStatus = async () => {
+        try {
+            const response = await get("/api/plugins");
+            if (response && response.status === "success" && response.data) {
+                const plugin = response.data["content_uploader_plugin"];
+                if (plugin && plugin.enabled) {
+                    setIsUploadEnabled(true);
+                } else {
+                    setIsUploadEnabled(false);
+                }
+            }
+        } catch (error) {
+            console.warn("Failed to check upload plugin status:", error);
+            setIsUploadEnabled(false);
+        }
+    };
 
     const fetchItems = async () => {
         if (!selectedServer) return;
@@ -153,9 +172,9 @@ const Content = () => {
 
     return (
         <div className="container">
-            <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h1>Content Management: {selectedServer}</h1>
-                <div style={{ display: "flex", gap: "10px" }}>
+            <div className="header" style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "space-between", alignItems: "center" }}>
+                <h1 style={{ margin: 0 }}>Content Management: {selectedServer}</h1>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
                     <button
                         className="action-button secondary"
                         onClick={fetchItems}
@@ -202,13 +221,15 @@ const Content = () => {
             </div>
 
             <div className="tab-content">
-                <div style={{ marginBottom: "20px", padding: "15px", background: "var(--input-background-color)", borderRadius: "5px", border: "1px solid var(--border-color)" }}>
-                    <h3 style={{ marginTop: 0 }}>Upload {activeTab === "worlds" ? "World (.zip, .mcworld)" : "Addon (.mcpack, .mcaddon, .zip)"}</h3>
-                    <input type="file" onChange={handleUpload} disabled={loading || actionLoading} className="form-input" />
-                    <p style={{ fontSize: "0.85em", color: "var(--text-color-secondary)", marginTop: "5px" }}>
-                        Uploaded files will appear in the list below.
-                    </p>
-                </div>
+                {isUploadEnabled && (
+                    <div style={{ marginBottom: "20px", padding: "15px", background: "var(--input-background-color)", borderRadius: "5px", border: "1px solid var(--border-color)" }}>
+                        <h3 style={{ marginTop: 0 }}>Upload {activeTab === "worlds" ? "World (.zip, .mcworld)" : "Addon (.mcpack, .mcaddon, .zip)"}</h3>
+                        <input type="file" onChange={handleUpload} disabled={loading || actionLoading} className="form-input" />
+                        <p style={{ fontSize: "0.85em", color: "var(--text-color-secondary)", marginTop: "5px" }}>
+                            Uploaded files will appear in the list below.
+                        </p>
+                    </div>
+                )}
 
                 {loading && items.length === 0 ? (
                     <div style={{ padding: "40px", textAlign: "center", color: "var(--text-color-secondary)" }}>
