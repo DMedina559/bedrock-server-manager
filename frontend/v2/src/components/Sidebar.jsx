@@ -185,12 +185,12 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "5px", overflow: "hidden", width: "100%", paddingRight: "5px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "15px", marginBottom: "5px" }}>
                                 <img src="/static/image/icon/favicon-96x96.png" alt="Icon" style={{ width: "64px", height: "64px" }} />
-                                <div style={{ overflow: "hidden", whiteSpace: "nowrap" }}>
+                                <div style={{ overflow: "hidden", whiteSpace: "nowrap" }} className="marquee-container">
                                     <span className="scrolling-text" style={{ fontWeight: "bold", fontSize: "1.1em", color: "#fff", display: "block" }}>Bedrock Server Manager</span>
                                 </div>
                             </div>
                             {splashText && (
-                                <div style={{ overflow: "hidden", width: "100%", whiteSpace: "nowrap" }}>
+                                <div style={{ overflow: "hidden", width: "100%", whiteSpace: "nowrap" }} className="marquee-container">
                                     <span className="scrolling-text" style={{
                                         fontSize: "0.85em",
                                         fontStyle: "italic",
@@ -362,17 +362,22 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                     <hr className="nav-separator" />
                     <div className="nav-group">
                         {!effectiveCollapsed && <div className="nav-section-label">From Plugins</div>}
-                        {pluginPages.map((page) => (
-                            <NavLink
-                                key={page.path}
-                                to={`/plugin-view?url=${encodeURIComponent(page.path)}`}
-                                className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-                                title={effectiveCollapsed ? page.name : ""}
-                            >
-                                <span className="nav-icon"><Plug size={20} /></span>
-                                {!effectiveCollapsed && <span className="nav-label">{page.name}</span>}
-                            </NavLink>
-                        ))}
+                        {pluginPages.map((page) => {
+                            const targetPath = page.type === 'native'
+                                ? `/plugin-native-view?url=${encodeURIComponent(page.path)}`
+                                : `/plugin-view?url=${encodeURIComponent(page.path)}`;
+                            return (
+                                <NavLink
+                                    key={page.path}
+                                    to={targetPath}
+                                    className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                                    title={effectiveCollapsed ? page.name : ""}
+                                >
+                                    <span className="nav-icon"><Plug size={20} /></span>
+                                    {!effectiveCollapsed && <span className="nav-label">{page.name}</span>}
+                                </NavLink>
+                            );
+                        })}
                     </div>
                 </>
             )}

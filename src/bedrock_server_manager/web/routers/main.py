@@ -49,7 +49,7 @@ async def index(
 
     try:
         plugin_manager: PluginManager = app_context.plugin_manager
-        plugin_html_pages = plugin_manager.get_html_render_routes()
+        plugin_html_pages = plugin_manager.get_html_render_routes(include_native=False)
     except Exception as e:
         logger.error(f"Error getting plugin HTML pages: {e}", exc_info=True)
         plugin_html_pages = []

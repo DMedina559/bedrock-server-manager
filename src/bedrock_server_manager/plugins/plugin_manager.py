@@ -84,6 +84,9 @@ class PluginManager:
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
         self.html_render_tag = "plugin-ui"  # Tag for HTML rendering in FastAPI
+        self.native_ui_render_tag = (
+            "plugin-ui-native"  # Tag for Native UI rendering in FastAPI
+        )
         self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
@@ -743,18 +746,33 @@ class PluginManager:
         else:
             logger.info("No custom plugin event listeners to clear.")
 
-    def get_html_render_routes(self) -> List[Dict[str, str]]:
+    def get_html_render_routes(
+        self, include_native: bool = True
+    ) -> List[Dict[str, str]]:
         """
-        Collects routes from all plugin routers that are tagged for HTML rendering.
+        Collects routes from all plugin routers that are tagged for UI rendering.
+
+        Args:
+            include_native (bool): If True, includes routes tagged for native UI rendering.
+                                   If False, only includes HTML/iframe routes.
 
         Returns:
             List[Dict[str, str]]: A list of dictionaries, where each dictionary
-                                 contains 'name' and 'path' for a tagged route.
+                                 contains 'name', 'path', and 'type' ('iframe' or 'native').
         """
-        html_routes = []
+        ui_routes = []
         for router in self.plugin_fastapi_routers:
             for route in router.routes:
-                if hasattr(route, "tags") and self.html_render_tag in route.tags:
+                if not hasattr(route, "tags"):
+                    continue
+
+                route_type = None
+                if self.html_render_tag in route.tags:
+                    route_type = "iframe"
+                elif include_native and self.native_ui_render_tag in route.tags:
+                    route_type = "native"
+
+                if route_type:
                     # Use route name or summary if available, otherwise path
                     route_name = route.name
                     if hasattr(route, "summary") and route.summary:
@@ -762,9 +780,11 @@ class PluginManager:
                     elif not route_name:  # If route.name is also None or empty
                         route_name = route.path
 
-                    html_routes.append({"name": route_name, "path": route.path})
-        logger.debug(f"Collected {len(html_routes)} HTML rendering plugin routes.")
-        return html_routes
+                    ui_routes.append(
+                        {"name": route_name, "path": route.path, "type": route_type}
+                    )
+        logger.debug(f"Collected {len(ui_routes)} UI rendering plugin routes.")
+        return ui_routes
 
     def _is_valid_custom_event_name(self, event_name: str) -> bool:
         """Checks if a custom event name follows the 'namespace:event_name' format.

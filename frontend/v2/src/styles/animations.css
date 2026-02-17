@@ -28,6 +28,13 @@
     animation: marquee 15s linear infinite;
 }
 
+    .scrolling-text.static {
+        padding-left: 0;
+        animation: none;
+        white-space: normal; /* Allow wrap if static? Or keep nowrap */
+        white-space: nowrap;
+    }
+
 /* Pause animation on hover for readability */
 .sidebar-header:hover .scrolling-text {
     animation-play-state: paused;
