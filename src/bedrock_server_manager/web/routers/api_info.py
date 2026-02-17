@@ -66,6 +66,7 @@ class GeneralApiResponse(BaseApiResponse):
     players: Optional[List[Dict[str, Any]]] = None  # For player lists
     files_deleted: Optional[int] = None  # For prune operations
     files_kept: Optional[int] = None  # For prune operations
+    themes: Optional[List[str]] = None  # For theme lists
 
 
 class PruneDownloadsPayload(BaseModel):
@@ -584,6 +585,51 @@ async def get_system_info_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred retrieving system info.",
+        )
+
+
+@router.get(
+    "/api/info/themes", response_model=GeneralApiResponse, tags=["Global Info API"]
+)
+async def get_themes_api_route(
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves a list of available themes (standard and custom).
+    """
+    logger.debug("API: Request for available themes.")
+    STANDARD_THEMES = [
+        "default",
+        "light",
+        "gradient",
+        "black",
+        "red",
+        "green",
+        "blue",
+        "yellow",
+        "pink",
+    ]
+    try:
+        themes = set(STANDARD_THEMES)
+        themes_path = app_context.settings.get("paths.themes")
+
+        if themes_path and os.path.isdir(themes_path):
+            for filename in os.listdir(themes_path):
+                if filename.endswith(".css"):
+                    themes.add(filename[:-4])  # Remove .css extension
+
+        # Sort the themes: default first, then alphabetically
+        sorted_themes = sorted(list(themes))
+        if "default" in sorted_themes:
+            sorted_themes.remove("default")
+            sorted_themes.insert(0, "default")
+
+        return GeneralApiResponse(status="success", themes=sorted_themes)
+    except Exception as e:
+        logger.error(f"API Get Themes: Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred retrieving themes.",
         )
 
 

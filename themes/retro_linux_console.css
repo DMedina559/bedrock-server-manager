@@ -96,3 +96,76 @@
     --toggle-switch-on-handle-background-color: #000;
     --toggle-switch-on-handle-border-color: #00ff00;
 }
+
+/* ==========================================================================
+   Forced Overrides for V2 UI
+   ========================================================================== */
+
+.container {
+    background-color: var(--container-background-color) !important;
+}
+
+.sidebar-nav, .sidebar-nav .nav-link {
+    background-color: var(--sidebar-background-color) !important;
+    color: var(--sidebar-link-text-color) !important;
+    border-right: 1px solid var(--sidebar-border-color);
+}
+
+.sidebar-nav .nav-link.active {
+    background-color: var(--sidebar-link-active-background-color) !important;
+    border-left: 4px solid var(--sidebar-link-active-border-color);
+}
+
+.server-card {
+    background-color: var(--server-card-background-color) !important;
+    border: 1px solid var(--server-card-border-color) !important;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.server-card:hover {
+    background-color: var(--server-card-hover-background-color) !important;
+}
+
+.form-input {
+    background-color: var(--form-input-background-color) !important;
+    color: var(--form-input-text-color) !important;
+    border: 1px solid var(--form-input-border-color) !important;
+}
+
+.form-input:focus {
+    border-color: var(--form-input-focus-border-color) !important;
+}
+
+/* Force text color on various elements */
+body, h1, h2, h3, h4, h5, p, a, label, .server-card-info, .server-card-info .info-label {
+    color: var(--text-color) !important;
+    font-family: "Courier New", Courier, monospace !important; /* Retro font */
+}
+
+/* Override link colors */
+a {
+    color: var(--button-text-color) !important;
+    text-decoration: underline;
+}
+
+a:hover {
+    color: var(--button-hover-text-color) !important;
+}
+
+.sidebar-nav .nav-link:hover {
+    color: var(--sidebar-link-hover-text-color) !important;
+    background-color: var(--sidebar-link-hover-background-color) !important;
+}
+
+/* Ensure header text is colored */
+.header h1 {
+    color: var(--header-text-color) !important;
+    text-transform: uppercase;
+}
+
+/* Button overrides */
+.action-button, button {
+    border-radius: 0 !important; /* Square buttons */
+    text-transform: uppercase;
+    font-family: "Courier New", Courier, monospace !important;
+}

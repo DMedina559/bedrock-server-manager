@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../ThemeContext";
 import { useToast } from "../ToastContext";
-import { post } from "../api";
+import { get, post } from "../api";
 import { Save, User } from "lucide-react";
 
 const Account = () => {
@@ -16,17 +16,25 @@ const Account = () => {
     confirmPassword: "",
   });
 
-  const themes = [
-    "default",
-    "light",
-    "gradient",
-    "black",
-    "red",
-    "green",
-    "blue",
-    "yellow",
-    "pink",
-  ];
+  const [availableThemes, setAvailableThemes] = useState([]);
+
+  useEffect(() => {
+    const fetchThemes = async () => {
+      try {
+        const response = await get("/api/info/themes");
+        if (response && response.status === "success" && Array.isArray(response.themes)) {
+          setAvailableThemes(response.themes);
+        } else {
+          // Fallback if API fails or returns unexpected format
+          setAvailableThemes(["default"]);
+        }
+      } catch (error) {
+        console.warn("Failed to fetch themes", error);
+        setAvailableThemes(["default"]);
+      }
+    };
+    fetchThemes();
+  }, []);
 
   const handleThemeChange = (newTheme) => {
     changeTheme(newTheme);
@@ -83,16 +91,16 @@ const Account = () => {
         <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
           <h2 style={{ marginTop: 0 }}>Theme</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-            {themes.map((t) => (
+            {availableThemes.length > 0 ? availableThemes.map((t) => (
               <button
                 key={t}
                 className={`action-button ${theme === t ? "" : "secondary"}`}
                 onClick={() => handleThemeChange(t)}
                 style={{ textTransform: "capitalize" }}
               >
-                {t}
+                {t.replace(/_/g, " ")}
               </button>
-            ))}
+            )) : <p>Loading themes...</p>}
           </div>
         </div>
 
