@@ -5,6 +5,7 @@ This is the new React-based frontend for Bedrock Server Manager.
 ## Development Setup
 
 1.  **Install dependencies**:
+
     ```bash
     cd frontend/v2
     npm install
@@ -12,6 +13,7 @@ This is the new React-based frontend for Bedrock Server Manager.
 
 2.  **Start the Backend**:
     Make sure the Python backend is running on port 8000.
+
     ```bash
     # From project root
     # Adjust the command based on how you run the python app locally
@@ -27,13 +29,13 @@ This is the new React-based frontend for Bedrock Server Manager.
 
 ## Scripts
 
--   `npm run dev`: Start development server.
--   `npm run build`: Build for production.
--   `npm run lint`: Run ESLint.
--   `npm run lint:fix`: Fix linting issues.
--   `npm run format`: Format code with Prettier.
--   `npm test`: Run tests in watch mode.
--   `npm run test:run`: Run tests once.
+- `npm run dev`: Start development server.
+- `npm run build`: Build for production.
+- `npm run lint`: Run ESLint.
+- `npm run lint:fix`: Fix linting issues.
+- `npm run format`: Format code with Prettier.
+- `npm test`: Run tests in watch mode.
+- `npm run test:run`: Run tests once.
 
 ## Testing
 
