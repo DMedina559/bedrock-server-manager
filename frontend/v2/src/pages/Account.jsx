@@ -22,7 +22,11 @@ const Account = () => {
     const fetchThemes = async () => {
       try {
         const response = await get("/api/info/themes");
-        if (response && response.status === "success" && Array.isArray(response.themes)) {
+        if (
+          response &&
+          response.status === "success" &&
+          Array.isArray(response.themes)
+        ) {
           setAvailableThemes(response.themes);
         } else {
           // Fallback if API fails or returns unexpected format
@@ -39,9 +43,9 @@ const Account = () => {
   const handleThemeChange = (newTheme) => {
     changeTheme(newTheme);
     try {
-        post("/api/account/theme", { theme: newTheme });
-    } catch (e) {
-        console.error("Failed to save theme preference");
+      post("/api/account/theme", { theme: newTheme });
+    } catch {
+      console.error("Failed to save theme preference");
     }
     addToast(`Theme changed to ${newTheme}`, "info");
   };
@@ -76,38 +80,79 @@ const Account = () => {
         <h1>My Account</h1>
       </div>
 
-      <div className="grid" style={{ display: "grid", gap: "20px", gridTemplateColumns: "1fr" }}>
-
+      <div
+        className="grid"
+        style={{ display: "grid", gap: "20px", gridTemplateColumns: "1fr" }}
+      >
         {/* Profile Info */}
-        <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
-          <h2 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: "10px" }}><User /> Profile</h2>
+        <div
+          style={{
+            background: "var(--container-background-color)",
+            padding: "20px",
+            border: "1px solid var(--border-color)",
+          }}
+        >
+          <h2
+            style={{
+              marginTop: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+            }}
+          >
+            <User /> Profile
+          </h2>
           <div style={{ marginLeft: "10px" }}>
-            <p><strong>Username:</strong> {user?.username}</p>
-            <p><strong>Role:</strong> {user?.role}</p>
+            <p>
+              <strong>Username:</strong> {user?.username}
+            </p>
+            <p>
+              <strong>Role:</strong> {user?.role}
+            </p>
           </div>
         </div>
 
         {/* Theme Selection */}
-        <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+        <div
+          style={{
+            background: "var(--container-background-color)",
+            padding: "20px",
+            border: "1px solid var(--border-color)",
+          }}
+        >
           <h2 style={{ marginTop: 0 }}>Theme</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-            {availableThemes.length > 0 ? availableThemes.map((t) => (
-              <button
-                key={t}
-                className={`action-button ${theme === t ? "" : "secondary"}`}
-                onClick={() => handleThemeChange(t)}
-                style={{ textTransform: "capitalize" }}
-              >
-                {t.replace(/_/g, " ")}
-              </button>
-            )) : <p>Loading themes...</p>}
+            {availableThemes.length > 0 ? (
+              availableThemes.map((t) => (
+                <button
+                  key={t}
+                  className={`action-button ${theme === t ? "" : "secondary"}`}
+                  onClick={() => handleThemeChange(t)}
+                  style={{ textTransform: "capitalize" }}
+                >
+                  {t.replace(/_/g, " ")}
+                </button>
+              ))
+            ) : (
+              <p>Loading themes...</p>
+            )}
           </div>
         </div>
 
         {/* Password Change */}
-        <div style={{ background: "var(--container-background-color)", padding: "20px", border: "1px solid var(--border-color)" }}>
+        <div
+          style={{
+            background: "var(--container-background-color)",
+            padding: "20px",
+            border: "1px solid var(--border-color)",
+          }}
+        >
           <h2 style={{ marginTop: 0 }}>Change Password</h2>
-          <form onSubmit={handlePasswordChange} className="form-group" style={{ maxWidth: "400px" }}>
+          <form
+            onSubmit={handlePasswordChange}
+            className="form-group"
+            style={{ maxWidth: "400px" }}
+          >
             <div>
               <label className="form-label">Current Password</label>
               <input
@@ -160,9 +205,10 @@ const Account = () => {
               />
             </div>
             <div style={{ marginTop: "15px" }}>
-                <button type="submit" className="action-button">
-                <Save size={16} style={{ marginRight: "5px" }} /> Update Password
-                </button>
+              <button type="submit" className="action-button">
+                <Save size={16} style={{ marginRight: "5px" }} /> Update
+                Password
+              </button>
             </div>
           </form>
         </div>

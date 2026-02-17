@@ -15,17 +15,17 @@ const Register = () => {
 
   useEffect(() => {
     const validateToken = async () => {
-        if (!token) return;
-        try {
-            const response = await fetch(`/register/validate/${token}`);
-            if (response.ok) {
-                setTokenValid(true);
-            } else {
-                setTokenValid(false);
-            }
-        } catch (e) {
-            setTokenValid(false);
+      if (!token) return;
+      try {
+        const response = await fetch(`/register/validate/${token}`);
+        if (response.ok) {
+          setTokenValid(true);
+        } else {
+          setTokenValid(false);
         }
+      } catch (e) {
+        setTokenValid(false);
+      }
     };
     validateToken();
   }, [token]);
@@ -43,36 +43,35 @@ const Register = () => {
     }
 
     if (!tokenValid) {
-        addToast("Invalid registration link.", "error");
-        return;
+      addToast("Invalid registration link.", "error");
+      return;
     }
 
     setLoading(true);
     try {
-
       const response = await fetch(`/register/${token}`, {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ username, password })
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
       });
 
       let data;
       try {
         data = await response.json();
       } catch (e) {
-          data = null;
+        data = null;
       }
 
       if (response.ok) {
-          addToast("Registration successful! Please login.", "success");
-          navigate("/login");
+        addToast("Registration successful! Please login.", "success");
+        navigate("/login");
       } else {
-          const msg = data?.detail?.message || data?.detail || "Registration failed.";
-          addToast(msg, "error");
+        const msg =
+          data?.detail?.message || data?.detail || "Registration failed.";
+        addToast(msg, "error");
       }
-
     } catch (error) {
       addToast("Network error during registration.", "error");
     } finally {
@@ -81,42 +80,60 @@ const Register = () => {
   };
 
   if (!token) {
-      return (
-          <div className="container" style={{ marginTop: "100px", textAlign: "center" }}>
-              <div className="message-box message-error">
-                  Invalid registration link. Token is missing.
-              </div>
-          </div>
-      );
+    return (
+      <div
+        className="container"
+        style={{ marginTop: "100px", textAlign: "center" }}
+      >
+        <div className="message-box message-error">
+          Invalid registration link. Token is missing.
+        </div>
+      </div>
+    );
   }
 
   if (tokenValid === false) {
-      return (
-          <div className="container" style={{ marginTop: "100px", textAlign: "center" }}>
-              <div className="message-box message-error">
-                  Invalid or expired registration link.
-              </div>
-          </div>
-      );
+    return (
+      <div
+        className="container"
+        style={{ marginTop: "100px", textAlign: "center" }}
+      >
+        <div className="message-box message-error">
+          Invalid or expired registration link.
+        </div>
+      </div>
+    );
   }
 
   if (tokenValid === null) {
-      return (
-          <div className="container" style={{ marginTop: "100px", textAlign: "center" }}>
-              <div className="spinner" style={{display: 'inline-block', marginRight: '10px'}}></div> Checking registration link...
-          </div>
-      );
+    return (
+      <div
+        className="container"
+        style={{ marginTop: "100px", textAlign: "center" }}
+      >
+        <div
+          className="spinner"
+          style={{ display: "inline-block", marginRight: "10px" }}
+        ></div>{" "}
+        Checking registration link...
+      </div>
+    );
   }
 
   return (
-    <div className="container" style={{ maxWidth: "400px", marginTop: "100px" }}>
+    <div
+      className="container"
+      style={{ maxWidth: "400px", marginTop: "100px" }}
+    >
       <div className="header">
         <h1>Register</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="form-group">
         <div style={{ marginBottom: "15px" }}>
-          <label className="form-label" htmlFor="username">Username</label>
+          <label className="form-label" htmlFor="username">
+            Username
+          </label>
           <input
             type="text"
             id="username"
@@ -129,7 +146,9 @@ const Register = () => {
         </div>
 
         <div style={{ marginBottom: "15px" }}>
-          <label className="form-label" htmlFor="password">Password</label>
+          <label className="form-label" htmlFor="password">
+            Password
+          </label>
           <input
             type="password"
             id="password"
@@ -142,7 +161,9 @@ const Register = () => {
         </div>
 
         <div style={{ marginBottom: "20px" }}>
-          <label className="form-label" htmlFor="confirmPassword">Confirm Password</label>
+          <label className="form-label" htmlFor="confirmPassword">
+            Confirm Password
+          </label>
           <input
             type="password"
             id="confirmPassword"
@@ -154,7 +175,12 @@ const Register = () => {
           />
         </div>
 
-        <button type="submit" className="action-button" disabled={loading} style={{ width: "100%", justifyContent: "center" }}>
+        <button
+          type="submit"
+          className="action-button"
+          disabled={loading}
+          style={{ width: "100%", justifyContent: "center" }}
+        >
           {loading ? "Registering..." : "Register"}
         </button>
       </form>

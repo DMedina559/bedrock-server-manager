@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 
@@ -25,7 +25,7 @@ const Setup = () => {
       const response = await fetch("/setup/create-first-user", {
         method: "POST",
         headers: {
-            "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ username, password }),
       });
@@ -39,20 +39,28 @@ const Setup = () => {
         // Redirect to dashboard or login
         navigate("/");
       } else {
-        setError(data.message || data.detail || "Setup failed. Please try again.");
+        setError(
+          data.message || data.detail || "Setup failed. Please try again.",
+        );
       }
-    } catch (err) {
+    } catch {
       setError("An error occurred during setup.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return (
-      <div className="container" style={{ marginTop: "50px", textAlign: "center" }}>
-          <div className="message-box message-info">Setting up your server manager...</div>
+  if (loading)
+    return (
+      <div
+        className="container"
+        style={{ marginTop: "50px", textAlign: "center" }}
+      >
+        <div className="message-box message-info">
+          Setting up your server manager...
+        </div>
       </div>
-  );
+    );
 
   return (
     <div className="container" style={{ maxWidth: "500px", marginTop: "50px" }}>
@@ -111,7 +119,11 @@ const Setup = () => {
 
         {error && <div className="message message-error">{error}</div>}
 
-        <button type="submit" className="button button-primary" disabled={loading}>
+        <button
+          type="submit"
+          className="button button-primary"
+          disabled={loading}
+        >
           {loading ? "Creating Account..." : "Create Account"}
         </button>
       </form>

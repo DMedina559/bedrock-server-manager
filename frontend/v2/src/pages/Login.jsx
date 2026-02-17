@@ -16,7 +16,7 @@ const Login = () => {
   useEffect(() => {
     // If user is already logged in, redirect them
     if (user) {
-        navigate("/", { replace: true });
+      navigate("/", { replace: true });
     }
   }, [user, navigate]);
 

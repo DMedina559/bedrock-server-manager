@@ -60,7 +60,8 @@ const AppRoutes = () => {
         path="/setup"
         element={needsSetup ? <Setup /> : <Navigate to="/" replace />}
       />
-      <Route path="/register/:token" element={<Register />} /> {/* Public route with token */}
+      <Route path="/register/:token" element={<Register />} />{" "}
+      {/* Public route with token */}
       <Route
         path="/"
         element={

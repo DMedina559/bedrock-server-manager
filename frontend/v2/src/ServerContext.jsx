@@ -11,7 +11,7 @@ export const ServerProvider = ({ children }) => {
   const { user } = useAuth();
   const [servers, setServers] = useState([]);
   const [selectedServer, setSelectedServerState] = useState(
-    localStorage.getItem("selectedServer") || null
+    localStorage.getItem("selectedServer") || null,
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -47,7 +47,7 @@ export const ServerProvider = ({ children }) => {
         if (serverList.length > 0) {
           // Check if currently selected server still exists
           const currentSelectionExists = serverList.some(
-            (s) => s.name === selectedServer
+            (s) => s.name === selectedServer,
           );
 
           if (!selectedServer || !currentSelectionExists) {
@@ -78,49 +78,49 @@ export const ServerProvider = ({ children }) => {
     if (user) {
       fetchServers();
     } else {
-        // Clear sensitive state on logout
-        setServers([]);
-        setSelectedServer(null);
+      // Clear sensitive state on logout
+      setServers([]);
+      setSelectedServer(null);
     }
   }, [user]);
 
   // Handle WebSocket subscriptions for server updates
   useEffect(() => {
     if (isConnected && user) {
-        const refreshTopics = [
-            "event:after_server_statuses_updated",
-            "event:after_server_start",
-            "event:after_server_stop",
-            "event:after_delete_server_data",
-            "event:after_server_updated",
-            "event:server_install_complete"
-        ];
+      const refreshTopics = [
+        "event:after_server_statuses_updated",
+        "event:after_server_start",
+        "event:after_server_stop",
+        "event:after_delete_server_data",
+        "event:after_server_updated",
+        "event:server_install_complete",
+      ];
 
-        refreshTopics.forEach(topic => subscribe(topic));
+      refreshTopics.forEach((topic) => subscribe(topic));
 
-        return () => {
-            refreshTopics.forEach(topic => unsubscribe(topic));
-        };
+      return () => {
+        refreshTopics.forEach((topic) => unsubscribe(topic));
+      };
     }
   }, [isConnected, user, subscribe, unsubscribe]);
 
   // Handle incoming WebSocket messages
   useEffect(() => {
-      if (lastMessage) {
-          const refreshTopics = [
-            "event:after_server_statuses_updated",
-            "event:after_server_start",
-            "event:after_server_stop",
-            "event:after_delete_server_data",
-            "event:after_server_updated",
-            "event:server_install_complete"
-          ];
+    if (lastMessage) {
+      const refreshTopics = [
+        "event:after_server_statuses_updated",
+        "event:after_server_start",
+        "event:after_server_stop",
+        "event:after_delete_server_data",
+        "event:after_server_updated",
+        "event:server_install_complete",
+      ];
 
-          if (refreshTopics.includes(lastMessage.topic)) {
-              console.log("Refreshing servers due to WS event:", lastMessage.topic);
-              fetchServers();
-          }
+      if (refreshTopics.includes(lastMessage.topic)) {
+        console.log("Refreshing servers due to WS event:", lastMessage.topic);
+        fetchServers();
       }
+    }
   }, [lastMessage]);
 
   const refreshServers = () => {

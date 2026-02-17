@@ -13,18 +13,20 @@
 
 /* Container for the entire server list section */
 .server-list-section {
-    margin-bottom: 25px; /* Space below the table section */
-    box-sizing: border-box;
+  margin-bottom: 25px; /* Space below the table section */
+  box-sizing: border-box;
 }
 
 /* Wrapper to enable horizontal scrolling on smaller screens */
 .table-responsive-wrapper {
-    overflow-x: auto; /* Add horizontal scrollbar when content overflows */
-    width: 100%; /* Take full width of its container */
-    border: 1px solid var(--table-border-color); /* Border around the scrollable area */
-    border-radius: 0; /* Sharp corners */
-    background-color: var(--container-background-color); /* Background for the table area */
-    -webkit-overflow-scrolling: touch; /* Smoother scrolling on iOS */
+  overflow-x: auto; /* Add horizontal scrollbar when content overflows */
+  width: 100%; /* Take full width of its container */
+  border: 1px solid var(--table-border-color); /* Border around the scrollable area */
+  border-radius: 0; /* Sharp corners */
+  background-color: var(
+    --container-background-color
+  ); /* Background for the table area */
+  -webkit-overflow-scrolling: touch; /* Smoother scrolling on iOS */
 }
 
 /* ==========================================================================
@@ -32,101 +34,103 @@
    ========================================================================== */
 
 .server-table {
-    width: 100%; /* Try to take full width of wrapper */
-    /* Min-width ensures table doesn't collapse too much before scrollbar appears */
-    min-width: 600px; /* Adjust based on content */
-    border-collapse: collapse; /* Merge cell borders for cleaner look */
-    background-color: transparent; /* Let wrapper handle background */
-    border: none; /* Remove default table border */
-    table-layout: auto; /* Column widths adjust to content */
-    box-sizing: border-box;
+  width: 100%; /* Try to take full width of wrapper */
+  /* Min-width ensures table doesn't collapse too much before scrollbar appears */
+  min-width: 600px; /* Adjust based on content */
+  border-collapse: collapse; /* Merge cell borders for cleaner look */
+  background-color: transparent; /* Let wrapper handle background */
+  border: none; /* Remove default table border */
+  table-layout: auto; /* Column widths adjust to content */
+  box-sizing: border-box;
 }
 
-    /* ==========================================================================
+/* ==========================================================================
    Table Header (<th>) Styles
    ========================================================================== */
 
-    .server-table th {
-        background-color: var(--table-header-background-color); /* Header background */
-        color: var(--table-header-text-color); /* Header text color */
-        font-weight: 600; /* Semi-bold */
-        text-align: left; /* Align text left */
-        padding: 12px 15px; /* Header cell padding */
-        /* Separator below header */
-        border-bottom: 2px solid var(--table-border-color);
-        /* Vertical separator between headers */
-        border-right: 1px solid var(--table-border-color);
-        vertical-align: middle; /* Center content vertically */
-        white-space: nowrap; /* Prevent header text wrapping */
-        box-sizing: border-box;
-        text-shadow: none; /* Remove any inherited shadow */
-    }
-        /* Remove right border from the last header cell */
-        .server-table th:last-child {
-            border-right: none;
-        }
+.server-table th {
+  background-color: var(
+    --table-header-background-color
+  ); /* Header background */
+  color: var(--table-header-text-color); /* Header text color */
+  font-weight: 600; /* Semi-bold */
+  text-align: left; /* Align text left */
+  padding: 12px 15px; /* Header cell padding */
+  /* Separator below header */
+  border-bottom: 2px solid var(--table-border-color);
+  /* Vertical separator between headers */
+  border-right: 1px solid var(--table-border-color);
+  vertical-align: middle; /* Center content vertically */
+  white-space: nowrap; /* Prevent header text wrapping */
+  box-sizing: border-box;
+  text-shadow: none; /* Remove any inherited shadow */
+}
+/* Remove right border from the last header cell */
+.server-table th:last-child {
+  border-right: none;
+}
 
-    /* ==========================================================================
+/* ==========================================================================
    Table Cells (<td>) Styles
    ========================================================================== */
 
-    .server-table td {
-        border-bottom: 1px solid var(--table-border-color); /* Horizontal line between rows */
-        border-right: 1px solid var(--table-border-color); /* Vertical line between cells */
-        padding: 10px 15px; /* Cell padding */
-        text-align: left; /* Align text left */
-        font-size: 1em; /* Standard font size */
-        color: var(--text-color); /* Standard text color */
-        vertical-align: middle; /* Align content vertically */
-        /* Allow long words/content to break to prevent table distortion */
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        box-sizing: border-box;
-    }
-        /* Remove right border from the last cell in a row */
-        .server-table td:last-child {
-            border-right: none;
-        }
+.server-table td {
+  border-bottom: 1px solid var(--table-border-color); /* Horizontal line between rows */
+  border-right: 1px solid var(--table-border-color); /* Vertical line between cells */
+  padding: 10px 15px; /* Cell padding */
+  text-align: left; /* Align text left */
+  font-size: 1em; /* Standard font size */
+  color: var(--text-color); /* Standard text color */
+  vertical-align: middle; /* Align content vertically */
+  /* Allow long words/content to break to prevent table distortion */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+}
+/* Remove right border from the last cell in a row */
+.server-table td:last-child {
+  border-right: none;
+}
 
-    /* ==========================================================================
+/* ==========================================================================
    Table Row Styling
    ========================================================================== */
 
-    /* Remove default browser striping */
-    .server-table tbody tr:nth-child(even) {
-        background-color: transparent;
-    }
-    /* Optional: Add a subtle background change on row hover */
-    .server-table tbody tr:hover {
-        background-color: var(--table-row-hover-background-color);
-    }
+/* Remove default browser striping */
+.server-table tbody tr:nth-child(even) {
+  background-color: transparent;
+}
+/* Optional: Add a subtle background change on row hover */
+.server-table tbody tr:hover {
+  background-color: var(--table-row-hover-background-color);
+}
 
-    /* ==========================================================================
+/* ==========================================================================
    "No Servers Found" Message Styling
    ========================================================================== */
 
-    /* Option 1: Style a dedicated row within the table */
-    /* Requires <tr class="no-servers-row"><td class="no-servers" colspan="X">...</td></tr> */
-    .server-table tr.no-servers-row td.no-servers {
-        text-align: center;
-        font-style: italic;
-        color: #aaa; /* Lighter grey */
-        background-color: transparent !important; /* Override hover/striping */
-        border: none; /* Remove cell borders for this row */
-        padding: 25px; /* More padding for emphasis */
-    }
+/* Option 1: Style a dedicated row within the table */
+/* Requires <tr class="no-servers-row"><td class="no-servers" colspan="X">...</td></tr> */
+.server-table tr.no-servers-row td.no-servers {
+  text-align: center;
+  font-style: italic;
+  color: #aaa; /* Lighter grey */
+  background-color: transparent !important; /* Override hover/striping */
+  border: none; /* Remove cell borders for this row */
+  padding: 25px; /* More padding for emphasis */
+}
 
 /* Option 2: Style a separate element placed after the table wrapper */
 /* Example: <div class="no-servers-message">...</div> */
 .no-servers-message {
-    padding: 20px;
-    text-align: center;
-    font-style: italic;
-    color: #aaa;
-    background-color: #3a3a3a; /* Match table wrapper bg */
-    border: 1px dashed #666; /* Dashed border */
-    border-radius: 0;
-    margin-top: 15px; /* Space above message */
+  padding: 20px;
+  text-align: center;
+  font-style: italic;
+  color: #aaa;
+  background-color: #3a3a3a; /* Match table wrapper bg */
+  border: 1px dashed #666; /* Dashed border */
+  border-radius: 0;
+  margin-top: 15px; /* Space above message */
 }
 
 /* ==========================================================================
@@ -134,64 +138,65 @@
    ========================================================================== */
 
 .scrollable-field {
-    max-width: 200px;
-    overflow-x: auto;
-    white-space: nowrap;
-    scrollbar-width: thin;
+  max-width: 200px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
 }
 
 /* ==========================================================================
    Mobile Responsive Adjustments (Standard Table)
    ========================================================================== */
 
-@media (max-width: 768px) { /* Tablets and smaller */
-    /* Adjust min-width to trigger horizontal scroll sooner if needed */
-    .server-table {
-        min-width: 550px;
-    }
+@media (max-width: 768px) {
+  /* Tablets and smaller */
+  /* Adjust min-width to trigger horizontal scroll sooner if needed */
+  .server-table {
+    min-width: 550px;
+  }
 
-        /* Reduce padding and font size slightly */
-        .server-table th {
-            padding: 10px 12px;
-            font-size: 0.95em;
-        }
+  /* Reduce padding and font size slightly */
+  .server-table th {
+    padding: 10px 12px;
+    font-size: 0.95em;
+  }
 
-        .server-table td {
-            padding: 8px 12px;
-            font-size: 0.95em;
-        }
+  .server-table td {
+    padding: 8px 12px;
+    font-size: 0.95em;
+  }
 
-        /* Adjust padding for "no servers" message */
-        .no-servers-message,
-        .server-table tr.no-servers-row td.no-servers {
-            padding: 20px;
-            font-size: 0.95em;
-        }
+  /* Adjust padding for "no servers" message */
+  .no-servers-message,
+  .server-table tr.no-servers-row td.no-servers {
+    padding: 20px;
+    font-size: 0.95em;
+  }
 }
 
+@media (max-width: 480px) {
+  /* Mobile phones */
+  /* Further adjust min-width if necessary */
+  .server-table {
+    min-width: 450px;
+  }
 
-@media (max-width: 480px) { /* Mobile phones */
-    /* Further adjust min-width if necessary */
-    .server-table {
-        min-width: 450px;
-    }
+  /* Further reduce padding/font size */
+  .server-table th {
+    padding: 8px 10px;
+    font-size: 0.9em;
+  }
 
-        /* Further reduce padding/font size */
-        .server-table th {
-            padding: 8px 10px;
-            font-size: 0.9em;
-        }
+  .server-table td {
+    padding: 6px 10px;
+    font-size: 0.9em;
+  }
 
-        .server-table td {
-            padding: 6px 10px;
-            font-size: 0.9em;
-        }
-
-        .no-servers-message,
-        .server-table tr.no-servers-row td.no-servers {
-            padding: 15px;
-            font-size: 0.9em;
-        }
+  .no-servers-message,
+  .server-table tr.no-servers-row td.no-servers {
+    padding: 15px;
+    font-size: 0.9em;
+  }
 }
 
 /* ==========================================================================

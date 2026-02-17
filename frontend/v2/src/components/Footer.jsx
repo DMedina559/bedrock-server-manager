@@ -24,29 +24,30 @@ const Footer = () => {
 
   return (
     <footer className="footer">
-      <div className="user-info">
-        {user && (
-          <>
-            <span>Welcome, {user.username} ({user.role})</span>
-            {" | "}
-            <button
-                onClick={logout}
-                className="link-button"
-            >
-                Logout
-            </button>
-          </>
-        )}
-      </div>
       <p>
-        <a href="https://bedrock-server-manager.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer">Docs</a> |{" "}
-        <a href="/docs" target="_blank" rel="noopener noreferrer">HTTP API</a> |{" "}
-        <a href="https://github.com/dmedina559" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a
+          href="https://bedrock-server-manager.readthedocs.io/en/latest/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Docs
+        </a>{" "}
+        |{" "}
+        <a href="/docs" target="_blank" rel="noopener noreferrer">
+          HTTP API
+        </a>{" "}
+        |{" "}
+        <a
+          href="https://github.com/dmedina559"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
         <br />
-        Version {appVersion} © MIT 2025
+        {appVersion} © MIT 2025-2026
       </p>
-
-     <a href="/">Old UI</a>
+      <a href="/">Old UI</a>
     </footer>
   );
 };
