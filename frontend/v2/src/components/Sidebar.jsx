@@ -4,6 +4,7 @@ import { useAuth } from "../AuthContext";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { get } from "../api";
+import SidebarLabel from "./SidebarLabel";
 import {
     LayoutDashboard,
     Users,
@@ -298,7 +299,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                     title={effectiveCollapsed ? "Overview" : ""}
                 >
                     <span className="nav-icon"><List size={20} /></span>
-                    {!effectiveCollapsed && <span className="nav-label">Overview</span>}
+                    {!effectiveCollapsed && <SidebarLabel>Overview</SidebarLabel>}
                 </NavLink>
             </div>
 
@@ -321,7 +322,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                             title={effectiveCollapsed ? item.label : ""}
                         >
                             <span className="nav-icon">{item.icon}</span>
-                            {!effectiveCollapsed && <span className="nav-label">{item.label}</span>}
+                            {!effectiveCollapsed && <SidebarLabel>{item.label}</SidebarLabel>}
                         </NavLink>
                     );
                 })}
@@ -341,7 +342,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                         title={effectiveCollapsed ? item.label : ""}
                     >
                         <span className="nav-icon">{item.icon}</span>
-                        {!effectiveCollapsed && <span className="nav-label">{item.label}</span>}
+                        {!effectiveCollapsed && <SidebarLabel>{item.label}</SidebarLabel>}
                     </NavLink>
                 ))}
 
@@ -352,7 +353,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                         title={effectiveCollapsed ? "Install Server" : ""}
                     >
                         <span className="nav-icon"><PlusSquare size={20} /></span>
-                        {!effectiveCollapsed && <span className="nav-label">Install Server</span>}
+                        {!effectiveCollapsed && <SidebarLabel>Install Server</SidebarLabel>}
                     </NavLink>
                 )}
             </div>
@@ -374,7 +375,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                                     title={effectiveCollapsed ? page.name : ""}
                                 >
                                     <span className="nav-icon"><Plug size={20} /></span>
-                                    {!effectiveCollapsed && <span className="nav-label">{page.name}</span>}
+                                    {!effectiveCollapsed && <SidebarLabel>{page.name}</SidebarLabel>}
                                 </NavLink>
                             );
                         })}
@@ -393,7 +394,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                     title={effectiveCollapsed ? "Customize Sidebar" : ""}
                 >
                     <span className="nav-icon"><Palette size={20} /></span>
-                    {!effectiveCollapsed && <span className="nav-label">Customize Appearance</span>}
+                    {!effectiveCollapsed && <SidebarLabel>Customize Appearance</SidebarLabel>}
                 </button>
 
                 {showColorPicker && !effectiveCollapsed && (
@@ -432,7 +433,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                     title={effectiveCollapsed ? `Account (${user?.username})` : ""}
                 >
                     <span className="nav-icon"><User size={20} /></span>
-                    {!effectiveCollapsed && <span className="nav-label">Account ({user?.username})</span>}
+                    {!effectiveCollapsed && <SidebarLabel>Account ({user?.username})</SidebarLabel>}
                 </NavLink>
                 <button
                     className="nav-link logout-button"
@@ -451,7 +452,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                     title={effectiveCollapsed ? "Logout" : ""}
                 >
                     <span className="nav-icon"><LogOut size={20} /></span>
-                    {!effectiveCollapsed && <span className="nav-label">Logout</span>}
+                    {!effectiveCollapsed && <SidebarLabel>Logout</SidebarLabel>}
                 </button>
             </div>
         </aside>

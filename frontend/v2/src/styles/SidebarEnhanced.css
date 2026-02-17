@@ -106,7 +106,6 @@
     font-size: 0.95rem;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .sidebar-nav a.nav-link:hover,
@@ -201,4 +200,43 @@
     /* Improve contrast if needed, or rely on ThemeContext */
     backdrop-filter: blur(5px); /* Modern touch if background has transparency */
     border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Sidebar Label Scrolling Support */
+.nav-label-wrapper {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0; /* Important for flex containers to allow shrinking */
+    display: block;
+}
+
+.nav-label-text {
+    display: inline-block;
+    transition: transform 0.5s ease-out; /* Smooth reset */
+    will-change: transform;
+}
+
+/* Keyframes for scrolling animation */
+@keyframes scroll-text {
+    0%, 15% {
+        transform: translateX(0);
+    }
+    50%, 65% {
+        transform: translateX(var(--scroll-distance));
+    }
+    100% {
+        transform: translateX(0);
+    }
+}
+
+/* On hover of the link, if overflowing */
+.sidebar-nav .nav-link:hover .nav-label-wrapper.overflowing {
+    text-overflow: clip; /* Remove dots so we can see the text scrolling */
+}
+
+.sidebar-nav .nav-link:hover .nav-label-wrapper.overflowing .nav-label-text {
+    /* Use a fixed duration for now. */
+    animation: scroll-text 6s ease-in-out infinite;
 }
