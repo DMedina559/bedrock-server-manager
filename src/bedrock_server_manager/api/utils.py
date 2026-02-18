@@ -33,7 +33,6 @@ from ..error import BSMError, ServerStartError, UserInputError
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-from ..utils.get_utils import _get_splash_text
 from .server import start_server as api_start_server
 from .server import stop_server as api_stop_server
 
@@ -220,10 +219,11 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting system and app info.")
     try:
         manager = app_context.manager
+        splash_txt = app_context.splash_txt
         data = {
             "os_type": manager.get_os_type(),
             "app_version": manager.get_app_version(),
-            "splash_text": _get_splash_text(),
+            "splash_text": splash_txt,
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
         return {"status": "success", "data": data}
