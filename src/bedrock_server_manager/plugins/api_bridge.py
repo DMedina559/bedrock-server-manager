@@ -373,4 +373,4 @@ class PluginAPI:
             "the list of HTML rendering plugin pages."
         )
         # Delegate to the PluginManager's method that collects these routes
-        return self._plugin_manager.get_html_render_routes()
+        return self._plugin_manager.get_html_render_routes(include_native=False)

@@ -33,6 +33,18 @@ router = APIRouter(
 )
 
 
+@router.get("/status", tags=["Setup"])
+async def get_setup_status(
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Returns whether the application needs initial setup.
+    """
+    with app_context.db.session_manager() as db:  # type: ignore
+        user_exists = db.query(User).first() is not None
+        return {"needs_setup": not user_exists}
+
+
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
 async def setup_page(
     request: Request,

@@ -101,10 +101,6 @@ describe("api.js", () => {
         json: async () => ({ message: "Not Found" }),
       });
 
-      // We need to test both properties.
-      // Jest's toThrow checks the error message or class.
-      // To check both, we can catch it manually or use multiple assertions on the same error object.
-
       try {
         await request("/api/test");
       } catch (error) {

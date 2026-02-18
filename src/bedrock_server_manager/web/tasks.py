@@ -132,6 +132,10 @@ class TaskManager:
         """Retrieves the status of a task."""
         return self.tasks.get(task_id)
 
+    def get_all_tasks(self) -> Dict[str, Dict[str, Any]]:
+        """Retrieves all tasks."""
+        return self.tasks
+
     def shutdown(self):
         """Shuts down the thread pool and waits for all tasks to complete."""
         self._shutdown_started = True

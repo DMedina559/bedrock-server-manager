@@ -1,0 +1,9 @@
+body {
+  background-color: #2b2b2b;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}

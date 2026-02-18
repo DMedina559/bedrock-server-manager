@@ -44,13 +44,19 @@ repos:
     rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
-        files: ^frontend/
+        files: ^(frontend/legacy/|frontend/v2/)
 
   - repo: local
     hooks:
-      - id: frontend-eslint
-        name: frontend-eslint
-        entry: bash -c 'cd frontend && npm run lint'
+      - id: legacy-frontend-eslint
+        name: legacy-frontend-eslint
+        entry: bash -c 'cd frontend/legacy && npm run lint'
         language: system
-        files: ^frontend/
+        files: ^frontend/legacy/
+        pass_filenames: false
+      - id: v2-frontend-eslint
+        name: v2-frontend-eslint
+        entry: bash -c 'cd frontend/v2 && npm run lint'
+        language: system
+        files: ^frontend/v2/
         pass_filenames: false

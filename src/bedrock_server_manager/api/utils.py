@@ -33,6 +33,7 @@ from ..error import BSMError, ServerStartError, UserInputError
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
+from ..utils.get_utils import _get_splash_text
 from .server import start_server as api_start_server
 from .server import stop_server as api_stop_server
 
@@ -213,7 +214,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
 
     Returns:
-        Dict[str, Any]: On success: ``{"status": "success", "data": {"os_type": "...", "app_version": "..."}}``.
+        Dict[str, Any]: On success: ``{"status": "success", "data": {"os_type": "...", "app_version": "...", "splash_text": "..."}}``.
         On error: ``{"status": "error", "message": "An unexpected error occurred."}``
     """
     logger.debug("API: Requesting system and app info.")
@@ -222,6 +223,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
         data = {
             "os_type": manager.get_os_type(),
             "app_version": manager.get_app_version(),
+            "splash_text": _get_splash_text(),
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
         return {"status": "success", "data": data}

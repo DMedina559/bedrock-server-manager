@@ -89,16 +89,10 @@ export async function handleApiAction(
       typeof result === "object" &&
       result.status === "confirm_needed"
     ) {
-      // Return the result so the caller can handle confirmation logic
-      // Keep button disabled if the caller intends to proceed?
-      // Actually, usually confirmation requires user interaction, so button should probably re-enable
-      // unless we want to block it. Let's let the caller decide or handle it.
-      // But for now, we return result.
       return result;
     }
 
     // Success handling
-    // If the API call returns a success message in the standard format
     if (result && result.message && result.status !== "error") {
       showStatusMessage(result.message, "success");
     } else if (result && result.status === "success") {

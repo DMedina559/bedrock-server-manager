@@ -1,0 +1,44 @@
+.footer {
+  border-top: 1px solid var(--border-color, #555);
+  margin-top: 30px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  text-align: center;
+  font-size: 0.9em;
+  color: #888;
+  width: 100%;
+}
+
+.footer a {
+  color: #aaa;
+  text-decoration: none;
+  margin: 0 5px;
+  transition: color 0.2s;
+}
+
+.footer a:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.footer .user-info {
+  margin-bottom: 10px;
+  font-size: 1em;
+  color: var(--text-color, #eee);
+}
+
+.footer .link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #aaa;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.footer .link-button:hover {
+  color: #fff;
+  text-decoration: underline;
+}

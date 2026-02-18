@@ -18,6 +18,7 @@ from .setup import router as setup_router
 from .tasks import router as tasks_router
 from .users import router as users_router
 from .util import router as util_router
+from .v2_ui import router as v2_ui_router
 from .websocket_router import router as websocket_router
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "users_router",
     "register_router",
     "audit_log_router",
+    "v2_ui_router",
 ]

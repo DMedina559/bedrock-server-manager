@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase
 from bedrock_server_manager.web import get_admin_user
@@ -199,6 +199,17 @@ class ContentUploaderPlugin(PluginBase):
                         status=event_status,
                         details_message=message,
                     )
+
+            accept_header = request.headers.get("accept", "")
+            if "application/json" in accept_header or request.query_params.get("json"):
+                return JSONResponse(
+                    content={
+                        "status": event_status,
+                        "message": message,
+                        "destination": destination_path_for_event,
+                    },
+                    status_code=200 if event_status == "success" else 400,
+                )
 
             redirect_url = request.url_for("Content Upload Page").include_query_params(
                 message=message, message_type=message_type

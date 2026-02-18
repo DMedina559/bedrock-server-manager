@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npx esbuild src/main.js --bundle --outfile=../src/bedrock_server_manager/web/static/js/dist/bundle.js --minify --sourcemap",
+    "build": "npx esbuild src/main.js --bundle --outfile=../../src/bedrock_server_manager/web/static/js/dist/bundle.js --minify --sourcemap",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/",

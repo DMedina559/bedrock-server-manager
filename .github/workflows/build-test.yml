@@ -56,12 +56,20 @@ jobs:
         ./build.sh
 
     - name: Run Frontend Lint
-      working-directory: ./frontend
+      working-directory: ./frontend/legacy
       run: npm run lint
 
     - name: Run Frontend Tests
-      working-directory: ./frontend
+      working-directory: ./frontend/legacy
       run: npm test
+
+    - name: Run V2 Frontend Lint
+      working-directory: ./frontend/v2
+      run: npm run lint
+
+    - name: Run V2 Frontend Tests
+      working-directory: ./frontend/v2
+      run: npm run test:run
 
     - name: Install Development Dependencies
       run: pip install --upgrade -e .[dev]
