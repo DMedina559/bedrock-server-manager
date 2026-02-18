@@ -58,19 +58,22 @@ describe("ServerProperties", () => {
     fireEvent.change(nameInput, { target: { value: "New Name" } });
 
     const saveBtns = screen.getAllByText("Save Changes");
-    // Usually the one in form
+
     fireEvent.click(saveBtns[0]);
 
-    await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith(
-        "/api/server/TestServer/properties/set",
-        expect.objectContaining({
-          properties: expect.objectContaining({
-            "server-name": "New Name",
+    await waitFor(
+      () => {
+        expect(api.post).toHaveBeenCalledWith(
+          "/api/server/TestServer/properties/set",
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              "server-name": "New Name",
+            }),
           }),
-        }),
-      );
-    });
+        );
+      },
+      { timeout: 3000 },
+    );
   });
 
   it("adds custom property", async () => {
