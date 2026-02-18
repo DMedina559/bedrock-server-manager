@@ -47,5 +47,11 @@ export default [
       },
     },
   },
+  {
+    files: ["**/*Context.jsx", "**/test/utils.jsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
   prettierConfig,
 ];
