@@ -14,7 +14,7 @@ updates:
       prefix: "dep"
 
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/frontend/legacy"
     target-branch: "dev"
     schedule:
       interval: "daily"
