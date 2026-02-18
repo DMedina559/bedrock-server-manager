@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 const PluginViewer = () => {
   const [searchParams] = useSearchParams();
   const url = searchParams.get("url");
   const [isLoading, setIsLoading] = useState(true);
+  const [prevUrl, setPrevUrl] = useState(url);
 
-  // Reset loading state when URL changes
-  useEffect(() => {
+  if (url !== prevUrl) {
+    setPrevUrl(url);
     setIsLoading(true);
-  }, [url]);
+  }
 
   if (!url) {
     return (

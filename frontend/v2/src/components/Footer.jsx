@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useAuth } from "../AuthContext";
 import { get } from "../api";
 import "./Footer.css";
 
 const Footer = () => {
-  const { user, logout } = useAuth();
   const [appVersion, setAppVersion] = useState("Unknown");
 
   useEffect(() => {

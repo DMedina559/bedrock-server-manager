@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from "react";
-import { useServer } from "../ServerContext";
-import { useToast } from "../ToastContext";
-import { post, get } from "../api";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Archive,
-  Trash2,
-  RotateCcw,
+  Layers,
   Plus,
   RefreshCw,
-  Layers,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
+import { useServer } from "../ServerContext";
+import { useToast } from "../ToastContext";
+import { get, post } from "../api";
 
 const Backups = () => {
   const { selectedServer } = useServer();
@@ -17,13 +17,7 @@ const Backups = () => {
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
 
-  useEffect(() => {
-    if (selectedServer) {
-      fetchBackups();
-    }
-  }, [selectedServer]);
-
-  const fetchBackups = async () => {
+  const fetchBackups = useCallback(async () => {
     setLoading(true);
     try {
       const data = await get(`/api/server/${selectedServer}/backup/list/all`);
@@ -48,7 +42,13 @@ const Backups = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedServer, addToast]);
+
+  useEffect(() => {
+    if (selectedServer) {
+      fetchBackups();
+    }
+  }, [selectedServer, fetchBackups]);
 
   const handleRefresh = async () => {
     const success = await fetchBackups();

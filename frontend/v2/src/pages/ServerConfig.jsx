@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { CheckCircle, Download, RefreshCw, Save } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
-import { Save, RefreshCw, Download, CheckCircle } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
 
 const ServerConfig = () => {
   const { selectedServer } = useServer();
@@ -14,13 +14,7 @@ const ServerConfig = () => {
   const navigate = useNavigate();
   const setupFlow = location.state?.setupFlow;
 
-  useEffect(() => {
-    if (selectedServer) {
-      fetchSettings();
-    }
-  }, [selectedServer]);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
       const data = await get(`/api/servers/${selectedServer}/settings`);
@@ -38,7 +32,13 @@ const ServerConfig = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedServer, addToast]);
+
+  useEffect(() => {
+    if (selectedServer) {
+      fetchSettings();
+    }
+  }, [selectedServer, fetchSettings]);
 
   const handleRefresh = async () => {
     const success = await fetchSettings();

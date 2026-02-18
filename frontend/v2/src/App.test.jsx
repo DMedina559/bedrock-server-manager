@@ -3,7 +3,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
 import { BrowserRouter } from "react-router-dom";
-import * as api from "./api";
 
 // Mock the API module
 vi.mock("./api", () => ({
@@ -17,12 +16,12 @@ vi.mock("./api", () => ({
 describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
+    globalThis.fetch = vi.fn();
   });
 
   it("renders loading state initially", () => {
     // Mock fetch to return pending promise or just be called
-    global.fetch.mockImplementation(() => new Promise(() => {}));
+    globalThis.fetch.mockImplementation(() => new Promise(() => {}));
 
     render(
       <BrowserRouter>
@@ -36,7 +35,7 @@ describe("App", () => {
 
   it("redirects to setup if setup is needed", async () => {
     // Mock setup status
-    global.fetch.mockResolvedValueOnce({
+    globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ needs_setup: true }),
     });

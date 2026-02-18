@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
 import {
@@ -35,11 +35,7 @@ const Users = () => {
   const { addToast } = useToast();
   const { user: currentUser } = useAuth();
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       // Small delay to ensure the spinner is visible for feedback
@@ -60,7 +56,11 @@ const Users = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleRefresh = async () => {
     const success = await fetchUsers();

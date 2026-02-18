@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { Plug, RefreshCw, ToggleLeft, ToggleRight } from "lucide-react";
 import { useToast } from "../ToastContext";
 import { get, post, put } from "../api";
-import { RefreshCw, Plug, ToggleLeft, ToggleRight } from "lucide-react";
 
 const Plugins = () => {
   const [plugins, setPlugins] = useState([]);
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
 
-  useEffect(() => {
-    fetchPlugins();
-  }, []);
-
-  const fetchPlugins = async () => {
+  const fetchPlugins = useCallback(async () => {
     setLoading(true);
     try {
       const data = await get("/api/plugins");
@@ -34,7 +30,11 @@ const Plugins = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
+
+  useEffect(() => {
+    fetchPlugins();
+  }, [fetchPlugins]);
 
   const handleReload = async () => {
     addToast("Reloading plugins...", "info");

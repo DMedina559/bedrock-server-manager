@@ -65,7 +65,7 @@ export async function request(url, options = {}) {
     if (contentType && contentType.includes("application/json")) {
       try {
         data = await response.json();
-      } catch (jsonError) {
+      } catch {
         // Fallback if JSON parsing fails but header said JSON (rare but possible)
         throw new ApiError(
           "Invalid JSON response from server",

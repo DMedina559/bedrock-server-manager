@@ -23,7 +23,7 @@ const Register = () => {
         } else {
           setTokenValid(false);
         }
-      } catch (e) {
+      } catch {
         setTokenValid(false);
       }
     };
@@ -60,7 +60,7 @@ const Register = () => {
       let data;
       try {
         data = await response.json();
-      } catch (e) {
+      } catch {
         data = null;
       }
 
@@ -72,7 +72,7 @@ const Register = () => {
           data?.detail?.message || data?.detail || "Registration failed.";
         addToast(msg, "error");
       }
-    } catch (error) {
+    } catch {
       addToast("Network error during registration.", "error");
     } finally {
       setLoading(false);

@@ -154,8 +154,11 @@ const Account = () => {
             style={{ maxWidth: "400px" }}
           >
             <div>
-              <label className="form-label">Current Password</label>
+              <label htmlFor="current-password" className="form-label">
+                Current Password
+              </label>
               <input
+                id="current-password"
                 type="password"
                 name="current-password"
                 className="form-input"
@@ -172,8 +175,11 @@ const Account = () => {
               />
             </div>
             <div>
-              <label className="form-label">New Password</label>
+              <label htmlFor="new-password" className="form-label">
+                New Password
+              </label>
               <input
+                id="new-password"
                 type="password"
                 name="new-password"
                 className="form-input"
@@ -187,8 +193,11 @@ const Account = () => {
               />
             </div>
             <div>
-              <label className="form-label">Confirm New Password</label>
+              <label htmlFor="confirm-password" className="form-label">
+                Confirm New Password
+              </label>
               <input
+                id="confirm-password"
                 type="password"
                 name="confirm-password"
                 className="form-input"

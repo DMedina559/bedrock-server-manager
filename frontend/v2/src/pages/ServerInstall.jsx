@@ -22,17 +22,6 @@ const ServerInstall = () => {
   const { refreshServers, setSelectedServer } = useServer();
   const { lastMessage, subscribe, unsubscribe } = useWebSocket();
 
-  const fetchCustomZips = async () => {
-    try {
-      const data = await get("/api/downloads/list");
-      if (data && data.status === "success") {
-        setCustomZips(data.custom_zips || []);
-      }
-    } catch (error) {
-      console.warn("Failed to fetch custom zips", error);
-    }
-  };
-
   const handleInstallSuccess = useCallback(async () => {
     await refreshServers();
     setSelectedServer(formData.server_name);
@@ -53,6 +42,16 @@ const ServerInstall = () => {
   ]);
 
   useEffect(() => {
+    const fetchCustomZips = async () => {
+      try {
+        const data = await get("/api/downloads/list");
+        if (data && data.status === "success") {
+          setCustomZips(data.custom_zips || []);
+        }
+      } catch (error) {
+        console.warn("Failed to fetch custom zips", error);
+      }
+    };
     fetchCustomZips();
   }, []);
 
@@ -64,6 +63,7 @@ const ServerInstall = () => {
         const taskData = lastMessage.data;
         if (taskData.status === "success") {
           addToast("Installation completed successfully!", "success");
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           handleInstallSuccess();
         } else if (taskData.status === "error") {
           addToast(`Installation failed: ${taskData.message}`, "error");

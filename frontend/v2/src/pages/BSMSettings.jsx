@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { RefreshCw, Save } from "lucide-react";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
-import { Save, RefreshCw } from "lucide-react";
 
 const BSMSettings = () => {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
       const data = await get("/api/settings");
@@ -26,7 +22,11 @@ const BSMSettings = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const flattenObject = (obj, prefix = "") => {
     return Object.keys(obj).reduce((acc, k) => {

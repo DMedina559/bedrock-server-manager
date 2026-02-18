@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { get, post } from "../api";
@@ -84,14 +84,7 @@ const ServerProperties = () => {
   // Collapsible state for sections
   const [collapsedSections, setCollapsedSections] = useState({});
 
-  useEffect(() => {
-    if (selectedServer) {
-      // Initial fetch
-      fetchProperties();
-    }
-  }, [selectedServer]);
-
-  const fetchProperties = async () => {
+  const fetchProperties = useCallback(async () => {
     setLoading(true);
     try {
       const data = await get(`/api/server/${selectedServer}/properties/get`);
@@ -117,7 +110,14 @@ const ServerProperties = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedServer, addToast]);
+
+  useEffect(() => {
+    if (selectedServer) {
+      // Initial fetch
+      fetchProperties();
+    }
+  }, [selectedServer, fetchProperties]);
 
   const handleRefresh = async () => {
     const success = await fetchProperties();

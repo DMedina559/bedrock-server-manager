@@ -33,7 +33,7 @@ const Overview = () => {
     try {
       await refreshServers();
       addToast("Server list refreshed.", "success");
-    } catch (error) {
+    } catch {
       addToast("Failed to refresh server list.", "error");
     } finally {
       setRefreshing(false);

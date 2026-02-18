@@ -40,7 +40,9 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     loading,
   } = useServer();
   const [pluginPages, setPluginPages] = useState([]);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => localStorage.getItem("sidebarCollapsed") === "true",
+  );
   const [splashText, setSplashText] = useState("");
 
   // Customization State
@@ -52,39 +54,35 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     localStorage.getItem("sidebarOpacity") || "1",
   );
 
-  const fetchPluginPages = async () => {
-    try {
-      const response = await get("/api/plugins/pages");
-      if (response && response.status === "success") {
-        setPluginPages(response.data || []);
-      }
-    } catch (error) {
-      console.warn("Failed to fetch plugin pages", error);
-    }
-  };
-
-  const fetchSplashText = async () => {
-    try {
-      const response = await get("/api/info");
-      // API returns { status: "success", info: { splash_text: "..." } } based on API definition
-      if (response && response.status === "success" && response.info) {
-        setSplashText(response.info.splash_text || "");
-      } else if (response && response.data && response.data.splash_text) {
-        // Fallback in case api.js unwraps it differently or structure changes
-        setSplashText(response.data.splash_text);
-      }
-    } catch (error) {
-      console.warn("Failed to fetch splash text", error);
-    }
-  };
-
   useEffect(() => {
+    const fetchPluginPages = async () => {
+      try {
+        const response = await get("/api/plugins/pages");
+        if (response && response.status === "success") {
+          setPluginPages(response.data || []);
+        }
+      } catch (error) {
+        console.warn("Failed to fetch plugin pages", error);
+      }
+    };
+
+    const fetchSplashText = async () => {
+      try {
+        const response = await get("/api/info");
+        // API returns { status: "success", info: { splash_text: "..." } } based on API definition
+        if (response && response.status === "success" && response.info) {
+          setSplashText(response.info.splash_text || "");
+        } else if (response && response.data && response.data.splash_text) {
+          // Fallback in case api.js unwraps it differently or structure changes
+          setSplashText(response.data.splash_text);
+        }
+      } catch (error) {
+        console.warn("Failed to fetch splash text", error);
+      }
+    };
+
     fetchPluginPages();
     fetchSplashText();
-    const storedCollapsed = localStorage.getItem("sidebarCollapsed");
-    if (storedCollapsed === "true") {
-      setIsCollapsed(true);
-    }
   }, []);
 
   // Update CSS variable when color changes
@@ -171,6 +169,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       <button
         className="sidebar-close-btn"
         onClick={() => setMobileOpen && setMobileOpen(false)}
+        aria-label="Close Sidebar"
       >
         <X size={24} />
       </button>
@@ -274,6 +273,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                 padding: "5px",
                 flexShrink: 0,
               }}
+              aria-label="Collapse Sidebar"
             >
               <ChevronLeft size={16} />
             </button>
@@ -294,6 +294,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                 cursor: "pointer",
                 padding: "5px",
               }}
+              aria-label="Expand Sidebar"
             >
               <ChevronRight size={16} />
             </button>

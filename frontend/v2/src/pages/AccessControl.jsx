@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from "react";
-import { useServer } from "../ServerContext";
-import { useToast } from "../ToastContext";
-import { get, post, del, put } from "../api";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  Trash2,
+  ArrowRight,
   Plus,
   RefreshCw,
-  ArrowRight,
   Scan,
   Shield,
+  Trash2,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useServer } from "../ServerContext";
+import { useToast } from "../ToastContext";
+import { del, get, post, put } from "../api";
 
 const AccessControl = () => {
   const { selectedServer } = useServer();
@@ -36,13 +36,7 @@ const AccessControl = () => {
     }
   }, [location.state]);
 
-  useEffect(() => {
-    if (selectedServer) {
-      fetchItems();
-    }
-  }, [selectedServer, activeTab]);
-
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     if (!selectedServer) return;
     setLoading(true);
     try {
@@ -73,7 +67,13 @@ const AccessControl = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedServer, activeTab, addToast]);
+
+  useEffect(() => {
+    if (selectedServer) {
+      fetchItems();
+    }
+  }, [selectedServer, activeTab, fetchItems]);
 
   const handleNextStep = () => {
     // In setup flow, permissions usually follows allowlist, then config

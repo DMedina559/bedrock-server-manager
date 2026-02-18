@@ -6,14 +6,9 @@ export const useTheme = () => useContext(ThemeContext);
 
 export const ThemeProvider = ({ children }) => {
   // Default theme
-  const [theme, setTheme] = useState("default");
-
-  useEffect(() => {
-    const storedTheme = localStorage.getItem("theme");
-    if (storedTheme) {
-      setTheme(storedTheme);
-    }
-  }, []);
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("theme") || "default",
+  );
 
   useEffect(() => {
     let link = document.getElementById("theme-stylesheet");

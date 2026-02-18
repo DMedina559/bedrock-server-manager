@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { request } from "./api";
 import { useAuth } from "./AuthContext";
 import useWebSocket from "./hooks/useWebSocket";
@@ -19,16 +25,16 @@ export const ServerProvider = ({ children }) => {
   const { isConnected, lastMessage, subscribe, unsubscribe } = useWebSocket();
 
   // Wrapper for setting selected server to also persist to localStorage
-  const setSelectedServer = (serverName) => {
+  const setSelectedServer = useCallback((serverName) => {
     setSelectedServerState(serverName);
     if (serverName) {
       localStorage.setItem("selectedServer", serverName);
     } else {
       localStorage.removeItem("selectedServer");
     }
-  };
+  }, []);
 
-  const fetchServers = async () => {
+  const fetchServers = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -72,7 +78,7 @@ export const ServerProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, selectedServer, setSelectedServer]);
 
   useEffect(() => {
     if (user) {
@@ -82,7 +88,7 @@ export const ServerProvider = ({ children }) => {
       setServers([]);
       setSelectedServer(null);
     }
-  }, [user]);
+  }, [user, fetchServers, setSelectedServer]);
 
   // Handle WebSocket subscriptions for server updates
   useEffect(() => {
@@ -121,7 +127,7 @@ export const ServerProvider = ({ children }) => {
         fetchServers();
       }
     }
-  }, [lastMessage]);
+  }, [lastMessage, fetchServers]);
 
   const refreshServers = () => {
     return fetchServers();
