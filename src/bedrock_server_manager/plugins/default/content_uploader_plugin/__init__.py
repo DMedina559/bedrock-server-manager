@@ -80,6 +80,55 @@ class ContentUploaderPlugin(PluginBase):
 
     def _define_routes(self):  # noqa: C901
         @self.router.get(
+            "/content/upload/native",
+            response_class=JSONResponse,
+            name="Content Upload Native UI",
+            summary="Upload Content (Native)",
+            tags=["plugin-ui-native"],
+        )
+        async def get_upload_native_ui(
+            request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
+        ):
+            return JSONResponse(
+                content={
+                    "type": "Container",
+                    "children": [
+                        {
+                            "type": "Card",
+                            "props": {"title": "Upload Content"},
+                            "children": [
+                                {
+                                    "type": "Text",
+                                    "props": {
+                                        "content": "Select a .mcworld, .mcpack, or .mcaddon file to upload."
+                                    },
+                                },
+                                {
+                                    "type": "FileUpload",
+                                    "props": {
+                                        "id": "file",
+                                        "accept": ".mcworld,.mcpack,.mcaddon",
+                                    },
+                                },
+                                {
+                                    "type": "Button",
+                                    "props": {
+                                        "label": "Upload",
+                                        "onClickAction": {
+                                            "type": "api_call",
+                                            "endpoint": "/api/content/upload",
+                                            "includeFormState": True,
+                                            "refresh": True,
+                                        },
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        @self.router.get(
             "/content/upload",
             response_class=HTMLResponse,
             name="Content Upload Page",
