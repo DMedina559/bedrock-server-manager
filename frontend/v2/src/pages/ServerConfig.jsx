@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { CheckCircle, Download, RefreshCw, Save } from "lucide-react";
+import { CheckCircle, Download, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
-import { get, post } from "../api";
+import { get, post, del } from "../api";
 
 const ServerConfig = () => {
   const { selectedServer } = useServer();
@@ -102,6 +102,28 @@ const ServerConfig = () => {
       addToast("Update task started. Check logs.", "success");
     } catch (error) {
       addToast(error.message || "Failed to start update.", "error");
+    }
+  };
+
+  const handleDeleteServer = async () => {
+    if (!selectedServer) return;
+
+    const confirmed = confirm(
+      `Are you sure you want to delete server "${selectedServer}"?\n\nThis action cannot be undone. All server data will be permanently lost.`,
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    addToast(`Deleting server "${selectedServer}"...`, "info");
+
+    try {
+      await del(`/api/server/${selectedServer}/delete`);
+      addToast(`Server "${selectedServer}" deletion started.`, "success");
+      navigate("/");
+    } catch (error) {
+      addToast(error.message || "Failed to delete server.", "error");
+      setLoading(false);
     }
   };
 
@@ -306,10 +328,19 @@ const ServerConfig = () => {
               <div style={{ color: "#eee" }}>
                 <strong>Quick Actions:</strong>
               </div>
-              <button className="action-button" onClick={handleUpdateServer}>
-                <Download size={16} style={{ marginRight: "5px" }} /> Update
-                Server Software
-              </button>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button className="action-button" onClick={handleUpdateServer}>
+                  <Download size={16} style={{ marginRight: "5px" }} /> Update
+                  Server Software
+                </button>
+                <button
+                  className="action-button danger-button"
+                  onClick={handleDeleteServer}
+                >
+                  <Trash2 size={16} style={{ marginRight: "5px" }} /> Delete
+                  Server
+                </button>
+              </div>
             </div>
           )}
 

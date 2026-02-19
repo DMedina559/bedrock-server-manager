@@ -37,6 +37,7 @@ describe("ServerConfig", () => {
     });
 
     api.post.mockResolvedValue({ status: "success" });
+    api.del.mockResolvedValue({ status: "success" });
   });
 
   it("renders configuration settings", async () => {
@@ -67,5 +68,28 @@ describe("ServerConfig", () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalled();
     });
+  });
+
+  it("renders the delete button and handles deletion", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    confirmSpy.mockReturnValue(true);
+
+    render(<ServerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete Server")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Delete Server"));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining("TestServer"),
+    );
+
+    await waitFor(() => {
+      expect(api.del).toHaveBeenCalledWith("/api/server/TestServer/delete");
+    });
+
+    confirmSpy.mockRestore();
   });
 });
