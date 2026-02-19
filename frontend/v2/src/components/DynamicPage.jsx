@@ -13,6 +13,7 @@ import {
   Plus,
   X,
   Upload,
+  Download,
 } from "lucide-react";
 
 // --- Component Registry ---
@@ -105,6 +106,25 @@ const ComponentRegistry = {
       readOnly={readOnly}
     />
   ),
+  FileUpload: ({ id, accept, onChange, className = "" }) => (
+    <input
+      type="file"
+      id={id}
+      accept={accept}
+      onChange={(e) => onChange && onChange(e.target.files[0])}
+      className={`form-input ${className}`}
+    />
+  ),
+  FileDownload: ({ label, onClick, variant = "primary", className = "" }) => (
+    <button
+      className={`action-button ${variant === "secondary" ? "secondary" : ""} ${className}`}
+      onClick={onClick}
+      style={{ display: "flex", alignItems: "center", gap: "5px" }}
+    >
+      <ComponentRegistry.Icon name="Download" size={16} />
+      {label || "Download"}
+    </button>
+  ),
 
   // Icons
   Icon: ({ name, size = 20, className = "" }) => {
@@ -119,6 +139,7 @@ const ComponentRegistry = {
       Plus,
       X,
       Upload,
+      Download,
     };
     const LucideIcon = icons[name] || Info;
     return <LucideIcon size={size} className={className} />;
@@ -201,7 +222,25 @@ const DynamicPage = () => {
           payload = { ...payload, ...formState };
         }
 
-        const res = await post(actionDef.endpoint, payload);
+        let res;
+        // Check for File objects in payload -> use FormData
+        const hasFile = Object.values(payload).some(
+          (val) => val instanceof File,
+        );
+
+        if (hasFile) {
+          const formData = new FormData();
+          Object.entries(payload).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              formData.append(key, value);
+            }
+          });
+          // api.post handles FormData correctly (lets browser set Content-Type)
+          res = await post(actionDef.endpoint, formData);
+        } else {
+          res = await post(actionDef.endpoint, payload);
+        }
+
         if (res && res.status === "success") {
           addToast(res.message || "Action successful", "success");
           if (actionDef.refresh) fetchSchema(dataUrl);
@@ -210,6 +249,27 @@ const DynamicPage = () => {
         }
       } catch (err) {
         addToast(err.message || "Action error", "error");
+      }
+    } else if (actionDef.type === "download_file") {
+      try {
+        const jwtToken = localStorage.getItem("jwt_token");
+        const headers = jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {};
+
+        const response = await fetch(actionDef.endpoint, { headers });
+        if (!response.ok) throw new Error("Download failed");
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        // Simple filename fallback
+        a.download = actionDef.filename || "download";
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } catch (err) {
+        addToast("Download failed: " + err.message, "error");
       }
     } else if (actionDef.type === "navigate") {
       // handle navigation if needed, or window.location
@@ -237,7 +297,7 @@ const DynamicPage = () => {
       );
     }
 
-    const props = { ...node.props, key };
+    const props = { ...node.props };
 
     // Handle input binding
     if (node.type === "Input") {
@@ -253,6 +313,21 @@ const DynamicPage = () => {
       }
     }
 
+    if (node.type === "FileUpload") {
+      if (props.id) {
+        props.onChange = (file) => handleInputChange(props.id, file);
+      }
+    }
+
+    if (node.type === "FileDownload") {
+      props.onClick = () =>
+        handleAction({
+          type: "download_file",
+          endpoint: props.endpoint,
+          filename: props.filename,
+        });
+    }
+
     // Handle actions
     if (props.onClickAction) {
       props.onClick = () => handleAction(props.onClickAction);
@@ -263,7 +338,11 @@ const DynamicPage = () => {
       ? node.children.map((child, i) => renderNode(child, i))
       : null;
 
-    return <Component {...props}>{children}</Component>;
+    return (
+      <Component key={key} {...props}>
+        {children}
+      </Component>
+    );
   };
 
   if (loading) return <div className="container">Loading...</div>;

@@ -82,7 +82,9 @@ describe("Sidebar", () => {
     const select = screen.getByRole("combobox");
     fireEvent.change(select, { target: { value: "TestServer" } });
 
-    expect(select.value).toBe("TestServer");
+    await waitFor(() => {
+      expect(select.value).toBe("TestServer");
+    });
   });
 
   it("toggles collapse state", async () => {
