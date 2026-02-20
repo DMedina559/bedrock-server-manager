@@ -12,12 +12,11 @@ This is the new React-based frontend for Bedrock Server Manager.
     ```
 
 2.  **Start the Backend**:
-    Make sure the Python backend is running on port 8000.
+    Make sure the Python backend is running on port 11325.
 
     ```bash
     # From project root
-    # Adjust the command based on how you run the python app locally
-    python -m bedrock_server_manager.web start --host 0.0.0.0 --port 8000
+    python -m bedrock_server_manager web start --host 0.0.0.0 --port 11325
     ```
 
 3.  **Start the Frontend Dev Server**:
@@ -25,7 +24,7 @@ This is the new React-based frontend for Bedrock Server Manager.
     cd frontend/v2
     npm run dev
     ```
-    The dev server will proxy API requests to `http://localhost:8000`.
+    The dev server will proxy API requests to `http://localhost:11325`.
 
 ## Scripts
 
