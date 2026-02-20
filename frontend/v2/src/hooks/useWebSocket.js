@@ -13,55 +13,69 @@ const useWebSocket = () => {
         ws.current &&
         (ws.current.readyState === WebSocket.OPEN ||
           ws.current.readyState === WebSocket.CONNECTING)
-      )
+      ) {
         return;
+      }
+
+      // Check window.location for safe access (SSR protection)
+      if (typeof window === "undefined") return;
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.host;
 
       const wsUrl = `${protocol}//${host}/ws`;
 
-      const token = localStorage.getItem("jwt_token");
+      // Check sessionStorage first, then localStorage
+      let token = sessionStorage.getItem("jwt_token");
       if (!token) {
-        console.warn("No token found for WebSocket");
+        token = localStorage.getItem("jwt_token");
+      }
+
+      if (!token) {
+        console.warn("No token found for WebSocket, skipping connection.");
         return;
       }
 
       console.log(`Connecting to WebSocket at ${wsUrl}`);
-      const socket = new WebSocket(
-        `${wsUrl}?token=${encodeURIComponent(token)}`,
-      );
-      ws.current = socket;
 
-      socket.onopen = () => {
-        console.log("WebSocket Connected");
-        setIsConnected(true);
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setLastMessage(data);
-        } catch (e) {
-          console.error("Failed to parse WS message", e);
-        }
-      };
-
-      socket.onclose = (event) => {
-        console.log(
-          `WebSocket Disconnected. Code: ${event.code}, Reason: ${event.reason}`,
+      try {
+        const socket = new WebSocket(
+          `${wsUrl}?token=${encodeURIComponent(token)}`,
         );
-        setIsConnected(false);
-        ws.current = null;
-        // Simple retry with backoff
-        if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
-        reconnectTimeout.current = setTimeout(connect, 3000);
-      };
+        ws.current = socket;
 
-      socket.onerror = (error) => {
-        console.error("WebSocket Error:", error);
-        socket.close();
-      };
+        socket.onopen = () => {
+          console.log("WebSocket Connected");
+          setIsConnected(true);
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            setLastMessage(data);
+          } catch (e) {
+            console.error("Failed to parse WS message", e);
+          }
+        };
+
+        socket.onclose = (event) => {
+          console.log(
+            `WebSocket Disconnected. Code: ${event.code}, Reason: ${event.reason}`,
+          );
+          setIsConnected(false);
+          ws.current = null;
+          // Simple retry with backoff
+          if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+          reconnectTimeout.current = setTimeout(connect, 3000);
+        };
+
+        socket.onerror = (error) => {
+          console.error("WebSocket Error:", error);
+          // Let onclose handle reconnection logic
+        };
+      } catch (error) {
+        console.error("WebSocket Connection Initialization Failed:", error);
+      }
     };
 
     connect();
@@ -79,6 +93,8 @@ const useWebSocket = () => {
   const sendMessage = useCallback((msg) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(msg));
+    } else {
+      console.warn("WebSocket not open, message not sent:", msg);
     }
   }, []);
 

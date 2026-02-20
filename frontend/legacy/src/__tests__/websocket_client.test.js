@@ -18,6 +18,24 @@ const localStorageMock = (function () {
 })();
 Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
+// Mock sessionStorage
+const sessionStorageMock = (function () {
+  let store = {};
+  return {
+    getItem: jest.fn((key) => store[key] || null),
+    setItem: jest.fn((key, value) => {
+      store[key] = value.toString();
+    }),
+    clear: jest.fn(() => {
+      store = {};
+    }),
+    removeItem: jest.fn((key) => {
+      delete store[key];
+    }),
+  };
+})();
+Object.defineProperty(window, "sessionStorage", { value: sessionStorageMock });
+
 // Mock fetch globally
 global.fetch = jest.fn();
 
@@ -46,6 +64,7 @@ describe("WebSocketClient", () => {
     jest.clearAllMocks();
     MockWebSocket.instances = [];
     localStorageMock.getItem.mockReturnValue("valid-token");
+    sessionStorageMock.getItem.mockReturnValue(null);
 
     dispatchSpy = jest.spyOn(document, "dispatchEvent");
 
@@ -61,7 +80,7 @@ describe("WebSocketClient", () => {
     expect(client.useFallback).toBe(false);
   });
 
-  test("connects successfully", async () => {
+  test("connects successfully with localStorage token", async () => {
     await client.connect();
 
     expect(client.connectionState).toBe("connecting");
@@ -77,8 +96,20 @@ describe("WebSocketClient", () => {
     expect(client.isConnected()).toBe(true);
   });
 
-  test("tries to refresh token if missing", async () => {
-    localStorageMock.getItem.mockReturnValue(null); // No token initially
+  test("connects successfully with sessionStorage token", async () => {
+    localStorageMock.getItem.mockReturnValue(null);
+    sessionStorageMock.getItem.mockReturnValue("session-token");
+
+    await client.connect();
+
+    expect(MockWebSocket.instances.length).toBe(1);
+    const mockSocket = MockWebSocket.instances[0];
+    expect(mockSocket.url).toBe("ws://localhost/ws?token=session-token");
+  });
+
+  test("tries to refresh token if missing from both storages", async () => {
+    localStorageMock.getItem.mockReturnValue(null);
+    sessionStorageMock.getItem.mockReturnValue(null);
 
     // Mock successful refresh
     fetch.mockResolvedValueOnce({
@@ -89,7 +120,8 @@ describe("WebSocketClient", () => {
     await client.connect();
 
     expect(fetch).toHaveBeenCalledWith("/auth/refresh-token");
-    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+    // Should now default to sessionStorage for refreshed tokens as per our implementation
+    expect(sessionStorageMock.setItem).toHaveBeenCalledWith(
       "jwt_token",
       "refreshed-token",
     );
@@ -101,6 +133,8 @@ describe("WebSocketClient", () => {
 
   test("fails if token missing and refresh fails", async () => {
     localStorageMock.getItem.mockReturnValue(null);
+    sessionStorageMock.getItem.mockReturnValue(null);
+
     fetch.mockResolvedValueOnce({
       ok: false,
       status: 401,

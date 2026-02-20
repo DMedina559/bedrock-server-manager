@@ -36,12 +36,16 @@ export class WebSocketClient {
     );
     this.connectionState = "connecting";
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    let token = localStorage.getItem("jwt_token");
+
+    let token = sessionStorage.getItem("jwt_token");
+    if (!token) {
+      token = localStorage.getItem("jwt_token");
+    }
 
     // If token is missing, try to refresh it from the backend using the session cookie
     if (!token) {
       console.warn(
-        "WebSocketClient.connect(): JWT token not found in localStorage. Attempting to refresh token...",
+        "WebSocketClient.connect(): JWT token not found in storage. Attempting to refresh token...",
       );
       try {
         const response = await fetch("/auth/refresh-token");
@@ -49,7 +53,9 @@ export class WebSocketClient {
           const data = await response.json();
           if (data.access_token) {
             token = data.access_token;
-            localStorage.setItem("jwt_token", token);
+            // Store refreshed token in session storage by default if we don't know preference,
+            // or maybe just keep it in memory? Let's use sessionStorage as safer default.
+            sessionStorage.setItem("jwt_token", token);
             console.log(
               "WebSocketClient.connect(): Token refreshed successfully.",
             );

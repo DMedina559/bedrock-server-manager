@@ -27,11 +27,15 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
+      // Check if we have a token in either storage (api.js handles retrieval)
       const userData = await request("/api/account", { method: "GET" });
       setUser(userData);
     } catch (error) {
       console.error("Failed to check user status", error);
       if (error.status === 401) {
+        // Clear both storages on auth failure to be safe
+        localStorage.removeItem("jwt_token");
+        sessionStorage.removeItem("jwt_token");
         setUser(null);
       }
       setUser(null);
@@ -44,7 +48,7 @@ export const AuthProvider = ({ children }) => {
     checkUser();
   }, []);
 
-  const login = async (username, password) => {
+  const login = async (username, password, rememberMe = false) => {
     const formData = new URLSearchParams();
     formData.append("username", username);
     formData.append("password", password);
@@ -63,7 +67,13 @@ export const AuthProvider = ({ children }) => {
 
     const data = await response.json();
     if (data.access_token) {
-      localStorage.setItem("jwt_token", data.access_token);
+      if (rememberMe) {
+        localStorage.setItem("jwt_token", data.access_token);
+        sessionStorage.removeItem("jwt_token"); // Clean up other storage
+      } else {
+        sessionStorage.setItem("jwt_token", data.access_token);
+        localStorage.removeItem("jwt_token"); // Clean up other storage
+      }
     }
 
     await checkUser();
@@ -77,6 +87,7 @@ export const AuthProvider = ({ children }) => {
       console.warn("Logout failed", e);
     }
     localStorage.removeItem("jwt_token");
+    sessionStorage.removeItem("jwt_token");
     setUser(null);
   };
 

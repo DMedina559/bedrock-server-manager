@@ -34,6 +34,7 @@ async function handleLoginAttempt(buttonElement, formElement) {
 
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
+  const rememberMe = document.getElementById("rememberMe")?.checked;
 
   if (!username) {
     showStatusMessage("Username is required.", "warning");
@@ -47,6 +48,7 @@ async function handleLoginAttempt(buttonElement, formElement) {
   }
 
   const formData = new FormData(formElement);
+  // Remember Me is handled client-side for storage location, but could be sent if backend supports it.
 
   await handleApiAction(
     buttonElement,
@@ -54,7 +56,14 @@ async function handleLoginAttempt(buttonElement, formElement) {
       const response = await login(formData);
 
       if (response && response.access_token) {
-        localStorage.setItem("jwt_token", response.access_token);
+        if (rememberMe) {
+          localStorage.setItem("jwt_token", response.access_token);
+          sessionStorage.removeItem("jwt_token");
+        } else {
+          sessionStorage.setItem("jwt_token", response.access_token);
+          localStorage.removeItem("jwt_token");
+        }
+
         showStatusMessage(
           response.message || "Login successful! Redirecting...",
           "success",

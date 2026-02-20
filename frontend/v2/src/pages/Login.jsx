@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState(null);
   const { login, user } = useAuth();
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ const Login = () => {
     e.preventDefault();
     setError(null);
     try {
-      await login(username, password);
+      await login(username, password, rememberMe);
       navigate(from, { replace: true });
     } catch {
       setError("Invalid username or password");
@@ -74,6 +75,19 @@ const Login = () => {
             required
             autoComplete="current-password"
           />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <input
+            type="checkbox"
+            id="rememberMe"
+            name="rememberMe"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+          />
+          <label htmlFor="rememberMe" style={{ cursor: "pointer" }}>
+            Remember me
+          </label>
         </div>
 
         {error && <div className="message message-error">{error}</div>}
