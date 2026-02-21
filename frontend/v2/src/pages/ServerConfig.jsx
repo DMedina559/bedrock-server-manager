@@ -331,7 +331,7 @@ const ServerConfig = () => {
               <div style={{ display: "flex", gap: "10px" }}>
                 <button className="action-button" onClick={handleUpdateServer}>
                   <Download size={16} style={{ marginRight: "5px" }} /> Update
-                  Server Software
+                  Server
                 </button>
                 <button
                   className="action-button danger-button"
