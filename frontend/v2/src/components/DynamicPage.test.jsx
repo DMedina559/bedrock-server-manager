@@ -11,14 +11,29 @@ describe("DynamicPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock global fetch for download test
-    fetchSpy = vi.spyOn(window, "fetch").mockImplementation(() =>
-      Promise.resolve({
-        ok: true,
-        blob: () =>
-          Promise.resolve(new Blob(["content"], { type: "text/plain" })),
-      }),
-    );
+    // Mock global fetch for download test and setup status
+    fetchSpy = vi.spyOn(window, "fetch").mockImplementation((url) => {
+      if (url === "/setup/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ needs_setup: false }),
+        });
+      }
+      // Handle download test case
+      if (url === "/api/download/file.txt") {
+        return Promise.resolve({
+          ok: true,
+          blob: () =>
+            Promise.resolve(new Blob(["content"], { type: "text/plain" })),
+        });
+      }
+      // WebSocket or other calls
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      });
+    });
 
     // Mock window URL methods
     window.URL.createObjectURL = vi.fn(() => "blob:test");

@@ -35,9 +35,18 @@ describe("App", () => {
 
   it("redirects to setup if setup is needed", async () => {
     // Mock setup status
-    globalThis.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ needs_setup: true }),
+    globalThis.fetch.mockImplementation((url) => {
+      if (url === "/setup/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ needs_setup: true }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      });
     });
 
     render(
