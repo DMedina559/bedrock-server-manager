@@ -164,6 +164,10 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             raise ServerStartError(f"Server '{self.server_name}' has a stale PID file.")
 
         try:
+            # Truncate the log file before starting
+            with open(output_file, "w") as f:
+                f.truncate(0)
+
             with open(output_file, "ab") as f:
                 self._process = subprocess.Popen(
                     [self.bedrock_executable_path],

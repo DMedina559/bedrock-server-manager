@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { get, post } from "../api";
+import { get, post, getJwtToken } from "../api";
 import { useToast } from "../ToastContext";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -252,7 +252,7 @@ const DynamicPage = () => {
       }
     } else if (actionDef.type === "download_file") {
       try {
-        const jwtToken = localStorage.getItem("jwt_token");
+        const jwtToken = getJwtToken();
         const headers = jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {};
 
         const response = await fetch(actionDef.endpoint, { headers });

@@ -1,7 +1,6 @@
 /**
- * @fileoverview Core API client for making HTTP requests in V2.
+ * @fileoverview Core API client for making HTTP requests.
  * Handles fetch logic, headers, authentication, and response parsing.
- * Matches functionality of frontend/legacy/src/api.js
  */
 
 export class ApiError extends Error {
@@ -11,6 +10,18 @@ export class ApiError extends Error {
     this.status = status;
     this.data = data;
   }
+}
+
+/**
+ * Retrieves the JWT token from storage (Session first, then Local).
+ * @returns {string|null} The token or null if not found.
+ */
+export function getJwtToken() {
+  let token = sessionStorage.getItem("jwt_token");
+  if (!token) {
+    token = localStorage.getItem("jwt_token");
+  }
+  return token;
 }
 
 /**
@@ -28,7 +39,8 @@ export async function request(url, options = {}) {
     Accept: "application/json",
   };
 
-  const jwtToken = localStorage.getItem("jwt_token");
+  const jwtToken = getJwtToken();
+
   if (jwtToken) {
     defaultHeaders["Authorization"] = `Bearer ${jwtToken}`;
   }
@@ -66,7 +78,7 @@ export async function request(url, options = {}) {
       try {
         data = await response.json();
       } catch {
-        // Fallback if JSON parsing fails but header said JSON (rare but possible)
+        // Fallback if JSON parsing fails but header said JSON
         throw new ApiError(
           "Invalid JSON response from server",
           response.status,

@@ -1,14 +1,16 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect } from "react";
+import { useAuth } from "./AuthContext";
+import { request } from "./api";
 
 const ThemeContext = createContext();
 
 export const useTheme = () => useContext(ThemeContext);
 
 export const ThemeProvider = ({ children }) => {
-  // Default theme
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("theme") || "default",
-  );
+  const { user, checkUser } = useAuth();
+
+  // Use user's theme or default. Do not use local storage.
+  const theme = user?.theme || "default";
 
   useEffect(() => {
     let link = document.getElementById("theme-stylesheet");
@@ -43,9 +45,17 @@ export const ThemeProvider = ({ children }) => {
     link.href = href;
   }, [theme]);
 
-  const changeTheme = (newTheme) => {
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
+  const changeTheme = async (newTheme) => {
+    try {
+      await request("/api/account/theme", {
+        method: "POST",
+        body: { theme: newTheme },
+      });
+      // Refresh user data to get the new theme applied
+      await checkUser();
+    } catch (error) {
+      console.error("Failed to update theme:", error);
+    }
   };
 
   return (

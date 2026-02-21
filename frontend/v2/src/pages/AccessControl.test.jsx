@@ -76,7 +76,15 @@ describe("AccessControl", () => {
     const input = screen.getByPlaceholderText("Enter Gamertag to allow...");
     fireEvent.change(input, { target: { value: "NewPlayer" } });
 
-    fireEvent.click(screen.getByText("Add"));
+    // Ensure state is updated
+    expect(input.value).toBe("NewPlayer");
+
+    const addBtn = screen.getByText("Add");
+    await waitFor(() => {
+      expect(addBtn).not.toBeDisabled();
+    });
+
+    fireEvent.click(addBtn);
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith(

@@ -31,7 +31,11 @@ export async function request(url, options = {}) {
     Accept: "application/json",
   };
 
-  const jwtToken = localStorage.getItem("jwt_token");
+  let jwtToken = sessionStorage.getItem("jwt_token");
+  if (!jwtToken) {
+    jwtToken = localStorage.getItem("jwt_token");
+  }
+
   if (jwtToken) {
     defaultHeaders["Authorization"] = `Bearer ${jwtToken}`;
   }

@@ -5,25 +5,50 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 describe("Setup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    globalThis.fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ needs_setup: true }), // Setup needed
+    globalThis.fetch.mockImplementation((url) => {
+      if (url === "/setup/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ needs_setup: true }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      });
     });
   });
 
   it("renders setup form", async () => {
     render(<Setup />);
-    expect(
-      screen.getByText("Setup Bedrock Server Manager"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText("Setup Bedrock Server Manager"),
+      ).toBeInTheDocument();
+    });
     expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
   });
 
   it("handles successful setup", async () => {
     globalThis.fetch.mockImplementation((url) => {
-      if (url === "/setup/create-first-user")
-        return Promise.resolve({ ok: true, json: async () => ({}) });
-      return Promise.resolve({ ok: true });
+      if (url === "/setup/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ needs_setup: true }),
+        });
+      }
+      if (url === "/setup/create-first-user") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({}),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      });
     });
 
     render(<Setup />);

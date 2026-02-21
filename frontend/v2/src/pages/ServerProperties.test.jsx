@@ -57,7 +57,16 @@ describe("ServerProperties", () => {
     const nameInput = screen.getByDisplayValue("My Server");
     fireEvent.change(nameInput, { target: { value: "New Name" } });
 
+    // Ensure the value is updated in the DOM before proceeding
+    expect(nameInput.value).toBe("New Name");
+
+    // Use queryAllByText to handle multiple buttons more safely,
+    // and wait for them to be enabled (not disabled)
     const saveBtns = screen.getAllByText("Save Changes");
+    // Ensure button is not disabled
+    await waitFor(() => {
+      expect(saveBtns[0]).not.toBeDisabled();
+    });
 
     fireEvent.click(saveBtns[0]);
 

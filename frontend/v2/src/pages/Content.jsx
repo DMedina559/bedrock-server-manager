@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
-import { get, post, del } from "../api";
+import { get, post, del, getJwtToken } from "../api";
 import {
   Upload,
   Trash2,
@@ -169,7 +169,7 @@ const Content = () => {
         method: "POST",
         body: formData,
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("jwt_token")}`,
+          Authorization: `Bearer ${getJwtToken()}`,
         },
       });
 

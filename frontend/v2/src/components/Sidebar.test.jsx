@@ -10,9 +10,24 @@ describe("Sidebar", () => {
     vi.clearAllMocks();
 
     // Mock global fetch for setup status and auth
-    globalThis.fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ needs_setup: false }),
+    globalThis.fetch.mockImplementation((url) => {
+      if (url === "/setup/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ needs_setup: false }),
+        });
+      }
+      if (url === "/auth/logout") {
+        return Promise.resolve({
+          ok: true,
+        });
+      }
+      // WebSocket token refresh or other calls
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      });
     });
 
     // Default mocks

@@ -18,6 +18,15 @@ import { initializeSetupPage } from "./setup.js";
 import webSocketClient from "./websocket_client.js";
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Listen for storage events to sync logout across tabs/legacy/v2
+  window.addEventListener("storage", (e) => {
+    if (e.key === "jwt_token" && e.newValue === null) {
+      console.log("Logout detected in another tab/window. Reloading...");
+      // Reloading will redirect to login if token is missing
+      window.location.reload();
+    }
+  });
+
   // Establish WebSocket connection for the entire app
   webSocketClient.connect();
 

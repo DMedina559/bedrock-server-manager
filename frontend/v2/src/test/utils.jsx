@@ -5,6 +5,7 @@ import { ToastProvider } from "../ToastContext";
 import { AuthProvider } from "../AuthContext";
 import { ServerProvider } from "../ServerContext";
 import { ThemeProvider } from "../ThemeContext";
+import { WebSocketProvider } from "../WebSocketContext";
 
 const AllTheProviders = ({ children }) => {
   return (
@@ -12,7 +13,9 @@ const AllTheProviders = ({ children }) => {
       <ToastProvider>
         <AuthProvider>
           <ThemeProvider>
-            <ServerProvider>{children}</ServerProvider>
+            <WebSocketProvider>
+              <ServerProvider>{children}</ServerProvider>
+            </WebSocketProvider>
           </ThemeProvider>
         </AuthProvider>
       </ToastProvider>

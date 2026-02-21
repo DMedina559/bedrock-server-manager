@@ -8,6 +8,7 @@ shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
 
+import asyncio
 import logging
 import threading
 import time
@@ -152,7 +153,34 @@ class BedrockProcessManager:
                             f"127.0.0.1:{server.get_server_property('server-port')}"
                         )
                         status = bedrock_server.status()
+
+                        previous_player_count = getattr(server, "player_count", 0)
                         server.player_count = status.players.online
+
+                        if server.player_count != previous_player_count:
+                            self.logger.info(
+                                f"Player count changed for server '{server.server_name}': {previous_player_count} -> {server.player_count}"
+                            )
+                            # Broadcast the update
+                            if (
+                                self.app_context.loop
+                                and self.app_context.loop.is_running()
+                            ):
+                                message = {
+                                    "type": "event",
+                                    "topic": "event:after_server_statuses_updated",
+                                    "data": {
+                                        "server_name": server.server_name,
+                                        "player_count": server.player_count,
+                                    },
+                                }
+                                asyncio.run_coroutine_threadsafe(
+                                    self.app_context.connection_manager.broadcast_to_topic(
+                                        "event:after_server_statuses_updated", message
+                                    ),
+                                    self.app_context.loop,
+                                )
+
                         if status.players.online > 0:
                             self.logger.info(
                                 f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
