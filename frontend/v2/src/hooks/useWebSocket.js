@@ -5,6 +5,7 @@ const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
   const ws = useRef(null);
   const reconnectTimeout = useRef(null);
+  const pendingSubscriptions = useRef(new Set()); // Queue for subscriptions
 
   useEffect(() => {
     const connect = () => {
@@ -47,6 +48,16 @@ const useWebSocket = () => {
         socket.onopen = () => {
           console.log("WebSocket Connected");
           setIsConnected(true);
+
+          // Flush pending subscriptions
+          if (pendingSubscriptions.current.size > 0) {
+            console.log(
+              `Flushing ${pendingSubscriptions.current.size} pending subscriptions`,
+            );
+            pendingSubscriptions.current.forEach((topic) => {
+              socket.send(JSON.stringify({ action: "subscribe", topic }));
+            });
+          }
         };
 
         socket.onmessage = (event) => {
@@ -99,14 +110,19 @@ const useWebSocket = () => {
   }, []);
 
   const subscribe = useCallback((topic) => {
+    // Always add to pending so we resubscribe on reconnect
+    pendingSubscriptions.current.add(topic);
+
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ action: "subscribe", topic }));
     } else {
-      console.warn(`Cannot subscribe to ${topic}, socket not open`);
+      console.log(`Queuing subscription to ${topic} (socket not open)`);
     }
   }, []);
 
   const unsubscribe = useCallback((topic) => {
+    pendingSubscriptions.current.delete(topic);
+
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ action: "unsubscribe", topic }));
     }
