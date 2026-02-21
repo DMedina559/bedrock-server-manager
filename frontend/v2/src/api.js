@@ -1,12 +1,8 @@
 /**
  * @fileoverview Core API client for making HTTP requests.
  * Handles fetch logic, headers, authentication, and response parsing.
- * This module is pure JavaScript and does not interact with the DOM.
  */
 
-/**
- * Custom error class for API-related errors.
- */
 export class ApiError extends Error {
   constructor(message, status, data) {
     super(message);
@@ -14,6 +10,18 @@ export class ApiError extends Error {
     this.status = status;
     this.data = data;
   }
+}
+
+/**
+ * Retrieves the JWT token from storage (Session first, then Local).
+ * @returns {string|null} The token or null if not found.
+ */
+export function getJwtToken() {
+  let token = sessionStorage.getItem("jwt_token");
+  if (!token) {
+    token = localStorage.getItem("jwt_token");
+  }
+  return token;
 }
 
 /**
@@ -31,10 +39,7 @@ export async function request(url, options = {}) {
     Accept: "application/json",
   };
 
-  let jwtToken = sessionStorage.getItem("jwt_token");
-  if (!jwtToken) {
-    jwtToken = localStorage.getItem("jwt_token");
-  }
+  const jwtToken = getJwtToken();
 
   if (jwtToken) {
     defaultHeaders["Authorization"] = `Bearer ${jwtToken}`;
@@ -68,16 +73,55 @@ export async function request(url, options = {}) {
 
     const contentType = response.headers.get("content-type");
     let data;
+
     if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
+      try {
+        data = await response.json();
+      } catch {
+        // Fallback if JSON parsing fails but header said JSON
+        throw new ApiError(
+          "Invalid JSON response from server",
+          response.status,
+          null,
+        );
+      }
     } else {
-      data = await response.text();
+      // If not JSON, treat as text (could be HTML error page, plain text, etc.)
+      const text = await response.text();
+
+      // If we expected JSON (based on Accept header) but got HTML (e.g. 404 page, 500 error page, or Login page redirect)
+      // we should probably treat it as an error unless the caller explicitly handles it.
+      if (!response.ok) {
+        throw new ApiError(
+          `Request failed with status ${response.status} (Non-JSON response)`,
+          response.status,
+          text,
+        );
+      }
+
+      // If success (200) but HTML (e.g. redirected to login page without 401), this is tricky.
+      // Legacy behavior might just return the text.
+      // But usually our API should return JSON.
+      data = text;
+
+      // Check if it looks like the login page (common issue when session expires and backend redirects instead of 401)
+      if (
+        typeof text === "string" &&
+        text.includes("<!DOCTYPE html>") &&
+        text.includes("Login")
+      ) {
+        // Force a 401 style error so AuthContext can handle logout
+        throw new ApiError("Session expired (Redirected to Login)", 401, null);
+      }
     }
 
     if (!response.ok) {
       let errorMessage = `Request failed with status ${response.status}`;
       if (typeof data === "object" && data !== null && data.message) {
         errorMessage = data.message;
+      } else if (typeof data === "object" && data !== null && data.detail) {
+        // FastAPI often returns 'detail'
+        errorMessage = data.detail;
       } else if (typeof data === "string" && data.length > 0) {
         errorMessage = data.substring(0, 200);
       }
@@ -85,6 +129,7 @@ export async function request(url, options = {}) {
       throw new ApiError(errorMessage, response.status, data);
     }
 
+    // Legacy API sometimes returns { status: "error", message: "..." } even with 200 OK
     if (
       data &&
       typeof data === "object" &&
@@ -103,6 +148,7 @@ export async function request(url, options = {}) {
     if (error instanceof ApiError) {
       throw error;
     }
+    // Network errors
     throw new ApiError(error.message, 0, null);
   }
 }
