@@ -46,6 +46,20 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkUser();
+
+    // Listen for storage events (logout in another tab/legacy frontend)
+    const handleStorageChange = (e) => {
+      if (e.key === "jwt_token" && e.newValue === null) {
+        setUser(null); // Logout detected
+      } else if (e.key === "jwt_token" && e.newValue) {
+        checkUser(); // Login detected
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
   }, []);
 
   const login = async (username, password, rememberMe = false) => {
