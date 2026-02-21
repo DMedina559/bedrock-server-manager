@@ -9,6 +9,8 @@ const ServerConfig = () => {
   const { selectedServer } = useServer();
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
   const { addToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -142,6 +144,20 @@ const ServerConfig = () => {
       current[lastKey] = value;
       return newSettings;
     });
+  };
+
+  const handleAddCustom = (e) => {
+    e.preventDefault();
+    if (!newKey.trim()) {
+      addToast("Key cannot be empty", "error");
+      return;
+    }
+
+    const fullKey = `custom.${newKey.trim()}`;
+    handleChange(fullKey, newValue);
+    setNewKey("");
+    setNewValue("");
+    addToast(`Added ${fullKey} to pending changes.`, "info");
   };
 
   const flattenObject = (obj, prefix = "") => {
@@ -389,6 +405,57 @@ const ServerConfig = () => {
                 }
                 return null;
               })}
+            </div>
+
+            {/* Custom Settings Entry */}
+            <div
+              style={{
+                background: "var(--container-background-color)",
+                padding: "20px",
+                border: "1px solid var(--border-color)",
+                marginTop: "20px",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>Add Custom Setting</h3>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  alignItems: "flex-end",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: "200px" }}>
+                  <label className="form-label">
+                    Key Name (custom. prefix added automatically)
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g., my_setting"
+                    value={newKey}
+                    onChange={(e) => setNewKey(e.target.value)}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: "200px" }}>
+                  <label className="form-label">Value</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Value"
+                    value={newValue}
+                    onChange={(e) => setNewValue(e.target.value)}
+                  />
+                </div>
+                <button
+                  className="action-button secondary"
+                  onClick={handleAddCustom}
+                  disabled={!newKey.trim()}
+                  style={{ marginBottom: "2px" }}
+                >
+                  Add
+                </button>
+              </div>
             </div>
 
             <div
