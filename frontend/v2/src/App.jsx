@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth, AuthProvider } from "./AuthContext";
 import { ToastProvider } from "./ToastContext";
 import { ServerProvider } from "./ServerContext";
+import { WebSocketProvider } from "./WebSocketContext";
 import Layout from "./layouts/Layout";
 import Login from "./pages/Login";
 import Setup from "./pages/Setup";
@@ -96,9 +97,11 @@ const App = () => {
   return (
     <AuthProvider>
       <ToastProvider>
-        <ServerProvider>
-          <AppRoutes />
-        </ServerProvider>
+        <WebSocketProvider>
+          <ServerProvider>
+            <AppRoutes />
+          </ServerProvider>
+        </WebSocketProvider>
       </ToastProvider>
     </AuthProvider>
   );

@@ -4,7 +4,7 @@ import { post, get } from "../api";
 import { useServer } from "../ServerContext";
 import { useNavigate } from "react-router-dom";
 import { PlusSquare, RefreshCw } from "lucide-react";
-import useWebSocket from "../hooks/useWebSocket";
+import { useWebSocket } from "../WebSocketContext";
 
 const ServerInstall = () => {
   const [formData, setFormData] = useState({

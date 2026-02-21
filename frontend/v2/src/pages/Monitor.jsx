@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import useWebSocket from "../hooks/useWebSocket";
+import { useWebSocket } from "../WebSocketContext";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
 import { post, get } from "../api";

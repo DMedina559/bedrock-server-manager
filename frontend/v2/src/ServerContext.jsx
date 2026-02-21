@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { request } from "./api";
 import { useAuth } from "./AuthContext";
-import useWebSocket from "./hooks/useWebSocket";
+import { useWebSocket } from "./WebSocketContext";
 
 const ServerContext = createContext();
 

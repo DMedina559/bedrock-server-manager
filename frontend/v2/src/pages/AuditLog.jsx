@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "../ToastContext";
 import { get } from "../api";
-import useWebSocket from "../hooks/useWebSocket";
+import { useWebSocket } from "../WebSocketContext";
 import { RefreshCw, Activity, User, FileText } from "lucide-react";
 
 const AuditLog = () => {
