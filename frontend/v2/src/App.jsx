@@ -4,6 +4,7 @@ import { useAuth, AuthProvider } from "./AuthContext";
 import { ToastProvider } from "./ToastContext";
 import { ServerProvider } from "./ServerContext";
 import { WebSocketProvider } from "./WebSocketContext";
+import { ThemeProvider } from "./ThemeContext";
 import Layout from "./layouts/Layout";
 import Login from "./pages/Login";
 import Setup from "./pages/Setup";
@@ -96,13 +97,15 @@ const AppRoutes = () => {
 const App = () => {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <WebSocketProvider>
-          <ServerProvider>
-            <AppRoutes />
-          </ServerProvider>
-        </WebSocketProvider>
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <WebSocketProvider>
+            <ServerProvider>
+              <AppRoutes />
+            </ServerProvider>
+          </WebSocketProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </AuthProvider>
   );
 };
