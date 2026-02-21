@@ -1,5 +1,6 @@
 {
   "name": "Bedrock Server Manager",
+  "description": "UI for the python package Bedrock Server Manager V3.8.0+",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -41,5 +42,24 @@
   },
   "overrides": {
     "minimatch": "^10.2.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dmedina559/bedrock-server-manager.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dmedina559/bedrock-server-manager/issues"
+  },
+  "homepage": "https://bedrock-server-manager.readthedocs.io/en/latest/#",
+  "author": "dmedina559",
+  "keywords": [
+    "minecraft",
+    "bedrock",
+    "server",
+    "manager",
+    "ui",
+    "react",
+    "vite"
+  ]
 }
