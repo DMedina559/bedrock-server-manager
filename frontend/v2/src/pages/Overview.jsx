@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useServer } from "../ServerContext";
 import { useAuth } from "../AuthContext";
 import { useToast } from "../ToastContext";
+import { useWebSocket } from "../WebSocketContext";
 import { useNavigate } from "react-router-dom";
 import { post } from "../api";
 import {
@@ -17,6 +18,7 @@ const Overview = () => {
   const { servers, setSelectedServer, refreshServers } = useServer();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { isConnected, reconnect } = useWebSocket();
   const navigate = useNavigate();
   const [actionLoading, setActionLoading] = useState({});
   const [refreshing, setRefreshing] = useState(false);
@@ -44,6 +46,11 @@ const Overview = () => {
     // Prevent click from bubbling up to the card click handler
     e.stopPropagation();
 
+    // Trigger WS reconnect if disconnected, regardless of action outcome
+    if (!isConnected) {
+      reconnect();
+    }
+
     if (actionLoading[serverName]) return;
 
     setActionLoading((prev) => ({ ...prev, [serverName]: true }));
@@ -61,6 +68,12 @@ const Overview = () => {
 
   const handleUpdate = async (e, serverName) => {
     e.stopPropagation();
+
+    // Trigger WS reconnect if disconnected
+    if (!isConnected) {
+      reconnect();
+    }
+
     if (
       !confirm(
         `Are you sure you want to update ${serverName}? The server will stop if running.`,
@@ -83,6 +96,12 @@ const Overview = () => {
   const handleSendCommand = async (e, serverName) => {
     e.stopPropagation();
     e.preventDefault();
+
+    // Trigger WS reconnect if disconnected
+    if (!isConnected) {
+      reconnect();
+    }
+
     const command = window.prompt(`Enter command to send to ${serverName}:`);
     if (!command) return;
 

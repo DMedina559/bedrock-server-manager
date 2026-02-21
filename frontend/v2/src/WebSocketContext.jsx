@@ -24,8 +24,9 @@ export const WebSocketProvider = ({ children }) => {
   const reconnectTimeout = useRef(null);
   const pendingSubscriptions = useRef(new Set());
   const connectRef = useRef(null);
+  const reconnectAttempts = useRef(0);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     // If already connected or connecting, don't reconnect
     if (
       ws.current &&
@@ -46,6 +47,23 @@ export const WebSocketProvider = ({ children }) => {
       token = localStorage.getItem("jwt_token");
     }
 
+    // Try to refresh token if missing or if previous attempts failed
+    if (!token || reconnectAttempts.current > 0) {
+      console.log("Refreshing token for WebSocket...");
+      try {
+        const response = await fetch("/auth/refresh-token");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.access_token) {
+            token = data.access_token;
+            sessionStorage.setItem("jwt_token", token);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to refresh token", e);
+      }
+    }
+
     if (!token) {
       console.warn("No token found for WebSocket, skipping connection.");
       return;
@@ -62,6 +80,7 @@ export const WebSocketProvider = ({ children }) => {
       socket.onopen = () => {
         console.log("WebSocket Connected");
         setIsConnected(true);
+        reconnectAttempts.current = 0; // Reset attempts on success
 
         if (pendingSubscriptions.current.size > 0) {
           console.log(
@@ -90,8 +109,9 @@ export const WebSocketProvider = ({ children }) => {
         ws.current = null;
 
         if (event.code === 1008) {
-          console.error("WebSocket authentication failed. Not retrying.");
-          return;
+          console.error("WebSocket authentication failed.");
+          // We will retry, but maybe force a token refresh next time
+          reconnectAttempts.current += 1;
         }
 
         if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
@@ -153,6 +173,14 @@ export const WebSocketProvider = ({ children }) => {
     }
   }, []);
 
+  const reconnect = useCallback(() => {
+    if (ws.current) {
+      ws.current.close(); // This will trigger onclose which triggers reconnect
+    } else {
+      connect();
+    }
+  }, [connect]);
+
   return (
     <WebSocketContext.Provider
       value={{
@@ -161,6 +189,7 @@ export const WebSocketProvider = ({ children }) => {
         sendMessage,
         subscribe,
         unsubscribe,
+        reconnect,
       }}
     >
       {children}
