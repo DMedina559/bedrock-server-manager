@@ -32,7 +32,7 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, user: User) -> str:
         """Accepts a new WebSocket connection, tracks it, and returns the client ID."""
-        await websocket.accept()
+        # Connection is accepted in the router
         client_id = f"{user.username}:{uuid.uuid4()}"
         client = Client(id=client_id, user=user, websocket=websocket)
         self.active_connections[client_id] = client
