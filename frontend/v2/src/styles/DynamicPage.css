@@ -1,0 +1,283 @@
+/* DynamicPage Component Styles */
+
+/* --- Switch (Toggle) --- */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--toggle-switch-off-background-color, #ccc);
+  transition: 0.4s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--toggle-switch-on-background-color, #2196f3);
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px var(--toggle-switch-on-background-color, #2196f3);
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.switch-label-text {
+  vertical-align: middle;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.switch-wrapper {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+/* --- Modal --- */
+/* Reusing/Extending base.css .modal if present, but defining specific dynamic-page modal styles to ensure isolation */
+.dynamic-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.dynamic-modal-content {
+  background-color: var(--container-background-color, #333);
+  padding: 0;
+  border: 1px solid var(--border-color, #555);
+  border-radius: 8px;
+  min-width: 300px;
+  max-width: 80%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.2s ease-in-out;
+}
+
+.dynamic-modal-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-color, #555);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.dynamic-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--header-text-color, #eee);
+}
+
+.dynamic-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-color, #ccc);
+  cursor: pointer;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.dynamic-modal-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.dynamic-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* --- Accordion --- */
+.accordion {
+  border: 1px solid var(--border-color, #555);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  background-color: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.accordion-header {
+  padding: 12px 15px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.05);
+  transition: background-color 0.2s;
+  font-weight: 600;
+  user-select: none;
+}
+
+.accordion-header:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.accordion-body {
+  padding: 15px;
+  border-top: 1px solid var(--border-color, #555);
+  background-color: transparent;
+}
+
+/* --- Badge --- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  background-color: #555;
+  color: #fff;
+}
+
+.badge.primary {
+  background-color: var(--primary-button-background-color, #4caf50);
+}
+.badge.secondary {
+  background-color: #6c757d;
+}
+.badge.success {
+  background-color: #28a745;
+}
+.badge.danger {
+  background-color: #dc3545;
+}
+.badge.warning {
+  background-color: #ffc107;
+  color: #212529;
+}
+.badge.info {
+  background-color: #17a2b8;
+}
+.badge.dark {
+  background-color: #343a40;
+}
+
+/* --- CodeBlock --- */
+.code-block {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  padding: 15px;
+  border-radius: 4px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 0.9rem;
+  overflow-x: auto;
+  border: 1px solid #333;
+  margin: 10px 0;
+  white-space: pre-wrap;
+  position: relative;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 5px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 5px;
+}
+
+/* --- Image --- */
+.dynamic-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+
+/* --- Divider --- */
+.divider {
+  border: 0;
+  border-top: 1px solid var(--border-color, #555);
+  margin: 20px 0;
+}
+
+/* --- iframe --- */
+.dynamic-iframe {
+  width: 100%;
+  border: 1px solid var(--border-color, #555);
+  border-radius: 4px;
+  background-color: #fff;
+}
+
+/* --- Checkbox Wrapper --- */
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+  margin-right: 10px;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}

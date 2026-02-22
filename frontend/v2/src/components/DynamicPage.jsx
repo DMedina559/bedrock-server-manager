@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { get, post, getJwtToken } from "../api";
 import { useToast } from "../ToastContext";
 import { useSearchParams } from "react-router-dom";
@@ -15,7 +15,13 @@ import {
   X,
   Upload,
   Download,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
+
+import "../styles/DynamicPage.css";
 
 // --- Component Registry ---
 const ComponentRegistry = {
@@ -49,6 +55,7 @@ const ComponentRegistry = {
       {children}
     </div>
   ),
+  Divider: ({ className = "" }) => <hr className={`divider ${className}`} />,
 
   // Typography
   Text: ({ content, variant = "body", className = "" }) => {
@@ -67,6 +74,36 @@ const ComponentRegistry = {
       {content}
     </label>
   ),
+  Badge: ({ content, variant = "primary", className = "" }) => (
+    <span className={`badge ${variant} ${className}`}>{content}</span>
+  ),
+  CodeBlock: ({ content, title, className = "" }) => {
+    const copyToClipboard = () => {
+      navigator.clipboard.writeText(content);
+    };
+    return (
+      <div className={`code-block ${className}`}>
+        {(title || content) && (
+          <div className="code-block-header">
+            {title && <span>{title}</span>}
+            <button
+              onClick={copyToClipboard}
+              style={{
+                background: "none",
+                border: "none",
+                color: "inherit",
+                cursor: "pointer",
+              }}
+              title="Copy"
+            >
+              <ComponentRegistry.Icon name="Copy" size={14} />
+            </button>
+          </div>
+        )}
+        <code>{content}</code>
+      </div>
+    );
+  },
 
   // Basic Inputs
   Button: ({
@@ -130,6 +167,51 @@ const ComponentRegistry = {
         ))}
     </select>
   ),
+  Switch: ({
+    value,
+    onChange,
+    label,
+    className = "",
+    disabled = false,
+    id,
+  }) => (
+    <div className={`switch-wrapper ${className}`}>
+      <label className="switch" htmlFor={id}>
+        <input
+          type="checkbox"
+          id={id}
+          checked={!!value}
+          onChange={(e) => onChange && onChange(e.target.checked)}
+          disabled={disabled}
+        />
+        <span className="slider round"></span>
+      </label>
+      {label && (
+        <label className="switch-label-text" htmlFor={id}>
+          {label}
+        </label>
+      )}
+    </div>
+  ),
+  Checkbox: ({
+    value,
+    onChange,
+    label,
+    className = "",
+    disabled = false,
+    id,
+  }) => (
+    <label className={`checkbox-wrapper ${className}`} htmlFor={id}>
+      <input
+        type="checkbox"
+        id={id}
+        checked={!!value}
+        onChange={(e) => onChange && onChange(e.target.checked)}
+        disabled={disabled}
+      />
+      {label && <span className="form-label-inline">{label}</span>}
+    </label>
+  ),
   FileUpload: ({ id, accept, onChange, className = "" }) => (
     <input
       type="file"
@@ -156,6 +238,43 @@ const ComponentRegistry = {
     </button>
   ),
 
+  // Media
+  Image: ({ src, alt, width, height, className = "" }) => (
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      className={`dynamic-image ${className}`}
+    />
+  ),
+  iframe: ({ src, title, height = "400px", className = "" }) => (
+    <iframe
+      src={src}
+      title={title}
+      height={height}
+      className={`dynamic-iframe ${className}`}
+    />
+  ),
+  Link: ({ href, label, target = "_self", className = "", icon }) => {
+    const Icon = icon
+      ? ComponentRegistry.Icon({ name: icon, size: 14 })
+      : target === "_blank"
+        ? ComponentRegistry.Icon({ name: "ExternalLink", size: 14 })
+        : null;
+    return (
+      <a
+        href={href}
+        target={target}
+        className={`action-link ${className}`}
+        style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+      >
+        {label}
+        {Icon}
+      </a>
+    );
+  },
+
   // Icons
   Icon: ({ name, size = 20, className = "" }) => {
     const icons = {
@@ -170,6 +289,10 @@ const ComponentRegistry = {
       X,
       Upload,
       Download,
+      ChevronDown,
+      ChevronUp,
+      Copy,
+      ExternalLink,
     };
     const LucideIcon = icons[name] || Info;
     return <LucideIcon size={size} className={className} />;
@@ -198,6 +321,37 @@ const ComponentRegistry = {
       </table>
     </div>
   ),
+  Accordion: ({ title, children, defaultOpen = false, className = "" }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    return (
+      <div className={`accordion ${className}`}>
+        <div className="accordion-header" onClick={() => setIsOpen(!isOpen)}>
+          {title}
+          <ComponentRegistry.Icon
+            name={isOpen ? "ChevronUp" : "ChevronDown"}
+            size={16}
+          />
+        </div>
+        {isOpen && <div className="accordion-body">{children}</div>}
+      </div>
+    );
+  },
+  Modal: ({ isOpen, onClose, title, children, className = "" }) => {
+    if (!isOpen) return null;
+    return (
+      <div className="dynamic-modal-overlay">
+        <div className={`dynamic-modal-content ${className}`}>
+          <div className="dynamic-modal-header">
+            <h3>{title}</h3>
+            <button className="dynamic-modal-close" onClick={onClose}>
+              <ComponentRegistry.Icon name="X" size={20} />
+            </button>
+          </div>
+          <div className="dynamic-modal-body">{children}</div>
+        </div>
+      </div>
+    );
+  },
 
   // Navigation
   Tabs: ({ children, activeTab, onTabChange, className = "" }) => {
@@ -291,52 +445,59 @@ const DynamicPage = () => {
   // State for inputs (basic form handling)
   // We'll store input values in a map: { [inputId]: value }
   const [formState, setFormState] = useState({});
+  // State for active modal
+  const [activeModalId, setActiveModalId] = useState(null);
+
+  // Using useCallback to define fetchSchema so it can be added to dependencies
+  const fetchSchema = useCallback(
+    async (url, server) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Construct URL with current search params
+        const fetchUrlObj = new URL(url, window.location.origin);
+
+        // Merge current search params into the fetch URL, excluding 'url' itself
+        searchParams.forEach((value, key) => {
+          if (key !== "url" && !fetchUrlObj.searchParams.has(key)) {
+            fetchUrlObj.searchParams.append(key, value);
+          }
+        });
+
+        // Append selected server if not present
+        if (server && !fetchUrlObj.searchParams.has("server")) {
+          fetchUrlObj.searchParams.append("server", server);
+        }
+
+        const relativeFetchUrl = fetchUrlObj.pathname + fetchUrlObj.search;
+
+        const response = await get(relativeFetchUrl);
+        // Verify if response is valid schema
+        if (
+          response &&
+          (Array.isArray(response) || typeof response === "object")
+        ) {
+          setSchema(response);
+        } else {
+          setError("Invalid page definition.");
+        }
+      } catch (err) {
+        console.error("DynamicPage Error:", err);
+        setError(err.message || "Error loading page.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [searchParams],
+  ); // Dependent on searchParams
 
   useEffect(() => {
     if (dataUrl) {
       setFormState({}); // Clear state on URL change
+      setActiveModalId(null);
       fetchSchema(dataUrl, selectedServer);
     }
-  }, [dataUrl, selectedServer, searchParams.toString()]); // Re-fetch when URL or Selected Server or Query Params changes
-
-  const fetchSchema = async (url, server) => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Construct URL with current search params
-      const fetchUrlObj = new URL(url, window.location.origin);
-
-      // Merge current search params into the fetch URL, excluding 'url' itself
-      searchParams.forEach((value, key) => {
-        if (key !== "url" && !fetchUrlObj.searchParams.has(key)) {
-          fetchUrlObj.searchParams.append(key, value);
-        }
-      });
-
-      // Append selected server if not present
-      if (server && !fetchUrlObj.searchParams.has("server")) {
-        fetchUrlObj.searchParams.append("server", server);
-      }
-
-      const relativeFetchUrl = fetchUrlObj.pathname + fetchUrlObj.search;
-
-      const response = await get(relativeFetchUrl);
-      // Verify if response is valid schema
-      if (
-        response &&
-        (Array.isArray(response) || typeof response === "object")
-      ) {
-        setSchema(response);
-      } else {
-        setError("Invalid page definition.");
-      }
-    } catch (err) {
-      console.error("DynamicPage Error:", err);
-      setError(err.message || "Error loading page.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [dataUrl, selectedServer, fetchSchema]); // Now fetchSchema is a stable dependency
 
   const handleAction = async (actionDef) => {
     if (!actionDef) return;
@@ -371,6 +532,7 @@ const DynamicPage = () => {
         if (res && res.status === "success") {
           addToast(res.message || "Action successful", "success");
           if (actionDef.refresh) fetchSchema(dataUrl, selectedServer);
+          if (actionDef.closeModal) setActiveModalId(null);
         } else {
           addToast(res?.message || "Action failed", "error");
         }
@@ -410,6 +572,12 @@ const DynamicPage = () => {
         newParams.set("url", actionDef.url);
         setSearchParams(newParams);
       }
+    } else if (actionDef.type === "open_modal") {
+      if (actionDef.modalId) {
+        setActiveModalId(actionDef.modalId);
+      }
+    } else if (actionDef.type === "close_modal") {
+      setActiveModalId(null);
     }
   };
 
@@ -437,14 +605,27 @@ const DynamicPage = () => {
     const props = { ...node.props };
 
     // Handle input binding
-    if (node.type === "Input" || node.type === "Select") {
+    if (
+      node.type === "Input" ||
+      node.type === "Select" ||
+      node.type === "Switch" ||
+      node.type === "Checkbox"
+    ) {
       if (props.id) {
         const stateValue = formState[props.id];
 
-        props.value =
-          stateValue !== undefined
-            ? stateValue
-            : props.value || props.defaultValue || "";
+        // For Switch and Checkbox, value is boolean
+        if (node.type === "Switch" || node.type === "Checkbox") {
+          props.value =
+            stateValue !== undefined
+              ? stateValue
+              : props.checked || props.defaultChecked || false;
+        } else {
+          props.value =
+            stateValue !== undefined
+              ? stateValue
+              : props.value || props.defaultValue || "";
+        }
 
         props.onChange = (val) => {
           handleInputChange(props.id, val);
@@ -478,6 +659,12 @@ const DynamicPage = () => {
           endpoint: props.endpoint,
           filename: props.filename,
         });
+    }
+
+    // Modal specific props
+    if (node.type === "Modal") {
+      props.isOpen = activeModalId === props.id;
+      props.onClose = () => setActiveModalId(null);
     }
 
     // Special handling for Table rows to recursively render cells

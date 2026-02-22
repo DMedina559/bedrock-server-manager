@@ -90,6 +90,50 @@ describe("DynamicPage", () => {
           },
         ]);
       }
+      if (url === "/api/test/components") {
+        return Promise.resolve([
+          {
+            type: "Switch",
+            props: { id: "switchInput", label: "Toggle Me" },
+          },
+          {
+            type: "Checkbox",
+            props: { id: "checkboxInput", label: "Check Me" },
+          },
+          {
+            type: "Button",
+            props: {
+              label: "Open Modal",
+              onClickAction: { type: "open_modal", modalId: "testModal" },
+            },
+          },
+          {
+            type: "Modal",
+            props: { id: "testModal", title: "Test Modal" },
+            children: [
+              { type: "Text", props: { content: "Inside Modal" } },
+              {
+                type: "Button",
+                props: {
+                  label: "Close Modal",
+                  onClickAction: { type: "close_modal" },
+                },
+              },
+            ],
+          },
+          {
+            type: "Button",
+            props: {
+              label: "Submit Form",
+              onClickAction: {
+                type: "api_call",
+                endpoint: "/api/submit-components",
+                includeFormState: true,
+              },
+            },
+          },
+        ]);
+      }
       return Promise.resolve({});
     });
 
@@ -175,6 +219,58 @@ describe("DynamicPage", () => {
         expect.any(Object),
       );
       expect(window.URL.createObjectURL).toHaveBeenCalled();
+    });
+  });
+
+  it("renders new components and handles modal interaction", async () => {
+    window.history.pushState(
+      {},
+      "Test Components",
+      "/plugin-native-view?url=/api/test/components",
+    );
+    render(<DynamicPage />);
+
+    // Verify Switch and Checkbox render
+    await waitFor(() => {
+      expect(screen.getByText("Toggle Me")).toBeInTheDocument();
+      expect(screen.getByText("Check Me")).toBeInTheDocument();
+    });
+
+    // Interact with Switch and Checkbox
+    // We query by checkbox type
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes.length).toBe(2); // One switch, one checkbox
+
+    // Toggle them
+    fireEvent.click(checkboxes[0]); // Switch
+    fireEvent.click(checkboxes[1]); // Checkbox
+
+    // Open Modal
+    fireEvent.click(screen.getByText("Open Modal"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Modal")).toBeInTheDocument();
+      expect(screen.getByText("Inside Modal")).toBeInTheDocument();
+    });
+
+    // Close Modal
+    fireEvent.click(screen.getByText("Close Modal"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Inside Modal")).not.toBeInTheDocument();
+    });
+
+    // Submit form to verify state
+    fireEvent.click(screen.getByText("Submit Form"));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        "/api/submit-components",
+        expect.objectContaining({
+          switchInput: true,
+          checkboxInput: true,
+        }),
+      );
     });
   });
 });
