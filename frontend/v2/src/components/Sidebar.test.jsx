@@ -135,4 +135,50 @@ describe("Sidebar", () => {
     // Expect fetch to be called with /auth/logout
     expect(globalThis.fetch).toHaveBeenCalledWith("/auth/logout");
   });
+
+  it("highlights the active plugin page based on URL", async () => {
+    // Override mock for this test
+    api.get.mockImplementation((url) => {
+      if (url === "/api/plugins/pages")
+        return Promise.resolve({
+          status: "success",
+          data: [
+            { name: "Plugin A", path: "/plugin/a", type: "native" },
+            { name: "Plugin B", path: "/plugin/b", type: "native" },
+          ],
+        });
+      // Existing fallback
+      if (url === "/api/info")
+        return Promise.resolve({
+          status: "success",
+          info: { splash_text: "Splash!" },
+        });
+      if (url === "/api/account")
+        return Promise.resolve({ username: "testuser", role: "admin" });
+      if (url === "/api/servers")
+        return Promise.resolve({
+          status: "success",
+          servers: [{ name: "TestServer", status: "stopped" }],
+        });
+      return Promise.resolve({});
+    });
+
+    // Simulate navigation to Plugin A
+    window.history.pushState({}, "", "/plugin-native-view?url=%2Fplugin%2Fa");
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Plugin A")).toBeInTheDocument();
+      expect(screen.getByText("Plugin B")).toBeInTheDocument();
+    });
+
+    // Plugin A link should be active
+    const linkA = screen.getByText("Plugin A").closest("a");
+    expect(linkA).toHaveClass("active");
+
+    // Plugin B link should NOT be active
+    const linkB = screen.getByText("Plugin B").closest("a");
+    expect(linkB).not.toHaveClass("active");
+  });
 });

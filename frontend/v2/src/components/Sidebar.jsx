@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useServer } from "../ServerContext";
 import { useToast } from "../ToastContext";
@@ -30,6 +30,7 @@ import {
 import "../styles/SidebarEnhanced.css"; // Import enhanced styles
 
 const Sidebar = ({ mobileOpen, setMobileOpen }) => {
+  const location = useLocation();
   const { logout, user } = useAuth();
   const { addToast } = useToast();
   const {
@@ -482,12 +483,31 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                 page.type === "native"
                   ? `/plugin-native-view?url=${encodeURIComponent(page.path)}`
                   : `/plugin-view?url=${encodeURIComponent(page.path)}`;
+
+              const isPluginActive = () => {
+                const currentPath = location.pathname;
+                const searchParams = new URLSearchParams(location.search);
+                const currentUrlParam = searchParams.get("url");
+
+                if (page.type === "native") {
+                  return (
+                    currentPath === "/plugin-native-view" &&
+                    currentUrlParam === page.path
+                  );
+                } else {
+                  return (
+                    currentPath === "/plugin-view" &&
+                    currentUrlParam === page.path
+                  );
+                }
+              };
+
               return (
                 <NavLink
                   key={page.path}
                   to={targetPath}
-                  className={({ isActive }) =>
-                    `nav-link ${isActive ? "active" : ""}`
+                  className={() =>
+                    `nav-link ${isPluginActive() ? "active" : ""}`
                   }
                   title={effectiveCollapsed ? page.name : ""}
                 >
