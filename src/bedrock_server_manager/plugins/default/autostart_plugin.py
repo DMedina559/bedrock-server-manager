@@ -9,7 +9,8 @@ class AutostartServers(PluginBase):
     Starts all servers with the autostart setting set to true on manager startup.
     """
 
-    version = "1.0.1"
+    version = "1.0.2"
+    author = "dmedina559"
 
     def on_load(self):
         """

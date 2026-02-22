@@ -20,7 +20,10 @@ MODULE_CONTENT_DIR_PATH: Optional[Path] = None
 
 
 class ContentUploaderPlugin(PluginBase):
-    version = "1.1.0"
+    """Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."""
+
+    version = "1.2.0"
+    author = "dmedina559"
 
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
