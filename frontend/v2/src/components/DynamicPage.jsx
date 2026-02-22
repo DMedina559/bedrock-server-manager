@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { get, post, getJwtToken } from "../api";
 import { useToast } from "../ToastContext";
 import { useSearchParams } from "react-router-dom";
+import { useServer } from "../ServerContext";
 import {
   Activity,
   AlertCircle,
@@ -106,6 +107,29 @@ const ComponentRegistry = {
       readOnly={readOnly}
     />
   ),
+  Select: ({
+    value,
+    onChange,
+    options,
+    className = "",
+    disabled = false,
+    id,
+  }) => (
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => onChange && onChange(e.target.value)}
+      className={`form-input ${className}`}
+      disabled={disabled}
+    >
+      {options &&
+        options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+    </select>
+  ),
   FileUpload: ({ id, accept, onChange, className = "" }) => (
     <input
       type="file"
@@ -115,11 +139,17 @@ const ComponentRegistry = {
       className={`form-input ${className}`}
     />
   ),
-  FileDownload: ({ label, onClick, variant = "primary", className = "" }) => (
+  FileDownload: ({
+    label,
+    onClick,
+    variant = "primary",
+    className = "",
+    style = {},
+  }) => (
     <button
       className={`action-button ${variant === "secondary" ? "secondary" : ""} ${className}`}
       onClick={onClick}
-      style={{ display: "flex", alignItems: "center", gap: "5px" }}
+      style={{ ...style, display: "flex", alignItems: "center", gap: "5px" }}
     >
       <ComponentRegistry.Icon name="Download" size={16} />
       {label || "Download"}
@@ -168,15 +198,95 @@ const ComponentRegistry = {
       </table>
     </div>
   ),
+
+  // Navigation
+  Tabs: ({ children, activeTab, onTabChange, className = "" }) => {
+    const [localActive, setLocalActive] = useState(activeTab || 0);
+
+    // If activeTab changes from prop (e.g. schema re-fetch with new default), update state
+    useEffect(() => {
+      if (activeTab !== undefined) {
+        setLocalActive(activeTab);
+      }
+    }, [activeTab]);
+
+    // If children is not an array, make it one
+    const childArray = React.Children.toArray(children);
+
+    const tabHeaders = childArray.map((child, index) => {
+      return {
+        id: child.props.id || index,
+        label: child.props.label || `Tab ${index + 1}`,
+      };
+    });
+
+    const isControlled = onTabChange !== undefined;
+    const currentTabId =
+      isControlled && activeTab !== undefined ? activeTab : localActive;
+
+    const handleTabClick = (id) => {
+      if (!isControlled) {
+        setLocalActive(id);
+      }
+      if (onTabChange) onTabChange(id);
+    };
+
+    return (
+      <div className={`tabs-container ${className}`}>
+        <div
+          className="tabs-header"
+          style={{
+            display: "flex",
+            gap: "10px",
+            borderBottom: "1px solid #ccc",
+            marginBottom: "15px",
+          }}
+        >
+          {tabHeaders.map((header) => (
+            <button
+              key={header.id}
+              className={`tab-button ${currentTabId === header.id ? "active" : ""}`}
+              onClick={() => handleTabClick(header.id)}
+              style={{
+                padding: "8px 16px",
+                background: "transparent",
+                border: "none",
+                borderBottom:
+                  currentTabId === header.id
+                    ? "2px solid var(--primary-color, #007bff)"
+                    : "2px solid transparent",
+                cursor: "pointer",
+                fontWeight: currentTabId === header.id ? "bold" : "normal",
+                color: "inherit",
+              }}
+            >
+              {header.label}
+            </button>
+          ))}
+        </div>
+        <div className="tabs-content">
+          {childArray.map((child) => {
+            const childId = child.props.id || childArray.indexOf(child);
+            if (childId !== currentTabId) return null;
+            return <div key={childId}>{child}</div>;
+          })}
+        </div>
+      </div>
+    );
+  },
+  Tab: ({ children, className = "" }) => (
+    <div className={`tab-panel ${className}`}>{children}</div>
+  ),
 };
 
 const DynamicPage = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const dataUrl = searchParams.get("url");
   const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { addToast } = useToast();
+  const { selectedServer } = useServer();
 
   // State for inputs (basic form handling)
   // We'll store input values in a map: { [inputId]: value }
@@ -185,15 +295,32 @@ const DynamicPage = () => {
   useEffect(() => {
     if (dataUrl) {
       setFormState({}); // Clear state on URL change
-      fetchSchema(dataUrl);
+      fetchSchema(dataUrl, selectedServer);
     }
-  }, [dataUrl]);
+  }, [dataUrl, selectedServer, searchParams.toString()]); // Re-fetch when URL or Selected Server or Query Params changes
 
-  const fetchSchema = async (url) => {
+  const fetchSchema = async (url, server) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await get(url);
+      // Construct URL with current search params
+      const fetchUrlObj = new URL(url, window.location.origin);
+
+      // Merge current search params into the fetch URL, excluding 'url' itself
+      searchParams.forEach((value, key) => {
+        if (key !== "url" && !fetchUrlObj.searchParams.has(key)) {
+          fetchUrlObj.searchParams.append(key, value);
+        }
+      });
+
+      // Append selected server if not present
+      if (server && !fetchUrlObj.searchParams.has("server")) {
+        fetchUrlObj.searchParams.append("server", server);
+      }
+
+      const relativeFetchUrl = fetchUrlObj.pathname + fetchUrlObj.search;
+
+      const response = await get(relativeFetchUrl);
       // Verify if response is valid schema
       if (
         response &&
@@ -243,7 +370,7 @@ const DynamicPage = () => {
 
         if (res && res.status === "success") {
           addToast(res.message || "Action successful", "success");
-          if (actionDef.refresh) fetchSchema(dataUrl);
+          if (actionDef.refresh) fetchSchema(dataUrl, selectedServer);
         } else {
           addToast(res?.message || "Action failed", "error");
         }
@@ -272,7 +399,17 @@ const DynamicPage = () => {
         addToast("Download failed: " + err.message, "error");
       }
     } else if (actionDef.type === "navigate") {
-      // handle navigation if needed, or window.location
+      if (actionDef.params) {
+        const newParams = new URLSearchParams(searchParams);
+        Object.keys(actionDef.params).forEach((key) => {
+          newParams.set(key, actionDef.params[key]);
+        });
+        setSearchParams(newParams);
+      } else if (actionDef.url) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set("url", actionDef.url);
+        setSearchParams(newParams);
+      }
     }
   };
 
@@ -300,16 +437,31 @@ const DynamicPage = () => {
     const props = { ...node.props };
 
     // Handle input binding
-    if (node.type === "Input") {
+    if (node.type === "Input" || node.type === "Select") {
       if (props.id) {
         const stateValue = formState[props.id];
+
         props.value =
           stateValue !== undefined
             ? stateValue
             : props.value || props.defaultValue || "";
-        props.onChange = (val) => handleInputChange(props.id, val);
+
+        props.onChange = (val) => {
+          handleInputChange(props.id, val);
+          if (props.onChangeAction) {
+            const action = { ...props.onChangeAction };
+
+            // If it's a navigation action, we might want to dynamically set a param based on the value
+            if (action.type === "navigate" && action.dynamicParam) {
+              if (!action.params) action.params = {};
+              action.params[action.dynamicParam] = val;
+            }
+
+            handleAction(action);
+          }
+        };
       } else {
-        props.readOnly = true;
+        if (node.type === "Input") props.readOnly = true;
       }
     }
 
@@ -326,6 +478,21 @@ const DynamicPage = () => {
           endpoint: props.endpoint,
           filename: props.filename,
         });
+    }
+
+    // Special handling for Table rows to recursively render cells
+    if (node.type === "Table" && Array.isArray(props.rows)) {
+      props.rows = props.rows.map((row, rIndex) =>
+        Array.isArray(row)
+          ? row.map((cell, cIndex) => {
+              if (cell && typeof cell === "object" && cell.type) {
+                // Recursively render the cell if it looks like a component node
+                return renderNode(cell, `row-${rIndex}-cell-${cIndex}`);
+              }
+              return cell;
+            })
+          : row,
+      );
     }
 
     // Handle actions
