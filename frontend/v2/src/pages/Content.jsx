@@ -288,8 +288,8 @@ const Content = () => {
             <h3 style={{ marginTop: 0 }}>
               Upload{" "}
               {activeTab === "worlds"
-                ? "World (.zip, .mcworld)"
-                : "Addon (.mcpack, .mcaddon, .zip)"}
+                ? "World (.mcworld)"
+                : "Addon (.mcpack, .mcaddon)"}
             </h3>
             <input
               type="file"
