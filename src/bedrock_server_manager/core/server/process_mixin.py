@@ -154,7 +154,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         self.logger.info(f"Attempting to start server '{self.server_name}'...")
 
-        output_file = os.path.join(self.server_dir, "server_output.txt")
+        output_file = self.server_log_path
         pid_file_path = self.get_pid_file_path()
 
         if os.path.exists(pid_file_path):
@@ -275,6 +275,10 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         if hasattr(self, "set_status_in_config"):
             self.set_status_in_config("STOPPED")
+
+        if hasattr(self, "player_count"):
+            self.player_count = 0
+
         self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 
     def get_process_info(self) -> Optional[Dict[str, Any]]:
