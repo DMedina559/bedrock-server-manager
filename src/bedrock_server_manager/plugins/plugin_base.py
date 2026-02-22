@@ -58,6 +58,7 @@ class PluginBase(ABC):
     # but the PluginManager's synchronization step enforces its presence for a plugin
     # to be considered valid and loadable.
     version: str = "N/A"  # Default placeholder, should be overridden.
+    author: str = "N/A"  # Optional class attribute for plugin author information.
 
     def __init__(self, plugin_name: str, api: PluginAPI, logger: Logger):
         """Initializes the plugin instance.
