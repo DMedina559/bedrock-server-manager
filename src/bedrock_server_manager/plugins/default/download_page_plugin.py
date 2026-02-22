@@ -10,6 +10,8 @@ from bedrock_server_manager.web import get_admin_user
 
 
 class DownloadPagePlugin(PluginBase):
+    """Adds a download page to the web interface for server backups and content."""
+
     version = "1.0.0"
     author = "dmedina559"
 

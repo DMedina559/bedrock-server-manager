@@ -398,8 +398,10 @@ class PluginManager:
                     )
                 continue
 
+            author_attr = getattr(plugin_class, "author", None)
             valid_plugins_found_on_disk.add(plugin_name)
             version = str(version_attr).strip()
+            author = str(author_attr).strip()
             description = inspect.getdoc(plugin_class) or "No description available."
             description = " ".join(description.strip().split())
 
@@ -417,6 +419,7 @@ class PluginManager:
                     "enabled": is_enabled,
                     "description": description,
                     "version": version,
+                    "author": author,
                 }
                 config_changed = True
                 needs_update_in_config = True
@@ -449,6 +452,12 @@ class PluginManager:
                     needs_update_in_config = True
                     logger.debug(
                         f"Updated 'version' for plugin '{plugin_name}' to v{version} in config."
+                    )
+                if updated_entry.get("author") != author:
+                    updated_entry["author"] = author
+                    needs_update_in_config = True
+                    logger.debug(
+                        f"Updated 'author' for plugin '{plugin_name}' to {author} in config."
                     )
                 if needs_update_in_config:
                     self.plugin_config[plugin_name] = updated_entry

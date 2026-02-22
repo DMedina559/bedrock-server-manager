@@ -14,7 +14,8 @@ class WorldOperationNotificationsPlugin(PluginBase):
     are performed on a running server, providing a heads-up for potential disruptions.
     """
 
-    version = "1.1.0"
+    version = "1.1.1"
+    author = "dmedina559"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
