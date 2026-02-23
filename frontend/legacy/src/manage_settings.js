@@ -37,7 +37,7 @@ export function initializeManageSettingsPage() {
                 Modify the global settings for your Bedrock Server Manager instance. Reload the settings after making changes to apply them.<br>
                 <strong>Note:</strong> Some settings may require a server restart to take effect.
             </p>
-            <a href="/plugins?in_setup=true" class="action-button">Continue to Plugin Setup</a>
+            <a href="/legacy/plugins?in_setup=true" class="action-button">Continue to Plugin Setup</a>
         </div>
       `;
     }

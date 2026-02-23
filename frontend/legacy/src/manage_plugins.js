@@ -37,7 +37,7 @@ export function initializeManagePluginsPage() {
                 Here you can manage plugins. Reload plugins to apply any changes.<br>
                 <strong>Note:</strong> Any plugins that add new FastAPI routes (such as the content_uploader_plugin) will require a server restart to take effect.
             </p>
-            <a href="/install?in_setup=true" class="action-button">Continue to Server Installation</a>
+            <a href="/legacy/install?in_setup=true" class="action-button">Continue to Server Installation</a>
         </div>
       `;
     }

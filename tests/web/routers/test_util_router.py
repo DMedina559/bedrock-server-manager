@@ -109,17 +109,3 @@ def test_get_root_favicon_not_found(mock_exists, client: TestClient):
 
     response = client.get("/favicon.ico", follow_redirects=False)
     assert response.status_code == 404
-
-
-def test_catch_all_api_route_authenticated(authenticated_client: TestClient):
-    """Test the catch_all_api_route with an authenticated user."""
-    response = authenticated_client.get("/invalid/path")
-    assert response.status_code == 200
-    assert "Bedrock Server Manager" in response.text
-
-
-def test_catch_all_api_route_unauthenticated(client: TestClient, authenticated_user):
-    """Test the catch_all_api_route with an unauthenticated user."""
-    response = client.get("/invalid/path", follow_redirects=False)
-    assert response.status_code == 302
-    assert response.headers["location"] == "/auth/login"

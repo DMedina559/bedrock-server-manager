@@ -8,6 +8,7 @@ from .audit_log import router as audit_log_router
 from .auth import router as auth_router
 from .backup_restore import router as backup_restore_router
 from .content import router as content_router
+from .legacy import router as legacy_router
 from .main import router as main_router
 from .plugin import router as plugin_router
 from .register import router as register_router
@@ -28,6 +29,7 @@ __all__ = [
     "auth_router",
     "backup_restore_router",
     "content_router",
+    "legacy_router",
     "main_router",
     "plugin_router",
     "server_actions_router",

@@ -11,14 +11,13 @@ not found.
 
 import logging
 import os
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..auth_utils import get_current_user, get_current_user_optional
+from ..auth_utils import get_current_user
 from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import User
 
@@ -164,28 +163,3 @@ async def get_root_favicon():
         )
     # Return the file directly with the correct media type
     return FileResponse(favicon_path, media_type="image/x-icon")
-
-
-# --- Catch-all Route ---
-@router.get("/{full_path:path}", name="catch_all_route", include_in_schema=False)
-async def catch_all_api_route(
-    request: Request,
-    full_path: str,
-    current_user: Optional[User] = Depends(get_current_user_optional),
-):
-    """Redirects any unmatched authenticated API path to the main dashboard ('/').
-
-    This route acts as a catch-all for any GET requests that haven't been matched
-    by other more specific routes. It logs the attempt
-    and redirects the authenticated user to the root of the web application.
-    """
-    if current_user:
-        logger.warning(
-            f"User '{current_user.username}' accessed undefined path: '/{full_path}'. Redirecting to dashboard."
-        )
-        return RedirectResponse(url="/")
-    else:
-        logger.warning(
-            f"Unauthenticated user accessed undefined path: '/{full_path}'. Redirecting to login."
-        )
-        return RedirectResponse(url="/auth/login", status_code=302)

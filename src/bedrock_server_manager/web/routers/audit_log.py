@@ -7,15 +7,13 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
 from ...context import AppContext
 from ...db.models import AuditLog
 from ..auth_utils import get_admin_user
-from ..dependencies import get_app_context, get_templates
+from ..dependencies import get_app_context
 from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
@@ -49,25 +47,6 @@ def create_audit_log(
         log = AuditLog(user_id=user_id, action=action, details=details)
         db.add(log)
         db.commit()
-
-
-@router.get("", response_class=HTMLResponse, include_in_schema=False)
-async def audit_log_page(
-    request: Request,
-    current_user: UserSchema = Depends(get_admin_user),
-    app_context: AppContext = Depends(get_app_context),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the audit log page.
-    """
-    with app_context.db.session_manager() as db:  # type: ignore
-        logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()
-    return templates.TemplateResponse(
-        request,
-        "audit_log.html",
-        {"logs": logs, "current_user": current_user},
-    )
 
 
 @router.get("/list", response_model=List[AuditLogResponse])

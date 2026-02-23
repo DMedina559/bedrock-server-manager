@@ -112,6 +112,14 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     localStorage.setItem("sidebarCollapsed", newState);
   };
 
+  // Auto-close sidebar on mobile when a navigation item is clicked
+  const handleNavClick = (isDisabled) => {
+    if (isDisabled) return;
+    if (mobileOpen && setMobileOpen) {
+      setMobileOpen(false);
+    }
+  };
+
   // If mobile menu is open, we force the sidebar to appear expanded (not collapsed)
   // so the user can see the text/labels on the overlay.
   const effectiveCollapsed = isCollapsed && !mobileOpen;
@@ -406,6 +414,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
           to="/"
           className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
           title={effectiveCollapsed ? "Overview" : ""}
+          onClick={() => handleNavClick(false)}
         >
           <span className="nav-icon">
             <List size={20} />
@@ -431,6 +440,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
               }
               onClick={(e) => {
                 if (isDisabled) e.preventDefault();
+                handleNavClick(isDisabled);
               }}
               title={effectiveCollapsed ? item.label : ""}
             >
@@ -451,6 +461,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
             to={item.path}
             className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
             title={effectiveCollapsed ? item.label : ""}
+            onClick={() => handleNavClick(false)}
           >
             <span className="nav-icon">{item.icon}</span>
             {!effectiveCollapsed && <SidebarLabel>{item.label}</SidebarLabel>}
@@ -462,6 +473,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
             to="/server-install"
             className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
             title={effectiveCollapsed ? "Install Server" : ""}
+            onClick={() => handleNavClick(false)}
           >
             <span className="nav-icon">
               <PlusSquare size={20} />
@@ -510,6 +522,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
                     `nav-link ${isPluginActive() ? "active" : ""}`
                   }
                   title={effectiveCollapsed ? page.name : ""}
+                  onClick={() => handleNavClick(false)}
                 >
                   <span className="nav-icon">
                     <Plug size={20} />
@@ -599,6 +612,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
           to="/account"
           className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
           title={effectiveCollapsed ? `Account (${user?.username})` : ""}
+          onClick={() => handleNavClick(false)}
         >
           <span className="nav-icon">
             <User size={20} />
@@ -607,7 +621,10 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
         </NavLink>
         <button
           className="nav-link logout-button"
-          onClick={logout}
+          onClick={() => {
+            handleNavClick(false);
+            logout();
+          }}
           style={{
             border: "none",
             background: "transparent",

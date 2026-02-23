@@ -185,7 +185,7 @@ export async function saveProperties(buttonElement, serverName, isNewInstall) {
         showStatusMessage(`${message} Proceeding to Allowlist...`, "success");
         setTimeout(
           () =>
-            (window.location.href = `/server/${encodeURIComponent(serverName)}/configure_allowlist?new_install=True`),
+            (window.location.href = `/legacy/server/${encodeURIComponent(serverName)}/configure_allowlist?new_install=True`),
           1500,
         );
       } else {
@@ -277,7 +277,7 @@ export async function savePermissions(buttonElement, serverName, isNewInstall) {
         );
         setTimeout(
           () =>
-            (window.location.href = `/server/${encodeURIComponent(serverName)}/configure_service?new_install=True`),
+            (window.location.href = `/legacy/server/${encodeURIComponent(serverName)}/configure_service?new_install=True`),
           1500,
         );
       } else {
@@ -321,7 +321,7 @@ export async function saveServiceSettings(
             "Server started! Installation complete. Redirecting...",
             "success",
           );
-          setTimeout(() => (window.location.href = "/"), 2000);
+          setTimeout(() => (window.location.href = "/legacy/"), 2000);
         } else {
           showStatusMessage(
             `Settings saved, but server failed to start: ${startResponse?.message || "Unknown error"}`,
@@ -333,7 +333,7 @@ export async function saveServiceSettings(
           `${message} Installation complete! Redirecting...`,
           "success",
         );
-        setTimeout(() => (window.location.href = "/"), 1500);
+        setTimeout(() => (window.location.href = "/legacy/"), 1500);
       } else {
         showStatusMessage(message, "success");
       }
@@ -442,7 +442,7 @@ export function initializeInstallConfigPage() {
                 <p>
                     Install and configure your first Bedrock Server. This will include setting server.properties, allowlist, and other files.
                 </p>
-                <a href="/" class="action-button">Skip</a>
+                <a href="/legacy/" class="action-button">Skip</a>
             </div>
         `;
     }

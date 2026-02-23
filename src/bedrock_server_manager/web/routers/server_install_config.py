@@ -2,26 +2,24 @@
 """
 FastAPI router for server installation, updates, and detailed configurations.
 
-This module defines API endpoints and HTML page routes related to:
+This module defines API endpoints related to:
 - Installation of new Bedrock server instances.
 - Configuration of server properties (``server.properties``).
 - Management of player allowlists (``allowlist.json``).
 - Management of player permissions (``permissions.json``).
 - Configuration of server-specific service settings like autoupdate and autostart.
 
-It provides both an API for programmatic interaction and routes for serving
-HTML configuration pages to the user. Authentication is required for these
-operations, and server existence is typically validated for server-specific routes.
+It provides API for programmatic interaction.
+Authentication is required for these operations, and server existence is typically
+validated for server-specific routes.
 """
 
 import logging
 import os
-import platform
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ...api import server as server_api
@@ -31,7 +29,7 @@ from ...api import utils as utils_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
-from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import User
 
 logger = logging.getLogger(__name__)
@@ -168,28 +166,6 @@ async def get_custom_zips(
         )
 
 
-# --- HTML Route: /install ---
-@router.get(
-    "/install",
-    response_class=HTMLResponse,
-    name="install_server_page",
-    include_in_schema=False,
-)
-async def install_server_page(
-    request: Request,
-    current_user: User = Depends(get_admin_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for installing a new Bedrock server.
-    """
-    identity = current_user.username
-    logger.info(f"User '{identity}' accessed new server install page.")
-    return templates.TemplateResponse(
-        request, "install.html", {"current_user": current_user}
-    )
-
-
 # --- API Route: /api/server/install ---
 @router.post(
     "/api/server/install",
@@ -304,134 +280,6 @@ async def install_server_api_route(  # noqa: C901
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred during server installation.",
         )
-
-
-# --- HTML Route: /server/{server_name}/configure_properties ---
-@router.get(
-    "/server/{server_name}/configure_properties",
-    response_class=HTMLResponse,
-    name="configure_properties_page",
-    include_in_schema=False,
-)
-async def configure_properties_page(
-    request: Request,
-    new_install: bool = False,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for configuring a server's ``server.properties`` file.
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed configure properties for server '{server_name}'. New install: {new_install}"
-    )
-    return templates.TemplateResponse(
-        request,
-        "configure_properties.html",
-        {
-            "current_user": current_user,
-            "server_name": server_name,
-            "new_install": new_install,
-        },
-    )
-
-
-# --- HTML Route: /server/{server_name}/configure_allowlist ---
-@router.get(
-    "/server/{server_name}/configure_allowlist",
-    response_class=HTMLResponse,
-    name="configure_allowlist_page",
-    include_in_schema=False,
-)
-async def configure_allowlist_page(
-    request: Request,
-    new_install: bool = False,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for configuring a server's ``allowlist.json`` file.
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed configure allowlist for server '{server_name}'. New install: {new_install}"
-    )
-    return templates.TemplateResponse(
-        request,
-        "configure_allowlist.html",
-        {
-            "current_user": current_user,
-            "server_name": server_name,
-            "new_install": new_install,
-        },
-    )
-
-
-# --- HTML Route: /server/{server_name}/configure_permissions ---
-@router.get(
-    "/server/{server_name}/configure_permissions",
-    response_class=HTMLResponse,
-    name="configure_permissions_page",
-    include_in_schema=False,
-)
-async def configure_permissions_page(
-    request: Request,
-    new_install: bool = False,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for configuring player permissions (``permissions.json``).
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed configure permissions for server '{server_name}'. New install: {new_install}"
-    )
-    return templates.TemplateResponse(
-        request,
-        "configure_permissions.html",
-        {
-            "current_user": current_user,
-            "server_name": server_name,
-            "new_install": new_install,
-        },
-    )
-
-
-# --- HTML Route: /server/{server_name}/configure_service ---
-@router.get(
-    "/server/{server_name}/configure_service",
-    response_class=HTMLResponse,
-    name="configure_service_page",
-    include_in_schema=False,
-)
-async def configure_service_page(
-    request: Request,
-    new_install: bool = False,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """Serves the HTML page for configuring server-specific service settings (autoupdate/autostart)."""
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed configure service page for server '{server_name}'. New install: {new_install}"
-    )
-
-    template_data = {
-        "current_user": current_user,
-        "server_name": server_name,
-        "os": platform.system(),
-        "new_install": new_install,
-        "service_exists": False,
-        "autostart_enabled": False,
-        "autoupdate_enabled": False,
-    }
-    return templates.TemplateResponse(request, "configure_service.html", template_data)
 
 
 # --- API Route: /api/server/{server_name}/properties/set ---

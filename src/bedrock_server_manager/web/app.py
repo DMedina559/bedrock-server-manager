@@ -103,6 +103,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         # Paths that should be accessible even if setup is not complete
         allowed_paths = [
             "/setup",
+            "/legacy/setup",
             "/static",
             "/favicon.ico",
             "/auth/token",
@@ -115,7 +116,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         if bcm_config.needs_setup(request.app.state.app_context) and not any(
             request.url.path.startswith(p) for p in allowed_paths
         ):
-            return RedirectResponse(url="/setup")
+            return RedirectResponse(url="/legacy/setup")
 
         # Manually handle authentication to bypass it for static files
         if not request.url.path.startswith("/static"):
@@ -149,6 +150,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     app.include_router(routers.api_info_router)
     app.include_router(routers.plugin_router)
     app.include_router(routers.tasks_router)
+    app.include_router(routers.legacy_router)
     app.include_router(routers.main_router)
     app.include_router(routers.account_router)
     app.include_router(routers.audit_log_router)

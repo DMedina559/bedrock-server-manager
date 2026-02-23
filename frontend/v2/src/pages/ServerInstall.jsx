@@ -20,7 +20,7 @@ const ServerInstall = () => {
   const { addToast } = useToast();
   const navigate = useNavigate();
   const { refreshServers, setSelectedServer } = useServer();
-  const { lastMessage, subscribe, unsubscribe } = useWebSocket();
+  const { isFallback, lastMessage, subscribe, unsubscribe } = useWebSocket();
 
   const handleInstallSuccess = useCallback(async () => {
     await refreshServers();
@@ -77,6 +77,55 @@ const ServerInstall = () => {
     }
   }, [lastMessage, installTaskId, addToast, handleInstallSuccess, unsubscribe]);
 
+  // Fallback Polling for Task Status
+  useEffect(() => {
+    let intervalId = null;
+
+    if (isFallback && installTaskId) {
+      console.log(
+        `WebSocket fallback active: polling status for task ${installTaskId}`,
+      );
+
+      const pollStatus = async () => {
+        try {
+          // taskData is the task object directly, e.g. { status: "in_progress", ... }
+          const taskData = await get(`/api/tasks/status/${installTaskId}`);
+          if (taskData) {
+            if (taskData.status === "success") {
+              addToast("Installation completed successfully!", "success");
+              handleInstallSuccess();
+              setInstallTaskId(null); // Stop polling
+            } else if (taskData.status === "error") {
+              addToast(`Installation failed: ${taskData.message}`, "error");
+              setLoading(false);
+              setInstallTaskId(null); // Stop polling
+            } else {
+              // In progress
+            }
+          }
+        } catch (error) {
+          console.warn("Polling task status failed", error);
+          // If 404, maybe task is gone? Or error?
+          if (error.status === 404) {
+            // Treat as failure if task not found during install
+            addToast("Installation task lost.", "error");
+            setLoading(false);
+            setInstallTaskId(null);
+          }
+        }
+      };
+
+      // Poll every 2 seconds
+      intervalId = setInterval(pollStatus, 2000);
+      // Initial check
+      pollStatus();
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isFallback, installTaskId, addToast, handleInstallSuccess]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
@@ -108,7 +157,9 @@ const ServerInstall = () => {
 
       const initiateMonitoring = (taskId) => {
         setInstallTaskId(taskId);
-        subscribe(`task:${taskId}`);
+        if (!isFallback) {
+          subscribe(`task:${taskId}`);
+        }
         addToast("Installation started. Please wait...", "info");
       };
 

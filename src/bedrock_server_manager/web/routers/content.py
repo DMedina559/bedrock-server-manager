@@ -11,9 +11,7 @@ import logging
 import os
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ...api import addon as addon_api
@@ -23,7 +21,7 @@ from ...api import world as world_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
-from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import ActionResponse, BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
@@ -54,119 +52,6 @@ class ContentListResponse(BaseApiResponse):
     # status: str -> Inherited
     # message: Optional[str] = None -> Inherited
     files: Optional[List[str]] = None
-
-
-# --- HTML Routes ---
-@router.get(
-    "/server/{server_name}/install_world",
-    response_class=HTMLResponse,
-    name="install_world_page",
-    include_in_schema=False,
-)
-async def install_world_page(
-    request: Request,
-    server_name: str,
-    current_user: User = Depends(get_admin_user),
-    app_context: AppContext = Depends(get_app_context),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for selecting a world file to install on a server.
-
-    Lists available .mcworld files from the application's content directory.
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed world install selection page for server '{server_name}'."
-    )
-
-    world_files: List[str] = []
-    error_message: Optional[str] = None
-    try:
-        list_result = app_api.list_available_worlds_api(app_context=app_context)
-        if list_result.get("status") == "success":
-            full_paths = list_result.get("files", [])
-            world_files = [os.path.basename(p) for p in full_paths]
-        else:
-            error_message = list_result.get(
-                "message", "Unknown error listing world files."
-            )
-            logger.error(
-                f"Error listing world files for {server_name} page: {error_message}"
-            )
-    except Exception as e:
-        logger.error(
-            f"Unexpected error listing worlds for {server_name} page: {e}",
-            exc_info=True,
-        )
-        error_message = "An unexpected server error occurred while listing worlds."
-
-    return templates.TemplateResponse(
-        request,
-        "select_world.html",
-        {
-            "current_user": current_user,
-            "server_name": server_name,
-            "world_files": world_files,
-            "error_message": error_message,
-        },
-    )
-
-
-@router.get(
-    "/server/{server_name}/install_addon",
-    response_class=HTMLResponse,
-    name="install_addon_page",
-    include_in_schema=False,
-)
-async def install_addon_page(
-    request: Request,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
-    app_context: AppContext = Depends(get_app_context),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for selecting an addon file to install on a server.
-
-    Lists available .mcaddon or .mcpack files from the application's content directory.
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed addon install selection page for server '{server_name}'."
-    )
-
-    addon_files: List[str] = []
-    error_message: Optional[str] = None
-    try:
-        list_result = app_api.list_available_addons_api(app_context=app_context)
-        if list_result.get("status") == "success":
-            full_paths = list_result.get("files", [])
-            addon_files = [os.path.basename(p) for p in full_paths]
-        else:
-            error_message = list_result.get(
-                "message", "Unknown error listing addon files."
-            )
-            logger.error(
-                f"Error listing addon files for {server_name} page: {error_message}"
-            )
-    except Exception as e:
-        logger.error(
-            f"Unexpected error listing addons for {server_name} page: {e}",
-            exc_info=True,
-        )
-        error_message = "An unexpected server error occurred while listing addons."
-
-    return templates.TemplateResponse(
-        request,
-        "select_addon.html",
-        {
-            "current_user": current_user,
-            "server_name": server_name,
-            "addon_files": addon_files,
-            "error_message": error_message,
-        },
-    )
 
 
 # --- API Routes ---
