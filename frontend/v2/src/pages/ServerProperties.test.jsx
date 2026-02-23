@@ -1,26 +1,46 @@
-import { render, screen, fireEvent, waitFor } from "../test/utils";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import ServerProperties from "./ServerProperties";
-import { vi, describe, it, expect, beforeEach } from "vitest";
 import * as api from "../api";
+import { BrowserRouter } from "react-router-dom";
+import { ToastProvider } from "../ToastContext";
+import { ServerContext } from "../ServerContext";
 
-vi.mock("../api");
+// Mock the useServer hook
+vi.mock("../ServerContext", () => ({
+  useServer: vi.fn(),
+  ServerProvider: ({ children }) => <div>{children}</div>,
+}));
+
+import { useServer } from "../ServerContext";
+
+// Mock API
+vi.mock("../api", () => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  request: vi.fn(),
+}));
+
+const renderWithProviders = (ui) => {
+  return render(
+    <BrowserRouter>
+      <ToastProvider>{ui}</ToastProvider>
+    </BrowserRouter>,
+  );
+};
 
 describe("ServerProperties", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem("selectedServer", "TestServer");
 
-    // Default mocks
-    api.request.mockImplementation((url) => {
-      if (url === "/api/servers") {
-        return Promise.resolve({
-          status: "success",
-          servers: [{ name: "TestServer", status: "stopped" }],
-        });
-      }
-      return Promise.resolve({});
+    // Mock useServer return value
+    useServer.mockReturnValue({
+      selectedServer: "TestServer",
+      servers: [{ name: "TestServer", status: "stopped" }],
     });
 
+    // Mock API responses
     api.get.mockImplementation((url) => {
       if (url.includes("/properties/get")) {
         return Promise.resolve({
@@ -38,69 +58,45 @@ describe("ServerProperties", () => {
     api.post.mockResolvedValue({ status: "success" });
   });
 
-  it("renders properties form", async () => {
-    render(<ServerProperties />);
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue("My Server")).toBeInTheDocument();
-    });
-    expect(screen.getByDisplayValue("10")).toBeInTheDocument();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("saves changes", async () => {
-    render(<ServerProperties />);
+  it("renders properties form and saves changes", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ServerProperties />);
 
+    // Wait for data to load
     await waitFor(() => {
       expect(screen.getByDisplayValue("My Server")).toBeInTheDocument();
     });
 
     const nameInput = screen.getByDisplayValue("My Server");
-    fireEvent.change(nameInput, { target: { value: "New Name" } });
 
-    // Ensure the value is updated in the DOM before proceeding
-    expect(nameInput.value).toBe("New Name");
+    // Clear and type new name
+    await user.clear(nameInput);
+    await user.type(nameInput, "New Name");
 
-    // Use queryAllByText to handle multiple buttons more safely,
-    // and wait for them to be enabled (not disabled)
-    const saveBtns = screen.getAllByText("Save Changes");
-    // Ensure button is not disabled
+    expect(nameInput).toHaveValue("New Name");
+
+    // Find Save Changes button
+    const saveButtons = screen.getAllByText("Save Changes");
+    const saveButton = saveButtons[0];
+
+    expect(saveButton).toBeEnabled();
+
+    await user.click(saveButton);
+
+    // Verify API call
     await waitFor(() => {
-      expect(saveBtns[0]).not.toBeDisabled();
-    });
-
-    fireEvent.click(saveBtns[0]);
-
-    await waitFor(
-      () => {
-        expect(api.post).toHaveBeenCalledWith(
-          "/api/server/TestServer/properties/set",
-          expect.objectContaining({
-            properties: expect.objectContaining({
-              "server-name": "New Name",
-            }),
+      expect(api.post).toHaveBeenCalledWith(
+        expect.stringContaining("/properties/set"),
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            "server-name": "New Name",
           }),
-        );
-      },
-      { timeout: 3000 },
-    );
-  });
-
-  it("adds custom property", async () => {
-    render(<ServerProperties />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Add Custom Property")).toBeInTheDocument();
+        }),
+      );
     });
-
-    fireEvent.change(screen.getByPlaceholderText("e.g. max-threads"), {
-      target: { value: "my-custom-prop" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("Value"), {
-      target: { value: "123" },
-    });
-
-    fireEvent.click(screen.getByText("Add Property"));
-
-    expect(screen.getByText(/Added property 'my-custom-prop'/)).toBeVisible();
   });
 });

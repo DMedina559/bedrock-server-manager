@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { get, post, getJwtToken } from "../api";
 import { useToast } from "../ToastContext";
 import { useSearchParams } from "react-router-dom";
 import { useServer } from "../ServerContext";
+import { useWebSocket } from "../WebSocketContext";
 import {
   Activity,
   AlertCircle,
@@ -15,7 +16,29 @@ import {
   X,
   Upload,
   Download,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  ExternalLink,
+  Play,
+  Square,
+  RotateCcw,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+} from "recharts";
+
+import "../styles/DynamicPage.css";
 
 // --- Component Registry ---
 const ComponentRegistry = {
@@ -49,6 +72,7 @@ const ComponentRegistry = {
       {children}
     </div>
   ),
+  Divider: ({ className = "" }) => <hr className={`divider ${className}`} />,
 
   // Typography
   Text: ({ content, variant = "body", className = "" }) => {
@@ -67,6 +91,36 @@ const ComponentRegistry = {
       {content}
     </label>
   ),
+  Badge: ({ content, variant = "primary", className = "" }) => (
+    <span className={`badge ${variant} ${className}`}>{content}</span>
+  ),
+  CodeBlock: ({ content, title, className = "" }) => {
+    const copyToClipboard = () => {
+      navigator.clipboard.writeText(content);
+    };
+    return (
+      <div className={`code-block ${className}`}>
+        {(title || content) && (
+          <div className="code-block-header">
+            {title && <span>{title}</span>}
+            <button
+              onClick={copyToClipboard}
+              style={{
+                background: "none",
+                border: "none",
+                color: "inherit",
+                cursor: "pointer",
+              }}
+              title="Copy"
+            >
+              <ComponentRegistry.Icon name="Copy" size={14} />
+            </button>
+          </div>
+        )}
+        <code>{content}</code>
+      </div>
+    );
+  },
 
   // Basic Inputs
   Button: ({
@@ -130,6 +184,51 @@ const ComponentRegistry = {
         ))}
     </select>
   ),
+  Switch: ({
+    value,
+    onChange,
+    label,
+    className = "",
+    disabled = false,
+    id,
+  }) => (
+    <div className={`switch-wrapper ${className}`}>
+      <label className="switch" htmlFor={id}>
+        <input
+          type="checkbox"
+          id={id}
+          checked={!!value}
+          onChange={(e) => onChange && onChange(e.target.checked)}
+          disabled={disabled}
+        />
+        <span className="slider round"></span>
+      </label>
+      {label && (
+        <label className="switch-label-text" htmlFor={id}>
+          {label}
+        </label>
+      )}
+    </div>
+  ),
+  Checkbox: ({
+    value,
+    onChange,
+    label,
+    className = "",
+    disabled = false,
+    id,
+  }) => (
+    <label className={`checkbox-wrapper ${className}`} htmlFor={id}>
+      <input
+        type="checkbox"
+        id={id}
+        checked={!!value}
+        onChange={(e) => onChange && onChange(e.target.checked)}
+        disabled={disabled}
+      />
+      {label && <span className="form-label-inline">{label}</span>}
+    </label>
+  ),
   FileUpload: ({ id, accept, onChange, className = "" }) => (
     <input
       type="file"
@@ -156,6 +255,140 @@ const ComponentRegistry = {
     </button>
   ),
 
+  // Media
+  Image: ({ src, alt, width, height, className = "" }) => (
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      className={`dynamic-image ${className}`}
+    />
+  ),
+  iframe: ({ src, title, height = "400px", className = "" }) => (
+    <iframe
+      src={src}
+      title={title}
+      height={height}
+      className={`dynamic-iframe ${className}`}
+    />
+  ),
+  Link: ({ href, label, target = "_self", className = "", icon }) => {
+    const Icon = icon
+      ? ComponentRegistry.Icon({ name: icon, size: 14 })
+      : target === "_blank"
+        ? ComponentRegistry.Icon({ name: "ExternalLink", size: 14 })
+        : null;
+    return (
+      <a
+        href={href}
+        target={target}
+        className={`action-link ${className}`}
+        style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+      >
+        {label}
+        {Icon}
+      </a>
+    );
+  },
+
+  // Advanced Visualizations
+  Chart: ({
+    type = "line",
+    data,
+    xAxis,
+    series,
+    height = 300,
+    className = "",
+  }) => {
+    const ChartComponent =
+      type === "area" ? AreaChart : type === "bar" ? BarChart : LineChart;
+    const DataComponent = type === "area" ? Area : type === "bar" ? Bar : Line;
+
+    return (
+      <div
+        className={`chart-container ${className}`}
+        style={{ width: "100%", height: height }}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <ChartComponent data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+            <XAxis dataKey={xAxis} stroke="#888" />
+            <YAxis stroke="#888" />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#333",
+                border: "1px solid #555",
+              }}
+              labelStyle={{ color: "#ccc" }}
+            />
+            {series &&
+              series.map((s, idx) => (
+                <DataComponent
+                  key={idx}
+                  type="monotone"
+                  dataKey={s.dataKey}
+                  stroke={s.color}
+                  fill={s.color} // For Area/Bar
+                  name={s.name}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ))}
+          </ChartComponent>
+        </ResponsiveContainer>
+      </div>
+    );
+  },
+  LogViewer: ({ lines, height = 200, className = "" }) => {
+    const logEndRef = useRef(null);
+    useEffect(() => {
+      if (logEndRef.current) {
+        logEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    }, [lines]);
+
+    return (
+      <div className={`log-viewer ${className}`} style={{ height: height }}>
+        {!lines || lines.length === 0 ? (
+          <div className="log-placeholder">Waiting for logs...</div>
+        ) : (
+          lines.map((line, idx) => (
+            <div key={idx} className="log-line">
+              {line}
+            </div>
+          ))
+        )}
+        <div ref={logEndRef} />
+      </div>
+    );
+  },
+  StatCard: ({ label, value, icon, trend, className = "" }) => (
+    <div className={`stat-card ${className}`}>
+      {icon && (
+        <div className="stat-icon">
+          <ComponentRegistry.Icon name={icon} size={24} />
+        </div>
+      )}
+      <div className="stat-content">
+        <div className="stat-label">{label}</div>
+        <div className="stat-value">{value}</div>
+        {trend && (
+          <div
+            className={`stat-trend ${trend === "up" ? "trend-up" : trend === "down" ? "trend-down" : ""}`}
+          >
+            {trend === "up" ? "▲" : trend === "down" ? "▼" : "•"}
+          </div>
+        )}
+      </div>
+    </div>
+  ),
+  StatusIndicator: ({ status, text, className = "" }) => (
+    <span className={`status-indicator status-${status} ${className}`}>
+      <span className="status-dot">●</span> {text}
+    </span>
+  ),
+
   // Icons
   Icon: ({ name, size = 20, className = "" }) => {
     const icons = {
@@ -170,6 +403,13 @@ const ComponentRegistry = {
       X,
       Upload,
       Download,
+      ChevronDown,
+      ChevronUp,
+      Copy,
+      ExternalLink,
+      Play,
+      Square,
+      RotateCcw,
     };
     const LucideIcon = icons[name] || Info;
     return <LucideIcon size={size} className={className} />;
@@ -198,6 +438,37 @@ const ComponentRegistry = {
       </table>
     </div>
   ),
+  Accordion: ({ title, children, defaultOpen = false, className = "" }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    return (
+      <div className={`accordion ${className}`}>
+        <div className="accordion-header" onClick={() => setIsOpen(!isOpen)}>
+          {title}
+          <ComponentRegistry.Icon
+            name={isOpen ? "ChevronUp" : "ChevronDown"}
+            size={16}
+          />
+        </div>
+        {isOpen && <div className="accordion-body">{children}</div>}
+      </div>
+    );
+  },
+  Modal: ({ isOpen, onClose, title, children, className = "" }) => {
+    if (!isOpen) return null;
+    return (
+      <div className="dynamic-modal-overlay">
+        <div className={`dynamic-modal-content ${className}`}>
+          <div className="dynamic-modal-header">
+            <h3>{title}</h3>
+            <button className="dynamic-modal-close" onClick={onClose}>
+              <ComponentRegistry.Icon name="X" size={20} />
+            </button>
+          </div>
+          <div className="dynamic-modal-body">{children}</div>
+        </div>
+      </div>
+    );
+  },
 
   // Navigation
   Tabs: ({ children, activeTab, onTabChange, className = "" }) => {
@@ -287,56 +558,96 @@ const DynamicPage = () => {
   const [error, setError] = useState(null);
   const { addToast } = useToast();
   const { selectedServer } = useServer();
+  const { isConnected, subscribe, unsubscribe, lastMessage } = useWebSocket();
 
   // State for inputs (basic form handling)
   // We'll store input values in a map: { [inputId]: value }
   const [formState, setFormState] = useState({});
+  // State for active modal
+  const [activeModalId, setActiveModalId] = useState(null);
+  // State for WebSocket data: { [topic]: messageData }
+  const [socketData, setSocketData] = useState({});
+
+  // Using useCallback to define fetchSchema so it can be added to dependencies
+  const fetchSchema = useCallback(
+    async (url, server) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Construct URL with current search params
+        const fetchUrlObj = new URL(url, window.location.origin);
+
+        // Merge current search params into the fetch URL, excluding 'url' itself
+        searchParams.forEach((value, key) => {
+          if (key !== "url" && !fetchUrlObj.searchParams.has(key)) {
+            fetchUrlObj.searchParams.append(key, value);
+          }
+        });
+
+        // Append selected server if not present
+        if (server && !fetchUrlObj.searchParams.has("server")) {
+          fetchUrlObj.searchParams.append("server", server);
+        }
+
+        const relativeFetchUrl = fetchUrlObj.pathname + fetchUrlObj.search;
+
+        const response = await get(relativeFetchUrl);
+        // Verify if response is valid schema
+        if (
+          response &&
+          (Array.isArray(response) || typeof response === "object")
+        ) {
+          setSchema(response);
+        } else {
+          setError("Invalid page definition.");
+        }
+      } catch (err) {
+        console.error("DynamicPage Error:", err);
+        setError(err.message || "Error loading page.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [searchParams],
+  ); // Dependent on searchParams
 
   useEffect(() => {
     if (dataUrl) {
       setFormState({}); // Clear state on URL change
+      setActiveModalId(null);
+      setSocketData({}); // Clear socket data on page change
       fetchSchema(dataUrl, selectedServer);
     }
-  }, [dataUrl, selectedServer, searchParams.toString()]); // Re-fetch when URL or Selected Server or Query Params changes
+  }, [dataUrl, selectedServer, fetchSchema]);
 
-  const fetchSchema = async (url, server) => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Construct URL with current search params
-      const fetchUrlObj = new URL(url, window.location.origin);
+  // Handle WebSocket subscriptions defined in schema
+  useEffect(() => {
+    if (!schema || !schema.websocketSubscriptions || !isConnected) return;
 
-      // Merge current search params into the fetch URL, excluding 'url' itself
-      searchParams.forEach((value, key) => {
-        if (key !== "url" && !fetchUrlObj.searchParams.has(key)) {
-          fetchUrlObj.searchParams.append(key, value);
-        }
-      });
+    const topics = schema.websocketSubscriptions
+      .map((sub) => {
+        // Replace placeholders like {server} with actual values
+        return sub.replace("{server}", selectedServer || "");
+      })
+      .filter(Boolean);
 
-      // Append selected server if not present
-      if (server && !fetchUrlObj.searchParams.has("server")) {
-        fetchUrlObj.searchParams.append("server", server);
-      }
+    topics.forEach((topic) => subscribe(topic));
 
-      const relativeFetchUrl = fetchUrlObj.pathname + fetchUrlObj.search;
+    return () => {
+      topics.forEach((topic) => unsubscribe(topic));
+    };
+  }, [schema, isConnected, selectedServer, subscribe, unsubscribe]);
 
-      const response = await get(relativeFetchUrl);
-      // Verify if response is valid schema
-      if (
-        response &&
-        (Array.isArray(response) || typeof response === "object")
-      ) {
-        setSchema(response);
-      } else {
-        setError("Invalid page definition.");
-      }
-    } catch (err) {
-      console.error("DynamicPage Error:", err);
-      setError(err.message || "Error loading page.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    // Update socketData map
+    setSocketData((prev) => {
+      const topic = lastMessage.topic;
+      return { ...prev, [topic]: lastMessage };
+    });
+  }, [lastMessage]);
 
   const handleAction = async (actionDef) => {
     if (!actionDef) return;
@@ -370,7 +681,12 @@ const DynamicPage = () => {
 
         if (res && res.status === "success") {
           addToast(res.message || "Action successful", "success");
-          if (actionDef.refresh) fetchSchema(dataUrl, selectedServer);
+          // Refresh logic if needed
+          if (actionDef.refresh) {
+            // Trigger re-fetch logic if extracted
+            fetchSchema(dataUrl, selectedServer);
+          }
+          if (actionDef.closeModal) setActiveModalId(null);
         } else {
           addToast(res?.message || "Action failed", "error");
         }
@@ -410,6 +726,12 @@ const DynamicPage = () => {
         newParams.set("url", actionDef.url);
         setSearchParams(newParams);
       }
+    } else if (actionDef.type === "open_modal") {
+      if (actionDef.modalId) {
+        setActiveModalId(actionDef.modalId);
+      }
+    } else if (actionDef.type === "close_modal") {
+      setActiveModalId(null);
     }
   };
 
@@ -436,15 +758,51 @@ const DynamicPage = () => {
 
     const props = { ...node.props };
 
+    // Inject Socket Data if needed
+    if (props.socketTopic) {
+      const topic = props.socketTopic.replace("{server}", selectedServer || "");
+      const latestMsg = socketData[topic];
+
+      props.latestSocketMessage = latestMsg;
+    }
+
+    // Wrapper for Chart to handle internal state for history
+    if (node.type === "Chart") {
+      return <ChartWrapper key={key} {...props} />;
+    }
+
+    // Wrapper for LogViewer
+    if (node.type === "LogViewer") {
+      return <LogViewerWrapper key={key} {...props} />;
+    }
+
+    // Wrapper for StatCard
+    if (node.type === "StatCard") {
+      return <StatCardWrapper key={key} {...props} />;
+    }
+
     // Handle input binding
-    if (node.type === "Input" || node.type === "Select") {
+    if (
+      node.type === "Input" ||
+      node.type === "Select" ||
+      node.type === "Switch" ||
+      node.type === "Checkbox"
+    ) {
       if (props.id) {
         const stateValue = formState[props.id];
 
-        props.value =
-          stateValue !== undefined
-            ? stateValue
-            : props.value || props.defaultValue || "";
+        // For Switch and Checkbox, value is boolean
+        if (node.type === "Switch" || node.type === "Checkbox") {
+          props.value =
+            stateValue !== undefined
+              ? stateValue
+              : props.checked || props.defaultChecked || false;
+        } else {
+          props.value =
+            stateValue !== undefined
+              ? stateValue
+              : props.value || props.defaultValue || "";
+        }
 
         props.onChange = (val) => {
           handleInputChange(props.id, val);
@@ -478,6 +836,12 @@ const DynamicPage = () => {
           endpoint: props.endpoint,
           filename: props.filename,
         });
+    }
+
+    // Modal specific props
+    if (node.type === "Modal") {
+      props.isOpen = activeModalId === props.id;
+      props.onClose = () => setActiveModalId(null);
     }
 
     // Special handling for Table rows to recursively render cells
@@ -529,6 +893,79 @@ const DynamicPage = () => {
         : renderNode(schema, 0)}
     </div>
   );
+};
+
+// --- Wrapper Components for State Handling ---
+
+const ChartWrapper = ({ latestSocketMessage, data: initialData, ...props }) => {
+  const [data, setData] = useState(initialData || []);
+
+  useEffect(() => {
+    if (latestSocketMessage && latestSocketMessage.data) {
+      const newData = latestSocketMessage.data;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setData((prev) => {
+        const updated = [...prev, newData];
+        if (updated.length > 20) updated.shift();
+        return updated;
+      });
+    }
+  }, [latestSocketMessage]);
+
+  return <ComponentRegistry.Chart data={data} {...props} />;
+};
+
+const LogViewerWrapper = ({
+  latestSocketMessage,
+  lines: initialLines,
+  ...props
+}) => {
+  const [lines, setLines] = useState(initialLines || []);
+
+  useEffect(() => {
+    if (latestSocketMessage && latestSocketMessage.data) {
+      const newContent = latestSocketMessage.data;
+      const newLines =
+        typeof newContent === "string" ? newContent.split("\n") : [newContent];
+      if (newLines.length > 0 && newLines[newLines.length - 1] === "") {
+        newLines.pop();
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLines((prev) => [...prev, ...newLines].slice(-1000));
+    }
+  }, [latestSocketMessage]);
+
+  return <ComponentRegistry.LogViewer lines={lines} {...props} />;
+};
+
+const StatCardWrapper = ({
+  latestSocketMessage,
+  value: initialValue,
+  dataKey,
+  ...props
+}) => {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (latestSocketMessage && latestSocketMessage.data && dataKey) {
+      const keys = dataKey.split(".");
+      let current = latestSocketMessage.data;
+      for (const key of keys) {
+        if (current && current[key] !== undefined) {
+          current = current[key];
+        } else {
+          current = undefined;
+          break;
+        }
+      }
+      if (current !== undefined) {
+        setValue(current);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestSocketMessage]);
+
+  return <ComponentRegistry.StatCard value={value} {...props} />;
 };
 
 export default DynamicPage;

@@ -153,7 +153,7 @@ const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       label: "BSM Settings",
       icon: <Settings size={20} />,
     },
-    { path: "/audit-log", label: "Audit Log", icon: <ScrollText size={20} /> },
+    { path: "/audit-log", label: "Logs", icon: <ScrollText size={20} /> },
   ];
 
   return (
