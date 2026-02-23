@@ -5,7 +5,6 @@ FastAPI router for managing the application's plugin system.
 This module defines endpoints for interacting with and controlling plugins.
 It provides:
 
-- An HTML page for managing plugins (:func:`~.manage_plugins_page_route`).
 - API endpoints to:
     - Get the status of all discovered plugins (:func:`~.get_plugins_status_api_route`).
     - Enable or disable a specific plugin (:func:`~.set_plugin_status_api_route`).
@@ -19,16 +18,14 @@ These routes interface with the underlying plugin management logic in
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ...api import plugins as plugins_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user
-from ..dependencies import get_app_context, get_templates
+from ..dependencies import get_app_context
 from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
@@ -69,28 +66,7 @@ class PluginApiResponse(BaseApiResponse):
     )
 
 
-# --- HTML Route ---
-@router.get(
-    "/plugins",
-    response_class=HTMLResponse,
-    name="manage_plugins_page",
-    include_in_schema=False,
-)
-async def manage_plugins_page_route(
-    request: Request,
-    current_user: User = Depends(get_admin_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for managing installed plugins.
-    """
-    identity = current_user.username
-    logger.info(f"User '{identity}' accessed plugin management page.")
-    return templates.TemplateResponse(
-        request,
-        "manage_plugins.html",
-        {"current_user": current_user},
-    )
+# --- HTML Route moved to legacy.py ---
 
 
 # --- API Route ---

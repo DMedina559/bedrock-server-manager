@@ -5,21 +5,24 @@ from bedrock_server_manager.web.dependencies import validate_server_exists
 
 def test_index_authenticated(authenticated_client: TestClient):
     """Test the index route with an authenticated user."""
-    response = authenticated_client.get("/")
+    # Updated to point to legacy route
+    response = authenticated_client.get("/legacy/")
     assert response.status_code == 200
     assert "Bedrock Server Manager" in response.text
 
 
 def test_index_unauthenticated(client: TestClient, authenticated_user):
     """Test the index route with an unauthenticated user."""
-    response = client.get("/", follow_redirects=False)
+    # Updated to point to legacy route
+    response = client.get("/legacy/", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/auth/login"
 
 
 def test_monitor_server_route(authenticated_client: TestClient, real_bedrock_server):
     """Test the monitor_server_route with an authenticated user."""
-    response = authenticated_client.get("/server/test_server/monitor")
+    # Updated to point to legacy route
+    response = authenticated_client.get("/legacy/server/test_server/monitor")
     assert response.status_code == 200
     assert "Server Monitor" in response.text
 
@@ -37,7 +40,8 @@ def test_monitor_server_route_user_input_error(authenticated_client: TestClient)
     original_override = app.dependency_overrides.get(validate_server_exists)
     app.dependency_overrides[validate_server_exists] = mock_validation
 
-    response = authenticated_client.get("/server/test-server/monitor")
+    # Updated to point to legacy route
+    response = authenticated_client.get("/legacy/server/test-server/monitor")
 
     # Restore original dependencies
     if original_override:

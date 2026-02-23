@@ -5,7 +5,8 @@ from bedrock_server_manager.api.plugins import set_plugin_status
 
 def test_manage_plugins_page_route(authenticated_client):
     """Test the manage_plugins_page_route with an authenticated user."""
-    response = authenticated_client.get("/plugins")
+    # Updated to point to legacy route
+    response = authenticated_client.get("/legacy/plugins")
     assert response.status_code == 200
     assert "Bedrock Server Manager" in response.text
 

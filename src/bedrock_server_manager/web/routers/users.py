@@ -13,15 +13,13 @@ This module provides endpoints for:
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ...context import AppContext
 from ...db.models import User
 from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
-from ..dependencies import get_app_context, get_templates
+from ..dependencies import get_app_context
 from ..schemas import User as UserSchema
 from .audit_log import create_audit_log
 
@@ -31,24 +29,6 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"],
 )
-
-
-@router.get("", response_class=HTMLResponse, include_in_schema=False)
-async def users_page(
-    request: Request,
-    current_user: UserSchema = Depends(get_moderator_user),
-    app_context: AppContext = Depends(get_app_context),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the user management page.
-    """
-    with app_context.db.session_manager() as db:  # type: ignore
-        users = db.query(User).all()
-    return templates.TemplateResponse(
-        "users.html",
-        {"request": request, "users": users, "current_user": current_user},
-    )
 
 
 @router.get("/list", response_model=List[UserSchema])

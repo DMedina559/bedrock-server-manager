@@ -52,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
   } else if (document.getElementById("plugin-list")) {
     initializeManagePluginsPage();
   } else if (document.getElementById("settings-form-container")) {
-    if (window.location.pathname.startsWith("/servers/")) {
+    if (window.location.pathname.startsWith("/legacy/servers/")) {
       initializeServerSettingsPage();
     } else {
       initializeManageSettingsPage();

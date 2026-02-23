@@ -2,11 +2,9 @@
 """
 FastAPI router for server backup, restore, and pruning operations.
 
-This module defines both HTML page-serving routes and API endpoints for
-managing backups of Bedrock server instances. Functionalities include:
+This module defines API endpoints for managing backups of Bedrock server instances.
+Functionalities include:
 
-- Displaying backup and restore menus for a server.
-- Allowing users to select specific backup files for restoration.
 - Triggering backup operations (full, world-only, specific config file).
 - Triggering restore operations (from latest, specific world backup, specific config backup).
 - Listing available backups for different components.
@@ -23,15 +21,13 @@ import os
 from typing import Any, Callable, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_moderator_user
-from ..dependencies import get_app_context, get_templates, validate_server_exists
+from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
@@ -90,181 +86,6 @@ class BackupRestoreResponse(BaseApiResponse):
     task_id: Optional[str] = Field(
         default=None, description="ID of the background task."
     )
-
-
-# --- HTML Routes ---
-@router.get(
-    "/server/{server_name}/backup",
-    response_class=HTMLResponse,
-    name="backup_menu_page",
-    include_in_schema=False,
-)
-async def backup_menu_page(
-    request: Request,
-    server_name: str,
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Displays the backup menu page for a specific server.
-    """
-    identity = current_user.username
-    logger.info(f"User '{identity}' accessed backup menu for server '{server_name}'.")
-    return templates.TemplateResponse(
-        request,
-        "backup_menu.html",
-        {"current_user": current_user, "server_name": server_name},
-    )
-
-
-@router.get(
-    "/server/{server_name}/backup/select",
-    response_class=HTMLResponse,
-    name="backup_config_select_page",
-    include_in_schema=False,
-)
-async def backup_config_select_page(
-    request: Request,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Displays the page for selecting specific configuration files to back up.
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' accessed config backup selection page for server '{server_name}'."
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "backup_config_options.html",
-        {"current_user": current_user, "server_name": server_name},
-    )
-
-
-@router.get(
-    "/server/{server_name}/restore",
-    response_class=HTMLResponse,
-    name="restore_menu_page",
-    include_in_schema=False,
-)
-async def restore_menu_page(
-    request: Request,
-    server_name: str,
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Displays the restore menu page for a specific server.
-    """
-    identity = current_user.username
-    logger.info(f"User '{identity}' accessed restore menu for server '{server_name}'.")
-    return templates.TemplateResponse(
-        request,
-        "restore_menu.html",
-        {"current_user": current_user, "server_name": server_name},
-    )
-
-
-@router.get(
-    "/server/{server_name}/restore/{restore_type}/select_file",
-    response_class=HTMLResponse,
-    name="select_backup_file_page",
-    include_in_schema=False,
-)
-async def show_select_backup_file_page(
-    request: Request,
-    restore_type: str,
-    server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Displays the page for selecting a specific backup file for restoration.
-    """
-    identity = current_user.username
-    logger.info(
-        f"User '{identity}' viewing selection page for '{restore_type}' backups for server '{server_name}'."
-    )
-
-    valid_types = ["world", "properties", "allowlist", "permissions"]
-    if restore_type.lower() not in valid_types:
-        redirect_url = request.url_for(
-            "restore_menu_page", server_name=server_name
-        ).include_query_params(
-            message=f"Invalid restore type '{restore_type}' specified.",
-            category="warning",
-        )
-        return RedirectResponse(
-            url=str(redirect_url), status_code=status.HTTP_302_FOUND
-        )
-
-    app_context = request.app.state.app_context
-    try:
-        api_result = backup_restore_api.list_backup_files(
-            server_name=server_name,
-            backup_type=restore_type,
-            app_context=app_context,
-        )
-        if api_result.get("status") == "success":
-            full_paths = api_result.get("backups", [])
-            if not full_paths:
-                redirect_url = request.url_for(
-                    "restore_menu_page", server_name=server_name
-                ).include_query_params(
-                    message=f"No '{restore_type}' backups found for server '{server_name}'.",
-                    category="info",
-                )
-                return RedirectResponse(
-                    url=str(redirect_url), status_code=status.HTTP_302_FOUND
-                )
-
-            backups_for_template = [
-                {
-                    "name": os.path.basename(p),
-                    "path": os.path.basename(p),
-                }
-                for p in full_paths
-            ]
-            return templates.TemplateResponse(
-                request,
-                "restore_select_backup.html",
-                {
-                    "current_user": current_user,
-                    "server_name": server_name,
-                    "restore_type": restore_type,
-                    "backups": backups_for_template,
-                },
-            )
-        else:
-            error_msg = api_result.get("message", "Unknown error listing backups.")
-            logger.error(
-                f"Error listing backups for '{server_name}' ({restore_type}): {error_msg}"
-            )
-            redirect_url = request.url_for(
-                "restore_menu_page", server_name=server_name
-            ).include_query_params(
-                message=f"Error listing backups: {error_msg}", category="error"
-            )
-            return RedirectResponse(
-                url=str(redirect_url), status_code=status.HTTP_302_FOUND
-            )
-    except Exception as e:
-        logger.error(
-            f"Unexpected error on backup selection page for '{server_name}' ({restore_type}): {e}",
-            exc_info=True,
-        )
-        redirect_url = request.url_for(
-            "restore_menu_page", server_name=server_name
-        ).include_query_params(
-            message="An unexpected error occurred while preparing backup selection.",
-            category="error",
-        )
-        return RedirectResponse(
-            url=str(redirect_url), status_code=status.HTTP_302_FOUND
-        )
 
 
 # --- API Routes ---

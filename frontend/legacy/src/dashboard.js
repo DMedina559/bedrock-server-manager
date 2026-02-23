@@ -87,34 +87,34 @@ export function initializeDashboard() {
           let targetUrl = "#";
           switch (action.id) {
             case "config-link-properties":
-              targetUrl = `/server/${serverNameEncoded}/configure_properties`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/configure_properties`;
               break;
             case "config-link-allowlist":
-              targetUrl = `/server/${serverNameEncoded}/configure_allowlist`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/configure_allowlist`;
               break;
             case "config-link-permissions":
-              targetUrl = `/server/${serverNameEncoded}/configure_permissions`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/configure_permissions`;
               break;
             case "config-link-monitor":
-              targetUrl = `/server/${serverNameEncoded}/monitor`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/monitor`;
               break;
             case "config-link-service":
-              targetUrl = `/server/${serverNameEncoded}/configure_service`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/configure_service`;
               break;
             case "task-scheduler-menu":
-              targetUrl = `/server/${serverNameEncoded}/scheduler`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/scheduler`;
               break;
             case "content-link-world":
-              targetUrl = `/server/${serverNameEncoded}/install_world`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/install_world`;
               break;
             case "content-link-addon":
-              targetUrl = `/server/${serverNameEncoded}/install_addon`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/install_addon`;
               break;
             case "backup-link-menu":
-              targetUrl = `/server/${serverNameEncoded}/backup`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/backup`;
               break;
             case "restore-link-menu":
-              targetUrl = `/server/${serverNameEncoded}/restore`;
+              targetUrl = `/legacy/server/${serverNameEncoded}/restore`;
               break;
             default:
               targetUrl = "#";
@@ -146,7 +146,7 @@ export function initializeDashboard() {
             <p><span class="info-label">Players:</span> <span class="player-count-text">${server.player_count}</span></p>
         </div>
         <div class="server-card-actions">
-            <a href="/servers/${safeServerName}/settings" class="action-link" title="Server Settings">Settings</a>
+            <a href="/legacy/servers/${safeServerName}/settings" class="action-link" title="Server Settings">Settings</a>
         </div>`;
     return card;
   }
@@ -205,7 +205,7 @@ export function initializeDashboard() {
                         <p><span class="info-label">Players:</span> <span class="player-count-text">${serverData.player_count}</span></p>
                     </div>
                     <div class="server-card-actions">
-                        <a href="/servers/${safeServerName}/settings" class="action-link" title="Server Settings">Settings</a>
+                        <a href="/legacy/servers/${safeServerName}/settings" class="action-link" title="Server Settings">Settings</a>
                     </div>`;
         } else {
           card.remove();

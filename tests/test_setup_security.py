@@ -38,6 +38,7 @@ def test_setup_status_setup_done(client, app_context):
     assert response.status_code == 200
     assert response.json() == {"needs_setup": False}
 
-    response = client.get("/setup", follow_redirects=False)
+    # Updated to point to legacy setup route
+    response = client.get("/legacy/setup", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/"

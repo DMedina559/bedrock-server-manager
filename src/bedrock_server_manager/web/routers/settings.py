@@ -6,7 +6,6 @@ This module provides endpoints for viewing and modifying the application's
 global configuration, typically stored in ``bedrock_server_manager.json``.
 It includes:
 
-- An HTML page for users to manage settings (:func:`~.manage_settings_page_route`).
 - API endpoints to:
     - Retrieve all current global settings (:func:`~.get_all_settings_api_route`).
     - Set a specific global setting by its key (:func:`~.set_setting_api_route`).
@@ -21,16 +20,14 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ...api import settings as settings_api
 from ...context import AppContext
 from ...error import BSMError, MissingArgumentError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user
-from ..dependencies import get_app_context, get_templates
+from ..dependencies import get_app_context
 from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
@@ -61,28 +58,7 @@ class SettingsResponse(BaseApiResponse):
     )
 
 
-# --- HTML Route: /settings ---
-@router.get(
-    "/settings",
-    response_class=HTMLResponse,
-    name="manage_settings_page",
-    include_in_schema=False,
-)
-async def manage_settings_page_route(
-    request: Request,
-    current_user: User = Depends(get_admin_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the HTML page for managing global application settings.
-    """
-    identity = current_user.username
-    logger.info(f"User '{identity}' accessed global settings page.")
-    return templates.TemplateResponse(
-        request,
-        "manage_settings.html",
-        {"current_user": current_user},
-    )
+# --- HTML Route moved to legacy.py ---
 
 
 # --- API Route: Get All Global Settings ---
