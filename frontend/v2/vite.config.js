@@ -1,13 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Custom plugin to redirect /v2 to /v2/
-const redirectV2 = () => ({
-  name: "redirect-v2",
+// Custom plugin to redirect /app to /app/
+const redirectApp = () => ({
+  name: "redirect-app",
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
-      if (req.url === "/v2") {
-        res.writeHead(301, { Location: "/v2/" });
+      if (req.url === "/app") {
+        res.writeHead(301, { Location: "/app/" });
         res.end();
       } else {
         next();
@@ -18,8 +18,8 @@ const redirectV2 = () => ({
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), redirectV2()],
-  base: "/v2/",
+  plugins: [react(), redirectApp()],
+  base: "/app/",
   build: {
     outDir: "../../src/bedrock_server_manager/web/static/v2",
     emptyOutDir: true,

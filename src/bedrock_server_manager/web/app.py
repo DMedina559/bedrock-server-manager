@@ -89,7 +89,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     # Mount the V2 static assets (JS/CSS built by Vite) so they are accessible
     v2_assets_dir = os.path.join(STATIC_DIR, "v2", "assets")
     if os.path.isdir(v2_assets_dir):
-        app.mount("/v2/assets", StaticFiles(directory=v2_assets_dir), name="v2_assets")
+        app.mount(
+            "/app/assets", StaticFiles(directory=v2_assets_dir), name="app_assets"
+        )
 
     # Mount custom themes directory
     themes_path = settings.get("paths.themes")
@@ -107,6 +109,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/docs",
             "/openapi.json",
             "/v2",
+            "/app",
         ]
 
         if bcm_config.needs_setup(request.app.state.app_context) and not any(
@@ -151,7 +154,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     app.include_router(routers.audit_log_router)
     app.include_router(routers.server_settings_router)
     app.include_router(routers.websocket_router)
-    app.include_router(routers.v2_ui_router)
+    app.include_router(routers.app_ui_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:

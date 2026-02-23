@@ -113,7 +113,7 @@ const Users = () => {
         const match = response.redirect_url.match(/register\/([a-zA-Z0-9_-]+)/);
         if (match && match[1]) {
           const token = match[1];
-          const v2Link = `${window.location.origin}/v2/register/${token}`;
+          const v2Link = `${window.location.origin}/app/register/${token}`;
           setGeneratedLink(v2Link);
           addToast("Invitation link generated.", "success");
         } else {
