@@ -145,7 +145,7 @@ class TestInstallUpdate:
             assert "next_step_url" in result
             assert (
                 result["next_step_url"]
-                == "/server/new-server/configure_properties?new_install=true"
+                == "/legacy/server/new-server/configure_properties?new_install=true"
             )
             mock_install.assert_called_once()
 
