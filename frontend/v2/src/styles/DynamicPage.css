@@ -281,3 +281,112 @@ input:checked + .slider:before {
   width: 18px;
   height: 18px;
 }
+
+/* --- Chart --- */
+.chart-container {
+  margin-bottom: 20px;
+  min-height: 200px;
+}
+
+/* --- LogViewer --- */
+.log-viewer {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 10px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 0.85em;
+  overflow-y: auto;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #555);
+  white-space: pre-wrap;
+  margin-bottom: 10px;
+}
+
+.log-line {
+  min-height: 1.2em;
+}
+
+.log-placeholder {
+  color: #666;
+  font-style: italic;
+  text-align: center;
+  padding-top: 20px;
+}
+
+/* --- StatCard --- */
+.stat-card {
+  background-color: var(--server-card-background-color, #444);
+  padding: 15px;
+  border: 1px solid var(--border-color, #555);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.stat-icon {
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-size: 0.9em;
+  color: var(--text-color, #ccc);
+  opacity: 0.8;
+}
+
+.stat-value {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: var(--header-text-color, #eee);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stat-trend {
+  font-size: 0.8em;
+  margin-left: 5px;
+}
+
+.trend-up {
+  color: #4caf50;
+}
+.trend-down {
+  color: #f44336;
+}
+
+/* --- StatusIndicator --- */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+.status-dot {
+  font-size: 1.2em;
+  margin-right: 5px;
+  line-height: 1;
+}
+
+.status-running .status-dot {
+  color: #4caf50;
+}
+.status-stopped .status-dot {
+  color: #f44336;
+}
+.status-warning .status-dot {
+  color: #ff9800;
+}

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { get, post, getJwtToken } from "../api";
 import { useToast } from "../ToastContext";
 import { useSearchParams } from "react-router-dom";
 import { useServer } from "../ServerContext";
+import { useWebSocket } from "../WebSocketContext";
 import {
   Activity,
   AlertCircle,
@@ -19,7 +20,23 @@ import {
   ChevronUp,
   Copy,
   ExternalLink,
+  Play,
+  Square,
+  RotateCcw,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+} from "recharts";
 
 import "../styles/DynamicPage.css";
 
@@ -275,6 +292,103 @@ const ComponentRegistry = {
     );
   },
 
+  // Advanced Visualizations
+  Chart: ({
+    type = "line",
+    data,
+    xAxis,
+    series,
+    height = 300,
+    className = "",
+  }) => {
+    const ChartComponent =
+      type === "area" ? AreaChart : type === "bar" ? BarChart : LineChart;
+    const DataComponent = type === "area" ? Area : type === "bar" ? Bar : Line;
+
+    return (
+      <div
+        className={`chart-container ${className}`}
+        style={{ width: "100%", height: height }}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <ChartComponent data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+            <XAxis dataKey={xAxis} stroke="#888" />
+            <YAxis stroke="#888" />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#333",
+                border: "1px solid #555",
+              }}
+              labelStyle={{ color: "#ccc" }}
+            />
+            {series &&
+              series.map((s, idx) => (
+                <DataComponent
+                  key={idx}
+                  type="monotone"
+                  dataKey={s.dataKey}
+                  stroke={s.color}
+                  fill={s.color} // For Area/Bar
+                  name={s.name}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ))}
+          </ChartComponent>
+        </ResponsiveContainer>
+      </div>
+    );
+  },
+  LogViewer: ({ lines, height = 200, className = "" }) => {
+    const logEndRef = useRef(null);
+    useEffect(() => {
+      if (logEndRef.current) {
+        logEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    }, [lines]);
+
+    return (
+      <div className={`log-viewer ${className}`} style={{ height: height }}>
+        {!lines || lines.length === 0 ? (
+          <div className="log-placeholder">Waiting for logs...</div>
+        ) : (
+          lines.map((line, idx) => (
+            <div key={idx} className="log-line">
+              {line}
+            </div>
+          ))
+        )}
+        <div ref={logEndRef} />
+      </div>
+    );
+  },
+  StatCard: ({ label, value, icon, trend, className = "" }) => (
+    <div className={`stat-card ${className}`}>
+      {icon && (
+        <div className="stat-icon">
+          <ComponentRegistry.Icon name={icon} size={24} />
+        </div>
+      )}
+      <div className="stat-content">
+        <div className="stat-label">{label}</div>
+        <div className="stat-value">{value}</div>
+        {trend && (
+          <div
+            className={`stat-trend ${trend === "up" ? "trend-up" : trend === "down" ? "trend-down" : ""}`}
+          >
+            {trend === "up" ? "▲" : trend === "down" ? "▼" : "•"}
+          </div>
+        )}
+      </div>
+    </div>
+  ),
+  StatusIndicator: ({ status, text, className = "" }) => (
+    <span className={`status-indicator status-${status} ${className}`}>
+      <span className="status-dot">●</span> {text}
+    </span>
+  ),
+
   // Icons
   Icon: ({ name, size = 20, className = "" }) => {
     const icons = {
@@ -293,6 +407,9 @@ const ComponentRegistry = {
       ChevronUp,
       Copy,
       ExternalLink,
+      Play,
+      Square,
+      RotateCcw,
     };
     const LucideIcon = icons[name] || Info;
     return <LucideIcon size={size} className={className} />;
@@ -441,12 +558,15 @@ const DynamicPage = () => {
   const [error, setError] = useState(null);
   const { addToast } = useToast();
   const { selectedServer } = useServer();
+  const { isConnected, subscribe, unsubscribe, lastMessage } = useWebSocket();
 
   // State for inputs (basic form handling)
   // We'll store input values in a map: { [inputId]: value }
   const [formState, setFormState] = useState({});
   // State for active modal
   const [activeModalId, setActiveModalId] = useState(null);
+  // State for WebSocket data: { [topic]: messageData }
+  const [socketData, setSocketData] = useState({});
 
   // Using useCallback to define fetchSchema so it can be added to dependencies
   const fetchSchema = useCallback(
@@ -495,9 +615,39 @@ const DynamicPage = () => {
     if (dataUrl) {
       setFormState({}); // Clear state on URL change
       setActiveModalId(null);
+      setSocketData({}); // Clear socket data on page change
       fetchSchema(dataUrl, selectedServer);
     }
-  }, [dataUrl, selectedServer, fetchSchema]); // Now fetchSchema is a stable dependency
+  }, [dataUrl, selectedServer, fetchSchema]);
+
+  // Handle WebSocket subscriptions defined in schema
+  useEffect(() => {
+    if (!schema || !schema.websocketSubscriptions || !isConnected) return;
+
+    const topics = schema.websocketSubscriptions
+      .map((sub) => {
+        // Replace placeholders like {server} with actual values
+        return sub.replace("{server}", selectedServer || "");
+      })
+      .filter(Boolean);
+
+    topics.forEach((topic) => subscribe(topic));
+
+    return () => {
+      topics.forEach((topic) => unsubscribe(topic));
+    };
+  }, [schema, isConnected, selectedServer, subscribe, unsubscribe]);
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    // Update socketData map
+    setSocketData((prev) => {
+      const topic = lastMessage.topic;
+      return { ...prev, [topic]: lastMessage };
+    });
+  }, [lastMessage]);
 
   const handleAction = async (actionDef) => {
     if (!actionDef) return;
@@ -531,7 +681,11 @@ const DynamicPage = () => {
 
         if (res && res.status === "success") {
           addToast(res.message || "Action successful", "success");
-          if (actionDef.refresh) fetchSchema(dataUrl, selectedServer);
+          // Refresh logic if needed
+          if (actionDef.refresh) {
+            // Trigger re-fetch logic if extracted
+            fetchSchema(dataUrl, selectedServer);
+          }
           if (actionDef.closeModal) setActiveModalId(null);
         } else {
           addToast(res?.message || "Action failed", "error");
@@ -603,6 +757,29 @@ const DynamicPage = () => {
     }
 
     const props = { ...node.props };
+
+    // Inject Socket Data if needed
+    if (props.socketTopic) {
+      const topic = props.socketTopic.replace("{server}", selectedServer || "");
+      const latestMsg = socketData[topic];
+
+      props.latestSocketMessage = latestMsg;
+    }
+
+    // Wrapper for Chart to handle internal state for history
+    if (node.type === "Chart") {
+      return <ChartWrapper key={key} {...props} />;
+    }
+
+    // Wrapper for LogViewer
+    if (node.type === "LogViewer") {
+      return <LogViewerWrapper key={key} {...props} />;
+    }
+
+    // Wrapper for StatCard
+    if (node.type === "StatCard") {
+      return <StatCardWrapper key={key} {...props} />;
+    }
 
     // Handle input binding
     if (
@@ -716,6 +893,79 @@ const DynamicPage = () => {
         : renderNode(schema, 0)}
     </div>
   );
+};
+
+// --- Wrapper Components for State Handling ---
+
+const ChartWrapper = ({ latestSocketMessage, data: initialData, ...props }) => {
+  const [data, setData] = useState(initialData || []);
+
+  useEffect(() => {
+    if (latestSocketMessage && latestSocketMessage.data) {
+      const newData = latestSocketMessage.data;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setData((prev) => {
+        const updated = [...prev, newData];
+        if (updated.length > 20) updated.shift();
+        return updated;
+      });
+    }
+  }, [latestSocketMessage]);
+
+  return <ComponentRegistry.Chart data={data} {...props} />;
+};
+
+const LogViewerWrapper = ({
+  latestSocketMessage,
+  lines: initialLines,
+  ...props
+}) => {
+  const [lines, setLines] = useState(initialLines || []);
+
+  useEffect(() => {
+    if (latestSocketMessage && latestSocketMessage.data) {
+      const newContent = latestSocketMessage.data;
+      const newLines =
+        typeof newContent === "string" ? newContent.split("\n") : [newContent];
+      if (newLines.length > 0 && newLines[newLines.length - 1] === "") {
+        newLines.pop();
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLines((prev) => [...prev, ...newLines].slice(-1000));
+    }
+  }, [latestSocketMessage]);
+
+  return <ComponentRegistry.LogViewer lines={lines} {...props} />;
+};
+
+const StatCardWrapper = ({
+  latestSocketMessage,
+  value: initialValue,
+  dataKey,
+  ...props
+}) => {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (latestSocketMessage && latestSocketMessage.data && dataKey) {
+      const keys = dataKey.split(".");
+      let current = latestSocketMessage.data;
+      for (const key of keys) {
+        if (current && current[key] !== undefined) {
+          current = current[key];
+        } else {
+          current = undefined;
+          break;
+        }
+      }
+      if (current !== undefined) {
+        setValue(current);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestSocketMessage]);
+
+  return <ComponentRegistry.StatCard value={value} {...props} />;
 };
 
 export default DynamicPage;
