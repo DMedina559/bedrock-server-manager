@@ -6,6 +6,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
+import { useAuth } from "./AuthContext";
 
 const WebSocketContext = createContext(null);
 
@@ -18,15 +19,23 @@ export const useWebSocket = () => {
 };
 
 export const WebSocketProvider = ({ children }) => {
+  const { user } = useAuth();
   const [lastMessage, setLastMessage] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isFallback, setIsFallback] = useState(false);
   const ws = useRef(null);
   const reconnectTimeout = useRef(null);
   const pendingSubscriptions = useRef(new Set());
   const connectRef = useRef(null);
   const reconnectAttempts = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 3;
 
   const connect = useCallback(async () => {
+    // If not authenticated, don't attempt to connect
+    if (!user) {
+      return;
+    }
+
     // If already connected or connecting, don't reconnect
     if (
       ws.current &&
@@ -38,6 +47,19 @@ export const WebSocketProvider = ({ children }) => {
 
     if (typeof window === "undefined") return;
 
+    // Check if we should fallback
+    if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn(
+        "Max reconnect attempts reached. Switching to polling fallback.",
+      );
+      // Yield to avoid synchronous state update in effect
+      setTimeout(() => {
+        setIsFallback(true);
+        setIsConnected(false);
+      }, 0);
+      return;
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
     const wsUrl = `${protocol}//${host}/ws`;
@@ -47,8 +69,9 @@ export const WebSocketProvider = ({ children }) => {
       token = localStorage.getItem("jwt_token");
     }
 
-    // Try to refresh token if missing or if previous attempts failed
-    if (!token || reconnectAttempts.current > 0) {
+    // Attempt to refresh token only if we have a user (logic implies we should have a token)
+    // or if we are retrying.
+    if ((!token && user) || reconnectAttempts.current > 0) {
       console.log("Refreshing token for WebSocket...");
       try {
         const response = await fetch("/auth/refresh-token");
@@ -80,6 +103,7 @@ export const WebSocketProvider = ({ children }) => {
       socket.onopen = () => {
         console.log("WebSocket Connected");
         setIsConnected(true);
+        setIsFallback(false);
         reconnectAttempts.current = 0; // Reset attempts on success
 
         if (pendingSubscriptions.current.size > 0) {
@@ -108,11 +132,12 @@ export const WebSocketProvider = ({ children }) => {
         setIsConnected(false);
         ws.current = null;
 
+        // If closed because of auth error (1008), we might retry with refresh
         if (event.code === 1008) {
           console.error("WebSocket authentication failed.");
-          // We will retry, but maybe force a token refresh next time
-          reconnectAttempts.current += 1;
         }
+
+        reconnectAttempts.current += 1;
 
         if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
         // Use the ref to call the function recursively
@@ -126,16 +151,42 @@ export const WebSocketProvider = ({ children }) => {
       };
     } catch (error) {
       console.error("WebSocket Connection Initialization Failed:", error);
+      reconnectAttempts.current += 1;
+      if (connectRef.current) {
+        reconnectTimeout.current = setTimeout(connectRef.current, 3000);
+      }
     }
-  }, []);
+  }, [user]);
 
-  // Update the ref whenever connect changes (though it shouldn't change often)
+  // Update the ref whenever connect changes
   useEffect(() => {
     connectRef.current = connect;
   }, [connect]);
 
   useEffect(() => {
-    connect();
+    if (user) {
+      connect();
+    } else {
+      // If user logs out, close connection
+      if (ws.current) {
+        console.log("User logged out, closing WebSocket.");
+        ws.current.onopen = null;
+        ws.current.onmessage = null;
+        ws.current.onerror = null;
+        ws.current.onclose = null;
+        ws.current.close();
+        ws.current = null;
+      }
+      // Avoid calling setState synchronously
+      setTimeout(() => {
+        setIsConnected(false);
+        setIsFallback(false);
+      }, 0);
+      reconnectAttempts.current = 0;
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+      }
+    }
 
     return () => {
       if (ws.current) {
@@ -149,7 +200,7 @@ export const WebSocketProvider = ({ children }) => {
         clearTimeout(reconnectTimeout.current);
       }
     };
-  }, [connect]);
+  }, [connect, user]);
 
   const sendMessage = useCallback((msg) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -174,6 +225,8 @@ export const WebSocketProvider = ({ children }) => {
   }, []);
 
   const reconnect = useCallback(() => {
+    reconnectAttempts.current = 0; // Reset attempts on manual reconnect
+    setIsFallback(false);
     if (ws.current) {
       ws.current.close(); // This will trigger onclose which triggers reconnect
     } else {
@@ -185,6 +238,7 @@ export const WebSocketProvider = ({ children }) => {
     <WebSocketContext.Provider
       value={{
         isConnected,
+        isFallback,
         lastMessage,
         sendMessage,
         subscribe,

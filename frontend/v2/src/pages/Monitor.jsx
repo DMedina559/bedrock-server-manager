@@ -15,7 +15,8 @@ import {
 import { Play, Square, RotateCcw, Terminal, FileText } from "lucide-react";
 
 const Monitor = () => {
-  const { isConnected, lastMessage, subscribe, unsubscribe } = useWebSocket();
+  const { isConnected, isFallback, lastMessage, subscribe, unsubscribe } =
+    useWebSocket();
   const { selectedServer } = useServer();
   const { addToast } = useToast();
 
@@ -32,6 +33,22 @@ const Monitor = () => {
       const data = await get(`/api/server/${selectedServer}/process_info`);
       if (data && data.status === "success" && data.data?.process_info) {
         setProcessInfo(data.data.process_info);
+        // Only update history on polling if we want, or rely on WS
+        // If polling, we should update history here too
+        if (isFallback) {
+          const info = data.data.process_info;
+          setUsageHistory((prev) => {
+            const newPoint = {
+              time: new Date().toLocaleTimeString(),
+              cpu: info.cpu_percent || 0,
+              memory: info.memory_mb || 0,
+            };
+            // Limit history
+            const newData = [...prev, newPoint];
+            if (newData.length > 20) newData.shift();
+            return newData;
+          });
+        }
       } else {
         setProcessInfo(null);
       }
@@ -42,7 +59,7 @@ const Monitor = () => {
         console.warn("Failed to fetch initial status", error);
       }
     }
-  }, [selectedServer]);
+  }, [selectedServer, isFallback]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -77,6 +94,19 @@ const Monitor = () => {
       };
     }
   }, [isConnected, selectedServer, subscribe, unsubscribe, fetchStatus]);
+
+  // Handle Polling fallback
+  useEffect(() => {
+    let intervalId = null;
+    if (isFallback && selectedServer) {
+      console.log("WebSocket fallback active: polling monitor stats every 2s");
+      fetchStatus();
+      intervalId = setInterval(fetchStatus, 2000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isFallback, selectedServer, fetchStatus]);
 
   // Handle incoming WebSocket messages
   useEffect(() => {
@@ -204,6 +234,17 @@ const Monitor = () => {
           >
             {isConnected ? "• Live" : "• Disconnected"}
           </span>
+          {isFallback && (
+            <span
+              style={{
+                fontSize: "0.8em",
+                color: "orange",
+                fontStyle: "italic",
+              }}
+            >
+              (Polling Mode)
+            </span>
+          )}
         </div>
       </div>
 
