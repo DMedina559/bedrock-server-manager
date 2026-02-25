@@ -74,57 +74,58 @@ export function initializeDashboard() {
     globalActionButtons.forEach((button) => (button.disabled = !hasSelection));
     serverDependentSections.forEach((section) => {
       const span = section.querySelector('span[id^="selected-server-"]');
-      const actions = section.querySelectorAll(".action-button, .action-link");
       if (span) {
         span.textContent = hasSelection
           ? selectedServerName
           : "(No server selected)";
         span.style.fontStyle = hasSelection ? "normal" : "italic";
       }
-      actions.forEach((action) => {
-        action.disabled = !hasSelection;
-        if (action.tagName === "A" && action.id && hasSelection) {
-          let targetUrl = "#";
-          switch (action.id) {
-            case "config-link-properties":
-              targetUrl = `/legacy/server/${serverNameEncoded}/configure_properties`;
-              break;
-            case "config-link-allowlist":
-              targetUrl = `/legacy/server/${serverNameEncoded}/configure_allowlist`;
-              break;
-            case "config-link-permissions":
-              targetUrl = `/legacy/server/${serverNameEncoded}/configure_permissions`;
-              break;
-            case "config-link-monitor":
-              targetUrl = `/legacy/server/${serverNameEncoded}/monitor`;
-              break;
-            case "config-link-service":
-              targetUrl = `/legacy/server/${serverNameEncoded}/configure_service`;
-              break;
-            case "task-scheduler-menu":
-              targetUrl = `/legacy/server/${serverNameEncoded}/scheduler`;
-              break;
-            case "content-link-world":
-              targetUrl = `/legacy/server/${serverNameEncoded}/install_world`;
-              break;
-            case "content-link-addon":
-              targetUrl = `/legacy/server/${serverNameEncoded}/install_addon`;
-              break;
-            case "backup-link-menu":
-              targetUrl = `/legacy/server/${serverNameEncoded}/backup`;
-              break;
-            case "restore-link-menu":
-              targetUrl = `/legacy/server/${serverNameEncoded}/restore`;
-              break;
-            default:
-              targetUrl = "#";
-              break;
+      section
+        .querySelectorAll(".action-button, .action-link")
+        .forEach((action) => {
+          action.disabled = !hasSelection;
+          if (action.tagName === "A" && action.id && hasSelection) {
+            let targetUrl = "#";
+            switch (action.id) {
+              case "config-link-properties":
+                targetUrl = `/legacy/server/${serverNameEncoded}/configure_properties`;
+                break;
+              case "config-link-allowlist":
+                targetUrl = `/legacy/server/${serverNameEncoded}/configure_allowlist`;
+                break;
+              case "config-link-permissions":
+                targetUrl = `/legacy/server/${serverNameEncoded}/configure_permissions`;
+                break;
+              case "config-link-monitor":
+                targetUrl = `/legacy/server/${serverNameEncoded}/monitor`;
+                break;
+              case "config-link-service":
+                targetUrl = `/legacy/server/${serverNameEncoded}/configure_service`;
+                break;
+              case "task-scheduler-menu":
+                targetUrl = `/legacy/server/${serverNameEncoded}/scheduler`;
+                break;
+              case "content-link-world":
+                targetUrl = `/legacy/server/${serverNameEncoded}/install_world`;
+                break;
+              case "content-link-addon":
+                targetUrl = `/legacy/server/${serverNameEncoded}/install_addon`;
+                break;
+              case "backup-link-menu":
+                targetUrl = `/legacy/server/${serverNameEncoded}/backup`;
+                break;
+              case "restore-link-menu":
+                targetUrl = `/legacy/server/${serverNameEncoded}/restore`;
+                break;
+              default:
+                targetUrl = "#";
+                break;
+            }
+            action.href = targetUrl;
+          } else if (action.tagName === "A" && !hasSelection) {
+            action.href = "#";
           }
-          action.href = targetUrl;
-        } else if (action.tagName === "A" && !hasSelection) {
-          action.href = "#";
-        }
-      });
+        });
     });
   }
 

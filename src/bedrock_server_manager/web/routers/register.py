@@ -72,7 +72,7 @@ async def generate_token(
 
     return {
         "status": "success",
-        "redirect_url": f"/users?message=Registration link generated: {registration_link}",
+        "redirect_url": f"/legacy/users?message=Registration link generated: {registration_link}",
     }
 
 
