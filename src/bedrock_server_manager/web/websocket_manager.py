@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 from bedrock_server_manager.web.auth_utils import User
 
@@ -69,6 +69,12 @@ class ConnectionManager:
             client = self.active_connections[client_id]
             try:
                 await client.websocket.send_text(json.dumps(data))
+            except (WebSocketDisconnect, RuntimeError) as e:
+                # Catch both normal disconnection and the "WebSocket is not connected" RuntimeError
+                logger.info(
+                    f"Failed to send message to client {client_id} (disconnected): {e}"
+                )
+                self.disconnect(client_id)
             except Exception as e:
                 logger.error(f"Failed to send message to client {client_id}: {e}")
                 # Consider the connection lost and disconnect the client

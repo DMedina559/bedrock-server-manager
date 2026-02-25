@@ -76,16 +76,28 @@ describe("ServerConfig", () => {
 
     render(<ServerConfig />);
 
+    // Wait for the delete button to be fully visible and rendered
     await waitFor(() => {
-      expect(screen.getByText("Delete Server")).toBeInTheDocument();
+      const deleteText = screen.getByText("Delete Server");
+      expect(deleteText).toBeInTheDocument();
+      const deleteBtn = deleteText.closest("button");
+      expect(deleteBtn).toBeInTheDocument();
+      // Ensure the button isn't disabled (though logic says it shouldn't be)
+      expect(deleteBtn).not.toBeDisabled();
     });
 
-    fireEvent.click(screen.getByText("Delete Server"));
+    // Use closest("button") to ensure we click the button element, not just the text node
+    const deleteBtn = screen.getByText("Delete Server").closest("button");
+    fireEvent.click(deleteBtn);
 
-    expect(confirmSpy).toHaveBeenCalledWith(
-      expect.stringContaining("TestServer"),
-    );
+    // Wait for the confirmation dialog interaction
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith(
+        expect.stringContaining("TestServer"),
+      );
+    });
 
+    // Wait for the API call
     await waitFor(() => {
       expect(api.del).toHaveBeenCalledWith("/api/server/TestServer/delete");
     });

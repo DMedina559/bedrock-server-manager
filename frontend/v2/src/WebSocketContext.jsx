@@ -28,7 +28,8 @@ export const WebSocketProvider = ({ children }) => {
   const pendingSubscriptions = useRef(new Set());
   const connectRef = useRef(null);
   const reconnectAttempts = useRef(0);
-  const MAX_RECONNECT_ATTEMPTS = 3;
+  const isConnecting = useRef(false);
+  const MAX_RECONNECT_ATTEMPTS = 5;
 
   const connect = useCallback(async () => {
     // If not authenticated, don't attempt to connect
@@ -36,12 +37,16 @@ export const WebSocketProvider = ({ children }) => {
       return;
     }
 
-    // If already connected or connecting, don't reconnect
+    // If already connected, or explicitly connecting, don't reconnect
     if (
       ws.current &&
       (ws.current.readyState === WebSocket.OPEN ||
         ws.current.readyState === WebSocket.CONNECTING)
     ) {
+      return;
+    }
+
+    if (isConnecting.current) {
       return;
     }
 
@@ -59,6 +64,8 @@ export const WebSocketProvider = ({ children }) => {
       }, 0);
       return;
     }
+
+    isConnecting.current = true;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
@@ -89,6 +96,7 @@ export const WebSocketProvider = ({ children }) => {
 
     if (!token) {
       console.warn("No token found for WebSocket, skipping connection.");
+      isConnecting.current = false;
       return;
     }
 
@@ -105,6 +113,7 @@ export const WebSocketProvider = ({ children }) => {
         setIsConnected(true);
         setIsFallback(false);
         reconnectAttempts.current = 0; // Reset attempts on success
+        isConnecting.current = false;
 
         if (pendingSubscriptions.current.size > 0) {
           console.log(
@@ -131,6 +140,7 @@ export const WebSocketProvider = ({ children }) => {
         );
         setIsConnected(false);
         ws.current = null;
+        isConnecting.current = false;
 
         // If closed because of auth error (1008), we might retry with refresh
         if (event.code === 1008) {
@@ -140,20 +150,35 @@ export const WebSocketProvider = ({ children }) => {
         reconnectAttempts.current += 1;
 
         if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s... capped at 30s
+        const delay = Math.min(
+          1000 * Math.pow(2, reconnectAttempts.current - 1),
+          30000,
+        );
+        console.log(`Reconnecting in ${delay}ms...`);
+
         // Use the ref to call the function recursively
         if (connectRef.current) {
-          reconnectTimeout.current = setTimeout(connectRef.current, 3000);
+          reconnectTimeout.current = setTimeout(connectRef.current, delay);
         }
       };
 
       socket.onerror = (error) => {
         console.error("WebSocket Error:", error);
+        // onError usually followed by onClose, so we handle reconnect there
+        isConnecting.current = false;
       };
     } catch (error) {
       console.error("WebSocket Connection Initialization Failed:", error);
+      isConnecting.current = false;
       reconnectAttempts.current += 1;
+      const delay = Math.min(
+        1000 * Math.pow(2, reconnectAttempts.current - 1),
+        30000,
+      );
       if (connectRef.current) {
-        reconnectTimeout.current = setTimeout(connectRef.current, 3000);
+        reconnectTimeout.current = setTimeout(connectRef.current, delay);
       }
     }
   }, [user]);
@@ -170,6 +195,7 @@ export const WebSocketProvider = ({ children }) => {
       // If user logs out, close connection
       if (ws.current) {
         console.log("User logged out, closing WebSocket.");
+        // Prevent reconnect loop
         ws.current.onopen = null;
         ws.current.onmessage = null;
         ws.current.onerror = null;
@@ -177,6 +203,7 @@ export const WebSocketProvider = ({ children }) => {
         ws.current.close();
         ws.current = null;
       }
+      isConnecting.current = false;
       // Avoid calling setState synchronously
       setTimeout(() => {
         setIsConnected(false);
@@ -195,7 +222,9 @@ export const WebSocketProvider = ({ children }) => {
         ws.current.onerror = null;
         ws.current.onclose = null;
         ws.current.close();
+        ws.current = null;
       }
+      isConnecting.current = false;
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
       }
@@ -227,6 +256,7 @@ export const WebSocketProvider = ({ children }) => {
   const reconnect = useCallback(() => {
     reconnectAttempts.current = 0; // Reset attempts on manual reconnect
     setIsFallback(false);
+    if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
     if (ws.current) {
       ws.current.close(); // This will trigger onclose which triggers reconnect
     } else {
