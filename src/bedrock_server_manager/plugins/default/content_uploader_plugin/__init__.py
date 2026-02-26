@@ -236,7 +236,9 @@ class ContentUploaderPlugin(PluginBase):
                     f"Error during file upload or processing for '{filename}': {e}",
                     exc_info=True,
                 )
-                message = f"An unexpected error occurred: {str(e)}"
+                message = (
+                    "An unexpected error occurred while processing the file upload."
+                )
                 message_type = "error"
                 event_status = "error"
             finally:

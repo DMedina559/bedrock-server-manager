@@ -69,8 +69,15 @@ async function handleLoginAttempt(buttonElement, formElement) {
           "success",
         );
         const nextUrl = new URLSearchParams(window.location.search).get("next");
+        // Only allow same-origin, root-relative paths to avoid open redirects.
+        const redirectPath =
+          typeof nextUrl === "string" &&
+          nextUrl.startsWith("/") &&
+          !nextUrl.startsWith("//")
+            ? nextUrl
+            : "/";
         setTimeout(() => {
-          window.location.href = nextUrl || "/";
+          window.location.href = redirectPath;
         }, 500);
       }
       return response;

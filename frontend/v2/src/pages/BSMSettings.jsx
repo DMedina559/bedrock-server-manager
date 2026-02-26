@@ -92,11 +92,28 @@ const BSMSettings = () => {
       let current = newSettings;
 
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!current[keys[i]]) current[keys[i]] = {};
-        current = current[keys[i]];
+        const key = keys[i];
+        if (
+          key === "__proto__" ||
+          key === "constructor" ||
+          key === "prototype"
+        ) {
+          return prev;
+        }
+        if (!current[key]) current[key] = {};
+        current = current[key];
       }
 
-      current[keys[keys.length - 1]] = value;
+      const lastKey = keys[keys.length - 1];
+      if (
+        lastKey === "__proto__" ||
+        lastKey === "constructor" ||
+        lastKey === "prototype"
+      ) {
+        return prev;
+      }
+
+      current[lastKey] = value;
       return newSettings;
     });
   };

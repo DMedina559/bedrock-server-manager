@@ -233,6 +233,14 @@ class DownloadPagePlugin(PluginBase):
             server: Optional[str] = None,
             current_user: Dict[str, Any] = Depends(get_admin_user),
         ):
+            # Basic validation of user-controlled inputs to avoid path traversal
+            if "/" in filename or "\\" in filename or ".." in filename:
+                raise HTTPException(400, "Invalid filename")
+
+            if server is not None:
+                if "/" in server or "\\" in server or ".." in server:
+                    raise HTTPException(400, "Invalid server name")
+
             base_path = None
             if file_type == "backup_world":
                 if not server:
@@ -268,17 +276,22 @@ class DownloadPagePlugin(PluginBase):
             try:
                 # Resolve base path first
                 base_path_resolved = base_path.resolve()
-                # Join filename
-                file_path = (base_path / filename).resolve()
+                # Join filename and resolve
+                file_path = (base_path_resolved / filename).resolve()
 
-                # Check traversal
-                if not str(file_path).startswith(str(base_path_resolved)):
+                # Check traversal using Path.relative_to to ensure containment
+                try:
+                    file_path.relative_to(base_path_resolved)
+                except ValueError:
                     raise HTTPException(403, "Access denied: Path traversal detected")
 
                 if not file_path.exists() or not file_path.is_file():
                     raise HTTPException(404, "File not found")
 
                 return FileResponse(path=file_path, filename=filename)
+            except HTTPException:
+                # Re-raise HTTPExceptions as-is
+                raise
             except Exception as e:
                 self.logger.error(f"Download error: {e}")
                 raise HTTPException(500, "Internal server error during download")
