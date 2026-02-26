@@ -1,4 +1,3 @@
-from math import e
 import click
 import questionary
 
@@ -9,7 +8,7 @@ from .service import interactive_web_service_workflow
 
 @click.command("setup", help="Run an interactive setup to configure the manager.")
 @click.pass_context
-def setup(ctx: click.Context):
+def setup(ctx: click.Context):  # noqa: C901
     """
     An interactive command to guide the user through setting up the
     Bedrock Server Manager. It configures the data directory, web UI settings,

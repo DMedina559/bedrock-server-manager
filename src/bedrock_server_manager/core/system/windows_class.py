@@ -15,14 +15,13 @@ This module includes functions for:
 It relies on the pywin32 package for named pipe and service
 functionality.
 """
+
+import logging
 import os
 import sys
 import threading
-import time
-import subprocess
-import logging
-import re
-from typing import Optional, Dict, Any, List
+
+# typing imports removed as they were unused
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
@@ -98,7 +97,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
             web_thread = threading.Thread(
                 target=start_web_server_api,
-                kwargs={"mode": "direct", "threads": 1},  # Run in production mode
+                kwargs={"mode": "direct"},  # Run in production mode
                 daemon=True,
             )
             web_thread.start()

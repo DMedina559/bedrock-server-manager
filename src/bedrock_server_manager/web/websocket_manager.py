@@ -3,9 +3,9 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 from bedrock_server_manager.web.auth_utils import User
 
@@ -24,7 +24,7 @@ class Client:
 class ConnectionManager:
     """Manages WebSocket connections and topic-based subscriptions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
         # Maps a topic to a list of client IDs subscribed to it
@@ -32,7 +32,7 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, user: User) -> str:
         """Accepts a new WebSocket connection, tracks it, and returns the client ID."""
-        await websocket.accept()
+        # Connection is accepted in the router
         client_id = f"{user.username}:{uuid.uuid4()}"
         client = Client(id=client_id, user=user, websocket=websocket)
         self.active_connections[client_id] = client
@@ -69,6 +69,12 @@ class ConnectionManager:
             client = self.active_connections[client_id]
             try:
                 await client.websocket.send_text(json.dumps(data))
+            except (WebSocketDisconnect, RuntimeError) as e:
+                # Catch both normal disconnection and the "WebSocket is not connected" RuntimeError
+                logger.info(
+                    f"Failed to send message to client {client_id} (disconnected): {e}"
+                )
+                self.disconnect(client_id)
             except Exception as e:
                 logger.error(f"Failed to send message to client {client_id}: {e}")
                 # Consider the connection lost and disconnect the client
@@ -76,11 +82,18 @@ class ConnectionManager:
 
     async def broadcast_to_topic(self, topic: str, data: Any):
         """Broadcasts a JSON message to all clients subscribed to a topic."""
+        clients_to_notify = set()
+
         if topic in self.subscriptions:
-            # Create a copy of the list to avoid issues if a client disconnects mid-broadcast
-            client_ids = list(self.subscriptions[topic])
-            for client_id in client_ids:
-                await self.send_to_client(data, client_id)
+            clients_to_notify.update(self.subscriptions[topic])
+
+        if "*" in self.subscriptions:
+            clients_to_notify.update(self.subscriptions["*"])
+
+        # Create a copy of the list to avoid issues if a client disconnects mid-broadcast
+        client_ids = list(clients_to_notify)
+        for client_id in client_ids:
+            await self.send_to_client(data, client_id)
 
     async def send_to_user(self, username: str, data: Any):
         """Sends a JSON message to all active connections for a specific user."""

@@ -12,26 +12,25 @@ This module defines API endpoints that provide read-only access to:
 Endpoints typically require authentication and often use path parameters to specify
 a server. Responses are generally structured using the :class:`.GeneralApiResponse` model.
 """
+
 import logging
 import os
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..schemas import BaseApiResponse, User
-from ..auth_utils import get_current_user, get_admin_user, get_moderator_user
-from ..dependencies import validate_server_exists, get_app_context
-from ...api import (
-    application as app_api,
-    utils as utils_api,
-    system as system_api,
-    player as player_api,
-    info as info_api,
-)
+from ...api import application as app_api
+from ...api import info as info_api
 from ...api import misc as misc_api
-from ...error import BSMError, UserInputError
+from ...api import player as player_api
+from ...api import system as system_api
+from ...api import utils as utils_api
 from ...context import AppContext
+from ...error import BSMError, UserInputError
+from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
+from ..dependencies import get_app_context, validate_server_exists
+from ..schemas import BaseApiResponse, User
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +66,7 @@ class GeneralApiResponse(BaseApiResponse):
     players: Optional[List[Dict[str, Any]]] = None  # For player lists
     files_deleted: Optional[int] = None  # For prune operations
     files_kept: Optional[int] = None  # For prune operations
+    themes: Optional[List[str]] = None  # For theme lists
 
 
 class PruneDownloadsPayload(BaseModel):
@@ -500,13 +500,15 @@ async def prune_downloads_api_route(
         )
 
         if result.get("status") == "success":
+            files_deleted = result.get("files_deleted")
+            files_kept = result.get("files_kept")
             return GeneralApiResponse(
                 status="success",
                 message=result.get(
                     "message", "Pruning operation completed successfully."
                 ),
-                files_deleted=result.get("files_deleted"),
-                files_kept=result.get("files_kept"),
+                files_deleted=int(files_deleted) if files_deleted is not None else None,
+                files_kept=int(files_kept) if files_kept is not None else None,
             )
         else:
             raise HTTPException(
@@ -583,6 +585,51 @@ async def get_system_info_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred retrieving system info.",
+        )
+
+
+@router.get(
+    "/api/info/themes", response_model=GeneralApiResponse, tags=["Global Info API"]
+)
+async def get_themes_api_route(
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves a list of available themes (standard and custom).
+    """
+    logger.debug("API: Request for available themes.")
+    STANDARD_THEMES = [
+        "default",
+        "light",
+        "gradient",
+        "black",
+        "red",
+        "green",
+        "blue",
+        "yellow",
+        "pink",
+    ]
+    try:
+        themes = set(STANDARD_THEMES)
+        themes_path = app_context.settings.get("paths.themes")
+
+        if themes_path and os.path.isdir(themes_path):
+            for filename in os.listdir(themes_path):
+                if filename.endswith(".css"):
+                    themes.add(filename[:-4])  # Remove .css extension
+
+        # Sort the themes: default first, then alphabetically
+        sorted_themes = sorted(list(themes))
+        if "default" in sorted_themes:
+            sorted_themes.remove("default")
+            sorted_themes.insert(0, "default")
+
+        return GeneralApiResponse(status="success", themes=sorted_themes)
+    except Exception as e:
+        logger.error(f"API Get Themes: Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred retrieving themes.",
         )
 
 

@@ -24,7 +24,7 @@ You can check your version in the BSM web UI and compare it with the [latest rel
 
 Major updates can introduce "breaking changes" that alter how BSM works. Before going further, review the changelog for the version you just installed.
 
-```{tip} 
+```{tip}
 The changelog often contains important warnings and instructions on how to migrate your setup or fix issues caused by an update. Look for BREAKING CHANGE notices relevant to your setup (e.g., Web UI, CLI, Plugins).
 ```
 

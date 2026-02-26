@@ -7,25 +7,17 @@ for monitoring running Bedrock server instances. It detects crashes or unexpecte
 shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
-import os
-import platform
-import subprocess
+
+import asyncio
+import logging
 import threading
 import time
-import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 from mcstatus import BedrockServer as mc
 
-from ..core.system import process as core_process
-from ..error import (
-    BSMError,
-    ServerNotRunningError,
-    ServerStartError,
-    FileOperationError,
-)
-from ..config.settings import Settings
 from ..context import AppContext
+from ..error import BSMError, FileOperationError, ServerStartError
 
 if TYPE_CHECKING:
     from .bedrock_server import BedrockServer
@@ -106,7 +98,7 @@ class BedrockProcessManager:
         # Optional: wait for the thread to finish
         self.monitoring_thread.join(timeout=5)
 
-    def _monitor_servers(self):
+    def _monitor_servers(self):  # noqa: C901
         """Monitors server processes and restarts them if they crash.
 
         This method runs in a background thread. It periodically checks:
@@ -161,7 +153,34 @@ class BedrockProcessManager:
                             f"127.0.0.1:{server.get_server_property('server-port')}"
                         )
                         status = bedrock_server.status()
+
+                        previous_player_count = getattr(server, "player_count", 0)
                         server.player_count = status.players.online
+
+                        if server.player_count != previous_player_count:
+                            self.logger.info(
+                                f"Player count changed for server '{server.server_name}': {previous_player_count} -> {server.player_count}"
+                            )
+                            # Broadcast the update
+                            if (
+                                self.app_context.loop
+                                and self.app_context.loop.is_running()
+                            ):
+                                message = {
+                                    "type": "event",
+                                    "topic": "event:after_server_statuses_updated",
+                                    "data": {
+                                        "server_name": server.server_name,
+                                        "player_count": server.player_count,
+                                    },
+                                }
+                                asyncio.run_coroutine_threadsafe(
+                                    self.app_context.connection_manager.broadcast_to_topic(
+                                        "event:after_server_statuses_updated", message
+                                    ),
+                                    self.app_context.loop,
+                                )
+
                         if status.players.online > 0:
                             self.logger.info(
                                 f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."

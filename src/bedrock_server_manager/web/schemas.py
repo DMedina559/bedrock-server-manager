@@ -5,7 +5,8 @@ This module defines the Pydantic models used for data validation and serializati
 in the web API layer.
 """
 
-from typing import Optional, Any, List, Dict
+from typing import Any, Optional
+
 from pydantic import BaseModel
 
 
@@ -54,7 +55,7 @@ class User(BaseModel):
 
     id: int
     username: str
-    identity_type: str
+    identity_type: Optional[str] = None
     role: str
     is_active: bool
     theme: str = "default"

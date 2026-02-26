@@ -17,30 +17,24 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction, inc
     - Providing a mechanism to reload all plugins.
 
 """
-import os
+
 import importlib.util
 import inspect
 import logging
+import os
 import threading
-import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Type, Callable, Tuple, TYPE_CHECKING
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
 if TYPE_CHECKING:
     from ..context import AppContext
 
+from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
-from ..config import (
-    GUARD_VARIABLE,
-    DEFAULT_ENABLED_PLUGINS,
-    EVENT_IDENTITY_KEYS,
-)
 from ..config.settings import Settings
 from ..db.models import Plugin
-from .plugin_base import PluginBase
 from .api_bridge import PluginAPI
+from .plugin_base import PluginBase
 
 # Standard logger for this module.
 logger = logging.getLogger(__name__)
@@ -90,6 +84,9 @@ class PluginManager:
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
         self.html_render_tag = "plugin-ui"  # Tag for HTML rendering in FastAPI
+        self.native_ui_render_tag = (
+            "plugin-ui-native"  # Tag for Native UI rendering in FastAPI
+        )
         self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
@@ -120,7 +117,7 @@ class PluginManager:
             Returns an empty dict if loading fails or the file is not found.
         """
         assert self.app_context is not None
-        with self.app_context.db.session_manager() as db:
+        with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
             return {plugin.plugin_name: plugin.config for plugin in plugins}
 
@@ -267,7 +264,7 @@ class PluginManager:
             )
         return None
 
-    def _synchronize_config_with_disk(self):
+    def _synchronize_config_with_disk(self) -> None:  # noqa: C901
         """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
 
         This crucial method ensures the ``plugins.json`` configuration file is
@@ -401,8 +398,10 @@ class PluginManager:
                     )
                 continue
 
+            author_attr = getattr(plugin_class, "author", None)
             valid_plugins_found_on_disk.add(plugin_name)
             version = str(version_attr).strip()
+            author = str(author_attr).strip()
             description = inspect.getdoc(plugin_class) or "No description available."
             description = " ".join(description.strip().split())
 
@@ -420,6 +419,7 @@ class PluginManager:
                     "enabled": is_enabled,
                     "description": description,
                     "version": version,
+                    "author": author,
                 }
                 config_changed = True
                 needs_update_in_config = True
@@ -453,6 +453,12 @@ class PluginManager:
                     logger.debug(
                         f"Updated 'version' for plugin '{plugin_name}' to v{version} in config."
                     )
+                if updated_entry.get("author") != author:
+                    updated_entry["author"] = author
+                    needs_update_in_config = True
+                    logger.debug(
+                        f"Updated 'author' for plugin '{plugin_name}' to {author} in config."
+                    )
                 if needs_update_in_config:
                     self.plugin_config[plugin_name] = updated_entry
                     config_changed = True
@@ -484,7 +490,7 @@ class PluginManager:
                 "Plugin configuration synchronization complete. No changes detected."
             )
 
-    def load_plugins(self):
+    def load_plugins(self):  # noqa: C901
         """Discovers, validates, and loads all enabled plugins.
 
         This method orchestrates the entire plugin loading process:
@@ -749,18 +755,33 @@ class PluginManager:
         else:
             logger.info("No custom plugin event listeners to clear.")
 
-    def get_html_render_routes(self) -> List[Dict[str, str]]:
+    def get_html_render_routes(
+        self, include_native: bool = True
+    ) -> List[Dict[str, str]]:
         """
-        Collects routes from all plugin routers that are tagged for HTML rendering.
+        Collects routes from all plugin routers that are tagged for UI rendering.
+
+        Args:
+            include_native (bool): If True, includes routes tagged for native UI rendering.
+                                   If False, only includes HTML/iframe routes.
 
         Returns:
             List[Dict[str, str]]: A list of dictionaries, where each dictionary
-                                 contains 'name' and 'path' for a tagged route.
+                                 contains 'name', 'path', and 'type' ('iframe' or 'native').
         """
-        html_routes = []
+        ui_routes = []
         for router in self.plugin_fastapi_routers:
             for route in router.routes:
-                if hasattr(route, "tags") and self.html_render_tag in route.tags:
+                if not hasattr(route, "tags"):
+                    continue
+
+                route_type = None
+                if self.html_render_tag in route.tags:
+                    route_type = "iframe"
+                elif include_native and self.native_ui_render_tag in route.tags:
+                    route_type = "native"
+
+                if route_type:
                     # Use route name or summary if available, otherwise path
                     route_name = route.name
                     if hasattr(route, "summary") and route.summary:
@@ -768,9 +789,11 @@ class PluginManager:
                     elif not route_name:  # If route.name is also None or empty
                         route_name = route.path
 
-                    html_routes.append({"name": route_name, "path": route.path})
-        logger.debug(f"Collected {len(html_routes)} HTML rendering plugin routes.")
-        return html_routes
+                    ui_routes.append(
+                        {"name": route_name, "path": route.path, "type": route_type}
+                    )
+        logger.debug(f"Collected {len(ui_routes)} UI rendering plugin routes.")
+        return ui_routes
 
     def _is_valid_custom_event_name(self, event_name: str) -> bool:
         """Checks if a custom event name follows the 'namespace:event_name' format.
@@ -994,6 +1017,16 @@ class PluginManager:
         else:
             logger.debug(
                 f"Plugin '{target_plugin.name}' does not have a handler method for event '{event}'. Skipping."
+            )
+
+        # Dispatch to the wildcard 'on_any_event' handler, if implemented (default in base is pass)
+        try:
+            target_plugin.on_any_event(event, *args, **kwargs)
+        except Exception as e:
+            logger.error(
+                f"Error encountered in plugin '{target_plugin.name}' during wildcard event handler "
+                f"'on_any_event' for event '{event}': {e}",
+                exc_info=True,
             )
 
     def _generate_event_key(self, event_name: str, **kwargs) -> str:

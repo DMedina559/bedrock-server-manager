@@ -7,26 +7,27 @@ container for application-wide objects and services, such as settings, database,
 plugin manager, and server instances. It ensures circular dependencies are managed
 via lazy loading and property accessors.
 """
-from __future__ import annotations
 
-import asyncio
-from typing import TYPE_CHECKING, Dict, Optional
+from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
+    from asyncio import AbstractEventLoop
+
+    from fastapi.templating import Jinja2Templates
+
     from .config.settings import Settings
+    from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
     from .core.manager import BedrockServerManager
-    from .plugins.plugin_manager import PluginManager
-    from .core.bedrock_process_manager import BedrockProcessManager
     from .db.database import Database
+    from .plugins.plugin_manager import PluginManager
+    from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
-    from .web.resource_monitor import ResourceMonitor
-    from fastapi.templating import Jinja2Templates
-    from asyncio import AbstractEventLoop
 
 
 class AppContext:
@@ -72,6 +73,9 @@ class AppContext:
         self._servers: Dict[str, "BedrockServer"] = {}
         self._templates: Optional["Jinja2Templates"] = None
         self.loop: Optional["AbstractEventLoop"] = None
+        from .utils import get_utils
+
+        self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
 
     def load(self):
         """
@@ -240,8 +244,8 @@ class AppContext:
         """
         if self._templates is None:
             from fastapi.templating import Jinja2Templates
-            from .config import get_installed_version, app_name_title, SCRIPT_DIR
-            from .utils import get_utils
+
+            from .config import SCRIPT_DIR, app_name_title, get_installed_version
 
             app_path = os.path.join(SCRIPT_DIR, "web", "app.py")
             APP_ROOT = os.path.dirname(os.path.abspath(app_path))
@@ -260,7 +264,7 @@ class AppContext:
             self._templates.env.filters["basename"] = os.path.basename
             self._templates.env.globals["app_name"] = app_name_title
             self._templates.env.globals["app_version"] = get_installed_version()
-            self._templates.env.globals["splash_text"] = get_utils._get_splash_text()
+            self._templates.env.globals["splash_text"] = self.splash_txt
             self._templates.env.globals["panorama_url"] = "/api/panorama"
             self._templates.env.globals["settings"] = self.settings
 

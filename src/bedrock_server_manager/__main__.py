@@ -8,17 +8,18 @@ main application logic. If no command is specified, it defaults to running
 the interactive menu system.
 """
 
+import atexit
 import logging
 import sys
-import atexit
+
 import click
 
 try:
     from . import __version__
     from .config import app_name_title
+    from .context import AppContext
     from .logging import log_separator, setup_logging
     from .utils.general import startup_checks
-    from .context import AppContext
 except ImportError as e:
     # Use basic logging as a fallback if our custom logger isn't available.
     logging.basicConfig(level=logging.CRITICAL)
@@ -35,13 +36,12 @@ except ImportError as e:
 # These are grouped logically for clarity.
 from .cli import (
     cleanup,
-    generate_password,
-    web,
-    setup,
-    service,
+    database,
     migrate,
     reset_password,
-    database,
+    service,
+    setup,
+    web,
 )
 
 
@@ -94,8 +94,7 @@ def create_cli_app():
                 logger = setup_logging(
                     log_dir=log_dir,
                     log_keep=app_context.settings.get("retention.logs"),
-                    file_log_level=app_context.settings.get("logging.file_level"),
-                    cli_log_level=app_context.settings.get("logging.cli_level"),
+                    log_level=app_context.settings.get("logging.level"),
                     force_reconfigure=True,
                     plugin_dir=app_context.settings.get("paths.plugins"),
                 )
@@ -128,9 +127,6 @@ def create_cli_app():
         cli.add_command(web.web)
         cli.add_command(cleanup.cleanup)
         cli.add_command(setup.setup)
-        cli.add_command(
-            generate_password.generate_password_hash_command, name="generate-password"
-        )
         cli.add_command(reset_password.reset_password_command)
         cli.add_command(service.service)
         cli.add_command(migrate.migrate)

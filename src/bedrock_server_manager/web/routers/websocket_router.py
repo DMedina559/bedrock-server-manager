@@ -1,10 +1,10 @@
 # bedrock_server_manager/web/routers/websocket_router.py
 import logging
-import uuid
-from fastapi import APIRouter, WebSocket, Depends, WebSocketDisconnect
 
-from ..auth_utils import User, get_current_user_for_websocket
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
+
 from ...context import AppContext
+from ..auth_utils import get_current_user_for_websocket
 
 router = APIRouter(
     prefix="/ws",
@@ -14,20 +14,33 @@ logger = logging.getLogger(__name__)
 
 
 @router.websocket("")
-async def websocket_endpoint(
+async def websocket_endpoint(  # noqa: C901
     websocket: WebSocket,
-    user: User = Depends(get_current_user_for_websocket),
 ):
     """
     Handles WebSocket connections.
 
-    Authentication is performed via the `get_current_user` dependency.
+    Authentication is performed manually via `get_current_user_for_websocket`.
     Clients can send JSON messages to subscribe or unsubscribe from topics.
 
     Example messages:
     - `{"action": "subscribe", "topic": "some_topic"}`
     - `{"action": "unsubscribe", "topic": "some_topic"}`
     """
+    # Accept connection first to handle errors gracefully
+    await websocket.accept()
+
+    try:
+        user = await get_current_user_for_websocket(websocket)
+    except WebSocketException as e:
+        logger.warning(f"WebSocket auth failed: {e.reason}")
+        await websocket.close(code=e.code, reason=e.reason)
+        return
+    except Exception as e:
+        logger.error(f"WebSocket unexpected auth error: {e}", exc_info=True)
+        await websocket.close(code=1008, reason="Internal Authentication Error")
+        return
+
     app_context: AppContext = websocket.app.state.app_context
     connection_manager = app_context.connection_manager
     client_id = await connection_manager.connect(websocket, user)
@@ -71,6 +84,13 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected: {client_id}")
+    except RuntimeError as e:
+        if "WebSocket is not connected" in str(e):
+            logger.info(f"WebSocket client disconnected (RuntimeError): {client_id}")
+        else:
+            logger.error(
+                f"Error in WebSocket for client {client_id}: {e}", exc_info=True
+            )
     except Exception as e:
         logger.error(f"Error in WebSocket for client {client_id}: {e}", exc_info=True)
     finally:

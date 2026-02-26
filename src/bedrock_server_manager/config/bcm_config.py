@@ -4,7 +4,7 @@ Manages the core application configuration file (bedrock_server_manager.json).
 
 This module is responsible for handling a simple JSON configuration file that
 stores essential startup settings like the data directory and database URL.
-It uses the `appdirs` library to locate the appropriate user-specific
+It uses the `platformdirs` library to locate the appropriate user-specific
 configuration directory in a cross-platform way.
 
 The main components are:
@@ -13,14 +13,19 @@ The main components are:
 - save_config(data): Writes data to the config file.
 """
 
+from __future__ import annotations
+
 import json
-import os
 import logging
-from typing import Dict, Any
+import os
+from typing import TYPE_CHECKING, Any, Dict
 
-from appdirs import user_config_dir
+from platformdirs import user_config_dir
 
-from .const import package_name, env_name
+from .const import env_name, package_name
+
+if TYPE_CHECKING:
+    from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +157,6 @@ def set_config_value(key: str, value: Any):
     config = load_config()
     config[key] = value
     save_config(config)
-
-
-from ..context import AppContext
 
 
 def needs_setup(app_context: AppContext) -> bool:

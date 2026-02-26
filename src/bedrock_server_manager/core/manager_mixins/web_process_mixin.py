@@ -6,9 +6,10 @@ This module provides the :class:`~.WebProcessMixin` class, which handles the
 lifecycle (start/stop) of the Web UI process when it is managed directly
 by the application (e.g. not as a system service).
 """
+
 import logging
 import os
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import ConfigurationError
@@ -21,13 +22,17 @@ class WebProcessMixin:
     Mixin class for BedrockServerManager that handles direct Web UI process management.
     """
 
+    _config_dir: str
+    _WEB_SERVER_PID_FILENAME: str
+    _WEB_SERVER_START_ARG: List[str]
+    _expath: Optional[str]
+
     def start_web_ui_direct(
         self,
         app_context: AppContext,
         host: Optional[str] = None,
         port: Optional[int] = None,
         debug: bool = False,
-        threads: Optional[int] = None,
     ) -> None:
         """Starts the Web UI application directly in the current process (blocking).
 
@@ -47,9 +52,6 @@ class WebProcessMixin:
             debug (bool): If ``True``, runs the underlying Uvicorn/FastAPI app
                 in debug mode (e.g., with auto-reload). Passed directly to
                 :func:`~.web.app.run_web_server`. Defaults to ``False``.
-            threads (Optional[int]): Specifies the number of worker processes for Uvicorn
-
-                Only used for Windows Service
 
         Raises:
             RuntimeError: If :func:`~.web.app.run_web_server` raises a RuntimeError
@@ -74,7 +76,6 @@ class WebProcessMixin:
                 host=host,
                 port=port,
                 debug=debug,
-                threads=threads,
             )
             logger.info("BSM: Web application (direct mode) shut down.")
         except (RuntimeError, ImportError) as e:

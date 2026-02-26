@@ -8,7 +8,7 @@ For a complete list of commands, see [CLI Commands](./commands.rst).
 
 >[!note]
 > As of BSM 3.6.0, CLI commands have been migrated to the [`bsm-api-client[cli]`](https://github.com/DMedina559/bsm-api-client) package.
-> Install with: 
+> Install with:
 >
 > `pip install --upgrade bsm-api-client[cli]`
 

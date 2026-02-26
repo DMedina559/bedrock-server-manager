@@ -70,7 +70,6 @@ content and scripts using Jinja2 blocks.
                     <span class="splash-text">{{ splash_text | default("It's Web Based!") }}</span>
                 </h1>
             </a>
-            </a>
         </header>
 
         {# --- Main Content Area --- #}
@@ -90,8 +89,8 @@ content and scripts using Jinja2 blocks.
         <footer class="footer">
             <div class="user-info">
                 {% if current_user %}
-                    <span>Welcome, {{ current_user.username }} ({{ current_user.role }})</span>
-                    <a href="{{ url_for('logout') }}">Logout</a>
+                <span>Welcome, {{ current_user.username }} ({{ current_user.role }})</span>
+                <a href="{{ url_for('logout') }}">Logout</a>
                 {% endif %}
             </div>
             <p>
@@ -100,6 +99,8 @@ content and scripts using Jinja2 blocks.
                 <a href="https://github.com/dmedina559" target="_none" rel="noopener">GitHub</a>
                 <br>Version {{ app_version }} © MIT 2025
             </p>
+
+            <a href="{{ '/app' }}">New UI</a>
 
         </footer>
 

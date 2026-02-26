@@ -3,20 +3,24 @@
 # Exit on error
 set -e
 
-# Navigate to the frontend directory
-cd frontend
-
-# Install frontend dependencies
-echo "Installing frontend dependencies..."
+# --- Build Legacy Frontend ---
+echo "--- Building Legacy Frontend ---"
+cd frontend/legacy
+echo "Installing legacy frontend dependencies..."
 npm install
-
-# Build the frontend
-echo "Building frontend..."
+echo "Building legacy frontend..."
 npm run build
+cd ../..
 
-# Navigate back to the root directory
-cd ..
+# --- Build V2 Frontend ---
+echo "--- Building V2 Frontend ---"
+cd frontend/v2
+echo "Installing V2 frontend dependencies..."
+npm install
+echo "Building V2 frontend..."
+npm run build
+cd ../..
 
-# Build the Python package
-echo "Building Python package..."
+# --- Build Python Package ---
+echo "--- Building Python Package ---"
 python -m build

@@ -23,34 +23,31 @@ handle operations related to:
 Functions in this module typically return structured dictionary responses suitable for
 use by web routes or CLI commands and integrate with the plugin system for extensibility.
 """
-import os
+
 import logging
+import os
 import re
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
+from ..context import AppContext
+from ..error import (
+    AppFileNotFoundError,
+    BSMError,
+    FileOperationError,
+    InvalidServerNameError,
+    MissingArgumentError,
+    UserInputError,
+)
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 # Local application imports.
 from . import player as player_api
-from .utils import (
-    server_lifecycle_manager,
-    validate_server_name_format,
-)
-from ..error import (
-    BSMError,
-    InvalidServerNameError,
-    FileOperationError,
-    MissingArgumentError,
-    UserInputError,
-    AppFileNotFoundError,
-)
-from ..context import AppContext
+from .utils import server_lifecycle_manager, validate_server_name_format
 
 logger = logging.getLogger(__name__)
-
-
-from ..plugins.event_trigger import trigger_plugin_event
 
 
 # --- Allowlist ---
@@ -315,7 +312,7 @@ def configure_player_permission(
 
 
 @plugin_method("get_server_permissions_api")
-def get_server_permissions_api(
+def get_server_permissions_api(  # noqa: C901s
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Retrieves processed permissions data for a server.
@@ -324,6 +321,8 @@ def get_server_permissions_api(
     :meth:`~.core.bedrock_server.BedrockServer.get_formatted_permissions`.
     To enrich the data, it first fetches a global XUID-to-name mapping using
     :func:`~bedrock_server_manager.api.player.get_all_known_players_api`.
+    It also merges in any global players who are not currently in the
+    permissions file, assigning them a default permission level for display.
     The resulting list of permissions is sorted by player name.
 
     Args:
@@ -333,12 +332,11 @@ def get_server_permissions_api(
         Dict[str, Any]: A dictionary with the operation result.
         On success: ``{"status": "success", "data": {"permissions": List[Dict[str, Any]]}}``
         where each dict in `permissions` contains "xuid", "name", and "permission_level".
-        If ``permissions.json`` doesn't exist, `permissions` will be an empty list.
         On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
         MissingArgumentError: If `server_name` is empty.
-        AppFileNotFoundError: If server directory is missing (but not if only ``permissions.json`` is missing).
+        AppFileNotFoundError: If server directory is missing.
         ConfigParseError: If ``permissions.json`` is malformed.
         FileOperationError: If reading ``permissions.json`` fails.
     """
@@ -348,23 +346,45 @@ def get_server_permissions_api(
     try:
         server = app_context.get_server(server_name)
         player_name_map: Dict[str, str] = {}
+        all_known_players: List[Dict[str, Any]] = []
 
-        # Fetch global player data to create a XUID -> Name mapping.
+        # Fetch global player data to create a XUID -> Name mapping and for merging.
         players_response = player_api.get_all_known_players_api(app_context=app_context)
         if players_response.get("status") == "success":
-            for p_data in players_response.get("players", []):
+            all_known_players = players_response.get("players", []) or []
+            for p_data in all_known_players:
                 if p_data.get("xuid") and p_data.get("name"):
                     player_name_map[str(p_data["xuid"])] = str(p_data["name"])
 
-        permissions = server.get_formatted_permissions(player_name_map)
+        permissions: List[Dict[str, Any]] = []
+        try:
+            permissions = server.get_formatted_permissions(player_name_map)
+        except AppFileNotFoundError:
+            # It's not an error if the permissions file doesn't exist; start with empty list.
+            permissions = []
+
+        # Create a set of XUIDs currently in the server's permissions.json
+        existing_xuids = {p.get("xuid") for p in permissions if p.get("xuid")}
+
+        # Merge global players who are not in permissions.json
+        for player in all_known_players:
+            xuid = str(player.get("xuid"))
+            if xuid and xuid not in existing_xuids:
+                permissions.append(
+                    {
+                        "xuid": xuid,
+                        "name": player.get("name", "Unknown"),
+                        "permission_level": "member",  # Default display value
+                    }
+                )
+                existing_xuids.add(
+                    xuid
+                )  # Avoid adding duplicates if global list has duplicates
+
+        # Re-sort the combined list by name
+        permissions.sort(key=lambda x: x.get("name", "").lower())
+
         return {"status": "success", "data": {"permissions": permissions}}
-    except AppFileNotFoundError as e:
-        # It's not an error if the permissions file doesn't exist; it just means no permissions are set.
-        return {
-            "status": "success",
-            "data": {"permissions": []},
-            "message": f"{e}",
-        }
     except BSMError as e:
         logger.error(
             f"API: Failed to get permissions for '{server_name}': {e}", exc_info=True
@@ -424,7 +444,9 @@ def get_server_properties_api(
 
 
 @plugin_method("validate_server_property_value")
-def validate_server_property_value(property_name: str, value: str) -> Dict[str, str]:
+def validate_server_property_value(  # noqa: C901
+    property_name: str, value: str
+) -> Dict[str, str]:
     """Validates a single server property value based on known rules.
 
     This is a stateless helper function used before modifying properties. It checks
@@ -665,7 +687,7 @@ def install_new_server(
             "status": "success",
             "version": server.get_version(),
             "message": f"Server '{server_name}' installed successfully to version {server.get_version()}.",
-            "next_step_url": f"/server/{server_name}/configure_properties?new_install=true",
+            "next_step_url": f"/legacy/server/{server_name}/configure_properties?new_install=true",
         }
 
     except BSMError as e:

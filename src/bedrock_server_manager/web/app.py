@@ -1,25 +1,20 @@
 # bedrock_server_manager/web/app.py
-import logging
-import sys
-import atexit
-from pathlib import Path
-import os
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-from starlette.middleware.authentication import AuthenticationMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from ..config import bcm_config, get_installed_version
 from ..context import AppContext
-from ..config import get_installed_version
 from . import routers
-from ..config import bcm_config
 from .auth_utils import CustomAuthBackend, get_current_user_optional
 
 
-def create_web_app(app_context: AppContext) -> FastAPI:
+def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     """Creates and configures the web application."""
     logger = logging.getLogger(__name__)
     from .. import api
@@ -35,9 +30,22 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         app_context = app.state.app_context
         app_context.loop = asyncio.get_running_loop()
         app_context.resource_monitor.start()
+
+        # Initialize and start LogStreamer
+        from .log_streamer import LogStreamer
+
+        log_streamer = LogStreamer(app_context)
+        # We store it in app_context to keep it alive and accessible if needed
+        app_context.log_streamer = log_streamer
+        log_streamer.start()
+
         yield
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
+
+        if hasattr(app_context, "log_streamer"):
+            app_context.log_streamer.stop()
+
         app_context.resource_monitor.stop()
         # Shut down the task manager gracefully
         if (
@@ -77,6 +85,14 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     api.utils.update_server_statuses(app_context=app_context)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    # Mount the V2 static assets (JS/CSS built by Vite) so they are accessible
+    v2_assets_dir = os.path.join(STATIC_DIR, "v2", "assets")
+    if os.path.isdir(v2_assets_dir):
+        app.mount(
+            "/app/assets", StaticFiles(directory=v2_assets_dir), name="app_assets"
+        )
+
     # Mount custom themes directory
     themes_path = settings.get("paths.themes")
     if os.path.isdir(themes_path):
@@ -87,17 +103,20 @@ def create_web_app(app_context: AppContext) -> FastAPI:
         # Paths that should be accessible even if setup is not complete
         allowed_paths = [
             "/setup",
+            "/legacy/setup",
             "/static",
             "/favicon.ico",
             "/auth/token",
             "/docs",
             "/openapi.json",
+            "/v2",
+            "/app",
         ]
 
         if bcm_config.needs_setup(request.app.state.app_context) and not any(
             request.url.path.startswith(p) for p in allowed_paths
         ):
-            return RedirectResponse(url="/setup")
+            return RedirectResponse(url="/legacy/setup")
 
         # Manually handle authentication to bypass it for static files
         if not request.url.path.startswith("/static"):
@@ -131,11 +150,13 @@ def create_web_app(app_context: AppContext) -> FastAPI:
     app.include_router(routers.api_info_router)
     app.include_router(routers.plugin_router)
     app.include_router(routers.tasks_router)
+    app.include_router(routers.legacy_router)
     app.include_router(routers.main_router)
     app.include_router(routers.account_router)
     app.include_router(routers.audit_log_router)
     app.include_router(routers.server_settings_router)
     app.include_router(routers.websocket_router)
+    app.include_router(routers.app_ui_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:

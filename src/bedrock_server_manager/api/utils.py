@@ -19,32 +19,28 @@ modules or perform general application-wide tasks. Key functionalities include:
 These utilities are designed to be used by other API modules or higher-level
 application logic to encapsulate common or complex operations.
 """
+
 import logging
-from typing import Dict, Any, Optional
 from contextlib import contextmanager
+from typing import Any, Dict
+
+from ..context import AppContext
+
+# Local application imports.
+from ..core import utils as core_utils
+from ..error import BSMError, ServerStartError, UserInputError
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-
-# Local application imports.
-from ..core import utils as core_utils
-from .server import (
-    start_server as api_start_server,
-    stop_server as api_stop_server,
-)
-from ..error import (
-    BSMError,
-    UserInputError,
-    ServerStartError,
-)
-from ..context import AppContext
+from .server import start_server as api_start_server
+from .server import stop_server as api_stop_server
 
 logger = logging.getLogger(__name__)
 
 
 @plugin_method("validate_server_exist")
-def validate_server_exist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+def validate_server_exist(server_name: Any, app_context: AppContext) -> Dict[str, Any]:
     """Validates if a server is correctly installed.
 
     This function checks for the existence of the server's directory and its
@@ -71,7 +67,7 @@ def validate_server_exist(server_name: str, app_context: AppContext) -> Dict[str
     logger.debug(f"API: Validating existence of server '{server_name}'...")
     try:
         # Instantiating BedrockServer also validates underlying configurations.
-        server = app_context.get_server(server_name)
+        server = app_context.get_server(str(server_name))
 
         # is_installed() returns a simple boolean.
         if server.is_installed():
@@ -217,15 +213,17 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
 
     Returns:
-        Dict[str, Any]: On success: ``{"status": "success", "data": {"os_type": "...", "app_version": "..."}}``.
+        Dict[str, Any]: On success: ``{"status": "success", "data": {"os_type": "...", "app_version": "...", "splash_text": "..."}}``.
         On error: ``{"status": "error", "message": "An unexpected error occurred."}``
     """
     logger.debug("API: Requesting system and app info.")
     try:
         manager = app_context.manager
+        splash_txt = app_context.splash_txt
         data = {
             "os_type": manager.get_os_type(),
             "app_version": manager.get_app_version(),
+            "splash_text": splash_txt,
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
         return {"status": "success", "data": data}
@@ -246,9 +244,10 @@ def stop_all_servers(app_context: AppContext):
 
     for server_data in servers_data:
         server_name = server_data.get("name")
-        server = app_context.get_server(server_name)
-        if server.is_running():
-            api_stop_server(server_name, app_context=app_context)
+        if server_name:
+            server = app_context.get_server(str(server_name))
+            if server.is_running():
+                api_stop_server(str(server_name), app_context=app_context)
 
 
 @plugin_method("server_lifecycle_manager")
@@ -350,7 +349,7 @@ def server_lifecycle_manager(
                 try:
                     # Use the API function to ensure detached mode and proper handling.
                     start_result = api_start_server(
-                        server_name, app_context=app_context
+                        str(server_name), app_context=app_context
                     )
                     if start_result.get("status") == "error":
                         raise ServerStartError(

@@ -24,7 +24,7 @@ A clear and concise description of what the bug is.
  # Put text here
 ```
 
---- 
+---
 ### <sup>(REQUIRED)</sup> **To Reproduce**:
 Steps to reproduce the behavior:
 
@@ -91,7 +91,7 @@ A clear and concise description of what actually happened.
 ---
 
 ## <sup>(OPTIONAL)</sup> **Additional Context**:
-Add any other context about the problem here that may be relevant. 
+Add any other context about the problem here that may be relevant.
 
 ```text
  # Put text here

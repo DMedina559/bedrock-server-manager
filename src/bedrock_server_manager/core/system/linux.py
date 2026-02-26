@@ -26,20 +26,20 @@ Note:
     early or behave differently if not run on a Linux system.
 """
 
-import platform
-import os
 import logging
-import subprocess
+import os
+import platform
 import shutil
+import subprocess
 from typing import Optional
 
 # Local application imports.
 from ...error import (
-    CommandNotFoundError,
-    SystemError,
-    MissingArgumentError,
-    FileOperationError,
     AppFileNotFoundError,
+    CommandNotFoundError,
+    FileOperationError,
+    MissingArgumentError,
+    SystemError,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ def check_service_exists(service_name_full: str, system: bool = False) -> bool:
     return exists
 
 
-def create_systemd_service_file(
+def create_systemd_service_file(  # noqa: C901
     service_name_full: str,
     description: str,
     working_directory: str,
@@ -275,7 +275,9 @@ WantedBy=default.target
         raise SystemError(f"Failed to reload systemd daemon. Error: {e.stderr}") from e
 
 
-def enable_systemd_service(service_name_full: str, system: bool = False) -> None:
+def enable_systemd_service(  # noqa: C901
+    service_name_full: str, system: bool = False
+) -> None:
     """Enables a systemd user service on Linux to start on user login.
 
     This function uses ``systemctl --user enable <service_name>`` to enable
@@ -369,7 +371,9 @@ def enable_systemd_service(service_name_full: str, system: bool = False) -> None
         ) from e
 
 
-def disable_systemd_service(service_name_full: str, system: bool = False) -> None:
+def disable_systemd_service(  # noqa: C901
+    service_name_full: str, system: bool = False
+) -> None:
     """Disables a systemd user service on Linux from starting on user login.
 
     This function uses ``systemctl --user disable <service_name>`` to disable

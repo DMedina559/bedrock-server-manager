@@ -11,10 +11,11 @@ By overriding the various event hook methods defined in this base class
 react to specific events triggered by the core application or other parts
 of the server manager.
 """
+
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
 from logging import Logger  # Used for type hinting the logger instance.
 from pathlib import Path  # For type hinting Path objects
+from typing import Any, List
 
 from .api_bridge import PluginAPI  # Used for type hinting the API bridge instance.
 
@@ -57,6 +58,7 @@ class PluginBase(ABC):
     # but the PluginManager's synchronization step enforces its presence for a plugin
     # to be considered valid and loadable.
     version: str = "N/A"  # Default placeholder, should be overridden.
+    author: str = "N/A"  # Optional class attribute for plugin author information.
 
     def __init__(self, plugin_name: str, api: PluginAPI, logger: Logger):
         """Initializes the plugin instance.
@@ -643,3 +645,21 @@ class PluginBase(ABC):
                                         Defaults to an empty list.
         """
         return []
+
+    # --- Wildcard Event Hook ---
+
+    def on_any_event(self, event_name: str, *args, **kwargs):
+        """Called by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`
+        for every standard application event that is dispatched to the plugin.
+
+        This method acts as a "catch-all" handler. It is called *in addition to*
+        any specific event handler (e.g., ``on_load``, ``before_server_start``) that
+        the plugin may have implemented. It allows a plugin to observe all system
+        events without needing to override every individual hook method.
+
+        Args:
+            event_name (str): The name of the event being dispatched (e.g., "before_server_start").
+            *args (Any): The positional arguments passed to the specific event handler.
+            **kwargs (Any): The keyword arguments passed to the specific event handler.
+        """
+        pass

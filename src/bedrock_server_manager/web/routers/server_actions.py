@@ -14,29 +14,22 @@ FastAPI dependencies.
 """
 
 import logging
-from typing import Dict, Any
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-    Request,
-)
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..schemas import ActionResponse, User
-from ..auth_utils import get_current_user
-from ..dependencies import validate_server_exists, get_app_context
-from ..auth_utils import get_admin_user, get_moderator_user
-from ...api import server as server_api, server_install_config
-from ...error import (
-    BSMError,
-    UserInputError,
-    ServerNotRunningError,
-    BlockedCommandError,
-)
+from ...api import server as server_api
+from ...api import server_install_config
 from ...context import AppContext
+from ...error import (
+    BlockedCommandError,
+    BSMError,
+    ServerNotRunningError,
+    UserInputError,
+)
+from ..auth_utils import get_admin_user, get_moderator_user
+from ..dependencies import get_app_context, validate_server_exists
+from ..schemas import ActionResponse, User
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +49,7 @@ class CommandPayload(BaseModel):
 @router.post(
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Start a server instance",
     tags=["Server Actions API"],
 )
@@ -66,28 +59,25 @@ async def start_server_route(
     app_context: AppContext = Depends(get_app_context),
 ):
     """
-    Starts a specific Bedrock server instance.
+    Initiates starting a specific Bedrock server instance in the background.
+
+    The server start operation is performed as a background task.
+    This endpoint immediately returns a 202 Accepted response.
     """
     identity = current_user.username
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
+    task_id = app_context.task_manager.run_task(
+        server_api.start_server,
+        username=current_user.username,
+        server_name=server_name,
+        app_context=app_context,
+    )
 
-    try:
-        result = server_api.start_server(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ActionResponse(
-                message=result.get("message") or "Server started successfully"
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("message"),
-            )
-    except BSMError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+    return ActionResponse(
+        status="pending",
+        message=f"Start operation for server '{server_name}' initiated in background.",
+        task_id=task_id,
+    )
 
 
 @router.post(

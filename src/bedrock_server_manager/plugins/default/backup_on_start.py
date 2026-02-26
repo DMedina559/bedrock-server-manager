@@ -2,8 +2,10 @@
 """
 Plugin to automatically back up a server before it starts.
 """
-from bedrock_server_manager import PluginBase
+
 from typing import Any
+
+from bedrock_server_manager import PluginBase
 
 
 class AutoBackupOnStart(PluginBase):
@@ -13,7 +15,8 @@ class AutoBackupOnStart(PluginBase):
     backup exists before the server goes online.
     """
 
-    version = "1.1.0"
+    version = "1.1.1"
+    author = "dmedina559"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""

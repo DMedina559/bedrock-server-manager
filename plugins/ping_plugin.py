@@ -6,7 +6,10 @@ This plugin sends a custom event, 'pingplugin:ping', when a specific
 application event occurs (e.g., after a server successfully starts).
 It's designed to work in conjunction with PongPlugin, which listens for this event.
 """
+
 import time
+from typing import Any, Dict
+
 from bedrock_server_manager import PluginBase
 
 
@@ -26,7 +29,7 @@ class PingPlugin(PluginBase):
             f"'{self.name}' v{self.version} loaded. Will send 'pingplugin:ping' events after successful server starts."
         )
 
-    def after_server_start(self, **kwargs: any):
+    def after_server_start(self, **kwargs: Any):
         """
         An application event hook, called by the PluginManager after a server
         start attempt.
@@ -39,8 +42,8 @@ class PingPlugin(PluginBase):
             result (dict): A dictionary containing the outcome of the start operation.
                            Expected to have a "status" key (e.g., "success").
         """
-        server_name = kwargs.get("server_name")
-        result = kwargs.get("result", {})
+        server_name = str(kwargs.get("server_name"))
+        result: Dict[str, Any] = kwargs.get("result", {})
 
         self.logger.debug(
             f"'{self.name}' received 'after_server_start' event for server '{server_name}'. Result: {result.get('status')}"

@@ -8,21 +8,21 @@ This includes:
 - Providing access to these configurations throughout the application.
 """
 
-from .settings import Settings
+from .blocked_commands import API_COMMAND_BLACKLIST
 from .const import (
-    package_name,
-    executable_name,
-    app_name_title,
-    env_name,
-    EXPATH,
-    SCRIPT_DIR,
-    GUARD_VARIABLE,
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
-    get_installed_version,
+    EXPATH,
+    GUARD_VARIABLE,
+    SCRIPT_DIR,
     SERVER_TIMEOUT,
+    app_name_title,
+    env_name,
+    executable_name,
+    get_installed_version,
+    package_name,
 )
-from .blocked_commands import API_COMMAND_BLACKLIST
+from .settings import Settings
 from .splash_text import SPLASH_TEXTS
 
 __all__ = [

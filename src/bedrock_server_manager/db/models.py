@@ -7,12 +7,14 @@ registration tokens, players, and audit logs.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey, DateTime, Boolean
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
-from .database import Base
+
+from .database import Base  # type: ignore
 
 
-class User(Base):
+class User(Base):  # type: ignore
     """
     Represents a user in the system.
 
@@ -45,7 +47,7 @@ class User(Base):
     email = Column(String(255), nullable=True)
 
 
-class Setting(Base):
+class Setting(Base):  # type: ignore
     """
     Represents a configuration setting.
 
@@ -70,7 +72,7 @@ class Setting(Base):
     server = relationship("Server", back_populates="settings")
 
 
-class Server(Base):
+class Server(Base):  # type: ignore
     """
     Represents a registered Bedrock server.
 
@@ -90,7 +92,7 @@ class Server(Base):
     settings = relationship("Setting", back_populates="server")
 
 
-class Plugin(Base):
+class Plugin(Base):  # type: ignore
     """
     Represents a registered plugin.
 
@@ -107,7 +109,7 @@ class Plugin(Base):
     config = Column(JSON)
 
 
-class RegistrationToken(Base):
+class RegistrationToken(Base):  # type: ignore
     """
     Represents a token used for user registration.
 
@@ -126,7 +128,7 @@ class RegistrationToken(Base):
     expires = Column(Integer)
 
 
-class Player(Base):
+class Player(Base):  # type: ignore
     """
     Represents a known player.
 
@@ -143,7 +145,7 @@ class Player(Base):
     xuid = Column(String(20), unique=True, index=True)
 
 
-class AuditLog(Base):
+class AuditLog(Base):  # type: ignore
     """
     Represents an entry in the audit log.
 

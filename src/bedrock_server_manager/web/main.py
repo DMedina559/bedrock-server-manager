@@ -10,9 +10,9 @@ arguments and application settings to correctly configure Uvicorn's host, port,
 debug mode, and worker processes.
 """
 
-import logging
 import ipaddress
-from typing import Optional, List, Union
+import logging
+from typing import Optional
 
 import uvicorn
 
@@ -22,12 +22,11 @@ from .app import create_web_app
 logger = logging.getLogger(__name__)
 
 
-def run_web_server(
+def run_web_server(  # noqa: C901
     app_context: "AppContext",
     host: Optional[str] = None,
     port: Optional[int] = None,
     debug: bool = False,
-    threads: Optional[int] = None,
 ) -> None:
     """
     Configures and starts the Uvicorn web server to serve the FastAPI application.
@@ -53,11 +52,7 @@ def run_web_server(
         debug (bool): If ``True``, Uvicorn is run in development mode. This typically
             enables auto-reload on code changes, sets a more verbose log level (debug),
             and uses a single worker process. If ``False`` (default), Uvicorn runs in
-            production mode, with the number of worker processes determined by the
-            ``web.threads`` setting (or its default).
-        threads (Optional[int]): Specifies the number of worker processes for Uvicorn
-
-            Only used for Windows Service
+            production mode.
 
     Raises:
         Exception: Re-raises any exception encountered during `uvicorn.run` if
@@ -69,8 +64,6 @@ def run_web_server(
           Defaults to 11325 if not set or invalid. Valid range: 1-65535.
         - ``web.host`` (Union[str, List[str]]): The host address(es) to bind to if
           not overridden by the ``host`` argument. Defaults to "127.0.0.1".
-        - ``web.threads`` (int): The number of Uvicorn worker processes to use when
-          not in ``debug`` mode. Defaults to 4 if not set or invalid (must be > 0).
     """
     settings = app_context.settings
 
@@ -129,44 +122,13 @@ def run_web_server(
 
     uvicorn_log_level = "info"
     reload_enabled = False
-    workers = 1
 
     if debug:
         logger.warning("Running FastAPI in DEBUG mode (Uvicorn reload enabled).")
         uvicorn_log_level = "debug"
         reload_enabled = True
     else:
-        threads_setting_key = "web.threads"
-        try:
-            if threads is None:
-                workers_val = int(settings.get(threads_setting_key, 4))
-                if workers_val > 0:
-                    workers = workers_val
-                else:
-                    logger.warning(
-                        f"Invalid '{threads_setting_key}' ({workers_val}). Using default: {workers}."
-                    )
-            else:
-                workers_val = int(threads)
-                if workers_val > 0:
-                    workers = workers_val
-                else:
-                    logger.warning(
-                        f"Invalid 'threads' passed ({workers}). Using default: {workers}."
-                    )
-        except (ValueError, TypeError):
-            logger.warning(
-                f"Invalid format for '{threads_setting_key}'. Using default: {workers}."
-            )
-
-        if (
-            workers > 1 and reload_enabled
-        ):  # This state should ideally be avoided for stability
-            logger.warning(
-                "Uvicorn reload mode is enabled with multiple workers. This may lead to unexpected behavior. For production, disable reload or use a process manager like Gunicorn with Uvicorn workers."
-            )
-            # Consider forcing reload_enabled = False if workers > 1 in production mode
-        logger.info(f"Uvicorn production mode with {workers} worker(s).")
+        logger.info("Uvicorn production mode with 1 worker.")
 
     server_mode = (
         "DEBUG (Uvicorn with reload)" if reload_enabled else "PRODUCTION (Uvicorn)"

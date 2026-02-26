@@ -2,15 +2,16 @@
 """
 Plugin to provide a web UI for sending custom plugin events.
 """
-from pathlib import Path
-from typing import Dict, Any
 
-from fastapi import APIRouter, Request, Depends
-import click  # For prompts and colored output
 import json  # For parsing JSON payload
+from pathlib import Path
+from typing import Any, Dict
 
-from bedrock_server_manager.web import get_admin_user
+import click  # For prompts and colored output
+from fastapi import APIRouter, Depends, Request
+
 from bedrock_server_manager import PluginBase
+from bedrock_server_manager.web import get_admin_user
 
 
 class EventSenderPlugin(PluginBase):
@@ -127,7 +128,7 @@ class EventSenderPlugin(PluginBase):
         else:
             click.secho("Error: Plugin API not available. Cannot send event.", fg="red")
 
-    def get_cli_menu_items(self) -> list[dict[str, any]]:
+    def get_cli_menu_items(self) -> list[dict[str, Any]]:
         self.logger.debug(f"Providing CLI menu items for {self.name}")
         return [
             {

@@ -19,15 +19,17 @@ These functions are exposed to the plugin system via
 :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method` and are
 intended for use by UIs, CLIs, or other high-level components.
 """
-import logging
-from typing import Dict, Any, Optional
 
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+import logging
+from typing import Any, Dict
+
+from ..context import AppContext
 
 # Local application imports.
 from ..error import BSMError, FileError
-from ..context import AppContext
+
+# Plugin system imports to bridge API functionality.
+from ..plugins import plugin_method
 
 logger = logging.getLogger(__name__)
 

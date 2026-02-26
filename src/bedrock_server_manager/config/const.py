@@ -5,9 +5,10 @@ Defines application-wide constants and utility functions for accessing them.
 This module centralizes common identifiers, names, paths, and version information
 used throughout the Bedrock Server Manager application.
 """
+
 import os
+from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, Tuple
-from importlib.metadata import version, PackageNotFoundError
 
 # Local imports
 from ..utils import package_finder
@@ -17,7 +18,7 @@ package_name: str = "bedrock-server-manager"
 """The official package name on PyPI."""
 
 app_author: str = "bedrock-server-manager"
-"""The author name used by `appdirs` to construct config paths."""
+"""The author name used by `platformdirs` to construct config paths."""
 
 executable_name: str = package_name
 """The name of the main executable script for the application."""
@@ -29,7 +30,9 @@ env_name: str = "BSM"
 """The prefix used for environment variables related to this application (e.g., BSM_PASSWORD)."""
 
 # --- Package Information ---
-EXPATH: str = package_finder.find_executable(package_name, executable_name)
+# package_finder.find_executable returns Path or None, convert to str
+_expath_path = package_finder.find_executable(package_name, executable_name)
+EXPATH: str | None = str(_expath_path) if _expath_path else None
 """The discovered absolute path to the main application executable."""
 
 SCRIPT_DIR: str = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))

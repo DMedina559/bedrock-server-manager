@@ -7,14 +7,13 @@ to the database (SQLite, PostgreSQL, etc.) using SQLAlchemy. It manages session
 creation and lifecycle.
 """
 
-import warnings
 from contextlib import contextmanager
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.orm import declarative_base
 
-from ..config.const import package_name
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 from ..config import bcm_config
+from ..config.const import package_name
 
 Base = declarative_base()
 
@@ -30,7 +29,7 @@ class Database:
         _tables_created (bool): Flag indicating if tables have been created.
     """
 
-    def __init__(self, db_url: str = None):
+    def __init__(self, db_url: str | None = None):
         """
         Initializes the Database instance.
 
@@ -104,7 +103,7 @@ class Database:
             self._tables_created = True
 
     @contextmanager
-    def session_manager(self) -> Session:
+    def session_manager(self):
         """
         Context manager for database sessions.
 
@@ -114,6 +113,7 @@ class Database:
         if not self.SessionLocal:
             self.initialize()
         self._ensure_tables_created()
+        assert self.SessionLocal is not None
         db = self.SessionLocal()
         try:
             yield db

@@ -6,6 +6,7 @@ This module provides the :class:`~.SystemMixin` class, which includes methods
 for checking system capabilities (like cron availability) and managing
 system-level resources.
 """
+
 import logging
 import platform
 import shutil
@@ -18,6 +19,9 @@ class SystemMixin:
     """
     Mixin class for BedrockServerManager that handles system information and capabilities.
     """
+
+    _app_version: str
+    capabilities: Dict[str, bool]
 
     def get_app_version(self) -> str:
         """Returns the application's version string.

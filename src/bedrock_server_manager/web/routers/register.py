@@ -7,25 +7,22 @@ This module provides endpoints for:
 - Serving the registration page.
 - Handling user registration submissions.
 """
+
 import logging
 import secrets
 import time
-from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.exc import IntegrityError
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
-from ...db.models import User, RegistrationToken
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import (
-    get_current_user,
-    get_current_user_optional,
-    get_admin_user,
-    get_password_hash,
-)
-from ..schemas import User as UserSchema
 from ...context import AppContext
+from ...db.models import RegistrationToken, User
+from ..auth_utils import get_admin_user, get_current_user_optional, get_password_hash
+from ..dependencies import get_app_context, get_templates
+from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +57,7 @@ async def generate_token(
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
     registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         db.add(registration_token)
         db.commit()
 
@@ -75,8 +72,29 @@ async def generate_token(
 
     return {
         "status": "success",
-        "redirect_url": f"/users?message=Registration link generated: {registration_link}",
+        "redirect_url": f"/legacy/users?message=Registration link generated: {registration_link}",
     }
+
+
+@router.get("/validate/{token}", include_in_schema=False)
+async def validate_token(
+    token: str,
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Checks if a registration token is valid.
+    """
+    with app_context.db.session_manager() as db:  # type: ignore
+        registration_token = (
+            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+        )
+        if not registration_token or registration_token.expires < int(time.time()):
+            return JSONResponse(
+                content={"status": "error", "message": "Invalid or expired token."},
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        return JSONResponse(content={"status": "success", "message": "Token is valid."})
 
 
 @router.get("/{token}", response_class=HTMLResponse, include_in_schema=False)
@@ -90,7 +108,7 @@ async def registration_page(
     """
     Serves the registration page if the token is valid.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         registration_token = (
             db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
         )
@@ -129,7 +147,7 @@ async def register_user(
     """
     Creates a new user from a registration token.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         registration_token = (
             db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
         )

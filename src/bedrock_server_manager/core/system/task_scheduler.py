@@ -7,7 +7,7 @@ are used to automate Bedrock server operations like backups or restarts.
 """
 
 import logging
-from typing import Optional, Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 

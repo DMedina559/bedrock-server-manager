@@ -1,6 +1,6 @@
 [flake8]
 max-line-length = 88
-ignore = E501,W503,F541
+ignore = E501,W503,F541,E704
 max-complexity = 10
 count = True
 statistics = True

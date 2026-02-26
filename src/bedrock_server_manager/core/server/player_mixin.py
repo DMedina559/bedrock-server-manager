@@ -9,13 +9,15 @@ Specifically, it looks for lines indicating a player connection to parse out
 player gamertags and their corresponding XUIDs. This information can be used,
 for example, to populate a player database or track server activity.
 """
+
 import os
 import re
-from typing import List, Dict, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, List
+
+from ...error import FileOperationError
 
 # Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
-from ...error import FileOperationError
 
 if TYPE_CHECKING:
     pass

@@ -2,8 +2,10 @@
 """
 Plugin to send in-game messages and manage delays during server lifecycle events.
 """
+
 import time
 from typing import Any
+
 from bedrock_server_manager import PluginBase
 
 
@@ -14,9 +16,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     This gives players warnings and can help ensure smoother transitions.
     """
 
-    version = "1.1.0"
+    version = "1.1.1"
+    author = "dmedina559"
 
-    def on_load(self):
+    def on_load(self) -> None:
         """Initializes default delays and logs plugin activation."""
         # Default delays in seconds. These could be made configurable in the future.
         self.stop_warning_delay: int = 10
@@ -32,7 +35,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         try:
             response = self.api.get_server_running_status(server_name=server_name)
             if response and response.get("status") == "success":
-                return response.get("is_running", False)
+                return bool(response.get("is_running", False))
             self.logger.warning(
                 f"Could not determine running status for '{server_name}'. API: {response}"
             )
@@ -46,7 +49,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
         return False
 
-    def _send_ingame_message(self, server_name: str, message: str, context: str):
+    def _send_ingame_message(
+        self, server_name: str, message: str, context: str
+    ) -> None:
         """Helper to send an in-game message if the server is running."""
         if self._is_server_running(server_name):
             try:
@@ -70,9 +75,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} message."
             )
 
-    def before_server_stop(self, **kwargs: Any):
+    def before_server_stop(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
 
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
@@ -92,7 +97,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     )
                     time.sleep(self.stop_warning_delay)
 
-    def after_server_stop(self, **kwargs: Any):
+    def after_server_stop(self, **kwargs: Any) -> None:
         """Waits for a short period after a server stops, e.g., for port release."""
         server_name = kwargs.get("server_name")
         result = kwargs.get("result", {})
@@ -103,9 +108,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
             time.sleep(self.post_stop_settle_delay)
 
-    def before_delete_server_data(self, **kwargs: Any):
+    def before_delete_server_data(self, **kwargs: Any) -> None:
         """Sends a final warning before server data is deleted if the server is running."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
 
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
@@ -118,9 +123,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     "data deletion warning",
                 )
 
-    def before_server_update(self, **kwargs: Any):
+    def before_server_update(self, **kwargs: Any) -> None:
         """Notifies players before a server update begins."""
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         target_version = kwargs.get("target_version")
         app_context = kwargs.get("app_context")
 
@@ -136,7 +141,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     "update notification",
                 )
 
-    def after_server_start(self, **kwargs: Any):
+    def after_server_start(self, **kwargs: Any) -> None:
         """Waits for a short period after a server starts to allow initialization."""
         server_name = kwargs.get("server_name")
         result = kwargs.get("result", {})

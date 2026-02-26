@@ -9,23 +9,19 @@ This module provides endpoints for:
 - Enabling/Disabling users (Admin).
 - Updating user roles (Admin).
 """
+
 import logging
-from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from ...context import AppContext
 from ...db.models import User
-from ..dependencies import get_templates, get_app_context
-from ..auth_utils import (
-    get_current_user,
-    get_password_hash,
-    get_admin_user,
-    get_moderator_user,
-)
+from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
+from ..dependencies import get_app_context
 from ..schemas import User as UserSchema
 from .audit_log import create_audit_log
-from ...context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -35,22 +31,17 @@ router = APIRouter(
 )
 
 
-@router.get("", response_class=HTMLResponse, include_in_schema=False)
-async def users_page(
-    request: Request,
+@router.get("/list", response_model=List[UserSchema])
+async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
-    Serves the user management page.
+    Retrieves the list of users as JSON.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         users = db.query(User).all()
-    return templates.TemplateResponse(
-        "users.html",
-        {"request": request, "users": users, "current_user": current_user},
-    )
+        return users
 
 
 class CreateUserRequest(BaseModel):
@@ -79,7 +70,7 @@ class UpdateUserRoleRequest(BaseModel):
     role: str
 
 
-@router.post("/create", include_in_schema=False)
+@router.post("/create")
 async def create_user(
     data: CreateUserRequest,
     current_user: UserSchema = Depends(get_admin_user),
@@ -88,7 +79,7 @@ async def create_user(
     """
     Creates a new user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         # Check for existing user
         existing_user = db.query(User).filter(User.username == data.username).first()
         if existing_user:
@@ -118,7 +109,7 @@ async def create_user(
         return {"status": "success"}
 
 
-@router.post("/{user_id}/delete", include_in_schema=False)
+@router.post("/{user_id}/delete")
 async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -127,9 +118,22 @@ async def delete_user(
     """
     Deletes a user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
+            # Prevent deleting the last admin
+            if user.role == "admin":
+                active_admins = (
+                    db.query(User)
+                    .filter(User.role == "admin", User.is_active.is_(True))
+                    .count()
+                )
+                if active_admins <= 1:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Cannot delete the last active admin.",
+                    )
+
             create_audit_log(
                 app_context,
                 current_user.id,
@@ -147,7 +151,7 @@ async def delete_user(
     )
 
 
-@router.post("/{user_id}/disable", include_in_schema=False)
+@router.post("/{user_id}/disable")
 async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -156,13 +160,13 @@ async def disable_user(
     """
     Disables a user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             if user.role == "admin":
                 active_admins = (
                     db.query(User)
-                    .filter(User.role == "admin", User.is_active == True)
+                    .filter(User.role == "admin", User.is_active.is_(True))
                     .count()
                 )
                 if active_admins <= 1:
@@ -190,7 +194,7 @@ async def disable_user(
     )
 
 
-@router.post("/{user_id}/enable", include_in_schema=False)
+@router.post("/{user_id}/enable")
 async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -199,7 +203,7 @@ async def enable_user(
     """
     Enables a user.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             user.is_active = True
@@ -219,7 +223,7 @@ async def enable_user(
     )
 
 
-@router.post("/{user_id}/role", include_in_schema=False)
+@router.post("/{user_id}/role")
 async def update_user_role(
     user_id: int,
     data: UpdateUserRoleRequest,
@@ -229,13 +233,13 @@ async def update_user_role(
     """
     Updates a user's role.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             if user.role == "admin" and data.role != "admin":
                 active_admins = (
                     db.query(User)
-                    .filter(User.role == "admin", User.is_active == True)
+                    .filter(User.role == "admin", User.is_active.is_(True))
                     .count()
                 )
                 if active_admins <= 1:

@@ -1,6 +1,7 @@
 # autostart_servers.py
-from bedrock_server_manager import PluginBase
 from typing import Any
+
+from bedrock_server_manager import PluginBase
 
 
 class AutostartServers(PluginBase):
@@ -8,7 +9,8 @@ class AutostartServers(PluginBase):
     Starts all servers with the autostart setting set to true on manager startup.
     """
 
-    version = "1.0.0"
+    version = "1.0.2"
+    author = "dmedina559"
 
     def on_load(self):
         """
@@ -28,6 +30,12 @@ class AutostartServers(PluginBase):
 
             if server_settings:
                 self.logger.info(
-                    f"Server '{server_name}' has autostart enabled, starting it now."
+                    f"Server '{server_name}' has autostart enabled, starting it now (background task)."
                 )
-                self.api.start_server(server_name)
+                # Use the task manager to start the server in the background so app startup isn't blocked
+                # especially if an update is required.
+                self.api.app_context.task_manager.run_task(
+                    self.api.start_server,
+                    server_name=server_name,
+                    username="System (Autostart)",
+                )

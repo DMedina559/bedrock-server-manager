@@ -27,22 +27,10 @@ These utilities aim to promote code reuse and provide a consistent user
 experience across different parts of the CLI.
 """
 
-import functools
 import logging
-import platform
-import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict
 
 import click
-import questionary
-from questionary import ValidationError, Validator
-
-from ..api import (
-    application as api_application,
-    server_install_config as config_api,
-    utils as api_utils,
-)
-from ..error import BSMError
 
 logger = logging.getLogger(__name__)
 
@@ -81,4 +69,4 @@ def handle_api_response(response: Dict[str, Any], success_msg: str) -> Dict[str,
 
     message = response.get("message", success_msg)
     click.secho(f"Success: {message}", fg="green")
-    return response.get("data", {})
+    return response.get("data", {})  # type: ignore

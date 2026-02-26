@@ -1,6 +1,6 @@
 <div style="text-align: center;">
     <img src="https://raw.githubusercontent.com/dmedina559/bedrock-server-manager/main/src/bedrock_server_manager/web/static/image/icon/favicon.svg" alt="ICON" width="200" height="200">
-</div> 
+</div>
 
 # Bedrock Server Manager - Contributing
 
@@ -60,6 +60,12 @@ We recommend using a virtual environment for development.
 2.  **Install dependencies:**
 
     For development you should install the dependencies listed in the pyproject.toml
+
+3.  **Install Pre-commit Hooks:**
+    To ensure code quality and prevent failing commits, install the pre-commit hooks. This will automatically run checks (linting, formatting) before every commit.
+    ```bash
+    pre-commit install
+    ```
 
 
 ## Development Workflow

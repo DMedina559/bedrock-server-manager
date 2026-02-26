@@ -2,9 +2,11 @@
 """
 Plugin that automatically updates a Bedrock server to the latest version.
 """
+
+from typing import Any
+
 from bedrock_server_manager import PluginBase
 from bedrock_server_manager.error import BSMError
-from typing import Any
 
 
 class AutoupdatePlugin(PluginBase):
@@ -14,7 +16,8 @@ class AutoupdatePlugin(PluginBase):
     configuration. If enabled, it triggers the update process before launch.
     """
 
-    version = "1.1.0"
+    version = "1.1.1"
+    author = "dmedina559"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
@@ -27,7 +30,7 @@ class AutoupdatePlugin(PluginBase):
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.
         """
-        server_name = kwargs.get("server_name")
+        server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_server_start for '{server_name}'.")
 
         try:

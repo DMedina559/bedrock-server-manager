@@ -21,7 +21,7 @@ Plugins are small Python scripts that "hook into" the Bedrock Server Manager to 
 
 ---
 
-## Managing Plugins with the Command Line
+## Managing Plugins with the Web Server
 
 You can easily control which plugins are active from the Web Server.
 
@@ -35,11 +35,11 @@ If you're changing the status of a FASTAPI plugin you must fully restart the web
 
 ## The `plugins.json` Configuration File
 
-Plugin statuses, versions, and descriptions are stored in a file named `plugins.json`.
+Plugin statuses, versions, and descriptions are stored in the database.
 
-*   **Location:** This file is located in your application's configuration directory (typically `~/.bedrock-server-manager/.config/plugins.json`).
-*   **Functionality:** It stores a list of all known plugins and whether they are enabled (`true`) or disabled (`false`), their version, and description.
-*   **Discovery:** When the application starts, it scans the `plugins` directory. Any new `.py` files found will be automatically added to this file as `disabled`. You can then enable them using the `plugin enable` command or through the web ui.
+*   **Location:** The database is located in your application's configuration directory (typically `~/.bedrock-server-manager/.config/`).
+*   **Functionality:** It stores a list of all known plugins and whether they are enabled (`true`) or disabled (`false`), their version, and description, and author.
+*   **Discovery:** When the application starts, it scans the `plugins` directory. Any new `.py` files found will be automatically added as `disabled`. You can then enable them through the web ui.
 
 ### Default Plugins
 A few essential built-in plugins are included in BSM to provide core functionality. You can enable/disable them if you wish. The current list includes:
@@ -50,6 +50,7 @@ A few essential built-in plugins are included in BSM to provide core functionali
 *   `update_before_start` (enabled by default)
 *   `backup_on_start` (disabled by default)
 *   `content_uploader_plugin` (disabled by default)
+*   `download_page_plugin` (disabled by default)
 
 ---
 

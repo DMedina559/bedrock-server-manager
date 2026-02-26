@@ -2,13 +2,14 @@
 """
 A plugin to provide a web UI for uploading .mcworld, .mcpack, and .mcaddon files.
 """
+
 import os
 import shutil
-from typing import Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, File, UploadFile, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase
 from bedrock_server_manager.web import get_admin_user
@@ -19,7 +20,10 @@ MODULE_CONTENT_DIR_PATH: Optional[Path] = None
 
 
 class ContentUploaderPlugin(PluginBase):
-    version = "1.1.0"
+    """Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."""
+
+    version = "1.2.0"
+    author = "dmedina559"
 
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
@@ -77,7 +81,56 @@ class ContentUploaderPlugin(PluginBase):
                 exc_info=True,
             )
 
-    def _define_routes(self):
+    def _define_routes(self):  # noqa: C901
+        @self.router.get(
+            "/content/upload/native",
+            response_class=JSONResponse,
+            name="Content Upload Native UI",
+            summary="Upload Content (Native)",
+            tags=["plugin-ui-native"],
+        )
+        async def get_upload_native_ui(
+            request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
+        ):
+            return JSONResponse(
+                content={
+                    "type": "Container",
+                    "children": [
+                        {
+                            "type": "Card",
+                            "props": {"title": "Upload Content"},
+                            "children": [
+                                {
+                                    "type": "Text",
+                                    "props": {
+                                        "content": "Select a .mcworld, .mcpack, or .mcaddon file to upload."
+                                    },
+                                },
+                                {
+                                    "type": "FileUpload",
+                                    "props": {
+                                        "id": "file",
+                                        "accept": ".mcworld,.mcpack,.mcaddon",
+                                    },
+                                },
+                                {
+                                    "type": "Button",
+                                    "props": {
+                                        "label": "Upload",
+                                        "onClickAction": {
+                                            "type": "api_call",
+                                            "endpoint": "/api/content/upload",
+                                            "includeFormState": True,
+                                            "refresh": True,
+                                        },
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+
         @self.router.get(
             "/content/upload",
             response_class=HTMLResponse,
@@ -127,6 +180,9 @@ class ContentUploaderPlugin(PluginBase):
                     )
                     message_type = "error"
                     raise ValueError("MODULE_CONTENT_DIR_PATH not set")
+
+                if not filename:
+                    raise ValueError("Filename is missing")
 
                 file_ext = Path(filename).suffix.lower()
                 target_subdir_name = ""
@@ -180,7 +236,9 @@ class ContentUploaderPlugin(PluginBase):
                     f"Error during file upload or processing for '{filename}': {e}",
                     exc_info=True,
                 )
-                message = f"An unexpected error occurred: {str(e)}"
+                message = (
+                    "An unexpected error occurred while processing the file upload."
+                )
                 message_type = "error"
                 event_status = "error"
             finally:
@@ -195,6 +253,17 @@ class ContentUploaderPlugin(PluginBase):
                         status=event_status,
                         details_message=message,
                     )
+
+            accept_header = request.headers.get("accept", "")
+            if "application/json" in accept_header or request.query_params.get("json"):
+                return JSONResponse(
+                    content={
+                        "status": event_status,
+                        "message": message,
+                        "destination": destination_path_for_event,
+                    },
+                    status_code=200 if event_status == "success" else 400,
+                )
 
             redirect_url = request.url_for("Content Upload Page").include_query_params(
                 message=message, message_type=message_type

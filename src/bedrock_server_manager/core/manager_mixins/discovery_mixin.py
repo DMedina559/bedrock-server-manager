@@ -6,9 +6,10 @@ This module provides the :class:`~.DiscoveryMixin` class, which is used by the
 :class:`~.core.manager.BedrockServerManager` to scan the filesystem for
 existing server installations and gather their basic status.
 """
+
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import (
@@ -26,6 +27,8 @@ class DiscoveryMixin:
     """
     Mixin class for BedrockServerManager that handles server discovery and validation.
     """
+
+    _base_dir: str | None
 
     def validate_server(self, server_name: str, app_context: "AppContext") -> bool:
         """Validates if a given server name corresponds to a valid installation.

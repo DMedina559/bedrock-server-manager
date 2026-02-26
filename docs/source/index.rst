@@ -21,6 +21,18 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
+   :caption: Features
+
+   features/installation.md
+   features/server_management.md
+   features/configuration.md
+   features/backups.md
+   features/content_management.md
+   features/settings.md
+   features/default_plugins.md
+
+.. toctree::
+   :maxdepth: 2
    :caption: Changelog
 
    changelog
@@ -52,6 +64,7 @@ Browse through the sections below to find various information about Bedrock Serv
    plugins/plugin_apis.md
    developer/plugins/plugin_base
    developer/plugins/plugin_manager
+   developer/plugins/native_json_ui.md
 
 .. toctree::
    :maxdepth: 2

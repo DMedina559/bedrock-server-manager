@@ -6,23 +6,21 @@ This module provides endpoints for:
 - Serving the initial setup page.
 - Handling the creation of the first user (System Admin).
 """
-import logging
-from fastapi import APIRouter, Request, Depends, Form, status, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+
+from ...context import AppContext
 from ...db.models import User
-from ..dependencies import get_templates, get_app_context
 from ..auth_utils import (
-    get_current_user_optional,
     create_access_token,
     get_password_hash,
 )
-from ..schemas import User as UserSchema
-from ...context import AppContext
+from ..dependencies import get_app_context
 
 logger = logging.getLogger(__name__)
 
@@ -32,23 +30,16 @@ router = APIRouter(
 )
 
 
-@router.get("", response_class=HTMLResponse, include_in_schema=False)
-async def setup_page(
-    request: Request,
-    current_user: UserSchema = Depends(get_current_user_optional),
+@router.get("/status", tags=["Setup"])
+async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
-    templates: Jinja2Templates = Depends(get_templates),
 ):
     """
-    Serves the setup page if no users exist in the database.
+    Returns whether the application needs initial setup.
     """
-    with app_context.db.session_manager() as db:
-        if db.query(User).first():
-            # If a user already exists, redirect to home page, as setup is complete
-            return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    return templates.TemplateResponse(
-        request, "setup.html", {"current_user": current_user}
-    )
+    with app_context.db.session_manager() as db:  # type: ignore
+        user_exists = db.query(User).first() is not None
+        return {"needs_setup": not user_exists}
 
 
 class CreateFirstUserRequest(BaseModel):
@@ -72,7 +63,7 @@ async def create_first_user(
     """
     Creates the first user (admin) in the database.
     """
-    with app_context.db.session_manager() as db:
+    with app_context.db.session_manager() as db:  # type: ignore
         if db.query(User).first():
             # If a user already exists, prevent creating another first user
             raise HTTPException(
@@ -108,7 +99,7 @@ async def create_first_user(
                 content={
                     "status": "success",
                     "message": "Admin account created and logged in successfully.",
-                    "redirect_url": "/settings?in_setup=true",
+                    "redirect_url": "/legacy/settings?in_setup=true",
                 },
                 status_code=status.HTTP_200_OK,
             )

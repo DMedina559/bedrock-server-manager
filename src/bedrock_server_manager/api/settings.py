@@ -11,19 +11,18 @@ plugins (via methods exposed by
 :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`), to
 programmatically access and modify these global settings.
 """
+
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
+
+from ..context import AppContext
+
+# Local application imports.
+from ..error import BSMError, MissingArgumentError
+from ..logging import setup_logging
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
-from ..logging import setup_logging
-
-# Local application imports.
-from ..error import (
-    BSMError,
-    MissingArgumentError,
-)
-from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -252,8 +251,7 @@ def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
         setup_logging(
             log_dir=settings.get("paths.logs"),
             log_keep=settings.get("retention.logs"),
-            file_log_level=settings.get("logging.file_level"),
-            cli_log_level=settings.get("logging.cli_level"),
+            log_level=settings.get("logging.level"),
             force_reconfigure=True,  # Crucial flag to force removal of old handlers
         )
         logger.info("API: Logging configuration successfully re-applied.")

@@ -27,29 +27,31 @@ dealing with potential network issues, file system operations, and changes in
 download URLs or API responses.
 """
 
-import re
-import requests
-import platform
+import json
 import logging
 import os
-import json
+import platform
+import re
 import zipfile
 from pathlib import Path
-from typing import Tuple, Optional, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Set, Tuple
+
+import requests  # type: ignore
+
+from ..error import (
+    AppFileNotFoundError,
+    ConfigurationError,
+    DownloadError,
+    ExtractError,
+    FileOperationError,
+    InternetConnectivityError,
+    MissingArgumentError,
+    SystemError,
+    UserInputError,
+)
 
 # Local application imports.
 from .system import base as system_base
-from ..error import (
-    DownloadError,
-    ExtractError,
-    MissingArgumentError,
-    InternetConnectivityError,
-    FileOperationError,
-    AppFileNotFoundError,
-    ConfigurationError,
-    UserInputError,
-    SystemError,
-)
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
@@ -57,7 +59,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def prune_old_downloads(download_dir: str, download_keep: int):
+def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
     """Removes the oldest downloaded server ZIP files from a directory.
 
     This function keeps a specified number of the most recent downloads and
@@ -203,6 +205,8 @@ class BedrockDownloader:
         "server.properties",
     }
 
+    server_zip_path: str | None
+
     def __init__(
         self,
         settings_obj: "Settings",
@@ -326,7 +330,7 @@ class BedrockDownloader:
                 f"Instance targeting specific STABLE version '{self._custom_version_number}' for server: {self.server_dir}"
             )
 
-    def _lookup_bedrock_download_url(self) -> str:
+    def _lookup_bedrock_download_url(self) -> str:  # noqa: C901
         """Finds the download URL by querying the official Minecraft download API.
 
         This is the most reliable method as it does not rely on web scraping.
@@ -432,7 +436,7 @@ class BedrockDownloader:
         else:
             self.resolved_download_url = base_url
 
-        if not self.resolved_download_url:
+        if self.resolved_download_url is None:
             raise DownloadError(
                 "Internal error: Failed to resolve a final download URL."
             )
@@ -495,7 +499,7 @@ class BedrockDownloader:
             f"Failed to extract version number from URL format: {source_path}"
         )
 
-    def _download_server_zip_file(self):
+    def _download_server_zip_file(self):  # noqa: C901
         """Downloads the server ZIP file from the resolved URL.
 
         Raises:
@@ -660,7 +664,7 @@ class BedrockDownloader:
             raise DownloadError("Could not determine actual version from resolved URL.")
         return self.actual_version
 
-    def prepare_download_assets(self) -> Tuple[str, str, str]:
+    def prepare_download_assets(self) -> Tuple[str, str, str]:  # noqa: C901
         """Orchestrates the download preparation, including potential download.
 
         This comprehensive method coordinates all steps required to make the server
@@ -799,7 +803,7 @@ class BedrockDownloader:
             raise DownloadError("Critical state missing after download preparation.")
         return self.actual_version, self.zip_file_path, self.specific_download_dir
 
-    def extract_server_files(self, is_update: bool):
+    def extract_server_files(self, is_update: bool):  # noqa: C901
         """Extracts server files from the downloaded ZIP to the target server directory.
 
         This method assumes that :meth:`.prepare_download_assets()` has been
