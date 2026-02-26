@@ -48,3 +48,8 @@ These plugins provide feedback to players and ensure smoother operations.
 *   **Purpose**: Provides a web interface for uploading `.mcworld`, `.mcpack`, and `.mcaddon` files.
 *   **Access**: Adds a new route `/content/upload`.
 *   **Key Behavior**: Accepts file uploads and places them in the configured imports directory (`content/worlds` or `content/addons`), making them available for installation via the Content Management page.
+
+### Download Page
+*   **Purpose**: Provides a web interface for downloading BSM content like worlds, addons, and backups.
+*  **Access**: Adds a new entry in the web dashboard, and additional route `/api/download_page/download` to handle file downloads.
+*  **Key Behavior**: Lists available content/backup files and allows users to download them directly from the web interface, which is especially useful for remote server management.

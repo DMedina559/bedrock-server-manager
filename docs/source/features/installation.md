@@ -8,7 +8,7 @@ You can install multiple server instances on the same machine, each with its own
 
 ### Installation Steps
 
-1.  **Navigate to Install**: Click **Install New Server** from the dashboard sidebar or main menu.
+1.  **Navigate to Install**: Click **Install New Server** from the dashboard.
 2.  **Server Name**: Enter a unique name for your server (e.g., `Survival_World`, `Creative_Lobby`). This name will be used for the server's directory and identification.
 3.  **Server Version**:
     *   **LATEST**: Automatically downloads the most recent stable version from Mojang.
@@ -38,7 +38,8 @@ Mojang frequently releases updates for Minecraft Bedrock. BSM helps you stay cur
 ### Manual Update
 
 1.  Select the server from the dropdown menu in the web dashboard.
-2.  Click the **Update** button.
+2.  Navigate to the **Settings** page.
+3.  Click the **Update Server** button.
 3.  BSM will:
     *   Stop the server safely (if it was running).
     *   Perform a full backup (if enabled).

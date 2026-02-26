@@ -15,11 +15,13 @@ The **Settings** page controls how BSM behaves.
 
 ### Modifying Settings
 
-1.  Navigate to **Settings**.
+1.  Navigate to **BSM Settings**.
 2.  Locate the setting you wish to change.
 3.  Update the value.
 4.  Changes are auto-saved.
 5.  **Reload**: If you edited the configuration, click the **Reload from File** button to refresh the application state.
+
+**Note**: You can also add custom settings here that may be used by plugins. Custom keys will automatically be saved under the `custom` tree.
 
 ## User Management
 
@@ -30,11 +32,13 @@ BSM supports a multi-user environment, allowing you to grant access to other tea
 New users are added via an invitation system.
 
 1.  Navigate to the **Users** page.
-2.  Locate the **Generate Registration Token** section.
+2.  Click the **Invite User** button.
 3.  Select the **Role** for the new user (e.g., Admin, Moderator, User).
 4.  Click **Generate Token**.
 5.  A unique registration link will be generated (valid for 24 hours).
 6.  Copy this link and send it to the person you wish to invite. They will be prompted to create their own username and password.
+
+**Warning**: The registration link will only be shown once. If you lose it, you will need to generate a new one.
 
 ### User Roles
 
@@ -75,3 +79,24 @@ Plugins extend the functionality of BSM.
 2.  Place it in the `plugins/` directory of your BSM installation.
 3.  Go to the **Plugins** page.
 4.  Enable the new plugin.
+
+## Global Player Management
+
+The **Players** page provides a view of all players that have been discovered across all server instances. This list is used for permission management.
+
+### Manually Adding Players
+
+If a player has not yet joined any server, you can add them manually:
+
+**Note**: You must know the player's exact Gamertag and XUID to add them manually. This information can be obtained through third-party services.
+
+1.  Navigate to the **Players** page.
+2.  Enter the player's Gamertag and XUID in a <gamertag1>:<xuid1>,<gamertag2>:<xuid2>,... format.
+3.  Click **+ Add/Update**.
+
+### Trigering Player Scans
+
+BSM automatically scans for players when a server starts, but you can also trigger a manual scan:
+
+1.  Navigate to the **Players** page.
+1.  Click the **Scan Logs** button to refresh the list of players who have joined any server at least once (or are currently online).

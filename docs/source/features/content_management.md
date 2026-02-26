@@ -14,9 +14,9 @@ To use a custom world (e.g., a downloaded map or a backup from another server):
     *   Place your world file (`.mcworld`) into the `content/worlds` directory on the server.
     *   (Enable the content uploader plugin to easily upload content files).
 2.  Select the server from the dropdown menu in the web dashboard.
-3.  Navigate to the **Extras > Manage Content > Manage World** page from the web dashboard.
-4.  Locate the file in the **Available Worlds** list.
-5.  Click the **Import** button next to the file.
+3.  Navigate to the **Content** page and then click on the **Worlds** tab.
+4.  Locate the file in the file list.
+5.  Click the **Installt** button next to the file.
 6.  **Warning**: This action will replace the currently active world on the server. Ensure you have backed up your current world if you wish to save it.
 
 ### Exporting the Current World
@@ -24,7 +24,7 @@ To use a custom world (e.g., a downloaded map or a backup from another server):
 To save a copy of your current world for download or transfer:
 
 1.  Select the server from the dropdown menu in the web dashboard.
-2.  Navigate to the **Extras > Manage Content > Manage World** page from the web dashboard.
+2.  Navigate to the **Content** page and then click on the **Worlds** tab.
 3.  Click the **Export World** button.
 4.  BSM will compress the active world directory into a `.mcworld` file.
 5.  The file will be exported to the `content/worlds` directory for you to import into another server.
@@ -34,7 +34,7 @@ To save a copy of your current world for download or transfer:
 To start fresh with a newly generated world:
 
 1.  Select the server from the dropdown menu in the web dashboard.
-2.  Navigate to the **Extras > Manage Content > Manage World** page from the web dashboard.
+2.  Navigate to the **Content** page and then click on the **Worlds** tab.
 3.  Click the **Reset World** button.
 4.  Confirm the action.
 5.  BSM will delete the current `worlds/` directory.
@@ -50,7 +50,7 @@ BSM simplifies the process of installing addons to enhance your server.
     *   Place your addon file (`.mcpack`/`.mcaddon`) into the `content/addons` directory.
       * *   (Enable the content uploader plugin to easily upload content files).
 2.  Select the server from the dropdown menu in the web dashboard.
-3.  Navigate to the **Extras > Manage Content > Manage Addon** page from the web dashboard.
+3.  Navigate to the **Content** page and then click on the **Addons** tab.
 4.  Locate the file in the **Available Addons** list.
 5.  Click the **Install** button.
 
