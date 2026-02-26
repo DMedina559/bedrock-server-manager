@@ -5,8 +5,8 @@
 
 version: 2
 updates:
-  - package-ecosystem: "pip" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "pip"
+    directory: "/"
     target-branch: "dev"
     schedule:
       interval: "daily"
@@ -15,6 +15,14 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/frontend/legacy"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "dep"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend/v2"
     target-branch: "dev"
     schedule:
       interval: "daily"
