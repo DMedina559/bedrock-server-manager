@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 from bedrock_server_manager import PluginBase
+from bedrock_server_manager.core.utils import core_validate_server_name_format
+from bedrock_server_manager.error import InvalidServerNameError
 from bedrock_server_manager.web import get_admin_user
 
 
@@ -241,8 +243,10 @@ class DownloadPagePlugin(PluginBase):
                 raise HTTPException(400, "Invalid filename")
 
             if server is not None:
-                if not safe_name_pattern.match(server):
-                    raise HTTPException(400, "Invalid server name")
+                try:
+                    core_validate_server_name_format(server)
+                except InvalidServerNameError as e:
+                    raise HTTPException(400, f"Invalid server name: {e}")
 
             base_path = None
             # Resolve root directories first to establish trust anchors
