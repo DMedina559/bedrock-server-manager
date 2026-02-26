@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -233,55 +234,72 @@ class DownloadPagePlugin(PluginBase):
             server: Optional[str] = None,
             current_user: Dict[str, Any] = Depends(get_admin_user),
         ):
-            # Basic validation of user-controlled inputs to avoid path traversal
-            if "/" in filename or "\\" in filename or ".." in filename:
+            # Strict validation of user-controlled inputs to avoid path traversal
+            # Allow alphanumeric, dot, underscore, dash, and space
+            safe_name_pattern = re.compile(r"^[A-Za-z0-9._\- ]+$")
+            if not safe_name_pattern.match(filename):
                 raise HTTPException(400, "Invalid filename")
 
             if server is not None:
-                if "/" in server or "\\" in server or ".." in server:
+                if not safe_name_pattern.match(server):
                     raise HTTPException(400, "Invalid server name")
 
             base_path = None
-            if file_type == "backup_world":
+            # Resolve root directories first to establish trust anchors
+            if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
                 backup_dir_str = self.api.app_context.settings.get("paths.backups")
                 if not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
-                base_path = Path(backup_dir_str) / server
-            elif file_type == "backup_config":
-                if not server:
-                    raise HTTPException(400, "Server name required for backups")
-                backup_dir_str = self.api.app_context.settings.get("paths.backups")
-                if not backup_dir_str:
-                    raise HTTPException(500, "Backup directory not configured")
-                base_path = Path(backup_dir_str) / server
-            elif file_type == "content_world":
+
+                # Trust anchor for backups
+                backup_root = Path(backup_dir_str).resolve()
+                if not backup_root.exists():
+                    raise HTTPException(500, "Backup root directory does not exist")
+
+                # Construct and verify server path
+                base_path = (backup_root / server).resolve()
+                try:
+                    base_path.relative_to(backup_root)
+                except ValueError:
+                    raise HTTPException(403, "Access denied: Invalid server path")
+
+            elif file_type in ("content_world", "content_addon"):
                 content_dir_str = self.api.app_context.settings.get("paths.content")
                 if not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
-                base_path = Path(content_dir_str) / "worlds"
-            elif file_type == "content_addon":
-                content_dir_str = self.api.app_context.settings.get("paths.content")
-                if not content_dir_str:
-                    raise HTTPException(500, "Content directory not configured")
-                base_path = Path(content_dir_str) / "addons"
+
+                # Trust anchor for content
+                content_root = Path(content_dir_str).resolve()
+                if not content_root.exists():
+                    raise HTTPException(500, "Content root directory does not exist")
+
+                if file_type == "content_world":
+                    base_path = (content_root / "worlds").resolve()
+                else:
+                    base_path = (content_root / "addons").resolve()
+
+                try:
+                    base_path.relative_to(content_root)
+                except ValueError:
+                    raise HTTPException(
+                        500, "Content subdirectory is outside content root"
+                    )
             else:
                 raise HTTPException(400, "Invalid file type")
 
-            if not base_path or not base_path.exists():
+            if not base_path.exists():
                 raise HTTPException(404, "Base directory not found or does not exist")
 
             # Secure path joining
             try:
-                # Resolve base path first
-                base_path_resolved = base_path.resolve()
                 # Join filename and resolve
-                file_path = (base_path_resolved / filename).resolve()
+                file_path = (base_path / filename).resolve()
 
                 # Check traversal using Path.relative_to to ensure containment
                 try:
-                    file_path.relative_to(base_path_resolved)
+                    file_path.relative_to(base_path)
                 except ValueError:
                     raise HTTPException(403, "Access denied: Path traversal detected")
 
