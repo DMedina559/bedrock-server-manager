@@ -17,9 +17,7 @@ from fastapi.responses import FileResponse
 
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..auth_utils import get_current_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import User
 
 WEB_APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(WEB_APP_ROOT))
@@ -86,7 +84,6 @@ async def serve_custom_panorama_api(
 )
 async def serve_world_icon_api(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
@@ -95,9 +92,7 @@ async def serve_world_icon_api(
     If the server-specific icon doesn't exist or an error occurs (e.g., invalid
     server name), it falls back to serving a default icon (favicon.ico).
     """
-    logger.debug(
-        f"Request to serve world icon for server '{server_name}' by user '{current_user.username}'."
-    )
+    logger.debug(f"Request to serve world icon for server '{server_name}'.")
     try:
         server = app_context.get_server(server_name)
         icon_path = server.world_icon_filesystem_path
