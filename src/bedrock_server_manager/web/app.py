@@ -5,6 +5,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -79,6 +80,25 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         lifespan=lifespan,
     )
     app.state.app_context = app_context
+
+    # --- CORS Middleware ---
+    # Allow configured origins or default to localhost for development/remote usage
+    # Default to 5173 (Vite)
+    default_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+    allowed_origins = bcm_config.get_config_value("web.cors_origins", default_origins)
+    if not isinstance(allowed_origins, list):
+        allowed_origins = []
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
 
