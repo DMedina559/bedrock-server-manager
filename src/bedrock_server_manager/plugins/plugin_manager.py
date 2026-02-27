@@ -83,11 +83,9 @@ class PluginManager:
         self.plugins: List[PluginBase] = []
         self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
-        self.html_render_tag = "plugin-ui"  # Tag for HTML rendering in FastAPI
         self.native_ui_render_tag = (
             "plugin-ui-native"  # Tag for Native UI rendering in FastAPI
         )
-        self.plugin_template_paths: List[Path] = []  # For Jinja2 loader
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
@@ -540,8 +538,6 @@ class PluginManager:
         # Clear any previously collected commands and routers
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared previously collected plugin FastAPI routers.")
-        self.plugin_template_paths.clear()
-        logger.debug("Cleared previously collected plugin template paths.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared previously collected plugin static mounts.")
 
@@ -625,38 +621,6 @@ class PluginManager:
                             exc_info=True,
                         )
 
-                    # Collect template paths
-                    try:
-                        if hasattr(instance, "get_template_paths") and callable(
-                            getattr(instance, "get_template_paths")
-                        ):
-                            template_paths = instance.get_template_paths()
-                            if isinstance(template_paths, list) and template_paths:
-                                # Basic validation: check if items are Path objects
-                                valid_paths = [
-                                    p
-                                    for p in template_paths
-                                    if isinstance(p, Path) and p.is_dir()
-                                ]
-                                if len(valid_paths) != len(template_paths):
-                                    logger.warning(
-                                        f"Plugin '{plugin_name}' provided some invalid template paths (not Path objects or not directories). Only valid ones will be used."
-                                    )
-                                self.plugin_template_paths.extend(valid_paths)
-                                if valid_paths:
-                                    logger.info(
-                                        f"Collected {len(valid_paths)} template director(y/ies) from plugin '{plugin_name}': {[str(p) for p in valid_paths]}"
-                                    )
-                            elif template_paths:  # Not a list or empty
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' get_template_paths() did not return a list or returned an empty list."
-                                )
-                    except Exception as e_tpl:
-                        logger.error(
-                            f"Error collecting template paths from plugin '{plugin_name}': {e_tpl}",
-                            exc_info=True,
-                        )
-
                     # Collect static mounts
                     try:
                         if hasattr(instance, "get_static_mounts") and callable(
@@ -715,8 +679,7 @@ class PluginManager:
         logger.info(
             f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
             f"{len(self.plugin_fastapi_routers)} total FastAPI router(s), "
-            f"{len(self.plugin_template_paths)} total template paths, "
-            f"{len(self.plugin_static_mounts)} total static mounts, and "
+            f"{len(self.plugin_static_mounts)} total static mounts."
         )
 
     def unload_plugins(self):
@@ -755,19 +718,13 @@ class PluginManager:
         else:
             logger.info("No custom plugin event listeners to clear.")
 
-    def get_html_render_routes(
-        self, include_native: bool = True
-    ) -> List[Dict[str, str]]:
+    def get_native_ui_routes(self) -> List[Dict[str, str]]:
         """
-        Collects routes from all plugin routers that are tagged for UI rendering.
-
-        Args:
-            include_native (bool): If True, includes routes tagged for native UI rendering.
-                                   If False, only includes HTML/iframe routes.
+        Collects routes from all plugin routers that are tagged for Native V2 UI rendering.
 
         Returns:
             List[Dict[str, str]]: A list of dictionaries, where each dictionary
-                                 contains 'name', 'path', and 'type' ('iframe' or 'native').
+                                 contains 'name', 'path', and 'type' ('native').
         """
         ui_routes = []
         for router in self.plugin_fastapi_routers:
@@ -775,13 +732,7 @@ class PluginManager:
                 if not hasattr(route, "tags"):
                     continue
 
-                route_type = None
-                if self.html_render_tag in route.tags:
-                    route_type = "iframe"
-                elif include_native and self.native_ui_render_tag in route.tags:
-                    route_type = "native"
-
-                if route_type:
+                if self.native_ui_render_tag in route.tags:
                     # Use route name or summary if available, otherwise path
                     route_name = route.name
                     if hasattr(route, "summary") and route.summary:
@@ -790,9 +741,9 @@ class PluginManager:
                         route_name = route.path
 
                     ui_routes.append(
-                        {"name": route_name, "path": route.path, "type": route_type}
+                        {"name": route_name, "path": route.path, "type": "native"}
                     )
-        logger.debug(f"Collected {len(ui_routes)} UI rendering plugin routes.")
+        logger.debug(f"Collected {len(ui_routes)} Native UI rendering plugin routes.")
         return ui_routes
 
     def _is_valid_custom_event_name(self, event_name: str) -> bool:
@@ -971,8 +922,6 @@ class PluginManager:
         # Also clear collected commands and routers on full reload
         self.plugin_fastapi_routers.clear()
         logger.debug("Cleared collected plugin FastAPI routers during reload.")
-        self.plugin_template_paths.clear()
-        logger.debug("Cleared collected plugin template paths during reload.")
         self.plugin_static_mounts.clear()
         logger.debug("Cleared collected plugin static mounts during reload.")
 

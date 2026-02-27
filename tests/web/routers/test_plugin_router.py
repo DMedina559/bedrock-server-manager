@@ -3,14 +3,6 @@ from unittest.mock import MagicMock, patch
 from bedrock_server_manager.api.plugins import set_plugin_status
 
 
-def test_manage_plugins_page_route(authenticated_client):
-    """Test the manage_plugins_page_route with an authenticated user."""
-    # Updated to point to legacy route
-    response = authenticated_client.get("/legacy/plugins")
-    assert response.status_code == 200
-    assert "Bedrock Server Manager" in response.text
-
-
 def test_get_plugins_status_api_route_success(authenticated_client, app_context):
     """Test the get_plugins_status_api_route with a successful response."""
     set_plugin_status("plugin1", True, app_context=app_context)

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from ...api import plugins as plugins_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_current_user
+from ..auth_utils import get_admin_user
 from ..dependencies import get_app_context
 from ..schemas import BaseApiResponse, User
 
@@ -238,24 +238,4 @@ async def reload_plugins_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while reloading plugins.",
-        )
-
-
-@router.get("/api/plugins/pages", response_model=PluginApiResponse, tags=["Plugin API"])
-async def get_plugin_pages_api_route(
-    current_user: User = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves a list of custom HTML pages registered by plugins.
-    """
-    try:
-        pages = app_context.plugin_manager.get_html_render_routes()
-        return PluginApiResponse(status="success", data=pages)
-    except Exception as e:
-        logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
-        return PluginApiResponse(
-            status="error",
-            message=f"Failed to retrieve plugin pages: {str(e)}",
-            data=[],
         )

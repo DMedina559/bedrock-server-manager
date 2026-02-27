@@ -142,11 +142,6 @@ class TestInstallUpdate:
         with patch.object(server, "install_or_update") as mock_install:
             result = install_new_server("new-server", app_context=app_context)
             assert result["status"] == "success"
-            assert "next_step_url" in result
-            assert (
-                result["next_step_url"]
-                == "/legacy/server/new-server/configure_properties?new_install=true"
-            )
             mock_install.assert_called_once()
 
     @patch("bedrock_server_manager.api.server_install_config.server_lifecycle_manager")

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from bedrock_server_manager import PluginBase
 from bedrock_server_manager.web import get_admin_user
@@ -22,7 +22,7 @@ MODULE_CONTENT_DIR_PATH: Optional[Path] = None
 class ContentUploaderPlugin(PluginBase):
     """Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."""
 
-    version = "1.2.0"
+    version = "2.0.0"
     author = "dmedina559"
 
     def on_load(self, **kwargs):
@@ -129,24 +129,6 @@ class ContentUploaderPlugin(PluginBase):
                         }
                     ],
                 }
-            )
-
-        @self.router.get(
-            "/content/upload",
-            response_class=HTMLResponse,
-            name="Content Upload Page",
-            summary="Upload Content",
-            tags=["plugin-ui"],
-        )
-        async def get_upload_page_method(
-            request: Request,
-            current_user: Dict[str, Any] = Depends(get_admin_user),
-        ):
-            self.logger.debug("Serving content upload page using TemplateResponse.")
-
-            templates_env = self.api.app_context.templates
-            return templates_env.TemplateResponse(
-                "upload_page.html", {"request": request}
             )
 
         @self.router.post("/api/content/upload", name="handle_file_upload")
@@ -276,7 +258,3 @@ class ContentUploaderPlugin(PluginBase):
     def get_fastapi_routers(self, **kwargs):
         self.logger.debug(f"Providing FastAPI router for {self.name}")
         return [self.router]
-
-    def get_template_paths(self, **kwargs) -> list[Path]:
-        plugin_dir = Path(__file__).parent
-        return [plugin_dir / "templates"]

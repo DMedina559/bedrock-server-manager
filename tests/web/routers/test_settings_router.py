@@ -2,14 +2,6 @@ import os
 from unittest.mock import MagicMock, patch
 
 
-def test_manage_settings_page_route(authenticated_client):
-    """Test the manage_settings_page_route with a successful response."""
-    # Updated to point to legacy route
-    response = authenticated_client.get("/legacy/settings")
-    assert response.status_code == 200
-    assert "Global Settings" in response.text
-
-
 def test_get_all_settings_api_route(authenticated_client, app_context):
     """Test the get_all_settings_api_route with a successful response."""
     response = authenticated_client.get("/api/settings")
