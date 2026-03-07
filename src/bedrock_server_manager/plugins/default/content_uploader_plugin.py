@@ -1,4 +1,4 @@
-# bedrock_server_manager/plugins/default/content_uploader/__init__.py
+# bedrock_server_manager/plugins/default/content_uploader_plugin.py
 """
 A plugin to provide a web UI for uploading .mcworld, .mcpack, and .mcaddon files.
 """

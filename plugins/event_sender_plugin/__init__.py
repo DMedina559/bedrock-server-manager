@@ -7,19 +7,22 @@ from fastapi import APIRouter
 
 from bedrock_server_manager import PluginBase
 
+from .routes import define_routes
+
 
 class EventSenderPlugin(PluginBase):
-    version = "1.1.1"
+    version = "1.2.0"
 
     def on_load(self):
         self.logger.info(
-            f"Plugin '{self.name}' v{self.version} loaded. Event sender page available at /event_sender/page"
+            f"Plugin '{self.name}' v{self.version} loaded. Event sender page available at /event_sender/ui"
         )
 
         self.router = APIRouter(
-            tags=["Event Sender Plugin"]  # Tag for OpenAPI documentation
+            prefix="/event_sender",
+            tags=["Event Sender Plugin"],  # Tag for OpenAPI documentation
         )
-        self._define_routes()
+        define_routes(self.router, self)
         self.logger.info(f"EventSenderPlugin v{self.version} initialized.")
 
     def on_unload(self):
