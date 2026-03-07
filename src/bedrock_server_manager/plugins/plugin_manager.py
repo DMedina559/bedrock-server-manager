@@ -228,14 +228,26 @@ class PluginManager:
             # Add the parent directory of the plugin to sys.path if it's a package
             # so that 'from . import foo' works.
             # path is either .../my_plugin.py or .../my_package/__init__.py
-            # if path.name == "__init__.py":
-            #    package_dir = path.parent.parent # Go up from __init__.py then from my_package
-            #    if str(package_dir) not in sys.path:
-            #        sys.path.insert(0, str(package_dir))
-            #        logger.debug(f"Added {package_dir} to sys.path for package plugin {module_name_for_spec}")
-            # The above sys.path manipulation can be risky and might not be needed
-            # if spec_from_file_location handles packages correctly by setting parent.
-            # Let's test without it first. Modern importlib should handle it.
+            import sys
+
+            if path.name == "__init__.py":
+                package_dir = (
+                    path.parent.parent
+                )  # Go up from __init__.py then from my_package
+                if str(package_dir) not in sys.path:
+                    sys.path.insert(0, str(package_dir))
+                    logger.debug(
+                        f"Added {package_dir} to sys.path for package plugin {module_name_for_spec}"
+                    )
+
+            # Define the package property for relative imports to work
+            if path.name == "__init__.py":
+                module.__package__ = module_name_for_spec
+            else:
+                module.__package__ = ""
+
+            # Ensure the module is placed in sys.modules so import mechanisms can find it
+            sys.modules[module_name_for_spec] = module
 
             spec.loader.exec_module(module)
             logger.debug(
@@ -573,7 +585,9 @@ class PluginManager:
                 )
                 continue
 
-            plugin_class = self._get_plugin_class_from_path(path)
+            plugin_class = self._get_plugin_class_from_path(
+                path, plugin_name_override=plugin_name
+            )
             if plugin_class:
                 try:
                     plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
