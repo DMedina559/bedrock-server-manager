@@ -3,7 +3,6 @@
 FastAPI router for the initial setup of the application.
 
 This module provides endpoints for:
-- Serving the initial setup page.
 - Handling the creation of the first user (System Admin).
 """
 
@@ -99,7 +98,6 @@ async def create_first_user(
                 content={
                     "status": "success",
                     "message": "Admin account created and logged in successfully.",
-                    "redirect_url": "/legacy/settings?in_setup=true",
                 },
                 status_code=status.HTTP_200_OK,
             )

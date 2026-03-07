@@ -29,16 +29,6 @@ def get_app_context(request: Request) -> "AppContext":
 
 
 from fastapi import Depends  # noqa: E402
-from fastapi.templating import Jinja2Templates  # noqa: E402
-
-
-def get_templates(
-    app_context: AppContext = Depends(get_app_context),
-) -> "Jinja2Templates":
-    """
-    FastAPI dependency to get the Jinja2Templates instance from the application context.
-    """
-    return app_context.templates
 
 
 async def validate_server_exists(

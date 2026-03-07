@@ -600,26 +600,6 @@ class PluginBase(ABC):
         """
         return []
 
-    def get_template_paths(self) -> List["Path"]:
-        """
-        Called by the PluginManager after the plugin is loaded to retrieve
-        a list of paths to directories containing Jinja2 templates that this
-        plugin wishes to make available to the application's template loader.
-
-        Plugins should override this method to return a list of `pathlib.Path` objects.
-        Each path should point to a directory containing template files.
-
-        Example:
-            from pathlib import Path
-            # Assuming templates are in a 'templates' subdir relative to the plugin file
-            return [Path(__file__).parent / "templates"]
-
-        Returns:
-            List[Path]: A list of Path objects pointing to template directories.
-                        Defaults to an empty list.
-        """
-        return []
-
     def get_static_mounts(self) -> List[tuple[str, "Path", str]]:
         """
         Called by the PluginManager after the plugin is loaded to retrieve

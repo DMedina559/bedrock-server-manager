@@ -10,17 +10,11 @@ on:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'
       - 'pyproject.toml'
-      - 'frontend/**'
-      - 'build.sh'
-      - 'build.bat'
   pull_request:
     paths:
       - 'src/bedrock_server_manager/**'
       - 'tests/**'
       - 'pyproject.toml'
-      - 'frontend/**'
-      - 'build.sh'
-      - 'build.bat'
 
 jobs:
   build-and-test:
@@ -43,36 +37,11 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: '20'
-
-    - name: Install dependencies and build
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build
-        chmod +x build.sh
-        ./build.sh
-
-    - name: Run Frontend Lint
-      working-directory: ./frontend/legacy
-      run: npm run lint
-
-    - name: Run Frontend Tests
-      working-directory: ./frontend/legacy
-      run: npm test
-
-    - name: Run V2 Frontend Lint
-      working-directory: ./frontend/v2
-      run: npm run lint
-
-    - name: Run V2 Frontend Tests
-      working-directory: ./frontend/v2
-      run: npm run test:run
-
-    - name: Install Development Dependencies
-      run: pip install --upgrade -e .[dev]
+        pip install --upgrade -e .[dev]
 
     - name: Run Black
       run: black --check src/bedrock_server_manager tests

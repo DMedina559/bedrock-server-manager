@@ -3,16 +3,14 @@
 FastAPI router for user account management.
 
 This module provides endpoints for:
-- Viewing the account profile page.
 - Retrieving account details via API.
 - Updating user themes.
 - Updating profile information (name, email).
 - Changing passwords.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from bedrock_server_manager.db.models import User as UserModel
@@ -23,7 +21,7 @@ from bedrock_server_manager.web.auth_utils import (
 )
 
 from ...context import AppContext
-from ..dependencies import get_app_context, get_templates
+from ..dependencies import get_app_context
 from ..schemas import BaseApiResponse
 from ..schemas import User as UserSchema
 
@@ -65,22 +63,6 @@ class ChangePasswordRequest(BaseModel):
 
     current_password: str
     new_password: str
-
-
-@router.get(
-    "/account",
-    response_class=HTMLResponse,
-    include_in_schema=False,
-)
-async def account_page(
-    request: Request,
-    user: UserSchema = Depends(get_current_user),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """
-    Serves the user account profile page.
-    """
-    return templates.TemplateResponse(request, "account.html", {"current_user": user})
 
 
 @router.get("/api/account", response_model=UserSchema)

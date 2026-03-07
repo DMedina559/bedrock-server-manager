@@ -66,9 +66,6 @@ class InstallServerResponse(BaseModel):
         description="Status of the installation ('success', 'confirm_needed', 'pending').",
     )
     message: str = Field(..., description="Descriptive message about the operation.")
-    next_step_url: Optional[str] = Field(
-        default=None, description="URL for the next configuration step on success."
-    )
     server_name: Optional[str] = Field(
         default=None,
         description="Name of the server, especially if confirmation is needed.",

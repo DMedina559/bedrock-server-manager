@@ -5,7 +5,6 @@ FastAPI router for user authentication and session management.
 This module defines endpoints related to user login and logout for the
 Bedrock Server Manager web interface. It handles:
 
-- Displaying the HTML login page (:func:`~.login_page`).
 - Processing API login requests (typically form submissions) to authenticate users
   against environment variable credentials and issue JWT access tokens
   (:func:`~.api_login_for_access_token`). Tokens are set as HTTP-only cookies.
@@ -21,12 +20,11 @@ facilitate that access control.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Response as FastAPIResponse
 from fastapi import status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from ...context import AppContext
@@ -34,9 +32,8 @@ from ..auth_utils import (
     authenticate_user,
     create_access_token,
     get_current_user,
-    get_current_user_optional,
 )
-from ..dependencies import get_app_context, get_templates
+from ..dependencies import get_app_context
 from ..schemas import User
 
 logger = logging.getLogger(__name__)
@@ -61,22 +58,6 @@ class UserLogin(BaseModel):
 
     username: str = Field(..., min_length=1, max_length=80)
     password: str = Field(..., min_length=1)
-
-
-# --- Web UI Login Page Route ---
-@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
-async def login_page(
-    request: Request,
-    user: Optional[User] = Depends(get_current_user_optional),
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    """Serves the HTML login page."""
-    if user:
-        return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "form": {}, "current_user": user}
-    )
 
 
 # --- API Login Route ---
@@ -168,7 +149,7 @@ async def logout(
 
     # Create the redirect response first, then operate on it for cookie deletion
     redirect_url_with_message = (
-        f"/auth/login?message=You%20have%20been%20successfully%20logged%20out."
+        f"/app/login?message=You%20have%20been%20successfully%20logged%20out."
     )
     final_response = RedirectResponse(
         url=redirect_url_with_message, status_code=status.HTTP_302_FOUND

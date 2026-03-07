@@ -12,6 +12,7 @@ not found.
 import logging
 import os
 
+import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
@@ -19,9 +20,7 @@ from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
 from ..dependencies import get_app_context, validate_server_exists
 
-WEB_APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(WEB_APP_ROOT))
-STATIC_DIR = os.path.join(os.path.dirname(WEB_APP_ROOT), "static")
+STATIC_DIR = bsm_frontend.get_static_dir()
 
 
 logger = logging.getLogger(__name__)

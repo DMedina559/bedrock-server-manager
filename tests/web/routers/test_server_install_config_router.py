@@ -403,46 +403,6 @@ def test_install_server_api_route_invalid_name(
     assert "Invalid server name" in response.json()["detail"]
 
 
-def test_configure_properties_page(authenticated_client, real_bedrock_server):
-    """Test the configure_properties_page route with a successful response."""
-    # Updated to point to legacy route
-    response = authenticated_client.get(
-        f"/legacy/server/{real_bedrock_server.server_name}/configure_properties"
-    )
-    assert response.status_code == 200
-    assert "Server Properties" in response.text
-
-
-def test_configure_allowlist_page(authenticated_client, real_bedrock_server):
-    """Test the configure_allowlist_page route with a successful response."""
-    # Updated to point to legacy route
-    response = authenticated_client.get(
-        f"/legacy/server/{real_bedrock_server.server_name}/configure_allowlist"
-    )
-    assert response.status_code == 200
-    assert "Allowlist" in response.text
-
-
-def test_configure_permissions_page(authenticated_client, real_bedrock_server):
-    """Test the configure_permissions_page route with a successful response."""
-    # Updated to point to legacy route
-    response = authenticated_client.get(
-        f"/legacy/server/{real_bedrock_server.server_name}/configure_permissions"
-    )
-    assert response.status_code == 200
-    assert "Permissions" in response.text
-
-
-def test_configure_service_page(authenticated_client, real_bedrock_server):
-    """Test the configure_service_page route with a successful response."""
-    # Updated to point to legacy route
-    response = authenticated_client.get(
-        f"/legacy/server/{real_bedrock_server.server_name}/configure_service"
-    )
-    assert response.status_code == 200
-    assert "Service" in response.text
-
-
 def test_configure_properties_api_route(authenticated_client, real_bedrock_server):
     """Test the configure_properties_api_route with a successful response."""
     response = authenticated_client.post(

@@ -70,6 +70,26 @@ class PluginApiResponse(BaseApiResponse):
 
 
 # --- API Route ---
+@router.get("/api/plugins/pages", response_model=PluginApiResponse, tags=["Plugin API"])
+async def get_plugin_pages_api_route(
+    current_user: User = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves a list of custom native UI pages registered by plugins.
+    """
+    try:
+        pages = app_context.plugin_manager.get_native_ui_routes()
+        return PluginApiResponse(status="success", data=pages)
+    except Exception as e:
+        logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
+        return PluginApiResponse(
+            status="error",
+            message=f"Failed to retrieve plugin pages: {str(e)}",
+            data=[],
+        )
+
+
 @router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
     current_user: User = Depends(get_admin_user),
@@ -238,24 +258,4 @@ async def reload_plugins_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while reloading plugins.",
-        )
-
-
-@router.get("/api/plugins/pages", response_model=PluginApiResponse, tags=["Plugin API"])
-async def get_plugin_pages_api_route(
-    current_user: User = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves a list of custom HTML pages registered by plugins.
-    """
-    try:
-        pages = app_context.plugin_manager.get_html_render_routes()
-        return PluginApiResponse(status="success", data=pages)
-    except Exception as e:
-        logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
-        return PluginApiResponse(
-            status="error",
-            message=f"Failed to retrieve plugin pages: {str(e)}",
-            data=[],
         )
