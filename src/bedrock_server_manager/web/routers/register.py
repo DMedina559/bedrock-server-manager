@@ -26,7 +26,7 @@ from ..schemas import User as UserSchema
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/register",
+    prefix="/api/register",
     tags=["Registration"],
 )
 
