@@ -1,10 +1,3 @@
-"""
-Pydantic schemas for web API responses and data structures.
-
-This module defines the Pydantic models used for data validation and serialization
-in the web API layer.
-"""
-
 from typing import Any, Optional
 
 from pydantic import BaseModel
@@ -38,24 +31,3 @@ class BaseApiResponse(BaseModel):
 
     status: str
     message: Optional[str] = None
-
-
-class User(BaseModel):
-    """
-    Pydantic model representing a user.
-
-    Attributes:
-        id (int): The user's ID.
-        username (str): The user's username.
-        identity_type (str): The type of identity (e.g., "local").
-        role (str): The user's role.
-        is_active (bool): Whether the user is active.
-        theme (str): The user's preferred theme. Defaults to "default".
-    """
-
-    id: int
-    username: str
-    identity_type: Optional[str] = None
-    role: str
-    is_active: bool
-    theme: str = "default"
