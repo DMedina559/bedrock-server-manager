@@ -8,8 +8,8 @@ import platform
 import random
 
 # Local imports
-from bedrock_server_manager.config.splash_text import SPLASH_TEXTS
-from bedrock_server_manager.error import SystemError
+from ..config.splash_text import SPLASH_TEXTS
+from ..error import SystemError
 
 logger = logging.getLogger(__name__)
 
