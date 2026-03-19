@@ -26,7 +26,7 @@ from .audit_log import create_audit_log
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/users",
+    prefix="/api/users",
     tags=["Users"],
 )
 
