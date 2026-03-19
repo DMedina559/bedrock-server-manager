@@ -24,7 +24,7 @@ from ..dependencies import get_app_context
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/setup",
+    prefix="/api/setup",
     tags=["Setup"],
 )
 
