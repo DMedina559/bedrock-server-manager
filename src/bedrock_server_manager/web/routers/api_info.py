@@ -30,9 +30,12 @@ from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import (
     AddPlayersPayload,
+    AddPlayersResponse,
     BaseApiResponse,
+    PlayerListResponse,
     PruneDownloadsPayload,
     ServersListResponse,
+    ThemeListResponse,
     User,
 )
 
@@ -339,7 +342,7 @@ async def scan_players_api_route(
 
 
 @router.get(
-    "/api/players/get", response_model=BaseApiResponse, tags=["Global Players API"]
+    "/api/players/get", response_model=PlayerListResponse, tags=["Global Players API"]
 )
 async def get_all_players_api_route(
     current_user: User = Depends(get_moderator_user),
@@ -358,7 +361,7 @@ async def get_all_players_api_route(
                 f"API Get All Players: Successfully retrieved {len(result_dict.get('players', []))} players. "
                 f"Message: {result_dict.get('message', 'N/A')}"
             )
-            return BaseApiResponse(
+            return PlayerListResponse(
                 status="success",
                 players=result_dict.get("players"),
                 message=result_dict.get("message"),
@@ -536,7 +539,7 @@ async def get_system_info_api_route(
 
 
 @router.get(
-    "/api/info/themes", response_model=BaseApiResponse, tags=["Global Info API"]
+    "/api/info/themes", response_model=ThemeListResponse, tags=["Global Info API"]
 )
 async def get_themes_api_route(
     app_context: AppContext = Depends(get_app_context),
@@ -571,7 +574,7 @@ async def get_themes_api_route(
             sorted_themes.remove("default")
             sorted_themes.insert(0, "default")
 
-        return BaseApiResponse(status="success", themes=sorted_themes)
+        return ThemeListResponse(status="success", themes=sorted_themes)
     except Exception as e:
         logger.error(f"API Get Themes: Unexpected error: {e}", exc_info=True)
         raise HTTPException(
@@ -581,7 +584,7 @@ async def get_themes_api_route(
 
 
 @router.post(
-    "/api/players/add", response_model=BaseApiResponse, tags=["Global Players API"]
+    "/api/players/add", response_model=AddPlayersResponse, tags=["Global Players API"]
 )
 async def add_players_api_route(
     payload: AddPlayersPayload,
@@ -602,7 +605,7 @@ async def add_players_api_route(
         )
 
         if result.get("status") == "success":
-            return BaseApiResponse(
+            return AddPlayersResponse(
                 status="success",
                 message=result.get("message"),
                 data={"count": result.get("count")},
