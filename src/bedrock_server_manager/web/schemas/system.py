@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -64,3 +64,16 @@ class PruneDownloadsResponse(BaseApiResponse):
 
     files_deleted: Optional[int] = None
     files_kept: Optional[int] = None
+
+
+class ContentListResponse(BaseApiResponse):
+    """
+    Response model for content listing endpoints.
+
+    Attributes:
+        files (Optional[List[str]]): A list of filenames found.
+    """
+
+    # status: str -> Inherited
+    # message: Optional[str] = None -> Inherited
+    files: Optional[List[str]] = None

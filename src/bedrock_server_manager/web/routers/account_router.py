@@ -11,7 +11,6 @@ This module provides endpoints for:
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from ...context import AppContext
 from ...db.models import User as UserModel
@@ -21,47 +20,10 @@ from ..auth_utils import (
     verify_password,
 )
 from ..dependencies import get_app_context
-from ..schemas import BaseApiResponse
+from ..schemas import BaseApiResponse, ChangePasswordRequest, ProfileUpdate, ThemeUpdate
 from ..schemas import User as UserSchema
 
 router = APIRouter()
-
-
-class ThemeUpdate(BaseModel):
-    """
-    Request payload for updating the user's theme.
-
-    Attributes:
-        theme (str): The new theme name.
-    """
-
-    theme: str
-
-
-class ProfileUpdate(BaseModel):
-    """
-    Request payload for updating user profile details.
-
-    Attributes:
-        full_name (str): The user's full name.
-        email (str): The user's email address.
-    """
-
-    full_name: str
-    email: str
-
-
-class ChangePasswordRequest(BaseModel):
-    """
-    Request payload for changing the user's password.
-
-    Attributes:
-        current_password (str): The current password for verification.
-        new_password (str): The new password.
-    """
-
-    current_password: str
-    new_password: str
 
 
 @router.get("/api/account", response_model=UserSchema)

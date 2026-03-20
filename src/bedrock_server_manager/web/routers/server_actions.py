@@ -16,7 +16,6 @@ FastAPI dependencies.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 
 from ...api import server as server_api
 from ...api import server_install_config
@@ -29,20 +28,11 @@ from ...error import (
 )
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, User
+from ..schemas import ActionResponse, CommandPayload, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class CommandPayload(BaseModel):
-    """Request model for sending a command to a server."""
-
-    command: str = Field(
-        ..., min_length=1, description="The command to send to the server."
-    )
 
 
 # --- API Route: Start Server ---

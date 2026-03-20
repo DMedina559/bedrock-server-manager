@@ -14,12 +14,12 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
 from ...context import AppContext
 from ...db.models import User
 from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
 from ..dependencies import get_app_context
+from ..schemas import CreateUserRequest, UpdateUserRoleRequest
 from ..schemas import User as UserSchema
 from .audit_log import create_audit_log
 
@@ -42,32 +42,6 @@ async def list_users_api(
     with app_context.db.session_manager() as db:  # type: ignore
         users = db.query(User).all()
         return users
-
-
-class CreateUserRequest(BaseModel):
-    """
-    Request payload for creating a new user.
-
-    Attributes:
-        username (str): The new username.
-        password (str): The new password.
-        role (str): The role for the new user.
-    """
-
-    username: str
-    password: str
-    role: str
-
-
-class UpdateUserRoleRequest(BaseModel):
-    """
-    Request payload for updating a user's role.
-
-    Attributes:
-        role (str): The new role.
-    """
-
-    role: str
 
 
 @router.post("/create")

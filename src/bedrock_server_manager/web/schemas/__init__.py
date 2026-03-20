@@ -22,6 +22,7 @@ from .install import (
     ServiceUpdatePayload,
 )
 from .plugin import (
+    PluginApiResponse,
     PluginStatusSetPayload,
     TriggerEventPayload,
 )
@@ -39,6 +40,7 @@ from .server import (
 )
 from .system import (
     AuditLogResponse,
+    ContentListResponse,
     FileNamePayload,
     PruneDownloadsPayload,
     PruneDownloadsResponse,
@@ -99,4 +101,6 @@ __all__ = [
     "PruneDownloadsPayload",
     "AuditLogResponse",
     "PruneDownloadsResponse",
+    "ContentListResponse",
+    "PluginApiResponse",
 ]

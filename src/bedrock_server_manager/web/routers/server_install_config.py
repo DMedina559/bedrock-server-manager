@@ -16,11 +16,10 @@ validated for server-specific routes.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 
 from ...api import server as server_api
 from ...api import server_install_config
@@ -30,109 +29,20 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import User
+from ..schemas import (
+    AllowlistAddPayload,
+    AllowlistRemovePayload,
+    InstallServerPayload,
+    InstallServerResponse,
+    PermissionsSetPayload,
+    PropertiesPayload,
+    ServiceUpdatePayload,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class InstallServerPayload(BaseModel):
-    """Request model for installing a new server."""
-
-    server_name: str = Field(
-        ..., min_length=1, max_length=50, description="Name for the new server."
-    )
-    server_version: str = Field(
-        default="LATEST",
-        description="Version to install (e.g., 'LATEST', '1.20.10.01', 'CUSTOM').",
-    )
-    server_zip_path: Optional[str] = Field(
-        default=None,
-        description="Absolute path to a custom server ZIP file. Required if server_version is 'CUSTOM'.",
-    )
-    overwrite: bool = Field(
-        default=False,
-        description="If true, delete existing server data if server_name conflicts.",
-    )
-
-
-class InstallServerResponse(BaseModel):
-    """Response model for server installation requests."""
-
-    status: str = Field(
-        ...,
-        description="Status of the installation ('success', 'confirm_needed', 'pending').",
-    )
-    message: str = Field(..., description="Descriptive message about the operation.")
-    server_name: Optional[str] = Field(
-        default=None,
-        description="Name of the server, especially if confirmation is needed.",
-    )
-    task_id: Optional[str] = Field(
-        default=None, description="ID of the background installation task."
-    )
-
-
-class PropertiesPayload(BaseModel):
-    """Request model for updating server.properties."""
-
-    properties: Dict[str, Any] = Field(
-        ..., description="Dictionary of properties to set."
-    )
-
-
-class AllowlistPlayer(BaseModel):
-    """Represents a player entry for the allowlist."""
-
-    name: str = Field(..., description="Player's gamertag.")
-    ignoresPlayerLimit: bool = Field(
-        default=False,
-        description="Whether this player ignores the server's player limit.",
-    )
-
-
-class AllowlistAddPayload(BaseModel):
-    """Request model for adding players to the allowlist."""
-
-    players: List[str] = Field(..., description="List of player gamertags to add.")
-    ignoresPlayerLimit: bool = Field(
-        default=False, description="Set 'ignoresPlayerLimit' for these players."
-    )
-
-
-class AllowlistRemovePayload(BaseModel):
-    """Request model for removing players from the allowlist."""
-
-    players: List[str] = Field(..., description="List of player gamertags to remove.")
-
-
-class PlayerPermissionItem(BaseModel):
-    """Represents a single player's permission data sent from the client."""
-
-    xuid: str
-    name: str
-    permission_level: str
-
-
-class PermissionsSetPayload(BaseModel):
-    """Request model for setting multiple player permissions."""
-
-    permissions: List[PlayerPermissionItem] = Field(
-        ..., description="List of player permission entries."
-    )
-
-
-class ServiceUpdatePayload(BaseModel):
-    """Request model for updating server-specific service settings."""
-
-    autoupdate: Optional[bool] = Field(
-        default=None, description="Enable/disable automatic updates for the server."
-    )
-    autostart: Optional[bool] = Field(
-        default=None, description="Enable/disable service autostart for the server."
-    )
 
 
 # --- API Route: /api/downloads/list ---

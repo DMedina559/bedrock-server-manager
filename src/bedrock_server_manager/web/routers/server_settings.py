@@ -4,10 +4,8 @@ FastAPI router for managing server-specific settings.
 """
 
 import logging
-from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
-from pydantic import BaseModel, Field
 
 from ...context import AppContext
 from ...error import (
@@ -18,33 +16,11 @@ from ...error import (
 )
 from ..auth_utils import get_admin_user, get_current_user
 from ..dependencies import get_app_context
-from ..schemas import BaseApiResponse, User
+from ..schemas import ServerSettingItem, ServerSettingsResponse, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class ServerSettingItem(BaseModel):
-    """Request model for a single server setting key-value pair."""
-
-    key: str = Field(
-        ...,
-        description="The dot-notation key of the setting (e.g., 'settings.autoupdate').",
-    )
-    value: Any = Field(..., description="The new value for the setting.")
-
-
-class ServerSettingsResponse(BaseApiResponse):
-    """Response model for server settings operations."""
-
-    settings: Optional[Dict[str, Any]] = Field(
-        default=None, description="Dictionary of all settings."
-    )
-    setting: Optional[ServerSettingItem] = Field(
-        default=None, description="The specific setting that was acted upon."
-    )
 
 
 # --- API Route: Get All Settings for a Server ---

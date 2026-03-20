@@ -21,6 +21,7 @@ from ...context import AppContext
 from ...db.models import RegistrationToken, User
 from ..auth_utils import get_admin_user, get_password_hash
 from ..dependencies import get_app_context
+from ..schemas import GenerateTokenRequest
 from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
@@ -29,17 +30,6 @@ router = APIRouter(
     prefix="/api/register",
     tags=["Registration"],
 )
-
-
-class GenerateTokenRequest(BaseModel):
-    """
-    Request payload for generating a registration token.
-
-    Attributes:
-        role (str): The role to assign to the user registering with this token.
-    """
-
-    role: str
 
 
 @router.post("/generate-token", include_in_schema=False)

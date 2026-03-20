@@ -10,7 +10,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
@@ -20,6 +19,7 @@ from ..auth_utils import (
     get_password_hash,
 )
 from ..dependencies import get_app_context
+from ..schemas import CreateFirstUserRequest
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +39,6 @@ async def get_setup_status(
     with app_context.db.session_manager() as db:  # type: ignore
         user_exists = db.query(User).first() is not None
         return {"needs_setup": not user_exists}
-
-
-class CreateFirstUserRequest(BaseModel):
-    """
-    Request payload for creating the first user (admin).
-
-    Attributes:
-        username (str): The desired username.
-        password (str): The desired password.
-    """
-
-    username: str
-    password: str
 
 
 @router.post("/create-first-user", include_in_schema=False)

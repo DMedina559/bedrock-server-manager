@@ -4,16 +4,15 @@ FastAPI router for viewing audit logs.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
 
 from ...context import AppContext
 from ...db.models import AuditLog
 from ..auth_utils import get_admin_user
 from ..dependencies import get_app_context
+from ..schemas import AuditLogResponse
 from ..schemas import User as UserSchema
 
 logger = logging.getLogger(__name__)
@@ -22,16 +21,6 @@ router = APIRouter(
     prefix="/audit-log",
     tags=["Audit Log"],
 )
-
-
-class AuditLogResponse(BaseModel):
-    id: int
-    user_id: int
-    action: str
-    details: Optional[Dict[str, Any]] = None
-    timestamp: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 def create_audit_log(

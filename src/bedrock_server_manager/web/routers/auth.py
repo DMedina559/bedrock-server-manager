@@ -18,14 +18,12 @@ facilitate that access control.
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Response as FastAPIResponse
 from fastapi import status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, Field
 
 from ...context import AppContext
 from ..auth_utils import (
@@ -34,7 +32,7 @@ from ..auth_utils import (
     get_current_user,
 )
 from ..dependencies import get_app_context
-from ..schemas import User
+from ..schemas import Token, User
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +40,6 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
-
-
-# --- Pydantic Models for Request/Response ---
-class Token(BaseModel):
-    """Response model for successful authentication, providing an access token."""
-
-    access_token: str
-    token_type: str
-    message: Optional[str] = None
-
-
-class UserLogin(BaseModel):
-    """Request model for user login credentials."""
-
-    username: str = Field(..., min_length=1, max_length=80)
-    password: str = Field(..., min_length=1)
 
 
 # --- API Login Route ---

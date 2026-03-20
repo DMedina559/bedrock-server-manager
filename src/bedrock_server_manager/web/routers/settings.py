@@ -18,47 +18,20 @@ These routes interface with the underlying settings management logic in
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 
 from ...api import settings as settings_api
 from ...context import AppContext
 from ...error import BSMError, MissingArgumentError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user
 from ..dependencies import get_app_context
-from ..schemas import BaseApiResponse, User
+from ..schemas import SettingItem, SettingsResponse, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class SettingItem(BaseModel):
-    """Request model for a single setting key-value pair."""
-
-    key: str = Field(
-        ..., description="The dot-notation key of the setting (e.g., 'web.port')."
-    )
-    value: Any = Field(..., description="The new value for the setting.")
-
-
-class SettingsResponse(BaseApiResponse):
-    """Response model for settings operations."""
-
-    # status: str = Field(...) -> Inherited
-    # message: Optional[str] = Field(default=None) -> Inherited
-    settings: Optional[Dict[str, Any]] = Field(
-        default=None, description="Dictionary of all settings (for get_all)."
-    )
-    setting: Optional[SettingItem] = Field(
-        default=None, description="The specific setting that was acted upon (for set)."
-    )
-
-
-# --- HTML Route moved to legacy.py ---
 
 
 # --- API Route: Get All Global Settings ---

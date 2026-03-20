@@ -9,10 +9,8 @@ It includes both HTML view routes and JSON API routes.
 
 import logging
 import os
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
 from ...api import addon as addon_api
 from ...api import application as app_api
@@ -22,36 +20,11 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, BaseApiResponse, User
+from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class FileNamePayload(BaseModel):
-    """
-    Payload for file-based operations.
-
-    Attributes:
-        filename (str): The name of the file to operate on.
-    """
-
-    filename: str
-
-
-class ContentListResponse(BaseApiResponse):
-    """
-    Response model for content listing endpoints.
-
-    Attributes:
-        files (Optional[List[str]]): A list of filenames found.
-    """
-
-    # status: str -> Inherited
-    # message: Optional[str] = None -> Inherited
-    files: Optional[List[str]] = None
 
 
 # --- API Routes ---

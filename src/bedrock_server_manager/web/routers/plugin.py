@@ -16,57 +16,24 @@ These routes interface with the underlying plugin management logic in
 """
 
 import logging
-from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 
 from ...api import plugins as plugins_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user
 from ..dependencies import get_app_context
-from ..schemas import BaseApiResponse, User
+from ..schemas import (
+    PluginApiResponse,
+    PluginStatusSetPayload,
+    TriggerEventPayload,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class PluginStatusSetPayload(BaseModel):
-    """Request model for setting a plugin's enabled status."""
-
-    enabled: bool = Field(
-        ..., description="Set to true to enable the plugin, false to disable."
-    )
-
-
-class TriggerEventPayload(BaseModel):
-    """Request model for triggering a custom plugin event."""
-
-    event_name: str = Field(
-        ...,
-        min_length=1,
-        description="The namespaced name of the event to trigger (e.g., 'myplugin:myevent').",
-    )
-    payload: Optional[Dict[str, Any]] = Field(
-        default=None, description="Optional dictionary payload for the event."
-    )
-
-
-class PluginApiResponse(BaseApiResponse):
-    """Generic API response model for plugin operations."""
-
-    # status: str -> Inherited
-    # message: Optional[str] = None -> Inherited
-    data: Optional[Any] = Field(
-        default=None,
-        description="Optional data payload, structure depends on the endpoint (e.g., plugin statuses).",
-    )
-
-
-# --- HTML Route moved to legacy.py ---
 
 
 # --- API Route ---
