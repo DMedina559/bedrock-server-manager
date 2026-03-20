@@ -11,8 +11,8 @@ import logging
 import os
 from typing import List, Optional
 
-from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.error import ConfigurationError
+from ...context import AppContext
+from ...error import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +67,7 @@ class WebProcessMixin:
                 "AppContext is required to start the Web UI in direct mode."
             )
         try:
-            from bedrock_server_manager.web.main import (
-                run_web_server as run_bsm_web_application,
-            )
+            from ...web.main import run_web_server as run_bsm_web_application
 
             run_bsm_web_application(
                 app_context=app_context,

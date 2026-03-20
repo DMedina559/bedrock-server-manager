@@ -13,14 +13,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.web.auth_utils import (
+from ...context import AppContext
+from ...db.models import User as UserModel
+from ..auth_utils import (
     get_current_user,
     get_password_hash,
     verify_password,
 )
-
-from ...context import AppContext
 from ..dependencies import get_app_context
 from ..schemas import BaseApiResponse
 from ..schemas import User as UserSchema

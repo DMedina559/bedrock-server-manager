@@ -12,7 +12,7 @@ import logging
 import os
 from typing import List
 
-from bedrock_server_manager.error import AppFileNotFoundError, FileOperationError
+from ...error import AppFileNotFoundError, FileOperationError
 
 logger = logging.getLogger(__name__)
 

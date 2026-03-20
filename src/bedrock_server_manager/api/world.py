@@ -28,8 +28,6 @@ import os
 import threading
 from typing import Any, Dict, Optional
 
-from bedrock_server_manager.utils.general import get_timestamp
-
 from ..context import AppContext
 from ..error import (
     BSMError,
@@ -41,6 +39,7 @@ from ..error import (
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
+from ..utils import get_timestamp
 
 # Local application imports.
 from .utils import server_lifecycle_manager

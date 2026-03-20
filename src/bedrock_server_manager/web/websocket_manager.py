@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from bedrock_server_manager.web.auth_utils import User
+from .auth_utils import User
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from bedrock_server_manager.web.schemas.base import BaseApiResponse
+from .base import BaseApiResponse
 
 
 class CommandPayload(BaseModel):

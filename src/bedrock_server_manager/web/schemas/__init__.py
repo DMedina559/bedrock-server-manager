@@ -1,16 +1,16 @@
-from bedrock_server_manager.web.schemas.auth import (
+from .auth import (
     GenerateTokenRequest,
     RegisterUserRequest,
     Token,
     UserLogin,
 )
-from bedrock_server_manager.web.schemas.backup import (
+from .backup import (
     BackupActionPayload,
     RestoreActionPayload,
     RestoreTypePayload,
 )
-from bedrock_server_manager.web.schemas.base import ActionResponse, BaseApiResponse
-from bedrock_server_manager.web.schemas.install import (
+from .base import ActionResponse, BaseApiResponse
+from .install import (
     AllowlistAddPayload,
     AllowlistPlayer,
     AllowlistRemovePayload,
@@ -21,11 +21,11 @@ from bedrock_server_manager.web.schemas.install import (
     PropertiesPayload,
     ServiceUpdatePayload,
 )
-from bedrock_server_manager.web.schemas.plugin import (
+from .plugin import (
     PluginStatusSetPayload,
     TriggerEventPayload,
 )
-from bedrock_server_manager.web.schemas.server import (
+from .server import (
     AddPlayersPayload,
     AddPlayersResponse,
     AppInfoResponse,
@@ -37,7 +37,7 @@ from bedrock_server_manager.web.schemas.server import (
     ServersListResponse,
     ThemeListResponse,
 )
-from bedrock_server_manager.web.schemas.system import (
+from .system import (
     AuditLogResponse,
     FileNamePayload,
     PruneDownloadsPayload,
@@ -45,7 +45,7 @@ from bedrock_server_manager.web.schemas.system import (
     SettingItem,
     SettingsResponse,
 )
-from bedrock_server_manager.web.schemas.users import (
+from .users import (
     ChangePasswordRequest,
     CreateFirstUserRequest,
     CreateUserRequest,

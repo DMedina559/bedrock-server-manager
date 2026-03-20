@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bedrock_server_manager.web.schemas.base import BaseApiResponse
+from .base import BaseApiResponse
 
 
 class FileNamePayload(BaseModel):
