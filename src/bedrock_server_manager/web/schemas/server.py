@@ -91,3 +91,27 @@ class ThemeListResponse(BaseApiResponse):
     """Response model for theme lists."""
 
     themes: Optional[List[str]] = None
+
+
+class ServerRunningStatusResponse(BaseApiResponse):
+    """Response model for server running status."""
+
+    data: Optional[Dict[str, bool]] = None
+
+
+class ServerConfigStatusResponse(BaseApiResponse):
+    """Response model for server config status."""
+
+    data: Optional[Dict[str, str]] = None
+
+
+class ServerVersionResponse(BaseApiResponse):
+    """Response model for server installed version."""
+
+    data: Optional[Dict[str, str]] = None
+
+
+class ServerProcessInfoResponse(BaseApiResponse):
+    """Response model for server process info."""
+
+    data: Optional[Dict[str, Any]] = None

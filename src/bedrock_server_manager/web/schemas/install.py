@@ -29,7 +29,7 @@ class InstallServerPayload(BaseModel):
         le=65535,
         description="IPv6 port for the server. Defaults to 19133 if omitted.",
     )
-    confirm: Optional[bool] = Field(
+    overwrite: Optional[bool] = Field(
         default=False,
         description="If True, confirm overwriting an existing installation.",
     )

@@ -31,10 +31,15 @@ from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import (
     AddPlayersPayload,
     AddPlayersResponse,
+    AppInfoResponse,
     BaseApiResponse,
     PlayerListResponse,
     PruneDownloadsPayload,
+    ServerConfigStatusResponse,
+    ServerProcessInfoResponse,
+    ServerRunningStatusResponse,
     ServersListResponse,
+    ServerVersionResponse,
     ThemeListResponse,
     User,
 )
@@ -47,7 +52,7 @@ router = APIRouter()
 # --- Server Info Endpoints ---
 @router.get(
     "/api/server/{server_name}/status",
-    response_model=BaseApiResponse,
+    response_model=ServerRunningStatusResponse,
     tags=["Server Info API"],
 )
 async def get_server_running_status_api_route(
@@ -67,7 +72,7 @@ async def get_server_running_status_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return BaseApiResponse(
+            return ServerRunningStatusResponse(
                 status="success",
                 data={"running": result.get("is_running")},
                 message=result.get("message"),
@@ -98,7 +103,7 @@ async def get_server_running_status_api_route(
 
 @router.get(
     "/api/server/{server_name}/config_status",
-    response_model=BaseApiResponse,
+    response_model=ServerConfigStatusResponse,
     tags=["Server Info API"],
 )
 async def get_server_config_status_api_route(
@@ -118,7 +123,7 @@ async def get_server_config_status_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return BaseApiResponse(
+            return ServerConfigStatusResponse(
                 status="success",
                 data={"config_status": result.get("config_status")},
                 message=result.get("message"),
@@ -151,7 +156,7 @@ async def get_server_config_status_api_route(
 
 @router.get(
     "/api/server/{server_name}/version",
-    response_model=BaseApiResponse,
+    response_model=ServerVersionResponse,
     tags=["Server Info API"],
 )
 async def get_server_version_api_route(
@@ -171,7 +176,7 @@ async def get_server_version_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return BaseApiResponse(
+            return ServerVersionResponse(
                 status="success",
                 data={"version": result.get("installed_version")},
                 message=result.get("message"),
@@ -254,7 +259,7 @@ async def validate_server_api_route(
 
 @router.get(
     "/api/server/{server_name}/process_info",
-    response_model=BaseApiResponse,
+    response_model=ServerProcessInfoResponse,
     tags=["Server Info API"],
 )
 async def server_process_info_api_route(
@@ -273,7 +278,7 @@ async def server_process_info_api_route(
         )
 
         if result.get("status") == "success":
-            return BaseApiResponse(
+            return ServerProcessInfoResponse(
                 status="success",
                 data={"process_info": result.get("process_info")},
                 message=result.get("message"),
@@ -512,7 +517,7 @@ async def get_servers_list_api_route(
         )
 
 
-@router.get("/api/info", response_model=BaseApiResponse, tags=["Global Info API"])
+@router.get("/api/info", response_model=AppInfoResponse, tags=["Global Info API"])
 async def get_system_info_api_route(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -523,7 +528,7 @@ async def get_system_info_api_route(
     try:
         result = utils_api.get_system_and_app_info(app_context=app_context)
         if result.get("status") == "success":
-            return BaseApiResponse(status="success", info=result.get("data"))
+            return AppInfoResponse(status="success", info=result.get("data"))
         else:
 
             raise HTTPException(

@@ -32,10 +32,14 @@ from .server import (
     AppInfoResponse,
     CommandPayload,
     PlayerListResponse,
+    ServerConfigStatusResponse,
+    ServerProcessInfoResponse,
+    ServerRunningStatusResponse,
     ServerSchema,
     ServerSettingItem,
     ServerSettingsResponse,
     ServersListResponse,
+    ServerVersionResponse,
     ThemeListResponse,
 )
 from .system import (
@@ -103,4 +107,8 @@ __all__ = [
     "PruneDownloadsResponse",
     "ContentListResponse",
     "PluginApiResponse",
+    "ServerRunningStatusResponse",
+    "ServerConfigStatusResponse",
+    "ServerVersionResponse",
+    "ServerProcessInfoResponse",
 ]
