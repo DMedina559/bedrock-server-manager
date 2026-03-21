@@ -18,6 +18,8 @@ class ActionResponse(BaseModel):
     message: str
     details: Optional[Any] = None
     task_id: Optional[str] = None
+    redirect_url: Optional[str] = None
+    backups: Optional[Any] = None
 
 
 class BaseApiResponse(BaseModel):

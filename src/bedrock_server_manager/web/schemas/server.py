@@ -28,7 +28,8 @@ class ServerSettingsResponse(BaseApiResponse):
 
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
-    pass
+    settings: Optional[Dict[str, Any]] = None
+    setting: Optional[ServerSettingItem] = None
 
 
 class AddPlayersPayload(BaseModel):

@@ -31,7 +31,8 @@ class SettingsResponse(BaseApiResponse):
 
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
-    pass
+    settings: Optional[Dict[str, Any]] = None
+    setting: Optional[SettingItem] = None
 
 
 class PruneDownloadsPayload(BaseModel):

@@ -35,6 +35,7 @@ from ..schemas import (
     BaseApiResponse,
     PlayerListResponse,
     PruneDownloadsPayload,
+    PruneDownloadsResponse,
     ServerConfigStatusResponse,
     ServerProcessInfoResponse,
     ServerRunningStatusResponse,
@@ -74,7 +75,7 @@ async def get_server_running_status_api_route(
         if result.get("status") == "success":
             return ServerRunningStatusResponse(
                 status="success",
-                data={"running": result.get("is_running")},
+                data={"running": bool(result.get("is_running"))},
                 message=result.get("message"),
             )
         else:
@@ -125,7 +126,7 @@ async def get_server_config_status_api_route(
         if result.get("status") == "success":
             return ServerConfigStatusResponse(
                 status="success",
-                data={"config_status": result.get("config_status")},
+                data={"config_status": str(result.get("config_status"))},
                 message=result.get("message"),
             )
         else:
@@ -178,7 +179,7 @@ async def get_server_version_api_route(
         if result.get("status") == "success":
             return ServerVersionResponse(
                 status="success",
-                data={"version": result.get("installed_version")},
+                data={"version": str(result.get("installed_version"))},
                 message=result.get("message"),
             )
         else:
@@ -309,7 +310,7 @@ async def server_process_info_api_route(
 
 # --- Global Action Endpoints ---
 @router.post(
-    "/api/players/scan", response_model=BaseApiResponse, tags=["Global Players API"]
+    "/api/players/scan", response_model=AddPlayersResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
     current_user: User = Depends(get_moderator_user),
@@ -323,7 +324,7 @@ async def scan_players_api_route(
     try:
         result = player_api.scan_and_update_player_db_api(app_context=app_context)
         if result.get("status") == "success":
-            return BaseApiResponse(
+            return AddPlayersResponse(
                 status="success",
                 message=result.get("message"),
                 data=result.get("details"),
@@ -404,7 +405,7 @@ async def get_all_players_api_route(
 
 @router.post(
     "/api/downloads/prune",
-    response_model=BaseApiResponse,
+    response_model=PruneDownloadsResponse,
     tags=["Global Actions API"],
 )
 async def prune_downloads_api_route(
@@ -455,7 +456,7 @@ async def prune_downloads_api_route(
         if result.get("status") == "success":
             files_deleted = result.get("files_deleted")
             files_kept = result.get("files_kept")
-            return BaseApiResponse(
+            return PruneDownloadsResponse(
                 status="success",
                 message=result.get(
                     "message", "Pruning operation completed successfully."
