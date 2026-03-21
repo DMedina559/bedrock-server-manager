@@ -28,7 +28,7 @@ from ..schemas import (
     PluginApiResponse,
     PluginStatusSetPayload,
     TriggerEventPayload,
-    User,
+    UserResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ router = APIRouter()
 # --- API Route ---
 @router.get("/api/plugins/pages", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugin_pages_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -59,7 +59,7 @@ async def get_plugin_pages_api_route(
 
 @router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -91,7 +91,7 @@ async def get_plugins_status_api_route(
 )
 async def trigger_event_api_route(
     payload: TriggerEventPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -147,7 +147,7 @@ async def trigger_event_api_route(
 async def set_plugin_status_api_route(
     plugin_name: str,
     payload: PluginStatusSetPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -197,7 +197,7 @@ async def set_plugin_status_api_route(
     "/api/plugins/reload", response_model=PluginApiResponse, tags=["Plugin API"]
 )
 async def reload_plugins_api_route(
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

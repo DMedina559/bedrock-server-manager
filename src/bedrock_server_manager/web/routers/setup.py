@@ -19,7 +19,7 @@ from ..auth_utils import (
     get_password_hash,
 )
 from ..dependencies import get_app_context
-from ..schemas import CreateFirstUserRequest
+from ..schemas import UserLoginPayload
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ async def get_setup_status(
 
 @router.post("/create-first-user", include_in_schema=False)
 async def create_first_user(
-    data: CreateFirstUserRequest,
+    data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """

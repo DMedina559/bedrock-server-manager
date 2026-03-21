@@ -16,7 +16,7 @@ from ...error import (
 )
 from ..auth_utils import get_admin_user, get_current_user
 from ..dependencies import get_app_context
-from ..schemas import ServerSettingItem, ServerSettingsResponse, User
+from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ router = APIRouter()
 )
 async def get_server_settings_api_route(
     server_name: str = Path(..., description="The name of the server."),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -69,9 +69,9 @@ async def get_server_settings_api_route(
     tags=["Server Settings API"],
 )
 async def set_server_setting_api_route(
-    payload: ServerSettingItem,
+    payload: ServerSettingItemPayload,
     server_name: str = Path(..., description="The name of the server."),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

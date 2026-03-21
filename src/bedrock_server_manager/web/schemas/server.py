@@ -13,7 +13,7 @@ class CommandPayload(BaseModel):
     )
 
 
-class ServerSettingItem(BaseModel):
+class ServerSettingItemPayload(BaseModel):
     """Request model for a single server setting key-value pair."""
 
     key: str = Field(
@@ -29,7 +29,7 @@ class ServerSettingsResponse(BaseApiResponse):
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
     settings: Optional[Dict[str, Any]] = None
-    setting: Optional[ServerSettingItem] = None
+    setting: Optional[ServerSettingItemPayload] = None
 
 
 class AddPlayersPayload(BaseModel):
@@ -44,7 +44,7 @@ class AddPlayersPayload(BaseModel):
     )
 
 
-class ServerSchema(BaseModel):
+class ServerSchemaResponse(BaseModel):
     """
     Schema representing server information in lists.
 
@@ -67,7 +67,7 @@ class ServerSchema(BaseModel):
 class ServersListResponse(BaseApiResponse):
     """Response model for lists of server data."""
 
-    servers: Optional[List[ServerSchema]] = None
+    servers: Optional[List[ServerSchemaResponse]] = None
 
 
 class AppInfoResponse(BaseApiResponse):

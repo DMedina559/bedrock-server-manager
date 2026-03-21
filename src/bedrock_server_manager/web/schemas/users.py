@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class User(BaseModel):
+class UserResponse(BaseModel):
     """
     Pydantic model representing a user.
 
@@ -24,20 +24,7 @@ class User(BaseModel):
     theme: str = "default"
 
 
-class CreateFirstUserRequest(BaseModel):
-    """
-    Request payload for creating the first user (admin).
-
-    Attributes:
-        username (str): The desired username.
-        password (str): The desired password.
-    """
-
-    username: str
-    password: str
-
-
-class CreateUserRequest(BaseModel):
+class CreateUserPayload(BaseModel):
     """
     Request payload for creating a new user.
 
@@ -52,7 +39,7 @@ class CreateUserRequest(BaseModel):
     role: str
 
 
-class UpdateUserRoleRequest(BaseModel):
+class UpdateUserRolePayload(BaseModel):
     """
     Request payload for updating a user's role.
 
@@ -63,7 +50,7 @@ class UpdateUserRoleRequest(BaseModel):
     role: str
 
 
-class ThemeUpdate(BaseModel):
+class ThemeUpdatePayload(BaseModel):
     """
     Request payload for updating the user's theme.
 
@@ -74,7 +61,7 @@ class ThemeUpdate(BaseModel):
     theme: str
 
 
-class ProfileUpdate(BaseModel):
+class ProfileUpdatePayload(BaseModel):
     """
     Request payload for updating user profile details.
 
@@ -87,7 +74,7 @@ class ProfileUpdate(BaseModel):
     email: str
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordPayload(BaseModel):
     """
     Request payload for changing the user's password.
 

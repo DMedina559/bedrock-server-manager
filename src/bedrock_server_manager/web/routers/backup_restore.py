@@ -32,7 +32,7 @@ from ..schemas import (
     BackupActionPayload,
     RestoreActionPayload,
     RestoreTypePayload,
-    User,
+    UserResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ async def handle_restore_select_backup_type_api(
     request: Request,
     payload: RestoreTypePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
 ):
     """
     Handles the API request for selecting a restore type and redirects to file selection.
@@ -59,7 +59,7 @@ async def handle_restore_select_backup_type_api(
     restore_type = payload.restore_type.lower()
 
     logger.info(
-        f"API: User '{identity}' initiated selection of restore_type '{restore_type}' for server '{server_name}'."
+        f"API: UserResponse '{identity}' initiated selection of restore_type '{restore_type}' for server '{server_name}'."
     )
 
     valid_types = ["world", "properties", "allowlist", "permissions"]
@@ -102,7 +102,7 @@ async def handle_restore_select_backup_type_api(
 )
 async def prune_backups_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -136,7 +136,7 @@ async def prune_backups_api_route(
 async def list_server_backups_api_route(
     backup_type: str,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -224,7 +224,7 @@ async def list_server_backups_api_route(
 async def backup_action_api_route(
     server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -293,7 +293,7 @@ async def backup_action_api_route(
 async def restore_action_api_route(  # noqa: C901
     payload: RestoreActionPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

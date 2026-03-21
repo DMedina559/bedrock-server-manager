@@ -17,7 +17,7 @@ class FileNamePayload(BaseModel):
     filename: str
 
 
-class SettingItem(BaseModel):
+class SettingItemResponse(BaseModel):
     """Request model for a single setting key-value pair."""
 
     key: str = Field(
@@ -32,7 +32,7 @@ class SettingsResponse(BaseApiResponse):
     # status: str = Field(...) -> Inherited
     # message: Optional[str] = None -> Inherited
     settings: Optional[Dict[str, Any]] = None
-    setting: Optional[SettingItem] = None
+    setting: Optional[SettingItemResponse] = None
 
 
 class PruneDownloadsPayload(BaseModel):

@@ -42,7 +42,7 @@ from ..schemas import (
     ServersListResponse,
     ServerVersionResponse,
     ThemeListResponse,
-    User,
+    UserResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ router = APIRouter()
 )
 async def get_server_running_status_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -109,7 +109,7 @@ async def get_server_running_status_api_route(
 )
 async def get_server_config_status_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -162,7 +162,7 @@ async def get_server_config_status_api_route(
 )
 async def get_server_version_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -218,7 +218,7 @@ async def get_server_version_api_route(
 )
 async def validate_server_api_route(
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -265,7 +265,7 @@ async def validate_server_api_route(
 )
 async def server_process_info_api_route(
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -313,7 +313,7 @@ async def server_process_info_api_route(
     "/api/players/scan", response_model=AddPlayersResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -351,7 +351,7 @@ async def scan_players_api_route(
     "/api/players/get", response_model=PlayerListResponse, tags=["Global Players API"]
 )
 async def get_all_players_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -410,7 +410,7 @@ async def get_all_players_api_route(
 )
 async def prune_downloads_api_route(
     payload: PruneDownloadsPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -493,7 +493,7 @@ async def prune_downloads_api_route(
     "/api/servers", response_model=ServersListResponse, tags=["Global Info API"]
 )
 async def get_servers_list_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -594,7 +594,7 @@ async def get_themes_api_route(
 )
 async def add_players_api_route(
     payload: AddPlayersPayload,
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

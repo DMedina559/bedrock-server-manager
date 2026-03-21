@@ -32,7 +32,7 @@ from ..auth_utils import (
     get_current_user,
 )
 from ..dependencies import get_app_context
-from ..schemas import Token, User
+from ..schemas import TokenResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ router = APIRouter(
 
 
 # --- API Login Route ---
-@router.post("/token", response_model=Token)
+@router.post("/token", response_model=TokenResponse)
 async def api_login_for_access_token(
     response: FastAPIResponse,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -95,9 +95,9 @@ async def api_login_for_access_token(
     }
 
 
-@router.get("/refresh-token", response_model=Token)
+@router.get("/refresh-token", response_model=TokenResponse)
 async def refresh_token(
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -113,7 +113,7 @@ async def refresh_token(
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "message": "Token refreshed successfully.",
+        "message": "TokenResponse refreshed successfully.",
     }
 
 
@@ -121,13 +121,13 @@ async def refresh_token(
 @router.get("/logout")
 async def logout(
     response: FastAPIResponse,
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """
     Logs the current user out by clearing the JWT authentication cookie.
     """
     username = current_user.username
-    logger.info(f"User '{username}' logging out. Clearing JWT cookie.")
+    logger.info(f"UserResponse '{username}' logging out. Clearing JWT cookie.")
 
     # Create the redirect response first, then operate on it for cookie deletion
     redirect_url_with_message = (

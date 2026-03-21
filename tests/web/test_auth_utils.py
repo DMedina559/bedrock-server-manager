@@ -15,7 +15,7 @@ from bedrock_server_manager.web.auth_utils import (
     verify_password,
 )
 from bedrock_server_manager.web.routers import auth_router, users_router
-from bedrock_server_manager.web.schemas import User
+from bedrock_server_manager.web.schemas import UserResponse
 
 # Test data
 TEST_USER = "testuser"
@@ -31,12 +31,12 @@ def unauthenticated_app(app_context):
 
     @app.get("/users/me-optional")
     async def read_users_me_optional(
-        current_user: User = Depends(get_current_user_optional),
+        current_user: UserResponse = Depends(get_current_user_optional),
     ):
         return current_user
 
-    @app.get("/users/me", response_model=User)
-    async def read_users_me(current_user: User = Depends(get_current_user)):
+    @app.get("/users/me", response_model=UserResponse)
+    async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
         return current_user
 
     return app

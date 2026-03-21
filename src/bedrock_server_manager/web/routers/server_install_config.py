@@ -37,7 +37,7 @@ from ..schemas import (
     PermissionsSetPayload,
     PropertiesPayload,
     ServiceUpdatePayload,
-    User,
+    UserResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ router = APIRouter()
     tags=["Server Installation API"],
 )
 async def get_custom_zips(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -81,7 +81,7 @@ async def get_custom_zips(
 )
 async def install_server_api_route(  # noqa: C901
     payload: InstallServerPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -198,7 +198,7 @@ async def install_server_api_route(  # noqa: C901
 async def configure_properties_api_route(
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -260,7 +260,7 @@ async def configure_properties_api_route(
 )
 async def get_server_properties_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -296,7 +296,7 @@ async def get_server_properties_api_route(
 async def add_to_allowlist_api_route(
     payload: AllowlistAddPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -347,7 +347,7 @@ async def add_to_allowlist_api_route(
 )
 async def get_allowlist_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -381,7 +381,7 @@ async def get_allowlist_api_route(
 async def remove_allowlist_players_api_route(
     payload: AllowlistRemovePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -436,7 +436,7 @@ async def remove_allowlist_players_api_route(
 async def configure_permissions_api_route(  # noqa: C901
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -526,7 +526,7 @@ async def configure_permissions_api_route(  # noqa: C901
 )
 async def get_server_permissions_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -562,7 +562,7 @@ async def get_server_permissions_api_route(
 async def configure_service_api_route(  # noqa: C901
     server_name: str = Depends(validate_server_exists),
     payload: ServiceUpdatePayload = Body(...),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

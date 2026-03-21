@@ -19,8 +19,8 @@ from ...context import AppContext
 from ...db.models import User
 from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
 from ..dependencies import get_app_context
-from ..schemas import CreateUserRequest, UpdateUserRoleRequest
-from ..schemas import User as UserSchema
+from ..schemas import CreateUserPayload, UpdateUserRolePayload
+from ..schemas import UserResponse as UserSchema
 from .audit_log import create_audit_log
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ async def list_users_api(
 
 @router.post("/create")
 async def create_user(
-    data: CreateUserRequest,
+    data: CreateUserPayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -59,7 +59,7 @@ async def create_user(
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"User with username '{data.username}' already exists.",
+                detail=f"UserResponse with username '{data.username}' already exists.",
             )
 
         hashed_password = get_password_hash(data.password)
@@ -78,7 +78,7 @@ async def create_user(
         )
 
         logger.info(
-            f"User '{data.username}' created with role '{data.role}' by '{current_user.username}'."
+            f"UserResponse '{data.username}' created with role '{data.role}' by '{current_user.username}'."
         )
         return {"status": "success"}
 
@@ -116,12 +116,14 @@ async def delete_user(
             )
             db.delete(user)
             db.commit()
-            logger.info(f"User '{user.username}' deleted by '{current_user.username}'.")
+            logger.info(
+                f"UserResponse '{user.username}' deleted by '{current_user.username}'."
+            )
             return {"status": "success"}
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )
 
 
@@ -158,13 +160,13 @@ async def disable_user(
                 {"user_id": user.id, "username": user.username},
             )
             logger.info(
-                f"User '{user.username}' disabled by '{current_user.username}'."
+                f"UserResponse '{user.username}' disabled by '{current_user.username}'."
             )
             return {"status": "success"}
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )
 
 
@@ -188,19 +190,21 @@ async def enable_user(
                 "enable_user",
                 {"user_id": user.id, "username": user.username},
             )
-            logger.info(f"User '{user.username}' enabled by '{current_user.username}'.")
+            logger.info(
+                f"UserResponse '{user.username}' enabled by '{current_user.username}'."
+            )
             return {"status": "success"}
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )
 
 
 @router.post("/{user_id}/role")
 async def update_user_role(
     user_id: int,
-    data: UpdateUserRoleRequest,
+    data: UpdateUserRolePayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -236,11 +240,11 @@ async def update_user_role(
                 },
             )
             logger.info(
-                f"User '{user.username}' role changed to '{data.role}' by '{current_user.username}'."
+                f"UserResponse '{user.username}' role changed to '{data.role}' by '{current_user.username}'."
             )
             return {"status": "success"}
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )

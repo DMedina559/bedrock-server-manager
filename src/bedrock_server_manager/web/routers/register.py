@@ -14,15 +14,14 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...db.models import RegistrationToken, User
 from ..auth_utils import get_admin_user, get_password_hash
 from ..dependencies import get_app_context
-from ..schemas import GenerateTokenRequest
-from ..schemas import User as UserSchema
+from ..schemas import GenerateTokenPayload, UserLoginPayload
+from ..schemas import UserResponse as UserSchema
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ router = APIRouter(
 @router.post("/generate-token", include_in_schema=False)
 async def generate_token(
     request: Request,
-    data: GenerateTokenRequest,
+    data: GenerateTokenPayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -84,26 +83,15 @@ async def validate_token(
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
-        return JSONResponse(content={"status": "success", "message": "Token is valid."})
-
-
-class RegisterUserRequest(BaseModel):
-    """
-    Request payload for user registration.
-
-    Attributes:
-        username (str): The desired username.
-        password (str): The desired password.
-    """
-
-    username: str
-    password: str
+        return JSONResponse(
+            content={"status": "success", "message": "TokenResponse is valid."}
+        )
 
 
 @router.post("/{token}", include_in_schema=False)
 async def register_user(
     token: str,
-    data: RegisterUserRequest,
+    data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -136,7 +124,7 @@ async def register_user(
             db.refresh(user)  # Refresh the user object to get its ID if needed later
 
             logger.info(
-                f"User '{data.username}' registered with role '{registration_token.role}'."
+                f"UserResponse '{data.username}' registered with role '{registration_token.role}'."
             )
 
             return JSONResponse(

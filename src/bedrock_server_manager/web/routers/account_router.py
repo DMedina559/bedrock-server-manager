@@ -20,14 +20,19 @@ from ..auth_utils import (
     verify_password,
 )
 from ..dependencies import get_app_context
-from ..schemas import BaseApiResponse, ChangePasswordRequest, ProfileUpdate, ThemeUpdate
-from ..schemas import User as UserSchema
+from ..schemas import (
+    BaseApiResponse,
+    ChangePasswordPayload,
+    ProfileUpdatePayload,
+    ThemeUpdatePayload,
+    UserResponse,
+)
 
 router = APIRouter()
 
 
-@router.get("/api/account", response_model=UserSchema)
-async def account_api(user: UserSchema = Depends(get_current_user)):
+@router.get("/api/account", response_model=UserResponse)
+async def account_api(user: UserResponse = Depends(get_current_user)):
     """
     Retrieves the current user's account details.
     """
@@ -36,8 +41,8 @@ async def account_api(user: UserSchema = Depends(get_current_user)):
 
 @router.post("/api/account/theme", response_model=BaseApiResponse)
 async def update_theme(
-    theme_update: ThemeUpdate,
-    user: UserSchema = Depends(get_current_user),
+    theme_update: ThemeUpdatePayload,
+    user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -53,13 +58,13 @@ async def update_theme(
             return BaseApiResponse(
                 status="success", message="Theme updated successfully"
             )
-    return JSONResponse(status_code=404, content={"message": "User not found"})
+    return JSONResponse(status_code=404, content={"message": "UserResponse not found"})
 
 
 @router.post("/api/account/profile", response_model=BaseApiResponse)
 async def update_profile(
-    profile_update: ProfileUpdate,
-    user: UserSchema = Depends(get_current_user),
+    profile_update: ProfileUpdatePayload,
+    user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -76,13 +81,13 @@ async def update_profile(
             return BaseApiResponse(
                 status="success", message="Profile updated successfully"
             )
-    return JSONResponse(status_code=404, content={"message": "User not found"})
+    return JSONResponse(status_code=404, content={"message": "UserResponse not found"})
 
 
 @router.post("/api/account/change-password", response_model=BaseApiResponse)
 async def change_password(
-    data: ChangePasswordRequest,
-    user: UserSchema = Depends(get_current_user),
+    data: ChangePasswordPayload,
+    user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -95,7 +100,7 @@ async def change_password(
         if not db_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found.",
+                detail="UserResponse not found.",
             )
 
         if not verify_password(data.current_password, db_user.hashed_password):

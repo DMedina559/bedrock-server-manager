@@ -17,18 +17,6 @@ class InstallServerPayload(BaseModel):
         default=None,
         description="Path to a custom ZIP file, if 'CUSTOM' version is selected.",
     )
-    port: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=65535,
-        description="IPv4 port for the server. Defaults to 19132 if omitted.",
-    )
-    port_v6: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=65535,
-        description="IPv6 port for the server. Defaults to 19133 if omitted.",
-    )
     overwrite: Optional[bool] = Field(
         default=False,
         description="If True, confirm overwriting an existing installation.",
@@ -60,16 +48,6 @@ class PropertiesPayload(BaseModel):
     )
 
 
-class AllowlistPlayer(BaseModel):
-    """Represents a player entry for the allowlist."""
-
-    name: str = Field(..., description="Player's gamertag.")
-    ignoresPlayerLimit: bool = Field(
-        default=False,
-        description="Whether this player ignores the server's player limit.",
-    )
-
-
 class AllowlistAddPayload(BaseModel):
     """Request model for adding players to the allowlist."""
 
@@ -85,7 +63,7 @@ class AllowlistRemovePayload(BaseModel):
     players: List[str] = Field(..., description="List of player gamertags to remove.")
 
 
-class PlayerPermissionItem(BaseModel):
+class PlayerPermissionPayload(BaseModel):
     """Represents a single player's permission data sent from the client."""
 
     xuid: str
@@ -96,7 +74,7 @@ class PlayerPermissionItem(BaseModel):
 class PermissionsSetPayload(BaseModel):
     """Request model for setting multiple player permissions."""
 
-    permissions: List[PlayerPermissionItem] = Field(
+    permissions: List[PlayerPermissionPayload] = Field(
         ..., description="List of player permission entries."
     )
 

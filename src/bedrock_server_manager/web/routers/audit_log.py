@@ -12,8 +12,7 @@ from ...context import AppContext
 from ...db.models import AuditLog
 from ..auth_utils import get_admin_user
 from ..dependencies import get_app_context
-from ..schemas import AuditLogResponse
-from ..schemas import User as UserSchema
+from ..schemas import AuditLogResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ def create_audit_log(
 
 @router.get("/list", response_model=List[AuditLogResponse])
 async def list_audit_logs_api(
-    current_user: UserSchema = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

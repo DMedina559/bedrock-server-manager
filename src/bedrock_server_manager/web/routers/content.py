@@ -20,7 +20,7 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, User
+from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ router = APIRouter()
     tags=["Content API"],
 )
 async def list_worlds_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -72,7 +72,7 @@ async def list_worlds_api_route(
     tags=["Content API"],
 )
 async def list_addons_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -113,7 +113,7 @@ async def list_addons_api_route(
 async def install_world_api_route(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -205,7 +205,7 @@ async def install_world_api_route(
 )
 async def export_world_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -261,7 +261,7 @@ async def export_world_api_route(
 )
 async def reset_world_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -318,7 +318,7 @@ async def reset_world_api_route(
 async def install_addon_api_route(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
