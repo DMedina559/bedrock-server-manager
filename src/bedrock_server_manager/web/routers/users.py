@@ -17,9 +17,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...context import AppContext
 from ...db.models import User
-from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
+from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context
-from ..schemas import CreateUserPayload, UpdateUserRolePayload
+from ..schemas import UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
 from .audit_log import create_audit_log
 
@@ -42,45 +42,6 @@ async def list_users_api(
     with app_context.db.session_manager() as db:  # type: ignore
         users = db.query(User).all()
         return users
-
-
-@router.post("/create")
-async def create_user(
-    data: CreateUserPayload,
-    current_user: UserSchema = Depends(get_admin_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Creates a new user.
-    """
-    with app_context.db.session_manager() as db:  # type: ignore
-        # Check for existing user
-        existing_user = db.query(User).filter(User.username == data.username).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"UserResponse with username '{data.username}' already exists.",
-            )
-
-        hashed_password = get_password_hash(data.password)
-        user = User(
-            username=data.username, hashed_password=hashed_password, role=data.role
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-        create_audit_log(
-            app_context,
-            current_user.id,
-            "create_user",
-            {"user_id": user.id, "username": user.username, "role": user.role},
-        )
-
-        logger.info(
-            f"UserResponse '{data.username}' created with role '{data.role}' by '{current_user.username}'."
-        )
-        return {"status": "success"}
 
 
 @router.post("/{user_id}/delete")

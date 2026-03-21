@@ -24,21 +24,6 @@ class UserResponse(BaseModel):
     theme: str = "default"
 
 
-class CreateUserPayload(BaseModel):
-    """
-    Request payload for creating a new user.
-
-    Attributes:
-        username (str): The new username.
-        password (str): The new password.
-        role (str): The role for the new user.
-    """
-
-    username: str
-    password: str
-    role: str
-
-
 class UpdateUserRolePayload(BaseModel):
     """
     Request payload for updating a user's role.

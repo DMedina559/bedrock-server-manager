@@ -51,7 +51,6 @@ from .system import (
 )
 from .users import (
     ChangePasswordPayload,
-    CreateUserPayload,
     ProfileUpdatePayload,
     ThemeUpdatePayload,
     UpdateUserRolePayload,
@@ -65,8 +64,6 @@ __all__ = [
     "RegisterUserPayload",
     "TokenResponse",
     "UserResponse",
-    "CreateFirstUserPayload",
-    "CreateUserPayload",
     "UpdateUserRolePayload",
     "ThemeUpdatePayload",
     "ProfileUpdatePayload",
