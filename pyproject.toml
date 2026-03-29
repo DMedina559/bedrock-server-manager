@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "requests >=2.32.3,<2.33",
+    "requests >=2.32.3,<2.34",
     "psutil >=7.0.0,<7.3",
     'pywin32 >=310,<312; sys_platform == "win32"',
     "click >=8.2.0,<8.4",
