@@ -146,7 +146,54 @@ class HomeAutomationStarterPlugin(PluginBase):
         self.api.start_server(server_name=TARGET_SERVER_NAME, mode="detached")
 ```
 
-## 5. Extending Functionality: Custom FastAPI Endpoints
+### Advanced Event Hooks (Interception)
+
+You can use `before_*` hooks to intercept actions and potentially prevent them from happening or run prerequisites.
+
+```python
+class BackupBeforeStartPlugin(PluginBase):
+    version = "1.0.0"
+
+    def before_start_server(self, server_name: str, **kwargs):
+        """Runs automatically before a server is started."""
+        self.logger.info(f"Intercepted start request for {server_name}. Running quick backup...")
+
+        # We can call another core API method synchronously
+        result = self.api.backup_world(server_name=server_name)
+
+        if result.get("status") == "success":
+            self.logger.info("Backup completed. Allowing server to start.")
+        else:
+            self.logger.error("Backup failed! The server will still attempt to start, but check logs.")
+```
+
+## 5. Plugin Settings and Storage
+
+Plugins often need to store configuration data persistently. Bedrock Server Manager provides methods to read and write to the global `bedrock-server-manager.db` file under a special `custom` section.
+
+*   **Saving Data:** `self.api.set_custom_global_setting(key="my_plugin_key", value="my_value")`
+*   **Loading Data:** `self.api.get_global_setting(key="custom.my_plugin_key")`
+
+```python
+class MyConfigurablePlugin(PluginBase):
+    version = "1.0.0"
+
+    def on_load(self):
+        # Load existing settings or set defaults
+        self.plugin_config = self.api.get_global_setting("custom.my_configurable_plugin")
+
+        if not self.plugin_config:
+            self.logger.info("No configuration found. Initializing defaults.")
+            default_config = {"enable_feature_x": True, "api_key": "YOUR_KEY_HERE"}
+
+            # Save the default configuration
+            self.api.set_custom_global_setting("my_configurable_plugin", default_config)
+            self.plugin_config = default_config
+
+        self.logger.info(f"Loaded config: {self.plugin_config}")
+```
+
+## 6. Extending Functionality: Custom FastAPI Endpoints
 
 Plugins can significantly extend Bedrock Server Manager by adding their own custom FastAPI web endpoints. This allows for deep integration and tailored functionality.
 
@@ -157,7 +204,7 @@ To enable this, your plugin class (derived from `PluginBase`) needs to override 
 
 The Plugin Manager will call these methods on your plugin instance after it's loaded. The collected commands and routers are then integrated into the main application.
 
-### 5.1. Adding Custom FastAPI Endpoints (Web APIs and Pages)
+### 6.1. Adding Custom FastAPI Endpoints (Web APIs and Pages)
 
 To add web endpoints, define your FastAPI `APIRouter` instances and return them in a list from `get_fastapi_routers()`. These routers will be included in the main FastAPI application.
 
@@ -242,7 +289,7 @@ After enabling `my_web_api_plugin.py` and restarting the Bedrock Server Manager 
 
 These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api/openapi.json` or `/docs`).
 
-#### 5.1.1. Native JSON UI
+#### 6.1.1. Native JSON UI
 
 Bedrock Server Manager allows plugins to define native UI pages using a simple JSON schema. This eliminates the need for plugin developers to write frontend code (React, HTML, CSS) while still providing a rich, interactive user interface that matches the application's look and feel.
 
@@ -258,12 +305,12 @@ For more information and available components, refer to the [Native JSON UI](./n
 *  **Native JSON UI:** Tag your JSON UI routers with `plugin-ui-native` to have it added to the Web UI.
 ```
 
-## 6. Best Practices
+## 7. Best Practices
 
 ```{tip}
 *   **Always use `self.logger`:** Do not use `print()`. The provided logger is integrated with the application's logging system.
 *   **Handle exceptions:** Wrap API calls in `try...except` blocks to handle potential failures gracefully.
 *   **Check the `result` dictionary:** After an `after_*` event, inspect the `result['status']` to confirm the outcome.
-*   **Avoid blocking operations:** Long-running tasks in your event handlers can freeze the application. Offload them to separate threads if necessary.
+*   **Avoid blocking operations:** Long-running tasks in your event handlers or FastAPI endpoints can freeze the application. Use the [Task Manager](./task_manager.md) to offload them to background threads.
 *   **Use the API for operations:** Do not directly manipulate server files or directories. Use the provided `self.api` functions to ensure thread-safety and consistency.
 ```

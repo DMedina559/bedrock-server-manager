@@ -65,6 +65,7 @@ Browse through the sections below to find various information about Bedrock Serv
    developer/plugins/plugin_base
    developer/plugins/plugin_manager
    developer/plugins/native_json_ui.md
+   developer/plugins/task_manager.md
 
 .. toctree::
    :maxdepth: 2
