@@ -33,7 +33,7 @@ If you're changing the status of a FASTAPI plugin you must fully restart the web
 
 ---
 
-## The `plugins.json` Configuration File
+## Configuration Storage
 
 Plugin statuses, versions, and descriptions are stored in the database.
 
