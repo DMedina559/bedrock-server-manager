@@ -16,6 +16,7 @@ Browse through the sections below to find various information about Bedrock Serv
    general/introduction.md
    cli/general.md
    web/general.md
+   web/role_access_table.md
    general/plugins.md
    general/troubleshooting.md
 
