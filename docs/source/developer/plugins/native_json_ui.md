@@ -187,8 +187,7 @@ You can subscribe to WebSocket topics to update components like Charts, StatCard
     ```json
     {
         "websocketSubscriptions": ["my_plugin:stats", "server_log:{server}"],
-        "type": "Container",
-        ...
+        "type": "Container"
     }
     ```
     *   `{server}` is automatically replaced with the currently selected server name.
