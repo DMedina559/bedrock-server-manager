@@ -222,7 +222,7 @@ def get_all_server_settings(
 
     Returns:
         Dict[str, Any]: A dictionary containing the operation result.
-        On success: ``{"status": "success", "data": <all_settings_dict>}``
+        On success: ``{"status": "success", **<all_settings_dict>}``
         On error: ``{"status": "error", "message": "<error_message>"}``
 
     Raises:
@@ -239,7 +239,7 @@ def get_all_server_settings(
         all_settings = server._load_server_config()
         success_response: Dict[str, Any] = {
             "status": "success",
-            "data": all_settings,
+            **all_settings,
         }
         return success_response  # type: ignore[no-any-return]
     except BSMError as e:
