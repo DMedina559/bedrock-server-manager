@@ -529,7 +529,11 @@ async def get_system_info_api_route(
     try:
         result = utils_api.get_system_and_app_info(app_context=app_context)
         if result.get("status") == "success":
-            return AppInfoResponse(status="success", info=result.get("data"))
+            # the dictionary is already flattened, pass the entire result minus the status
+            return AppInfoResponse(
+                status="success",
+                info={k: v for k, v in result.items() if k != "status"},
+            )
         else:
 
             raise HTTPException(
