@@ -50,7 +50,9 @@ async def get_all_settings_api_route(
         if result.get("status") == "success":
             return SettingsResponse(
                 status="success",
-                settings=result.get("data"),
+                settings={
+                    k: v for k, v in result.items() if k not in ("status", "message")
+                },
                 message=result.get("message"),
             )
         else:
