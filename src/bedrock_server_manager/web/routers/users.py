@@ -31,6 +31,13 @@ router = APIRouter(
 )
 
 
+def _get_active_admin_count(db) -> int:
+    """Helper function to get the count of active admins."""
+    return int(
+        db.query(User).filter(User.role == "admin", User.is_active.is_(True)).count()
+    )
+
+
 @router.get("/list", response_model=List[UserSchema])
 async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
@@ -57,17 +64,11 @@ async def delete_user(
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             # Prevent deleting the last admin
-            if user.role == "admin":
-                active_admins = (
-                    db.query(User)
-                    .filter(User.role == "admin", User.is_active.is_(True))
-                    .count()
+            if user.role == "admin" and _get_active_admin_count(db) <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the last active admin.",
                 )
-                if active_admins <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot delete the last active admin.",
-                    )
 
             create_audit_log(
                 app_context,
@@ -100,17 +101,11 @@ async def disable_user(
     with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            if user.role == "admin":
-                active_admins = (
-                    db.query(User)
-                    .filter(User.role == "admin", User.is_active.is_(True))
-                    .count()
+            if user.role == "admin" and _get_active_admin_count(db) <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot disable the last active admin.",
                 )
-                if active_admins <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot disable the last active admin.",
-                    )
 
             user.is_active = False
             db.commit()
@@ -175,17 +170,15 @@ async def update_user_role(
     with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            if user.role == "admin" and data.role != "admin":
-                active_admins = (
-                    db.query(User)
-                    .filter(User.role == "admin", User.is_active.is_(True))
-                    .count()
+            if (
+                user.role == "admin"
+                and data.role != "admin"
+                and _get_active_admin_count(db) <= 1
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot change the role of the last active admin.",
                 )
-                if active_admins <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot change the role of the last active admin.",
-                    )
             original_role = user.role
             user.role = data.role
             db.commit()
