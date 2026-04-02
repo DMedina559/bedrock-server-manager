@@ -97,8 +97,8 @@ class TestPermissions:
             }
             result = get_server_permissions_api("test_server", app_context=app_context)
             assert result["status"] == "success"
-            assert len(result["data"]["permissions"]) == 1
-            assert result["data"]["permissions"][0]["name"] == "player1"
+            assert len(result["permissions"]) == 1
+            assert result["permissions"][0]["name"] == "player1"
 
 
 class TestProperties:
