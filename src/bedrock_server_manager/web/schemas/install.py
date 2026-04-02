@@ -40,7 +40,7 @@ class PropertiesGetResponse(BaseApiResponse):
 class AllowlistGetResponse(BaseApiResponse):
     """Response model for server allowlist."""
 
-    allowlist: List[Dict[str, Any]]
+    players: List[Dict[str, Any]]
 
 
 class PermissionsGetResponse(BaseApiResponse):

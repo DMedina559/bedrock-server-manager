@@ -380,7 +380,7 @@ async def get_allowlist_api_route(
 
     if result.get("status") == "success":
         return AllowlistGetResponse(
-            status=result["status"], allowlist=result.get("allowlist", [])
+            status=result["status"], players=result.get("players", [])
         )
     elif "not found" in result.get("message", "").lower():
         raise HTTPException(
