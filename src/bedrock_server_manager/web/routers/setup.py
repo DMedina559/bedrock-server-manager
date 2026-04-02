@@ -19,7 +19,7 @@ from ..auth_utils import (
     get_password_hash,
 )
 from ..dependencies import get_app_context
-from ..schemas import UserLoginPayload
+from ..schemas import SetupStatusResponse, UserLoginPayload
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ router = APIRouter(
 )
 
 
-@router.get("/status", tags=["Setup"])
+@router.get("/status", response_model=SetupStatusResponse, tags=["Setup"])
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -38,7 +38,7 @@ async def get_setup_status(
     """
     with app_context.db.session_manager() as db:  # type: ignore
         user_exists = db.query(User).first() is not None
-        return {"needs_setup": not user_exists}
+        return SetupStatusResponse(needs_setup=not user_exists)
 
 
 @router.post("/create-first-user", include_in_schema=False)

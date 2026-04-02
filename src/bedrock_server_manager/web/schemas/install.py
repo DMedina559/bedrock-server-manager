@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from .base import BaseApiResponse
+
 
 class InstallServerPayload(BaseModel):
     """Request model for installing a new server."""
@@ -21,6 +23,36 @@ class InstallServerPayload(BaseModel):
         default=False,
         description="If True, confirm overwriting an existing installation.",
     )
+
+
+class CustomZipsResponse(BaseApiResponse):
+    """Response model for custom zips list."""
+
+    custom_zips: List[str]
+
+
+class PropertiesGetResponse(BaseApiResponse):
+    """Response model for server properties."""
+
+    properties: Dict[str, Any]
+
+
+class AllowlistGetResponse(BaseApiResponse):
+    """Response model for server allowlist."""
+
+    allowlist: List[Dict[str, Any]]
+
+
+class PermissionsGetResponse(BaseApiResponse):
+    """Response model for server permissions."""
+
+    permissions: List[Dict[str, Any]]
+
+
+class PermissionsUpdateResponse(BaseApiResponse):
+    """Response model for permissions update."""
+
+    errors: Optional[Dict[str, str]] = None
 
 
 class InstallServerResponse(BaseModel):

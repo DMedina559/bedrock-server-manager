@@ -20,7 +20,7 @@ from ...context import AppContext
 from ...db.models import RegistrationToken, User
 from ..auth_utils import get_admin_user, get_password_hash
 from ..dependencies import get_app_context
-from ..schemas import GenerateTokenPayload, UserLoginPayload
+from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ router = APIRouter(
 )
 
 
-@router.post("/generate-token", include_in_schema=False)
+@router.post("/generate-token", response_model=ActionResponse, include_in_schema=False)
 async def generate_token(
     request: Request,
     data: GenerateTokenPayload,
@@ -59,10 +59,11 @@ async def generate_token(
         f"Link: {registration_link}"
     )
 
-    return {
-        "status": "success",
-        "redirect_url": f"/app/users?message=Registration link generated: {registration_link}",
-    }
+    return ActionResponse(
+        status="success",
+        message="Token generated successfully.",
+        redirect_url=f"/app/users?message=Registration link generated: {registration_link}",
+    )
 
 
 @router.get("/validate/{token}", include_in_schema=False)

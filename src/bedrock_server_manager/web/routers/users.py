@@ -19,7 +19,7 @@ from ...context import AppContext
 from ...db.models import User
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context
-from ..schemas import UpdateUserRolePayload
+from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
 from .audit_log import create_audit_log
 
@@ -44,7 +44,7 @@ async def list_users_api(
         return users
 
 
-@router.post("/{user_id}/delete")
+@router.post("/{user_id}/delete", response_model=BaseApiResponse)
 async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -80,7 +80,7 @@ async def delete_user(
             logger.info(
                 f"UserResponse '{user.username}' deleted by '{current_user.username}'."
             )
-            return {"status": "success"}
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -88,7 +88,7 @@ async def delete_user(
     )
 
 
-@router.post("/{user_id}/disable")
+@router.post("/{user_id}/disable", response_model=BaseApiResponse)
 async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -123,7 +123,7 @@ async def disable_user(
             logger.info(
                 f"UserResponse '{user.username}' disabled by '{current_user.username}'."
             )
-            return {"status": "success"}
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -131,7 +131,7 @@ async def disable_user(
     )
 
 
-@router.post("/{user_id}/enable")
+@router.post("/{user_id}/enable", response_model=BaseApiResponse)
 async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -154,7 +154,7 @@ async def enable_user(
             logger.info(
                 f"UserResponse '{user.username}' enabled by '{current_user.username}'."
             )
-            return {"status": "success"}
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -162,7 +162,7 @@ async def enable_user(
     )
 
 
-@router.post("/{user_id}/role")
+@router.post("/{user_id}/role", response_model=BaseApiResponse)
 async def update_user_role(
     user_id: int,
     data: UpdateUserRolePayload,
@@ -203,7 +203,7 @@ async def update_user_role(
             logger.info(
                 f"UserResponse '{user.username}' role changed to '{data.role}' by '{current_user.username}'."
             )
-            return {"status": "success"}
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

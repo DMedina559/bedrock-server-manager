@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from .base import BaseApiResponse
 
 
+class SetupStatusResponse(BaseModel):
+    """Response model for setup status."""
+
+    needs_setup: bool
+
+
 class FileNamePayload(BaseModel):
     """
     Payload for file-based operations.

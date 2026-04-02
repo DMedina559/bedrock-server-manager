@@ -11,11 +11,16 @@ from .backup import (
 from .base import ActionResponse, BaseApiResponse
 from .install import (
     AllowlistAddPayload,
+    AllowlistGetResponse,
     AllowlistRemovePayload,
+    CustomZipsResponse,
     InstallServerPayload,
     InstallServerResponse,
+    PermissionsGetResponse,
     PermissionsSetPayload,
+    PermissionsUpdateResponse,
     PlayerPermissionPayload,
+    PropertiesGetResponse,
     PropertiesPayload,
     ServiceUpdatePayload,
 )
@@ -48,6 +53,7 @@ from .system import (
     PruneDownloadsResponse,
     SettingItemResponse,
     SettingsResponse,
+    SetupStatusResponse,
 )
 from .users import (
     ChangePasswordPayload,
@@ -104,4 +110,10 @@ __all__ = [
     "ServerVersionResponse",
     "ServerProcessInfoResponse",
     "UserLoginPayload",
+    "CustomZipsResponse",
+    "PropertiesGetResponse",
+    "AllowlistGetResponse",
+    "PermissionsGetResponse",
+    "PermissionsUpdateResponse",
+    "SetupStatusResponse",
 ]

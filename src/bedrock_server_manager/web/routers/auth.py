@@ -88,11 +88,11 @@ async def api_login_for_access_token(
     logger.info(
         f"API login successful for '{form_data.username}'. JWT created and cookie set."
     )
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "message": "Successfully authenticated.",
-    }
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        message="Successfully authenticated.",
+    )
 
 
 @router.get("/refresh-token", response_model=TokenResponse)
@@ -110,11 +110,11 @@ async def refresh_token(
     access_token = create_access_token(
         data={"sub": current_user.username}, app_context=app_context
     )
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "message": "TokenResponse refreshed successfully.",
-    }
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        message="Token refreshed successfully.",
+    )
 
 
 # --- Logout Route ---
