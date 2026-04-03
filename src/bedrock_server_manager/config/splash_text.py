@@ -25,6 +25,7 @@ SPLASH_TEXTS_UI = [
     "NPM Installable UI!",
     "Remote UI Capabilities!",
     "Plugin Pages!",
+    "?hidden=true",
 ]
 
 # --- Core Features  ---
