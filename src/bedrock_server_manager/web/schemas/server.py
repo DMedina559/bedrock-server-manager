@@ -85,7 +85,8 @@ class PlayerListResponse(BaseApiResponse):
 class AddPlayersResponse(BaseApiResponse):
     """Response model for adding players, typically returns just inherited fields or single item data."""
 
-    data: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = None
+    count: Optional[int] = None
 
 
 class ThemeListResponse(BaseApiResponse):
@@ -97,22 +98,22 @@ class ThemeListResponse(BaseApiResponse):
 class ServerRunningStatusResponse(BaseApiResponse):
     """Response model for server running status."""
 
-    data: Optional[Dict[str, bool]] = None
+    running: Optional[bool] = None
 
 
 class ServerConfigStatusResponse(BaseApiResponse):
     """Response model for server config status."""
 
-    data: Optional[Dict[str, str]] = None
+    config_status: Optional[str] = None
 
 
 class ServerVersionResponse(BaseApiResponse):
     """Response model for server installed version."""
 
-    data: Optional[Dict[str, str]] = None
+    version: Optional[str] = None
 
 
 class ServerProcessInfoResponse(BaseApiResponse):
     """Response model for server process info."""
 
-    data: Optional[Dict[str, Any]] = None
+    process_info: Optional[Dict[str, Any]] = None

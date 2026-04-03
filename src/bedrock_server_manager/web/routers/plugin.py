@@ -25,9 +25,12 @@ from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user
 from ..dependencies import get_app_context
 from ..schemas import (
-    PluginApiResponse,
+    ActionResponse,
+    PluginPagesResponse,
+    PluginStatusesResponse,
     PluginStatusSetPayload,
     TriggerEventPayload,
+    TriggerEventResponse,
     UserResponse,
 )
 
@@ -37,7 +40,9 @@ router = APIRouter()
 
 
 # --- API Route ---
-@router.get("/api/plugins/pages", response_model=PluginApiResponse, tags=["Plugin API"])
+@router.get(
+    "/api/plugins/pages", response_model=PluginPagesResponse, tags=["Plugin API"]
+)
 async def get_plugin_pages_api_route(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -47,17 +52,17 @@ async def get_plugin_pages_api_route(
     """
     try:
         pages = app_context.plugin_manager.get_native_ui_routes()
-        return PluginApiResponse(status="success", data=pages)
+        return PluginPagesResponse(status="success", pages=pages)
     except Exception as e:
         logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
-        return PluginApiResponse(
+        return PluginPagesResponse(
             status="error",
             message=f"Failed to retrieve plugin pages: {str(e)}",
-            data=[],
+            pages=[],
         )
 
 
-@router.get("/api/plugins", response_model=PluginApiResponse, tags=["Plugin API"])
+@router.get("/api/plugins", response_model=PluginStatusesResponse, tags=["Plugin API"])
 async def get_plugins_status_api_route(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -70,7 +75,9 @@ async def get_plugins_status_api_route(
     try:
         result = plugins_api.get_plugin_statuses(app_context=app_context)
         if result.get("status") == "success":
-            return PluginApiResponse(status="success", data=result.get("plugins"))
+            return PluginStatusesResponse(
+                status="success", plugins=result.get("plugins")
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -86,7 +93,7 @@ async def get_plugins_status_api_route(
 
 @router.post(
     "/api/plugins/trigger_event",
-    response_model=PluginApiResponse,
+    response_model=TriggerEventResponse,
     tags=["Plugin API"],
 )
 async def trigger_event_api_route(
@@ -109,10 +116,10 @@ async def trigger_event_api_route(
             payload=payload.payload,
         )
         if result.get("status") == "success":
-            return PluginApiResponse(
+            return TriggerEventResponse(
                 status="success",
                 message=result.get("message"),
-                data=result.get("details"),
+                details=result.get("details"),
             )
         else:
             raise HTTPException(
@@ -141,7 +148,7 @@ async def trigger_event_api_route(
 
 @router.post(
     "/api/plugins/{plugin_name}",
-    response_model=PluginApiResponse,
+    response_model=ActionResponse,
     tags=["Plugin API"],
 )
 async def set_plugin_status_api_route(
@@ -164,7 +171,7 @@ async def set_plugin_status_api_route(
             app_context=app_context, plugin_name=plugin_name, enabled=payload.enabled
         )
         if result.get("status") == "success":
-            return PluginApiResponse(status="success", message=result.get("message"))
+            return ActionResponse(status="success", message=result.get("message"))
         else:
             detail = result.get("message", f"Failed to {action} plugin.")
             if "not found" in detail.lower() or "invalid plugin" in detail.lower():
@@ -193,9 +200,7 @@ async def set_plugin_status_api_route(
         )
 
 
-@router.put(
-    "/api/plugins/reload", response_model=PluginApiResponse, tags=["Plugin API"]
-)
+@router.put("/api/plugins/reload", response_model=ActionResponse, tags=["Plugin API"])
 async def reload_plugins_api_route(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -209,7 +214,7 @@ async def reload_plugins_api_route(
     try:
         result = plugins_api.reload_plugins(app_context=app_context)
         if result.get("status") == "success":
-            return PluginApiResponse(status="success", message=result.get("message"))
+            return ActionResponse(status="success", message=result.get("message"))
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

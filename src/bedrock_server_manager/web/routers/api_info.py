@@ -75,7 +75,7 @@ async def get_server_running_status_api_route(
         if result.get("status") == "success":
             return ServerRunningStatusResponse(
                 status="success",
-                data={"running": bool(result.get("is_running"))},
+                running=bool(result.get("is_running")),
                 message=result.get("message"),
             )
         else:
@@ -126,7 +126,7 @@ async def get_server_config_status_api_route(
         if result.get("status") == "success":
             return ServerConfigStatusResponse(
                 status="success",
-                data={"config_status": str(result.get("config_status"))},
+                config_status=str(result.get("config_status")),
                 message=result.get("message"),
             )
         else:
@@ -179,7 +179,7 @@ async def get_server_version_api_route(
         if result.get("status") == "success":
             return ServerVersionResponse(
                 status="success",
-                data={"version": str(result.get("installed_version"))},
+                version=str(result.get("installed_version")),
                 message=result.get("message"),
             )
         else:
@@ -281,7 +281,7 @@ async def server_process_info_api_route(
         if result.get("status") == "success":
             return ServerProcessInfoResponse(
                 status="success",
-                data={"process_info": result.get("process_info")},
+                process_info=result.get("process_info"),
                 message=result.get("message"),
             )
         else:
@@ -327,7 +327,7 @@ async def scan_players_api_route(
             return AddPlayersResponse(
                 status="success",
                 message=result.get("message"),
-                data=result.get("details"),
+                details=result.get("details"),
             )
         else:
             raise HTTPException(
@@ -618,7 +618,7 @@ async def add_players_api_route(
             return AddPlayersResponse(
                 status="success",
                 message=result.get("message"),
-                data={"count": result.get("count")},
+                count=result.get("count"),
             )
         else:
 

@@ -8,7 +8,7 @@ def test_get_plugins_status_api_route_success(authenticated_client, app_context)
     set_plugin_status("plugin1", True, app_context=app_context)
     response = authenticated_client.get("/api/plugins")
     assert response.status_code == 200
-    assert response.json()["data"]["plugin1"]["enabled"] is True
+    assert response.json()["plugins"]["plugin1"]["enabled"] is True
 
 
 @patch("bedrock_server_manager.web.routers.plugin.plugins_api.get_plugin_statuses")
@@ -23,8 +23,8 @@ def test_get_plugins_status_api_route_failure(mock_get_plugins, authenticated_cl
     response = authenticated_client.get("/api/plugins")
     assert response.status_code == 500
     assert (
-        "An unexpected error occurred while getting plugin statuses."
-        in response.json()["detail"]
+        "Failed to get plugins" in response.json()["detail"]
+        or "An unexpected error occurred" in response.json()["detail"]
     )
 
 

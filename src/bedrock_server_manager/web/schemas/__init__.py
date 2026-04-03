@@ -25,9 +25,11 @@ from .install import (
     ServiceUpdatePayload,
 )
 from .plugin import (
-    PluginApiResponse,
+    PluginPagesResponse,
+    PluginStatusesResponse,
     PluginStatusSetPayload,
     TriggerEventPayload,
+    TriggerEventResponse,
 )
 from .server import (
     AddPlayersPayload,
@@ -97,6 +99,7 @@ __all__ = [
     "RestoreActionPayload",
     "PluginStatusSetPayload",
     "TriggerEventPayload",
+    "TriggerEventResponse",
     "FileNamePayload",
     "SettingItemResponse",
     "SettingsResponse",
@@ -104,7 +107,8 @@ __all__ = [
     "AuditLogResponse",
     "PruneDownloadsResponse",
     "ContentListResponse",
-    "PluginApiResponse",
+    "PluginPagesResponse",
+    "PluginStatusesResponse",
     "ServerRunningStatusResponse",
     "ServerConfigStatusResponse",
     "ServerVersionResponse",

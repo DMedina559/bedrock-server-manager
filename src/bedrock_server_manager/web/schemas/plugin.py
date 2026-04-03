@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -26,12 +26,19 @@ class TriggerEventPayload(BaseModel):
     )
 
 
-class PluginApiResponse(BaseApiResponse):
-    """Generic API response model for plugin operations."""
+class PluginPagesResponse(BaseApiResponse):
+    """Response model for plugin native UI pages."""
 
-    # status: str -> Inherited
-    # message: Optional[str] = None -> Inherited
-    data: Optional[Any] = Field(
-        default=None,
-        description="Optional data payload, structure depends on the endpoint (e.g., plugin statuses).",
-    )
+    pages: Optional[List[Dict[str, Any]]] = None
+
+
+class PluginStatusesResponse(BaseApiResponse):
+    """Response model for plugin statuses."""
+
+    plugins: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+class TriggerEventResponse(BaseApiResponse):
+    """Response model for triggering a custom plugin event."""
+
+    details: Optional[Dict[str, Any]] = None
