@@ -12,13 +12,19 @@ SPLASH_TEXTS_UI = [
     "Based on Ore UI!",
     "Web UI!",
     "CLI",
-    "All CSS!",
+    "CSS Themes!",
     "Command Line Power, Web UI Ease!",
     "CLI or GUI!",
     "CLI Power, Backup, Automate!",
     "GUI Power, Backup, Automate!",
     "Full Control: CLI & Web UI!",
     "Web & CLI Synergy!",
+    "React + Vite Powered!",
+    "Modern Web UI!",
+    "New UI, Who Dis?",
+    "NPM Installable UI!",
+    "Remote UI Capabilities!",
+    "Plugin Pages!",
 ]
 
 # --- Core Features  ---
