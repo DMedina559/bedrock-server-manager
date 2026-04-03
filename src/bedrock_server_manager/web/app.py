@@ -1,6 +1,7 @@
 # bedrock_server_manager/web/app.py
 import asyncio
 import logging
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ from ..config import bcm_config, get_installed_version
 from ..context import AppContext
 from . import routers
 from .auth_utils import CustomAuthBackend, get_current_user_optional
+
+mimetypes.add_type("application/javascript", ".js")
 
 
 def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
