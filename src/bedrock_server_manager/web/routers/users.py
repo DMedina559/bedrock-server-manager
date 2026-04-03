@@ -14,21 +14,28 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
 from ...context import AppContext
 from ...db.models import User
-from ..auth_utils import get_admin_user, get_moderator_user, get_password_hash
+from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context
-from ..schemas import User as UserSchema
+from ..schemas import BaseApiResponse, UpdateUserRolePayload
+from ..schemas import UserResponse as UserSchema
 from .audit_log import create_audit_log
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/users",
+    prefix="/api/users",
     tags=["Users"],
 )
+
+
+def _get_active_admin_count(db) -> int:
+    """Helper function to get the count of active admins."""
+    return int(
+        db.query(User).filter(User.role == "admin", User.is_active.is_(True)).count()
+    )
 
 
 @router.get("/list", response_model=List[UserSchema])
@@ -44,72 +51,7 @@ async def list_users_api(
         return users
 
 
-class CreateUserRequest(BaseModel):
-    """
-    Request payload for creating a new user.
-
-    Attributes:
-        username (str): The new username.
-        password (str): The new password.
-        role (str): The role for the new user.
-    """
-
-    username: str
-    password: str
-    role: str
-
-
-class UpdateUserRoleRequest(BaseModel):
-    """
-    Request payload for updating a user's role.
-
-    Attributes:
-        role (str): The new role.
-    """
-
-    role: str
-
-
-@router.post("/create")
-async def create_user(
-    data: CreateUserRequest,
-    current_user: UserSchema = Depends(get_admin_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Creates a new user.
-    """
-    with app_context.db.session_manager() as db:  # type: ignore
-        # Check for existing user
-        existing_user = db.query(User).filter(User.username == data.username).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"User with username '{data.username}' already exists.",
-            )
-
-        hashed_password = get_password_hash(data.password)
-        user = User(
-            username=data.username, hashed_password=hashed_password, role=data.role
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-        create_audit_log(
-            app_context,
-            current_user.id,
-            "create_user",
-            {"user_id": user.id, "username": user.username, "role": user.role},
-        )
-
-        logger.info(
-            f"User '{data.username}' created with role '{data.role}' by '{current_user.username}'."
-        )
-        return {"status": "success"}
-
-
-@router.post("/{user_id}/delete")
+@router.post("/{user_id}/delete", response_model=BaseApiResponse)
 async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -122,17 +64,11 @@ async def delete_user(
         user = db.query(User).filter(User.id == user_id).first()
         if user:
             # Prevent deleting the last admin
-            if user.role == "admin":
-                active_admins = (
-                    db.query(User)
-                    .filter(User.role == "admin", User.is_active.is_(True))
-                    .count()
+            if user.role == "admin" and _get_active_admin_count(db) <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the last active admin.",
                 )
-                if active_admins <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot delete the last active admin.",
-                    )
 
             create_audit_log(
                 app_context,
@@ -142,16 +78,18 @@ async def delete_user(
             )
             db.delete(user)
             db.commit()
-            logger.info(f"User '{user.username}' deleted by '{current_user.username}'.")
-            return {"status": "success"}
+            logger.info(
+                f"UserResponse '{user.username}' deleted by '{current_user.username}'."
+            )
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )
 
 
-@router.post("/{user_id}/disable")
+@router.post("/{user_id}/disable", response_model=BaseApiResponse)
 async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -163,17 +101,11 @@ async def disable_user(
     with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            if user.role == "admin":
-                active_admins = (
-                    db.query(User)
-                    .filter(User.role == "admin", User.is_active.is_(True))
-                    .count()
+            if user.role == "admin" and _get_active_admin_count(db) <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot disable the last active admin.",
                 )
-                if active_admins <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot disable the last active admin.",
-                    )
 
             user.is_active = False
             db.commit()
@@ -184,17 +116,17 @@ async def disable_user(
                 {"user_id": user.id, "username": user.username},
             )
             logger.info(
-                f"User '{user.username}' disabled by '{current_user.username}'."
+                f"UserResponse '{user.username}' disabled by '{current_user.username}'."
             )
-            return {"status": "success"}
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )
 
 
-@router.post("/{user_id}/enable")
+@router.post("/{user_id}/enable", response_model=BaseApiResponse)
 async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -214,19 +146,21 @@ async def enable_user(
                 "enable_user",
                 {"user_id": user.id, "username": user.username},
             )
-            logger.info(f"User '{user.username}' enabled by '{current_user.username}'.")
-            return {"status": "success"}
+            logger.info(
+                f"UserResponse '{user.username}' enabled by '{current_user.username}'."
+            )
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )
 
 
-@router.post("/{user_id}/role")
+@router.post("/{user_id}/role", response_model=BaseApiResponse)
 async def update_user_role(
     user_id: int,
-    data: UpdateUserRoleRequest,
+    data: UpdateUserRolePayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -236,17 +170,15 @@ async def update_user_role(
     with app_context.db.session_manager() as db:  # type: ignore
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            if user.role == "admin" and data.role != "admin":
-                active_admins = (
-                    db.query(User)
-                    .filter(User.role == "admin", User.is_active.is_(True))
-                    .count()
+            if (
+                user.role == "admin"
+                and data.role != "admin"
+                and _get_active_admin_count(db) <= 1
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot change the role of the last active admin.",
                 )
-                if active_admins <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot change the role of the last active admin.",
-                    )
             original_role = user.role
             user.role = data.role
             db.commit()
@@ -262,11 +194,11 @@ async def update_user_role(
                 },
             )
             logger.info(
-                f"User '{user.username}' role changed to '{data.role}' by '{current_user.username}'."
+                f"UserResponse '{user.username}' role changed to '{data.role}' by '{current_user.username}'."
             )
-            return {"status": "success"}
+            return BaseApiResponse(status="success")
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"User with id {user_id} not found.",
+        detail=f"UserResponse with id {user_id} not found.",
     )

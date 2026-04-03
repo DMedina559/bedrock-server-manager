@@ -213,7 +213,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
 
     Returns:
-        Dict[str, Any]: On success: ``{"status": "success", "data": {"os_type": "...", "app_version": "...", "splash_text": "..."}}``.
+        Dict[str, Any]: On success: ``{"status": "success", "os_type": "...", "app_version": "...", "splash_text": "..."}``.
         On error: ``{"status": "error", "message": "An unexpected error occurred."}``
     """
     logger.debug("API: Requesting system and app info.")
@@ -226,7 +226,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
             "splash_text": splash_txt,
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
-        return {"status": "success", "data": data}
+        return {"status": "success", **data}
     except Exception as e:
         logger.error(f"API: Unexpected error getting system info: {e}", exc_info=True)
         return {"status": "error", "message": "An unexpected error occurred."}

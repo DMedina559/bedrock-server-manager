@@ -43,7 +43,7 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "data": ApplicationInfoDict}``
+        On success: ``{"status": "success", **ApplicationInfoDict}``
         where ``ApplicationInfoDict`` contains keys like:
         ``"application_name"`` (str), ``"version"`` (str), ``"os_type"`` (str),
         ``"base_directory"`` (str, path to servers),
@@ -62,7 +62,7 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
             "content_directory": manager._content_dir,
             "config_directory": manager._config_dir,
         }
-        return {"status": "success", "data": info}
+        return {"status": "success", **info}
     except Exception as e:
         logger.error(f"API: Unexpected error getting app info: {e}", exc_info=True)
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}

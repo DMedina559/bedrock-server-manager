@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from bedrock_server_manager.web.auth_utils import User
+from .auth_utils import UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class Client:
     """Represents a connected WebSocket client."""
 
     id: str
-    user: User
+    user: UserResponse
     websocket: WebSocket
 
 
@@ -30,7 +30,7 @@ class ConnectionManager:
         # Maps a topic to a list of client IDs subscribed to it
         self.subscriptions: Dict[str, List[str]] = {}
 
-    async def connect(self, websocket: WebSocket, user: User) -> str:
+    async def connect(self, websocket: WebSocket, user: UserResponse) -> str:
         """Accepts a new WebSocket connection, tracks it, and returns the client ID."""
         # Connection is accepted in the router
         client_id = f"{user.username}:{uuid.uuid4()}"

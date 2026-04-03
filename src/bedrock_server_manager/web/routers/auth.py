@@ -18,14 +18,12 @@ facilitate that access control.
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Response as FastAPIResponse
 from fastapi import status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, Field
 
 from ...context import AppContext
 from ..auth_utils import (
@@ -34,7 +32,7 @@ from ..auth_utils import (
     get_current_user,
 )
 from ..dependencies import get_app_context
-from ..schemas import User
+from ..schemas import TokenResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -44,24 +42,8 @@ router = APIRouter(
 )
 
 
-# --- Pydantic Models for Request/Response ---
-class Token(BaseModel):
-    """Response model for successful authentication, providing an access token."""
-
-    access_token: str
-    token_type: str
-    message: Optional[str] = None
-
-
-class UserLogin(BaseModel):
-    """Request model for user login credentials."""
-
-    username: str = Field(..., min_length=1, max_length=80)
-    password: str = Field(..., min_length=1)
-
-
 # --- API Login Route ---
-@router.post("/token", response_model=Token)
+@router.post("/token", response_model=TokenResponse)
 async def api_login_for_access_token(
     response: FastAPIResponse,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -106,16 +88,16 @@ async def api_login_for_access_token(
     logger.info(
         f"API login successful for '{form_data.username}'. JWT created and cookie set."
     )
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "message": "Successfully authenticated.",
-    }
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        message="Successfully authenticated.",
+    )
 
 
-@router.get("/refresh-token", response_model=Token)
+@router.get("/refresh-token", response_model=TokenResponse)
 async def refresh_token(
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -128,24 +110,24 @@ async def refresh_token(
     access_token = create_access_token(
         data={"sub": current_user.username}, app_context=app_context
     )
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "message": "Token refreshed successfully.",
-    }
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        message="Token refreshed successfully.",
+    )
 
 
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
     response: FastAPIResponse,
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """
     Logs the current user out by clearing the JWT authentication cookie.
     """
     username = current_user.username
-    logger.info(f"User '{username}' logging out. Clearing JWT cookie.")
+    logger.info(f"UserResponse '{username}' logging out. Clearing JWT cookie.")
 
     # Create the redirect response first, then operate on it for cookie deletion
     redirect_url_with_message = (

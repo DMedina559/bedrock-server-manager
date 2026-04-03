@@ -14,38 +14,27 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...db.models import RegistrationToken, User
 from ..auth_utils import get_admin_user, get_password_hash
 from ..dependencies import get_app_context
-from ..schemas import User as UserSchema
+from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
+from ..schemas import UserResponse as UserSchema
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/register",
+    prefix="/api/register",
     tags=["Registration"],
 )
 
 
-class GenerateTokenRequest(BaseModel):
-    """
-    Request payload for generating a registration token.
-
-    Attributes:
-        role (str): The role to assign to the user registering with this token.
-    """
-
-    role: str
-
-
-@router.post("/generate-token", include_in_schema=False)
+@router.post("/generate-token", response_model=ActionResponse, include_in_schema=False)
 async def generate_token(
     request: Request,
-    data: GenerateTokenRequest,
+    data: GenerateTokenPayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -70,10 +59,11 @@ async def generate_token(
         f"Link: {registration_link}"
     )
 
-    return {
-        "status": "success",
-        "redirect_url": f"/app/users?message=Registration link generated: {registration_link}",
-    }
+    return ActionResponse(
+        status="success",
+        message="Token generated successfully.",
+        redirect_url=f"/app/users?message=Registration link generated: {registration_link}",
+    )
 
 
 @router.get("/validate/{token}", include_in_schema=False)
@@ -94,26 +84,15 @@ async def validate_token(
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
-        return JSONResponse(content={"status": "success", "message": "Token is valid."})
-
-
-class RegisterUserRequest(BaseModel):
-    """
-    Request payload for user registration.
-
-    Attributes:
-        username (str): The desired username.
-        password (str): The desired password.
-    """
-
-    username: str
-    password: str
+        return JSONResponse(
+            content={"status": "success", "message": "TokenResponse is valid."}
+        )
 
 
 @router.post("/{token}", include_in_schema=False)
 async def register_user(
     token: str,
-    data: RegisterUserRequest,
+    data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -146,7 +125,7 @@ async def register_user(
             db.refresh(user)  # Refresh the user object to get its ID if needed later
 
             logger.info(
-                f"User '{data.username}' registered with role '{registration_token.role}'."
+                f"UserResponse '{data.username}' registered with role '{registration_token.role}'."
             )
 
             return JSONResponse(

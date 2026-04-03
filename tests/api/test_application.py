@@ -13,7 +13,7 @@ class TestApplicationInfo:
     def test_get_application_info_api(self, app_context):
         result = get_application_info_api(app_context=app_context)
         assert result["status"] == "success"
-        assert result["data"]["application_name"] == "Bedrock Server Manager"
+        assert result["application_name"] == "Bedrock Server Manager"
 
 
 class TestContentListing:

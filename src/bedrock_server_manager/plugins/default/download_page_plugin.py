@@ -64,7 +64,7 @@ class DownloadPagePlugin(PluginBase):
                 {"label": "Content", "value": "content"},
             ]
 
-            tabs_children = []
+            tabs_children: list[dict[str, Any]] = []
 
             if type == "backups":
                 # Fetch Backups
@@ -216,8 +216,10 @@ class DownloadPagePlugin(PluginBase):
                                     "type": "Tabs",
                                     "props": {
                                         "activeTab": (
-                                            tabs_children[0]["props"]["id"]
+                                            list(tabs_children)[0]["props"]["id"]
                                             if tabs_children
+                                            and isinstance(list(tabs_children)[0], dict)
+                                            and "props" in list(tabs_children)[0]
                                             else ""
                                         )
                                     },  # default to first tab

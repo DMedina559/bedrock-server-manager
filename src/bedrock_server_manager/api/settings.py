@@ -81,7 +81,7 @@ def get_all_global_settings(
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "data": <all_settings_dict>}``.
+        On success: ``{"status": "success", **<all_settings_dict>}``.
         On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.debug("API: Reading all global settings.")
@@ -93,7 +93,7 @@ def get_all_global_settings(
         logger.debug("API: Successfully retrieved all global settings.")
         return {
             "status": "success",
-            "data": all_settings,
+            **all_settings,
         }
     except Exception as e:
         logger.error(

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.web.auth_utils import User
+from bedrock_server_manager.web.auth_utils import UserResponse
 from bedrock_server_manager.web.routers.websocket_router import (
     router as websocket_router,
 )
@@ -18,7 +18,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def mock_user():
     """Provides a mock user for dependency override."""
-    return User(
+    return UserResponse(
         id="1",
         username="testuser",
         role="admin",

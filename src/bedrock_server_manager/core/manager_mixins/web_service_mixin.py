@@ -14,7 +14,7 @@ import shutil
 import subprocess
 from typing import Optional
 
-from bedrock_server_manager.error import (
+from ...error import (
     AppFileNotFoundError,
     CommandNotFoundError,
     FileOperationError,
@@ -24,9 +24,9 @@ from bedrock_server_manager.error import (
 )
 
 if platform.system() == "Linux":
-    from bedrock_server_manager.core.system import linux as system_linux_utils
+    from ..system import linux as system_linux_utils
 elif platform.system() == "Windows":
-    from bedrock_server_manager.core.system import windows as system_windows_utils
+    from ..system import windows as system_windows_utils
 
 
 logger = logging.getLogger(__name__)
