@@ -32,14 +32,16 @@ SPLASH_TEXTS_UI = [
 SPLASH_TEXTS_FEATURES = [
     "Check the Logs!",
     "Worlds, Addons, Backups - Oh My!",
-    "Schedule Tasks Like a Pro!",
     "Never Lose a World Again!",
     "Remember to bakcup!",
     "Auto Updates!",
     "Automated Awesomeness!",
     "Install, Configure, Automate!",
     "Update. Backup. Conquer.",
-    "From World Installs to Task Scheduler",
+    "From World Installs to Web UI Control!",
+    "Extend with Plugins!",
+    "Customize with Themes!",
+    "Native JSON UI for Plugins!",
 ]
 
 # --- General Management & Control ---
