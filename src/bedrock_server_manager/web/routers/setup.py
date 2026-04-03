@@ -3,7 +3,6 @@
 FastAPI router for the initial setup of the application.
 
 This module provides endpoints for:
-- Serving the initial setup page.
 - Handling the creation of the first user (System Admin).
 """
 
@@ -11,7 +10,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
@@ -21,16 +19,17 @@ from ..auth_utils import (
     get_password_hash,
 )
 from ..dependencies import get_app_context
+from ..schemas import SetupStatusResponse, UserLoginPayload
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/setup",
+    prefix="/api/setup",
     tags=["Setup"],
 )
 
 
-@router.get("/status", tags=["Setup"])
+@router.get("/status", response_model=SetupStatusResponse, tags=["Setup"])
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -39,25 +38,12 @@ async def get_setup_status(
     """
     with app_context.db.session_manager() as db:  # type: ignore
         user_exists = db.query(User).first() is not None
-        return {"needs_setup": not user_exists}
-
-
-class CreateFirstUserRequest(BaseModel):
-    """
-    Request payload for creating the first user (admin).
-
-    Attributes:
-        username (str): The desired username.
-        password (str): The desired password.
-    """
-
-    username: str
-    password: str
+        return SetupStatusResponse(needs_setup=not user_exists)
 
 
 @router.post("/create-first-user", include_in_schema=False)
 async def create_first_user(
-    data: CreateFirstUserRequest,
+    data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -99,7 +85,6 @@ async def create_first_user(
                 content={
                     "status": "success",
                     "message": "Admin account created and logged in successfully.",
-                    "redirect_url": "/legacy/settings?in_setup=true",
                 },
                 status_code=status.HTTP_200_OK,
             )

@@ -22,8 +22,8 @@ class TestSettingsAPI:
     def test_get_all_global_settings(self, app_context):
         result = get_all_global_settings(app_context=app_context)
         assert result["status"] == "success"
-        assert "paths" in result["data"]
-        assert "servers" in result["data"]["paths"]
+        assert "paths" in result
+        assert "servers" in result["paths"]
 
     def test_set_global_setting(self, app_context, db_session):
         from bedrock_server_manager.db.models import Setting

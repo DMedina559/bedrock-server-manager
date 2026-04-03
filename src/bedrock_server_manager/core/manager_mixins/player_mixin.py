@@ -12,11 +12,11 @@ import os
 from typing import TYPE_CHECKING, Any, Dict, List
 
 if TYPE_CHECKING:
-    from bedrock_server_manager.config.settings import Settings
+    from ...config import Settings
 
-from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.db.models import Player
-from bedrock_server_manager.error import (
+from ...context import AppContext
+from ...db.models import Player
+from ...error import (
     AppFileNotFoundError,
     FileOperationError,
     UserInputError,

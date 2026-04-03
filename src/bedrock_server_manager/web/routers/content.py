@@ -9,10 +9,8 @@ It includes both HTML view routes and JSON API routes.
 
 import logging
 import os
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
 from ...api import addon as addon_api
 from ...api import application as app_api
@@ -22,36 +20,11 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, BaseApiResponse, User
+from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, UserResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class FileNamePayload(BaseModel):
-    """
-    Payload for file-based operations.
-
-    Attributes:
-        filename (str): The name of the file to operate on.
-    """
-
-    filename: str
-
-
-class ContentListResponse(BaseApiResponse):
-    """
-    Response model for content listing endpoints.
-
-    Attributes:
-        files (Optional[List[str]]): A list of filenames found.
-    """
-
-    # status: str -> Inherited
-    # message: Optional[str] = None -> Inherited
-    files: Optional[List[str]] = None
 
 
 # --- API Routes ---
@@ -61,7 +34,7 @@ class ContentListResponse(BaseApiResponse):
     tags=["Content API"],
 )
 async def list_worlds_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -99,7 +72,7 @@ async def list_worlds_api_route(
     tags=["Content API"],
 )
 async def list_addons_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -140,7 +113,7 @@ async def list_addons_api_route(
 async def install_world_api_route(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -232,7 +205,7 @@ async def install_world_api_route(
 )
 async def export_world_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -288,7 +261,7 @@ async def export_world_api_route(
 )
 async def reset_world_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -345,7 +318,7 @@ async def reset_world_api_route(
 async def install_addon_api_route(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

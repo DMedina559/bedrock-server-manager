@@ -8,6 +8,30 @@ These are the backend core classes used in the Bedrock Server Manager, used by t
 
 .. toctree::
    :maxdepth: 2
+   :caption: App Context Class
+
+   app_context
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Task Manager Class
+
+   task_manager
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Connection Manager Class
+
+   connection_manager
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Database Class
+
+   database
+
+.. toctree::
+   :maxdepth: 2
    :caption: Settings Class
 
    settings

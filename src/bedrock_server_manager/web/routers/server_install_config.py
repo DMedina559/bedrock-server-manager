@@ -16,11 +16,10 @@ validated for server-specific routes.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 
 from ...api import server as server_api
 from ...api import server_install_config
@@ -30,121 +29,36 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import User
+from ..schemas import (
+    AllowlistAddPayload,
+    AllowlistGetResponse,
+    AllowlistRemovePayload,
+    BaseApiResponse,
+    CustomZipsResponse,
+    InstallServerPayload,
+    InstallServerResponse,
+    PermissionsGetResponse,
+    PermissionsSetPayload,
+    PermissionsUpdateResponse,
+    PropertiesGetResponse,
+    PropertiesPayload,
+    ServiceUpdatePayload,
+    UserResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# --- Pydantic Models ---
-class InstallServerPayload(BaseModel):
-    """Request model for installing a new server."""
-
-    server_name: str = Field(
-        ..., min_length=1, max_length=50, description="Name for the new server."
-    )
-    server_version: str = Field(
-        default="LATEST",
-        description="Version to install (e.g., 'LATEST', '1.20.10.01', 'CUSTOM').",
-    )
-    server_zip_path: Optional[str] = Field(
-        default=None,
-        description="Absolute path to a custom server ZIP file. Required if server_version is 'CUSTOM'.",
-    )
-    overwrite: bool = Field(
-        default=False,
-        description="If true, delete existing server data if server_name conflicts.",
-    )
-
-
-class InstallServerResponse(BaseModel):
-    """Response model for server installation requests."""
-
-    status: str = Field(
-        ...,
-        description="Status of the installation ('success', 'confirm_needed', 'pending').",
-    )
-    message: str = Field(..., description="Descriptive message about the operation.")
-    next_step_url: Optional[str] = Field(
-        default=None, description="URL for the next configuration step on success."
-    )
-    server_name: Optional[str] = Field(
-        default=None,
-        description="Name of the server, especially if confirmation is needed.",
-    )
-    task_id: Optional[str] = Field(
-        default=None, description="ID of the background installation task."
-    )
-
-
-class PropertiesPayload(BaseModel):
-    """Request model for updating server.properties."""
-
-    properties: Dict[str, Any] = Field(
-        ..., description="Dictionary of properties to set."
-    )
-
-
-class AllowlistPlayer(BaseModel):
-    """Represents a player entry for the allowlist."""
-
-    name: str = Field(..., description="Player's gamertag.")
-    ignoresPlayerLimit: bool = Field(
-        default=False,
-        description="Whether this player ignores the server's player limit.",
-    )
-
-
-class AllowlistAddPayload(BaseModel):
-    """Request model for adding players to the allowlist."""
-
-    players: List[str] = Field(..., description="List of player gamertags to add.")
-    ignoresPlayerLimit: bool = Field(
-        default=False, description="Set 'ignoresPlayerLimit' for these players."
-    )
-
-
-class AllowlistRemovePayload(BaseModel):
-    """Request model for removing players from the allowlist."""
-
-    players: List[str] = Field(..., description="List of player gamertags to remove.")
-
-
-class PlayerPermissionItem(BaseModel):
-    """Represents a single player's permission data sent from the client."""
-
-    xuid: str
-    name: str
-    permission_level: str
-
-
-class PermissionsSetPayload(BaseModel):
-    """Request model for setting multiple player permissions."""
-
-    permissions: List[PlayerPermissionItem] = Field(
-        ..., description="List of player permission entries."
-    )
-
-
-class ServiceUpdatePayload(BaseModel):
-    """Request model for updating server-specific service settings."""
-
-    autoupdate: Optional[bool] = Field(
-        default=None, description="Enable/disable automatic updates for the server."
-    )
-    autostart: Optional[bool] = Field(
-        default=None, description="Enable/disable service autostart for the server."
-    )
-
-
 # --- API Route: /api/downloads/list ---
 @router.get(
     "/api/downloads/list",
+    response_model=CustomZipsResponse,
     tags=["Server Installation API"],
 )
 async def get_custom_zips(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -154,10 +68,10 @@ async def get_custom_zips(
         download_dir = app_context.settings.get("paths.downloads")
         custom_dir = os.path.join(download_dir, "custom")
         if not os.path.isdir(custom_dir):
-            return {"status": "success", "custom_zips": []}
+            return CustomZipsResponse(status="success", custom_zips=[])
 
         custom_zips = [f for f in os.listdir(custom_dir) if f.endswith(".zip")]
-        return {"status": "success", "custom_zips": custom_zips}
+        return CustomZipsResponse(status="success", custom_zips=custom_zips)
     except Exception as e:
         logger.error(f"Failed to get custom zips: {e}", exc_info=True)
         raise HTTPException(
@@ -174,7 +88,7 @@ async def get_custom_zips(
 )
 async def install_server_api_route(  # noqa: C901
     payload: InstallServerPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -285,13 +199,14 @@ async def install_server_api_route(  # noqa: C901
 # --- API Route: /api/server/{server_name}/properties/set ---
 @router.post(
     "/api/server/{server_name}/properties/set",
+    response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
 async def configure_properties_api_route(
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -315,7 +230,9 @@ async def configure_properties_api_route(
             app_context=app_context,
         )
         if result.get("status") == "success":
-            return result
+            return BaseApiResponse(
+                status=result["status"], message=result.get("message")
+            )
         else:
             if (
                 "not found" in result.get("message", "").lower()
@@ -349,11 +266,13 @@ async def configure_properties_api_route(
 
 # --- API Route: /api/server/{server_name}/properties/get ---
 @router.get(
-    "/api/server/{server_name}/properties/get", tags=["Server Configuration API"]
+    "/api/server/{server_name}/properties/get",
+    response_model=PropertiesGetResponse,
+    tags=["Server Configuration API"],
 )
 async def get_server_properties_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -368,7 +287,9 @@ async def get_server_properties_api_route(
     )
 
     if result.get("status") == "success":
-        return result
+        return PropertiesGetResponse(
+            status=result["status"], properties=result.get("properties", {})
+        )
     elif "not found" in result.get("message", "").lower():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
@@ -383,13 +304,14 @@ async def get_server_properties_api_route(
 # --- API Route: /api/server/{server_name}/allowlist/add ---
 @router.post(
     "/api/server/{server_name}/allowlist/add",
+    response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
 async def add_to_allowlist_api_route(
     payload: AllowlistAddPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -411,7 +333,9 @@ async def add_to_allowlist_api_route(
             app_context=app_context,
         )
         if result.get("status") == "success":
-            return result
+            return BaseApiResponse(
+                status=result["status"], message=result.get("message")
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -436,11 +360,13 @@ async def add_to_allowlist_api_route(
 
 # --- API Route: /api/server/{server_name}/allowlist/get ---
 @router.get(
-    "/api/server/{server_name}/allowlist/get", tags=["Server Configuration API"]
+    "/api/server/{server_name}/allowlist/get",
+    response_model=AllowlistGetResponse,
+    tags=["Server Configuration API"],
 )
 async def get_allowlist_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -453,7 +379,9 @@ async def get_allowlist_api_route(
     )
 
     if result.get("status") == "success":
-        return result
+        return AllowlistGetResponse(
+            status=result["status"], players=result.get("players", [])
+        )
     elif "not found" in result.get("message", "").lower():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
@@ -468,13 +396,14 @@ async def get_allowlist_api_route(
 # --- API Route: /api/server/{server_name}/allowlist/remove ---
 @router.delete(
     "/api/server/{server_name}/allowlist/remove",
+    response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
 async def remove_allowlist_players_api_route(
     payload: AllowlistRemovePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -491,7 +420,9 @@ async def remove_allowlist_players_api_route(
             app_context=app_context,
         )
         if result.get("status") == "success":
-            return result
+            return BaseApiResponse(
+                status=result["status"], message=result.get("message")
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -523,13 +454,14 @@ async def remove_allowlist_players_api_route(
 # --- API Route: /api/server/{server_name}/permissions/set ---
 @router.put(
     "/api/server/{server_name}/permissions/set",
+    response_model=PermissionsUpdateResponse,
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
 async def configure_permissions_api_route(  # noqa: C901
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -575,10 +507,10 @@ async def configure_permissions_api_route(  # noqa: C901
             errors[item.xuid] = "An unexpected server error occurred."
 
     if not errors:
-        return {
-            "status": "success",
-            "message": f"Permissions updated for {success_count} player(s).",
-        }
+        return PermissionsUpdateResponse(
+            status="success",
+            message=f"Permissions updated for {success_count} player(s).",
+        )
     else:
         final_status_code = (
             status.HTTP_400_BAD_REQUEST
@@ -605,21 +537,23 @@ async def configure_permissions_api_route(  # noqa: C901
 
         return JSONResponse(
             status_code=final_status_code,
-            content={
-                "status": "error",
-                "message": "One or more errors occurred while setting permissions.",
-                "errors": errors,  # This is Dict[str, str]
-            },
+            content=PermissionsUpdateResponse(
+                status="error",
+                message="One or more errors occurred while setting permissions.",
+                errors=errors,  # This is Dict[str, str]
+            ).model_dump(),
         )
 
 
 # --- API Route: /api/server/{server_name}/permissions/get ---
 @router.get(
-    "/api/server/{server_name}/permissions/get", tags=["Server Configuration API"]
+    "/api/server/{server_name}/permissions/get",
+    response_model=PermissionsGetResponse,
+    tags=["Server Configuration API"],
 )
 async def get_server_permissions_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -634,7 +568,9 @@ async def get_server_permissions_api_route(
     )
 
     if result.get("status") == "success":
-        return result
+        return PermissionsGetResponse(
+            status=result["status"], permissions=result.get("permissions", [])
+        )
     elif "not found" in result.get("message", "").lower():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
@@ -649,13 +585,14 @@ async def get_server_permissions_api_route(
 # --- API Route: /api/server/{server_name}/service/update ---
 @router.post(
     "/api/server/{server_name}/service/update",
+    response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
     tags=["Server Configuration API"],
 )
 async def configure_service_api_route(  # noqa: C901
     server_name: str = Depends(validate_server_exists),
     payload: ServiceUpdatePayload = Body(...),
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -711,10 +648,10 @@ async def configure_service_api_route(  # noqa: C901
         if warnings:
             final_message += " " + " ".join(warnings)
 
-        return {
-            "status": "success_with_warning" if warnings else "success",
-            "message": final_message or "No configuration changes were made.",
-        }
+        return BaseApiResponse(
+            status="success_with_warning" if warnings else "success",
+            message=final_message or "No configuration changes were made.",
+        )
 
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

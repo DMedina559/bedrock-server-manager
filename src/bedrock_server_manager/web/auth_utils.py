@@ -36,7 +36,7 @@ from starlette.authentication import AuthCredentials, AuthenticationBackend, Sim
 from ..config import Settings
 from ..context import AppContext
 from ..db.models import User as UserModel
-from .schemas import User
+from .schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ def create_access_token(
 # --- Token Verification and User Retrieval ---
 async def get_current_user_optional(
     request: Request,
-) -> Optional[User]:
+) -> Optional[UserResponse]:
     """
     FastAPI dependency to retrieve the current user if authenticated.
 
@@ -147,7 +147,7 @@ async def get_current_user_optional(
         if username is None:
             return None
 
-        def get_user_from_db(db_session) -> User | None:  # type: ignore
+        def get_user_from_db(db_session) -> UserResponse | None:  # type: ignore
             user = (
                 db_session.query(UserModel)
                 .filter(UserModel.username == username)
@@ -159,7 +159,7 @@ async def get_current_user_optional(
             user.last_seen = datetime.datetime.now(timezone.utc)
             db_session.commit()
 
-            return User(
+            return UserResponse(
                 id=user.id,
                 username=user.username,
                 identity_type="jwt",
@@ -176,8 +176,8 @@ async def get_current_user_optional(
 
 
 async def get_current_user(
-    user: Optional[User] = Security(get_current_user_optional),
-) -> User:
+    user: Optional[UserResponse] = Security(get_current_user_optional),
+) -> UserResponse:
     """
     FastAPI dependency that requires an authenticated user.
 
@@ -211,7 +211,7 @@ async def get_current_user(
 
 async def get_current_user_for_websocket(
     websocket: WebSocket,
-) -> User:
+) -> UserResponse:
     """
     FastAPI dependency for authenticating WebSocket connections.
 
@@ -248,7 +248,7 @@ async def get_current_user_for_websocket(
                 code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token payload"
             )
 
-        def get_user_from_db(db_session) -> User | None:  # type: ignore
+        def get_user_from_db(db_session) -> UserResponse | None:  # type: ignore
             user = (
                 db_session.query(UserModel)
                 .filter(UserModel.username == username)
@@ -260,7 +260,7 @@ async def get_current_user_for_websocket(
             user.last_seen = datetime.datetime.now(timezone.utc)
             db_session.commit()
 
-            return User(
+            return UserResponse(
                 id=user.id,
                 username=user.username,
                 identity_type="jwt",
@@ -355,7 +355,7 @@ def authenticate_user(
         return str(user.username)
 
 
-async def get_admin_user(current_user: User = Security(get_current_user)):
+async def get_admin_user(current_user: UserResponse = Security(get_current_user)):
     """
     FastAPI dependency that requires the current user to be an admin.
     """
@@ -367,7 +367,7 @@ async def get_admin_user(current_user: User = Security(get_current_user)):
     return current_user
 
 
-async def get_moderator_user(current_user: User = Security(get_current_user)):
+async def get_moderator_user(current_user: UserResponse = Security(get_current_user)):
     """
     FastAPI dependency that requires the current user to be a moderator or an admin.
     """

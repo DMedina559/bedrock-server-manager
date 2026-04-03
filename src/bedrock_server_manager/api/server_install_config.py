@@ -330,7 +330,7 @@ def get_server_permissions_api(  # noqa: C901s
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "data": {"permissions": List[Dict[str, Any]]}}``
+        On success: ``{"status": "success", "permissions": List[Dict[str, Any]]}``
         where each dict in `permissions` contains "xuid", "name", and "permission_level".
         On error: ``{"status": "error", "message": "<error_message>"}``
 
@@ -384,7 +384,7 @@ def get_server_permissions_api(  # noqa: C901s
         # Re-sort the combined list by name
         permissions.sort(key=lambda x: x.get("name", "").lower())
 
-        return {"status": "success", "data": {"permissions": permissions}}
+        return {"status": "success", "permissions": permissions}
     except BSMError as e:
         logger.error(
             f"API: Failed to get permissions for '{server_name}': {e}", exc_info=True
@@ -687,7 +687,6 @@ def install_new_server(
             "status": "success",
             "version": server.get_version(),
             "message": f"Server '{server_name}' installed successfully to version {server.get_version()}.",
-            "next_step_url": f"/legacy/server/{server_name}/configure_properties?new_install=true",
         }
 
     except BSMError as e:

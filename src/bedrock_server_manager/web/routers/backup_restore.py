@@ -18,87 +18,39 @@ functionality provided by :mod:`~bedrock_server_manager.api.backup_restore`.
 
 import logging
 import os
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
 
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import BaseApiResponse, User
+from ..schemas import (
+    ActionResponse,
+    BackupActionPayload,
+    RestoreActionPayload,
+    RestoreTypePayload,
+    UserResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# --- Pydantic Models ---
-class RestoreTypePayload(BaseModel):
-    """Request model for specifying the type of restore operation."""
-
-    restore_type: str = Field(
-        ..., description="The type of restore to perform (e.g., 'world', 'properties')."
-    )
-
-
-class BackupActionPayload(BaseModel):
-    """Request model for triggering a backup action."""
-
-    backup_type: str = Field(
-        ..., description="Type of backup: 'world', 'config', or 'all'."
-    )
-    file_to_backup: Optional[str] = Field(
-        default=None,
-        description="Name of config file if backup_type is 'config' (e.g., 'server.properties').",
-    )
-
-
-class RestoreActionPayload(BaseModel):
-    """Request model for triggering a restore action."""
-
-    restore_type: str = Field(
-        ...,
-        description="Type of restore: 'world', 'properties', 'allowlist', 'permissions', or 'all'.",
-    )
-    backup_file: Optional[str] = Field(
-        default=None,
-        description="Name of the backup file (basename) to restore from (required if not 'all').",
-    )
-
-
-class BackupRestoreResponse(BaseApiResponse):
-    """Generic API response model for backup and restore operations."""
-
-    # status: str = Field(...) -> Inherited
-    # message: str = Field(...) -> Inherited
-    details: Optional[Any] = Field(
-        default=None, description="Optional detailed results or error information."
-    )
-    redirect_url: Optional[str] = Field(
-        default=None, description="Optional URL to redirect to after an action."
-    )
-    backups: Optional[List[Any]] = Field(
-        default=None, description="Optional list of backup files or related data."
-    )
-    task_id: Optional[str] = Field(
-        default=None, description="ID of the background task."
-    )
-
-
 # --- API Routes ---
 @router.post(
     "/api/server/{server_name}/restore/select_backup_type",
-    response_model=BackupRestoreResponse,
+    response_model=ActionResponse,
     tags=["Backup & Restore API"],
 )
 async def handle_restore_select_backup_type_api(
     request: Request,
     payload: RestoreTypePayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
 ):
     """
     Handles the API request for selecting a restore type and redirects to file selection.
@@ -107,7 +59,7 @@ async def handle_restore_select_backup_type_api(
     restore_type = payload.restore_type.lower()
 
     logger.info(
-        f"API: User '{identity}' initiated selection of restore_type '{restore_type}' for server '{server_name}'."
+        f"API: UserResponse '{identity}' initiated selection of restore_type '{restore_type}' for server '{server_name}'."
     )
 
     valid_types = ["world", "properties", "allowlist", "permissions"]
@@ -126,7 +78,7 @@ async def handle_restore_select_backup_type_api(
             server_name=server_name,
             restore_type=restore_type,
         )
-        return BackupRestoreResponse(
+        return ActionResponse(
             status="success",
             message=f"Proceed to select {restore_type} backup.",
             redirect_url=str(redirect_page_url),
@@ -144,13 +96,13 @@ async def handle_restore_select_backup_type_api(
 
 @router.post(
     "/api/server/{server_name}/backups/prune",
-    response_model=BackupRestoreResponse,
+    response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup & Restore API"],
 )
 async def prune_backups_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -169,7 +121,7 @@ async def prune_backups_api_route(
         app_context=app_context,
     )
 
-    return BackupRestoreResponse(
+    return ActionResponse(
         status="pending",
         message=f"Backup pruning for server '{server_name}' initiated in background.",
         task_id=task_id,
@@ -178,13 +130,13 @@ async def prune_backups_api_route(
 
 @router.get(
     "/api/server/{server_name}/backup/list/{backup_type}",
-    response_model=BackupRestoreResponse,
+    response_model=ActionResponse,
     tags=["Backup & Restore API"],
 )
 async def list_server_backups_api_route(
     backup_type: str,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -208,14 +160,14 @@ async def list_server_backups_api_route(
                     key: [os.path.basename(p) for p in path_list]
                     for key, path_list in backup_data.items()
                 }
-                return BackupRestoreResponse(
+                return ActionResponse(
                     status="success",
                     message="All backup types listed successfully.",
                     details={"all_backups": processed_all_backups},
                 )
             elif isinstance(backup_data, list):
                 basenames = [os.path.basename(p) for p in backup_data]
-                return BackupRestoreResponse(
+                return ActionResponse(
                     status="success",
                     message="Backups listed successfully.",
                     backups=basenames,
@@ -265,14 +217,14 @@ async def list_server_backups_api_route(
 
 @router.post(
     "/api/server/{server_name}/backup/action",
-    response_model=BackupRestoreResponse,
+    response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup & Restore API"],
 )
 async def backup_action_api_route(
     server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -325,7 +277,7 @@ async def backup_action_api_route(
         **kwargs,
     )
 
-    return BackupRestoreResponse(
+    return ActionResponse(
         status="pending",
         message=f"Backup action '{payload.backup_type}' for server '{server_name}' initiated in background.",
         task_id=task_id,
@@ -334,14 +286,14 @@ async def backup_action_api_route(
 
 @router.post(
     "/api/server/{server_name}/restore/action",
-    response_model=BackupRestoreResponse,
+    response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup & Restore API"],
 )
 async def restore_action_api_route(  # noqa: C901
     payload: RestoreActionPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -435,7 +387,7 @@ async def restore_action_api_route(  # noqa: C901
         **kwargs,
     )
 
-    return BackupRestoreResponse(
+    return ActionResponse(
         status="pending",
         message=f"Restore action '{payload.restore_type}' for server '{server_name}' initiated in background.",
         task_id=task_id,

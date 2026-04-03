@@ -1,5 +1,6 @@
 # test/config/test_bcm_config.py
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 from bedrock_server_manager.config import bcm_config
@@ -90,9 +91,11 @@ def test_load_config_defaults(
 
     config = bcm_config.load_config()
 
-    assert config["data_dir"] == f"/home/user/{bcm_config.package_name}"
+    assert Path(config["data_dir"]) == Path(f"/home/user/{bcm_config.package_name}")
     assert "sqlite:///" in config["db_url"]
-    assert config["db_url"].endswith(".config/bedrock-server-manager.db")
+    assert str(Path(config["db_url"])).endswith(
+        str(Path(".config/bedrock-server-manager.db"))
+    )
 
 
 @patch("os.path.exists")

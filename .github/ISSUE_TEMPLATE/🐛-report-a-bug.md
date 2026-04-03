@@ -82,7 +82,7 @@ A clear and concise description of what actually happened.
 * <sub>By default, logs are stored in `<data_dir>/.logs/` <sup>
 
 > [!NOTE]
-> *   **Note on Log Level:** Initially, warning/error logs are often sufficient. However, you may be asked to provide more detailed logs by setting the `LOG_LEVEL` in your `script_config.json` to `DEBUG`, reproducing the issue, and then providing the new logs.</sub>
+> *   **Note on Log Level:** Initially, warning/error logs are often sufficient. However, you may be asked to provide more detailed logs by setting `logging.level` in your BSM Settings to `DEBUG`, reproducing the issue, and then providing the new logs.</sub>
 
 ```text
  # Paste logs here

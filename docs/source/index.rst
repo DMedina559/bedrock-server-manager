@@ -16,6 +16,7 @@ Browse through the sections below to find various information about Bedrock Serv
    general/introduction.md
    cli/general.md
    web/general.md
+   web/role_access_table.md
    general/plugins.md
    general/troubleshooting.md
 
@@ -65,6 +66,7 @@ Browse through the sections below to find various information about Bedrock Serv
    developer/plugins/plugin_base
    developer/plugins/plugin_manager
    developer/plugins/native_json_ui.md
+   developer/plugins/task_manager.md
 
 .. toctree::
    :maxdepth: 2

@@ -1,0 +1,260 @@
+# bedrock_server_manager/plugins/default/content_uploader_plugin.py
+"""
+A plugin to provide a web UI for uploading .mcworld, .mcpack, and .mcaddon files.
+"""
+
+import os
+import shutil
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse
+
+from bedrock_server_manager import PluginBase
+from bedrock_server_manager.web import get_admin_user
+
+# Define allowed extensions
+ALLOWED_EXTENSIONS = {".mcworld", ".mcpack", ".mcaddon"}
+MODULE_CONTENT_DIR_PATH: Optional[Path] = None
+
+
+class ContentUploaderPlugin(PluginBase):
+    """Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."""
+
+    version = "2.0.0"
+    author = "dmedina559"
+
+    def on_load(self, **kwargs):
+        self.router = APIRouter(tags=["Content Uploader Plugin"])
+        self._define_routes()
+        self.logger.info(
+            f"ContentUploaderPlugin v{self.version} initialized with routes."
+        )
+
+        global MODULE_CONTENT_DIR_PATH
+
+        self.logger.info(
+            f"Plugin '{self.name}' v{self.version} loaded. Web uploader available at /content_uploader/page."
+        )
+
+        try:
+            setting_result = self.api.get_global_setting(key="paths.content")
+            if setting_result and setting_result.get("status") == "success":
+                path_str = setting_result.get("value")
+                if path_str and isinstance(path_str, str):
+                    MODULE_CONTENT_DIR_PATH = Path(path_str)
+                    self.logger.info(
+                        f"Successfully fetched content path. Uploads will be stored relative to: {MODULE_CONTENT_DIR_PATH.resolve()}"
+                    )
+                else:
+                    self.logger.error(
+                        f"Content path ('paths.content') from settings is invalid: {path_str}. Using fallback."
+                    )
+                    MODULE_CONTENT_DIR_PATH = None
+            else:
+                self.logger.error(
+                    f"Failed to get 'paths.content'. API response: {setting_result}. Using fallback."
+                )
+                MODULE_CONTENT_DIR_PATH = None
+        except Exception as e:
+            self.logger.error(
+                f"Exception fetching 'paths.content': {e}. Using fallback.",
+                exc_info=True,
+            )
+            MODULE_CONTENT_DIR_PATH = None
+
+        if not MODULE_CONTENT_DIR_PATH:
+            MODULE_CONTENT_DIR_PATH = Path(os.getcwd()) / "plugin_uploads_fallback"
+            self.logger.warning(
+                f"Using fallback upload directory: {MODULE_CONTENT_DIR_PATH.resolve()}"
+            )
+
+        try:
+            MODULE_CONTENT_DIR_PATH.mkdir(parents=True, exist_ok=True)
+            self.logger.info(
+                f"Ensured base upload directory exists: {MODULE_CONTENT_DIR_PATH.resolve()}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Could not create/verify base upload directory {MODULE_CONTENT_DIR_PATH.resolve()}: {e}",
+                exc_info=True,
+            )
+
+    def _define_routes(self):  # noqa: C901
+        @self.router.get(
+            "/content/upload/native",
+            response_class=JSONResponse,
+            name="Content Upload Native UI",
+            summary="Upload Content (Native)",
+            tags=["plugin-ui-native"],
+        )
+        async def get_upload_native_ui(
+            request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
+        ):
+            return JSONResponse(
+                content={
+                    "type": "Container",
+                    "children": [
+                        {
+                            "type": "Card",
+                            "props": {"title": "Upload Content"},
+                            "children": [
+                                {
+                                    "type": "Text",
+                                    "props": {
+                                        "content": "Select a .mcworld, .mcpack, or .mcaddon file to upload."
+                                    },
+                                },
+                                {
+                                    "type": "FileUpload",
+                                    "props": {
+                                        "id": "file",
+                                        "accept": ".mcworld,.mcpack,.mcaddon",
+                                    },
+                                },
+                                {
+                                    "type": "Button",
+                                    "props": {
+                                        "label": "Upload",
+                                        "onClickAction": {
+                                            "type": "api_call",
+                                            "endpoint": "/api/content/upload",
+                                            "includeFormState": True,
+                                            "refresh": True,
+                                        },
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        @self.router.post("/api/content/upload", name="handle_file_upload")
+        async def handle_file_upload_method(
+            request: Request,
+            file: UploadFile = File(...),
+            current_user: Dict[str, Any] = Depends(get_admin_user),
+        ):
+            filename = file.filename
+            file_content_type = file.content_type
+
+            if self.api:
+                self.api.send_event(
+                    "bsm_uploader:upload_initiated",
+                    filename=filename,
+                    content_type=file_content_type,
+                )
+
+            message = ""
+            message_type = "info"
+            destination_path_for_event: Optional[str] = None
+            event_status = "error"
+
+            try:
+                if not MODULE_CONTENT_DIR_PATH:
+                    self.logger.error(
+                        "Base content directory path is not set. Cannot process upload."
+                    )
+                    message = (
+                        "Upload failed: Server content directory is not configured."
+                    )
+                    message_type = "error"
+                    raise ValueError("MODULE_CONTENT_DIR_PATH not set")
+
+                if not filename:
+                    raise ValueError("Filename is missing")
+
+                file_ext = Path(filename).suffix.lower()
+                target_subdir_name = ""
+
+                if file_ext == ".mcworld":
+                    target_subdir_name = "worlds"
+                elif file_ext in [".mcpack", ".mcaddon"]:
+                    target_subdir_name = "addons"
+
+                if not target_subdir_name:
+                    self.logger.warning(
+                        f"Upload failed: File '{filename}' has an invalid or unsupported extension '{file_ext}'."
+                    )
+                    message = f"Upload failed: File type '{file_ext}' is not allowed or unsupported."
+                    message_type = "error"
+                else:
+                    target_base_dir = MODULE_CONTENT_DIR_PATH / target_subdir_name
+                    target_base_dir.mkdir(parents=True, exist_ok=True)
+                    self.logger.info(
+                        f"Ensured target upload subdirectory exists: {target_base_dir.resolve()}"
+                    )
+
+                    safe_filename = Path(filename).name
+                    destination_path = target_base_dir / safe_filename
+                    destination_path_for_event = str(destination_path.resolve())
+
+                    self.logger.info(
+                        f"Attempting to save uploaded file '{filename}' to '{destination_path}'."
+                    )
+                    with open(destination_path, "wb") as buffer:
+                        shutil.copyfileobj(file.file, buffer)
+
+                    self.logger.info(
+                        f"File '{filename}' saved successfully to '{destination_path}'."
+                    )
+                    message = f"File '{safe_filename}' uploaded successfully to: {target_subdir_name}/{safe_filename}"
+                    message_type = "success"
+                    event_status = "success"
+
+                    if file_ext == ".mcworld":
+                        self.logger.info(
+                            f'Placeholder: Post-upload, would call self.api.import_world(server_name, "{destination_path}")'
+                        )
+                    elif file_ext in [".mcpack", ".mcaddon"]:
+                        self.logger.info(
+                            f'Placeholder: Post-upload, would call self.api.import_addon(server_name, "{destination_path}")'
+                        )
+
+            except Exception as e:
+                self.logger.error(
+                    f"Error during file upload or processing for '{filename}': {e}",
+                    exc_info=True,
+                )
+                message = (
+                    "An unexpected error occurred while processing the file upload."
+                )
+                message_type = "error"
+                event_status = "error"
+            finally:
+                if hasattr(file, "file") and file.file:
+                    file.file.close()
+
+                if self.api:
+                    self.api.send_event(
+                        "bsm_uploader:upload_processed",
+                        filename=filename,
+                        destination_path=destination_path_for_event,
+                        status=event_status,
+                        details_message=message,
+                    )
+
+            accept_header = request.headers.get("accept", "")
+            if "application/json" in accept_header or request.query_params.get("json"):
+                return JSONResponse(
+                    content={
+                        "status": event_status,
+                        "message": message,
+                        "destination": destination_path_for_event,
+                    },
+                    status_code=200 if event_status == "success" else 400,
+                )
+
+            redirect_url = request.url_for("Content Upload Page").include_query_params(
+                message=message, message_type=message_type
+            )
+            return RedirectResponse(url=str(redirect_url), status_code=303)
+
+    def on_unload(self, **kwargs):
+        self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
+
+    def get_fastapi_routers(self, **kwargs):
+        self.logger.debug(f"Providing FastAPI router for {self.name}")
+        return [self.router]
