@@ -20,7 +20,16 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, UserResponse
+from ..schemas import (
+    ActionResponse,
+    AddonActionPayload,
+    AddonListResponse,
+    AddonReorderPayload,
+    AddonSubpackPayload,
+    ContentListResponse,
+    FileNamePayload,
+    UserResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +203,275 @@ async def install_world_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Server error during pre-check: {str(e)}",
+        )
+
+
+@router.get(
+    "/api/server/{server_name}/addons",
+    response_model=AddonListResponse,
+    tags=["Content API"],
+)
+async def list_server_addons_route(
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves a list of addons installed on a server's active world.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: List world addons for '{server_name}' requested by user '{identity}'."
+    )
+    try:
+        result = addon_api.list_world_addons(server_name, app_context)
+        return AddonListResponse(status="success", addons=result.get("addons"))
+    except Exception as e:
+        logger.error(
+            f"API List Server Addons '{server_name}': Error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
+        )
+
+
+@router.post(
+    "/api/server/{server_name}/addon/enable",
+    response_model=ActionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Content API"],
+)
+async def enable_server_addon_route(
+    payload: AddonActionPayload,
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Initiates a background task to enable an addon on a server.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Enable addon for '{server_name}' requested by user '{identity}'."
+    )
+    try:
+        task_id = app_context.task_manager.run_task(
+            addon_api.enable_addon,
+            username=current_user.username,
+            server_name=server_name,
+            pack_uuid=payload.pack_uuid,
+            pack_type=payload.pack_type,
+            app_context=app_context,
+        )
+        return ActionResponse(
+            status="pending",
+            message=f"Addon enable for server '{server_name}' initiated in background.",
+            task_id=task_id,
+        )
+    except Exception as e:
+        logger.error(
+            f"API Enable Server Addon '{server_name}': Error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
+        )
+
+
+@router.post(
+    "/api/server/{server_name}/addon/disable",
+    response_model=ActionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Content API"],
+)
+async def disable_server_addon_route(
+    payload: AddonActionPayload,
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Initiates a background task to disable an addon on a server.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Disable addon for '{server_name}' requested by user '{identity}'."
+    )
+    try:
+        task_id = app_context.task_manager.run_task(
+            addon_api.disable_addon,
+            username=current_user.username,
+            server_name=server_name,
+            pack_uuid=payload.pack_uuid,
+            pack_type=payload.pack_type,
+            app_context=app_context,
+        )
+        return ActionResponse(
+            status="pending",
+            message=f"Addon disable for server '{server_name}' initiated in background.",
+            task_id=task_id,
+        )
+    except Exception as e:
+        logger.error(
+            f"API Disable Server Addon '{server_name}': Error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
+        )
+
+
+@router.post(
+    "/api/server/{server_name}/addon/subpack",
+    response_model=ActionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Content API"],
+)
+async def update_server_addon_subpack_route(
+    payload: AddonSubpackPayload,
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Initiates a background task to update an addon's active subpack.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Update addon subpack for '{server_name}' requested by user '{identity}'."
+    )
+
+    # Try resolving explicit subpack_name, otherwise fallback to form state dynamic key
+    target_subpack = payload.subpack_name
+    if not target_subpack:
+        dynamic_key = f"subpack_{payload.pack_uuid}"
+        if hasattr(payload, dynamic_key):
+            target_subpack = getattr(payload, dynamic_key)
+        elif dynamic_key in getattr(payload, "__dict__", {}):
+            target_subpack = getattr(payload, "__dict__")[dynamic_key]
+        elif (
+            hasattr(payload, "model_extra")
+            and payload.model_extra
+            and dynamic_key in payload.model_extra
+        ):
+            target_subpack = payload.model_extra[dynamic_key]
+
+    if not target_subpack:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Subpack name is missing from the payload.",
+        )
+
+    try:
+        task_id = app_context.task_manager.run_task(
+            addon_api.update_addon_subpack,
+            username=current_user.username,
+            server_name=server_name,
+            pack_uuid=payload.pack_uuid,
+            pack_type=payload.pack_type,
+            subpack_name=target_subpack,
+            app_context=app_context,
+        )
+        return ActionResponse(
+            status="pending",
+            message=f"Addon subpack update for server '{server_name}' initiated in background.",
+            task_id=task_id,
+        )
+    except Exception as e:
+        logger.error(
+            f"API Update Server Addon Subpack '{server_name}': Error: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
+        )
+
+
+@router.delete(
+    "/api/server/{server_name}/addon/uninstall",
+    response_model=ActionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Content API"],
+)
+async def uninstall_server_addon_route(
+    payload: AddonActionPayload,
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Initiates a background task to uninstall an addon on a server.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Uninstall addon for '{server_name}' requested by user '{identity}'."
+    )
+    try:
+        task_id = app_context.task_manager.run_task(
+            addon_api.uninstall_addon,
+            username=current_user.username,
+            server_name=server_name,
+            pack_uuid=payload.pack_uuid,
+            pack_type=payload.pack_type,
+            app_context=app_context,
+        )
+        return ActionResponse(
+            status="pending",
+            message=f"Addon uninstall for server '{server_name}' initiated in background.",
+            task_id=task_id,
+        )
+    except Exception as e:
+        logger.error(
+            f"API Uninstall Server Addon '{server_name}': Error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
+        )
+
+
+@router.post(
+    "/api/server/{server_name}/addon/reorder",
+    response_model=ActionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Content API"],
+)
+async def reorder_server_addon_route(
+    payload: AddonReorderPayload,
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Initiates a background task to reorder active addons on a server.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Reorder addons for '{server_name}' requested by user '{identity}'."
+    )
+    try:
+        task_id = app_context.task_manager.run_task(
+            addon_api.reorder_addons,
+            username=current_user.username,
+            server_name=server_name,
+            uuids=payload.uuids,
+            pack_type=payload.pack_type,
+            app_context=app_context,
+        )
+        return ActionResponse(
+            status="pending",
+            message=f"Addon reorder for server '{server_name}' initiated in background.",
+            task_id=task_id,
+        )
+    except Exception as e:
+        logger.error(
+            f"API Reorder Server Addons '{server_name}': Error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
         )
 
 
