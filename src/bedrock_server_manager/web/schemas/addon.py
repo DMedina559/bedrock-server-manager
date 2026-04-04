@@ -50,8 +50,7 @@ class AddonSubpackPayload(BaseModel):
         None, description="The folder name of the subpack to activate."
     )
 
-    class Config:
-        extra = "allow"
+    model_config = {"extra": "allow"}
 
 
 class AddonReorderPayload(BaseModel):

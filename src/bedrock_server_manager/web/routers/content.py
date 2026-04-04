@@ -389,7 +389,7 @@ async def update_server_addon_subpack_route(
         )
 
 
-@router.delete(
+@router.post(
     "/api/server/{server_name}/addon/uninstall",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
