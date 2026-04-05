@@ -23,7 +23,7 @@ RUN apt-get update && \
 COPY --from=python-builder /app/dist/ /app/dist/
 
 # Install the package (this will pull bsm-frontend from PyPI)
-RUN pip install --no-cache-dir /app/dist/*.whl[mysql,mariadb,postgresql] && \
+RUN pip install --no-cache-dir $(ls /app/dist/*.whl)[mysql,mariadb,postgresql] && \
     rm -rf /app/dist
 
 # Set default environment variables
