@@ -70,7 +70,7 @@ def prune_download_cache(  # noqa: C901
     """
     # Attempt to acquire the lock without blocking. If another operation
     # is in progress, skip this one to avoid conflicts.
-    if not _misc_lock.acquire(blocking=False):
+    if not _misc_lock.acquire(timeout=300):
         logger.warning(
             "A miscellaneous file operation is already in progress. Skipping concurrent prune."
         )

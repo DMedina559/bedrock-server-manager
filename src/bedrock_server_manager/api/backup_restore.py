@@ -137,7 +137,7 @@ def backup_world(
             :class:`~.error.BackupRestoreError` (export/pruning issues),
             or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world backup."
         )
@@ -230,7 +230,7 @@ def backup_config_file(
             :class:`~.error.FileOperationError` (file copy/pruning issues),
             or errors from server stop/start if `stop_start_server` is true.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config backup."
         )
@@ -320,7 +320,7 @@ def backup_all(
             :class:`~.error.BackupRestoreError` (if critical world backup fails),
             or errors from server stop if `stop_start_server` is true.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent full backup."
         )
@@ -412,7 +412,7 @@ def restore_all(
             :class:`~.error.BackupRestoreError` (if any component fails to restore),
             or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent restore."
         )
@@ -514,7 +514,7 @@ def restore_world(
             :class:`~.error.BackupRestoreError`, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world restore."
         )
@@ -616,7 +616,7 @@ def restore_config_file(
         BSMError: Propagates errors from underlying operations like
             :class:`~.error.FileOperationError` or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config restore."
         )
@@ -708,7 +708,7 @@ def prune_old_backups(  # noqa: C901
             Individual :class:`~.error.FileOperationError` for components are
             typically aggregated into the error message.
     """
-    if not _backup_restore_lock.acquire(blocking=False):
+    if not _backup_restore_lock.acquire(timeout=300):
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent prune."
         )
