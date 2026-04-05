@@ -72,34 +72,21 @@ async def create_first_user(
 
             logger.info(f"First user '{data.username}' created with admin role.")
 
-            # Log the user in by creating an access token and setting it as a cookie
+            # Log the user in by creating an access token and returning it
             access_token = create_access_token(
                 data={"sub": user.username}, app_context=app_context
             )
-            settings = app_context.settings
-            cookie_secure = settings.get("web.jwt_cookie_secure", False)
-            cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
 
             # Create the JSON response
-            response = JSONResponse(
+            return JSONResponse(
                 content={
                     "status": "success",
                     "message": "Admin account created and logged in successfully.",
+                    "access_token": access_token,
+                    "token_type": "bearer",
                 },
                 status_code=status.HTTP_200_OK,
             )
-
-            # Set the cookie on the response
-            response.set_cookie(
-                key="access_token_cookie",
-                value=access_token,
-                httponly=True,
-                secure=cookie_secure,
-                samesite=cookie_samesite,
-                path="/",
-            )
-
-            return response
 
         except IntegrityError:
             db.rollback()  # Rollback the transaction on database error

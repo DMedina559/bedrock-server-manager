@@ -29,7 +29,7 @@ from fastapi import (
     WebSocketException,
     status,
 )
-from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
@@ -56,7 +56,6 @@ def get_jwt_secret_key(settings: Settings) -> str:
 
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
-cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 
 # --- Token Creation ---
@@ -102,18 +101,37 @@ def create_access_token(
 
 
 # --- Token Verification and User Retrieval ---
-async def get_current_user_optional(  # noqa: C901
+
+
+def _get_and_update_user_from_db(db_session, username: str) -> Optional[UserResponse]:
+    """Helper function to fetch user, update last_seen, and return UserResponse."""
+    user = db_session.query(UserModel).filter(UserModel.username == username).first()
+    if not user or not user.is_active:
+        return None
+
+    user.last_seen = datetime.datetime.now(timezone.utc)
+    db_session.commit()
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        identity_type="jwt",
+        role=user.role,
+        is_active=user.is_active,
+        theme=user.theme,
+    )
+
+
+async def get_current_user_optional(
     request: Request,
 ) -> Optional[UserResponse]:
     """
     FastAPI dependency to retrieve the current user if authenticated.
 
     This dependency attempts to decode a JWT token (using :func:`jose.jwt.decode`)
-    obtained from either the Authorization header (Bearer token) or an HTTP
-    cookie ("access_token_cookie").
+    obtained from the Authorization header (Bearer token).
 
-    If a valid token is found and successfully decoded, it returns a dictionary
-    containing the username (from the "sub" claim) and an identity type.
+    If a valid token is found and successfully decoded, it returns a UserResponse.
     Otherwise, it returns ``None``.
 
     This is typically used for routes that can be accessed by both authenticated
@@ -124,27 +142,18 @@ async def get_current_user_optional(  # noqa: C901
         request (:class:`fastapi.Request`): The incoming request object.
 
     Returns:
-        Optional[User]: A dictionary ``{"username": str, "identity_type": "jwt"}``
-        if authentication is successful, otherwise ``None``.
+        Optional[UserResponse]: The user object if authentication is successful,
+        otherwise ``None``.
     """
-    token = request.cookies.get("access_token_cookie")
-    used_header = False
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header:
-            parts = auth_header.split()
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                token = parts[1]
-                used_header = True
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        parts = auth_header.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
 
     if not token:
         return None
-
-    if used_header:
-        logger.warning(
-            "Authentication via Bearer token in the Authorization header is deprecated "
-            "and may be removed in future versions. Please use HTTP-only cookies instead."
-        )
 
     try:
         app_context = request.app.state.app_context
@@ -155,29 +164,8 @@ async def get_current_user_optional(  # noqa: C901
         if username is None:
             return None
 
-        def get_user_from_db(db_session) -> UserResponse | None:  # type: ignore
-            user = (
-                db_session.query(UserModel)
-                .filter(UserModel.username == username)
-                .first()
-            )
-            if not user or not user.is_active:
-                return None
-
-            user.last_seen = datetime.datetime.now(timezone.utc)
-            db_session.commit()
-
-            return UserResponse(
-                id=user.id,
-                username=user.username,
-                identity_type="jwt",
-                role=user.role,
-                is_active=user.is_active,
-                theme=user.theme,
-            )
-
         with app_context.db.session_manager() as db:  # type: ignore
-            return get_user_from_db(db)
+            return _get_and_update_user_from_db(db, username)
 
     except JWTError:
         return None
@@ -223,9 +211,9 @@ async def get_current_user_for_websocket(
     """
     FastAPI dependency for authenticating WebSocket connections.
 
-    This dependency extracts a JWT token from the `access_token_cookie` or
-    the 'token' query parameter of a WebSocket connection URL. It decodes the
-    token and retrieves the corresponding user from the database.
+    This dependency extracts a JWT token from the 'token' query parameter
+    of a WebSocket connection URL. It decodes the token and retrieves
+    the corresponding user from the database.
 
     If the token is missing, invalid, or the user doesn't exist, it raises
     a WebSocketException to close the connection gracefully.
@@ -234,26 +222,16 @@ async def get_current_user_for_websocket(
         websocket (WebSocket): The WebSocket connection object.
 
     Returns:
-        User: The authenticated user object.
+        UserResponse: The authenticated user object.
 
     Raises:
         WebSocketException: With code 1008 if authentication fails.
     """
-    token = websocket.cookies.get("access_token_cookie")
-    used_query_param = False
-    if not token:
-        token = websocket.query_params.get("token")
-        used_query_param = True
+    token = websocket.query_params.get("token")
 
     if not token:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
-        )
-
-    if used_query_param:
-        logger.warning(
-            "WebSocket authentication via the 'token' query parameter is deprecated "
-            "and may be removed in future versions. Please use HTTP-only cookies instead."
         )
 
     try:
@@ -267,29 +245,8 @@ async def get_current_user_for_websocket(
                 code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token payload"
             )
 
-        def get_user_from_db(db_session) -> UserResponse | None:  # type: ignore
-            user = (
-                db_session.query(UserModel)
-                .filter(UserModel.username == username)
-                .first()
-            )
-            if not user or not user.is_active:
-                return None
-
-            user.last_seen = datetime.datetime.now(timezone.utc)
-            db_session.commit()
-
-            return UserResponse(
-                id=user.id,
-                username=user.username,
-                identity_type="jwt",
-                role=user.role,
-                is_active=user.is_active,
-                theme=user.theme,
-            )
-
         with app_context.db.session_manager() as db:  # type: ignore
-            user = get_user_from_db(db)
+            user = _get_and_update_user_from_db(db, username)
             if user is None:
                 raise WebSocketException(
                     code=status.WS_1008_POLICY_VIOLATION,
