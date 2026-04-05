@@ -19,9 +19,7 @@ from fastapi.responses import FileResponse
 from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..auth_utils import get_admin_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import UserResponse
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 
@@ -39,16 +37,12 @@ async def get_server_addon_icon_route(
     server_name: str = Depends(validate_server_exists),
     pack_type: str = Query(...),
     uuid: str = Query(...),
-    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Serves the pack_icon.png image file for a specified addon, or a default icon if not found.
     """
-    identity = current_user.username
-    logger.debug(
-        f"API: Get addon icon for '{server_name}' requested by user '{identity}'."
-    )
+    logger.debug(f"API: Get addon icon for '{server_name}' requested.")
 
     try:
         result = addon_api.list_world_addons(server_name, app_context)
