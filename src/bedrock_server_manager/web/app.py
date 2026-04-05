@@ -98,6 +98,10 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     if not isinstance(allowed_origins, list):
         allowed_origins = []
 
+    # allow_credentials=True cannot be used with allow_origins=["*"] in CORS.
+    # If "*" is present, we use allow_origin_regex=".*" to dynamically reflect the origin.
+    allow_all_origins = "*" in allowed_origins
+
     logger.info(f"CORS Allowed Origins: {allowed_origins}")
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
@@ -195,13 +199,18 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         return response
 
     # Add CORS Middleware last so it is the outermost middleware (executes first)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    cors_kwargs = {
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+
+    if allow_all_origins:
+        cors_kwargs["allow_origin_regex"] = ".*"
+    else:
+        cors_kwargs["allow_origins"] = allowed_origins
+
+    app.add_middleware(CORSMiddleware, **cors_kwargs)
 
     app.include_router(routers.setup_router)
     app.include_router(routers.auth_router)
