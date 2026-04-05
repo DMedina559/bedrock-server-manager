@@ -12,6 +12,7 @@ class AddonSchemaResponse(BaseModel):
     uuid: str
     version: List[int]
     status: str
+    active_subpack: Optional[str] = None
     path: Optional[str] = None
     icon: Optional[str] = None
     subpacks: Optional[List[Dict[str, Any]]] = None
