@@ -91,7 +91,7 @@ async def api_login_for_access_token(
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        message="Successfully authenticated.",
+        message="Successfully authenticated. Note: The token in the response body is deprecated. Please use the HTTP-only cookie provided.",
     )
 
 
