@@ -97,7 +97,7 @@ def import_addon(  # noqa: C901
     """
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         logger.warning(
             f"An addon operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
@@ -216,7 +216,7 @@ def enable_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -271,7 +271,7 @@ def disable_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -330,7 +330,7 @@ def update_addon_subpack(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -387,7 +387,7 @@ def uninstall_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -442,7 +442,7 @@ def reorder_addons(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
