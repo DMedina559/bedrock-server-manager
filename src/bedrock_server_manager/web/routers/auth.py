@@ -23,7 +23,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Response as FastAPIResponse
 from fastapi import status
 from fastapi.responses import RedirectResponse
-from fastapi.security import OAuth2PasswordRequestForm
 
 from ...context import AppContext
 from ..auth_utils import (
@@ -32,7 +31,7 @@ from ..auth_utils import (
     get_current_user,
 )
 from ..dependencies import get_app_context
-from ..schemas import TokenResponse, UserResponse
+from ..schemas import TokenResponse, UserLoginPayload, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -45,35 +44,52 @@ router = APIRouter(
 # --- API Login Route ---
 @router.post("/token", response_model=TokenResponse)
 async def api_login_for_access_token(
+    payload: UserLoginPayload,
     response: FastAPIResponse,
-    form_data: OAuth2PasswordRequestForm = Depends(),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Handles API user login, creates a JWT, and sets it as an HTTP-only cookie.
     """
-    if not form_data.username or not form_data.password:
+    if not payload.username or not payload.password:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Username and password cannot be empty.",
         )
 
-    logger.info(f"API login attempt for '{form_data.username}'")
+    logger.info(f"API login attempt for '{payload.username}'")
     authenticated_username = authenticate_user(
-        app_context, form_data.username, form_data.password
+        app_context, payload.username, payload.password
     )
 
     if not authenticated_username:
-        logger.warning(f"Invalid API login attempt for '{form_data.username}'.")
+        logger.warning(f"Invalid API login attempt for '{payload.username}'.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token = create_access_token(
-        data={"sub": authenticated_username}, app_context=app_context
-    )
+    import datetime
+
     settings = app_context.settings
+    if payload.remember_me:
+        try:
+            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
+        except (ValueError, TypeError):
+            jwt_expires_weeks = 4.0
+        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
+        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
+        max_age = int(expires_delta.total_seconds())
+    else:
+        # For session cookies, we still need the JWT to eventually expire (e.g., 24 hours)
+        expires_delta = datetime.timedelta(hours=24)
+        max_age = None  # None max_age creates a session cookie
+
+    access_token = create_access_token(
+        data={"sub": authenticated_username},
+        app_context=app_context,
+        expires_delta=expires_delta,
+    )
     cookie_secure = settings.get("web.jwt_cookie_secure", False)
     cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
 
@@ -84,14 +100,15 @@ async def api_login_for_access_token(
         secure=cookie_secure,
         samesite=cookie_samesite,
         path="/",
+        max_age=max_age,
     )
     logger.info(
-        f"API login successful for '{form_data.username}'. JWT created and cookie set."
+        f"API login successful for '{payload.username}'. JWT created and cookie set."
     )
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        message="Successfully authenticated.",
+        message="Successfully authenticated. Note: The token in the response body is deprecated. Please use the HTTP-only cookie provided.",
     )
 
 

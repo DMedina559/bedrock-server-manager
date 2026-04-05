@@ -102,7 +102,7 @@ def create_access_token(
 
 
 # --- Token Verification and User Retrieval ---
-async def get_current_user_optional(
+async def get_current_user_optional(  # noqa: C901
     request: Request,
 ) -> Optional[UserResponse]:
     """
@@ -128,15 +128,23 @@ async def get_current_user_optional(
         if authentication is successful, otherwise ``None``.
     """
     token = request.cookies.get("access_token_cookie")
+    used_header = False
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header:
             parts = auth_header.split()
             if len(parts) == 2 and parts[0].lower() == "bearer":
                 token = parts[1]
+                used_header = True
 
     if not token:
         return None
+
+    if used_header:
+        logger.warning(
+            "Authentication via Bearer token in the Authorization header is deprecated "
+            "and may be removed in future versions. Please use HTTP-only cookies instead."
+        )
 
     try:
         app_context = request.app.state.app_context
@@ -215,9 +223,9 @@ async def get_current_user_for_websocket(
     """
     FastAPI dependency for authenticating WebSocket connections.
 
-    This dependency extracts a JWT token from the 'token' query parameter
-    of a WebSocket connection URL. It decodes the token and retrieves the
-    corresponding user from the database.
+    This dependency extracts a JWT token from the `access_token_cookie` or
+    the 'token' query parameter of a WebSocket connection URL. It decodes the
+    token and retrieves the corresponding user from the database.
 
     If the token is missing, invalid, or the user doesn't exist, it raises
     a WebSocketException to close the connection gracefully.
@@ -231,10 +239,21 @@ async def get_current_user_for_websocket(
     Raises:
         WebSocketException: With code 1008 if authentication fails.
     """
-    token = websocket.query_params.get("token")
+    token = websocket.cookies.get("access_token_cookie")
+    used_query_param = False
+    if not token:
+        token = websocket.query_params.get("token")
+        used_query_param = True
+
     if not token:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
+        )
+
+    if used_query_param:
+        logger.warning(
+            "WebSocket authentication via the 'token' query parameter is deprecated "
+            "and may be removed in future versions. Please use HTTP-only cookies instead."
         )
 
     try:
