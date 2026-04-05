@@ -27,3 +27,4 @@ class UserLoginPayload(BaseModel):
 
     username: str = Field(..., min_length=1, max_length=80)
     password: str = Field(..., min_length=1)
+    remember_me: bool = Field(default=False)
