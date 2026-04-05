@@ -1,3 +1,11 @@
+from .addon import (
+    AddonActionPayload,
+    AddonListResponse,
+    AddonReorderPayload,
+    AddonSchemaResponse,
+    AddonSubpackPayload,
+    AddonTypeGroupSchemaResponse,
+)
 from .auth import (
     GenerateTokenPayload,
     TokenResponse,
@@ -120,4 +128,10 @@ __all__ = [
     "PermissionsGetResponse",
     "PermissionsUpdateResponse",
     "SetupStatusResponse",
+    "AddonActionPayload",
+    "AddonListResponse",
+    "AddonReorderPayload",
+    "AddonSchemaResponse",
+    "AddonSubpackPayload",
+    "AddonTypeGroupSchemaResponse",
 ]

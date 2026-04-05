@@ -457,8 +457,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         try:
             # Get metadata from the manifest.
-            pack_type, uuid, version_list, addon_name = self._extract_manifest_info(
-                extracted_pack_dir
+            pack_type, uuid, version_list, addon_name, _subpacks = (
+                self._extract_manifest_info(extracted_pack_dir)
             )
             self.logger.info(
                 f"Manifest for '{original_mcpack_filename}': Type='{pack_type}', UUID='{uuid}', Version='{version_list}', Name='{addon_name}'"
@@ -489,8 +489,14 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
             # Create a unique, file-safe folder name for this specific version of the addon.
             version_str = ".".join(map(str, version_list))
+
+            # Use original filename if the manifest name is literally "pack.name" (common placeholder)
+            actual_folder_name = addon_name
+            if actual_folder_name == "pack.name" and original_mcpack_filename:
+                actual_folder_name = os.path.splitext(original_mcpack_filename)[0]
+
             safe_addon_folder_name = (
-                re.sub(r'[<>:"/\\|?*]', "_", addon_name) + f"_{version_str}"
+                re.sub(r'[<>:"/\\|?*]', "_", actual_folder_name) + f"_{version_str}"
             )
 
             # Determine target paths based on pack type.
@@ -560,27 +566,29 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
     def _extract_manifest_info(  # noqa: C901
         self, extracted_pack_dir: str
-    ) -> Tuple[str, str, List[int], str]:
+    ) -> Tuple[str, str, List[int], str, List[Dict[str, Any]]]:
         """Extracts and validates key information from a pack's ``manifest.json`` file.
 
         This method reads the ``manifest.json`` located in the ``extracted_pack_dir``,
         parses its JSON content, and extracts essential metadata about the pack.
         It specifically looks for the pack's display name, UUID, version (as a
-        three-part integer list), and type ('data' or 'script' for behavior packs,
-        'resources' for resource packs).
+        three-part integer list), type ('data' or 'script' for behavior packs,
+        'resources' for resource packs), and any associated subpacks.
 
         Args:
             extracted_pack_dir (str): The absolute path to the directory
                 containing the ``manifest.json`` file for the pack.
 
         Returns:
-            Tuple[str, str, List[int], str]: A tuple containing:
+            Tuple[str, str, List[int], str, List[Dict[str, Any]]]: A tuple containing:
                 - ``pack_type`` (str): The type of the pack, normalized to lowercase
                   (e.g., 'data', 'resources').
                 - ``uuid`` (str): The pack's unique identifier (UUID).
                 - ``version`` (List[int]): The pack's version, as a list of three
                   integers (e.g., ``[1, 0, 0]``).
                 - ``name`` (str): The human-readable display name of the pack.
+                - ``subpacks`` (List[Dict[str, Any]]): A list of dictionaries representing
+                  the subpacks, extracted directly from the manifest.
 
         Raises:
             AppFileNotFoundError: If ``manifest.json`` is not found within
@@ -616,6 +624,15 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             version_val = header.get("version")
             name_val = header.get("name")
 
+            if isinstance(version_val, str):
+                try:
+                    version_val = [int(part) for part in version_val.split(".")]
+                    while len(version_val) < 3:
+                        version_val.append(0)
+                    version_val = version_val[:3]
+                except ValueError:
+                    version_val = None
+
             # Extract the pack type from the modules section.
             modules = manifest_data.get("modules")
             if not isinstance(modules, list) or not modules:
@@ -627,6 +644,32 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
             pack_type_val = first_module.get("type")
 
+            # Some manifests don't use 'type' directly in the first module, but it can be inferred
+            if not pack_type_val and "description" in first_module:
+                if "resources" in str(first_module["description"]).lower():
+                    pack_type_val = "resources"
+                elif (
+                    "data" in str(first_module["description"]).lower()
+                    or "behavior" in str(first_module["description"]).lower()
+                ):
+                    pack_type_val = "data"
+
+            # If pack_type_val is still somehow missing but we have subpacks, assume it's a resource pack since
+            # subpacks are predominantly used for different resource resolutions
+            if not pack_type_val and manifest_data.get("subpacks"):
+                pack_type_val = "resources"
+
+            # Extract subpacks
+            subpacks_val = manifest_data.get("subpacks", [])
+            if not isinstance(subpacks_val, list):
+                subpacks_val = []
+
+            # Support for subpacks where the root manifest only acts as a container
+            # Sometimes 'name' is in the header, sometimes we just default it.
+            # Some root manifests with subpacks don't declare a module.
+            if not name_val or not isinstance(name_val, str):
+                name_val = "Unknown Subpack Container"
+
             # Validate the extracted fields to ensure they exist and have the correct type.
             if not (
                 uuid_val
@@ -635,8 +678,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 and isinstance(version_val, list)
                 and len(version_val) == 3
                 and all(isinstance(v, int) for v in version_val)
-                and name_val
-                and isinstance(name_val, str)
                 and pack_type_val
                 and isinstance(pack_type_val, str)
             ):
@@ -653,9 +694,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
 
             self.logger.debug(
-                f"Extracted manifest: Type='{pack_type_cleaned}', UUID='{uuid_val}', Version='{version_val}', Name='{name_val}'"
+                f"Extracted manifest: Type='{pack_type_cleaned}', UUID='{uuid_val}', Version='{version_val}', Name='{name_val}', Subpacks='{len(subpacks_val)}'"
             )
-            return pack_type_cleaned, uuid_val, version_val, name_val
+            return pack_type_cleaned, uuid_val, version_val, name_val, subpacks_val
 
         except ValueError as e:
             raise ConfigParseError(
@@ -858,10 +899,219 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             physical_rps, activated_rps_list
         )
 
+        # Append icon paths if they exist
+        for pack in behavior_pack_results:
+            if "path" in pack:
+                icon_path = os.path.join(pack["path"], "pack_icon.png")
+                if os.path.exists(icon_path):
+                    pack["icon"] = icon_path
+
+        for pack in resource_pack_results:
+            if "path" in pack:
+                icon_path = os.path.join(pack["path"], "pack_icon.png")
+                if os.path.exists(icon_path):
+                    pack["icon"] = icon_path
+
         return {
             "behavior_packs": behavior_pack_results,
             "resource_packs": resource_pack_results,
         }
+
+    def enable_addon(
+        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Enables a physically installed addon in a world.
+
+        Args:
+            pack_uuid (str): The UUID of the pack to enable.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not pack_uuid or not pack_type:
+            raise MissingArgumentError("Pack UUID and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = self.get_world_name()
+
+        self.logger.info(
+            f"Enabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        physical_packs = self._scan_physical_packs(world_dir, pack_folder_name)
+
+        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
+        if not target_pack:
+            raise AppFileNotFoundError(
+                f"pack with UUID {pack_uuid}",
+                f"{pack_folder_name} in world '{world_name}'",
+            )
+
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+        self._update_world_pack_json_file(
+            world_json_path, pack_uuid, target_pack["version"]
+        )
+
+    def update_addon_subpack(  # noqa: C901
+        self,
+        pack_uuid: str,
+        pack_type: str,
+        subpack_name: str,
+        world_name: Optional[str] = None,
+    ) -> None:
+        """Updates the active subpack for an already enabled addon.
+
+        Args:
+            pack_uuid (str): The UUID of the active pack.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            subpack_name (str): The new subpack folder name to set.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not pack_uuid or not pack_type or not subpack_name:
+            raise MissingArgumentError(
+                "Pack UUID, pack type, and subpack name are required."
+            )
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = self.get_world_name()
+
+        self.logger.info(
+            f"Updating subpack to '{subpack_name}' for {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+
+        json_filename_basename = os.path.basename(world_json_path)
+
+        if not os.path.exists(world_json_path):
+            raise AppFileNotFoundError(
+                world_json_path,
+                f"Activation file '{json_filename_basename}' not found.",
+            )
+
+        packs_list = []
+        with open(world_json_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            if content.strip():
+                packs_list = json.loads(content)
+
+        found = False
+        for i, existing_pack_entry in enumerate(packs_list):
+            if (
+                isinstance(existing_pack_entry, dict)
+                and existing_pack_entry.get("pack_id") == pack_uuid
+            ):
+                packs_list[i]["subpack"] = subpack_name
+                found = True
+                break
+
+        if not found:
+            raise UserInputError(
+                f"Pack '{pack_uuid}' is not currently active. You must enable it first."
+            )
+
+        try:
+            with open(world_json_path, "w", encoding="utf-8") as f:
+                json.dump(packs_list, f, indent=2, sort_keys=True)
+            self.logger.debug(
+                f"Successfully wrote updated subpack '{subpack_name}' to '{json_filename_basename}'."
+            )
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to write world pack JSON '{json_filename_basename}': {e}"
+            ) from e
+
+    def disable_addon(
+        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Disables an addon by removing it from the world's activation list, preserving files.
+
+        Args:
+            pack_uuid (str): The UUID of the pack to disable.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not pack_uuid or not pack_type:
+            raise MissingArgumentError("Pack UUID and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = self.get_world_name()
+
+        self.logger.info(
+            f"Disabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+
+        self._remove_pack_from_world_json(world_json_path, pack_uuid)
+
+    def reorder_addons(
+        self, uuids: List[str], pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Reorders the active addons based on a provided list of UUIDs.
+
+        This method strictly verifies that the provided list of UUIDs contains
+        the exact same set of active UUIDs.
+
+        Args:
+            uuids (List[str]): The exact active UUIDs in their new order.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not uuids or not pack_type:
+            raise MissingArgumentError("UUID list and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = self.get_world_name()
+
+        self.logger.info(f"Reordering {pack_type} packs in world '{world_name}'.")
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+
+        original_packs_list = self._read_world_activation_json(world_json_path)
+        original_uuids = [
+            p.get("pack_id") for p in original_packs_list if p.get("pack_id")
+        ]
+
+        if set(uuids) != set(original_uuids):
+            raise UserInputError(
+                "The provided UUID list does not contain the exact same set of active UUIDs. "
+                "Disabling/Enabling must be done via their respective endpoints."
+            )
+        if len(uuids) != len(original_uuids):
+            raise UserInputError("The provided UUID list contains duplicates.")
+
+        # Reorder the original packs list based on the new UUID list order
+        pack_map = {
+            p.get("pack_id"): p for p in original_packs_list if p.get("pack_id")
+        }
+        new_packs_list = [pack_map[uuid] for uuid in uuids]
+
+        try:
+            with open(world_json_path, "w", encoding="utf-8") as f:
+                json.dump(new_packs_list, f, indent=2, sort_keys=True)
+            self.logger.info(
+                f"Successfully reordered {pack_type} packs in world '{world_name}'."
+            )
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to write reordered activation file: {e}"
+            ) from e
 
     def _scan_physical_packs(
         self, world_dir: str, pack_folder_name: str
@@ -905,15 +1155,26 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             pack_full_path = os.path.join(pack_base_dir, pack_dir_name)
             if os.path.isdir(pack_full_path):
                 try:
-                    _pack_type, uuid, version, name = self._extract_manifest_info(
-                        pack_full_path
+                    _pack_type, uuid, version, name, subpacks = (
+                        self._extract_manifest_info(pack_full_path)
                     )
+
+                    # If name is generic "pack.name", attempt to resolve from folder structure
+                    if name == "pack.name":
+                        # Remove the appended version string (e.g. "_1.0.0") if present to get clean name
+                        version_str = f"_{'.'.join(map(str, version))}"
+                        if pack_dir_name.endswith(version_str):
+                            name = pack_dir_name[: -len(version_str)]
+                        else:
+                            name = pack_dir_name
+
                     installed_packs.append(
                         {
                             "name": name,
                             "uuid": uuid,
                             "version": version,
                             "path": pack_full_path,
+                            "subpacks": subpacks,
                         }
                     )
                 except (AppFileNotFoundError, ConfigParseError) as e:
@@ -1006,12 +1267,21 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         # Process physically present packs to determine if they are active or inactive.
         for p_pack in physical:
+            status = "ACTIVE" if p_pack["uuid"] in activated_uuids else "INACTIVE"
             pack_info = {
                 "name": p_pack["name"],
                 "uuid": p_pack["uuid"],
                 "version": p_pack["version"],
-                "status": "ACTIVE" if p_pack["uuid"] in activated_uuids else "INACTIVE",
+                "status": status,
+                "subpacks": p_pack.get("subpacks", []),
+                "path": p_pack.get("path"),
             }
+            if status == "ACTIVE":
+                entry = next(
+                    (a for a in activated if a.get("pack_id") == p_pack["uuid"]), None
+                )
+                if entry and "subpack" in entry:
+                    pack_info["active_subpack"] = entry["subpack"]
             results.append(pack_info)
 
         # Find orphaned activations (activated but not physically present).
@@ -1035,7 +1305,21 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 }
             )
 
-        return sorted(results, key=lambda x: x["name"])
+        # Sort results: preserve activated order for ACTIVE packs, append INACTIVE/ORPHANED afterwards alphabetically
+        activated_order = [
+            entry["pack_id"] for entry in activated if "pack_id" in entry
+        ]
+
+        active_packs = []
+        for uuid in activated_order:
+            found = next((r for r in results if r["uuid"] == uuid), None)
+            if found:
+                active_packs.append(found)
+
+        inactive_packs = [r for r in results if r["status"] != "ACTIVE"]
+        inactive_packs_sorted = sorted(inactive_packs, key=lambda x: x["name"])
+
+        return active_packs + inactive_packs_sorted
 
     def export_addon(
         self,
