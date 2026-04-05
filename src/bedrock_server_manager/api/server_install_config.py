@@ -27,6 +27,7 @@ use by web routes or CLI commands and integrate with the plugin system for exten
 import logging
 import os
 import re
+import threading
 from typing import Any, Dict, List, Optional
 
 from ..context import AppContext
@@ -48,6 +49,8 @@ from . import player as player_api
 from .utils import server_lifecycle_manager, validate_server_name_format
 
 logger = logging.getLogger(__name__)
+
+_install_update_lock = threading.Lock()
 
 
 # --- Allowlist ---
@@ -752,10 +755,19 @@ def update_server(
         FileOperationError: For other file I/O issues.
         BSMError: For other application-specific errors.
     """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
+    if not _install_update_lock.acquire(timeout=300):
+        logger.warning(
+            f"An install/update operation for '{server_name}' is already in progress. Skipping."
+        )
+        return {
+            "status": "skipped",
+            "message": "An install/update operation is already in progress.",
+        }
 
     try:
+        if not server_name:
+            raise InvalidServerNameError("Server name cannot be empty.")
+
         server = app_context.get_server(server_name)
         target_version = server.get_target_version()
 
@@ -800,3 +812,5 @@ def update_server(
             f"API: Unexpected error updating '{server_name}': {e}", exc_info=True
         )
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+    finally:
+        _install_update_lock.release()
