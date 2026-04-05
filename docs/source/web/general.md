@@ -75,12 +75,13 @@ The token is still returned in the response body and accepted in the header for 
 
 The API endpoints require authentication using a JSON Web Token (JWT).
 How: Obtain a token by sending a POST request to the `/auth/token` endpoint.
-Request Body: Include a JSON payload with username and password keys, matching the values set in the environment variables.
+Request Body: Include a JSON payload with username, password, and an optional `remember_me` key (default is `false`). Setting `remember_me` to `true` extends the cookie and token expiration.
 
-```
+```json
 {
     "username": "username",
-    "password": "password"
+    "password": "password",
+    "remember_me": true
 }
 ```
 
@@ -99,7 +100,7 @@ Using `-c cookies.txt` will save the authentication cookie to a file.
 
 ```bash
 curl -c cookies.txt -X POST -H "Content-Type: application/json" \
-     -d '{"username": "your_username", "password": "your_password"}' \
+     -d '{"username": "your_username", "password": "your_password", "remember_me": true}' \
      http://<your-manager-host>:<port>/auth/token
 ```
 
@@ -108,7 +109,7 @@ curl -c cookies.txt -X POST -H "Content-Type: application/json" \
 Using `-SessionVariable` will store the authentication cookie in a session variable.
 
 ```powershell
-$body = @{ username = 'your_username'; password = 'your_password' } | ConvertTo-Json
+$body = @{ username = 'your_username'; password = 'your_password'; remember_me = $true } | ConvertTo-Json
 Invoke-RestMethod -SessionVariable WebSession -Method Post -Uri "http://<your-manager-host>:<port>/auth/token" -Body $body -ContentType 'application/json'
 ```
 
