@@ -14,7 +14,6 @@ from .auth import (
 from .backup import (
     BackupActionPayload,
     RestoreActionPayload,
-    RestoreTypePayload,
 )
 from .base import ActionResponse, BaseApiResponse
 from .install import (
@@ -102,7 +101,6 @@ __all__ = [
     "PlayerPermissionPayload",
     "PermissionsSetPayload",
     "ServiceUpdatePayload",
-    "RestoreTypePayload",
     "BackupActionPayload",
     "RestoreActionPayload",
     "PluginStatusSetPayload",

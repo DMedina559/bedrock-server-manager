@@ -20,7 +20,7 @@ import logging
 import os
 from typing import Any, Callable, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
@@ -31,7 +31,6 @@ from ..schemas import (
     ActionResponse,
     BackupActionPayload,
     RestoreActionPayload,
-    RestoreTypePayload,
     UserResponse,
 )
 
@@ -41,59 +40,6 @@ router = APIRouter()
 
 
 # --- API Routes ---
-@router.post(
-    "/api/server/{server_name}/restore/select_backup_type",
-    response_model=ActionResponse,
-    tags=["Backup & Restore API"],
-)
-async def handle_restore_select_backup_type_api(
-    request: Request,
-    payload: RestoreTypePayload,
-    server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_moderator_user),
-):
-    """
-    Handles the API request for selecting a restore type and redirects to file selection.
-    """
-    identity = current_user.username
-    restore_type = payload.restore_type.lower()
-
-    logger.info(
-        f"API: UserResponse '{identity}' initiated selection of restore_type '{restore_type}' for server '{server_name}'."
-    )
-
-    valid_types = ["world", "properties", "allowlist", "permissions"]
-    if restore_type not in valid_types:
-        logger.warning(
-            f"API: Invalid restore_type '{restore_type}' selected by '{identity}' for '{server_name}'."
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid restore type '{restore_type}' selected. Must be one of {valid_types}.",
-        )
-
-    try:
-        redirect_page_url = request.url_for(
-            "select_backup_file_page",
-            server_name=server_name,
-            restore_type=restore_type,
-        )
-        return ActionResponse(
-            status="success",
-            message=f"Proceed to select {restore_type} backup.",
-            redirect_url=str(redirect_page_url),
-        )
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error during restore type selection for '{server_name}' by '{identity}': {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred.",
-        )
-
-
 @router.post(
     "/api/server/{server_name}/backups/prune",
     response_model=ActionResponse,

@@ -3,14 +3,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class RestoreTypePayload(BaseModel):
-    """Request model for specifying the type of restore operation."""
-
-    restore_type: str = Field(
-        ..., description="The type of restore to perform (e.g., 'world', 'properties')."
-    )
-
-
 class BackupActionPayload(BaseModel):
     """Request model for triggering a backup action."""
 
