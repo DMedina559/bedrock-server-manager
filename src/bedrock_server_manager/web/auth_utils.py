@@ -22,6 +22,7 @@ from typing import Optional
 
 import bcrypt
 from fastapi import (
+    Depends,
     HTTPException,
     Request,
     Security,
@@ -29,7 +30,7 @@ from fastapi import (
     WebSocketException,
     status,
 )
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
@@ -56,6 +57,7 @@ def get_jwt_secret_key(settings: Settings) -> str:
 
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
+cookie_scheme = APIKeyCookie(name="access_token_cookie", auto_error=False)
 
 
 # --- Token Creation ---
@@ -124,6 +126,8 @@ def _get_and_update_user_from_db(db_session, username: str) -> Optional[UserResp
 
 async def get_current_user_optional(
     request: Request,
+    token_bearer: Optional[str] = Depends(oauth2_scheme),
+    token_cookie: Optional[str] = Depends(cookie_scheme),
 ) -> Optional[UserResponse]:
     """
     FastAPI dependency to retrieve the current user if authenticated.
@@ -145,12 +149,21 @@ async def get_current_user_optional(
         Optional[UserResponse]: The user object if authentication is successful,
         otherwise ``None``.
     """
-    token = None
-    auth_header = request.headers.get("Authorization")
-    if auth_header:
-        parts = auth_header.split()
-        if len(parts) == 2 and parts[0].lower() == "bearer":
-            token = parts[1]
+    if hasattr(token_bearer, "dependency"):
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            parts = auth_header.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token_bearer = parts[1]
+            else:
+                token_bearer = None
+        else:
+            token_bearer = None
+
+    if hasattr(token_cookie, "dependency"):
+        token_cookie = request.cookies.get("access_token_cookie")
+
+    token = token_bearer or token_cookie
 
     if not token:
         return None
@@ -227,7 +240,9 @@ async def get_current_user_for_websocket(
     Raises:
         WebSocketException: With code 1008 if authentication fails.
     """
-    token = websocket.query_params.get("token")
+    token = websocket.cookies.get("access_token_cookie") or websocket.query_params.get(
+        "token"
+    )
 
     if not token:
         raise WebSocketException(

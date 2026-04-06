@@ -19,7 +19,7 @@ facilitate that access control.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
 from ...context import AppContext
@@ -43,6 +43,7 @@ router = APIRouter(
 @router.post("/token", response_model=TokenResponse)
 async def api_login_for_access_token(
     payload: UserLoginPayload,
+    response: Response,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -86,6 +87,13 @@ async def api_login_for_access_token(
     )
 
     logger.info(f"API login successful for '{payload.username}'. JWT created.")
+    response.set_cookie(
+        key="access_token_cookie",
+        value=access_token,
+        httponly=True,
+        max_age=int(expires_delta.total_seconds()),
+        samesite="lax",
+    )
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
@@ -96,6 +104,7 @@ async def api_login_for_access_token(
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
+    response: Response,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
@@ -106,6 +115,7 @@ async def logout(
     username = current_user.username
     logger.info(f"User '{username}' explicitly logged out.")
 
+    response.delete_cookie(key="access_token_cookie")
     return JSONResponse(
         content={"status": "success", "message": "Successfully logged out."},
         status_code=status.HTTP_200_OK,

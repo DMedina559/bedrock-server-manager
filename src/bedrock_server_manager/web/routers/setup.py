@@ -78,7 +78,7 @@ async def create_first_user(
             )
 
             # Create the JSON response
-            return JSONResponse(
+            response = JSONResponse(
                 content={
                     "status": "success",
                     "message": "Admin account created and logged in successfully.",
@@ -87,6 +87,13 @@ async def create_first_user(
                 },
                 status_code=status.HTTP_200_OK,
             )
+            response.set_cookie(
+                key="access_token_cookie",
+                value=access_token,
+                httponly=True,
+                samesite="lax",
+            )
+            return response
 
         except IntegrityError:
             db.rollback()  # Rollback the transaction on database error
