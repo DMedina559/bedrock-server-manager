@@ -50,8 +50,7 @@ def test_logout_success(authenticated_client: TestClient):
     """Test the logout route with a valid token."""
     response = authenticated_client.get("/auth/logout")
     assert response.status_code == 200
-    assert len(response.history) > 0
-    assert response.history[0].status_code == 302
+    assert response.json()["status"] == "success"
 
 
 def test_refresh_token_success(authenticated_client: TestClient):

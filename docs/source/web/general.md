@@ -69,13 +69,12 @@ An HTTP API is provided allowing tools like `curl` or `Invoke-RestMethod` to int
 #### Obtaining a JWT token:
 
 ```{note}
-Using the Bearer token in the `Authorization` header is deprecated in favor of HTTP cookies.
-The token is still returned in the response body and accepted in the header for backward compatibility, but this behavior may be removed in future versions. It is recommended to use an HTTP client that supports cookie management.
+The API relies on Bearer tokens for authentication using the `Authorization` header.
 ```
 
 The API endpoints require authentication using a JSON Web Token (JWT).
 How: Obtain a token by sending a POST request to the `/auth/token` endpoint.
-Request Body: Include a JSON payload with username, password, and an optional `remember_me` key (default is `false`). Setting `remember_me` to `true` extends the cookie and token expiration.
+Request Body: Include a JSON payload with username, password, and an optional `remember_me` key (default is `false`). Setting `remember_me` to `true` extends the token expiration.
 
 ```json
 {
@@ -88,7 +87,9 @@ Request Body: Include a JSON payload with username, password, and an optional `r
 Response: On success, the API returns a JSON object containing the access_token:
 ```
 {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "message": "Successfully authenticated."
 }
 ```
 
@@ -96,62 +97,64 @@ Tokens expiration is configurable via web ui (default: 4 weeks).
 
 ##### `curl` Example (Bash):
 
-Using `-c cookies.txt` will save the authentication cookie to a file.
+Extract the token from the response. You can use tools like `jq` to parse the JSON output.
 
 ```bash
-curl -c cookies.txt -X POST -H "Content-Type: application/json" \
+curl -X POST -H "Content-Type: application/json" \
      -d '{"username": "your_username", "password": "your_password", "remember_me": true}' \
      http://<your-manager-host>:<port>/auth/token
 ```
 
 ##### PowerShell Example:
 
-Using `-SessionVariable` will store the authentication cookie in a session variable.
+Store the authentication token in a variable.
 
 ```powershell
 $body = @{ username = 'your_username'; password = 'your_password'; remember_me = $true } | ConvertTo-Json
-Invoke-RestMethod -SessionVariable WebSession -Method Post -Uri "http://<your-manager-host>:<port>/auth/token" -Body $body -ContentType 'application/json'
+$response = Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/auth/token" -Body $body -ContentType 'application/json'
+$token = $response.access_token
 ```
 
 #### Using the API
 
-Endpoints requiring authentication will need the obtained access_token included as an HTTP cookie named `access_token_cookie`.
+Endpoints requiring authentication will need the obtained `access_token` included in the `Authorization` header as a Bearer token.
 
 For requests sending data (like POST or PUT), set the Content-Type header to `application/json`.
 
 #### Examples:
 
-- Start server:
+- Start/Stop server:
 
 ##### `curl` Example (Bash):
 
-Using `-b cookies.txt` will load the authentication cookie from the file.
+Using `-H "Authorization: Bearer <token>"` to pass the token.
 
 ```bash
-curl -b cookies.txt -X POST \
+curl -X POST -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
      http://<your-manager-host>:<port>/api/server/<server_name>/stop
 ```
 
 ##### PowerShell Example:
 
-Using `-WebSession` will include the previously saved authentication cookie.
+Using the previously saved authentication token in the Headers.
 
 ```powershell
-Invoke-RestMethod -WebSession $WebSession -Method Post -Uri "http://<your-manager-host>:<port>/api/server/<server_name>/stop"
+$headers = @{ 'Authorization' = "Bearer $token" }
+Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/api/server/<server_name>/stop" -Headers $headers
 ```
 
 - Send Command:
 
 ##### `curl` Example (Bash):
 ```bash
-curl -b cookies.txt -X POST -H "Content-Type: application/json" \
+curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
      -d '{"command": "say Hello from API!"}' \
      http://<your-manager-host>:<port>/api/server/<server_name>/send_command
 ```
 
 ##### PowerShell Example:
 ```powershell
-$headers = @{ 'Content-Type' = 'application/json' }
+$headers = @{ 'Content-Type' = 'application/json'; 'Authorization' = "Bearer $token" }
 $body = @{ command = 'say Hello from API!' } | ConvertTo-Json
-Invoke-RestMethod -WebSession $WebSession -Method Post -Uri "http://<your-manager-host>:<port>/api/server/<server_name>/send_command" -Headers $headers -Body $body
+Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/api/server/<server_name>/send_command" -Headers $headers -Body $body
 ```

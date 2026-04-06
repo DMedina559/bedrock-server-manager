@@ -19,10 +19,8 @@ facilitate that access control.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi import Response as FastAPIResponse
-from fastapi import status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from ...context import AppContext
 from ..auth_utils import (
@@ -45,11 +43,10 @@ router = APIRouter(
 @router.post("/token", response_model=TokenResponse)
 async def api_login_for_access_token(
     payload: UserLoginPayload,
-    response: FastAPIResponse,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
-    Handles API user login, creates a JWT, and sets it as an HTTP-only cookie.
+    Handles API user login and returns a JWT access token.
     """
     if not payload.username or not payload.password:
         raise HTTPException(
@@ -79,36 +76,20 @@ async def api_login_for_access_token(
             jwt_expires_weeks = 4.0
         access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
         expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
-        max_age = int(expires_delta.total_seconds())
     else:
-        # For session cookies, we still need the JWT to eventually expire (e.g., 24 hours)
         expires_delta = datetime.timedelta(hours=24)
-        max_age = None  # None max_age creates a session cookie
 
     access_token = create_access_token(
         data={"sub": authenticated_username},
         app_context=app_context,
         expires_delta=expires_delta,
     )
-    cookie_secure = settings.get("web.jwt_cookie_secure", False)
-    cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
 
-    response.set_cookie(
-        key="access_token_cookie",
-        value=access_token,
-        httponly=True,
-        secure=cookie_secure,
-        samesite=cookie_samesite,
-        path="/",
-        max_age=max_age,
-    )
-    logger.info(
-        f"API login successful for '{payload.username}'. JWT created and cookie set."
-    )
+    logger.info(f"API login successful for '{payload.username}'. JWT created.")
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        message="Successfully authenticated. Note: The token in the response body is deprecated. Please use the HTTP-only cookie provided.",
+        message="Successfully authenticated.",
     )
 
 
@@ -137,23 +118,17 @@ async def refresh_token(
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
-    response: FastAPIResponse,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
-    Logs the current user out by clearing the JWT authentication cookie.
+    Logs the current user out.
+    Since we are using Bearer tokens, the client is responsible for discarding the token.
+    This endpoint serves as an explicit logout action for auditing purposes.
     """
     username = current_user.username
-    logger.info(f"UserResponse '{username}' logging out. Clearing JWT cookie.")
+    logger.info(f"User '{username}' explicitly logged out.")
 
-    # Create the redirect response first, then operate on it for cookie deletion
-    redirect_url_with_message = (
-        f"/app/login?message=You%20have%20been%20successfully%20logged%20out."
+    return JSONResponse(
+        content={"status": "success", "message": "Successfully logged out."},
+        status_code=status.HTTP_200_OK,
     )
-    final_response = RedirectResponse(
-        url=redirect_url_with_message, status_code=status.HTTP_302_FOUND
-    )
-    # Clear the cookie on the response that will actually be sent to the client
-    final_response.delete_cookie(key="access_token_cookie", path="/")
-
-    return final_response

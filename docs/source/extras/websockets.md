@@ -9,7 +9,7 @@ The backend WebSocket implementation is built using FastAPI and is divided into 
 The WebSocket router is defined in `src/bedrock_server_manager/web/routers/websocket_router.py`. It is responsible for the following:
 
 -   **Endpoint**: Creates a WebSocket endpoint at `/ws`.
--   **Authentication**: Uses a dependency to authenticate the user before establishing a connection.
+-   **Authentication**: Uses a dependency to authenticate the user before establishing a connection. Clients must provide a valid JWT access token using the `token` query parameter (e.g., `/ws?token=eyJhb...`).
 -   **Message Handling**: Listens for incoming JSON messages from the client. These messages are expected to have an `action` (`subscribe` or `unsubscribe`) and a `topic`.
 -   **Connection Management**: Hands off the connection and subscription management to the `ConnectionManager`.
 
@@ -29,8 +29,8 @@ If a client is subscribed to both a specific topic (e.g., `event:server_start`) 
 
 ## Architecture
 
-1.  A client connects to the `/ws` endpoint.
-2.  The `websocket_router` authenticates the user.
+1.  A client connects to the `/ws` endpoint, providing the JWT access token as a query parameter (e.g., `ws://<host>:<port>/ws?token=<your_access_token>`).
+2.  The `websocket_router` authenticates the user using the provided token.
 3.  The `websocket_router` passes the connection to the `ConnectionManager`.
 4.  The client sends a `subscribe` message to a topic.
 5.  The `websocket_router` calls the `ConnectionManager` to subscribe the client to the topic.

@@ -1,7 +1,6 @@
 # bedrock_server_manager/web/__init__.py
 from .auth_utils import (
     authenticate_user,
-    cookie_scheme,
     create_access_token,
     get_admin_user,
     get_current_user,
