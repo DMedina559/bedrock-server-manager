@@ -93,28 +93,6 @@ async def api_login_for_access_token(
     )
 
 
-@router.get("/refresh-token", response_model=TokenResponse)
-async def refresh_token(
-    current_user: UserResponse = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Refreshes the JWT access token for an authenticated user.
-
-    This endpoint allows a client authenticated via a session cookie to request
-    a new JWT access token. This is useful if the client has lost its stored
-    token (e.g., cleared localStorage) but still has a valid session.
-    """
-    access_token = create_access_token(
-        data={"sub": current_user.username}, app_context=app_context
-    )
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        message="Token refreshed successfully.",
-    )
-
-
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
