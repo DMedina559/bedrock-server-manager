@@ -8,7 +8,7 @@ def test_get_server_running_status_api_route_success(
     """Test the get_server_running_status_api_route with a successful status."""
     response = authenticated_client.get("/api/server/test_server/status")
     assert response.status_code == 200
-    assert response.json()["data"]["running"] is False
+    assert response.json()["running"] is False
 
 
 @patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_running_status")
@@ -34,7 +34,7 @@ def test_get_server_config_status_api_route_success(
     real_bedrock_server.set_status_in_config("STOPPED")
     response = authenticated_client.get("/api/server/test_server/config_status")
     assert response.status_code == 200
-    assert response.json()["data"]["config_status"] == "STOPPED"
+    assert response.json()["config_status"] == "STOPPED"
 
 
 @patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_config_status")
@@ -60,7 +60,7 @@ def test_get_server_version_api_route_success(
     real_bedrock_server.set_version("1.2.3")
     response = authenticated_client.get("/api/server/test_server/version")
     assert response.status_code == 200
-    assert response.json()["data"]["version"] == "1.2.3"
+    assert response.json()["version"] == "1.2.3"
 
 
 @patch(
@@ -103,7 +103,7 @@ def test_server_process_info_api_route_success(
     """Test the server_process_info_api_route with a successful info retrieval."""
     response = authenticated_client.get("/api/server/test_server/process_info")
     assert response.status_code == 200
-    assert response.json()["data"]["process_info"] is None
+    assert response.json()["process_info"] is None
 
 
 @patch(

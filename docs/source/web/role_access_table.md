@@ -1,3 +1,5 @@
+# Role Access Table
+
 | Endpoint | Type | Admin | Moderator | User |
 |---|---|---|---|---|
 | `GET /` | HTML | Full Access | Full Access | Full Access |

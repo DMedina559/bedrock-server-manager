@@ -7,7 +7,6 @@ ci:
   autoupdate_branch: ''
   autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
   autoupdate_schedule: weekly
-  skip: [frontend-eslint]
   submodules: false
 
 repos:
@@ -39,24 +38,3 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-requests, types-PyYAML]
-
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
-    hooks:
-      - id: prettier
-        files: ^(frontend/legacy/|frontend/v2/)
-
-  - repo: local
-    hooks:
-      - id: legacy-frontend-eslint
-        name: legacy-frontend-eslint
-        entry: bash -c 'cd frontend/legacy && npm run lint'
-        language: system
-        files: ^frontend/legacy/
-        pass_filenames: false
-      - id: v2-frontend-eslint
-        name: v2-frontend-eslint
-        entry: bash -c 'cd frontend/v2 && npm run lint'
-        language: system
-        files: ^frontend/v2/
-        pass_filenames: false

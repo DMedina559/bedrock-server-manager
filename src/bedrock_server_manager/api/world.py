@@ -28,8 +28,6 @@ import os
 import threading
 from typing import Any, Dict, Optional
 
-from bedrock_server_manager.utils.general import get_timestamp
-
 from ..context import AppContext
 from ..error import (
     BSMError,
@@ -41,6 +39,7 @@ from ..error import (
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
+from ..utils import get_timestamp
 
 # Local application imports.
 from .utils import server_lifecycle_manager
@@ -145,7 +144,7 @@ def export_world(
             :class:`~.error.AppFileNotFoundError` if world directory is missing,
             :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
     """
-    if not _world_lock.acquire(blocking=False):
+    if not _world_lock.acquire(timeout=300):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
         )
@@ -265,7 +264,7 @@ def import_world(
             :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    if not _world_lock.acquire(blocking=False):
+    if not _world_lock.acquire(timeout=300):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
@@ -366,7 +365,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
             :class:`~.error.FileOperationError` from deletion, errors determining
             the world name, or errors from server stop/start.
     """
-    if not _world_lock.acquire(blocking=False):
+    if not _world_lock.acquire(timeout=300):
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."
         )

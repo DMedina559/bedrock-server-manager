@@ -21,7 +21,7 @@ plugin system.
 import logging
 import os
 import threading
-from typing import Dict
+from typing import Any, Dict
 
 from ..context import AppContext
 from ..error import (
@@ -97,7 +97,7 @@ def import_addon(  # noqa: C901
     """
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
-    if not _addon_lock.acquire(blocking=False):
+    if not _addon_lock.acquire(timeout=300):
         logger.warning(
             f"An addon operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
@@ -179,4 +179,299 @@ def import_addon(  # noqa: C901
 
     finally:
         # Ensure the lock is always released, even if errors occur.
+        _addon_lock.release()
+
+
+@plugin_method("list_world_addons")
+def list_world_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+    """Lists all addons for a server's active world.
+
+    Args:
+        server_name (str): The name of the server.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the addon lists.
+    """
+    server = app_context.get_server(server_name)
+    return {"status": "success", "addons": server.list_world_addons()}
+
+
+@plugin_method("enable_addon")
+@trigger_plugin_event(before="before_addon_enable", after="after_addon_enable")
+def enable_addon(
+    server_name: str,
+    pack_uuid: str,
+    pack_type: str,
+    app_context: AppContext,
+) -> Dict[str, str]:
+    """Enables a disabled addon for a server's active world.
+
+    Args:
+        server_name (str): The name of the server.
+        pack_uuid (str): The UUID of the pack to enable.
+        pack_type (str): The type of the pack.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, str]: Status of the operation.
+    """
+    if not _addon_lock.acquire(timeout=300):
+        return {
+            "status": "skipped",
+            "message": "An addon operation is already in progress.",
+        }
+
+    try:
+        server = app_context.get_server(server_name)
+        with server_lifecycle_manager(
+            server_name,
+            stop_before=True,
+            start_after=True,
+            restart_on_success_only=True,
+            app_context=app_context,
+        ):
+            server.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+        return {
+            "status": "success",
+            "message": f"Successfully enabled pack '{pack_uuid}'.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Error enabling addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error enabling addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    finally:
+        _addon_lock.release()
+
+
+@plugin_method("disable_addon")
+@trigger_plugin_event(before="before_addon_disable", after="after_addon_disable")
+def disable_addon(
+    server_name: str,
+    pack_uuid: str,
+    pack_type: str,
+    app_context: AppContext,
+) -> Dict[str, str]:
+    """Disables an active addon for a server's active world, preserving files.
+
+    Args:
+        server_name (str): The name of the server.
+        pack_uuid (str): The UUID of the pack to disable.
+        pack_type (str): The type of the pack.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, str]: Status of the operation.
+    """
+    if not _addon_lock.acquire(timeout=300):
+        return {
+            "status": "skipped",
+            "message": "An addon operation is already in progress.",
+        }
+
+    try:
+        server = app_context.get_server(server_name)
+        with server_lifecycle_manager(
+            server_name,
+            stop_before=True,
+            start_after=True,
+            restart_on_success_only=True,
+            app_context=app_context,
+        ):
+            server.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+        return {
+            "status": "success",
+            "message": f"Successfully disabled pack '{pack_uuid}'.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Error disabling addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error disabling addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    finally:
+        _addon_lock.release()
+
+
+@plugin_method("update_addon_subpack")
+@trigger_plugin_event(
+    before="before_addon_subpack_update", after="after_addon_subpack_update"
+)
+def update_addon_subpack(
+    server_name: str,
+    pack_uuid: str,
+    pack_type: str,
+    subpack_name: str,
+    app_context: AppContext,
+) -> Dict[str, str]:
+    """Updates the active subpack for an addon on a server's active world.
+
+    Args:
+        server_name (str): The name of the server.
+        pack_uuid (str): The UUID of the pack.
+        pack_type (str): The type of the pack.
+        subpack_name (str): The folder name of the target subpack.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, str]: Status of the operation.
+    """
+    if not _addon_lock.acquire(timeout=300):
+        return {
+            "status": "skipped",
+            "message": "An addon operation is already in progress.",
+        }
+
+    try:
+        server = app_context.get_server(server_name)
+        with server_lifecycle_manager(
+            server_name,
+            stop_before=True,
+            start_after=True,
+            restart_on_success_only=True,
+            app_context=app_context,
+        ):
+            server.update_addon_subpack(
+                pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
+            )
+        return {
+            "status": "success",
+            "message": f"Successfully updated subpack for pack '{pack_uuid}'.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Error updating subpack for addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error updating subpack for addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    finally:
+        _addon_lock.release()
+
+
+@plugin_method("uninstall_addon")
+@trigger_plugin_event(before="before_addon_uninstall", after="after_addon_uninstall")
+def uninstall_addon(
+    server_name: str,
+    pack_uuid: str,
+    pack_type: str,
+    app_context: AppContext,
+) -> Dict[str, str]:
+    """Uninstalls an addon for a server's active world, deleting its files.
+
+    Args:
+        server_name (str): The name of the server.
+        pack_uuid (str): The UUID of the pack to uninstall.
+        pack_type (str): The type of the pack.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, str]: Status of the operation.
+    """
+    if not _addon_lock.acquire(timeout=300):
+        return {
+            "status": "skipped",
+            "message": "An addon operation is already in progress.",
+        }
+
+    try:
+        server = app_context.get_server(server_name)
+        with server_lifecycle_manager(
+            server_name,
+            stop_before=True,
+            start_after=True,
+            restart_on_success_only=True,
+            app_context=app_context,
+        ):
+            server.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+        return {
+            "status": "success",
+            "message": f"Successfully uninstalled pack '{pack_uuid}'.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Error uninstalling addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error uninstalling addon '{pack_uuid}' on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    finally:
+        _addon_lock.release()
+
+
+@plugin_method("reorder_addons")
+@trigger_plugin_event(before="before_addon_reorder", after="after_addon_reorder")
+def reorder_addons(
+    server_name: str,
+    uuids: list[str],
+    pack_type: str,
+    app_context: AppContext,
+) -> Dict[str, str]:
+    """Reorders the active addons for a server's active world.
+
+    Args:
+        server_name (str): The name of the server.
+        uuids (list[str]): The exact list of active UUIDs in their new order.
+        pack_type (str): The type of the pack.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, str]: Status of the operation.
+    """
+    if not _addon_lock.acquire(timeout=300):
+        return {
+            "status": "skipped",
+            "message": "An addon operation is already in progress.",
+        }
+
+    try:
+        server = app_context.get_server(server_name)
+        with server_lifecycle_manager(
+            server_name,
+            stop_before=True,
+            start_after=True,
+            restart_on_success_only=True,
+            app_context=app_context,
+        ):
+            server.reorder_addons(uuids=uuids, pack_type=pack_type)
+        return {
+            "status": "success",
+            "message": f"Successfully reordered {pack_type} packs.",
+        }
+    except BSMError as e:
+        logger.error(
+            f"API: Error reordering addons on '{server_name}': {e}", exc_info=True
+        )
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error reordering addons on '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+    finally:
         _addon_lock.release()

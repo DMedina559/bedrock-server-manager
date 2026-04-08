@@ -113,5 +113,4 @@ class TestConcretePlugin:
         plugin = self.ConcretePlugin("my_plugin", mock_api, mock_logger)
 
         assert plugin.get_fastapi_routers() == []
-        assert plugin.get_template_paths() == []
         assert plugin.get_static_mounts() == []

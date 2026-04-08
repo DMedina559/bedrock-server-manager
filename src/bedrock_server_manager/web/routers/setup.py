@@ -3,7 +3,6 @@
 FastAPI router for the initial setup of the application.
 
 This module provides endpoints for:
-- Serving the initial setup page.
 - Handling the creation of the first user (System Admin).
 """
 
@@ -11,7 +10,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
@@ -21,16 +19,17 @@ from ..auth_utils import (
     get_password_hash,
 )
 from ..dependencies import get_app_context
+from ..schemas import SetupStatusResponse, UserLoginPayload
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/setup",
+    prefix="/api/setup",
     tags=["Setup"],
 )
 
 
-@router.get("/status", tags=["Setup"])
+@router.get("/status", response_model=SetupStatusResponse, tags=["Setup"])
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -39,25 +38,12 @@ async def get_setup_status(
     """
     with app_context.db.session_manager() as db:  # type: ignore
         user_exists = db.query(User).first() is not None
-        return {"needs_setup": not user_exists}
-
-
-class CreateFirstUserRequest(BaseModel):
-    """
-    Request payload for creating the first user (admin).
-
-    Attributes:
-        username (str): The desired username.
-        password (str): The desired password.
-    """
-
-    username: str
-    password: str
+        return SetupStatusResponse(needs_setup=not user_exists)
 
 
 @router.post("/create-first-user", include_in_schema=False)
 async def create_first_user(
-    data: CreateFirstUserRequest,
+    data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -86,34 +72,27 @@ async def create_first_user(
 
             logger.info(f"First user '{data.username}' created with admin role.")
 
-            # Log the user in by creating an access token and setting it as a cookie
+            # Log the user in by creating an access token and returning it
             access_token = create_access_token(
                 data={"sub": user.username}, app_context=app_context
             )
-            settings = app_context.settings
-            cookie_secure = settings.get("web.jwt_cookie_secure", False)
-            cookie_samesite = settings.get("web.jwt_cookie_samesite", "Lax")
 
             # Create the JSON response
             response = JSONResponse(
                 content={
                     "status": "success",
                     "message": "Admin account created and logged in successfully.",
-                    "redirect_url": "/legacy/settings?in_setup=true",
+                    "access_token": access_token,
+                    "token_type": "bearer",
                 },
                 status_code=status.HTTP_200_OK,
             )
-
-            # Set the cookie on the response
             response.set_cookie(
                 key="access_token_cookie",
                 value=access_token,
                 httponly=True,
-                secure=cookie_secure,
-                samesite=cookie_samesite,
-                path="/",
+                samesite="lax",
             )
-
             return response
 
         except IntegrityError:

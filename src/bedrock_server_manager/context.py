@@ -10,14 +10,10 @@ via lazy loading and property accessors.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
-
-    from fastapi.templating import Jinja2Templates
 
     from .config.settings import Settings
     from .core.bedrock_process_manager import BedrockProcessManager
@@ -71,7 +67,6 @@ class AppContext:
         self._connection_manager: Optional["ConnectionManager"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
-        self._templates: Optional["Jinja2Templates"] = None
         self.loop: Optional["AbstractEventLoop"] = None
         from .utils import get_utils
 
@@ -110,7 +105,6 @@ class AppContext:
         self.manager.reload()
         self.plugin_manager.reload()
         # self._servers.clear()
-        self._templates = None
 
     @property
     def settings(self) -> "Settings":
@@ -230,45 +224,6 @@ class AppContext:
 
             self._bedrock_process_manager = BedrockProcessManager(app_context=self)
         return self._bedrock_process_manager
-
-    @property
-    def templates(self) -> "Jinja2Templates":
-        """
-        Lazily loads and returns the Jinja2Templates instance.
-
-        This sets up the Jinja2 environment, including default filters, globals,
-        and template search paths (including those from plugins).
-
-        Returns:
-            Jinja2Templates: The configured Jinja2 templates object.
-        """
-        if self._templates is None:
-            from fastapi.templating import Jinja2Templates
-
-            from .config import SCRIPT_DIR, app_name_title, get_installed_version
-
-            app_path = os.path.join(SCRIPT_DIR, "web", "app.py")
-            APP_ROOT = os.path.dirname(os.path.abspath(app_path))
-            TEMPLATES_DIR = os.path.join(APP_ROOT, "templates")
-
-            all_template_dirs = [Path(TEMPLATES_DIR)]
-            if self.plugin_manager.plugin_template_paths:
-                unique_plugin_paths = {
-                    p
-                    for p in self.plugin_manager.plugin_template_paths
-                    if isinstance(p, Path)
-                }
-                all_template_dirs.extend(list(unique_plugin_paths))
-
-            self._templates = Jinja2Templates(directory=all_template_dirs)
-            self._templates.env.filters["basename"] = os.path.basename
-            self._templates.env.globals["app_name"] = app_name_title
-            self._templates.env.globals["app_version"] = get_installed_version()
-            self._templates.env.globals["splash_text"] = self.splash_txt
-            self._templates.env.globals["panorama_url"] = "/api/panorama"
-            self._templates.env.globals["settings"] = self.settings
-
-        return self._templates
 
     def get_server(self, server_name: str) -> "BedrockServer":
         """

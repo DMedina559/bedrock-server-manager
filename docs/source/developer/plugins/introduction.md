@@ -80,15 +80,10 @@ For more complex plugins that might include multiple Python modules, templates, 
 plugins/
 └── my_packaged_plugin/       # Plugin Name: my_packaged_plugin
     ├── __init__.py           # Main plugin file, contains MyPluginClass(PluginBase)
-    ├── internal_logic.py     # Optional: other Python modules for your plugin
-    ├── templates/              # Optional: For Jinja2 HTML templates
-    │   └── my_page.html
-    └── static/                 # Optional: For CSS, JS, images
-        └── css/
-            └── style.css
+    └── internal_logic.py     # Optional: other Python modules for your plugin
 ```
 
-This package structure allows for better organization and enables features like serving custom HTML templates and static files, as detailed later. Python's standard import mechanisms (e.g., `from . import internal_logic`) will work within your plugin package.
+This package structure allows for better organization. Python's standard import mechanisms (e.g., `from . import internal_logic`) will work within your plugin package.
 
 ---
 
@@ -151,7 +146,54 @@ class HomeAutomationStarterPlugin(PluginBase):
         self.api.start_server(server_name=TARGET_SERVER_NAME, mode="detached")
 ```
 
-## 5. Extending Functionality: Custom FastAPI Endpoints
+### Advanced Event Hooks (Interception)
+
+You can use `before_*` hooks to intercept actions and potentially prevent them from happening or run prerequisites.
+
+```python
+class BackupBeforeStartPlugin(PluginBase):
+    version = "1.0.0"
+
+    def before_start_server(self, server_name: str, **kwargs):
+        """Runs automatically before a server is started."""
+        self.logger.info(f"Intercepted start request for {server_name}. Running quick backup...")
+
+        # We can call another core API method synchronously
+        result = self.api.backup_world(server_name=server_name)
+
+        if result.get("status") == "success":
+            self.logger.info("Backup completed. Allowing server to start.")
+        else:
+            self.logger.error("Backup failed! The server will still attempt to start, but check logs.")
+```
+
+## 5. Plugin Settings and Storage
+
+Plugins often need to store configuration data persistently. Bedrock Server Manager provides methods to read and write to the global `bedrock-server-manager.db` file under a special `custom` section.
+
+*   **Saving Data:** `self.api.set_custom_global_setting(key="my_plugin_key", value="my_value")`
+*   **Loading Data:** `self.api.get_global_setting(key="custom.my_plugin_key")`
+
+```python
+class MyConfigurablePlugin(PluginBase):
+    version = "1.0.0"
+
+    def on_load(self):
+        # Load existing settings or set defaults
+        self.plugin_config = self.api.get_global_setting("custom.my_configurable_plugin")
+
+        if not self.plugin_config:
+            self.logger.info("No configuration found. Initializing defaults.")
+            default_config = {"enable_feature_x": True, "api_key": "YOUR_KEY_HERE"}
+
+            # Save the default configuration
+            self.api.set_custom_global_setting("my_configurable_plugin", default_config)
+            self.plugin_config = default_config
+
+        self.logger.info(f"Loaded config: {self.plugin_config}")
+```
+
+## 6. Extending Functionality: Custom FastAPI Endpoints
 
 Plugins can significantly extend Bedrock Server Manager by adding their own custom FastAPI web endpoints. This allows for deep integration and tailored functionality.
 
@@ -162,7 +204,7 @@ To enable this, your plugin class (derived from `PluginBase`) needs to override 
 
 The Plugin Manager will call these methods on your plugin instance after it's loaded. The collected commands and routers are then integrated into the main application.
 
-### 5.1. Adding Custom FastAPI Endpoints (Web APIs and Pages)
+### 6.1. Adding Custom FastAPI Endpoints (Web APIs and Pages)
 
 To add web endpoints, define your FastAPI `APIRouter` instances and return them in a list from `get_fastapi_routers()`. These routers will be included in the main FastAPI application.
 
@@ -172,7 +214,7 @@ To add web endpoints, define your FastAPI `APIRouter` instances and return them 
 # my_web_api_plugin.py
 from bedrock_server_manager import PluginBase
 from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
 
 # Attempt to import authentication dependency; provide a fallback for isolated testing/robustness
 # There are three access roles admin, moderator, and user.
@@ -208,16 +250,23 @@ async def submit_data_to_plugin(data: dict):
     # This example keeps the router definition self-contained for clarity.
     return {"status": "success", "received_data": data, "plugin_response": "Data processed by My Web API Plugin."}
 
-@plugin_web_router.get("/custom-html-page", response_class=HTMLResponse)
-async def get_plugin_custom_html():
-    """Serves a custom HTML page from the plugin."""
-    html_content = """
-    <html>
-        <head><title>My Plugin Page</title></head>
-        <body><h1>Hello from My Web Plugin's Custom HTML Page!</h1></body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+@plugin_web_router.get(
+    "/ui",
+    response_class=JSONResponse,
+    name="My Plugin UI",
+    tags=["plugin-ui-native"]  # <--- This tag enables the Native UI renderer
+)
+async def get_plugin_ui():
+    """Serves a custom JSON UI page from the plugin."""
+    return JSONResponse(content={
+        "type": "Container",
+        "children": [
+            {
+                "type": "Text",
+                "props": {"content": "Hello from My Web Plugin's Custom JSON UI Page!", "variant": "h1"}
+            }
+        ]
+    })
 
 class MyWebAPIPlugin(PluginBase):
     version = "1.2.0" # Mandatory
@@ -236,174 +285,32 @@ After enabling `my_web_api_plugin.py` and restarting the Bedrock Server Manager 
 
 *   `GET /my_web_plugin/info` (API endpoint)
 *   `POST /my_web_plugin/submit_data` (API endpoint, with a JSON body)
-*   `GET /my_web_plugin/custom-html-page` (HTML page)
+*   `GET /my_web_plugin/ui` (Native JSON UI Page - visible in the Web Sidebar under Plugins)
 
 These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api/openapi.json` or `/docs`).
 
-#### 5.1.1. Serving HTML Pages with Application Styling (Jinja2 Templates)
+#### 6.1.1. Native JSON UI
 
-While returning direct `HTMLResponse` content is possible, for a look and feel consistent with the main application, plugins can serve HTML pages rendered via Jinja2 templates that extend the application's `base.html`. This requires structuring your plugin as a package.
+Bedrock Server Manager allows plugins to define native UI pages using a simple JSON schema. This eliminates the need for plugin developers to write frontend code (React, HTML, CSS) while still providing a rich, interactive user interface that matches the application's look and feel.
 
-**1. Provide Template Files:**
+Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-ui-native`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
 
-*   Create a subdirectory in your plugin package to hold your HTML templates (e.g., `my_packaged_plugin/templates/`).
-*   Your HTML template file (e.g., `my_page.html`) should extend the main application's base template:
-
-    ```html+jinja
-    {# my_packaged_plugin/templates/my_page.html #}
-    {% extends "base.html" %}
-
-    {% block title %}{{ super() }} - My Plugin Page Title{% endblock %}
-
-    {% block content %}
-        <h1>Hello from My Plugin!</h1>
-        <p>This content is specific to the plugin and uses the main app layout.</p>
-        <p>Data from route: {{ my_plugin_data }}</p>
-    {% endblock %}
-    ```
-
-**2. Register Template Directory:**
-
-Implement the `get_template_paths()` method in your plugin class:
-
-```python
-# my_packaged_plugin/__init__.py
-from pathlib import Path
-from bedrock_server_manager import PluginBase
-# ... other imports for your router, etc.
-
-class MyPackagedPlugin(PluginBase):
-    version = "1.0.0"
-    # ... other plugin methods ...
-
-    def get_template_paths(self) -> list[Path]:
-        """Returns the path to this plugin's templates directory."""
-        plugin_root_dir = Path(__file__).parent
-        return [plugin_root_dir / "templates"]
-
-    def get_fastapi_routers(self):
-        # Return your router that uses these templates
-        return [my_plugin_web_router]
-```
-
-**3. Render Templates in Route Handlers:**
-
-In your plugin's FastAPI route handlers, import and use the main application's configured Jinja2 `templates` environment.
-
-```python
-# my_packaged_plugin/__init__.py or a submodule like web_routes.py
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import HTMLResponse # Keep for other types of responses if needed
-from fastapi.templating import Jinja2Templates
-
-from bedrock_server_manager.web import get_templates
-
-my_plugin_web_router = APIRouter(prefix="/my-package", tags=["My Packaged Plugin"])
-
-@my_plugin_web_router.get("/styled-page", response_class=HTMLResponse)
-async def get_styled_plugin_page(
-    request: Request,
-    templates: Jinja2Templates = Depends(get_templates),
-):
-    # "my_page.html" will be found by Jinja2 if the plugin's template path
-    # was correctly registered via get_template_paths().
-    return templates.TemplateResponse(
-        "my_page.html",
-        {"request": request, "my_plugin_data": "Some dynamic data!"},
-    )
-```
-
-The Plugin Manager and the main application will ensure that the path returned by `get_template_paths()` is added to the Jinja2 loader's search path.
-
-#### 5.1.2. Serving Plugin-Specific Static Files (CSS, JS, Images)
-
-If your plugin requires its own static assets (CSS, JavaScript, images) that are not part of the main application's static files, you can make them available.
-
-**1. Organize Static Files:**
-
-*   Create a subdirectory in your plugin package for these static files (e.g., `my_packaged_plugin/static_files/`).
-    ```
-    my_packaged_plugin/
-    └── static_files/
-        ├── css/
-        │   └── plugin_style.css
-        └── js/
-            └── plugin_script.js
-    ```
-
-**2. Register Static Directory Mounts:**
-
-Implement the `get_static_mounts()` method in your plugin class:
-
-```python
-# my_packaged_plugin/__init__.py
-from pathlib import Path
-from bedrock_server_manager import PluginBase
-# ...
-
-class MyPackagedPlugin(PluginBase):
-    version = "1.0.0"
-    # ...
-
-    def get_static_mounts(self) -> list[tuple[str, Path, str]]:
-        """Returns configurations for mounting this plugin's static file directories."""
-        plugin_root_dir = Path(__file__).parent
-        plugin_static_dir = plugin_root_dir / "static_files"
-
-        # mount_url_path: The URL path your static files will be served from.
-        #                 Must be unique (e.g., include plugin name).
-        # local_directory_path: The actual path to your static files.
-        # mount_name: A unique name for this static route in FastAPI.
-        mount_url_path = "/static/my_packaged_plugin"
-        mount_name = "my_packaged_plugin_static_files"
-
-        if plugin_static_dir.is_dir(): # Only add if the directory exists
-            return [(mount_url_path, plugin_static_dir, mount_name)]
-        return []
-```
-
-**3. Reference Static Files in Templates:**
-
-In your plugin's Jinja2 templates (or even directly in HTMLResponse content if carefully constructed), use FastAPI/Starlette's `request.url_for()` to generate correct URLs for your plugin's static files, using the `name` you provided in `get_static_mounts()`.
-
-```html+jinja
-{# my_packaged_plugin/templates/my_page.html #}
-{% extends "base.html" %}
-
-{% block head_styles %}
-    {{ super() }}
-    {# Link to this plugin's specific CSS file #}
-    <link rel="stylesheet" href="{{ request.url_for('my_packaged_plugin_static_files', path='css/plugin_style.css') }}">
-{% endblock %}
-
-{% block content %}
-    <h1>Plugin Page with Custom Styles!</h1>
-    <!-- ... -->
-{% endblock %}
-
-{% block body_scripts %}
-    {{ super() }}
-    {# Link to this plugin's specific JS file #}
-    <script src="{{ request.url_for('my_packaged_plugin_static_files', path='js/plugin_script.js') }}"></script>
-{% endblock %}
-```
-
-The Plugin Manager and main application will use the information from `get_static_mounts()` to call `app.mount()` appropriately for your plugin.
+For more information and available components, refer to the [Native JSON UI](./native_json_ui.md) documentation.
 
 ```{tip}
 **Tips for Plugin Web Endpoints:**
 
 *   **Unique Prefixes & Mount Names:** Essential for routers and static mounts to avoid conflicts.
 *   **Authentication:** Apply as needed to your plugin's routers or individual routes.
-*  **HTML Pages:** Tag your HTML routers with `plugin-ui` to have it added to the Web UI
+*  **Native JSON UI:** Tag your JSON UI routers with `plugin-ui-native` to have it added to the Web UI.
 ```
 
-## 6. Best Practices
+## 7. Best Practices
 
 ```{tip}
 *   **Always use `self.logger`:** Do not use `print()`. The provided logger is integrated with the application's logging system.
 *   **Handle exceptions:** Wrap API calls in `try...except` blocks to handle potential failures gracefully.
 *   **Check the `result` dictionary:** After an `after_*` event, inspect the `result['status']` to confirm the outcome.
-*   **Avoid blocking operations:** Long-running tasks in your event handlers can freeze the application. Offload them to separate threads if necessary.
+*   **Avoid blocking operations:** Long-running tasks in your event handlers or FastAPI endpoints can freeze the application. Use the [Task Manager](./task_manager.md) to offload them to background threads.
 *   **Use the API for operations:** Do not directly manipulate server files or directories. Use the provided `self.api` functions to ensure thread-safety and consistency.
 ```

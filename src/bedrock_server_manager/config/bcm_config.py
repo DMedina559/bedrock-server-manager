@@ -131,6 +131,7 @@ def save_config(data: Dict[str, Any]):
 def get_config_value(key: str, default: Any = None) -> Any:
     """
     Retrieves a single value from the configuration file.
+    Supports dot notation for nested keys (e.g., 'web.cors_origins').
 
     Args:
         key (str): The key of the value to retrieve.
@@ -140,7 +141,14 @@ def get_config_value(key: str, default: Any = None) -> Any:
         Any: The configuration value or the default.
     """
     config = load_config()
-    return config.get(key, default)
+    keys = key.split(".")
+    value = config
+    for k in keys:
+        if isinstance(value, dict) and k in value:
+            value = value[k]
+        else:
+            return default
+    return value
 
 
 def set_config_value(key: str, value: Any):

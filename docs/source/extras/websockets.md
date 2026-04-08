@@ -4,16 +4,16 @@ This document provides an overview of the WebSocket implementation in the Bedroc
 
 The backend WebSocket implementation is built using FastAPI and is divided into two main components: a WebSocket router and a connection manager.
 
-### WebSocket Router
+## WebSocket Router
 
 The WebSocket router is defined in `src/bedrock_server_manager/web/routers/websocket_router.py`. It is responsible for the following:
 
 -   **Endpoint**: Creates a WebSocket endpoint at `/ws`.
--   **Authentication**: Uses a dependency to authenticate the user before establishing a connection.
+-   **Authentication**: Uses a dependency to authenticate the user before establishing a connection. Clients must provide a valid JWT access token using the `token` query parameter (e.g., `/ws?token=eyJhb...`).
 -   **Message Handling**: Listens for incoming JSON messages from the client. These messages are expected to have an `action` (`subscribe` or `unsubscribe`) and a `topic`.
 -   **Connection Management**: Hands off the connection and subscription management to the `ConnectionManager`.
 
-### Connection Manager
+## Connection Manager
 
 The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/websocket_manager.py`. It is the core of the backend WebSocket implementation and is responsible for the following:
 
@@ -21,16 +21,16 @@ The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/we
 -   **Topic-Based Subscriptions**: Manages which clients are subscribed to which topics.
 -   **Message Broadcasting**: Provides methods for sending messages to a single client, all clients subscribed to a specific topic, or all clients for a specific user.
 
-### Wildcard Subscription
+## Wildcard Subscription
 
 Clients can subscribe to the wildcard topic `*`. A client subscribed to `*` will receive **all** broadcast messages sent to any specific topic. This is useful for monitoring tools or dashboards that need a global view of system activity.
 
 If a client is subscribed to both a specific topic (e.g., `event:server_start`) and the wildcard `*`, the system ensures the client only receives the message once.
 
-### Architecture
+## Architecture
 
-1.  A client connects to the `/ws` endpoint.
-2.  The `websocket_router` authenticates the user.
+1.  A client connects to the `/ws` endpoint, providing the JWT access token as a query parameter (e.g., `ws://<host>:<port>/ws?token=<your_access_token>`).
+2.  The `websocket_router` authenticates the user using the provided token.
 3.  The `websocket_router` passes the connection to the `ConnectionManager`.
 4.  The client sends a `subscribe` message to a topic.
 5.  The `websocket_router` calls the `ConnectionManager` to subscribe the client to the topic.
@@ -97,9 +97,9 @@ The message structure for task updates is as follows:
     "type": "task_update",
     "topic": "task:{task_id}",
     "data": {
-        "status": "in_progress" | "success" | "error",
-        "message": "Task is running." | "Task completed successfully." | "error message",
-        "result": null | object,
+        "status": "in_progress",
+        "message": "Task is running.",
+        "result": null,
         "username": "username"
     }
 }

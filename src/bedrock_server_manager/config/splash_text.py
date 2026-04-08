@@ -12,27 +12,36 @@ SPLASH_TEXTS_UI = [
     "Based on Ore UI!",
     "Web UI!",
     "CLI",
-    "All CSS!",
+    "CSS Themes!",
     "Command Line Power, Web UI Ease!",
     "CLI or GUI!",
     "CLI Power, Backup, Automate!",
     "GUI Power, Backup, Automate!",
     "Full Control: CLI & Web UI!",
     "Web & CLI Synergy!",
+    "React + Vite Powered!",
+    "Modern Web UI!",
+    "New UI, Who Dis?",
+    "NPM Installable UI!",
+    "Remote UI Capabilities!",
+    "Plugin Pages!",
+    "?hidden=true",
 ]
 
 # --- Core Features  ---
 SPLASH_TEXTS_FEATURES = [
     "Check the Logs!",
     "Worlds, Addons, Backups - Oh My!",
-    "Schedule Tasks Like a Pro!",
     "Never Lose a World Again!",
     "Remember to bakcup!",
     "Auto Updates!",
     "Automated Awesomeness!",
     "Install, Configure, Automate!",
     "Update. Backup. Conquer.",
-    "From World Installs to Task Scheduler",
+    "From World Installs to Web UI Control!",
+    "Extend with Plugins!",
+    "Customize with Themes!",
+    "Native JSON UI for Plugins!",
 ]
 
 # --- General Management & Control ---

@@ -16,7 +16,6 @@ FastAPI dependencies.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 
 from ...api import server as server_api
 from ...api import server_install_config
@@ -29,20 +28,11 @@ from ...error import (
 )
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, User
+from ..schemas import ActionResponse, CommandPayload, UserResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# --- Pydantic Models ---
-class CommandPayload(BaseModel):
-    """Request model for sending a command to a server."""
-
-    command: str = Field(
-        ..., min_length=1, description="The command to send to the server."
-    )
 
 
 # --- API Route: Start Server ---
@@ -55,7 +45,7 @@ class CommandPayload(BaseModel):
 )
 async def start_server_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -89,7 +79,7 @@ async def start_server_route(
 )
 async def stop_server_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -123,7 +113,7 @@ async def stop_server_route(
 )
 async def restart_server_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -159,7 +149,7 @@ async def restart_server_route(
 async def send_command_route(
     payload: CommandPayload,
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -244,7 +234,7 @@ async def send_command_route(
 )
 async def update_server_route(
     server_name: str,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -278,7 +268,7 @@ async def update_server_route(
 )
 async def delete_server_route(
     server_name: str,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """

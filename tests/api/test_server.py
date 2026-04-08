@@ -59,8 +59,8 @@ class TestServerSettings:
         assert result["status"] == "success"
 
         # Check some of the default values
-        assert result["data"]["server_info"]["installed_version"] == "UNKNOWN"
-        assert result["data"]["settings"]["autoupdate"] is False
+        assert result["server_info"]["installed_version"] == "UNKNOWN"
+        assert result["settings"]["autoupdate"] is False
 
 
 class TestServerLifecycle:

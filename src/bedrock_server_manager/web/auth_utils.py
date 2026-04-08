@@ -22,6 +22,7 @@ from typing import Optional
 
 import bcrypt
 from fastapi import (
+    Depends,
     HTTPException,
     Request,
     Security,
@@ -36,7 +37,7 @@ from starlette.authentication import AuthCredentials, AuthenticationBackend, Sim
 from ..config import Settings
 from ..context import AppContext
 from ..db.models import User as UserModel
-from .schemas import User
+from .schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -102,18 +103,39 @@ def create_access_token(
 
 
 # --- Token Verification and User Retrieval ---
+
+
+def _get_and_update_user_from_db(db_session, username: str) -> Optional[UserResponse]:
+    """Helper function to fetch user, update last_seen, and return UserResponse."""
+    user = db_session.query(UserModel).filter(UserModel.username == username).first()
+    if not user or not user.is_active:
+        return None
+
+    user.last_seen = datetime.datetime.now(timezone.utc)
+    db_session.commit()
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        identity_type="jwt",
+        role=user.role,
+        is_active=user.is_active,
+        theme=user.theme,
+    )
+
+
 async def get_current_user_optional(
     request: Request,
-) -> Optional[User]:
+    token_bearer: Optional[str] = Depends(oauth2_scheme),
+    token_cookie: Optional[str] = Depends(cookie_scheme),
+) -> Optional[UserResponse]:
     """
     FastAPI dependency to retrieve the current user if authenticated.
 
     This dependency attempts to decode a JWT token (using :func:`jose.jwt.decode`)
-    obtained from either the Authorization header (Bearer token) or an HTTP
-    cookie ("access_token_cookie").
+    obtained from the Authorization header (Bearer token).
 
-    If a valid token is found and successfully decoded, it returns a dictionary
-    containing the username (from the "sub" claim) and an identity type.
+    If a valid token is found and successfully decoded, it returns a UserResponse.
     Otherwise, it returns ``None``.
 
     This is typically used for routes that can be accessed by both authenticated
@@ -124,16 +146,24 @@ async def get_current_user_optional(
         request (:class:`fastapi.Request`): The incoming request object.
 
     Returns:
-        Optional[User]: A dictionary ``{"username": str, "identity_type": "jwt"}``
-        if authentication is successful, otherwise ``None``.
+        Optional[UserResponse]: The user object if authentication is successful,
+        otherwise ``None``.
     """
-    token = request.cookies.get("access_token_cookie")
-    if not token:
+    if hasattr(token_bearer, "dependency"):
         auth_header = request.headers.get("Authorization")
         if auth_header:
             parts = auth_header.split()
             if len(parts) == 2 and parts[0].lower() == "bearer":
-                token = parts[1]
+                token_bearer = parts[1]
+            else:
+                token_bearer = None
+        else:
+            token_bearer = None
+
+    if hasattr(token_cookie, "dependency"):
+        token_cookie = request.cookies.get("access_token_cookie")
+
+    token = token_bearer or token_cookie
 
     if not token:
         return None
@@ -147,37 +177,16 @@ async def get_current_user_optional(
         if username is None:
             return None
 
-        def get_user_from_db(db_session) -> User | None:  # type: ignore
-            user = (
-                db_session.query(UserModel)
-                .filter(UserModel.username == username)
-                .first()
-            )
-            if not user or not user.is_active:
-                return None
-
-            user.last_seen = datetime.datetime.now(timezone.utc)
-            db_session.commit()
-
-            return User(
-                id=user.id,
-                username=user.username,
-                identity_type="jwt",
-                role=user.role,
-                is_active=user.is_active,
-                theme=user.theme,
-            )
-
         with app_context.db.session_manager() as db:  # type: ignore
-            return get_user_from_db(db)
+            return _get_and_update_user_from_db(db, username)
 
     except JWTError:
         return None
 
 
 async def get_current_user(
-    user: Optional[User] = Security(get_current_user_optional),
-) -> User:
+    user: Optional[UserResponse] = Security(get_current_user_optional),
+) -> UserResponse:
     """
     FastAPI dependency that requires an authenticated user.
 
@@ -211,13 +220,13 @@ async def get_current_user(
 
 async def get_current_user_for_websocket(
     websocket: WebSocket,
-) -> User:
+) -> UserResponse:
     """
     FastAPI dependency for authenticating WebSocket connections.
 
     This dependency extracts a JWT token from the 'token' query parameter
-    of a WebSocket connection URL. It decodes the token and retrieves the
-    corresponding user from the database.
+    of a WebSocket connection URL. It decodes the token and retrieves
+    the corresponding user from the database.
 
     If the token is missing, invalid, or the user doesn't exist, it raises
     a WebSocketException to close the connection gracefully.
@@ -226,12 +235,15 @@ async def get_current_user_for_websocket(
         websocket (WebSocket): The WebSocket connection object.
 
     Returns:
-        User: The authenticated user object.
+        UserResponse: The authenticated user object.
 
     Raises:
         WebSocketException: With code 1008 if authentication fails.
     """
-    token = websocket.query_params.get("token")
+    token = websocket.cookies.get("access_token_cookie") or websocket.query_params.get(
+        "token"
+    )
+
     if not token:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
@@ -248,29 +260,8 @@ async def get_current_user_for_websocket(
                 code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token payload"
             )
 
-        def get_user_from_db(db_session) -> User | None:  # type: ignore
-            user = (
-                db_session.query(UserModel)
-                .filter(UserModel.username == username)
-                .first()
-            )
-            if not user or not user.is_active:
-                return None
-
-            user.last_seen = datetime.datetime.now(timezone.utc)
-            db_session.commit()
-
-            return User(
-                id=user.id,
-                username=user.username,
-                identity_type="jwt",
-                role=user.role,
-                is_active=user.is_active,
-                theme=user.theme,
-            )
-
         with app_context.db.session_manager() as db:  # type: ignore
-            user = get_user_from_db(db)
+            user = _get_and_update_user_from_db(db, username)
             if user is None:
                 raise WebSocketException(
                     code=status.WS_1008_POLICY_VIOLATION,
@@ -355,7 +346,7 @@ def authenticate_user(
         return str(user.username)
 
 
-async def get_admin_user(current_user: User = Security(get_current_user)):
+async def get_admin_user(current_user: UserResponse = Security(get_current_user)):
     """
     FastAPI dependency that requires the current user to be an admin.
     """
@@ -367,7 +358,7 @@ async def get_admin_user(current_user: User = Security(get_current_user)):
     return current_user
 
 
-async def get_moderator_user(current_user: User = Security(get_current_user)):
+async def get_moderator_user(current_user: UserResponse = Security(get_current_user)):
     """
     FastAPI dependency that requires the current user to be a moderator or an admin.
     """

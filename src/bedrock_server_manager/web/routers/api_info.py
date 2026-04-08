@@ -10,15 +10,13 @@ This module defines API endpoints that provide read-only access to:
 - Global actions like scanning for players or pruning download caches.
 
 Endpoints typically require authentication and often use path parameters to specify
-a server. Responses are generally structured using the :class:`.GeneralApiResponse` model.
+a server. Responses are generally structured using the :class:`.BaseApiResponse` model.
 """
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 
 from ...api import application as app_api
 from ...api import info as info_api
@@ -30,81 +28,37 @@ from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import BaseApiResponse, User
+from ..schemas import (
+    AddPlayersPayload,
+    AddPlayersResponse,
+    AppInfoResponse,
+    BaseApiResponse,
+    PlayerListResponse,
+    PruneDownloadsPayload,
+    PruneDownloadsResponse,
+    ServerConfigStatusResponse,
+    ServerProcessInfoResponse,
+    ServerRunningStatusResponse,
+    ServersListResponse,
+    ServerVersionResponse,
+    ThemeListResponse,
+    UserResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# --- Pydantic Models ---
-class ServerSchema(BaseModel):
-    """
-    Schema representing server information in lists.
-
-    Attributes:
-        name (str): The server's name.
-        status (str): The server's status (e.g., "Running", "Stopped").
-        version (str): The installed version of the server.
-        player_count (int): The number of players currently online.
-    """
-
-    name: str
-    status: str
-    version: str
-    player_count: int
-
-
-class GeneralApiResponse(BaseApiResponse):
-    """A general-purpose API response model."""
-
-    # status: str -> Inherited
-    # message: Optional[str] = None -> Inherited
-    data: Optional[Dict[str, Any]] = None  # Often for single item details
-    servers: Optional[List[ServerSchema]] = None  # For lists of server data
-    info: Optional[Dict[str, Any]] = None  # For app/system info
-    players: Optional[List[Dict[str, Any]]] = None  # For player lists
-    files_deleted: Optional[int] = None  # For prune operations
-    files_kept: Optional[int] = None  # For prune operations
-    themes: Optional[List[str]] = None  # For theme lists
-
-
-class PruneDownloadsPayload(BaseModel):
-    """Request model for pruning the download cache."""
-
-    directory: str = Field(
-        ...,
-        min_length=1,
-        description="The subdirectory within the main download cache to prune (e.g., 'stable' or 'preview').",
-    )
-    keep: Optional[int] = Field(
-        default=None,
-        ge=0,
-        description="Number of recent archives to keep. Uses global setting if None.",
-    )
-
-
-class AddPlayersPayload(BaseModel):
-    """Request model for manually adding players to the database.
-
-    Each string in the 'players' list should be in the format "gamertag:xuid".
-    """
-
-    players: List[str] = Field(
-        ...,
-        description='List of player strings, e.g., ["PlayerOne:123xuid", "PlayerTwo:456xuid"]',
-    )
-
-
 # --- Server Info Endpoints ---
 @router.get(
     "/api/server/{server_name}/status",
-    response_model=GeneralApiResponse,
+    response_model=ServerRunningStatusResponse,
     tags=["Server Info API"],
 )
 async def get_server_running_status_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -119,9 +73,9 @@ async def get_server_running_status_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return GeneralApiResponse(
+            return ServerRunningStatusResponse(
                 status="success",
-                data={"running": result.get("is_running")},
+                running=bool(result.get("is_running")),
                 message=result.get("message"),
             )
         else:
@@ -150,12 +104,12 @@ async def get_server_running_status_api_route(
 
 @router.get(
     "/api/server/{server_name}/config_status",
-    response_model=GeneralApiResponse,
+    response_model=ServerConfigStatusResponse,
     tags=["Server Info API"],
 )
 async def get_server_config_status_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -170,9 +124,9 @@ async def get_server_config_status_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return GeneralApiResponse(
+            return ServerConfigStatusResponse(
                 status="success",
-                data={"config_status": result.get("config_status")},
+                config_status=str(result.get("config_status")),
                 message=result.get("message"),
             )
         else:
@@ -203,12 +157,12 @@ async def get_server_config_status_api_route(
 
 @router.get(
     "/api/server/{server_name}/version",
-    response_model=GeneralApiResponse,
+    response_model=ServerVersionResponse,
     tags=["Server Info API"],
 )
 async def get_server_version_api_route(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -223,9 +177,9 @@ async def get_server_version_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return GeneralApiResponse(
+            return ServerVersionResponse(
                 status="success",
-                data={"version": result.get("installed_version")},
+                version=str(result.get("installed_version")),
                 message=result.get("message"),
             )
         else:
@@ -259,12 +213,12 @@ async def get_server_version_api_route(
 
 @router.get(
     "/api/server/{server_name}/validate",
-    response_model=GeneralApiResponse,
+    response_model=BaseApiResponse,
     tags=["Server Info API"],
 )
 async def validate_server_api_route(
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -279,7 +233,7 @@ async def validate_server_api_route(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
-            return GeneralApiResponse(status="success", message=result.get("message"))
+            return BaseApiResponse(status="success", message=result.get("message"))
         else:
             # This case handles when the underlying API returns an error status
             # without raising an exception itself.
@@ -306,12 +260,12 @@ async def validate_server_api_route(
 
 @router.get(
     "/api/server/{server_name}/process_info",
-    response_model=GeneralApiResponse,
+    response_model=ServerProcessInfoResponse,
     tags=["Server Info API"],
 )
 async def server_process_info_api_route(
     server_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -325,9 +279,9 @@ async def server_process_info_api_route(
         )
 
         if result.get("status") == "success":
-            return GeneralApiResponse(
+            return ServerProcessInfoResponse(
                 status="success",
-                data={"process_info": result.get("process_info")},
+                process_info=result.get("process_info"),
                 message=result.get("message"),
             )
         else:
@@ -356,10 +310,10 @@ async def server_process_info_api_route(
 
 # --- Global Action Endpoints ---
 @router.post(
-    "/api/players/scan", response_model=GeneralApiResponse, tags=["Global Players API"]
+    "/api/players/scan", response_model=AddPlayersResponse, tags=["Global Players API"]
 )
 async def scan_players_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -370,10 +324,10 @@ async def scan_players_api_route(
     try:
         result = player_api.scan_and_update_player_db_api(app_context=app_context)
         if result.get("status") == "success":
-            return GeneralApiResponse(
+            return AddPlayersResponse(
                 status="success",
                 message=result.get("message"),
-                data=result.get("details"),
+                details=result.get("details"),
             )
         else:
             raise HTTPException(
@@ -394,10 +348,10 @@ async def scan_players_api_route(
 
 
 @router.get(
-    "/api/players/get", response_model=GeneralApiResponse, tags=["Global Players API"]
+    "/api/players/get", response_model=PlayerListResponse, tags=["Global Players API"]
 )
 async def get_all_players_api_route(
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -413,7 +367,7 @@ async def get_all_players_api_route(
                 f"API Get All Players: Successfully retrieved {len(result_dict.get('players', []))} players. "
                 f"Message: {result_dict.get('message', 'N/A')}"
             )
-            return GeneralApiResponse(
+            return PlayerListResponse(
                 status="success",
                 players=result_dict.get("players"),
                 message=result_dict.get("message"),
@@ -451,12 +405,12 @@ async def get_all_players_api_route(
 
 @router.post(
     "/api/downloads/prune",
-    response_model=GeneralApiResponse,
+    response_model=PruneDownloadsResponse,
     tags=["Global Actions API"],
 )
 async def prune_downloads_api_route(
     payload: PruneDownloadsPayload,
-    current_user: User = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -502,7 +456,7 @@ async def prune_downloads_api_route(
         if result.get("status") == "success":
             files_deleted = result.get("files_deleted")
             files_kept = result.get("files_kept")
-            return GeneralApiResponse(
+            return PruneDownloadsResponse(
                 status="success",
                 message=result.get(
                     "message", "Pruning operation completed successfully."
@@ -535,9 +489,11 @@ async def prune_downloads_api_route(
         )
 
 
-@router.get("/api/servers", response_model=GeneralApiResponse, tags=["Global Info API"])
+@router.get(
+    "/api/servers", response_model=ServersListResponse, tags=["Global Info API"]
+)
 async def get_servers_list_api_route(
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -548,7 +504,7 @@ async def get_servers_list_api_route(
     try:
         result = app_api.get_all_servers_data(app_context=app_context)
         if result.get("status") == "success":
-            return GeneralApiResponse(status="success", servers=result.get("servers"))
+            return ServersListResponse(status="success", servers=result.get("servers"))
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -562,7 +518,7 @@ async def get_servers_list_api_route(
         )
 
 
-@router.get("/api/info", response_model=GeneralApiResponse, tags=["Global Info API"])
+@router.get("/api/info", response_model=AppInfoResponse, tags=["Global Info API"])
 async def get_system_info_api_route(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -573,7 +529,11 @@ async def get_system_info_api_route(
     try:
         result = utils_api.get_system_and_app_info(app_context=app_context)
         if result.get("status") == "success":
-            return GeneralApiResponse(status="success", info=result.get("data"))
+            # the dictionary is already flattened, pass the entire result minus the status
+            return AppInfoResponse(
+                status="success",
+                info={k: v for k, v in result.items() if k != "status"},
+            )
         else:
 
             raise HTTPException(
@@ -589,7 +549,7 @@ async def get_system_info_api_route(
 
 
 @router.get(
-    "/api/info/themes", response_model=GeneralApiResponse, tags=["Global Info API"]
+    "/api/info/themes", response_model=ThemeListResponse, tags=["Global Info API"]
 )
 async def get_themes_api_route(
     app_context: AppContext = Depends(get_app_context),
@@ -624,7 +584,7 @@ async def get_themes_api_route(
             sorted_themes.remove("default")
             sorted_themes.insert(0, "default")
 
-        return GeneralApiResponse(status="success", themes=sorted_themes)
+        return ThemeListResponse(status="success", themes=sorted_themes)
     except Exception as e:
         logger.error(f"API Get Themes: Unexpected error: {e}", exc_info=True)
         raise HTTPException(
@@ -634,11 +594,11 @@ async def get_themes_api_route(
 
 
 @router.post(
-    "/api/players/add", response_model=GeneralApiResponse, tags=["Global Players API"]
+    "/api/players/add", response_model=AddPlayersResponse, tags=["Global Players API"]
 )
 async def add_players_api_route(
     payload: AddPlayersPayload,
-    current_user: User = Depends(get_moderator_user),
+    current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -655,10 +615,10 @@ async def add_players_api_route(
         )
 
         if result.get("status") == "success":
-            return GeneralApiResponse(
+            return AddPlayersResponse(
                 status="success",
                 message=result.get("message"),
-                data={"count": result.get("count")},
+                count=result.get("count"),
             )
         else:
 

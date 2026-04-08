@@ -12,23 +12,80 @@ not found.
 import logging
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import bsm_frontend
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
+from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..auth_utils import get_current_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import User
 
-WEB_APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(WEB_APP_ROOT))
-STATIC_DIR = os.path.join(os.path.dirname(WEB_APP_ROOT), "static")
+STATIC_DIR = bsm_frontend.get_static_dir()
 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get(
+    "/api/server/{server_name}/addon/icon",
+    tags=["Server Info API"],
+)
+async def get_server_addon_icon_route(
+    server_name: str = Depends(validate_server_exists),
+    pack_type: str = Query(...),
+    uuid: str = Query(...),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Serves the pack_icon.png image file for a specified addon, or a default icon if not found.
+    """
+    logger.debug(f"API: Get addon icon for '{server_name}' requested.")
+
+    try:
+        result = addon_api.list_world_addons(server_name, app_context)
+
+        # Determine the key to search in based on pack_type
+        pack_key = f"{pack_type}_packs"
+        addons_data = result.get("addons", {})
+        packs = addons_data.get(pack_key, [])
+
+        icon_path = None
+        for pack in packs:
+            if pack.get("uuid") == uuid and pack.get("icon"):
+                icon_path = pack.get("icon")
+                break
+
+        if icon_path and os.path.exists(icon_path):
+            return FileResponse(icon_path, media_type="image/png")
+
+        logger.info(
+            f"Addon icon not found for uuid '{uuid}'. Serving default world icon."
+        )
+        raise AppFileNotFoundError("Addon Icon not found", "Addon Icon")
+
+    except (AppFileNotFoundError, HTTPException):
+        # Fallback to the default world icon
+        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
+        if os.path.isfile(default_icon_path):
+            return FileResponse(
+                default_icon_path, media_type="image/vnd.microsoft.icon"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Default icon not found.",
+            )
+    except Exception as e:
+        logger.error(
+            f"API Get Server Addon Icon '{server_name}': Error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}",
+        )
 
 
 # --- Route: Serve Custom Panorama ---
@@ -86,7 +143,6 @@ async def serve_custom_panorama_api(
 )
 async def serve_world_icon_api(
     server_name: str = Depends(validate_server_exists),
-    current_user: User = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
@@ -95,9 +151,7 @@ async def serve_world_icon_api(
     If the server-specific icon doesn't exist or an error occurs (e.g., invalid
     server name), it falls back to serving a default icon (favicon.ico).
     """
-    logger.debug(
-        f"Request to serve world icon for server '{server_name}' by user '{current_user.username}'."
-    )
+    logger.debug(f"Request to serve world icon for server '{server_name}'.")
     try:
         server = app_context.get_server(server_name)
         icon_path = server.world_icon_filesystem_path

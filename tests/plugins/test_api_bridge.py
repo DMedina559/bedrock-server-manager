@@ -110,8 +110,3 @@ class TestPluginAPI:
         mock_plugin_manager.trigger_custom_plugin_event.assert_called_once_with(
             "my_event", "test_plugin", 1, 2, key="value"
         )
-
-    def test_get_plugin_html_pages(self, plugin_api, mock_plugin_manager):
-        """Tests that get_plugin_html_pages calls the PluginManager's method."""
-        plugin_api.get_plugin_html_pages()
-        mock_plugin_manager.get_html_render_routes.assert_called_once()

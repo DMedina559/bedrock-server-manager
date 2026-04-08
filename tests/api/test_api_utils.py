@@ -52,8 +52,8 @@ class TestStatusAndUpdate:
         ):
             result = get_system_and_app_info(app_context=app_context)
             assert result["status"] == "success"
-            assert result["data"]["os_type"] == "Linux"
-            assert result["data"]["app_version"] == "1.0.0"
+            assert result["os_type"] == "Linux"
+            assert result["app_version"] == "1.0.0"
 
 
 class TestServerLifecycleManager:

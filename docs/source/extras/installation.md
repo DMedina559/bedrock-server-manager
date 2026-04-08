@@ -83,7 +83,7 @@ These instructions are for advanced users who want to run the absolute latest co
         ./build.sh
         ```
     *   **Windows:**
-        ```cmd
+        ```bat
         build.bat
         ```
 

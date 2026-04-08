@@ -6,6 +6,35 @@ Bedrock Server Manager allows plugins to define native UI pages using a simple J
 
 Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-ui-native`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
 
+### Global Server Context
+
+The Web UI features a global server selector in the sidebar. When a user navigates to your plugin's Native UI page, the frontend automatically appends the currently selected server name to the URL as a query parameter (e.g., `?server=survival_server`).
+
+Your FastAPI route should accept this `server` query parameter to dynamically fetch and display data for the chosen server. If the user changes the server in the dropdown, your UI route will be re-fetched with the new `server` parameter.
+
+**Example:**
+```python
+@self.router.get("/my_plugin/ui", response_class=JSONResponse, tags=["plugin-ui-native"])
+async def get_ui(server: str = "default_server"): # Accept the server query param
+    # Fetch data specific to the selected server using the Core API
+    status = self.api.get_server_running_status(server)
+    is_running = status.get("running", False)
+
+    return JSONResponse(content={
+        "type": "Card",
+        "props": {"title": f"Status for {server}"},
+        "children": [
+            {
+                "type": "Badge",
+                "props": {
+                    "content": "Online" if is_running else "Offline",
+                    "variant": "success" if is_running else "danger"
+                }
+            }
+        ]
+    })
+```
+
 ### Basic Example
 
 Here is a minimal example of a plugin that adds a native UI page:
@@ -158,8 +187,7 @@ You can subscribe to WebSocket topics to update components like Charts, StatCard
     ```json
     {
         "websocketSubscriptions": ["my_plugin:stats", "server_log:{server}"],
-        "type": "Container",
-        ...
+        "type": "Container"
     }
     ```
     *   `{server}` is automatically replaced with the currently selected server name.
@@ -183,3 +211,163 @@ You can subscribe to WebSocket topics to update components like Charts, StatCard
 ## Icons
 
 The system uses [Lucide React](https://lucide.dev/icons) icons. You can use any valid Lucide icon name in props like `icon`. Common icons include: `Activity`, `AlertCircle`, `CheckCircle2`, `Info`, `Terminal`, `Save`, `Trash2`, `Plus`, `X`, `Upload`, `Download`, `Play`, `Square`, `RotateCcw`.
+
+## Comprehensive Examples
+
+### Form and API Submission
+
+This example creates a simple form inside a Card and a Save button that submits the form data to an API endpoint. The `includeFormState: true` prop ensures all input values on the page are sent in the POST request body.
+
+```json
+{
+  "type": "Container",
+  "children": [
+    {
+      "type": "Card",
+      "props": {
+        "title": "Plugin Settings"
+      },
+      "children": [
+        {
+          "type": "Input",
+          "props": {
+            "name": "api_key",
+            "label": "External API Key",
+            "type": "password",
+            "placeholder": "Enter your key..."
+          }
+        },
+        {
+          "type": "Switch",
+          "props": {
+            "name": "enable_feature_x",
+            "label": "Enable Feature X",
+            "defaultChecked": true
+          }
+        },
+        {
+          "type": "Button",
+          "props": {
+            "label": "Save Configuration",
+            "icon": "Save",
+            "variant": "primary",
+            "onClickAction": {
+              "type": "api_call",
+              "endpoint": "/api/plugins/my_plugin/save_settings",
+              "method": "POST",
+              "includeFormState": true,
+              "refresh": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Table View
+
+Displaying data in a table with customizable columns and rows.
+
+```json
+{
+  "type": "Card",
+  "props": {
+    "title": "Recent Actions"
+  },
+  "children": [
+    {
+      "type": "Table",
+      "props": {
+        "columns": [
+          { "header": "User", "accessor": "user" },
+          { "header": "Action", "accessor": "action" },
+          { "header": "Timestamp", "accessor": "timestamp" },
+          { "header": "Status", "accessor": "status" }
+        ],
+        "data": [
+          { "user": "admin", "action": "Server Start", "timestamp": "2023-10-27 10:00", "status": "Success" },
+          { "user": "mod_1", "action": "Config Update", "timestamp": "2023-10-27 11:30", "status": "Success" },
+          { "user": "admin", "action": "Backup Run", "timestamp": "2023-10-27 12:00", "status": "Failed" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+### Real-Time Monitoring Dashboard
+
+A combination of layout components (`Row`, `Column`) and real-time components (`StatCard`, `LogViewer`) bound to WebSocket topics. Notice the root `websocketSubscriptions` array.
+
+```json
+{
+  "websocketSubscriptions": [
+    "server_process_stats:{server}",
+    "server_log:{server}"
+  ],
+  "type": "Container",
+  "children": [
+    {
+      "type": "Text",
+      "props": {
+        "content": "Live Server Telemetry",
+        "variant": "h2"
+      }
+    },
+    {
+      "type": "Row",
+      "children": [
+        {
+          "type": "Column",
+          "children": [
+            {
+              "type": "StatCard",
+              "props": {
+                "label": "CPU Usage",
+                "value": "0%",
+                "icon": "Cpu",
+                "socketTopic": "server_process_stats:{server}",
+                "dataKey": "cpu_percent_str",
+                "trend": "neutral"
+              }
+            }
+          ]
+        },
+        {
+          "type": "Column",
+          "children": [
+            {
+              "type": "StatCard",
+              "props": {
+                "label": "Memory",
+                "value": "0 MB",
+                "icon": "MemoryStick",
+                "socketTopic": "server_process_stats:{server}",
+                "dataKey": "memory_str"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Card",
+      "props": {
+        "title": "Live Console"
+      },
+      "children": [
+        {
+          "type": "LogViewer",
+          "props": {
+            "socketTopic": "server_log:{server}",
+            "lines": ["--- Waiting for logs ---"],
+            "height": 300
+          }
+        }
+      ]
+    }
+  ]
+}
+```

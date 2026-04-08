@@ -27,6 +27,7 @@ use by web routes or CLI commands and integrate with the plugin system for exten
 import logging
 import os
 import re
+import threading
 from typing import Any, Dict, List, Optional
 
 from ..context import AppContext
@@ -48,6 +49,8 @@ from . import player as player_api
 from .utils import server_lifecycle_manager, validate_server_name_format
 
 logger = logging.getLogger(__name__)
+
+_install_update_lock = threading.Lock()
 
 
 # --- Allowlist ---
@@ -330,7 +333,7 @@ def get_server_permissions_api(  # noqa: C901s
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "data": {"permissions": List[Dict[str, Any]]}}``
+        On success: ``{"status": "success", "permissions": List[Dict[str, Any]]}``
         where each dict in `permissions` contains "xuid", "name", and "permission_level".
         On error: ``{"status": "error", "message": "<error_message>"}``
 
@@ -384,7 +387,7 @@ def get_server_permissions_api(  # noqa: C901s
         # Re-sort the combined list by name
         permissions.sort(key=lambda x: x.get("name", "").lower())
 
-        return {"status": "success", "data": {"permissions": permissions}}
+        return {"status": "success", "permissions": permissions}
     except BSMError as e:
         logger.error(
             f"API: Failed to get permissions for '{server_name}': {e}", exc_info=True
@@ -687,7 +690,6 @@ def install_new_server(
             "status": "success",
             "version": server.get_version(),
             "message": f"Server '{server_name}' installed successfully to version {server.get_version()}.",
-            "next_step_url": f"/legacy/server/{server_name}/configure_properties?new_install=true",
         }
 
     except BSMError as e:
@@ -753,10 +755,19 @@ def update_server(
         FileOperationError: For other file I/O issues.
         BSMError: For other application-specific errors.
     """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
+    if not _install_update_lock.acquire(timeout=300):
+        logger.warning(
+            f"An install/update operation for '{server_name}' is already in progress. Skipping."
+        )
+        return {
+            "status": "skipped",
+            "message": "An install/update operation is already in progress.",
+        }
 
     try:
+        if not server_name:
+            raise InvalidServerNameError("Server name cannot be empty.")
+
         server = app_context.get_server(server_name)
         target_version = server.get_target_version()
 
@@ -801,3 +812,5 @@ def update_server(
             f"API: Unexpected error updating '{server_name}': {e}", exc_info=True
         )
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+    finally:
+        _install_update_lock.release()

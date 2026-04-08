@@ -10,7 +10,7 @@ from .auth_utils import (
     oauth2_scheme,
     verify_password,
 )
-from .dependencies import get_app_context, get_templates, validate_server_exists
+from .dependencies import get_app_context, validate_server_exists
 
 __all__ = [
     # Auth utils
@@ -25,6 +25,5 @@ __all__ = [
     "cookie_scheme",
     # Dependencies
     "validate_server_exists",
-    "get_templates",
     "get_app_context",
 ]
