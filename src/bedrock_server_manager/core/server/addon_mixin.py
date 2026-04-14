@@ -409,7 +409,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         exc_info=True,
                     )
 
-    def _install_pack_from_extracted_data(
+    def _install_pack_from_extracted_data(  # noqa: C901
         self, extracted_pack_dir: str, original_mcpack_path: str
     ) -> None:
         """Installs a behavior or resource pack from its extracted files into the active world.
@@ -510,12 +510,14 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
                 target_world_json_file = world_behavior_packs_json
                 pack_type_friendly_name = "behavior"
+                pack_folder_name = "behavior_packs"
             elif pack_type == "resources":  # Resource pack
                 target_install_path = os.path.join(
                     resource_packs_target_base, safe_addon_folder_name
                 )
                 target_world_json_file = world_resource_packs_json
                 pack_type_friendly_name = "resource"
+                pack_folder_name = "resource_packs"
             else:
                 raise UserInputError(
                     f"Cannot install unknown pack type: '{pack_type}' for '{original_mcpack_filename}'"
@@ -525,7 +527,20 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Installing {pack_type_friendly_name} pack '{addon_name}' v{version_str} into: {target_install_path}"
             )
 
-            # Perform a clean install by removing the old version if it exists.
+            # Find and remove any existing versions of this pack (by UUID) to perform a clean update/downgrade.
+            existing_physical_packs = self._scan_physical_packs(
+                active_world_dir, pack_folder_name
+            )
+            for existing_pack in existing_physical_packs:
+                if existing_pack["uuid"] == uuid:
+                    existing_path = existing_pack["path"]
+                    if existing_path != target_install_path:
+                        self.logger.info(
+                            f"Removing existing pack installation for UUID '{uuid}' at: {existing_path}"
+                        )
+                        shutil.rmtree(existing_path)
+
+            # Perform a clean install by removing the target directory if it already exists.
             if os.path.isdir(target_install_path):
                 self.logger.debug(
                     f"Removing existing target directory: {target_install_path}"
@@ -789,11 +804,18 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     and len(existing_version_list) == 3
                 ):
                     existing_version_tuple = tuple(existing_version_list)
-                    # Update if the new version is newer or the same.
-                    if input_version_tuple >= existing_version_tuple:
+                    # Update if the new version is different.
+                    if input_version_tuple != existing_version_tuple:
                         if input_version_tuple > existing_version_tuple:
                             self.logger.info(
                                 f"Updating pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
+                            )
+                        elif input_version_tuple < existing_version_tuple:
+                            self.logger.warning(
+                                f"Downgrading pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
+                            )
+                            self.logger.warning(
+                                f"Downgrading packs can cause compatibility issues or data loss."
                             )
                         packs_list[i] = {
                             "pack_id": pack_uuid,
