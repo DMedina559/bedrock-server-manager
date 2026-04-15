@@ -16,7 +16,7 @@ To use a custom world (e.g., a downloaded map or a backup from another server):
 2.  Select the server from the dropdown menu in the web dashboard.
 3.  Navigate to the **Content** page and then click on the **Worlds** tab.
 4.  Locate the file in the file list.
-5.  Click the **Installt** button next to the file.
+5.  Click the **Install** button next to the file.
 6.  **Warning**: This action will replace the currently active world on the server. Ensure you have backed up your current world if you wish to save it.
 
 ### Exporting the Current World
@@ -42,21 +42,31 @@ To start fresh with a newly generated world:
 
 ## Addons (Resource & Behavior Packs)
 
-BSM simplifies the process of installing addons to enhance your server.
+BSM simplifies the process of installing, managing, and configuring addons to enhance your server.
 
 ### Installing Addons
 
 1.  **Upload the Addon**:
     *   Place your addon file (`.mcpack`/`.mcaddon`) into the `content/addons` directory.
-      * *   (Enable the content uploader plugin to easily upload content files).
+    *   (Enable the content uploader plugin to easily upload content files).
 2.  Select the server from the dropdown menu in the web dashboard.
 3.  Navigate to the **Content** page and then click on the **Addons** tab.
 4.  Locate the file in the **Available Addons** list.
 5.  Click the **Install** button.
+
+### Managing Installed Addons
+
+Once addons are installed, you can manage their status and load order:
+
+1.  Navigate to the **Content** page and click the **Manage Installed Addons** button.
+2.  A window will appear with tabs for **Behavior Packs** and **Resource Packs**.
+3.  **Enabling/Disabling**: You can toggle addons on or off. Disabled addons remain installed on the server but are temporarily deactivated in the world configuration.
+4.  **Reordering**: You can drag and drop the packs to change their load order (packs higher in the list load first and take priority over those below them). Click **Save Order** to apply the changes.
+5.  **Removing**: You can click the delete/remove icon next to an installed pack to permanently remove it from the server.
 
 ### How It Works
 
 When you install an addon, BSM performs the following actions:
 1.  **Extraction**: Unzips the package.
 2.  **Placement**: Moves resource packs to `resource_packs/` and behavior packs to `behavior_packs/`.
-3.  **Activation**: Automatically updates `world_behavior_packs.json`, and `world_resource_packs.json` to register the new content with the server.
+3.  **Activation**: Automatically updates `world_behavior_packs.json` and `world_resource_packs.json` to register the new content with the server.
