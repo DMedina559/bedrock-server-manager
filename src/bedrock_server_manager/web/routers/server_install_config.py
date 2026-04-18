@@ -26,6 +26,7 @@ from ...api import server_install_config
 from ...api import system as system_api
 from ...api import utils as utils_api
 from ...context import AppContext
+from ...core.system import find_files
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
@@ -70,7 +71,8 @@ async def get_custom_zips(
         if not os.path.isdir(custom_dir):
             return CustomZipsResponse(status="success", custom_zips=[])
 
-        custom_zips = [f for f in os.listdir(custom_dir) if f.endswith(".zip")]
+        custom_zips_paths = find_files(custom_dir, "*.zip")
+        custom_zips = [os.path.basename(str(p)) for p in custom_zips_paths]
         return CustomZipsResponse(status="success", custom_zips=custom_zips)
     except Exception as e:
         logger.error(f"Failed to get custom zips: {e}", exc_info=True)

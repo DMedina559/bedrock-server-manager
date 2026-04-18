@@ -7,12 +7,12 @@ related to downloading, listing, and managing game content like .mcworld and
 .mcaddon files.
 """
 
-import glob
 import logging
 import os
 from typing import List
 
 from ...error import AppFileNotFoundError, FileOperationError
+from ..system import find_files
 
 logger = logging.getLogger(__name__)
 
@@ -63,16 +63,15 @@ class ContentMixin:
             return []
 
         found_files: List[str] = []
-        for ext in extensions:
-            pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
-            try:
-                for filepath in glob.glob(os.path.join(target_dir, pattern)):
-                    if os.path.isfile(filepath):
-                        found_files.append(os.path.abspath(filepath))
-            except OSError as e:
-                raise FileOperationError(
-                    f"Error scanning content directory {target_dir}: {e}"
-                ) from e
+        try:
+            for ext in extensions:
+                pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
+                files = find_files(target_dir, pattern=pattern)
+                found_files.extend(os.path.abspath(str(f)) for f in files)
+        except OSError as e:
+            raise FileOperationError(
+                f"Error scanning content directory {target_dir}: {e}"
+            ) from e
         return sorted(list(set(found_files)))
 
     def list_available_worlds(self) -> List[str]:
