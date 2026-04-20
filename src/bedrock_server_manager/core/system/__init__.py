@@ -4,9 +4,16 @@ Provides access to common system-level utilities, including process management,
 resource monitoring, filesystem operations, and task scheduling abstractions.
 """
 
-from .base import ResourceMonitor, check_internet_connectivity, delete_path_robustly
+from .base import (
+    ResourceMonitor,
+    check_internet_connectivity,
+    delete_path_robustly,
+    find_files,
+)
 from .base import is_server_running as is_bedrock_server_running
-from .base import set_server_folder_permissions
+from .base import (
+    set_server_folder_permissions,
+)
 from .process import (
     GuardedProcess,
     get_bedrock_launcher_pid_file_path,
@@ -28,6 +35,7 @@ __all__ = [
     "is_bedrock_server_running",
     "delete_path_robustly",
     "ResourceMonitor",
+    "find_files",
     # From process.py
     "GuardedProcess",
     "get_pid_file_path",

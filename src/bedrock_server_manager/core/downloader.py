@@ -52,6 +52,7 @@ from ..error import (
 
 # Local application imports.
 from .system import base as system_base
+from .system import find_files
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
@@ -97,14 +98,18 @@ def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
     )
 
     try:
-        dir_path = Path(download_dir)
         # Find all files matching the bedrock server download pattern.
-        # Using rglob to catch files in subdirectories if any were accidentally created,
-        # though typically downloads are flat in their respective 'stable'/'preview' dirs.
-        download_files = list(dir_path.glob("bedrock-server-*.zip"))
-
         # Sort files by modification time (newest first) to identify which to keep.
-        download_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        download_files_paths = find_files(
+            download_dir, "bedrock-server-*.zip", sort_by="mtime", reverse=True
+        )
+        download_files = []
+        for p in download_files_paths:
+            if isinstance(p, str):
+                download_files.append(Path(p))
+            elif isinstance(p, dict) and "path" in p:
+                download_files.append(Path(str(p["path"])))
+
         logger.debug(
             f"Found {len(download_files)} potential download files matching pattern in '{download_dir}'."
         )

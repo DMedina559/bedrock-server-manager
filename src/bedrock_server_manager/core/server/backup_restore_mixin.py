@@ -20,7 +20,6 @@ world, and :class:`~.core.server.world_mixin.ServerWorldMixin` methods for world
 export and import operations.
 """
 
-import glob
 import os
 import re
 import shutil
@@ -37,6 +36,7 @@ from ...error import (
 from ...utils import get_timestamp
 
 # Local application imports.
+from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -125,11 +125,10 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             by modification time in descending order (newest first). Returns an
             empty list if no files match the pattern.
         """
-        files = glob.glob(pattern)
-        if not files:
-            return []
-        # Sort by modification time, descending (newest first).
-        return sorted(files, key=os.path.getmtime, reverse=True)
+        directory = os.path.dirname(pattern)
+        file_pattern = os.path.basename(pattern)
+        res = find_files(directory, file_pattern, sort_by="mtime", reverse=True)
+        return [str(p) for p in res]
 
     def list_backups(  # noqa: C901
         self, backup_type: str
