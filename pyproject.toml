@@ -29,8 +29,8 @@ dependencies = [
     'pywin32 >=310,<312; sys_platform == "win32"',
     "click >=8.2.0,<8.4",
     "questionary >=2.1.0,<2.2",
-    "fastapi >=0.115.0,<0.136",
-    "uvicorn[standard] >=0.35.0,<0.43",
+    "fastapi >=0.115.0,<0.137",
+    "uvicorn[standard] >=0.35.0,<0.47",
     "python-jose[cryptography] >=3.5.0,<3.6",
     "bsm-frontend>=1.1.1,<1.2",
     "python_multipart >=0.0.20,<0.1",
@@ -38,7 +38,7 @@ dependencies = [
     "sqlalchemy >=2.0.0,<2.1",
     "platformdirs >=4.3.0,<4.10",
     "alembic >=1.16,<1.19",
-    "mcstatus >=12.0,<13.1",
+    "mcstatus >=12.0,<13.2",
 ]
 
 keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "fastapi"]
@@ -64,7 +64,7 @@ dev = [
 ]
 
 cli = [
-    "bsm-api-client[cli] >= 1.2.1,< 1.5.0"
+    "bsm-api-client[cli] >= 1.2.1,< 1.6.0"
 ]
 
 docs = [

@@ -39,7 +39,8 @@ import stat
 import threading
 import time
 from datetime import timedelta
-from typing import Any, Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third-party imports. psutil is optional but required for process monitoring.
 try:
@@ -67,6 +68,53 @@ from ...error import (
 from . import process as core_process
 
 logger = logging.getLogger(__name__)
+
+
+def find_files(
+    directory: str,
+    pattern: str = "*",
+    sort_by: str = "name",
+    reverse: bool = False,
+    include_metadata: bool = False,
+) -> Union[List[str], List[Dict[str, Any]]]:
+    """Finds files in a directory matching a pattern and returns paths or metadata.
+
+    Args:
+        directory (str): The root directory to search in.
+        pattern (str): Glob pattern for matching files. Defaults to "*".
+        sort_by (str): Sorting criterion: "name", "mtime", "size". Defaults to "name".
+        reverse (bool): Whether to sort in reverse order. Defaults to False.
+        include_metadata (bool): If True, returns a list of dictionaries with metadata
+            (path, name, size, mtime). If False, returns a list of string paths.
+
+    Returns:
+        Union[List[str], List[Dict[str, Any]]]: A list of paths or metadata dictionaries.
+    """
+    dir_path = Path(directory)
+    if not dir_path.is_dir():
+        return []
+
+    files = [p for p in dir_path.glob(pattern) if p.is_file()]
+
+    if sort_by == "mtime":
+        files.sort(key=lambda p: p.stat().st_mtime, reverse=reverse)
+    elif sort_by == "size":
+        files.sort(key=lambda p: p.stat().st_size, reverse=reverse)
+    else:  # default to "name"
+        files.sort(key=lambda p: p.name, reverse=reverse)
+
+    if include_metadata:
+        return [
+            {
+                "path": str(p),
+                "name": p.name,
+                "size": p.stat().st_size,
+                "mtime": p.stat().st_mtime,
+            }
+            for p in files
+        ]
+    else:
+        return [str(p) for p in files]
 
 
 def check_internet_connectivity(

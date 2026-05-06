@@ -908,11 +908,14 @@ def test_list_content_files_main_content_dir_not_exist(real_manager, mocker):
 
 
 def test_list_content_files_os_error_on_glob(real_manager, mocker):
-    """Test _list_content_files handles OSError from glob.glob."""
+    """Test _list_content_files handles OSError from find_files."""
     worlds_dir = os.path.join(real_manager._content_dir, "worlds")
     os.makedirs(worlds_dir, exist_ok=True)
 
-    mocker.patch("glob.glob", side_effect=OSError("Glob permission denied"))
+    mocker.patch(
+        "bedrock_server_manager.core.manager_mixins.content_mixin.find_files",
+        side_effect=OSError("Glob permission denied"),
+    )
 
     with pytest.raises(FileOperationError, match="Error scanning content directory"):
         real_manager._list_content_files("worlds", [".mcworld"])
