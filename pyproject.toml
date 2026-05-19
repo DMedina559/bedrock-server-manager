@@ -72,7 +72,7 @@ docs = [
     "sphinx-click >=6.0.0,<6.3",
     "myst-parser >=4.0.0,<5.2",
     "sphinx-rtd-theme >=3.0.0,<3.2",
-    "sphinx-github-changelog >=1.7.0,<1.8",
+    "sphinx-github-changelog >=1.7.0,<2.1",
 ]
 
 mysql = [
