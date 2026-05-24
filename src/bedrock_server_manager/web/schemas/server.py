@@ -53,12 +53,14 @@ class ServerSchemaResponse(BaseModel):
         status (str): The server's status (e.g., "Running", "Stopped").
         version (str): The installed version of the server.
         player_count (int): The number of players currently online.
+        players (list): The list of players currently online.
     """
 
     name: str
     status: str
     version: str
     player_count: int
+    players: List[Dict[str, str]] = Field(default_factory=list)
 
 
 # --- Specific Response Models replacing GeneralApiResponse ---

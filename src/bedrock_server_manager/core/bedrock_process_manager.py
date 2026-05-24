@@ -108,14 +108,21 @@ class BedrockProcessManager:
         3. Scans logs for player activity if enabled.
         """
         try:
-            monitoring_interval = self.settings.get(
-                "SERVER_MONITORING_INTERVAL_SEC", 10
+            monitoring_interval = int(
+                self.settings.get("SERVER_MONITORING_INTERVAL_SEC", 10)
             )
-            player_log_monitoring_enabled = self.settings.get(
-                "server_monitoring.player_log_monitoring_enabled", True
+            player_log_monitoring_enabled = (
+                str(
+                    self.settings.get(
+                        "server_monitoring.player_log_monitoring_enabled", True
+                    )
+                ).lower()
+                == "true"
             )
-            player_log_monitoring_interval_sec = self.settings.get(
-                "server_monitoring.player_log_monitoring_interval_sec", 60
+            player_log_monitoring_interval_sec = int(
+                self.settings.get(
+                    "server_monitoring.player_log_monitoring_interval_sec", 60
+                )
             )
         except Exception:
             monitoring_interval = 10
@@ -155,11 +162,16 @@ class BedrockProcessManager:
                         status = bedrock_server.status()
 
                         previous_player_count = getattr(server, "player_count", 0)
+                        previous_players = getattr(server, "players", []).copy()
                         server.player_count = status.players.online
+                        server.players = server.update_online_players()
 
-                        if server.player_count != previous_player_count:
+                        if (
+                            server.player_count != previous_player_count
+                            or server.players != previous_players
+                        ):
                             self.logger.info(
-                                f"Player count changed for server '{server.server_name}': {previous_player_count} -> {server.player_count}"
+                                f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
                             )
                             # Broadcast the update
                             if (
@@ -172,6 +184,7 @@ class BedrockProcessManager:
                                     "data": {
                                         "server_name": server.server_name,
                                         "player_count": server.player_count,
+                                        "players": server.players,
                                     },
                                 }
                                 asyncio.run_coroutine_threadsafe(

@@ -155,6 +155,7 @@ class DiscoveryMixin:
                         "status": status,
                         "version": version,
                         "player_count": server.player_count,
+                        "players": getattr(server, "players", []),
                     }
                 )
 
