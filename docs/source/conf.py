@@ -62,7 +62,7 @@ def extract_releases_with_prerelease(owner_repo, token, graphql_url=None):
         repository(owner: "{owner}", name: "{repo}") {{
             releases(orderBy: {{field: CREATED_AT, direction: DESC}}, first:100) {{
                 nodes {{
-                    name, descriptionHTML, url, tagName, publishedAt, isDraft, isPrerelease
+                    name, description, descriptionHTML, url, tagName, publishedAt, isDraft, isPrerelease
                 }}
             }}
         }}
