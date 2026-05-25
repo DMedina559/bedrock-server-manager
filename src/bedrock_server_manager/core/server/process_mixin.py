@@ -24,7 +24,7 @@ import os
 import platform
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
@@ -186,6 +186,11 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             self.intentionally_stopped = False
             self.start_time = time.time()
 
+            if hasattr(self, "players"):
+                self.players: List[Dict[str, str]] = []
+            if hasattr(self, "_log_file_cursor"):
+                self._log_file_cursor = 0
+
             if hasattr(self, "set_status_in_config"):
                 self.set_status_in_config("RUNNING")
             self.logger.info(
@@ -278,6 +283,10 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         if hasattr(self, "player_count"):
             self.player_count = 0
+            self.players = []
+
+        if hasattr(self, "_log_file_cursor"):
+            self._log_file_cursor = 0
 
         self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 

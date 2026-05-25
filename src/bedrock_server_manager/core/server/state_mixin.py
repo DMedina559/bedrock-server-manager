@@ -27,7 +27,7 @@ Key functionalities:
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ...db.models import Server
 from ...error import (
@@ -92,6 +92,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """
         super().__init__(*args, **kwargs)
         self.player_count = 0
+        self.players: List[Dict[str, str]] = []
+        self._log_file_cursor = 0
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.

@@ -263,6 +263,7 @@ class BedrockServer(
             "has_world_icon": has_icon_val,
             "os_type": self.os_type,
             "player_count": self.player_count,
+            "players": getattr(self, "players", []),
         }
 
         return summary
