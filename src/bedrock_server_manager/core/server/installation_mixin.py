@@ -351,8 +351,23 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             self.logger.info(
                 f"Successfully deleted all data for server: '{self.server_name}'."
             )
-            # Set status to UNKNOWN or similar to indicate it's gone, if status methods are available
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("DELETED")  # Or "UNKNOWN"
-            if hasattr(self, "set_version"):
-                self.set_version("UNKNOWN")  # type: ignore
+
+            # Remove server and settings from the database
+            if self.settings.db is not None:
+                from ...db.models import Server, Setting
+
+                with self.settings.db.session_manager() as db_session:
+                    db_server = (
+                        db_session.query(Server)
+                        .filter(Server.server_name == self.server_name)
+                        .first()
+                    )
+                    if db_server:
+                        db_session.query(Setting).filter(
+                            Setting.server_id == db_server.id
+                        ).delete()
+                        db_session.delete(db_server)
+                        db_session.commit()
+                        self.logger.info(
+                            f"Successfully deleted server '{self.server_name}' from the database."
+                        )
