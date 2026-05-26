@@ -80,14 +80,15 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 message = (
                     "Unmanaged database detected."
                     if not is_managed
-                    else "Database is not up to date."
+                    else "Database is missing revision hash."
                 )
                 click.secho(
-                    f"{message} Stamping with the latest migration version...",
+                    f"{message} Stamping with the baseline migration version...",
                     fg="yellow",
                 )
-                command.stamp(alembic_cfg, "head")
-                click.secho("Database stamped successfully.", fg="green")
+                # Stamp with the initial schema baseline so subsequent migrations can run
+                command.stamp(alembic_cfg, "f2a7eb2d7c36")
+                click.secho("Database stamped with baseline.", fg="green")
 
             # Upgrade Database
             click.echo("Running database upgrade...")
