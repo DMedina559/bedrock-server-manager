@@ -117,7 +117,15 @@ class PluginManager:
         assert self.app_context is not None
         with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
-            return {plugin.plugin_name: plugin.config for plugin in plugins}
+            return {
+                plugin.plugin_name: {
+                    "enabled": plugin.enabled,
+                    "version": plugin.version,
+                    "author": plugin.author,
+                    "description": plugin.description,
+                }
+                for plugin in plugins
+            }
 
     def _save_config(self):
         """Saves the current in-memory plugin configuration to the database."""
@@ -128,9 +136,18 @@ class PluginManager:
                     db.query(Plugin).filter(Plugin.plugin_name == plugin_name).first()
                 )
                 if plugin:
-                    plugin.config = config
+                    plugin.enabled = config.get("enabled", False)
+                    plugin.version = config.get("version")
+                    plugin.author = config.get("author")
+                    plugin.description = config.get("description")
                 else:
-                    plugin = Plugin(plugin_name=plugin_name, config=config)
+                    plugin = Plugin(
+                        plugin_name=plugin_name,
+                        enabled=config.get("enabled", False),
+                        version=config.get("version"),
+                        author=config.get("author"),
+                        description=config.get("description"),
+                    )
                     db.add(plugin)
             db.commit()
             logger.info("Plugin configuration successfully saved to database.")
