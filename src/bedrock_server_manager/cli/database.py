@@ -78,8 +78,6 @@ def upgrade(ctx: click.Context):  # noqa: C901
 
             if not is_managed or not current_rev:
                 # Detect if the database has old columns or not.
-                from sqlalchemy import text
-
                 has_config_column = False
                 if inspector.has_table("plugins"):
                     columns = [c["name"] for c in inspector.get_columns("plugins")]

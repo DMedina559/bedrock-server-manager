@@ -167,7 +167,7 @@ def test_upgrade_integration_unmanaged_db(runner, app_context):
     # 1. Check the output and exit code
     assert result.exit_code == 0, result.output
     assert "Unmanaged database detected" in result.output
-    assert "Database stamped successfully" in result.output
+    assert "Database stamped with latest" in result.output
     assert "Running database upgrade" in result.output
     assert "Database upgrade complete" in result.output
 
@@ -230,7 +230,7 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
     # 4. Assert the results
     assert result.exit_code == 0, result.output
     assert "Unmanaged database detected" in result.output
-    assert "Database stamped successfully" in result.output
+    assert "Database stamped with latest" in result.output
     assert "Running database upgrade" in result.output
     assert "Database upgrade complete" in result.output
 
