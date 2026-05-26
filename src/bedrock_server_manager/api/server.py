@@ -629,6 +629,10 @@ def delete_server_data(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
         )
         server.delete_all_data()
+
+        # Remove the server from the AppContext cache
+        app_context.remove_server(server_name)
+
         logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
         return {
             "status": "success",
