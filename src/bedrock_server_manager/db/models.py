@@ -51,15 +51,12 @@ class Setting(Base):  # type: ignore
     """
     Represents a configuration setting.
 
-    Settings can be global or specific to a server.
+    Settings are global configurations for the application.
 
     Attributes:
         id (int): The primary key.
         key (str): The configuration key (dot-notation).
         value (JSON): The configuration value, stored as JSON.
-        server_id (int, optional): Foreign key to the :class:`Server` table.
-            If NULL, this is a global setting.
-        server (Server): Relationship to the associated server (if any).
     """
 
     __tablename__ = "settings"
@@ -67,9 +64,6 @@ class Setting(Base):  # type: ignore
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(255), index=True)
     value = Column(JSON)
-    server_id = Column(Integer, ForeignKey("servers.id"))
-
-    server = relationship("Server", back_populates="settings")
 
 
 class Server(Base):  # type: ignore
@@ -79,17 +73,55 @@ class Server(Base):  # type: ignore
     Attributes:
         id (int): The primary key.
         server_name (str): The unique name of the server.
-        config (JSON): Stores server-specific configuration (legacy or supplementary).
-        settings (List[Setting]): Relationship to the server's specific settings.
+        installed_version (str): The currently installed version of the server.
+        status (str): The current status of the server.
+        autoupdate (bool): Whether the server should automatically update.
+        autostart (bool): Whether the server should automatically start.
+        target_version (str): The target version to install/update to.
+        custom (JSON): Stores custom server-specific configuration.
     """
 
     __tablename__ = "servers"
 
     id = Column(Integer, primary_key=True, index=True)
     server_name = Column(String(255), unique=True, index=True)
-    config = Column(JSON)
+    installed_version = Column(String(50), default="UNKNOWN")
+    status = Column(String(50), default="UNKNOWN")
+    autoupdate = Column(Boolean, default=False)
+    autostart = Column(Boolean, default=False)
+    target_version = Column(String(50), default="UNKNOWN")
+    custom = Column(JSON, default={})
 
-    settings = relationship("Setting", back_populates="server")
+    bans = relationship("ServerBan", back_populates="server")
+
+
+class ServerBan(Base):  # type: ignore
+    """
+    Represents a player banned from a specific Bedrock server.
+
+    Attributes:
+        id (int): The primary key.
+        server_id (int): Foreign key to the :class:`Server` table.
+        player_name (str): The name of the banned player.
+        xuid (str): The Xbox User ID of the banned player.
+        reason (str): The reason for the ban.
+        banned_at (datetime): The date and time when the ban was issued.
+        server (Server): Relationship to the associated server.
+    """
+
+    __tablename__ = "server_bans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id"), index=True)
+    player_name = Column(String(80), index=True)
+    xuid = Column(String(20), index=True)
+    reason = Column(String(255), nullable=True)
+    banned_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    server = relationship("Server", back_populates="bans")
 
 
 class Plugin(Base):  # type: ignore
@@ -99,14 +131,20 @@ class Plugin(Base):  # type: ignore
     Attributes:
         id (int): The primary key.
         plugin_name (str): The unique name of the plugin.
-        config (JSON): The plugin's configuration data.
+        enabled (bool): Whether the plugin is enabled.
+        version (str): The plugin's version.
+        author (str): The plugin's author.
+        description (str): The plugin's description.
     """
 
     __tablename__ = "plugins"
 
     id = Column(Integer, primary_key=True, index=True)
     plugin_name = Column(String(255), unique=True, index=True)
-    config = Column(JSON)
+    enabled = Column(Boolean, default=False)
+    version = Column(String(50), nullable=True)
+    author = Column(String(255), nullable=True)
+    description = Column(String(255), nullable=True)
 
 
 class RegistrationToken(Base):  # type: ignore
