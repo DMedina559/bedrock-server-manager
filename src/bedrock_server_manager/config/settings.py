@@ -205,11 +205,10 @@ class Settings:
                     "port": 11325,
                     "token_expires_weeks": 4,
                 },
-                "server_monitoring": {
-                    "player_log_monitoring_enabled": True,
-                    "player_log_monitoring_interval": 60, // Seconds
-
-                }
+                "monitoring": {
+                    "process_interval_sec": 10,
+                    "player_interval_sec": 10,
+                },
                 "custom": {}
             }
 
@@ -241,9 +240,9 @@ class Settings:
             "logging": {
                 "level": logging.INFO,
             },
-            "server_monitoring": {
-                "player_log_monitoring_enabled": True,
-                "player_log_monitoring_interval_sec": 60,
+            "monitoring": {
+                "process_interval_sec": 10,
+                "player_interval_sec": 10,
             },
             "web": {
                 "host": "127.0.0.1",

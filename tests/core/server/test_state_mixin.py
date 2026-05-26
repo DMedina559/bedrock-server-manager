@@ -46,7 +46,7 @@ def test_get_and_set_version(real_bedrock_server, db_session):
 
     # Assert that the config was saved correctly
     db_server = db_session.query(Server).filter_by(server_name=server.server_name).one()
-    assert db_server.config["server_info"]["installed_version"] == "1.2.3"
+    assert db_server.installed_version == "1.2.3"
 
 
 def test_get_and_set_target_version(real_bedrock_server, db_session):
@@ -57,7 +57,7 @@ def test_get_and_set_target_version(real_bedrock_server, db_session):
 
     # Assert that the config was saved correctly
     db_server = db_session.query(Server).filter_by(server_name=server.server_name).one()
-    assert db_server.config["settings"]["target_version"] == "LATEST"
+    assert db_server.target_version == "LATEST"
 
 
 def test_get_world_name_success(real_bedrock_server):

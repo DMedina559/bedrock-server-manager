@@ -39,8 +39,7 @@ class TestServerSettings:
         assert result["status"] == "success"
 
         server = db_session.query(Server).filter_by(server_name="test_server").one()
-        config = server.config
-        assert config["custom"]["some_key"] == "new_value"
+        assert server.custom["some_key"] == "new_value"
 
     def test_set_server_custom_value(self, app_context, db_session):
         from bedrock_server_manager.db.models import Server
@@ -51,8 +50,7 @@ class TestServerSettings:
         assert result["status"] == "success"
 
         server = db_session.query(Server).filter_by(server_name="test_server").one()
-        config = server.config
-        assert config["custom"]["some_key"] == "custom_value"
+        assert server.custom["some_key"] == "custom_value"
 
     def test_get_all_server_settings(self, app_context):
         result = get_all_server_settings("test_server", app_context=app_context)
