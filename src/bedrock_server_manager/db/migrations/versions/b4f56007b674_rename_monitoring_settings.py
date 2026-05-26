@@ -6,6 +6,7 @@ Create Date: 2026-05-26 06:40:08.714247
 
 """
 
+import json
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -18,44 +19,116 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def upgrade() -> None:
+def upgrade() -> None:  # noqa: C901
     connection = op.get_bind()
-    # Rename SERVER_MONITORING_INTERVAL_SEC to monitoring.process_interval_sec
+
+    # Check for old flat keys
+    old_process = connection.execute(
+        sa.text(
+            "SELECT value FROM settings WHERE key = 'SERVER_MONITORING_INTERVAL_SEC'"
+        )
+    ).scalar()
+
+    # Check for old nested key
+    old_server_monitoring = connection.execute(
+        sa.text("SELECT value FROM settings WHERE key = 'server_monitoring'")
+    ).scalar()
+
+    process_interval = 10
+    player_interval = 10
+
+    if old_process is not None:
+        try:
+            if isinstance(old_process, str):
+                process_interval = json.loads(old_process)
+            else:
+                process_interval = int(old_process)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+    if old_server_monitoring is not None:
+        try:
+            if isinstance(old_server_monitoring, str):
+                data = json.loads(old_server_monitoring)
+            else:
+                data = old_server_monitoring
+            if isinstance(data, dict):
+                if "player_log_monitoring_interval_sec" in data:
+                    player_interval = int(data["player_log_monitoring_interval_sec"])
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+    # Create new monitoring value
+    new_monitoring = {
+        "process_interval_sec": process_interval,
+        "player_interval_sec": player_interval,
+    }
+
+    # Delete old settings
     connection.execute(
         sa.text(
-            "UPDATE settings SET key = 'monitoring.process_interval_sec' WHERE key = 'SERVER_MONITORING_INTERVAL_SEC'"
+            "DELETE FROM settings WHERE key IN ('SERVER_MONITORING_INTERVAL_SEC', 'server_monitoring')"
         )
     )
-    # Rename server_monitoring.player_log_monitoring_interval_sec to monitoring.player_interval_sec
-    connection.execute(
-        sa.text(
-            "UPDATE settings SET key = 'monitoring.player_interval_sec' WHERE key = 'server_monitoring.player_log_monitoring_interval_sec'"
+
+    # Check if monitoring already exists
+    existing = connection.execute(
+        sa.text("SELECT id FROM settings WHERE key = 'monitoring'")
+    ).scalar()
+    if existing:
+        connection.execute(
+            sa.text("UPDATE settings SET value = :val WHERE id = :id"),
+            {"val": json.dumps(new_monitoring), "id": existing},
         )
-    )
-    # Remove the toggle
-    connection.execute(
-        sa.text(
-            "DELETE FROM settings WHERE key = 'server_monitoring.player_log_monitoring_enabled'"
+    else:
+        connection.execute(
+            sa.text("INSERT INTO settings (key, value) VALUES ('monitoring', :val)"),
+            {"val": json.dumps(new_monitoring)},
         )
-    )
 
 
 def downgrade() -> None:
     connection = op.get_bind()
-    # Reverse renaming
+
+    # Get current monitoring setting
+    current_monitoring = connection.execute(
+        sa.text("SELECT value FROM settings WHERE key = 'monitoring'")
+    ).scalar()
+
+    process_interval = 10
+    player_interval = 10
+
+    if current_monitoring is not None:
+        try:
+            if isinstance(current_monitoring, str):
+                data = json.loads(current_monitoring)
+            else:
+                data = current_monitoring
+            if isinstance(data, dict):
+                if "process_interval_sec" in data:
+                    process_interval = int(data["process_interval_sec"])
+                if "player_interval_sec" in data:
+                    player_interval = int(data["player_interval_sec"])
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+    # Delete new settings
+    connection.execute(sa.text("DELETE FROM settings WHERE key = 'monitoring'"))
+
+    # Restore old process interval
     connection.execute(
         sa.text(
-            "UPDATE settings SET key = 'SERVER_MONITORING_INTERVAL_SEC' WHERE key = 'monitoring.process_interval_sec'"
-        )
+            "INSERT INTO settings (key, value) VALUES ('SERVER_MONITORING_INTERVAL_SEC', :val)"
+        ),
+        {"val": json.dumps(process_interval)},
     )
+
+    # Restore old server monitoring
+    old_server_monitoring = {
+        "player_log_monitoring_interval_sec": player_interval,
+        "player_log_monitoring_enabled": True,
+    }
     connection.execute(
-        sa.text(
-            "UPDATE settings SET key = 'server_monitoring.player_log_monitoring_interval_sec' WHERE key = 'monitoring.player_interval_sec'"
-        )
-    )
-    # Note: we can't easily restore the deleted toggle value if it was user-modified, but we can insert the default.
-    connection.execute(
-        sa.text(
-            "INSERT INTO settings (key, value) VALUES ('server_monitoring.player_log_monitoring_enabled', 'true')"
-        )
+        sa.text("INSERT INTO settings (key, value) VALUES ('server_monitoring', :val)"),
+        {"val": json.dumps(old_server_monitoring)},
     )

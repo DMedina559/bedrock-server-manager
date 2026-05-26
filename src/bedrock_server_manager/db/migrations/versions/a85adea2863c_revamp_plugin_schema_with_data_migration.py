@@ -69,6 +69,17 @@ def upgrade() -> None:  # noqa: C901
     )
     op.add_column("servers", sa.Column("custom", sa.JSON(), nullable=True))
 
+    connection = op.get_bind()
+    from sqlalchemy import inspect
+
+    inspector = inspect(connection)
+
+    # If the server_bans table was already created by create_all(), drop it first.
+    if inspector.has_table("server_bans"):
+        # We need to drop indices before dropping the table if it exists.
+        # But SQLite drop table handles indices too.
+        op.drop_table("server_bans")
+
     op.create_table(
         "server_bans",
         sa.Column("id", sa.Integer(), nullable=False),
