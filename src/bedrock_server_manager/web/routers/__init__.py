@@ -6,6 +6,7 @@ from .api_info import router as api_info_router
 from .audit_log import router as audit_log_router
 from .auth import router as auth_router
 from .backup_restore import router as backup_restore_router
+from .bans import router as bans_router
 from .content import router as content_router
 from .main import router as main_router
 from .plugin import router as plugin_router
@@ -26,6 +27,7 @@ __all__ = [
     "websocket_router",
     "api_info_router",
     "auth_router",
+    "bans_router",
     "backup_restore_router",
     "content_router",
     "main_router",
