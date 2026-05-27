@@ -105,29 +105,18 @@ class BedrockProcessManager:
         1. If registered servers are running. If a server has crashed (stopped
            without ``intentionally_stopped`` flag), it attempts restart.
         2. Queries server status for player counts.
-        3. Scans logs for player activity if enabled.
+        3. Scans logs for player activity.
         """
         try:
             monitoring_interval = int(
-                self.settings.get("SERVER_MONITORING_INTERVAL_SEC", 10)
-            )
-            player_log_monitoring_enabled = (
-                str(
-                    self.settings.get(
-                        "server_monitoring.player_log_monitoring_enabled", True
-                    )
-                ).lower()
-                == "true"
+                self.settings.get("monitoring.process_interval_sec", 10)
             )
             player_log_monitoring_interval_sec = int(
-                self.settings.get(
-                    "server_monitoring.player_log_monitoring_interval_sec", 60
-                )
+                self.settings.get("monitoring.player_interval_sec", 10)
             )
         except Exception:
             monitoring_interval = 10
-            player_log_monitoring_enabled = True
-            player_log_monitoring_interval_sec = 60
+            player_log_monitoring_interval_sec = 10
 
         self.logger.info(
             f"Server monitoring thread started with a {monitoring_interval} second interval."
@@ -151,10 +140,7 @@ class BedrockProcessManager:
                             f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
                         )
                         self.remove_server(server_name)
-                elif (
-                    player_log_monitoring_enabled
-                    and self.player_scan_counter >= player_log_monitoring_interval_sec
-                ):
+                elif self.player_scan_counter >= player_log_monitoring_interval_sec:
                     try:
                         bedrock_server = mc.lookup(
                             f"127.0.0.1:{server.get_server_property('server-port')}"

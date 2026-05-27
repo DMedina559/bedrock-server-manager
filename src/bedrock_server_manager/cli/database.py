@@ -77,17 +77,34 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 ).scalar_one_or_none()
 
             if not is_managed or not current_rev:
+                # Detect if the database has old columns or not.
+                has_config_column = False
+                if inspector.has_table("plugins"):
+                    columns = [c["name"] for c in inspector.get_columns("plugins")]
+                    has_config_column = "config" in columns
+
                 message = (
                     "Unmanaged database detected."
                     if not is_managed
-                    else "Database is not up to date."
+                    else "Database is missing revision hash."
                 )
-                click.secho(
-                    f"{message} Stamping with the latest migration version...",
-                    fg="yellow",
-                )
-                command.stamp(alembic_cfg, "head")
-                click.secho("Database stamped successfully.", fg="green")
+
+                if has_config_column:
+                    click.secho(
+                        f"{message} Stamping with the baseline migration version...",
+                        fg="yellow",
+                    )
+                    # Stamp with the initial schema baseline so subsequent migrations can run
+                    command.stamp(alembic_cfg, "f2a7eb2d7c36")
+                    click.secho("Database stamped with baseline.", fg="green")
+                else:
+                    click.secho(
+                        f"{message} Brand new database detected. Stamping with latest version...",
+                        fg="yellow",
+                    )
+                    # Stamp with the latest migration since create_all() already created it
+                    command.stamp(alembic_cfg, "head")
+                    click.secho("Database stamped with latest.", fg="green")
 
             # Upgrade Database
             click.echo("Running database upgrade...")
@@ -112,6 +129,64 @@ def upgrade(ctx: click.Context):  # noqa: C901
 
     except Exception as e:
         click.secho(f"An error occurred during the database upgrade: {e}", fg="red")
+        raise click.Abort()
+
+
+@database.command()
+@click.option(
+    "--revision",
+    "-r",
+    default="-1",
+    help="The revision to downgrade to (e.g., -1 for previous, or a specific revision ID).",
+)
+@click.pass_context
+def downgrade(ctx: click.Context, revision: str):
+    """Downgrades the database to a previous version."""
+    app_context: AppContext = ctx.obj["app_context"]
+    alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("skip_logging_config", "true")
+
+    db_url = app_context.db.get_database_url()
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    click.secho(
+        f"WARNING: Downgrading the database can lead to data loss.",
+        fg="yellow",
+        bold=True,
+    )
+    if not click.confirm("Are you sure you want to proceed?", default=False):
+        raise click.Abort()
+
+    # --- Backup Database ---
+    if db_url.startswith("sqlite:///"):
+        db_path = db_url.split("sqlite:///")[1]
+        backup_dir = app_context.settings.get("paths.backups")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{backup_dir}/db_backup_pre_downgrade_{timestamp}.sqlite3"
+        try:
+            shutil.copy(db_path, backup_path)
+            click.secho(f"Database backed up to {backup_path}", fg="green")
+        except Exception as e:
+            click.secho(f"Failed to create database backup: {e}", fg="red")
+            if not click.confirm(
+                "Do you want to continue without a backup?", default=False
+            ):
+                raise click.Abort()
+
+    try:
+        engine = app_context.db.engine
+        if engine is None:
+            raise click.Abort("Database engine is not available.")
+
+        with engine.begin() as connection:
+            alembic_cfg.attributes["connection"] = connection
+            click.echo(f"Running database downgrade to revision: {revision}...")
+            command.downgrade(alembic_cfg, revision)
+            click.echo("Database downgrade complete.")
+
+    except Exception as e:
+        click.secho(f"An error occurred during the database downgrade: {e}", fg="red")
         raise click.Abort()
 
 
