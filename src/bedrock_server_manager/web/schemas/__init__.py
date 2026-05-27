@@ -15,6 +15,10 @@ from .backup import (
     BackupActionPayload,
     RestoreActionPayload,
 )
+from .ban import (
+    BanAddRequest,
+    BanRemoveRequest,
+)
 from .base import ActionResponse, BaseApiResponse
 from .install import (
     AllowlistAddPayload,
@@ -75,6 +79,8 @@ from .users import (
 __all__ = [
     "ActionResponse",
     "BaseApiResponse",
+    "BanAddRequest",
+    "BanRemoveRequest",
     "GenerateTokenPayload",
     "RegisterUserPayload",
     "TokenResponse",
