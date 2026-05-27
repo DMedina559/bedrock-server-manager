@@ -225,7 +225,7 @@ class BedrockProcessManager:
                             self.logger.info(
                                 f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
                             )
-                            players = server.scan_log_for_players()
+                            players = server.scan_log_for_players(incremental=True)
                             if players:
                                 self.app_context.manager.save_player_data(players)
                     except Exception as e:
@@ -245,7 +245,7 @@ class BedrockProcessManager:
         Args:
             server (BedrockServer): The server instance to restart.
         """
-        max_retries = self.settings.get("SERVER_MAX_RESTART_RETRIES", 3)
+        max_retries = self.settings.get("monitoring.max_retries", 3)
 
         if server.failure_count > max_retries:
             self.logger.critical(

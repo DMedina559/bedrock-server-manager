@@ -124,13 +124,16 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                 exc_info=True,
             )
 
-    def scan_log_for_players(self) -> List[Dict[str, str]]:
+    def scan_log_for_players(self, incremental: bool = False) -> List[Dict[str, str]]:
         """Scans the server's log file for player connection entries to extract gamertags and XUIDs.
 
         This method reads the server's primary output log file (obtained via
-        :attr:`~.BedrockServerBaseMixin.server_log_path`) from the beginning to find
-        player connections. It collects unique players based on their XUID to avoid
-        duplicates.
+        :attr:`~.BedrockServerBaseMixin.server_log_path`) to find player connections.
+        It collects unique players based on their XUID to avoid duplicates.
+
+        Args:
+            incremental (bool): If True, starts reading from the last recorded position
+                instead of the beginning. Useful for periodic polling to save memory.
 
         Returns:
             List[Dict[str, str]]: A list of unique player data dictionaries found
@@ -146,17 +149,26 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             FileOperationError: If an OS-level error occurs while trying to read
                 the log file (e.g., permission issues).
         """
+        if not hasattr(self, "_scan_log_cursor"):
+            self._scan_log_cursor = 0
+
         log_file = self.server_log_path
         self.logger.debug(
-            f"Server '{self.server_name}': Scanning log file for players: {log_file}"
+            f"Server '{self.server_name}': Scanning log file for players: {log_file} (incremental={incremental})"
         )
 
         players_data: List[Dict[str, str]] = []
         unique_xuids = set()
 
-        # Parse from the beginning of the file (0)
+        start_pos = self._scan_log_cursor if incremental else 0
+
         try:
-            for event_type, player_name, xuid, _ in self._parse_player_log_events(0):
+            for (
+                event_type,
+                player_name,
+                xuid,
+                new_cursor,
+            ) in self._parse_player_log_events(start_pos):
                 if (
                     event_type == "connect"
                     and player_name is not None
@@ -168,6 +180,8 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                     self.logger.debug(
                         f"Found player in log: Name='{player_name}', XUID='{xuid}'"
                     )
+                if incremental:
+                    self._scan_log_cursor = new_cursor
         except Exception as e:
             # We wrap it in FileOperationError to match old behavior
             raise FileOperationError(
