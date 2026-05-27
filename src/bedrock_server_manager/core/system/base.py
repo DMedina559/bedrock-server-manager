@@ -40,7 +40,7 @@ import threading
 import time
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 # Third-party imports. psutil is optional but required for process monitoring.
 try:
@@ -461,23 +461,33 @@ class ResourceMonitor:
         """Initializes the resource monitor's state.
 
         This constructor is called only once for the singleton instance.
-        It sets up the `_last_readings` dictionary to store CPU time snapshots
-        for different processes and an `_initialized` flag.
+        It sets up the `_processes` dictionary to cache psutil.Process objects
+        and an `_initialized` flag.
         """
         if not hasattr(self, "_initialized"):  # Ensure this runs only once
             with self._lock:
                 if not hasattr(self, "_initialized"):
-                    self._last_readings: Dict[int, Tuple[Any, float]] = {}
+                    self._processes: Dict[int, "psutil.Process"] = {}
                     self._initialized: bool = True
+
+    def _cleanup_stale_processes(self) -> None:
+        """Removes cached process objects that are no longer running."""
+        dead_pids = []
+        for pid, proc in self._processes.items():
+            try:
+                if not proc.is_running():
+                    dead_pids.append(pid)
+            except psutil.NoSuchProcess:
+                dead_pids.append(pid)
+        for pid in dead_pids:
+            del self._processes[pid]
 
     def get_stats(self, process: "psutil.Process") -> Optional[Dict[str, Any]]:
         """Calculates and returns resource usage statistics for the given process.
 
         If ``psutil`` is not available, this method logs a warning and returns ``None``.
 
-        The CPU percentage is calculated based on the change in CPU times since
-        the last call for the same process ID (PID). The first call for a PID
-        will report 0% CPU usage as there's no prior data for comparison.
+        The CPU percentage is calculated using psutil's built-in cpu_percent.
 
         Args:
             process (psutil.Process): An instance of ``psutil.Process`` representing
@@ -516,51 +526,41 @@ class ResourceMonitor:
             )
 
         pid = process.pid
+
+        # Periodically clean up stale processes
+        self._cleanup_stale_processes()
+
         try:
-            with process.oneshot():  # Efficiently get multiple process infos
-                current_cpu_times = (
-                    process.cpu_times()
-                )  # specific type: psutil._common.scpustats
-                current_timestamp = time.time()
-                cpu_percent = 0.0
+            # Cache the process object so psutil can calculate the CPU delta internally
+            if pid not in self._processes:
+                self._processes[pid] = process
+                process.cpu_percent(interval=None)  # Set the baseline
 
-                if pid in self._last_readings:
-                    prev_cpu_times, prev_timestamp = self._last_readings[pid]
-                    time_delta = current_timestamp - prev_timestamp
+            cached_process = self._processes[pid]
 
-                    if time_delta > 0.01:  # Avoid division by zero or tiny intervals
-                        # Sum of user and system time deltas
-                        process_cpu_time_delta = (
-                            current_cpu_times.user - prev_cpu_times.user
-                        ) + (current_cpu_times.system - prev_cpu_times.system)
-                        # Normalize by number of CPU cores for system-wide percentage
-                        cpu_count = psutil.cpu_count(logical=True) or 1
-                        cpu_percent = (
-                            (process_cpu_time_delta / time_delta) * 100 / cpu_count
-                        )
-                        cpu_percent = max(0.0, cpu_percent)  # Ensure non-negative
-
-                self._last_readings[pid] = (current_cpu_times, current_timestamp)
+            with cached_process.oneshot():  # Efficiently get multiple process infos
+                cpu_percent = cached_process.cpu_percent(interval=None)
 
                 memory_info = (
-                    process.memory_info()
+                    cached_process.memory_info()
                 )  # specific type: psutil._common.smeninfo
                 memory_mb = memory_info.rss / (1024 * 1024)  # RSS in MB
 
-                create_time = process.create_time()  # timestamp
+                create_time = cached_process.create_time()  # timestamp
+                current_timestamp = time.time()
                 uptime_seconds = current_timestamp - create_time
                 uptime_str = str(timedelta(seconds=int(uptime_seconds)))
 
                 return {
                     "pid": pid,
-                    "cpu_percent": round(cpu_percent, 1),
+                    "cpu_percent": round(max(0.0, cpu_percent), 1),
                     "memory_mb": round(memory_mb, 1),
                     "uptime": uptime_str,
                 }
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            # If process disappears or access is denied, remove its last reading
-            if pid in self._last_readings:
-                del self._last_readings[pid]
+            # If process disappears or access is denied, remove it from cache
+            if pid in self._processes:
+                del self._processes[pid]
             logger.debug(
                 f"Could not get stats for PID {pid}: Process gone or access denied."
             )
