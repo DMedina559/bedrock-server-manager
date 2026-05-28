@@ -277,12 +277,7 @@ def downgrade() -> None:
             {"config": json.dumps(config_data), "id": server_id},
         )
 
-    # 3. Drop new columns
-    with op.batch_alter_table("server_bans", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_server_bans_xuid"))
-        batch_op.drop_index(batch_op.f("ix_server_bans_server_id"))
-        batch_op.drop_index(batch_op.f("ix_server_bans_player_name"))
-        batch_op.drop_index(batch_op.f("ix_server_bans_id"))
+    # 3. Drop new columns and tables
     op.drop_table("server_bans")
 
     with op.batch_alter_table("plugins", schema=None) as batch_op:
