@@ -27,9 +27,7 @@ def upgrade() -> None:  # noqa: C901
     )
     op.add_column("plugins", sa.Column("version", sa.String(length=50), nullable=True))
     op.add_column("plugins", sa.Column("author", sa.String(length=255), nullable=True))
-    op.add_column(
-        "plugins", sa.Column("description", sa.String(length=255), nullable=True)
-    )
+    op.add_column("plugins", sa.Column("description", sa.Text(), nullable=True))
 
     op.add_column(
         "servers",

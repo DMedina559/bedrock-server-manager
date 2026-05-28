@@ -8,7 +8,16 @@ registration tokens, players, and audit logs.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
 from .database import Base  # type: ignore
@@ -144,7 +153,7 @@ class Plugin(Base):  # type: ignore
     enabled = Column(Boolean, default=False)
     version = Column(String(50), nullable=True)
     author = Column(String(255), nullable=True)
-    description = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
 
 
 class RegistrationToken(Base):  # type: ignore
