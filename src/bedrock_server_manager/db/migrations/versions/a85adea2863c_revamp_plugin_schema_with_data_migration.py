@@ -198,7 +198,8 @@ def upgrade() -> None:  # noqa: C901
 
     # Drop server_id from settings
     with op.batch_alter_table("settings", schema=None) as batch_op:
-        # Check if the foreign key constraint needs an explicit name drop, SQLite handles it implicitly with batch_alter_table.
+        # Use batch_op here so Alembic drops the constraint before dropping the column
+        batch_op.drop_constraint("fk_settings_server_id_servers", type_="foreignkey")
         batch_op.drop_column("server_id")
 
 
