@@ -120,12 +120,7 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 click.secho(
                     "\nWarning: No admin user found in the database.", fg="yellow"
                 )
-                click.echo(
-                    "Please run the 'setup' command to create an initial admin user."
-                )
-                click.echo(
-                    "Alternatively, you can manually create a user and assign the 'admin' role."
-                )
+                click.echo("Please run the web server to create an initial admin user.")
 
     except Exception as e:
         click.secho(f"An error occurred during the database upgrade: {e}", fg="red")
