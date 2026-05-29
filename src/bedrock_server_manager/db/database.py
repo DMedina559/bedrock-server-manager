@@ -94,12 +94,38 @@ class Database:
     def _ensure_tables_created(self):
         """
         Ensures that the database tables are created.
-        This is done lazily on the first session request.
+        This is done lazily on the first session request using Alembic.
         """
         if not self._tables_created:
             if not self.engine:
                 self.initialize()
-            Base.metadata.create_all(bind=self.engine)
+
+            from sqlalchemy import inspect
+
+            inspector = inspect(self.engine)
+            # If there are no tables (or just very few, but we can check if 'users' exists)
+            # we consider it a brand new database and run migrations automatically.
+            if not inspector.has_table("users"):
+                import logging
+                from importlib.resources import files
+
+                from alembic import command
+                from alembic.config import Config
+
+                # Suppress alembic output during normal startup
+                logging.getLogger("alembic").setLevel(logging.WARNING)
+
+                alembic_ini_path = files("bedrock_server_manager").joinpath(
+                    "db/alembic.ini"
+                )
+                alembic_cfg = Config(str(alembic_ini_path))
+                alembic_cfg.set_main_option("skip_logging_config", "true")
+                alembic_cfg.set_main_option("sqlalchemy.url", self.get_database_url())
+
+                with self.engine.begin() as connection:
+                    alembic_cfg.attributes["connection"] = connection
+                    command.upgrade(alembic_cfg, "head")
+
             self._tables_created = True
 
     @contextmanager

@@ -197,9 +197,30 @@ def upgrade() -> None:  # noqa: C901
         batch_op.drop_column("config")
 
     # Drop server_id from settings
+    # We must explicitly drop the foreign key constraint first for MariaDB/MySQL
+    connection = op.get_bind()
+    from sqlalchemy import inspect
+
+    inspector = inspect(connection)
+    fks = inspector.get_foreign_keys("settings")
+    fk_name = None
+    for fk in fks:
+        if "server_id" in fk["constrained_columns"]:
+            fk_name = fk["name"]
+            break
+
+    indices = inspector.get_indexes("settings")
+    index_name = None
+    for idx in indices:
+        if "server_id" in idx["column_names"]:
+            index_name = idx["name"]
+            break
+
     with op.batch_alter_table("settings", schema=None) as batch_op:
-        # Use batch_op here so Alembic drops the constraint before dropping the column
-        batch_op.drop_constraint("fk_settings_server_id_servers", type_="foreignkey")
+        if fk_name:
+            batch_op.drop_constraint(fk_name, type_="foreignkey")
+        if index_name:
+            batch_op.drop_index(index_name)
         batch_op.drop_column("server_id")
 
 

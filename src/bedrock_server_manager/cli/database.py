@@ -77,17 +77,22 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 ).scalar_one_or_none()
 
             if not is_managed or not current_rev:
-                # Detect if the database has old columns or not.
-                has_config_column = False
-                if inspector.has_table("plugins"):
-                    columns = [c["name"] for c in inspector.get_columns("plugins")]
-                    has_config_column = "config" in columns
-
                 message = (
                     "Unmanaged database detected."
                     if not is_managed
                     else "Database is missing revision hash."
                 )
+
+                # Detect if the database has old columns or not.
+                has_config_column = False
+                if inspector.has_table("plugins"):
+                    columns = [c["name"] for c in inspector.get_columns("plugins")]
+                    if "config" in columns:
+                        has_config_column = True
+                if inspector.has_table("servers") and not has_config_column:
+                    columns = [c["name"] for c in inspector.get_columns("servers")]
+                    if "config" in columns:
+                        has_config_column = True
 
                 if has_config_column:
                     click.secho(
@@ -97,14 +102,20 @@ def upgrade(ctx: click.Context):  # noqa: C901
                     # Stamp with the initial schema baseline so subsequent migrations can run
                     command.stamp(alembic_cfg, "f2a7eb2d7c36")
                     click.secho("Database stamped with baseline.", fg="green")
-                else:
+                elif inspector.has_table("server_bans") or inspector.has_table("users"):
                     click.secho(
-                        f"{message} Brand new database detected. Stamping with latest version...",
+                        f"{message} Database appears to be fully upgraded but unstamped. Stamping with latest version...",
                         fg="yellow",
                     )
                     # Stamp with the latest migration since create_all() already created it
                     command.stamp(alembic_cfg, "head")
                     click.secho("Database stamped with latest.", fg="green")
+                else:
+                    # Brand new empty DB that somehow reached here without _ensure_tables_created catching it
+                    click.secho(
+                        "Empty database detected. Running migrations from scratch...",
+                        fg="yellow",
+                    )
 
             # Upgrade Database
             click.echo("Running database upgrade...")
