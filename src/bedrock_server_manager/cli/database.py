@@ -100,7 +100,17 @@ def upgrade(ctx: click.Context):  # noqa: C901
                         fg="yellow",
                     )
                     # Stamp with the initial schema baseline so subsequent migrations can run
-                    command.stamp(alembic_cfg, "f2a7eb2d7c36")
+                    if is_managed:
+                        from sqlalchemy import text
+
+                        connection.execute(text("DELETE FROM alembic_version"))
+                        connection.execute(
+                            text(
+                                "INSERT INTO alembic_version (version_num) VALUES ('f2a7eb2d7c36')"
+                            )
+                        )
+                    else:
+                        command.stamp(alembic_cfg, "f2a7eb2d7c36")
                     click.secho("Database stamped with baseline.", fg="green")
                 elif inspector.has_table("server_bans") or inspector.has_table("users"):
                     click.secho(
@@ -108,7 +118,22 @@ def upgrade(ctx: click.Context):  # noqa: C901
                         fg="yellow",
                     )
                     # Stamp with the latest migration since create_all() already created it
-                    command.stamp(alembic_cfg, "head")
+                    if is_managed:
+                        from alembic.script import ScriptDirectory
+
+                        script = ScriptDirectory.from_config(alembic_cfg)
+                        head_rev = script.get_current_head()
+                        if head_rev:
+                            from sqlalchemy import text
+
+                            connection.execute(text("DELETE FROM alembic_version"))
+                            connection.execute(
+                                text(
+                                    f"INSERT INTO alembic_version (version_num) VALUES ('{head_rev}')"
+                                )
+                            )
+                    else:
+                        command.stamp(alembic_cfg, "head")
                     click.secho("Database stamped with latest.", fg="green")
                 else:
                     # Brand new empty DB that somehow reached here without _ensure_tables_created catching it
@@ -134,7 +159,12 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 click.echo("Please run the web server to create an initial admin user.")
 
     except Exception as e:
-        click.secho(f"An error occurred during the database upgrade: {e}", fg="red")
+        error_msg = str(e)
+        if not error_msg:
+            error_msg = repr(e)
+        click.secho(
+            f"An error occurred during the database upgrade: {error_msg}", fg="red"
+        )
         raise click.Abort()
 
 
