@@ -21,12 +21,14 @@ intended for use by UIs, CLIs, or other high-level components.
 """
 
 import logging
-from typing import Any, Dict
+import os
+from typing import Any, Dict, List
 
 from ..context import AppContext
+from ..core.system import find_files
 
 # Local application imports.
-from ..error import BSMError, FileError
+from ..error import AppFileNotFoundError, BSMError, FileError, FileOperationError
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
@@ -68,12 +70,41 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
+def _list_content_files(
+    content_dir: str | None, sub_folder: str, extensions: List[str]
+) -> List[str]:
+    """
+    Internal helper to list files with specified extensions from a sub-folder
+    within the global content directory.
+    """
+    if not content_dir or not os.path.isdir(content_dir):
+        raise AppFileNotFoundError(str(content_dir), "Content directory")
+
+    target_dir = os.path.join(content_dir, sub_folder)
+    if not os.path.isdir(target_dir):
+        logger.debug(
+            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
+        )
+        return []
+
+    found_files: List[str] = []
+    try:
+        for ext in extensions:
+            pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
+            files = find_files(target_dir, pattern=pattern)
+            found_files.extend(os.path.abspath(str(f)) for f in files)
+    except OSError as e:
+        raise FileOperationError(
+            f"Error scanning content directory {target_dir}: {e}"
+        ) from e
+    return sorted(list(set(found_files)))
+
+
 @plugin_method("list_available_worlds_api")
 def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_worlds`
-    to scan the ``worlds`` sub-folder within the application's global content directory.
+    Scans the ``worlds`` sub-folder within the application's global content directory.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -87,7 +118,7 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available worlds.")
     try:
         manager = app_context.manager
-        worlds = manager.list_available_worlds()
+        worlds = _list_content_files(manager._content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
         # Handle specific file-related errors from the core manager.
@@ -101,8 +132,7 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
 def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_addons`
-    to scan the ``addons`` sub-folder within the application's global content directory.
+    Scans the ``addons`` sub-folder within the application's global content directory.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -116,7 +146,9 @@ def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available addons.")
     try:
         manager = app_context.manager
-        addons = manager.list_available_addons()
+        addons = _list_content_files(
+            manager._content_dir, "addons", [".mcpack", ".mcaddon"]
+        )
         return {"status": "success", "files": addons}
     except FileError as e:
         # Handle specific file-related errors from the core manager.

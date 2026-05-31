@@ -2,7 +2,6 @@
 import logging
 import os
 import platform
-from pathlib import Path
 
 import pytest
 
@@ -834,89 +833,6 @@ def test_web_service_windows_operation_on_non_windows(real_manager, mocker):
         match="Web UI Windows Service operation 'test_op_windows' is only supported on Windows",
     ):
         real_manager._ensure_windows_for_web_service("test_op_windows")
-
-
-# --- BedrockServerManager - Global Content Listing Tests ---
-
-
-def test_list_content_files_success(real_manager):
-    """Test _list_content_files successfully lists files."""
-    worlds_dir = os.path.join(real_manager._content_dir, "worlds")
-    os.makedirs(worlds_dir, exist_ok=True)
-
-    world1_path = os.path.join(worlds_dir, "world1.mcworld")
-    world2_path = os.path.join(worlds_dir, "world2.mcworld")
-    other_path = os.path.join(worlds_dir, "other.txt")
-
-    Path(world1_path).write_text("w1")
-    Path(world2_path).write_text("w2")
-    Path(other_path).write_text("text")
-
-    result = real_manager._list_content_files("worlds", [".mcworld"])
-    assert sorted(result) == sorted([world1_path, world2_path])
-
-
-def test_list_content_files_no_matches(real_manager):
-    """Test _list_content_files when no files match extensions."""
-    addons_dir = os.path.join(real_manager._content_dir, "addons")
-    os.makedirs(addons_dir, exist_ok=True)
-    Path(os.path.join(addons_dir, "something.txt")).write_text("text")
-
-    result = real_manager._list_content_files("addons", [".mcpack", ".mcaddon"])
-    assert result == []
-
-
-def test_list_content_files_subfolder_not_exist(real_manager):
-    """Test _list_content_files when the sub_folder does not exist."""
-    result = real_manager._list_content_files("non_existent_subfolder", [".txt"])
-    assert result == []
-
-
-def test_list_content_files_main_content_dir_not_exist(real_manager, mocker):
-    """Test _list_content_files raises AppFileNotFoundError if main content_dir is invalid."""
-    real_manager._content_dir = "/path/to/invalid_content_dir"
-    mocker.patch("os.path.isdir", return_value=False)
-
-    with pytest.raises(AppFileNotFoundError, match="Content directory"):
-        real_manager._list_content_files("worlds", [".mcworld"])
-
-
-def test_list_content_files_os_error_on_glob(real_manager, mocker):
-    """Test _list_content_files handles OSError from find_files."""
-    worlds_dir = os.path.join(real_manager._content_dir, "worlds")
-    os.makedirs(worlds_dir, exist_ok=True)
-
-    mocker.patch(
-        "bedrock_server_manager.core.manager_mixins.content_mixin.find_files",
-        side_effect=OSError("Glob permission denied"),
-    )
-
-    with pytest.raises(FileOperationError, match="Error scanning content directory"):
-        real_manager._list_content_files("worlds", [".mcworld"])
-
-
-def test_list_available_worlds(real_manager, mocker):
-    """Test list_available_worlds calls _list_content_files correctly."""
-    mock_list_content = mocker.patch.object(
-        real_manager, "_list_content_files", return_value=["/path/world.mcworld"]
-    )
-
-    result = real_manager.list_available_worlds()
-
-    assert result == ["/path/world.mcworld"]
-    mock_list_content.assert_called_once_with("worlds", [".mcworld"])
-
-
-def test_list_available_addons(real_manager, mocker):
-    """Test list_available_addons calls _list_content_files correctly."""
-    mock_list_content = mocker.patch.object(
-        real_manager, "_list_content_files", return_value=["/path/addon.mcpack"]
-    )
-
-    result = real_manager.list_available_addons()
-
-    assert result == ["/path/addon.mcpack"]
-    mock_list_content.assert_called_once_with("addons", [".mcpack", ".mcaddon"])
 
 
 # --- BedrockServerManager - Server Discovery & Data Aggregation ---

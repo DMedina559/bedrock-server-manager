@@ -40,9 +40,8 @@ class TestContentListing:
         assert "addon1.mcpack" in result["files"][0]
 
     def test_list_available_worlds_api_file_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "list_available_worlds",
+        with patch(
+            "bedrock_server_manager.api.application._list_content_files",
             side_effect=FileError("Test error"),
         ):
             result = list_available_worlds_api(app_context=app_context)
@@ -50,9 +49,8 @@ class TestContentListing:
             assert "Test error" in result["message"]
 
     def test_list_available_addons_api_file_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "list_available_addons",
+        with patch(
+            "bedrock_server_manager.api.application._list_content_files",
             side_effect=FileError("Test error"),
         ):
             result = list_available_addons_api(app_context=app_context)

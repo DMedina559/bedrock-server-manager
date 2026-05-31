@@ -28,7 +28,6 @@ from typing import Any
 # Local application imports.
 from ..config import EXPATH, Settings, app_name_title, package_name
 from ..error import ConfigurationError
-from .manager_mixins.content_mixin import ContentMixin
 from .manager_mixins.discovery_mixin import DiscoveryMixin
 from .manager_mixins.player_mixin import PlayerMixin
 from .manager_mixins.system_mixin import SystemMixin
@@ -43,7 +42,6 @@ class BedrockServerManager(
     PlayerMixin,
     WebProcessMixin,
     WebServiceMixin,
-    ContentMixin,
     DiscoveryMixin,
 ):
     """
@@ -65,8 +63,6 @@ class BedrockServerManager(
           player data and consolidating information from server logs.
         - Controlling the Web UI application's lifecycle, including managing its
           system service (Systemd for Linux, Windows Service for Windows).
-        - Listing globally available content files (e.g., ``.mcworld`` templates,
-          ``.mcaddon``/``.mcpack`` addons) from the content directory.
         - Checking and reporting on system capabilities (e.g., availability of
           task schedulers or service managers).
 
