@@ -12,9 +12,10 @@ RUN python -m build
 # Stage 2: Final Python Application
 FROM python:3.12-slim
 WORKDIR /app
-# Install system dependencies
+# Install system dependencies and upgrade to patch vulnerabilities
 # gcc and libmariadb-dev-compat are often needed for mysqlclient/mariadb driver compilation if binaries aren't available
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends pkg-config libmariadb-dev-compat gcc libcurl4 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -22,8 +23,9 @@ RUN apt-get update && \
 # Copy built wheel from builder stage
 COPY --from=python-builder /app/dist/ /app/dist/
 
-# Install the package (this will pull bsm-frontend from PyPI)
-RUN pip install --no-cache-dir $(ls /app/dist/*.whl)[mysql,mariadb,postgresql] && \
+# Upgrade pip and install the package (this will pull bsm-frontend from PyPI)
+RUN pip install --upgrade pip && \
+    pip install --upgrade --force --no-cache-dir $(ls /app/dist/*.whl)[mysql,mariadb,postgresql] && \
     rm -rf /app/dist
 
 # Set default environment variables
