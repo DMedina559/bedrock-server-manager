@@ -22,16 +22,14 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:  # noqa: C901
     connection = op.get_bind()
 
-    # Check for old flat keys
     old_process = connection.execute(
         sa.text(
-            "SELECT value FROM settings WHERE key = 'SERVER_MONITORING_INTERVAL_SEC'"
+            "SELECT value FROM settings WHERE `key` = 'SERVER_MONITORING_INTERVAL_SEC'"
         )
     ).scalar()
 
-    # Check for old nested key
     old_server_monitoring = connection.execute(
-        sa.text("SELECT value FROM settings WHERE key = 'server_monitoring'")
+        sa.text("SELECT value FROM settings WHERE `key` = 'server_monitoring'")
     ).scalar()
 
     process_interval = 10
@@ -58,22 +56,19 @@ def upgrade() -> None:  # noqa: C901
         except (ValueError, TypeError, json.JSONDecodeError):
             pass
 
-    # Create new monitoring value
     new_monitoring = {
         "process_interval_sec": process_interval,
         "player_interval_sec": player_interval,
     }
 
-    # Delete old settings
     connection.execute(
         sa.text(
-            "DELETE FROM settings WHERE key IN ('SERVER_MONITORING_INTERVAL_SEC', 'server_monitoring')"
+            "DELETE FROM settings WHERE `key` IN ('SERVER_MONITORING_INTERVAL_SEC', 'server_monitoring')"
         )
     )
 
-    # Check if monitoring already exists
     existing = connection.execute(
-        sa.text("SELECT id FROM settings WHERE key = 'monitoring'")
+        sa.text("SELECT id FROM settings WHERE `key` = 'monitoring'")
     ).scalar()
     if existing:
         connection.execute(
@@ -82,7 +77,7 @@ def upgrade() -> None:  # noqa: C901
         )
     else:
         connection.execute(
-            sa.text("INSERT INTO settings (key, value) VALUES ('monitoring', :val)"),
+            sa.text("INSERT INTO settings (`key`, value) VALUES ('monitoring', :val)"),
             {"val": json.dumps(new_monitoring)},
         )
 
@@ -92,7 +87,7 @@ def downgrade() -> None:
 
     # Get current monitoring setting
     current_monitoring = connection.execute(
-        sa.text("SELECT value FROM settings WHERE key = 'monitoring'")
+        sa.text("SELECT value FROM settings WHERE `key` = 'monitoring'")
     ).scalar()
 
     process_interval = 10
@@ -113,12 +108,12 @@ def downgrade() -> None:
             pass
 
     # Delete new settings
-    connection.execute(sa.text("DELETE FROM settings WHERE key = 'monitoring'"))
+    connection.execute(sa.text("DELETE FROM settings WHERE `key` = 'monitoring'"))
 
     # Restore old process interval
     connection.execute(
         sa.text(
-            "INSERT INTO settings (key, value) VALUES ('SERVER_MONITORING_INTERVAL_SEC', :val)"
+            "INSERT INTO settings (`key`, value) VALUES ('SERVER_MONITORING_INTERVAL_SEC', :val)"
         ),
         {"val": json.dumps(process_interval)},
     )
@@ -129,6 +124,8 @@ def downgrade() -> None:
         "player_log_monitoring_enabled": True,
     }
     connection.execute(
-        sa.text("INSERT INTO settings (key, value) VALUES ('server_monitoring', :val)"),
+        sa.text(
+            "INSERT INTO settings (`key`, value) VALUES ('server_monitoring', :val)"
+        ),
         {"val": json.dumps(old_server_monitoring)},
     )

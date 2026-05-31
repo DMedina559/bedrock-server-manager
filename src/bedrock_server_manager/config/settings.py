@@ -206,6 +206,7 @@ class Settings:
                     "token_expires_weeks": 4,
                 },
                 "monitoring": {
+                    "max_retiries": 3,
                     "process_interval_sec": 10,
                     "player_interval_sec": 10,
                 },
@@ -241,6 +242,7 @@ class Settings:
                 "level": logging.INFO,
             },
             "monitoring": {
+                "max_retiries": 3,
                 "process_interval_sec": 10,
                 "player_interval_sec": 10,
             },

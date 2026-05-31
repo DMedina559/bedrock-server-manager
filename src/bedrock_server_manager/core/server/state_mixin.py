@@ -94,6 +94,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         self.player_count = 0
         self.players: List[Dict[str, str]] = []
         self._log_file_cursor = 0
+        self._scan_log_cursor = 0
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.

@@ -27,9 +27,7 @@ def upgrade() -> None:  # noqa: C901
     )
     op.add_column("plugins", sa.Column("version", sa.String(length=50), nullable=True))
     op.add_column("plugins", sa.Column("author", sa.String(length=255), nullable=True))
-    op.add_column(
-        "plugins", sa.Column("description", sa.String(length=255), nullable=True)
-    )
+    op.add_column("plugins", sa.Column("description", sa.Text(), nullable=True))
 
     op.add_column(
         "servers",
@@ -199,8 +197,30 @@ def upgrade() -> None:  # noqa: C901
         batch_op.drop_column("config")
 
     # Drop server_id from settings
+    # We must explicitly drop the foreign key constraint first for MariaDB/MySQL
+    connection = op.get_bind()
+    from sqlalchemy import inspect
+
+    inspector = inspect(connection)
+    fks = inspector.get_foreign_keys("settings")
+    fk_name = None
+    for fk in fks:
+        if "server_id" in fk["constrained_columns"]:
+            fk_name = fk["name"]
+            break
+
+    indices = inspector.get_indexes("settings")
+    index_name = None
+    for idx in indices:
+        if "server_id" in idx["column_names"]:
+            index_name = idx["name"]
+            break
+
     with op.batch_alter_table("settings", schema=None) as batch_op:
-        # Check if the foreign key constraint needs an explicit name drop, SQLite handles it implicitly with batch_alter_table.
+        if fk_name:
+            batch_op.drop_constraint(fk_name, type_="foreignkey")
+        if index_name:
+            batch_op.drop_index(index_name)
         batch_op.drop_column("server_id")
 
 
@@ -279,12 +299,7 @@ def downgrade() -> None:
             {"config": json.dumps(config_data), "id": server_id},
         )
 
-    # 3. Drop new columns
-    with op.batch_alter_table("server_bans", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_server_bans_xuid"))
-        batch_op.drop_index(batch_op.f("ix_server_bans_server_id"))
-        batch_op.drop_index(batch_op.f("ix_server_bans_player_name"))
-        batch_op.drop_index(batch_op.f("ix_server_bans_id"))
+    # 3. Drop new columns and tables
     op.drop_table("server_bans")
 
     with op.batch_alter_table("plugins", schema=None) as batch_op:

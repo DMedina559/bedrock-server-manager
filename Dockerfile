@@ -35,5 +35,10 @@ EXPOSE 11325
 EXPOSE 19132/udp
 EXPOSE 19133/udp
 
-# Command to run the application
-CMD ["/bin/sh", "-c", "exec bedrock-server-manager web start --host $HOST --port $PORT"]
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Entrypoint and Command to run the application
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["start"]

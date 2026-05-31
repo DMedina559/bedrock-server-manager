@@ -77,17 +77,22 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 ).scalar_one_or_none()
 
             if not is_managed or not current_rev:
-                # Detect if the database has old columns or not.
-                has_config_column = False
-                if inspector.has_table("plugins"):
-                    columns = [c["name"] for c in inspector.get_columns("plugins")]
-                    has_config_column = "config" in columns
-
                 message = (
                     "Unmanaged database detected."
                     if not is_managed
                     else "Database is missing revision hash."
                 )
+
+                # Detect if the database has old columns or not.
+                has_config_column = False
+                if inspector.has_table("plugins"):
+                    columns = [c["name"] for c in inspector.get_columns("plugins")]
+                    if "config" in columns:
+                        has_config_column = True
+                if inspector.has_table("servers") and not has_config_column:
+                    columns = [c["name"] for c in inspector.get_columns("servers")]
+                    if "config" in columns:
+                        has_config_column = True
 
                 if has_config_column:
                     click.secho(
@@ -95,16 +100,47 @@ def upgrade(ctx: click.Context):  # noqa: C901
                         fg="yellow",
                     )
                     # Stamp with the initial schema baseline so subsequent migrations can run
-                    command.stamp(alembic_cfg, "f2a7eb2d7c36")
+                    if is_managed:
+                        from sqlalchemy import text
+
+                        connection.execute(text("DELETE FROM alembic_version"))
+                        connection.execute(
+                            text(
+                                "INSERT INTO alembic_version (version_num) VALUES ('f2a7eb2d7c36')"
+                            )
+                        )
+                    else:
+                        command.stamp(alembic_cfg, "f2a7eb2d7c36")
                     click.secho("Database stamped with baseline.", fg="green")
-                else:
+                elif inspector.has_table("server_bans") or inspector.has_table("users"):
                     click.secho(
-                        f"{message} Brand new database detected. Stamping with latest version...",
+                        f"{message} Database appears to be fully upgraded but unstamped. Stamping with latest version...",
                         fg="yellow",
                     )
                     # Stamp with the latest migration since create_all() already created it
-                    command.stamp(alembic_cfg, "head")
+                    if is_managed:
+                        from alembic.script import ScriptDirectory
+
+                        script = ScriptDirectory.from_config(alembic_cfg)
+                        head_rev = script.get_current_head()
+                        if head_rev:
+                            from sqlalchemy import text
+
+                            connection.execute(text("DELETE FROM alembic_version"))
+                            connection.execute(
+                                text(
+                                    f"INSERT INTO alembic_version (version_num) VALUES ('{head_rev}')"
+                                )
+                            )
+                    else:
+                        command.stamp(alembic_cfg, "head")
                     click.secho("Database stamped with latest.", fg="green")
+                else:
+                    # Brand new empty DB that somehow reached here without _ensure_tables_created catching it
+                    click.secho(
+                        "Empty database detected. Running migrations from scratch...",
+                        fg="yellow",
+                    )
 
             # Upgrade Database
             click.echo("Running database upgrade...")
@@ -120,15 +156,15 @@ def upgrade(ctx: click.Context):  # noqa: C901
                 click.secho(
                     "\nWarning: No admin user found in the database.", fg="yellow"
                 )
-                click.echo(
-                    "Please run the 'setup' command to create an initial admin user."
-                )
-                click.echo(
-                    "Alternatively, you can manually create a user and assign the 'admin' role."
-                )
+                click.echo("Please run the web server to create an initial admin user.")
 
     except Exception as e:
-        click.secho(f"An error occurred during the database upgrade: {e}", fg="red")
+        error_msg = str(e)
+        if not error_msg:
+            error_msg = repr(e)
+        click.secho(
+            f"An error occurred during the database upgrade: {error_msg}", fg="red"
+        )
         raise click.Abort()
 
 

@@ -2,7 +2,6 @@ import os
 import shutil
 import stat
 import tempfile
-from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -149,29 +148,17 @@ def test_delete_path_robustly_non_existent_path(temp_server_dir):
 def test_resource_monitor_get_stats(mock_process):
     mock_proc_instance = mock_process.return_value
     mock_proc_instance.pid = 123
-    cpu_times = namedtuple("cpu_times", ["user", "system"])
-    mock_proc_instance.cpu_times.return_value = cpu_times(0.5, 0.5)  # user, system
+    mock_proc_instance.cpu_percent.return_value = 15.2
     mock_proc_instance.memory_info.return_value.rss = 1024 * 1024 * 100  # 100MB
     mock_proc_instance.create_time.return_value = 0
+    mock_proc_instance.is_running.return_value = True
 
     monitor = ResourceMonitor()
 
-    # First call should be 0% cpu
-    stats = monitor.get_stats(mock_proc_instance)
-    assert stats["cpu_percent"] == 0.0
-
-    # Second call to calculate cpu
-    with patch("time.time", return_value=1):
-        stats = monitor.get_stats(mock_proc_instance)
-        assert stats["cpu_percent"] == 0.0
-
-    # Third call to calculate cpu
-    mock_proc_instance.cpu_times.return_value = cpu_times(1.0, 1.0)
     with patch("time.time", return_value=2):
-        with patch("psutil.cpu_count", return_value=1):
-            stats = monitor.get_stats(mock_proc_instance)
-            assert stats["cpu_percent"] > 0.0
-            assert stats["memory_mb"] == 100.0
+        stats = monitor.get_stats(mock_proc_instance)
+        assert stats["cpu_percent"] == 15.2
+        assert stats["memory_mb"] == 100.0
 
 
 @patch("bedrock_server_manager.core.system.base.PSUTIL_AVAILABLE", False)

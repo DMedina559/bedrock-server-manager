@@ -190,6 +190,8 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 self.players: List[Dict[str, str]] = []
             if hasattr(self, "_log_file_cursor"):
                 self._log_file_cursor = 0
+            if hasattr(self, "_scan_log_cursor"):
+                self._scan_log_cursor = 0
 
             if hasattr(self, "set_status_in_config"):
                 self.set_status_in_config("RUNNING")
@@ -287,6 +289,8 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         if hasattr(self, "_log_file_cursor"):
             self._log_file_cursor = 0
+        if hasattr(self, "_scan_log_cursor"):
+            self._scan_log_cursor = 0
 
         self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 

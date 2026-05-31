@@ -126,7 +126,13 @@ def test_upgrade_unmanaged_database_stamps(runner, mock_app_context, mocker):
     mock_context, _ = mock_app_context
     db_url = mock_context.db.get_database_url()
     mock_inspector = MagicMock()
-    mock_inspector.has_table.side_effect = lambda table_name: table_name == "users"
+    mock_inspector.has_table.side_effect = lambda table_name: table_name in (
+        "users",
+        "plugins",
+    )
+    mock_inspector.get_columns.side_effect = lambda table_name: (
+        [{"name": "config"}] if table_name == "plugins" else []
+    )
     mocker.patch(
         "bedrock_server_manager.cli.database.inspect", return_value=mock_inspector
     )
@@ -149,7 +155,7 @@ def test_upgrade_unmanaged_database_stamps(runner, mock_app_context, mocker):
         expected_calls, any_order=True
     )
     assert "Unmanaged database detected" in result.output
-    mock_stamp.assert_called_once_with(mocker.ANY, "head")
+    mock_stamp.assert_called_once_with(mocker.ANY, "f2a7eb2d7c36")
     mock_upgrade.assert_called_once()
 
 
@@ -158,7 +164,12 @@ def test_upgrade_integration_unmanaged_db(runner, app_context):
     Integration test to verify that the upgrade command correctly stamps
     an unmanaged database (one with tables but no alembic_version table).
     """
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
+
+    # Since app_context now creates a managed DB via alembic, we drop the table
+    # to simulate a legacy DB created by create_all().
+    with app_context.db.engine.begin() as conn:
+        conn.execute(text("DROP TABLE alembic_version"))
 
     # The app_context fixture creates an unmanaged database for us.
     # We just need to run the command.
@@ -166,10 +177,13 @@ def test_upgrade_integration_unmanaged_db(runner, app_context):
 
     # 1. Check the output and exit code
     assert result.exit_code == 0, result.output
-    assert "Unmanaged database detected" in result.output
-    assert "Database stamped with latest" in result.output
-    assert "Running database upgrade" in result.output
-    assert "Database upgrade complete" in result.output
+    assert (
+        "Database appears to be fully upgraded but unstamped. Stamping with latest version..."
+        in result.output
+    )
+    assert "Database stamped with latest." in result.output
+    assert "Running database upgrade..." in result.output
+    assert "Database upgrade complete." in result.output
 
     # 2. Verify that the alembic_version table was created
     engine = app_context.db.engine
@@ -229,10 +243,13 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
 
     # 4. Assert the results
     assert result.exit_code == 0, result.output
-    assert "Unmanaged database detected" in result.output
-    assert "Database stamped with latest" in result.output
-    assert "Running database upgrade" in result.output
-    assert "Database upgrade complete" in result.output
+    assert (
+        "Database appears to be fully upgraded but unstamped. Stamping with latest version..."
+        in result.output
+    )
+    assert "Database stamped with latest." in result.output
+    assert "Running database upgrade..." in result.output
+    assert "Database upgrade complete." in result.output
 
     # Verify the table was created in the database file
     engine_after = create_engine(db_url)
