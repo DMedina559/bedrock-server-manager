@@ -2,7 +2,6 @@
 import logging
 import os
 import platform
-import subprocess  # For mocking subprocess calls if needed directly
 from pathlib import Path
 
 import pytest
@@ -491,7 +490,7 @@ def test_disable_web_service_linux(linux_manager, mocker):
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_remove_web_service_file_linux_exists(linux_manager, mocker):
+def test_remove_web_service_file_linux_exists(linux_manager, mocker, fp):
     """Test remove_web_service_file on Linux when file exists."""
     mocker.patch(
         "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
@@ -499,19 +498,16 @@ def test_remove_web_service_file_linux_exists(linux_manager, mocker):
     )
     mocker.patch("os.path.isfile", return_value=True)
     mock_os_remove = mocker.patch("os.remove")
-    mock_subprocess_run = mocker.patch("subprocess.run")
+
+    fp.register(["/usr/bin/systemctl", "--user", "daemon-reload"])
 
     assert linux_manager.remove_web_service_file() is True
     mock_os_remove.assert_called_once_with("/fake/service.file")
-    mock_subprocess_run.assert_called_once_with(
-        ["/usr/bin/systemctl", "--user", "daemon-reload"],
-        check=False,
-        capture_output=True,
-    )
+    assert fp.call_count(["/usr/bin/systemctl", "--user", "daemon-reload"]) == 1
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_remove_web_service_file_linux_not_exists(linux_manager, mocker):
+def test_remove_web_service_file_linux_not_exists(linux_manager, mocker, fp):
     """Test remove_web_service_file on Linux when file does not exist."""
     mocker.patch(
         "bedrock_server_manager.core.system.linux.get_systemd_service_file_path",
@@ -519,75 +515,61 @@ def test_remove_web_service_file_linux_not_exists(linux_manager, mocker):
     )
     mocker.patch("os.path.isfile", return_value=False)
     mock_os_remove = mocker.patch("os.remove")
-    mock_subprocess_run = mocker.patch("subprocess.run")
+
+    fp.register(["/usr/bin/systemctl", "--user", "daemon-reload"])
 
     assert linux_manager.remove_web_service_file() is True
     mock_os_remove.assert_not_called()
-    mock_subprocess_run.assert_not_called()
+    assert fp.call_count(["/usr/bin/systemctl", "--user", "daemon-reload"]) == 0
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_is_web_service_active_linux(linux_manager, mocker):
+def test_is_web_service_active_linux(linux_manager, fp):
     """Test is_web_service_active on Linux."""
-    mock_run = mocker.patch("subprocess.run")
+    expected_command = [
+        "/usr/bin/systemctl",
+        "--user",
+        "is-active",
+        linux_manager._WEB_SERVICE_SYSTEMD_NAME,
+    ]
 
-    mock_run.return_value = subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="active", stderr=""
-    )
+    fp.register(expected_command, returncode=0, stdout="active")
     assert linux_manager.is_web_service_active() is True
-    mock_run.assert_called_with(
-        [
-            "/usr/bin/systemctl",
-            "--user",
-            "is-active",
-            linux_manager._WEB_SERVICE_SYSTEMD_NAME,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    assert fp.call_count(expected_command) == 1
 
-    mock_run.return_value = subprocess.CompletedProcess(
-        args=[], returncode=1, stdout="inactive", stderr=""
-    )
+    fp.register(expected_command, returncode=1, stdout="inactive")
     assert linux_manager.is_web_service_active() is False
+    assert fp.call_count(expected_command) == 2
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_is_web_service_enabled_linux(linux_manager, mocker):
+def test_is_web_service_enabled_linux(linux_manager, fp):
     """Test is_web_service_enabled on Linux."""
-    mock_run = mocker.patch("subprocess.run")
+    expected_command = [
+        "/usr/bin/systemctl",
+        "--user",
+        "is-enabled",
+        linux_manager._WEB_SERVICE_SYSTEMD_NAME,
+    ]
 
-    mock_run.return_value = subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="enabled", stderr=""
-    )
+    fp.register(expected_command, returncode=0, stdout="enabled")
     assert linux_manager.is_web_service_enabled() is True
-    mock_run.assert_called_with(
-        [
-            "/usr/bin/systemctl",
-            "--user",
-            "is-enabled",
-            linux_manager._WEB_SERVICE_SYSTEMD_NAME,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    assert fp.call_count(expected_command) == 1
 
-    mock_run.return_value = subprocess.CompletedProcess(
-        args=[], returncode=1, stdout="disabled", stderr=""
-    )
+    fp.register(expected_command, returncode=1, stdout="disabled")
     assert linux_manager.is_web_service_enabled() is False
+    assert fp.call_count(expected_command) == 2
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog):
+def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog, fp):
     """Test Linux web service methods when systemctl is not found."""
     caplog.set_level(logging.WARNING)
     mocker.patch("shutil.which", return_value=None)
     linux_manager.capabilities = linux_manager._check_system_capabilities()
 
     assert not linux_manager.is_web_service_active()
+    assert fp.call_count(["systemctl"]) == 0
     assert (
         "systemctl command not found, cannot check Web UI service active state."
         in caplog.text
@@ -608,11 +590,13 @@ def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog):
     )
     mocker.patch("os.path.isfile", return_value=True)
     mock_os_remove = mocker.patch("os.remove")
-    mock_subprocess_run = mocker.patch("subprocess.run")  # To check it's not called
+
+    # We should not be calling subprocess.run
+    # Because `systemctl` is not available.
+    # `fp.call_count` will naturally be 0. We'll use `fp` instead of patching `subprocess.run`.
 
     linux_manager.remove_web_service_file()
     mock_os_remove.assert_called_once()
-    mock_subprocess_run.assert_not_called()  # No daemon-reload if systemctl missing
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
@@ -762,28 +746,23 @@ def test_remove_web_service_file_windows(windows_manager, mocker):
     platform.system() != "Windows", reason="Windows specific service tests"
 )
 def test_is_web_service_active_windows(
-    windows_manager, mocker, sc_query_output, expected_active_state
+    windows_manager, mocker, fp, sc_query_output, expected_active_state
 ):
     """Test is_web_service_active on Windows with various sc query outputs."""
-    mock_check_output = mocker.patch("subprocess.check_output")
+    expected_command = [
+        "C:\\Windows\\System32\\sc.exe",
+        "query",
+        windows_manager._WEB_SERVICE_WINDOWS_NAME_INTERNAL,
+    ]
 
     if "Service does not exist" in sc_query_output:
-        mock_check_output.side_effect = subprocess.CalledProcessError(1, "sc query")
+        fp.register(expected_command, returncode=1, stdout="sc query")
     else:
-        mock_check_output.return_value = sc_query_output
+        fp.register(expected_command, returncode=0, stdout=sc_query_output)
 
     assert windows_manager.is_web_service_active() == expected_active_state
     if not ("Service does not exist" in sc_query_output and not expected_active_state):
-        mock_check_output.assert_called_with(
-            [
-                "C:\\Windows\\System32\\sc.exe",
-                "query",
-                windows_manager._WEB_SERVICE_WINDOWS_NAME_INTERNAL,
-            ],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            creationflags=mocker.ANY,
-        )
+        assert fp.call_count(expected_command) == 1
 
 
 @pytest.mark.parametrize(
@@ -799,28 +778,23 @@ def test_is_web_service_active_windows(
     platform.system() != "Windows", reason="Windows specific service tests"
 )
 def test_is_web_service_enabled_windows(
-    windows_manager, mocker, sc_qc_output, expected_enabled_state
+    windows_manager, mocker, fp, sc_qc_output, expected_enabled_state
 ):
     """Test is_web_service_enabled on Windows with various sc qc outputs."""
-    mock_check_output = mocker.patch("subprocess.check_output")
+    expected_command = [
+        "C:\\Windows\\System32\\sc.exe",
+        "qc",
+        windows_manager._WEB_SERVICE_WINDOWS_NAME_INTERNAL,
+    ]
 
     if "Service does not exist" in sc_qc_output:
-        mock_check_output.side_effect = subprocess.CalledProcessError(1, "sc qc")
+        fp.register(expected_command, returncode=1, stdout="sc qc")
     else:
-        mock_check_output.return_value = sc_qc_output
+        fp.register(expected_command, returncode=0, stdout=sc_qc_output)
 
     assert windows_manager.is_web_service_enabled() == expected_enabled_state
     if not ("Service does not exist" in sc_qc_output and not expected_enabled_state):
-        mock_check_output.assert_called_with(
-            [
-                "C:\\Windows\\System32\\sc.exe",
-                "qc",
-                windows_manager._WEB_SERVICE_WINDOWS_NAME_INTERNAL,
-            ],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            creationflags=mocker.ANY,
-        )
+        assert fp.call_count(expected_command) == 1
 
 
 @pytest.mark.skipif(

@@ -178,13 +178,19 @@ def test_terminate_process_by_pid(mock_process):
     mock_proc.kill.assert_called_once()
 
 
-def test_guarded_process():
-    with patch("subprocess.run") as mock_run:
-        gp = GuardedProcess(["my_command"])
-        gp.run()
-        mock_run.assert_called_once_with(["my_command"], env=gp.guard_env)
+def test_guarded_process(fp):
+    gp = GuardedProcess(["my_command"])
 
-    with patch("subprocess.Popen") as mock_popen:
-        gp = GuardedProcess(["my_command"])
-        gp.popen()
-        mock_popen.assert_called_once_with(["my_command"], env=gp.guard_env)
+    fp.register(["my_command"], occurrences=2)
+
+    gp.run()
+    assert fp.call_count(["my_command"]) == 1
+
+    # Check that guard_env was populated correctly
+    from bedrock_server_manager.config.const import GUARD_VARIABLE
+
+    assert GUARD_VARIABLE in gp.guard_env
+    assert gp.guard_env[GUARD_VARIABLE] == "1"
+
+    gp.popen()
+    assert fp.call_count(["my_command"]) == 2

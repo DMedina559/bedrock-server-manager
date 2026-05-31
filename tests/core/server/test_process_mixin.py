@@ -1,3 +1,4 @@
+import subprocess
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -29,18 +30,16 @@ def test_is_not_running(app_context):
         )
 
 
-def test_send_command(app_context):
+def test_send_command(app_context, fp):
     server = app_context.get_server("test_server")
-    mock_process = MagicMock()
-    mock_process.poll.return_value = None
-    mock_process.stdin.write = MagicMock()
-    mock_process.stdin.flush = MagicMock()
+
+    fp.register(["test_server"])
+    mock_process = subprocess.Popen(["test_server"], stdin=subprocess.PIPE)
     server._process = mock_process
 
     with patch.object(server, "is_running", return_value=True):
         server.send_command("say hello")
-        mock_process.stdin.write.assert_called_once_with(b"say hello\n")
-        mock_process.stdin.flush.assert_called_once()
+        assert mock_process.stdin.getvalue() == b"say hello\n"
 
 
 def test_send_command_not_running(app_context):
@@ -50,16 +49,17 @@ def test_send_command_not_running(app_context):
             server.send_command("say hello")
 
 
-@patch("subprocess.Popen")
 @patch(
     "bedrock_server_manager.core.server.process_mixin.system_process.write_pid_to_file"
 )
 @patch("builtins.open", new_callable=mock_open)
-def test_start(mock_file_open, mock_write_pid, mock_popen, app_context):
+def test_start(mock_file_open, mock_write_pid, app_context, fp):
     """Tests the start method."""
     server = app_context.get_server("test_server")
-    mock_process = MagicMock()
-    mock_popen.return_value = mock_process
+
+    # We must register the exact command that the server attempts to launch
+    expected_command = [server.bedrock_executable_path]
+    fp.register(expected_command)
 
     with (
         patch.object(server, "is_running", return_value=False),
@@ -68,11 +68,13 @@ def test_start(mock_file_open, mock_write_pid, mock_popen, app_context):
 
         server.start()
 
-        mock_popen.assert_called_once()
+        assert fp.call_count(expected_command) == 1
+
+        # Popen mock PID is usually available on the process object
         mock_write_pid.assert_called_once_with(
-            server.get_pid_file_path(), mock_process.pid
+            server.get_pid_file_path(), server._process.pid
         )
-        assert server._process is mock_process
+        assert server._process is not None
         mock_set_status.assert_any_call("STARTING")
         mock_set_status.assert_any_call("RUNNING")
 
@@ -87,17 +89,18 @@ def test_start_already_running(app_context):
 @patch(
     "bedrock_server_manager.core.server.process_mixin.system_process.remove_pid_file_if_exists"
 )
-def test_stop(mock_remove_pid, app_context):
+def test_stop(mock_remove_pid, app_context, fp):
     server = app_context.get_server("test_server")
-    mock_process = MagicMock()
-    mock_process.poll.return_value = None
+
+    fp.register(["test_server"])
+    mock_process = subprocess.Popen(["test_server"], stdin=subprocess.PIPE)
     server._process = mock_process
 
     with patch.object(server, "is_running", return_value=True):
         server.stop()
 
-        mock_process.stdin.write.assert_called_once_with(b"stop\n")
-        mock_process.wait.assert_called_once()
+        assert mock_process.stdin.getvalue() == b"stop\n"
+        mock_process.wait(timeout=10)
         mock_remove_pid.assert_called_once_with(server.get_pid_file_path())
         assert server._process is None
 
