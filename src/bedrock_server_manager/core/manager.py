@@ -29,7 +29,6 @@ from typing import Any
 from ..config import EXPATH, Settings, app_name_title, package_name
 from ..error import ConfigurationError
 from .manager_mixins.discovery_mixin import DiscoveryMixin
-from .manager_mixins.player_mixin import PlayerMixin
 from .manager_mixins.system_mixin import SystemMixin
 from .manager_mixins.web_process_mixin import WebProcessMixin
 from .manager_mixins.web_service_mixin import WebServiceMixin
@@ -39,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 class BedrockServerManager(
     SystemMixin,
-    PlayerMixin,
     WebProcessMixin,
     WebServiceMixin,
     DiscoveryMixin,
@@ -59,8 +57,6 @@ class BedrockServerManager(
           an aggregated :class:`~.config.settings.Settings` object.
         - Discovering server instances within the configured base directory and
           validating their installations.
-        - Managing a central player database (``players.json``), including parsing
-          player data and consolidating information from server logs.
         - Controlling the Web UI application's lifecycle, including managing its
           system service (Systemd for Linux, Windows Service for Windows).
         - Checking and reporting on system capabilities (e.g., availability of

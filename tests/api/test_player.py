@@ -10,8 +10,8 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 class TestPlayerManagement:
     def test_add_players_manually_api_success(self, app_context):
-        with patch.object(
-            app_context.manager, "save_player_data", return_value=1
+        with patch(
+            "bedrock_server_manager.api.player.save_player_data", return_value=1
         ) as mock_save:
             result = add_players_manually_api(["player1:123"], app_context=app_context)
             assert result["status"] == "success"
@@ -24,9 +24,8 @@ class TestPlayerManagement:
         assert "non-empty list" in result["message"]
 
     def test_add_players_manually_api_invalid_string(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "parse_player_cli_argument",
+        with patch(
+            "bedrock_server_manager.api.player.parse_player_string",
             side_effect=UserInputError("Invalid format"),
         ):
             result = add_players_manually_api(
@@ -47,9 +46,8 @@ class TestPlayerManagement:
         assert result["players"][0]["name"] == "player1"
 
     def test_scan_and_update_player_db_api_success(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "discover_and_store_players_from_all_server_logs",
+        with patch(
+            "bedrock_server_manager.api.player.discover_and_store_players",
             return_value={
                 "total_entries_in_logs": 1,
                 "unique_players_submitted_for_saving": 1,
@@ -64,9 +62,8 @@ class TestPlayerManagement:
             mock_discover.assert_called_once()
 
     def test_scan_and_update_player_db_api_bsm_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "discover_and_store_players_from_all_server_logs",
+        with patch(
+            "bedrock_server_manager.api.player.discover_and_store_players",
             side_effect=BSMError("Test error"),
         ):
             result = scan_and_update_player_db_api(app_context=app_context)

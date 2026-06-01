@@ -18,6 +18,7 @@ from mcstatus import BedrockServer as mc
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError, ServerStartError
+from .player import save_player_data
 
 if TYPE_CHECKING:
     from .bedrock_server import BedrockServer
@@ -227,7 +228,9 @@ class BedrockProcessManager:
                             )
                             players = server.scan_log_for_players(incremental=True)
                             if players:
-                                self.app_context.manager.save_player_data(players)
+                                save_player_data(
+                                    self.settings.db.session_manager(), players
+                                )
                     except Exception as e:
                         server.player_count = 0
                         self.logger.error(
