@@ -95,10 +95,24 @@ def start_web_server_api(  # noqa: C901
             raise UserInputError("Invalid mode. Must be 'direct' or 'detached'.")
 
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
-        manager = app_context.manager
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            manager.start_web_ui_direct(app_context, host, port, debug)
+            logger.info("BSM: Starting web application in direct mode (blocking)...")
+            try:
+                from ..web.main import run_web_server as run_bsm_web_application
+
+                run_bsm_web_application(
+                    app_context=app_context,
+                    host=host,
+                    port=port,
+                    debug=debug,
+                )
+                logger.info("BSM: Web application (direct mode) shut down.")
+            except (RuntimeError, ImportError) as e:
+                logger.critical(
+                    f"BSM: Failed to start web application directly: {e}", exc_info=True
+                )
+                raise
             return {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",
@@ -112,8 +126,12 @@ def start_web_server_api(  # noqa: C901
                 )
 
             logger.info("API: Starting web server in detached mode...")
-            pid_file_path = manager.get_web_ui_pid_path()
-            expected_exe = manager.get_web_ui_executable_path()
+            from ..config import EXPATH
+
+            pid_file_path = os.path.join(
+                app_context.settings.config_dir, "web_server.pid"
+            )
+            expected_exe = str(EXPATH)
 
             # Check for an existing, valid PID file.
             existing_pid = None
@@ -128,7 +146,7 @@ def start_web_server_api(  # noqa: C901
                     system_process_utils.verify_process_identity(
                         existing_pid,
                         expected_exe,
-                        manager.get_web_ui_expected_start_arg(),  # type: ignore[arg-type]
+                        ["web", "start"],  # type: ignore[arg-type]
                     )
                     # If verification passes, the server is already running.
                     raise ServerProcessError(
@@ -203,9 +221,10 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        manager = app_context.manager
-        pid_file_path = manager.get_web_ui_pid_path()
-        expected_exe = manager.get_web_ui_executable_path()
+        from ..config import EXPATH
+
+        pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
+        expected_exe = str(EXPATH)
 
         # Read the PID from the file.
         pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -232,8 +251,9 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
 
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
-        manager = app_context.manager
-        system_process_utils.remove_pid_file_if_exists(manager.get_web_ui_pid_path())
+        system_process_utils.remove_pid_file_if_exists(
+            os.path.join(app_context.settings.config_dir, "web_server.pid")
+        )
         error_type = (
             "PID file error"
             if isinstance(e, FileOperationError)
@@ -284,10 +304,11 @@ def get_web_server_status_api(  # noqa: C901
         }
     pid = None
     try:
-        manager = app_context.manager
-        pid_file_path = manager.get_web_ui_pid_path()
-        expected_exe = manager.get_web_ui_executable_path()
-        expected_arg = manager.get_web_ui_expected_start_arg()
+        from ..config import EXPATH
+
+        pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
+        expected_exe = str(EXPATH)
+        expected_arg = ["web", "start"]
 
         try:
             pid = system_process_utils.read_pid_from_file(pid_file_path)

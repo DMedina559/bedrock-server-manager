@@ -23,12 +23,13 @@ def mock_system_linux_utils(mocker):
 
 
 class TestWebServerLifecycle:
-    def test_start_web_server_direct(self, app_context):
-        app_context.manager.start_web_ui_direct = MagicMock()
-        start_web_server_api(mode="direct", app_context=app_context)
-        app_context.manager.start_web_ui_direct.assert_called_once_with(
-            app_context, None, None, False
+    @patch("bedrock_server_manager.web.main.run_web_server")
+    def test_start_web_server_direct(self, mock_run, app_context):
+        result = start_web_server_api(mode="direct", app_context=app_context)
+        mock_run.assert_called_once_with(
+            app_context=app_context, host=None, port=None, debug=False
         )
+        assert result["status"] == "success"
 
     @patch("bedrock_server_manager.api.web.system_process_utils")
     @patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True)

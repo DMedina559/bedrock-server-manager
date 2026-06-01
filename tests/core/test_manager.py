@@ -9,7 +9,6 @@ import pytest
 from bedrock_server_manager.core.manager import BedrockServerManager
 from bedrock_server_manager.error import (
     AppFileNotFoundError,
-    ConfigurationError,
     FileOperationError,
     SystemError,
 )
@@ -122,95 +121,6 @@ def test_manager_get_os_type(app_context, mocker):
     manager = app_context.manager
     mocker.patch("platform.system", return_value="TestOS")
     assert manager.get_os_type() == "TestOS"
-
-
-# --- BedrockServerManager - Web UI Direct Start Tests ---
-
-
-def test_start_web_ui_direct_success(app_context, mocker):
-    """Test start_web_ui_direct successfully calls the web app runner."""
-    manager = app_context.manager
-    mock_run_web_server = mocker.patch("bedrock_server_manager.web.main.run_web_server")
-    mock_app_context = mocker.MagicMock()
-
-    manager.start_web_ui_direct(
-        app_context=mock_app_context, host="0.0.0.0", debug=True
-    )
-
-    mock_run_web_server.assert_called_once_with(
-        app_context=mock_app_context,
-        host="0.0.0.0",
-        port=None,
-        debug=True,
-    )
-
-
-def test_start_web_ui_direct_run_raises_runtime_error(app_context, mocker):
-    """Test start_web_ui_direct propagates RuntimeError from web app runner."""
-    manager = app_context.manager
-    mock_run_web_server = mocker.patch(
-        "bedrock_server_manager.web.main.run_web_server",
-        side_effect=RuntimeError("Web server failed"),
-    )
-    mock_app_context = mocker.MagicMock()
-
-    with pytest.raises(RuntimeError, match="Web server failed"):
-        manager.start_web_ui_direct(mock_app_context)
-
-    mock_run_web_server.assert_called_once()
-
-
-def test_start_web_ui_direct_import_error(app_context, mocker):
-    """Test start_web_ui_direct handles ImportError if web.app is not found (less likely with packaging)."""
-    manager = app_context.manager
-    mocker.patch(
-        "bedrock_server_manager.web.main.run_web_server",
-        side_effect=ImportError("Cannot import web app"),
-    )
-    mock_app_context = mocker.MagicMock()
-
-    with pytest.raises(ImportError, match="Cannot import web app"):
-        manager.start_web_ui_direct(mock_app_context)
-
-
-# --- BedrockServerManager - Web UI Detached/Service Info Getters ---
-
-
-def test_get_web_ui_pid_path(app_context):
-    """Test get_web_ui_pid_path returns the correct path."""
-    manager = app_context.manager
-    settings = app_context.settings
-    expected_pid_path = os.path.join(
-        settings.config_dir, manager._WEB_SERVER_PID_FILENAME
-    )
-    assert manager.get_web_ui_pid_path() == expected_pid_path
-
-
-def test_get_web_ui_expected_start_arg(app_context):
-    """Test get_web_ui_expected_start_arg returns the correct arguments."""
-    manager = app_context.manager
-    assert manager.get_web_ui_expected_start_arg() == ["web", "start"]
-
-
-def test_get_web_ui_executable_path(app_context, mocker):
-    """Test get_web_ui_executable_path returns the configured EXPATH."""
-    manager = app_context.manager
-    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy/bsm_executable")
-    manager._expath = "/dummy/bsm_executable"
-    assert manager.get_web_ui_executable_path() == "/dummy/bsm_executable"
-
-
-def test_get_web_ui_executable_path_not_configured(app_context):
-    """Test get_web_ui_executable_path raises error if _expath is None or empty."""
-    manager = app_context.manager
-    manager._expath = None
-    with pytest.raises(
-        ConfigurationError, match="Application executable path .* not configured"
-    ):
-        manager.get_web_ui_executable_path()
-
-
-# --- BedrockServerManager - Web UI Service Management (Linux - Systemd) ---
 
 
 @pytest.fixture

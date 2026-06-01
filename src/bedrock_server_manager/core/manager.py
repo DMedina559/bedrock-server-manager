@@ -29,7 +29,6 @@ from typing import Any
 from ..config import EXPATH, Settings, app_name_title, package_name
 from ..error import ConfigurationError
 from .manager_mixins.system_mixin import SystemMixin
-from .manager_mixins.web_process_mixin import WebProcessMixin
 from .manager_mixins.web_service_mixin import WebServiceMixin
 
 logger = logging.getLogger(__name__)
@@ -37,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 class BedrockServerManager(
     SystemMixin,
-    WebProcessMixin,
     WebServiceMixin,
 ):
     """
@@ -79,7 +77,6 @@ class BedrockServerManager(
             content like world templates and addons. Based on ``settings['paths.content']``.
         _expath (str): Path to the main BSM executable/script.
         _app_version (str): The application's version string.
-        _WEB_SERVER_PID_FILENAME (str): Filename for the Web UI PID file.
         _WEB_SERVICE_SYSTEMD_NAME (str): Name for the Web UI systemd service.
         _WEB_SERVICE_WINDOWS_NAME_INTERNAL (str): Internal name for the Web UI Windows service.
         _WEB_SERVICE_WINDOWS_DISPLAY_NAME (str): Display name for the Web UI Windows service.
@@ -93,8 +90,6 @@ class BedrockServerManager(
     _base_dir: str
     _content_dir: str | None
     _app_version: str
-    _WEB_SERVER_PID_FILENAME: str
-    _WEB_SERVER_START_ARG: list[str]
     _WEB_SERVICE_SYSTEMD_NAME: str
     _WEB_SERVICE_WINDOWS_NAME_INTERNAL: str
     _WEB_SERVICE_WINDOWS_DISPLAY_NAME: str
@@ -140,8 +135,6 @@ class BedrockServerManager(
         self._base_dir = ""
         self._content_dir = None
         self._app_version = "0.0.0"
-        self._WEB_SERVER_PID_FILENAME = "web_server.pid"
-        self._WEB_SERVER_START_ARG = ["web", "start"]
         self._WEB_SERVICE_SYSTEMD_NAME = "bedrock-server-manager-webui.service"
         self._WEB_SERVICE_WINDOWS_NAME_INTERNAL = "BedrockServerManagerWebUI"
         self._WEB_SERVICE_WINDOWS_DISPLAY_NAME = "Bedrock Server Manager Web UI"
