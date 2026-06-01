@@ -111,7 +111,6 @@ def mock_bedrock_server_manager(mocker):
     manager._config_dir = "/config"
     manager.list_available_worlds.return_value = ["/content/worlds/world1.mcworld"]
     manager.list_available_addons.return_value = ["/content/addons/addon1.mcpack"]
-    manager.get_servers_data.return_value = ([], [])
     manager.can_manage_services = True
 
     return manager

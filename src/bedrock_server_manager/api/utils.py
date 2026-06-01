@@ -161,10 +161,9 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Updating all server statuses...")
 
     try:
-        manager = app_context.manager
         # get_servers_data() from the manager now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = manager.get_servers_data(
+        all_servers_data, discovery_errors = core_utils.get_servers_data(
             app_context=app_context
         )
         if discovery_errors:
@@ -235,8 +234,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
 def stop_all_servers(app_context: AppContext):
     """Stops all running servers."""
     logger.info("API: Stopping all servers...")
-    manager = app_context.manager
-    result = manager.get_servers_data(app_context=app_context)
+    result = core_utils.get_servers_data(app_context=app_context)
     if isinstance(result, tuple) and len(result) == 2:
         servers_data, _ = result
     else:

@@ -65,9 +65,8 @@ class TestGetAllServersData:
         assert len(result["servers"]) == 1
 
     def test_get_all_servers_data_partial_success(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "get_servers_data",
+        with patch(
+            "bedrock_server_manager.core.utils.get_servers_data",
             return_value=([{"name": "server1"}], ["Error on server2"]),
         ):
             result = get_all_servers_data(app_context=app_context)
@@ -76,9 +75,8 @@ class TestGetAllServersData:
             assert "Completed with errors" in result["message"]
 
     def test_get_all_servers_data_bsm_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "get_servers_data",
+        with patch(
+            "bedrock_server_manager.core.utils.get_servers_data",
             side_effect=BSMError("Test BSM error"),
         ):
             result = get_all_servers_data(app_context=app_context)

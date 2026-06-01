@@ -25,6 +25,7 @@ import os
 from typing import Any, Dict, List
 
 from ..context import AppContext
+from ..core import utils as core_utils
 from ..core.system import find_files
 
 # Local application imports.
@@ -189,9 +190,8 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Getting status for all servers...")
 
     try:
-        manager = app_context.manager
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = manager.get_servers_data(
+        servers_data, bsm_error_messages = core_utils.get_servers_data(
             app_context=app_context
         )
 

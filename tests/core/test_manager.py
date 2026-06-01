@@ -11,8 +11,6 @@ from bedrock_server_manager.error import (
     AppFileNotFoundError,
     ConfigurationError,
     FileOperationError,
-    InvalidServerNameError,
-    MissingArgumentError,
     SystemError,
 )
 
@@ -685,79 +683,3 @@ def test_web_service_windows_operation_on_non_windows(real_manager, mocker):
         match="Web UI Windows Service operation 'test_op_windows' is only supported on Windows",
     ):
         real_manager._ensure_windows_for_web_service("test_op_windows")
-
-
-# --- BedrockServerManager - Server Discovery & Data Aggregation ---
-
-
-def test_validate_server_valid(app_context):
-    """Test validate_server for a valid server."""
-    assert app_context.manager.validate_server("test_server", app_context) is True
-
-
-def test_validate_server_not_installed(app_context, mocker):
-    """Test validate_server for a server that is not installed."""
-    mocker.patch(
-        "bedrock_server_manager.core.bedrock_server.BedrockServer.is_installed",
-        return_value=False,
-    )
-    assert app_context.manager.validate_server("test_server", app_context) is False
-
-
-def test_validate_server_instantiation_error(app_context, mocker):
-    """Test validate_server when BedrockServer instantiation fails."""
-    mocker.patch(
-        "bedrock_server_manager.context.AppContext.get_server",
-        side_effect=InvalidServerNameError("Bad name"),
-    )
-    assert (
-        app_context.manager.validate_server("bad_server_name_format!", app_context)
-        is False
-    )
-
-
-def test_validate_server_empty_name(app_context):
-    """Test validate_server with an empty server name."""
-    with pytest.raises(
-        MissingArgumentError, match="Server name cannot be empty for validation."
-    ):
-        app_context.manager.validate_server("", app_context)
-
-
-def test_get_servers_data_success(app_context):
-    """Test get_servers_data successfully retrieves data for multiple servers."""
-    servers_data, error_messages = app_context.manager.get_servers_data(
-        app_context=app_context
-    )
-
-    assert len(servers_data) == 1
-    assert servers_data[0]["name"] == "test_server"
-    assert servers_data[0]["status"] == "STOPPED"
-    assert "version" in servers_data[0]
-    assert len(error_messages) == 0
-
-
-def test_get_servers_data_base_dir_not_exist(app_context, mocker):
-    """Test get_servers_data if base server directory doesn't exist."""
-    app_context.manager._base_dir = "/path/to/non_existent_base_servers"
-    mocker.patch("os.path.isdir", return_value=False)
-
-    with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        app_context.manager.get_servers_data(app_context)
-
-
-def test_get_servers_data_with_non_installed_server(app_context, mocker):
-    """Test get_servers_data ignores directories that are not valid server installations."""
-    # The app_context fixture creates one valid server.
-    # We can mock its is_installed method to return False.
-    mocker.patch(
-        "bedrock_server_manager.core.bedrock_server.BedrockServer.is_installed",
-        return_value=False,
-    )
-
-    servers_data, error_messages = app_context.manager.get_servers_data(
-        app_context=app_context
-    )
-
-    assert len(servers_data) == 0
-    assert len(error_messages) == 0

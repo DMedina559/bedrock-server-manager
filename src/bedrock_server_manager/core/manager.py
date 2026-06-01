@@ -28,7 +28,6 @@ from typing import Any
 # Local application imports.
 from ..config import EXPATH, Settings, app_name_title, package_name
 from ..error import ConfigurationError
-from .manager_mixins.discovery_mixin import DiscoveryMixin
 from .manager_mixins.system_mixin import SystemMixin
 from .manager_mixins.web_process_mixin import WebProcessMixin
 from .manager_mixins.web_service_mixin import WebServiceMixin
@@ -40,7 +39,6 @@ class BedrockServerManager(
     SystemMixin,
     WebProcessMixin,
     WebServiceMixin,
-    DiscoveryMixin,
 ):
     """
     Manages global application settings, server discovery, and application-wide data.
