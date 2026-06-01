@@ -6,7 +6,7 @@
 :align: center
 ```
 
-<img alt="Stable" src="https://img.shields.io/pypi/v/bedrock-server-manager?label=Stable&color=blue"> <img alt="Pre-Release" src="https://img.shields.io/pypi/v/bedrock-server-manager?include_prereleases&label=Pre-Release&color=red"> <img alt="Downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/DMedina559/bsm-stats/main/downloads.json"> <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dmedina559/bedrock-server-manager/build-test.yml?branch=dev&label=Tests">
+<img alt="Stable" src="https://img.shields.io/pypi/v/bedrock-server-manager?label=Stable&amp;color=blue"> <img alt="Pre-Release" src="https://img.shields.io/pypi/v/bedrock-server-manager?include_prereleases&amp;label=Pre-Release&amp;color=red"> <img alt="Downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/DMedina559/bsm-stats/main/downloads.json"> <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dmedina559/bedrock-server-manager/build-test.yml?branch=dev&amp;label=Tests">
 
 Bedrock Server Manager is a comprehensive python server designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease, compatible with Linux/Windows.
 
