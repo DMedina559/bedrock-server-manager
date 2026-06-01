@@ -21,6 +21,7 @@ project = "Bedrock Server Manager"
 copyright = "2025, DMedina559"
 author = "DMedina559"
 release = bedrock_server_manager.__version__
+version = release
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
