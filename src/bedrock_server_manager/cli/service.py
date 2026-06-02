@@ -1,8 +1,8 @@
-# bedrock_server_manager/cli/web.py
+# bedrock_server_manager/cli/service.py
 """
-Defines the `bsm web` command group for managing the Bedrock Server Manager Web UI.
+Defines the `bsm service` command group for managing the Bedrock Server Manager system services.
 
-This module provides CLI commands to control the web server
+This module provides CLI commands to control the system services
 application (FastAPI/Uvicorn based) integration as an
 OS-level system service (e.g., systemd on Linux, Windows Services on Windows).
 
@@ -34,6 +34,7 @@ import questionary
 
 from ..api import web as web_api
 from ..context import AppContext
+from ..core.system.base import can_manage_services
 from ..error import BSMError, MissingArgumentError
 from .utils import handle_api_response as _handle_api_response
 
@@ -47,7 +48,7 @@ def requires_web_service_manager(func: Callable) -> Callable:
 
     This decorator checks if the system has a supported service manager
     (e.g., systemd for Linux, or `pywin32` installed for Windows services)
-    by inspecting `bsm.can_manage_services` from the
+    by inspecting `can_manage_services()` from the
     :class:`~.core.manager.BedrockServerManager` instance in the Click context.
 
     If the capability is not present, it prints an error and aborts the command.
@@ -62,10 +63,8 @@ def requires_web_service_manager(func: Callable) -> Callable:
     @functools.wraps(func)
     @click.pass_context
     def wrapper(ctx: click.Context, *args, **kwargs):
-        app_context: AppContext = ctx.obj["app_context"]
-        bsm = app_context.manager
-        if not bsm.can_manage_services:
-            os_type = bsm.get_os_type()
+        if not can_manage_services():
+            os_type = platform.system()
             if os_type == "Windows":
                 msg = "Error: This command requires 'pywin32' to be installed (`pip install pywin32`) for Web UI service management."
             else:
@@ -109,7 +108,7 @@ def _perform_web_service_configuration(
     Raises:
         click.Abort: If API calls handled by `_handle_api_response` report errors.
     """
-    if not app_context.manager.can_manage_services:
+    if not can_manage_services():
         click.secho(
             "System service manager not available. Skipping Web UI service configuration.",
             fg="yellow",
@@ -122,7 +121,7 @@ def _perform_web_service_configuration(
         enable_flag = (
             enable_autostart if enable_autostart is not None else False
         )  # Default to False if not specified alongside setup
-        os_type = app_context.manager.get_os_type()
+        os_type = platform.system()
         click.secho(
             f"\n--- Configuring Web UI System Service ({os_type}) ---", bold=True
         )
@@ -165,10 +164,8 @@ def interactive_web_service_workflow(app_context: AppContext):  # noqa: C901
     username = None
     password = None
 
-    bsm = app_context.manager
-
-    if bsm.can_manage_services:
-        os_type = bsm.get_os_type()
+    if can_manage_services():
+        os_type = platform.system()
         service_type_str = (
             "Systemd Service (Linux)" if os_type == "Linux" else "Windows Service"
         )
@@ -296,7 +293,7 @@ def configure_web_service(
 
     """
     app_context: AppContext = ctx.obj["app_context"]
-    if setup_service and not app_context.manager.can_manage_services:
+    if setup_service and not can_manage_services():
         click.secho(
             "Error: --setup-service is not available (service manager not found).",
             fg="red",
@@ -305,7 +302,7 @@ def configure_web_service(
 
     try:
         if (
-            app_context.manager.get_os_type() == "Windows"
+            platform.system() == "Windows"
             and username
             and not password
             and (setup_service or autostart_flag is not None)

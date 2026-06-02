@@ -6,7 +6,6 @@ import platform
 import pytest
 
 # Imports from the application
-from bedrock_server_manager.core.manager import BedrockServerManager
 from bedrock_server_manager.error import (
     AppFileNotFoundError,
     FileOperationError,
@@ -45,84 +44,6 @@ def test_manager_get_and_set_setting(app_context):
     assert manager.get_setting("x.y.z") == "new_value"
 
 
-@pytest.mark.parametrize(
-    "os_type, scheduler_cmd, service_cmd, expected_caps",
-    [
-        ("Linux", "crontab", "systemctl", {"scheduler": True, "service_manager": True}),
-        ("Linux", None, "systemctl", {"scheduler": False, "service_manager": True}),
-        ("Linux", "crontab", None, {"scheduler": True, "service_manager": False}),
-        ("Linux", None, None, {"scheduler": False, "service_manager": False}),
-        ("Windows", "schtasks", "sc.exe", {"scheduler": True, "service_manager": True}),
-        ("Windows", None, "sc.exe", {"scheduler": False, "service_manager": True}),
-        ("Windows", "schtasks", None, {"scheduler": True, "service_manager": False}),
-        ("Windows", None, None, {"scheduler": False, "service_manager": False}),
-        ("Darwin", None, None, {"scheduler": False, "service_manager": False}),
-    ],
-)
-def test_manager_system_capabilities_check(  # noqa: C901
-    app_context,
-    mocker,
-    os_type,
-    scheduler_cmd,
-    service_cmd,
-    expected_caps,
-    caplog,
-):
-    """Test _check_system_capabilities and _log_capability_warnings."""
-    caplog.set_level(logging.WARNING)
-    mocker.patch("platform.system", return_value=os_type)
-
-    def which_side_effect(cmd):
-        if os_type == "Linux":
-            if cmd == "crontab":
-                return scheduler_cmd
-            if cmd == "systemctl":
-                return service_cmd
-        elif os_type == "Windows":
-            if cmd == "schtasks":
-                return scheduler_cmd
-            if cmd == "sc.exe":
-                return service_cmd
-        return None
-
-    mocker.patch("shutil.which", side_effect=which_side_effect)
-    mocker.patch("bedrock_server_manager.config.const.EXPATH", "/dummy_expath")
-    manager = BedrockServerManager(app_context.settings)
-    manager.load()
-
-    assert manager.capabilities == expected_caps
-    assert manager.can_schedule_tasks == expected_caps["scheduler"]
-    assert manager.can_manage_services == expected_caps["service_manager"]
-
-    if not expected_caps["scheduler"]:
-        assert "Scheduler command (crontab/schtasks) not found." in caplog.text
-    else:
-        assert "Scheduler command (crontab/schtasks) not found." not in caplog.text
-
-    if os_type == "Linux" and not expected_caps["service_manager"]:
-        assert "systemctl command not found." in caplog.text
-    else:
-        if not (os_type == "Linux" and not expected_caps["service_manager"]):
-            assert "systemctl command not found." not in caplog.text
-
-
-def test_manager_get_app_version(app_context):
-    """Test get_app_version method."""
-    manager = app_context.manager
-    # This will get the actual version from the project metadata
-    import importlib.metadata
-
-    version = importlib.metadata.version("bedrock-server-manager")
-    assert manager.get_app_version() == version
-
-
-def test_manager_get_os_type(app_context, mocker):
-    """Test get_os_type method."""
-    manager = app_context.manager
-    mocker.patch("platform.system", return_value="TestOS")
-    assert manager.get_os_type() == "TestOS"
-
-
 @pytest.fixture
 def linux_manager(app_context, mocker):
     """Provides a manager instance mocked to be on Linux with systemctl available."""
@@ -131,7 +52,7 @@ def linux_manager(app_context, mocker):
     mocker.patch(
         "shutil.which", lambda cmd: "/usr/bin/systemctl" if cmd == "systemctl" else None
     )
-    manager.capabilities = manager._check_system_capabilities()
+
     return manager
 
 
@@ -325,7 +246,6 @@ def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog, fp
     """Test Linux web service methods when systemctl is not found."""
     caplog.set_level(logging.WARNING)
     mocker.patch("shutil.which", return_value=None)
-    linux_manager.capabilities = linux_manager._check_system_capabilities()
 
     assert not linux_manager.is_web_service_active()
     assert fp.call_count(["systemctl"]) == 0
@@ -362,7 +282,7 @@ def test_web_service_linux_systemctl_not_found(linux_manager, mocker, caplog, fp
 def test_web_service_linux_operation_on_non_linux(real_manager, mocker):
     """Test Linux-specific web service operations fail on non-Linux OS."""
     mocker.patch("platform.system", return_value="Windows")
-    real_manager.capabilities = real_manager._check_system_capabilities()
+
     mocker.patch("os.path.isfile", return_value=True)
 
     with pytest.raises(
@@ -400,7 +320,7 @@ def windows_manager(real_manager, mocker):
         "shutil.which",
         lambda cmd: "C:\\Windows\\System32\\sc.exe" if cmd == "sc.exe" else None,
     )
-    real_manager.capabilities = real_manager._check_system_capabilities()
+
     return real_manager
 
 
@@ -563,7 +483,6 @@ def test_web_service_windows_sc_exe_not_found(windows_manager, mocker, caplog):
     """Test Windows web service methods when sc.exe is not found."""
     caplog.set_level(logging.WARNING)
     mocker.patch("shutil.which", return_value=None)
-    windows_manager.capabilities = windows_manager._check_system_capabilities()
 
     assert not windows_manager.is_web_service_active()
     assert (
@@ -585,7 +504,7 @@ def test_web_service_windows_sc_exe_not_found(windows_manager, mocker, caplog):
 def test_web_service_windows_operation_on_non_windows(real_manager, mocker):
     """Test Windows-specific web service operations fail on non-Windows OS."""
     mocker.patch("platform.system", return_value="Linux")
-    real_manager.capabilities = real_manager._check_system_capabilities()
+
     mocker.patch("os.path.isfile", return_value=True)
 
     with pytest.raises(

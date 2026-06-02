@@ -17,6 +17,10 @@ from bedrock_server_manager.api.web import (
 @pytest.fixture
 def mock_system_linux_utils(mocker):
     """Fixture to patch system_linux_utils."""
+    mocker.patch("platform.system", return_value="Linux")
+    mocker.patch(
+        "bedrock_server_manager.core.system.base.can_manage_services", return_value=True
+    )
     return mocker.patch(
         "bedrock_server_manager.core.manager_mixins.web_service_mixin.system_linux_utils"
     )

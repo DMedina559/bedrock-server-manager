@@ -22,8 +22,10 @@ intended for use by UIs, CLIs, or other high-level components.
 
 import logging
 import os
+import platform
 from typing import Any, Dict, List
 
+from ..config.const import get_installed_version
 from ..context import AppContext
 from ..core import utils as core_utils
 from ..core.system import find_files
@@ -59,8 +61,8 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
         manager = app_context.manager
         info = {
             "application_name": manager._app_name_title,
-            "version": manager.get_app_version(),
-            "os_type": manager.get_os_type(),
+            "version": get_installed_version(),
+            "os_type": platform.system(),
             "base_directory": manager._base_dir,
             "content_directory": manager._content_dir,
             "config_directory": manager._config_dir,

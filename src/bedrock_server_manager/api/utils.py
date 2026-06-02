@@ -21,9 +21,11 @@ application logic to encapsulate common or complex operations.
 """
 
 import logging
+import platform
 from contextlib import contextmanager
 from typing import Any, Dict
 
+from ..config.const import get_installed_version
 from ..context import AppContext
 
 # Local application imports.
@@ -217,11 +219,10 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting system and app info.")
     try:
-        manager = app_context.manager
         splash_txt = app_context.splash_txt
         data = {
-            "os_type": manager.get_os_type(),
-            "app_version": manager.get_app_version(),
+            "os_type": platform.system(),
+            "app_version": get_installed_version(),
             "splash_text": splash_txt,
         }
         logger.info(f"API: Successfully retrieved system info: {data}")

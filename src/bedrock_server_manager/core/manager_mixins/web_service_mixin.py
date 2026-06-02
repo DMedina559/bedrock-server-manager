@@ -44,10 +44,6 @@ class WebServiceMixin:
     _WEB_SERVICE_WINDOWS_NAME_INTERNAL: str
     _WEB_SERVICE_WINDOWS_DISPLAY_NAME: str
 
-    def get_os_type(self) -> str:
-        """Returns the operating system type (e.g., 'Linux', 'Windows')."""
-        raise NotImplementedError
-
     def _ensure_linux_for_web_service(self, operation_name: str) -> None:
         """Ensures the current OS is Linux before proceeding with a Web UI systemd operation.
 
@@ -58,8 +54,8 @@ class WebServiceMixin:
         Raises:
             SystemError: If the current operating system is not Linux.
         """
-        if self.get_os_type() != "Linux":
-            msg = f"Web UI Systemd operation '{operation_name}' is only supported on Linux. Current OS: {self.get_os_type()}"
+        if platform.system() != "Linux":
+            msg = f"Web UI Systemd operation '{operation_name}' is only supported on Linux. Current OS: {platform.system()}"
             logger.warning(msg)
             raise SystemError(msg)
 
@@ -73,8 +69,8 @@ class WebServiceMixin:
         Raises:
             SystemError: If the current operating system is not Windows.
         """
-        if self.get_os_type() != "Windows":
-            msg = f"Web UI Windows Service operation '{operation_name}' is only supported on Windows. Current OS: {self.get_os_type()}"
+        if platform.system() != "Windows":
+            msg = f"Web UI Windows Service operation '{operation_name}' is only supported on Windows. Current OS: {platform.system()}"
             logger.warning(msg)
             raise SystemError(msg)
 
@@ -155,7 +151,7 @@ class WebServiceMixin:
             MissingArgumentError: If required internal values for service creation are missing.
         """
 
-        os_type = self.get_os_type()
+        os_type = platform.system()
         start_command = self._build_web_service_start_command()
 
         if os_type == "Linux":
@@ -293,7 +289,7 @@ class WebServiceMixin:
             bool: ``True`` if the Web UI service definition exists on the system,
             ``False`` otherwise or if the OS is not supported.
         """
-        os_type = self.get_os_type()
+        os_type = platform.system()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("check_web_service_exists")
             return system_linux_utils.check_service_exists(
@@ -326,7 +322,7 @@ class WebServiceMixin:
             CommandNotFoundError: If system utilities are not found.
             PermissionsError: On Windows, if not run with Administrator privileges.
         """
-        os_type = self.get_os_type()
+        os_type = platform.system()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("enable_web_service")
             logger.info(
@@ -370,7 +366,7 @@ class WebServiceMixin:
             CommandNotFoundError: If system utilities are not found.
             PermissionsError: On Windows, if not run with Administrator privileges.
         """
-        os_type = self.get_os_type()
+        os_type = platform.system()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("disable_web_service")
             logger.info(
@@ -432,7 +428,7 @@ class WebServiceMixin:
                 Details of what "Various" includes, for example, it can include
                     :class:`~.error.SubprocessError` if ``sc.exe delete`` fails.
         """
-        os_type = self.get_os_type()
+        os_type = platform.system()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("remove_web_service_file")
             service_file_path = system_linux_utils.get_systemd_service_file_path(
@@ -503,7 +499,7 @@ class WebServiceMixin:
             bool: ``True`` if the Web UI service is determined to be active,
             ``False`` otherwise.
         """
-        os_type = self.get_os_type()
+        os_type = platform.system()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("is_web_service_active")
             systemctl_cmd = shutil.which("systemctl")
@@ -604,7 +600,7 @@ class WebServiceMixin:
             bool: ``True`` if the Web UI service is determined to be enabled for
             automatic startup, ``False`` otherwise.
         """
-        os_type = self.get_os_type()
+        os_type = platform.system()
         if os_type == "Linux":
             self._ensure_linux_for_web_service("is_web_service_enabled")
             systemctl_cmd = shutil.which("systemctl")

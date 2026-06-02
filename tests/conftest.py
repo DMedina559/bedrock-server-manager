@@ -104,14 +104,11 @@ def mock_bedrock_server_manager(mocker):
 
     # Set default attributes for the mock
     manager._app_name_title = "Bedrock Server Manager"
-    manager.get_app_version.return_value = "1.0.0"
-    manager.get_os_type.return_value = "Linux"
     manager._base_dir = "/servers"
     manager._content_dir = "/content"
     manager._config_dir = "/config"
     manager.list_available_worlds.return_value = ["/content/worlds/world1.mcworld"]
     manager.list_available_addons.return_value = ["/content/addons/addon1.mcpack"]
-    manager.can_manage_services = True
 
     return manager
 

@@ -28,9 +28,10 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 from ..context import AppContext
+from ..core.system import process as system_process_utils
 
 # Local application imports.
-from ..core.system import process as system_process_utils
+from ..core.system.base import can_manage_services
 from ..error import (
     BSMError,
     FileOperationError,
@@ -415,7 +416,7 @@ def create_web_ui_service(
     """
     try:
         manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
@@ -482,7 +483,7 @@ def enable_web_ui_service(
     """
     try:
         manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
@@ -537,7 +538,7 @@ def disable_web_ui_service(
     """
     try:
         manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
@@ -603,7 +604,7 @@ def remove_web_ui_service(
     """
     try:
         manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
@@ -666,7 +667,7 @@ def get_web_ui_service_status(
     }
     try:
         manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "success",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot determine Web UI service status.",
