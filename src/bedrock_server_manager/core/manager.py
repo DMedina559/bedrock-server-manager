@@ -28,14 +28,11 @@ from typing import Any
 # Local application imports.
 from ..config import EXPATH, Settings, app_name_title, package_name
 from ..error import ConfigurationError
-from .manager_mixins.web_service_mixin import WebServiceMixin
 
 logger = logging.getLogger(__name__)
 
 
-class BedrockServerManager(
-    WebServiceMixin,
-):
+class BedrockServerManager:
     """
     Manages global application settings, server discovery, and application-wide data.
 
@@ -75,9 +72,6 @@ class BedrockServerManager(
             content like world templates and addons. Based on ``settings['paths.content']``.
         _expath (str): Path to the main BSM executable/script.
         _app_version (str): The application's version string.
-        _WEB_SERVICE_SYSTEMD_NAME (str): Name for the Web UI systemd service.
-        _WEB_SERVICE_WINDOWS_NAME_INTERNAL (str): Internal name for the Web UI Windows service.
-        _WEB_SERVICE_WINDOWS_DISPLAY_NAME (str): Display name for the Web UI Windows service.
     """
 
     _config_dir: str
@@ -88,9 +82,6 @@ class BedrockServerManager(
     _base_dir: str
     _content_dir: str | None
     _app_version: str
-    _WEB_SERVICE_SYSTEMD_NAME: str
-    _WEB_SERVICE_WINDOWS_NAME_INTERNAL: str
-    _WEB_SERVICE_WINDOWS_DISPLAY_NAME: str
 
     def __init__(self, settings: Settings) -> None:
         """
@@ -103,9 +94,7 @@ class BedrockServerManager(
             2. Caching essential paths (configuration directory, application data directory,
                servers base directory, content directory) and constants from the settings
                and application constants.
-            3. Defining constants for Web UI process/service management (PID filename,
-               service names for Systemd and Windows).
-            4. Validating that critical directory paths (servers base directory, content
+            3. Validating that critical directory paths (servers base directory, content
                directory) are configured in settings, raising a
                :class:`~.error.ConfigurationError` if not.
 
@@ -130,9 +119,6 @@ class BedrockServerManager(
         self._base_dir = ""
         self._content_dir = None
         self._app_version = "0.0.0"
-        self._WEB_SERVICE_SYSTEMD_NAME = "bedrock-server-manager-webui.service"
-        self._WEB_SERVICE_WINDOWS_NAME_INTERNAL = "BedrockServerManagerWebUI"
-        self._WEB_SERVICE_WINDOWS_DISPLAY_NAME = "Bedrock Server Manager Web UI"
 
     def load(self):
         """Loads the manager's settings and capabilities."""
@@ -154,26 +140,6 @@ class BedrockServerManager(
         if self._base_dir is None:
             self._base_dir = ""
         self._content_dir = self.settings.get("paths.content")
-
-        assert self._package_name is not None
-        _clean_package_name_for_systemd = (
-            self._package_name.lower().replace("_", "-").replace(" ", "-")
-        )
-        self._WEB_SERVICE_SYSTEMD_NAME = (
-            f"{_clean_package_name_for_systemd}-webui.service"
-        )
-
-        # Ensure app_name_title is suitable for Windows service name
-        assert self._app_name_title is not None
-        _clean_app_title_for_windows = "".join(
-            c for c in self._app_name_title if c.isalnum()
-        )
-        if (
-            not _clean_app_title_for_windows
-        ):  # Fallback if app_name_title was all special chars
-            _clean_app_title_for_windows = "AppWebUI"  # Generic fallback
-        self._WEB_SERVICE_WINDOWS_NAME_INTERNAL = f"{_clean_app_title_for_windows}WebUI"
-        self._WEB_SERVICE_WINDOWS_DISPLAY_NAME = f"{self._app_name_title} Web UI"
 
         try:
             self._app_version = self.settings.version

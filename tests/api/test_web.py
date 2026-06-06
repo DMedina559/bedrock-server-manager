@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -21,9 +21,7 @@ def mock_system_linux_utils(mocker):
     mocker.patch(
         "bedrock_server_manager.core.system.base.can_manage_services", return_value=True
     )
-    return mocker.patch(
-        "bedrock_server_manager.core.manager_mixins.web_service_mixin.system_linux_utils"
-    )
+    return mocker.patch("bedrock_server_manager.core.service.system_linux_utils")
 
 
 class TestWebServerLifecycle:
@@ -64,23 +62,31 @@ class TestWebServerLifecycle:
 
 
 class TestWebServiceManagement:
+    @patch("bedrock_server_manager.api.web.service.create_web_service_file")
+    @patch("bedrock_server_manager.api.web.service.enable_web_service")
     def test_create_web_ui_service_autostart(
-        self, app_context, mock_system_linux_utils
+        self, mock_enable, mock_create, app_context, mock_system_linux_utils
     ):
         create_web_ui_service(app_context=app_context, autostart=True)
-        mock_system_linux_utils.create_systemd_service_file.assert_called_once()
-        mock_system_linux_utils.enable_systemd_service.assert_called_once()
+        mock_create.assert_called_once()
+        mock_enable.assert_called_once()
 
-    def test_enable_web_ui_service(self, app_context, mock_system_linux_utils):
+    @patch("bedrock_server_manager.api.web.service.enable_web_service")
+    def test_enable_web_ui_service(
+        self, mock_enable, app_context, mock_system_linux_utils
+    ):
         enable_web_ui_service(app_context=app_context)
-        mock_system_linux_utils.enable_systemd_service.assert_called_once()
+        mock_enable.assert_called_once()
 
-    def test_disable_web_ui_service(self, app_context, mock_system_linux_utils):
+    @patch("bedrock_server_manager.api.web.service.disable_web_service")
+    def test_disable_web_ui_service(
+        self, mock_disable, app_context, mock_system_linux_utils
+    ):
         disable_web_ui_service(app_context=app_context)
-        mock_system_linux_utils.disable_systemd_service.assert_called_once()
+        mock_disable.assert_called_once()
 
     @pytest.mark.skip(reason="Failing due to mock issues")
-    @patch("bedrock_server_manager.core.manager.os.remove")
+    @patch("bedrock_server_manager.core.service.os.remove")
     def test_remove_web_ui_service(
         self, mock_os_remove, app_context, mock_system_linux_utils
     ):
@@ -97,10 +103,24 @@ class TestWebServiceManagement:
                 "/etc/systemd/user/bedrock-server-manager-webui.service"
             )
 
-    def test_get_web_ui_service_status(self, app_context, mock_system_linux_utils):
-        app_context.manager.check_web_service_exists = MagicMock(return_value=True)
-        app_context.manager.is_web_service_active = MagicMock(return_value=True)
-        app_context.manager.is_web_service_enabled = MagicMock(return_value=True)
+    @patch(
+        "bedrock_server_manager.core.service.check_web_service_exists",
+        return_value=True,
+    )
+    @patch(
+        "bedrock_server_manager.core.service.is_web_service_active", return_value=True
+    )
+    @patch(
+        "bedrock_server_manager.core.service.is_web_service_enabled", return_value=True
+    )
+    def test_get_web_ui_service_status(
+        self,
+        mock_enabled,
+        mock_active,
+        mock_exists,
+        app_context,
+        mock_system_linux_utils,
+    ):
         result = get_web_ui_service_status(app_context=app_context)
         assert result["status"] == "success"
         assert result["service_exists"] is True

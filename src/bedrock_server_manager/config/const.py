@@ -131,3 +131,20 @@ def get_installed_version() -> str:
     except PackageNotFoundError:
         installed_version = "0.0.0"
         return installed_version
+
+
+# --- Web Service Constants ---
+_clean_package_name_for_systemd = (
+    package_name.lower().replace("_", "-").replace(" ", "-")
+)
+WEB_SERVICE_SYSTEMD_NAME: str = f"{_clean_package_name_for_systemd}-webui.service"
+"""Name for the Web UI systemd service."""
+
+_clean_app_title_for_windows = "".join(c for c in app_name_title if c.isalnum())
+if not _clean_app_title_for_windows:
+    _clean_app_title_for_windows = "AppWebUI"
+WEB_SERVICE_WINDOWS_NAME_INTERNAL: str = f"{_clean_app_title_for_windows}WebUI"
+"""Internal name for the Web UI Windows service."""
+
+WEB_SERVICE_WINDOWS_DISPLAY_NAME: str = f"{app_name_title} Web UI"
+"""Display name for the Web UI Windows service."""

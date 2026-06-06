@@ -28,6 +28,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 from ..context import AppContext
+from ..core import service
 from ..core.system import process as system_process_utils
 
 # Local application imports.
@@ -386,10 +387,10 @@ def create_web_ui_service(
     On Linux, this creates a systemd user service. On Windows, this creates a
     Windows Service (typically requires Administrator privileges).
     This function calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.create_web_service_file`,
+    :meth:`~bedrock_server_manager.core.service.create_web_service_file`,
     and then either
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service` or
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
+    :meth:`~bedrock_server_manager.core.service.enable_web_service` or
+    :meth:`~bedrock_server_manager.core.service.disable_web_service`
     based on the `autostart` flag.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
 
@@ -415,22 +416,24 @@ def create_web_ui_service(
             :class:`~.error.CommandNotFoundError`, or :class:`~.error.FileOperationError`.
     """
     try:
-        manager = app_context.manager
         if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        manager.create_web_service_file(
-            system=system, username=username, password=password
+        service.create_web_service_file(
+            app_data_dir=app_context.manager.settings.app_data_dir,
+            system=system,
+            username=username,
+            password=password,
         )
 
         if autostart:
-            manager.enable_web_service(system=system)
+            service.enable_web_service(system=system)
             action_done = "created and enabled"
         else:
-            manager.disable_web_service()
+            service.disable_web_service()
             action_done = "created and disabled"
 
         return {
@@ -462,7 +465,7 @@ def enable_web_ui_service(
     On Linux, this enables the systemd user service. On Windows, this sets the
     Windows Service start type to 'Automatic' (typically requires Administrator
     privileges). It calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`.
+    :meth:`~bedrock_server_manager.core.service.enable_web_service`.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
 
     Args:
@@ -478,17 +481,16 @@ def enable_web_ui_service(
 
     Raises:
         BSMError: Propagates errors from the underlying
-            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`
+            :meth:`~bedrock_server_manager.core.service.enable_web_service`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        manager = app_context.manager
         if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        manager.enable_web_service(system=system)
+        service.enable_web_service(system=system)
         return {
             "status": "success",
             "message": "Web UI service enabled successfully.",
@@ -517,7 +519,7 @@ def disable_web_ui_service(
     On Linux, this disables the systemd user service. On Windows, this sets the
     Windows Service start type to 'Disabled' or 'Manual' (typically requires
     Administrator privileges). It calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`.
+    :meth:`~bedrock_server_manager.core.service.disable_web_service`.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
 
     Args:
@@ -533,17 +535,16 @@ def disable_web_ui_service(
 
     Raises:
         BSMError: Propagates errors from the underlying
-            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
+            :meth:`~bedrock_server_manager.core.service.disable_web_service`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        manager = app_context.manager
         if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        manager.disable_web_service(system=system)
+        service.disable_web_service(system=system)
         return {
             "status": "success",
             "message": "Web UI service disabled successfully.",
@@ -576,7 +577,7 @@ def remove_web_ui_service(
 
     The service should ideally be stopped and disabled before removal.
     This function calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.remove_web_service_file`.
+    :meth:`~bedrock_server_manager.core.service.remove_web_service_file`.
 
     .. warning::
         This is a **DESTRUCTIVE** operation that removes the service definition
@@ -598,19 +599,18 @@ def remove_web_ui_service(
 
     Raises:
         BSMError: Propagates errors from the underlying
-            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.remove_web_service_file`
+            :meth:`~bedrock_server_manager.core.service.remove_web_service_file`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`,
             :class:`~.error.FileOperationError`).
     """
     try:
-        manager = app_context.manager
         if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        removed = manager.remove_web_service_file(system=system)
+        removed = service.remove_web_service_file(system=system)
         if removed:
             return {
                 "status": "success",
@@ -666,7 +666,6 @@ def get_web_ui_service_status(
         "is_enabled": False,
     }
     try:
-        manager = app_context.manager
         if not can_manage_services():
             return {
                 "status": "success",
@@ -674,12 +673,12 @@ def get_web_ui_service_status(
                 **response_data,
             }
 
-        response_data["service_exists"] = manager.check_web_service_exists(
+        response_data["service_exists"] = service.check_web_service_exists(
             system=system
         )
         if response_data["service_exists"]:
-            response_data["is_active"] = manager.is_web_service_active(system=system)
-            response_data["is_enabled"] = manager.is_web_service_enabled(system=system)
+            response_data["is_active"] = service.is_web_service_active(system=system)
+            response_data["is_enabled"] = service.is_web_service_enabled(system=system)
 
         return {"status": "success", **response_data}
 
