@@ -27,12 +27,8 @@ from typing import Any, Dict
 
 from ..config.const import get_installed_version
 from ..context import AppContext
-
-# Local application imports.
 from ..core import utils as core_utils
 from ..error import BSMError, ServerStartError, UserInputError
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 from .server import start_server as api_start_server
@@ -136,7 +132,9 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
-@trigger_plugin_event(after="after_server_statuses_updated")
+@trigger_plugin_event(
+    before="before_server_statuses_updated", after="after_server_statuses_updated"
+)
 def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
