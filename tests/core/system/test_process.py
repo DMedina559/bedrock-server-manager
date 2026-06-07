@@ -106,6 +106,9 @@ def test_verify_process_identity(mock_process):
         123, expected_executable_path="/server/bedrock_server", expected_cwd="/server"
     )
 
+    # Success (command args only, backward compatibility for legacy web servers)
+    verify_process_identity(123, expected_command_args=["/server/bedrock_server"])
+
     # Failure
     with pytest.raises(ServerProcessError):
         verify_process_identity(

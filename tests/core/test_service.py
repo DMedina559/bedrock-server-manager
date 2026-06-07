@@ -1,17 +1,9 @@
 import platform
+import sys
 
 import pytest
 
 from bedrock_server_manager.core import service
-from bedrock_server_manager.error import (
-    AppFileNotFoundError,
-)
-
-
-@pytest.fixture
-def mock_expath(mocker):
-    mocker.patch("bedrock_server_manager.core.service.EXPATH", "/fake/bsm_executable")
-    mocker.patch("os.path.isfile", return_value=True)
 
 
 @pytest.fixture
@@ -40,29 +32,23 @@ def mock_windows(mocker):
     )
 
 
-def test_build_web_service_start_command(mock_expath):
+def test_build_web_service_start_command(mocker):
+    mocker.patch("sys.executable", "/fake/python")
     command = service._build_web_service_start_command()
-    assert command == "/fake/bsm_executable web start --mode direct"
+    assert command == "/fake/python -m bedrock_server_manager web start --mode direct"
 
 
 def test_build_web_service_start_command_with_spaces(mocker):
-    mocker.patch(
-        "bedrock_server_manager.core.service.EXPATH", "/fake path/bsm executable"
-    )
-    mocker.patch("os.path.isfile", return_value=True)
+    mocker.patch("sys.executable", "/fake path/python")
     command = service._build_web_service_start_command()
-    assert command == '"/fake path/bsm executable" web start --mode direct'
-
-
-def test_build_web_service_start_command_expath_not_file(mocker):
-    mocker.patch("bedrock_server_manager.core.service.EXPATH", "/fake/bsm_executable")
-    mocker.patch("os.path.isfile", return_value=False)
-    with pytest.raises(AppFileNotFoundError):
-        service._build_web_service_start_command()
+    assert (
+        command
+        == '"/fake path/python" -m bedrock_server_manager web start --mode direct'
+    )
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific service tests")
-def test_create_web_service_file_linux(mock_linux, mock_expath, mocker):
+def test_create_web_service_file_linux(mock_linux, mocker):
     mock_create_systemd = mocker.patch(
         "bedrock_server_manager.core.system.linux.create_systemd_service_file"
     )
@@ -70,13 +56,17 @@ def test_create_web_service_file_linux(mock_linux, mock_expath, mocker):
 
     service.create_web_service_file("/fake/app_data")
 
+    exe_path = sys.executable
+    if " " in exe_path and not exe_path.startswith('"') and not exe_path.endswith('"'):
+        exe_path = f'"{exe_path}"'
+
     mock_create_systemd.assert_called_once_with(
         service_name_full="bedrock-server-manager-webui.service",
         description=mocker.ANY,
         system=False,
         working_directory="/fake/app_data",
-        exec_start_command="/fake/bsm_executable web start --mode direct",
-        exec_stop_command="/fake/bsm_executable web stop",
+        exec_start_command=f"{exe_path} -m bedrock_server_manager web start --mode direct",
+        exec_stop_command=f"{exe_path} -m bedrock_server_manager web stop",
         service_type="simple",
         restart_policy="on-failure",
         restart_sec=10,
@@ -156,16 +146,18 @@ def test_is_web_service_active_linux(mock_linux, mocker, fp):
 @pytest.mark.skipif(
     platform.system() != "Windows", reason="Windows specific service tests"
 )
-def test_create_web_service_file_windows(mock_windows, mock_expath, mocker):
+def test_create_web_service_file_windows(mock_windows, mocker):
     mock_create_svc = mocker.patch(
         "bedrock_server_manager.core.system.windows.create_windows_service"
     )
 
     service.create_web_service_file("/fake/app_data")
 
-    expected_binpath_command = (
-        '/fake/bsm_executable service _run-web "BedrockServerManagerWebUI"'
-    )
+    exe_path = sys.executable
+    if " " in exe_path and not exe_path.startswith('"') and not exe_path.endswith('"'):
+        exe_path = f'"{exe_path}"'
+
+    expected_binpath_command = f'{exe_path} -m bedrock_server_manager service _run-web "BedrockServerManagerWebUI"'
     mock_create_svc.assert_called_once_with(
         service_name="BedrockServerManagerWebUI",
         display_name="Bedrock Server Manager Web UI",
