@@ -12,7 +12,6 @@ from .blocked_commands import API_COMMAND_BLACKLIST
 from .const import (
     DEFAULT_ENABLED_PLUGINS,
     EVENT_IDENTITY_KEYS,
-    EXPATH,
     GUARD_VARIABLE,
     SCRIPT_DIR,
     SERVER_TIMEOUT,
@@ -33,7 +32,6 @@ __all__ = [
     "executable_name",
     "app_name_title",
     "env_name",
-    "EXPATH",
     "SCRIPT_DIR",
     "GUARD_VARIABLE",
     "DEFAULT_ENABLED_PLUGINS",

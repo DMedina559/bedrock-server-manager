@@ -126,12 +126,11 @@ def start_web_server_api(  # noqa: C901
                 )
 
             logger.info("API: Starting web server in detached mode...")
-            from ..config import EXPATH
+            import sys
 
             pid_file_path = os.path.join(
                 app_context.settings.config_dir, "web_server.pid"
             )
-            expected_exe = str(EXPATH)
 
             # Check for an existing, valid PID file.
             existing_pid = None
@@ -144,9 +143,8 @@ def start_web_server_api(  # noqa: C901
             if existing_pid and system_process_utils.is_process_running(existing_pid):
                 try:
                     system_process_utils.verify_process_identity(
-                        existing_pid,
-                        expected_exe,
-                        ["web", "start"],  # type: ignore[arg-type]
+                        pid=existing_pid,
+                        expected_command_args=["web", "start"],
                     )
                     # If verification passes, the server is already running.
                     raise ServerProcessError(
@@ -160,7 +158,15 @@ def start_web_server_api(  # noqa: C901
                 system_process_utils.remove_pid_file_if_exists(pid_file_path)
 
             # Construct the command to launch the new detached process.
-            command = [str(expected_exe), "web", "start", "--mode", "direct"]
+            command = [
+                sys.executable,
+                "-m",
+                "bedrock_server_manager",
+                "web",
+                "start",
+                "--mode",
+                "direct",
+            ]
             hosts_to_add = []
             if host:
                 hosts_to_add.append(host)
@@ -219,10 +225,7 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        from ..config import EXPATH
-
         pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
-        expected_exe = str(EXPATH)
 
         # Read the PID from the file.
         pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -242,7 +245,9 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
             }
 
         # Verify it's the correct process before terminating.
-        system_process_utils.verify_process_identity(pid, expected_exe)
+        system_process_utils.verify_process_identity(
+            pid=pid, expected_command_args=["web", "start"]
+        )
         system_process_utils.terminate_process_by_pid(pid)
         system_process_utils.remove_pid_file_if_exists(pid_file_path)
         return {"status": "success", "message": f"Web server (PID: {pid}) stopped."}
@@ -298,10 +303,7 @@ def get_web_server_status_api(  # noqa: C901
         }
     pid = None
     try:
-        from ..config import EXPATH
-
         pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
-        expected_exe = str(EXPATH)
         expected_arg = ["web", "start"]
 
         try:
@@ -336,7 +338,7 @@ def get_web_server_status_api(  # noqa: C901
         # Case: Process is running, verify it's the correct one.
         try:
             system_process_utils.verify_process_identity(
-                pid, expected_exe, expected_arg  # type: ignore[arg-type]
+                pid=pid, expected_command_args=expected_arg
             )
             return {
                 "status": "RUNNING",

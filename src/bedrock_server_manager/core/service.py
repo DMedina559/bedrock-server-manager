@@ -10,10 +10,10 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 from typing import Optional
 
 from ..config.const import (
-    EXPATH,
     WEB_SERVICE_SYSTEMD_NAME,
     WEB_SERVICE_WINDOWS_DISPLAY_NAME,
     WEB_SERVICE_WINDOWS_NAME_INTERNAL,
@@ -54,10 +54,7 @@ def _ensure_windows_for_web_service(operation_name: str) -> None:
 
 def _build_web_service_start_command() -> str:
     """Builds the command string used to start the Web UI as a service."""
-    if not EXPATH or not os.path.isfile(EXPATH):
-        raise AppFileNotFoundError(str(EXPATH), "Manager executable for Web UI service")
-
-    exe_path_to_use = EXPATH
+    exe_path_to_use = sys.executable
     if (
         " " in exe_path_to_use
         and not exe_path_to_use.startswith('"')
@@ -65,7 +62,7 @@ def _build_web_service_start_command() -> str:
     ):
         exe_path_to_use = f'"{exe_path_to_use}"'
 
-    return f"{exe_path_to_use} web start --mode direct"
+    return f"{exe_path_to_use} -m bedrock_server_manager web start --mode direct"
 
 
 def create_web_service_file(  # noqa: C901
@@ -80,15 +77,14 @@ def create_web_service_file(  # noqa: C901
 
     if os_type == "Linux":
         _ensure_linux_for_web_service("create_web_service_file")
-        assert EXPATH is not None
-        stop_command_exe_path = EXPATH
+        stop_command_exe_path = sys.executable
         if (
             " " in stop_command_exe_path
             and not stop_command_exe_path.startswith('"')
             and not stop_command_exe_path.endswith('"')
         ):
             stop_command_exe_path = f'"{stop_command_exe_path}"'
-        stop_command = f"{stop_command_exe_path} web stop"
+        stop_command = f"{stop_command_exe_path} -m bedrock_server_manager web stop"
 
         description = f"{app_name_title} Web UI Service"
         working_dir = app_data_dir
@@ -136,16 +132,16 @@ def create_web_service_file(  # noqa: C901
         _ensure_windows_for_web_service("create_web_service_file")
         description = f"Manages the {app_name_title} Web UI."
 
-        if not EXPATH or not os.path.isfile(EXPATH):
-            raise AppFileNotFoundError(
-                str(EXPATH), "Manager executable (EXEPATH) for Web UI service"
-            )
+        quoted_main_exepath = f"{sys.executable}"
+        if (
+            " " in quoted_main_exepath
+            and not quoted_main_exepath.startswith('"')
+            and not quoted_main_exepath.endswith('"')
+        ):
+            quoted_main_exepath = f'"{quoted_main_exepath}"'
 
-        quoted_main_exepath = f"{EXPATH}"
         actual_svc_name_arg = f'"{WEB_SERVICE_WINDOWS_NAME_INTERNAL}"'
-        windows_service_binpath_command = (
-            f"{quoted_main_exepath} service _run-web {actual_svc_name_arg}"
-        )
+        windows_service_binpath_command = f"{quoted_main_exepath} -m bedrock_server_manager service _run-web {actual_svc_name_arg}"
 
         logger.info(
             f"Creating/updating Windows service '{WEB_SERVICE_WINDOWS_NAME_INTERNAL}' for Web UI."
