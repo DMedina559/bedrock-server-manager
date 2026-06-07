@@ -32,8 +32,6 @@ from ...error import (
     ServerStopError,
 )
 from ..system import base as system_base
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 

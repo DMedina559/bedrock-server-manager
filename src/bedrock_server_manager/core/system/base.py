@@ -42,7 +42,6 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-# Third-party imports. psutil is optional but required for process monitoring.
 try:
     import psutil
 
@@ -63,8 +62,6 @@ from ...error import (
     PermissionsError,
     SystemError,
 )
-
-# Local application imports.
 from . import process as core_process
 
 logger = logging.getLogger(__name__)

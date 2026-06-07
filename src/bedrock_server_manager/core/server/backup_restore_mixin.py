@@ -34,8 +34,6 @@ from ...error import (
     UserInputError,
 )
 from ...utils import get_timestamp
-
-# Local application imports.
 from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 

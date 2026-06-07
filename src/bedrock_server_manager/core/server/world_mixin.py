@@ -35,8 +35,6 @@ from ...error import (
     MissingArgumentError,
 )
 from ..system import base as system_base_utils
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 

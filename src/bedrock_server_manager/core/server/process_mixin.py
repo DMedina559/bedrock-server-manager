@@ -30,8 +30,6 @@ if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
     import psutil as psutil_for_types
 
-
-# Local application imports.
 from ...error import (
     BSMError,
     MissingArgumentError,

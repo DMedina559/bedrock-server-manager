@@ -43,7 +43,6 @@ import platform
 import subprocess
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-# psutil is an optional dependency, but required for most functions here.
 try:
     import psutil
 

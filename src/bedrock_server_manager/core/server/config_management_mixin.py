@@ -25,8 +25,6 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 

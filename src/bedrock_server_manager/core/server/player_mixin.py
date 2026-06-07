@@ -15,8 +15,6 @@ import re
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 from ...error import FileOperationError
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 if TYPE_CHECKING:

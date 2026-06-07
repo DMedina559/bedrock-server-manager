@@ -49,8 +49,6 @@ from ..error import (
     SystemError,
     UserInputError,
 )
-
-# Local application imports.
 from .system import base as system_base
 from .system import find_files
 

@@ -39,12 +39,8 @@ from ..error import (
     MissingArgumentError,
     UserInputError,
 )
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-
-# Local application imports.
 from . import player as player_api
 from .utils import server_lifecycle_manager, validate_server_name_format
 
