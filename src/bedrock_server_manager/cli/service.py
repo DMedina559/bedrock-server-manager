@@ -32,6 +32,7 @@ import click
 import questionary
 
 from ..api import web as web_api
+from ..config.const import WEB_SERVICE_WINDOWS_NAME_INTERNAL
 from ..context import AppContext
 from ..core.system.base import can_manage_services
 from ..error import BSMError, MissingArgumentError
@@ -518,7 +519,12 @@ if platform.system() == "Windows":
             allow_extra_args=True,
         ),
     )
-    @click.argument("actual_svc_name_arg", type=str)
+    @click.argument(
+        "actual_svc_name_arg",
+        type=str,
+        required=False,
+        default=WEB_SERVICE_WINDOWS_NAME_INTERNAL,
+    )
     @click.pass_context
     def _run_web_service_windows(ctx, actual_svc_name_arg: str):
         """
@@ -530,6 +536,7 @@ if platform.system() == "Windows":
         class WebServiceHandler(WebServerWindowsService):
             _svc_name_ = actual_svc_name_arg
             _svc_display_name_ = f"Bedrock Manager Web UI ({actual_svc_name_arg})"
+            app_context = ctx.obj["app_context"]
 
         if "debug" in ctx.args:
             logger.info(

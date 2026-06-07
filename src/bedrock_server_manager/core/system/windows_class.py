@@ -20,11 +20,16 @@ import logging
 import os
 import sys
 import threading
+from pathlib import Path
 
 # typing imports removed as they were unused
 
 # Third-party imports. pywin32 is optional but required for IPC.
 try:
+    import pywintypes
+    import servicemanager
+    import win32file
+    import win32pipe
     import win32service
     import win32serviceutil
 
@@ -52,6 +57,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
     _svc_name_ = "BSMWebUIService"
     _svc_display_name_ = "Bedrock Server Manager Web UI"
     _svc_description_ = "Hosts the web interface for the Bedrock Server Manager."
+    app_context = None
 
     def __init__(self, args):
         """
@@ -73,7 +79,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         self.logger.info(f"Web Service '{self._svc_name_}': Stop request received.")
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         try:
-            stop_web_server_api()
+            stop_web_server_api(app_context=self.app_context)
         except Exception as e:
             self.logger.info(f"Error sending stop: {e}")
         self.shutdown_event.set()  # Signal the main loop to exit
@@ -88,7 +94,11 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                 script_dir = os.path.dirname(sys.executable)
             else:
                 # If running as a normal .py script
-                script_dir = os.path.dirname(os.path.realpath(__file__))
+                # Step up from core/system/windows_class.py to the project root
+                # bedrock_server_manager -> src -> project root
+                script_dir = str(
+                    Path(__file__).resolve().parent.parent.parent.parent.parent
+                )
 
             os.chdir(script_dir)
             # --- The service runs the web app DIRECTLY in a thread ---
@@ -97,7 +107,10 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
             web_thread = threading.Thread(
                 target=start_web_server_api,
-                kwargs={"mode": "direct"},  # Run in production mode
+                kwargs={
+                    "app_context": self.app_context,
+                    "mode": "direct",
+                },  # Run in production mode
                 daemon=True,
             )
             web_thread.start()
@@ -107,19 +120,31 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
                 f"Web Service '{self._svc_name_}': Status reported as RUNNING."
             )
 
-            # The service now waits here until SvcStop sets the shutdown_event.
-            self.shutdown_event.wait()
+            # Wait loop that also checks if the web thread crashes.
+            while not self.shutdown_event.is_set():
+                # Wait for 1 second, then check if thread is still alive
+                self.shutdown_event.wait(1.0)
+                if not web_thread.is_alive() and not self.shutdown_event.is_set():
+                    raise RuntimeError("Web server thread unexpectedly terminated.")
 
-            # Optional: Add logic here to gracefully shut down the web server thread if possible.
             self.logger.info(
-                f"Web Service '{self._svc_name_}': Shutdown event processed."
+                f"Web Service '{self._svc_name_}': Shutdown event processed. Waiting for web thread to close..."
             )
+            # Give Uvicorn up to 10 seconds to finish open requests gracefully
+            web_thread.join(timeout=10.0)
 
         except Exception as e:
             self.logger.error(
                 f"Web Service '{self._svc_name_}': FATAL ERROR in SvcDoRun: {e}",
                 exc_info=True,
             )
+            if PYWIN32_AVAILABLE and servicemanager:
+                try:
+                    servicemanager.LogErrorMsg(
+                        f"Web Service '{self._svc_name_}' FATAL ERROR: {str(e)}"
+                    )
+                except Exception:
+                    pass
         finally:
             self.ReportServiceStatus(win32service.SERVICE_STOPPED)
             self.logger.info(
