@@ -13,8 +13,6 @@ from typing import Any, Dict, Optional
 
 from ..config.settings import Settings
 from ..error import ConfigParseError, FileOperationError
-
-# Import all the mixin classes that will be combined to form the BedrockServer.
 from . import server
 
 
@@ -264,6 +262,7 @@ class BedrockServer(
             "os_type": self.os_type,
             "player_count": self.player_count,
             "players": getattr(self, "players", []),
+            "installed_addons": getattr(self, "list_world_addons", []),
         }
 
         return summary
