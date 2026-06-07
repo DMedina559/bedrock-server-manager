@@ -35,13 +35,9 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 from ..utils import get_timestamp
-
-# Local application imports.
 from .utils import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -330,7 +326,6 @@ def import_world(
         _world_lock.release()
 
 
-@plugin_method("reset_world")
 @trigger_plugin_event(before="before_world_reset", after="after_world_reset")
 def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
