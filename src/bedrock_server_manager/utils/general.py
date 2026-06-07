@@ -63,11 +63,13 @@ def startup_checks(
         "LOG_DIR": settings.get("paths.logs"),
     }
 
+    logger.debug("Insuring essential directories exist...")
+
     for name, dir_path in dirs_to_create.items():
         if dir_path and isinstance(dir_path, str):
             try:
                 os.makedirs(dir_path, exist_ok=True)
-                logger.debug(f"Ensured directory exists: {dir_path} (Setting: {name})")
+                # logger.debug(f"Ensured directory exists: {dir_path} (Setting: {name})")
             except OSError as e:
                 logger.error(
                     f"Failed to create directory {dir_path}: {e}", exc_info=True
@@ -88,5 +90,5 @@ def get_timestamp() -> str:
         str: The current timestamp in YYYYMMDD_HHMMSS format.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    logger.debug(f"Generated timestamp: {timestamp}")
+    # logger.debug(f"Generated timestamp: {timestamp}")
     return timestamp
