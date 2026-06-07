@@ -3,8 +3,7 @@
 
 This module offers endpoints to retrieve general details about the Bedrock
 Server Manager application itself and to perform operations that span across
-multiple server instances. It primarily interfaces with the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager` core class.
+multiple server instances.
 
 Key functionalities include:
     - Retrieving application metadata (name, version, OS, key directories) via
@@ -21,12 +20,17 @@ intended for use by UIs, CLIs, or other high-level components.
 """
 
 import logging
-from typing import Any, Dict
+import os
+import platform
+from typing import Any, Dict, List
 
+from ..config.const import get_installed_version
 from ..context import AppContext
+from ..core import utils as core_utils
+from ..core.system import find_files
 
 # Local application imports.
-from ..error import BSMError, FileError
+from ..error import AppFileNotFoundError, BSMError, FileError, FileOperationError
 
 # Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
@@ -38,8 +42,7 @@ logger = logging.getLogger(__name__)
 def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves general information about the application.
 
-    Accesses properties from the global
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance.
+    Accesses properties from the global settings and context.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -52,15 +55,16 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
         On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.debug("API: Requesting application info.")
+    from ..config.const import app_name_title
+
     try:
-        manager = app_context.manager
         info = {
-            "application_name": manager._app_name_title,
-            "version": manager.get_app_version(),
-            "os_type": manager.get_os_type(),
-            "base_directory": manager._base_dir,
-            "content_directory": manager._content_dir,
-            "config_directory": manager._config_dir,
+            "application_name": app_name_title,
+            "version": get_installed_version(),
+            "os_type": platform.system(),
+            "base_directory": app_context.settings.get("paths.servers", ""),
+            "content_directory": app_context.settings.get("paths.content"),
+            "config_directory": app_context.settings.config_dir,
         }
         return {"status": "success", **info}
     except Exception as e:
@@ -68,12 +72,41 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
+def _list_content_files(
+    content_dir: str | None, sub_folder: str, extensions: List[str]
+) -> List[str]:
+    """
+    Internal helper to list files with specified extensions from a sub-folder
+    within the global content directory.
+    """
+    if not content_dir or not os.path.isdir(content_dir):
+        raise AppFileNotFoundError(str(content_dir), "Content directory")
+
+    target_dir = os.path.join(content_dir, sub_folder)
+    if not os.path.isdir(target_dir):
+        logger.debug(
+            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
+        )
+        return []
+
+    found_files: List[str] = []
+    try:
+        for ext in extensions:
+            pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
+            files = find_files(target_dir, pattern=pattern)
+            found_files.extend(os.path.abspath(str(f)) for f in files)
+    except OSError as e:
+        raise FileOperationError(
+            f"Error scanning content directory {target_dir}: {e}"
+        ) from e
+    return sorted(list(set(found_files)))
+
+
 @plugin_method("list_available_worlds_api")
 def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_worlds`
-    to scan the ``worlds`` sub-folder within the application's global content directory.
+    Scans the ``worlds`` sub-folder within the application's global content directory.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -86,11 +119,11 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
-        manager = app_context.manager
-        worlds = manager.list_available_worlds()
+        content_dir = app_context.settings.get("paths.content")
+        worlds = _list_content_files(content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
-        # Handle specific file-related errors from the core manager.
+        # Handle specific file-related errors.
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error(f"API: Unexpected error listing worlds: {e}", exc_info=True)
@@ -101,8 +134,7 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
 def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_addons`
-    to scan the ``addons`` sub-folder within the application's global content directory.
+    Scans the ``addons`` sub-folder within the application's global content directory.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -115,11 +147,11 @@ def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available addons.")
     try:
-        manager = app_context.manager
-        addons = manager.list_available_addons()
+        content_dir = app_context.settings.get("paths.content")
+        addons = _list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
         return {"status": "success", "files": addons}
     except FileError as e:
-        # Handle specific file-related errors from the core manager.
+        # Handle specific file-related errors.
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
@@ -130,9 +162,8 @@ def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
 def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
-    This function acts as an API orchestrator, calling the core
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_servers_data`
-    to gather data from all individual server instances. It can handle
+    This function acts as an API orchestrator to gather data from all individual
+    server instances. It can handle
     partial failures, where data for some servers is retrieved successfully
     while others fail (errors for individual servers are included in the message).
     The status of each server is also reconciled with its live state during this call.
@@ -157,9 +188,8 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Getting status for all servers...")
 
     try:
-        manager = app_context.manager
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = manager.get_servers_data(
+        servers_data, bsm_error_messages = core_utils.get_servers_data(
             app_context=app_context
         )
 

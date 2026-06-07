@@ -40,7 +40,7 @@ class LogStreamer:
             self._task = None
         logger.info("LogStreamer stopped.")
 
-    async def _stream_logs(self):  # noqa: C901
+    async def _stream_logs(self) -> None:  # noqa: C901
         """Main loop that checks subscriptions and streams log updates."""
         while self.running:
             try:

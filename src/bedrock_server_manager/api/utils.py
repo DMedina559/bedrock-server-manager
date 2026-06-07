@@ -21,9 +21,11 @@ application logic to encapsulate common or complex operations.
 """
 
 import logging
+import platform
 from contextlib import contextmanager
 from typing import Any, Dict
 
+from ..config.const import get_installed_version
 from ..context import AppContext
 
 # Local application imports.
@@ -138,8 +140,7 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
 def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
-    This function calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_servers_data`.
+    This function calls the core function to get servers data.
     During that call, for each discovered server, its
     :meth:`~.core.bedrock_server.BedrockServer.get_status` method is invoked.
     This method determines the actual running state of the server process and
@@ -161,10 +162,9 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Updating all server statuses...")
 
     try:
-        manager = app_context.manager
-        # get_servers_data() from the manager now handles the reconciliation internally.
+        # get_servers_data() now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = manager.get_servers_data(
+        all_servers_data, discovery_errors = core_utils.get_servers_data(
             app_context=app_context
         )
         if discovery_errors:
@@ -210,7 +210,7 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
 def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves basic system and application information.
 
-    Uses :class:`~.core.manager.BedrockServerManager` to get OS type and app version.
+    Uses global settings to get OS type and app version.
 
     Returns:
         Dict[str, Any]: On success: ``{"status": "success", "os_type": "...", "app_version": "...", "splash_text": "..."}``.
@@ -218,11 +218,10 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting system and app info.")
     try:
-        manager = app_context.manager
         splash_txt = app_context.splash_txt
         data = {
-            "os_type": manager.get_os_type(),
-            "app_version": manager.get_app_version(),
+            "os_type": platform.system(),
+            "app_version": get_installed_version(),
             "splash_text": splash_txt,
         }
         logger.info(f"API: Successfully retrieved system info: {data}")
@@ -235,8 +234,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
 def stop_all_servers(app_context: AppContext):
     """Stops all running servers."""
     logger.info("API: Stopping all servers...")
-    manager = app_context.manager
-    result = manager.get_servers_data(app_context=app_context)
+    result = core_utils.get_servers_data(app_context=app_context)
     if isinstance(result, tuple) and len(result) == 2:
         servers_data, _ = result
     else:

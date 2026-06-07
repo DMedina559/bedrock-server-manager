@@ -38,12 +38,6 @@ These are the backend core classes used in the Bedrock Server Manager, used by t
 
 .. toctree::
    :maxdepth: 2
-   :caption: Bedrock Server Manager Class
-
-   bedrock_server_manager
-
-.. toctree::
-   :maxdepth: 2
    :caption: Bedrock Server Class
 
    bedrock_server

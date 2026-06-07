@@ -36,9 +36,8 @@ class TestServerValidation:
 
 class TestStatusAndUpdate:
     def test_update_server_statuses(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "get_servers_data",
+        with patch(
+            "bedrock_server_manager.core.utils.get_servers_data",
             return_value=([{"name": "server1"}, {"name": "server2"}], []),
         ):
             result = update_server_statuses(app_context=app_context)
@@ -47,8 +46,11 @@ class TestStatusAndUpdate:
 
     def test_get_system_and_app_info(self, app_context):
         with (
-            patch.object(app_context.manager, "get_os_type", return_value="Linux"),
-            patch.object(app_context.manager, "get_app_version", return_value="1.0.0"),
+            patch("platform.system", return_value="Linux"),
+            patch(
+                "bedrock_server_manager.api.utils.get_installed_version",
+                return_value="1.0.0",
+            ),
         ):
             result = get_system_and_app_info(app_context=app_context)
             assert result["status"] == "success"

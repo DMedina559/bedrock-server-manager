@@ -117,6 +117,20 @@ def find_files(
         return [str(p) for p in files]
 
 
+def can_manage_services() -> bool:
+    """Indicates if a system service manager (``systemctl`` or ``sc.exe``) is available.
+
+    If ``True``, features related to managing system services (for the Web UI or game servers)
+    can be expected to work.
+    """
+    os_name = platform.system()
+    if os_name == "Linux":
+        return shutil.which("systemctl") is not None
+    elif os_name == "Windows":
+        return shutil.which("sc.exe") is not None
+    return False
+
+
 def check_internet_connectivity(
     host: str = "8.8.8.8", port: int = 53, timeout: int = 3
 ) -> None:

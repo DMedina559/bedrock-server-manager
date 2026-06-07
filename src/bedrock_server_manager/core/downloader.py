@@ -377,7 +377,9 @@ class BedrockDownloader:
 
         # 2. Fetch data from the API.
         try:
-            app_name = self.settings.get("_app_name", "BedrockServerManager")
+            from ..config.const import app_name_title
+
+            app_name = self.settings.get("_app_name", app_name_title)
             headers = {
                 "User-Agent": f"Python/{platform.python_version()} {app_name}/UnknownVersion"
             }
@@ -533,7 +535,9 @@ class BedrockDownloader:
             ) from e
 
         try:
-            app_name = self.settings.get("_app_name", "BedrockServerManager")
+            from ..config.const import app_name_title
+
+            app_name = self.settings.get("_app_name", app_name_title)
             headers = {
                 "User-Agent": f"Python Requests/{requests.__version__} ({app_name})"
             }

@@ -14,8 +14,6 @@ def runner():
 @pytest.fixture
 def mock_app_context():
     app_context = MagicMock()
-    app_context.bsm.can_manage_services = True
-    app_context.bsm.get_os_type.return_value = "Linux"
     return app_context
 
 
@@ -24,6 +22,12 @@ def mock_ctx(mock_app_context):
     ctx = MagicMock()
     ctx.obj = {"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()}
     return ctx
+
+
+@pytest.fixture(autouse=True)
+def mock_platform_system():
+    with patch("platform.system", return_value="Linux") as mock:
+        yield mock
 
 
 @patch("bedrock_server_manager.api.web.start_web_server_api")

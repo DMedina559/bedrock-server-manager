@@ -136,15 +136,15 @@ class PluginAPI:
         """Provides direct access to the application's context.
 
         This property returns the central `AppContext` object, which holds
-        instances of key application components like the `Settings` manager,
-        the `BedrockServerManager`, and the `PluginManager` itself.
+        instances of key application components like the `Settings` manager
+        and the `PluginManager` itself.
 
         Example:
             ```python
             # In a plugin method:
             settings = self.api.app_context.settings
-            server_manager = self.api.app_context.manager
-            all_servers = server_manager.get_all_servers()
+            from bedrock_server_manager.core.utils import get_servers_data
+            all_servers_data, _ = get_servers_data(self.api.app_context)
             ```
 
         Returns:
