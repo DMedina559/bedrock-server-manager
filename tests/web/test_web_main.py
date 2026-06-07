@@ -3,7 +3,9 @@ from bedrock_server_manager.web.main import run_web_server
 
 def test_run_web_server_default_settings(mocker, app_context):
     """Test the server runs with default settings."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -18,17 +20,18 @@ def test_run_web_server_default_settings(mocker, app_context):
 
     run_web_server(app_context)
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["host"] == "127.0.0.1"
-    assert kwargs["port"] == 11325
-    assert kwargs["log_level"] == "info"
-    assert not kwargs["reload"]
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.host == "127.0.0.1"
+    assert app_context._web_server.config.port == 11325
+    assert app_context._web_server.config.log_level == "info"
+    assert not app_context._web_server.config.reload
 
 
 def test_run_web_server_custom_port(mocker, app_context):
     """Test the server runs with a custom port."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -43,14 +46,15 @@ def test_run_web_server_custom_port(mocker, app_context):
 
     run_web_server(app_context)
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["port"] == 8080
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.port == 8080
 
 
 def test_run_web_server_invalid_port(mocker, app_context):
     """Test the server uses the default port if the custom port is invalid."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -65,14 +69,15 @@ def test_run_web_server_invalid_port(mocker, app_context):
 
     run_web_server(app_context)
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["port"] == 11325
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.port == 11325
 
 
 def test_run_web_server_cli_host(mocker, app_context):
     """Test the server uses the host provided via the command line."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -87,14 +92,15 @@ def test_run_web_server_cli_host(mocker, app_context):
 
     run_web_server(app_context, host="0.0.0.0")
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["host"] == "0.0.0.0"
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.host == "0.0.0.0"
 
 
 def test_run_web_server_debug_mode(mocker, app_context):
     """Test the server runs in debug mode."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -109,15 +115,16 @@ def test_run_web_server_debug_mode(mocker, app_context):
 
     run_web_server(app_context, debug=True)
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["log_level"] == "debug"
-    assert kwargs["reload"]
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.log_level == "debug"
+    assert app_context._web_server.config.reload
 
 
 def test_run_web_server_custom_threads(mocker, app_context):
     """Test the server runs with a custom number of threads."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -132,14 +139,15 @@ def test_run_web_server_custom_threads(mocker, app_context):
 
     run_web_server(app_context)
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["workers"] == 1
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.workers == 1
 
 
 def test_run_web_server_invalid_threads(mocker, app_context):
     """Test the server uses the default number of threads if the custom number is invalid."""
-    mock_uvicorn_run = mocker.patch("bedrock_server_manager.web.main.uvicorn.run")
+    mock_uvicorn_server_run = mocker.patch(
+        "bedrock_server_manager.web.main.uvicorn.Server.run"
+    )
     mocker.patch.object(
         app_context.settings,
         "get",
@@ -154,6 +162,5 @@ def test_run_web_server_invalid_threads(mocker, app_context):
 
     run_web_server(app_context)
 
-    mock_uvicorn_run.assert_called_once()
-    args, kwargs = mock_uvicorn_run.call_args
-    assert kwargs["workers"] == 1
+    mock_uvicorn_server_run.assert_called_once()
+    assert app_context._web_server.config.workers == 1
