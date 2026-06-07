@@ -20,7 +20,6 @@ import logging
 import os
 from typing import Any, Dict
 
-# Local application imports.
 from ..config import API_COMMAND_BLACKLIST
 from ..context import AppContext
 from ..core.system import remove_pid_file_if_exists
@@ -31,8 +30,6 @@ from ..error import (
     MissingArgumentError,
     ServerError,
 )
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 
@@ -92,6 +89,9 @@ def get_server_setting(
         return generic_error
 
 
+@trigger_plugin_event(
+    before="before_set_server_setting", after="after_set_server_setting"
+)
 def set_server_setting(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
