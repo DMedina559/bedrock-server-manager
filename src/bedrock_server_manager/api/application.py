@@ -21,55 +21,15 @@ intended for use by UIs, CLIs, or other high-level components.
 
 import logging
 import os
-import platform
 from typing import Any, Dict, List
 
-from ..config.const import get_installed_version
 from ..context import AppContext
 from ..core import utils as core_utils
 from ..core.system import find_files
-
-# Local application imports.
 from ..error import AppFileNotFoundError, BSMError, FileError, FileOperationError
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 
 logger = logging.getLogger(__name__)
-
-
-@plugin_method("get_application_info_api")
-def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
-    """Retrieves general information about the application.
-
-    Accesses properties from the global settings and context.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", **ApplicationInfoDict}``
-        where ``ApplicationInfoDict`` contains keys like:
-        ``"application_name"`` (str), ``"version"`` (str), ``"os_type"`` (str),
-        ``"base_directory"`` (str, path to servers),
-        ``"content_directory"`` (str, path to global content),
-        ``"config_directory"`` (str, path to app config).
-        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
-    """
-    logger.debug("API: Requesting application info.")
-    from ..config.const import app_name_title
-
-    try:
-        info = {
-            "application_name": app_name_title,
-            "version": get_installed_version(),
-            "os_type": platform.system(),
-            "base_directory": app_context.settings.get("paths.servers", ""),
-            "content_directory": app_context.settings.get("paths.content"),
-            "config_directory": app_context.settings.config_dir,
-        }
-        return {"status": "success", **info}
-    except Exception as e:
-        logger.error(f"API: Unexpected error getting app info: {e}", exc_info=True)
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
 def _list_content_files(
