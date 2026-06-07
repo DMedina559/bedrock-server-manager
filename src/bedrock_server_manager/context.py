@@ -63,6 +63,7 @@ class AppContext:
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
         self.loop: Optional["AbstractEventLoop"] = None
+        self._web_server = None
         from .utils import get_utils
 
         self.splash_txt: Optional[str] = str(get_utils._get_splash_text())

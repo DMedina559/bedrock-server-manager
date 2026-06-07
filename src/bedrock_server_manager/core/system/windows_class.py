@@ -43,7 +43,7 @@ except ImportError:
     pywintypes = None
 
 # Local application imports.
-from ...api.web import start_web_server_api, stop_web_server_api
+from ...api.web import start_web_server_api
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +79,16 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         self.logger.info(f"Web Service '{self._svc_name_}': Stop request received.")
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         try:
-            stop_web_server_api(app_context=self.app_context)
+            if (
+                hasattr(self.app_context, "_web_server")
+                and self.app_context._web_server is not None
+            ):
+                self.logger.info(f"Instructing Uvicorn to exit gracefully...")
+                self.app_context._web_server.should_exit = True
+            else:
+                self.logger.warning(f"Web server instance not found on app_context.")
         except Exception as e:
-            self.logger.info(f"Error sending stop: {e}")
+            self.logger.error(f"Error sending stop: {e}", exc_info=True)
         self.shutdown_event.set()  # Signal the main loop to exit
 
     def SvcDoRun(self):
@@ -130,8 +137,13 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
             self.logger.info(
                 f"Web Service '{self._svc_name_}': Shutdown event processed. Waiting for web thread to close..."
             )
-            # Give Uvicorn up to 10 seconds to finish open requests gracefully
-            web_thread.join(timeout=10.0)
+            # Give Uvicorn up to 45 seconds to finish open requests and shutdown hooks gracefully
+            wait_time = 0
+            while web_thread.is_alive() and wait_time < 120:
+                # Keep reporting STOP_PENDING so the SCM doesn't kill us
+                self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+                web_thread.join(timeout=1.0)
+                wait_time += 1
 
         except Exception as e:
             self.logger.error(
