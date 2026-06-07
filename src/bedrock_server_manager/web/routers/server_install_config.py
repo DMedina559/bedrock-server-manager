@@ -23,7 +23,6 @@ from fastapi.responses import JSONResponse
 
 from ...api import server as server_api
 from ...api import server_install_config
-from ...api import system as system_api
 from ...api import utils as utils_api
 from ...context import AppContext
 from ...core.system import find_files
@@ -617,9 +616,10 @@ async def configure_service_api_route(  # noqa: C901
     try:
         # Handle autoupdate first
         if payload.autoupdate is not None:
-            result_autoupdate = system_api.set_autoupdate(
+            result_autoupdate = server_api.set_server_setting(
                 server_name=server_name,
-                autoupdate_value=str(payload.autoupdate).lower(),
+                key="settings.autoupdate",
+                value=payload.autoupdate,
                 app_context=app_context,
             )
             if result_autoupdate.get("status") == "success":
@@ -632,9 +632,10 @@ async def configure_service_api_route(  # noqa: C901
 
         # Handle autostart
         if payload.autostart is not None:
-            result_autostart = system_api.set_autostart(
+            result_autostart = server_api.set_server_setting(
                 server_name=server_name,
-                autostart_value=str(payload.autostart).lower(),
+                key="settings.autostart",
+                value=payload.autostart,
                 app_context=app_context,
             )
             if result_autostart.get("status") == "success":
