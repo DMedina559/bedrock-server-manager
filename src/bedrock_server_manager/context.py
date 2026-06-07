@@ -10,7 +10,7 @@ via lazy loading and property accessors.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -39,6 +39,7 @@ class AppContext:
         _settings (Optional[Settings]): Internal storage for the settings instance.
         _db (Optional[Database]): Internal storage for the database handler.
         _servers (Dict[str, BedrockServer]): Cache of instantiated server objects.
+        _web_server (Optional[Any]): The running Uvicorn server instance, if available.
         loop (Optional[AbstractEventLoop]): The asyncio event loop, if set.
     """
 
@@ -63,7 +64,7 @@ class AppContext:
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
         self.loop: Optional["AbstractEventLoop"] = None
-        self._web_server = None
+        self._web_server: Optional[Any] = None
         from .utils import get_utils
 
         self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
