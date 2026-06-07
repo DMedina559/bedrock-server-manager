@@ -38,7 +38,7 @@ def test_parse_player_string(input_str, raises_error, match_msg):
 
 
 def test_save_player_data_new_db(app_context):
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     players_to_save = [
         {"name": "Gamer", "xuid": "100"},
         {"name": "Admin", "xuid": "007"},
@@ -54,7 +54,7 @@ def test_save_player_data_new_db(app_context):
 
 
 def test_save_player_data_update_existing_db(app_context):
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     save_player_data(db_manager(), [{"name": "ToUpdate", "xuid": "222"}])
 
     players_to_save = [
@@ -71,7 +71,7 @@ def test_save_player_data_update_existing_db(app_context):
 
 
 def test_save_player_data_invalid_input(app_context):
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     with pytest.raises(UserInputError, match="players_data must be a list."):
         save_player_data(db_manager(), {"name": "A", "xuid": "1"})
 
@@ -83,7 +83,7 @@ def test_save_player_data_invalid_input(app_context):
 
 
 def test_get_known_players(app_context):
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     players_to_save = [
         {"name": "PlayerX", "xuid": "789"},
         {"name": "PlayerY", "xuid": "123"},
@@ -97,7 +97,7 @@ def test_get_known_players(app_context):
 
 
 def test_get_known_players_empty_db(app_context):
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     players = get_known_players(db_manager())
     assert players == []
 
@@ -116,9 +116,9 @@ def test_discover_and_store_players_from_all_server_logs(app_context, mocker):
             {"name": "Beta", "xuid": "2"},
         ],
     )
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     results = discover_and_store_players(
-        app_context.manager._base_dir, app_context, db_manager()
+        app_context.settings.get("paths.servers", ""), app_context, db_manager()
     )
 
     assert results["total_entries_in_logs"] == 2
@@ -134,7 +134,7 @@ def test_discover_and_store_players_from_all_server_logs(app_context, mocker):
 
 def test_discover_players_base_dir_not_exist(app_context, mocker):
     base_dir = "/path/to/non_existent_base"
-    db_manager = app_context.manager.settings.db.session_manager
+    db_manager = app_context.db.session_manager
     mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):

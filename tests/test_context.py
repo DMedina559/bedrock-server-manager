@@ -64,11 +64,9 @@ def test_reload(app_context: AppContext, monkeypatch):
     """
     # Mock reload methods
     settings_reload_mock = MagicMock()
-    manager_reload_mock = MagicMock()
     plugin_manager_reload_mock = MagicMock()
 
     monkeypatch.setattr(app_context.settings, "reload", settings_reload_mock)
-    monkeypatch.setattr(app_context.manager, "reload", manager_reload_mock)
     monkeypatch.setattr(
         app_context.plugin_manager, "reload", plugin_manager_reload_mock
     )
@@ -81,7 +79,6 @@ def test_reload(app_context: AppContext, monkeypatch):
 
     # Assert that reload methods were called
     settings_reload_mock.assert_called_once()
-    manager_reload_mock.assert_called_once()
     plugin_manager_reload_mock.assert_called_once()
 
     # Assert that server cache is cleared

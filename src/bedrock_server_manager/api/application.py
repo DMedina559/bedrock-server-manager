@@ -3,8 +3,7 @@
 
 This module offers endpoints to retrieve general details about the Bedrock
 Server Manager application itself and to perform operations that span across
-multiple server instances. It primarily interfaces with the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager` core class.
+multiple server instances.
 
 Key functionalities include:
     - Retrieving application metadata (name, version, OS, key directories) via
@@ -43,8 +42,7 @@ logger = logging.getLogger(__name__)
 def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves general information about the application.
 
-    Accesses properties from the global
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance.
+    Accesses properties from the global settings and context.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -57,15 +55,16 @@ def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
         On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.debug("API: Requesting application info.")
+    from ..config.const import app_name_title
+
     try:
-        manager = app_context.manager
         info = {
-            "application_name": manager._app_name_title,
+            "application_name": app_name_title,
             "version": get_installed_version(),
             "os_type": platform.system(),
-            "base_directory": manager._base_dir,
-            "content_directory": manager._content_dir,
-            "config_directory": manager._config_dir,
+            "base_directory": app_context.settings.get("paths.servers", ""),
+            "content_directory": app_context.settings.get("paths.content"),
+            "config_directory": app_context.settings.config_dir,
         }
         return {"status": "success", **info}
     except Exception as e:
@@ -120,11 +119,11 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
-        manager = app_context.manager
-        worlds = _list_content_files(manager._content_dir, "worlds", [".mcworld"])
+        content_dir = app_context.settings.get("paths.content")
+        worlds = _list_content_files(content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
-        # Handle specific file-related errors from the core manager.
+        # Handle specific file-related errors.
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error(f"API: Unexpected error listing worlds: {e}", exc_info=True)
@@ -148,13 +147,11 @@ def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available addons.")
     try:
-        manager = app_context.manager
-        addons = _list_content_files(
-            manager._content_dir, "addons", [".mcpack", ".mcaddon"]
-        )
+        content_dir = app_context.settings.get("paths.content")
+        addons = _list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
         return {"status": "success", "files": addons}
     except FileError as e:
-        # Handle specific file-related errors from the core manager.
+        # Handle specific file-related errors.
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
@@ -165,9 +162,8 @@ def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
 def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
-    This function acts as an API orchestrator, calling the core
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_servers_data`
-    to gather data from all individual server instances. It can handle
+    This function acts as an API orchestrator to gather data from all individual
+    server instances. It can handle
     partial failures, where data for some servers is retrieved successfully
     while others fail (errors for individual servers are included in the message).
     The status of each server is also reconciled with its live state during this call.

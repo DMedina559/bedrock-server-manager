@@ -19,8 +19,7 @@ Key command groups and commands include:
 Interactions with system services are contingent on the availability of
 appropriate service management tools on the host OS (e.g., `systemctl` for
 systemd, `pywin32` for Windows Services). The commands use functions from
-:mod:`~bedrock_server_manager.api.web` and the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager`.
+:mod:`~bedrock_server_manager.api.web`.
 """
 
 import functools
@@ -48,8 +47,7 @@ def requires_web_service_manager(func: Callable) -> Callable:
 
     This decorator checks if the system has a supported service manager
     (e.g., systemd for Linux, or `pywin32` installed for Windows services)
-    by inspecting `can_manage_services()` from the
-    :class:`~.core.manager.BedrockServerManager` instance in the Click context.
+    by inspecting `can_manage_services()`.
 
     If the capability is not present, it prints an error and aborts the command.
 

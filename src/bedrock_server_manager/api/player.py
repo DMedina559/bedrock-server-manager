@@ -2,9 +2,8 @@
 """Provides API functions for managing the central player database.
 
 This module offers an interface to interact with the application's central
-player database, typically stored in ``players.json``. It leverages the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager`
-to perform operations such as:
+player database, typically stored in the database. It leverages the
+application context to perform operations such as:
 
 - Manually adding or updating player entries (gamertag and XUID) via
   :func:`~.add_players_manually_api`.
@@ -69,7 +68,7 @@ def add_players_manually_api(
     """
     logger.info(f"API: Adding players manually: {player_strings}")
 
-    db = app_context.manager.settings.db
+    db = app_context.db
     if db is None:
         return {"status": "error", "message": "Database is not initialized."}
 
@@ -126,7 +125,7 @@ def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.info("API: Request to get all known players.")
 
-    db = app_context.manager.settings.db
+    db = app_context.db
     if db is None:
         return {"status": "error", "message": "Database is not initialized."}
 
@@ -170,13 +169,14 @@ def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.info("API: Request to scan all server logs and update player DB.")
 
-    db = app_context.manager.settings.db
+    db = app_context.db
     if db is None:
         return {"status": "error", "message": "Database is not initialized."}
 
     try:
+        base_dir = app_context.settings.get("paths.servers", "")
         scan_result = discover_and_store_players(
-            app_context.manager._base_dir,
+            base_dir,
             app_context,
             db.session_manager(),
         )

@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.core.bedrock_server import BedrockServer
-from bedrock_server_manager.core.manager import BedrockServerManager
 from bedrock_server_manager.db.models import User as UserModel
 from bedrock_server_manager.web.app import create_web_app
 from bedrock_server_manager.web.auth_utils import (
@@ -97,23 +96,6 @@ def mock_bedrock_server(tmp_path):
 
 
 @pytest.fixture
-def mock_bedrock_server_manager(mocker):
-    """Fixture for a mocked BedrockServerManager."""
-    # Create a mock object with the same interface as BedrockServerManager
-    manager = MagicMock(spec=BedrockServerManager)
-
-    # Set default attributes for the mock
-    manager._app_name_title = "Bedrock Server Manager"
-    manager._base_dir = "/servers"
-    manager._content_dir = "/content"
-    manager._config_dir = "/config"
-    manager.list_available_worlds.return_value = ["/content/worlds/world1.mcworld"]
-    manager.list_available_addons.return_value = ["/content/addons/addon1.mcpack"]
-
-    return manager
-
-
-@pytest.fixture
 def temp_file(tmp_path):
     """Creates a temporary file for tests."""
     file = tmp_path / "temp_file"
@@ -153,12 +135,6 @@ def real_bedrock_server(app_context):
     return server
 
 
-@pytest.fixture
-def real_manager(app_context):
-    """Fixture for a real BedrockServerManager instance."""
-    return app_context.manager
-
-
 @pytest.fixture(autouse=True)
 def app_context(isolated_settings, tmp_path, monkeypatch):
     """Fixture for a real AppContext instance."""
@@ -167,7 +143,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
 
     from bedrock_server_manager.config.settings import Settings
     from bedrock_server_manager.context import AppContext
-    from bedrock_server_manager.core.manager import BedrockServerManager
     from bedrock_server_manager.db.database import Database
 
     # Setup: initialize the database with a test-specific URL
@@ -192,9 +167,6 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
     settings = Settings(db=db)
     settings.load()
     settings.set("paths.plugins", str(plugins_dir))
-
-    manager = BedrockServerManager(settings)
-    manager.load()
 
     # Create dummy server files
     server_name = "test_server"
@@ -223,7 +195,7 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
         )
     os.chmod(executable_path, 0o755)
 
-    context = AppContext(settings=settings, manager=manager, db=db)
+    context = AppContext(settings=settings, db=db)
     context.load()
 
     # Load plugins

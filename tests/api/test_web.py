@@ -90,18 +90,14 @@ class TestWebServiceManagement:
     def test_remove_web_ui_service(
         self, mock_os_remove, app_context, mock_system_linux_utils
     ):
-        with patch(
-            "bedrock_server_manager.api.web.get_manager_instance",
-            return_value=app_context.manager,
-        ):
-            mock_system_linux_utils.get_systemd_service_file_path.return_value = (
-                "/etc/systemd/user/bedrock-server-manager-webui.service"
-            )
-            result = remove_web_ui_service(app_context=app_context)
-            assert result["status"] == "success"
-            mock_os_remove.assert_called_once_with(
-                "/etc/systemd/user/bedrock-server-manager-webui.service"
-            )
+        mock_system_linux_utils.get_systemd_service_file_path.return_value = (
+            "/etc/systemd/user/bedrock-server-manager-webui.service"
+        )
+        result = remove_web_ui_service(app_context=app_context)
+        assert result["status"] == "success"
+        mock_os_remove.assert_called_once_with(
+            "/etc/systemd/user/bedrock-server-manager-webui.service"
+        )
 
     @patch(
         "bedrock_server_manager.core.service.check_web_service_exists",

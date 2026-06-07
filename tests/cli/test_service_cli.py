@@ -26,7 +26,6 @@ def mock_bsm():
 @pytest.fixture
 def mock_app_context(mock_bsm):
     app_context = MagicMock()
-    app_context.manager = mock_bsm
     return app_context
 
 

@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from .config.settings import Settings
     from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
-    from .core.manager import BedrockServerManager
     from .db.database import Database
     from .plugins.plugin_manager import PluginManager
     from .web.resource_monitor import ResourceMonitor
@@ -31,14 +30,13 @@ class AppContext:
     A context object that holds application-wide instances and caches.
 
     The ``AppContext`` acts as a central hub for accessing core application components.
-    It manages the lifecycle of singletons like the :class:`~.core.manager.BedrockServerManager`,
-    :class:`~.plugins.plugin_manager.PluginManager`, and database connection.
+    It manages the lifecycle of singletons like the :class:`~.plugins.plugin_manager.PluginManager`,
+    settings, and database connection.
     Most properties are lazily initialized to improve startup time and handle
     dependency resolution order.
 
     Attributes:
         _settings (Optional[Settings]): Internal storage for the settings instance.
-        _manager (Optional[BedrockServerManager]): Internal storage for the main manager.
         _db (Optional[Database]): Internal storage for the database handler.
         _servers (Dict[str, BedrockServer]): Cache of instantiated server objects.
         loop (Optional[AbstractEventLoop]): The asyncio event loop, if set.
@@ -47,7 +45,6 @@ class AppContext:
     def __init__(
         self,
         settings: Optional["Settings"] = None,
-        manager: Optional["BedrockServerManager"] = None,
         db: Optional["Database"] = None,
     ):
         """
@@ -55,11 +52,9 @@ class AppContext:
 
         Args:
             settings (Optional[Settings]): Pre-existing settings instance.
-            manager (Optional[BedrockServerManager]): Pre-existing manager instance.
             db (Optional[Database]): Pre-existing database instance.
         """
         self._settings: Optional["Settings"] = settings
-        self._manager: Optional["BedrockServerManager"] = manager
         self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
@@ -74,13 +69,12 @@ class AppContext:
 
     def load(self):
         """
-        Loads the application context by initializing the settings and manager.
+        Loads the application context by initializing the settings.
 
         This method should be called early in the application startup phase to
         ensure core components like the database and settings are ready.
         """
         from .config.settings import Settings
-        from .core.manager import BedrockServerManager
 
         self.db.initialize()
 
@@ -88,21 +82,15 @@ class AppContext:
             self._settings = Settings(db=self.db)
             self._settings.load()
 
-        if self._manager is None:
-            assert self._settings is not None
-            self._manager = BedrockServerManager(self._settings)
-            self._manager.load()
-
     def reload(self):
         """
         Reloads the application context by reloading settings and all components.
 
-        This triggers a reload on the settings, main manager, and plugin manager,
+        This triggers a reload on the settings and plugin manager,
         allowing configuration changes to take effect without restarting the
         entire process.
         """
         self.settings.reload()
-        self.manager.reload()
         self.plugin_manager.reload()
         # self._servers.clear()
 
@@ -122,23 +110,6 @@ class AppContext:
                 "Settings have not been loaded. Please call AppContext.load() first."
             )
         return self._settings
-
-    @property
-    def manager(self) -> "BedrockServerManager":
-        """
-        Returns the BedrockServerManager instance.
-
-        Returns:
-            BedrockServerManager: The main application manager.
-
-        Raises:
-            RuntimeError: If the manager has not been loaded yet.
-        """
-        if self._manager is None:
-            raise RuntimeError(
-                "BedrockServerManager have not been loaded. Please call AppContext.load() first."
-            )
-        return self._manager
 
     @property
     def db(self) -> "Database":

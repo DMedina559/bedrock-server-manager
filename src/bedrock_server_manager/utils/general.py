@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def startup_checks(
     app_context: AppContext,
-    app_name: Optional[str] = "BedrockServerManager",
+    app_name: Optional[str] = None,
     version: Optional[str] = "0.0.0",
 ) -> None:
     """

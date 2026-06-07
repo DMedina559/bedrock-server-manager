@@ -28,7 +28,7 @@ class TestContentListing:
         worlds_dir = tmp_path / "content" / "worlds"
         worlds_dir.mkdir(parents=True, exist_ok=True)
         (worlds_dir / "world1.mcworld").touch()
-        app_context.manager._content_dir = str(tmp_path / "content")
+        app_context.settings.set("paths.content", str(tmp_path / "content"))
 
         result = list_available_worlds_api(app_context=app_context)
         assert result["status"] == "success"
@@ -39,7 +39,7 @@ class TestContentListing:
         addons_dir = tmp_path / "content" / "addons"
         addons_dir.mkdir(parents=True, exist_ok=True)
         (addons_dir / "addon1.mcpack").touch()
-        app_context.manager._content_dir = str(tmp_path / "content")
+        app_context.settings.set("paths.content", str(tmp_path / "content"))
 
         result = list_available_addons_api(app_context=app_context)
         assert result["status"] == "success"

@@ -11,7 +11,6 @@ from .core import (
     BedrockDownloader,
     BedrockProcessManager,
     BedrockServer,
-    BedrockServerManager,
 )
 
 # Plugin system essentials
@@ -22,7 +21,6 @@ __version__ = get_installed_version()
 
 __all__ = [
     # Core
-    "BedrockServerManager",
     "BedrockServer",
     "BedrockDownloader",
     "BedrockProcessManager",

@@ -2,8 +2,7 @@
 """Provides API functions for managing the application's own web user interface.
 
 This module contains the logic for controlling the lifecycle and querying the
-status of the built-in web UI, which is powered by FastAPI. It interfaces with the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager` to handle:
+status of the built-in web UI, which is powered by FastAPI. It handles:
 
     - Starting the web server in 'direct' (blocking) or 'detached' (background) modes
       (:func:`~.start_web_server_api`).
@@ -63,8 +62,7 @@ def start_web_server_api(  # noqa: C901
           Useful for development or when managed by an external process manager.
         - 'detached': Launches the server as a new background process and creates
           a PID file to track it. Requires the `psutil` library. Uses various
-          methods from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`
-          and :mod:`~bedrock_server_manager.core.system.process` for process management.
+          methods from :mod:`~bedrock_server_manager.core.system.process` for process management.
 
     Triggers ``before_web_server_start`` and ``after_web_server_start`` plugin events.
 
@@ -194,10 +192,8 @@ def start_web_server_api(  # noqa: C901
 def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
     """Stops the detached web server process.
 
-    This function reads the PID from the web server's PID file (path obtained
-    via :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_web_ui_pid_path`),
-    verifies that the process is the correct one using expected executable and arguments
-    (from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`),
+    This function reads the PID from the web server's PID file,
+    verifies that the process is the correct one using expected executable and arguments,
     and then terminates it. Uses utilities from
     :mod:`~bedrock_server_manager.core.system.process`.
     Requires the `psutil` library.
@@ -276,12 +272,9 @@ def get_web_server_status_api(  # noqa: C901
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
-    PID file (path obtained via
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_web_ui_pid_path`)
-    and then inspecting the process itself (using utilities from
+    PID file and then inspecting the process itself (using utilities from
     :mod:`~bedrock_server_manager.core.system.process`) to ensure it is running
-    and is the correct executable (details from
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager`).
+    and is the correct executable.
     Requires the `psutil` library.
 
     Returns:
@@ -294,9 +287,8 @@ def get_web_server_status_api(  # noqa: C901
 
     Raises:
         BSMError: Can be raised by underlying operations if critical errors occur
-            (e.g., :class:`~.error.ConfigurationError` if web UI paths are not set up
-            in BedrockServerManager), though many operational errors are returned
-            in the status dictionary.
+            (e.g., :class:`~.error.ConfigurationError` if web UI paths are not set up),
+            though many operational errors are returned in the status dictionary.
     """
     logger.debug("API: Getting web server status...")
     if not PSUTIL_AVAILABLE:
@@ -423,7 +415,7 @@ def create_web_ui_service(
             }
 
         service.create_web_service_file(
-            app_data_dir=app_context.manager.settings.app_data_dir,
+            app_data_dir=app_context.settings.app_data_dir,
             system=system,
             username=username,
             password=password,
@@ -641,11 +633,10 @@ def get_web_ui_service_status(
 ) -> Dict[str, Any]:
     """Gets the current status of the Web UI system service.
 
-    This function calls several methods on the
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance:
-    :meth:`~.check_web_service_exists`,
-    :meth:`~.is_web_service_active`, and
-    :meth:`~.is_web_service_enabled`.
+    This function calls several service-related functions:
+    :meth:`~bedrock_server_manager.core.service.check_web_service_exists`,
+    :meth:`~bedrock_server_manager.core.service.is_web_service_active`, and
+    :meth:`~bedrock_server_manager.core.service.is_web_service_enabled`.
 
     Args:
         system (bool, optional): If ``True``, checks a system-wide service on
