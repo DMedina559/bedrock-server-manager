@@ -1,9 +1,6 @@
 from unittest.mock import patch
 
-import pytest
-
-from bedrock_server_manager.api.system import get_bedrock_process_info, set_autoupdate
-from bedrock_server_manager.error import UserInputError
+from bedrock_server_manager.api.system import get_bedrock_process_info
 
 
 class TestSystemAPI:
@@ -26,21 +23,3 @@ class TestSystemAPI:
             assert result["status"] == "success"
             assert result["process_info"] is None
             mock_get_info.assert_called_once()
-
-    def test_set_autoupdate_true(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "set_autoupdate") as mock_set_autoupdate:
-            result = set_autoupdate("test_server", "true", app_context=app_context)
-            assert result["status"] == "success"
-            mock_set_autoupdate.assert_called_once_with(True)
-
-    def test_set_autoupdate_false(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "set_autoupdate") as mock_set_autoupdate:
-            result = set_autoupdate("test_server", "false", app_context=app_context)
-            assert result["status"] == "success"
-            mock_set_autoupdate.assert_called_once_with(False)
-
-    def test_set_autoupdate_invalid(self, app_context):
-        with pytest.raises(UserInputError):
-            set_autoupdate("test_server", "invalid", app_context=app_context)

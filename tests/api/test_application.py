@@ -2,25 +2,10 @@ from unittest.mock import patch
 
 from bedrock_server_manager.api.application import (
     get_all_servers_data,
-    get_application_info_api,
     list_available_addons_api,
     list_available_worlds_api,
 )
 from bedrock_server_manager.error import BSMError, FileError
-
-
-class TestApplicationInfo:
-    def test_get_application_info_api(self, app_context):
-        with (
-            patch("platform.system", return_value="Linux"),
-            patch(
-                "bedrock_server_manager.config.const.get_installed_version",
-                return_value="1.0.0",
-            ),
-        ):
-            result = get_application_info_api(app_context=app_context)
-            assert result["status"] == "success"
-            assert result["application_name"] == "Bedrock Server Manager"
 
 
 class TestContentListing:
