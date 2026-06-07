@@ -31,12 +31,8 @@ from ..error import (
     SendCommandError,
     ServerNotRunningError,
 )
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-
-# Local application imports.
 from .utils import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -307,7 +303,6 @@ def disable_addon(
         _addon_lock.release()
 
 
-@plugin_method("update_addon_subpack")
 @trigger_plugin_event(
     before="before_addon_subpack_update", after="after_addon_subpack_update"
 )
@@ -368,7 +363,6 @@ def update_addon_subpack(
         _addon_lock.release()
 
 
-@plugin_method("uninstall_addon")
 @trigger_plugin_event(before="before_addon_uninstall", after="after_addon_uninstall")
 def uninstall_addon(
     server_name: str,
