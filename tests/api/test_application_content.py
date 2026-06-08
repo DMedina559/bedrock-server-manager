@@ -49,7 +49,7 @@ def test_list_content_files_os_error_on_glob(tmp_path, mocker):
     worlds_dir.mkdir()
 
     mocker.patch(
-        "bedrock_server_manager.api.application.find_files",
+        "bedrock_server_manager.utils.general.find_files",
         side_effect=OSError("Glob permission denied"),
     )
 

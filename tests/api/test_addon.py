@@ -98,7 +98,7 @@ class TestImportAddon:
 
     def test_list_available_addons_file_error(self, app_context):
         with patch(
-            "bedrock_server_manager.api.addon._list_content_files",
+            "bedrock_server_manager.api.addon.list_content_files",
             side_effect=FileError("Test error"),
         ):
             result = list_available_addons(app_context=app_context)
