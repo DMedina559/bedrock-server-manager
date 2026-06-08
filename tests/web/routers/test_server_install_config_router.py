@@ -237,69 +237,10 @@ def test_configure_permissions_api_route_bsm_error(
     authenticated_client.app.dependency_overrides.clear()
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate"
-)
-def test_configure_service_api_route_user_input_error(
-    mock_set_autoupdate, authenticated_client
-):
-    """Test the configure_service_api_route with a UserInputError."""
-    from bedrock_server_manager.error import UserInputError
-
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_set_autoupdate.side_effect = UserInputError("Invalid value")
-    response = authenticated_client.post(
-        "/api/server/test-server/service/update",
-        json={"autoupdate": "invalid"},
-    )
-    assert response.status_code == 422
-    authenticated_client.app.dependency_overrides.clear()
-
-
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate"
-)
-def test_configure_service_api_route_bsm_error(
-    mock_set_autoupdate, authenticated_client
-):
-    """Test the configure_service_api_route with a BSMError."""
-    from bedrock_server_manager.error import BSMError
-
-    authenticated_client.app.dependency_overrides[validate_server_exists] = (
-        lambda: "test-server"
-    )
-    mock_set_autoupdate.side_effect = BSMError("Failed to set autoupdate")
-    response = authenticated_client.post(
-        "/api/server/test-server/service/update",
-        json={"autoupdate": True},
-    )
-    assert response.status_code == 500
-    assert "Failed to set autoupdate" in response.json()["detail"]
-    authenticated_client.app.dependency_overrides.clear()
-
-
 def test_get_server_permissions_api_route(authenticated_client, real_bedrock_server):
     """Test the get_server_permissions_api_route with a successful response."""
     response = authenticated_client.get(
         f"/api/server/{real_bedrock_server.server_name}/permissions/get"
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.system_api.set_autoupdate",
-    return_value={"status": "success"},
-)
-def test_configure_service_api_route(
-    mock_set_autoupdate, authenticated_client, real_bedrock_server
-):
-    """Test the configure_service_api_route with a successful response."""
-    response = authenticated_client.post(
-        f"/api/server/{real_bedrock_server.server_name}/service/update",
-        json={"autoupdate": True},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"

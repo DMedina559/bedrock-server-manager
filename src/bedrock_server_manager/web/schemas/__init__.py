@@ -33,7 +33,6 @@ from .install import (
     PlayerPermissionPayload,
     PropertiesGetResponse,
     PropertiesPayload,
-    ServiceUpdatePayload,
 )
 from .plugin import (
     PluginPagesResponse,
@@ -106,7 +105,6 @@ __all__ = [
     "AllowlistRemovePayload",
     "PlayerPermissionPayload",
     "PermissionsSetPayload",
-    "ServiceUpdatePayload",
     "BackupActionPayload",
     "RestoreActionPayload",
     "PluginStatusSetPayload",

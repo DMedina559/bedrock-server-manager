@@ -16,9 +16,9 @@ validated for server-specific routes.
 
 import logging
 import os
-from typing import Dict, List
+from typing import Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from ...api import server as server_api
@@ -42,7 +42,6 @@ from ..schemas import (
     PermissionsUpdateResponse,
     PropertiesGetResponse,
     PropertiesPayload,
-    ServiceUpdatePayload,
     UserResponse,
 )
 
@@ -580,97 +579,4 @@ async def get_server_permissions_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=result.get("message", "Failed to get server permissions."),
-        )
-
-
-# --- API Route: /api/server/{server_name}/service/update ---
-@router.post(
-    "/api/server/{server_name}/service/update",
-    response_model=BaseApiResponse,
-    status_code=status.HTTP_200_OK,
-    tags=["Server Configuration API"],
-)
-async def configure_service_api_route(  # noqa: C901
-    server_name: str = Depends(validate_server_exists),
-    payload: ServiceUpdatePayload = Body(...),
-    current_user: UserResponse = Depends(get_admin_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Updates server-specific service settings like autoupdate and autostart.
-    """
-    identity = current_user.username
-    logger.info(
-        f"API: Configure service request for '{server_name}' by user '{identity}'. Payload: {payload.model_dump_json(exclude_none=True)}"
-    )
-
-    if payload.autoupdate is None and payload.autostart is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No options provided (autoupdate or autostart must be present).",
-        )
-
-    messages = []
-    warnings: List[str] = []
-
-    try:
-        # Handle autoupdate first
-        if payload.autoupdate is not None:
-            result_autoupdate = server_api.set_server_setting(
-                server_name=server_name,
-                key="settings.autoupdate",
-                value=payload.autoupdate,
-                app_context=app_context,
-            )
-            if result_autoupdate.get("status") == "success":
-                messages.append("Autoupdate setting applied successfully.")
-            else:
-                # Raise to be caught by the generic error handlers below
-                raise BSMError(
-                    f"Failed to set autoupdate: {result_autoupdate.get('message')}"
-                )
-
-        # Handle autostart
-        if payload.autostart is not None:
-            result_autostart = server_api.set_server_setting(
-                server_name=server_name,
-                key="settings.autostart",
-                value=payload.autostart,
-                app_context=app_context,
-            )
-            if result_autostart.get("status") == "success":
-                messages.append("autostart setting applied successfully.")
-            else:
-                # Raise to be caught by the generic error handlers below
-                raise BSMError(
-                    f"Failed to set autostart: {result_autostart.get('message')}"
-                )
-
-        # Combine messages and warnings for the final response
-        final_message = " ".join(messages)
-        if warnings:
-            final_message += " " + " ".join(warnings)
-
-        return BaseApiResponse(
-            status="success_with_warning" if warnings else "success",
-            message=final_message or "No configuration changes were made.",
-        )
-
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        logger.error(
-            f"API Configure Service '{server_name}': BSMError. {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"API Configure Service '{server_name}': Unexpected error. {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred while configuring service.",
         )
