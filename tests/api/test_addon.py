@@ -2,8 +2,12 @@ from unittest.mock import patch
 
 import pytest
 
-from bedrock_server_manager.api.addon import import_addon
-from bedrock_server_manager.error import AppFileNotFoundError, MissingArgumentError
+from bedrock_server_manager.api.addon import import_addon, list_available_addons
+from bedrock_server_manager.error import (
+    AppFileNotFoundError,
+    FileError,
+    MissingArgumentError,
+)
 
 
 class TestImportAddon:
@@ -80,3 +84,23 @@ class TestImportAddon:
             )
             assert result["status"] == "error"
             assert "Test exception" in result["message"]
+
+    def test_list_available_addons(self, app_context, tmp_path):
+        addons_dir = tmp_path / "content" / "addons"
+        addons_dir.mkdir(parents=True, exist_ok=True)
+        (addons_dir / "addon1.mcpack").touch()
+        app_context.settings.set("paths.content", str(tmp_path / "content"))
+
+        result = list_available_addons(app_context=app_context)
+        assert result["status"] == "success"
+        assert len(result["files"]) == 1
+        assert "addon1.mcpack" in result["files"][0]
+
+    def test_list_available_addons_file_error(self, app_context):
+        with patch(
+            "bedrock_server_manager.api.addon._list_content_files",
+            side_effect=FileError("Test error"),
+        ):
+            result = list_available_addons(app_context=app_context)
+            assert result["status"] == "error"
+            assert "Test error" in result["message"]

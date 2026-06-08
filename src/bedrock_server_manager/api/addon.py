@@ -27,12 +27,14 @@ from ..context import AppContext
 from ..error import (
     AppFileNotFoundError,
     BSMError,
+    FileError,
     MissingArgumentError,
     SendCommandError,
     ServerNotRunningError,
 )
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
+from ..utils import list_content_files
 from .utils import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,34 @@ logger = logging.getLogger(__name__)
 # This ensures that only one addon installation can occur at a time,
 # preventing potential file corruption.
 _addon_lock = threading.Lock()
+
+
+@plugin_method("list_available_addons")
+def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
+    """Lists available .mcaddon and .mcpack files from the content directory.
+
+    Scans the ``addons`` sub-folder within the application's global content directory.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
+        list of absolute paths to ``.mcaddon`` or ``.mcpack`` files.
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        FileError: If the content directory is not configured or accessible.
+    """
+    logger.debug("API: Requesting list of available addons.")
+    try:
+        content_dir = app_context.settings.get("paths.content")
+        addons = list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
+        return {"status": "success", "files": addons}
+    except FileError as e:
+        # Handle specific file-related errors.
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
+        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
 @plugin_method("import_addon")

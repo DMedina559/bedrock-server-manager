@@ -220,6 +220,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     app.include_router(routers.server_install_config_router)
     app.include_router(routers.backup_restore_router)
     app.include_router(routers.content_router)
+    app.include_router(routers.addon_router)
     app.include_router(routers.settings_router)
     app.include_router(routers.api_info_router)
     app.include_router(routers.bans_router)

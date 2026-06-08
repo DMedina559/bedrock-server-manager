@@ -20,46 +20,15 @@ intended for use by UIs, CLIs, or other high-level components.
 """
 
 import logging
-import os
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from ..context import AppContext
-from ..core.system import find_files
-from ..error import AppFileNotFoundError, BSMError, FileError, FileOperationError
+from ..error import BSMError, FileError
 from ..plugins import plugin_method
+from ..utils import list_content_files
 from ..utils import server as server_utils
 
 logger = logging.getLogger(__name__)
-
-
-def _list_content_files(
-    content_dir: str | None, sub_folder: str, extensions: List[str]
-) -> List[str]:
-    """
-    Internal helper to list files with specified extensions from a sub-folder
-    within the global content directory.
-    """
-    if not content_dir or not os.path.isdir(content_dir):
-        raise AppFileNotFoundError(str(content_dir), "Content directory")
-
-    target_dir = os.path.join(content_dir, sub_folder)
-    if not os.path.isdir(target_dir):
-        logger.debug(
-            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
-        )
-        return []
-
-    found_files: List[str] = []
-    try:
-        for ext in extensions:
-            pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
-            files = find_files(target_dir, pattern=pattern)
-            found_files.extend(os.path.abspath(str(f)) for f in files)
-    except OSError as e:
-        raise FileOperationError(
-            f"Error scanning content directory {target_dir}: {e}"
-        ) from e
-    return sorted(list(set(found_files)))
 
 
 @plugin_method("list_available_worlds_api")
@@ -80,41 +49,13 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available worlds.")
     try:
         content_dir = app_context.settings.get("paths.content")
-        worlds = _list_content_files(content_dir, "worlds", [".mcworld"])
+        worlds = list_content_files(content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
         # Handle specific file-related errors.
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error(f"API: Unexpected error listing worlds: {e}", exc_info=True)
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
-
-
-@plugin_method("list_available_addons_api")
-def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
-    """Lists available .mcaddon and .mcpack files from the content directory.
-
-    Scans the ``addons`` sub-folder within the application's global content directory.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
-        list of absolute paths to ``.mcaddon`` or ``.mcpack`` files.
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        FileError: If the content directory is not configured or accessible.
-    """
-    logger.debug("API: Requesting list of available addons.")
-    try:
-        content_dir = app_context.settings.get("paths.content")
-        addons = _list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
-        return {"status": "success", "files": addons}
-    except FileError as e:
-        # Handle specific file-related errors.
-        return {"status": "error", "message": str(e)}
-    except Exception as e:
-        logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 

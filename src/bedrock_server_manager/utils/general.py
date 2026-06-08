@@ -9,9 +9,11 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from ..context import AppContext
+from ..core.system import find_files
+from ..error import AppFileNotFoundError, FileOperationError
 
 logger = logging.getLogger(__name__)
 
@@ -92,3 +94,33 @@ def get_timestamp() -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # logger.debug(f"Generated timestamp: {timestamp}")
     return timestamp
+
+
+def list_content_files(
+    content_dir: str | None, sub_folder: str, extensions: List[str]
+) -> List[str]:
+    """
+    Internal helper to list files with specified extensions from a sub-folder
+    within the global content directory.
+    """
+    if not content_dir or not os.path.isdir(content_dir):
+        raise AppFileNotFoundError(str(content_dir), "Content directory")
+
+    target_dir = os.path.join(content_dir, sub_folder)
+    if not os.path.isdir(target_dir):
+        logger.debug(
+            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
+        )
+        return []
+
+    found_files: List[str] = []
+    try:
+        for ext in extensions:
+            pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
+            files = find_files(target_dir, pattern=pattern)
+            found_files.extend(os.path.abspath(str(f)) for f in files)
+    except OSError as e:
+        raise FileOperationError(
+            f"Error scanning content directory {target_dir}: {e}"
+        ) from e
+    return sorted(list(set(found_files)))

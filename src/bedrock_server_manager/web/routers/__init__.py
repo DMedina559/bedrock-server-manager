@@ -2,6 +2,7 @@
 """Exports all APIRouter instances for easy inclusion in the main FastAPI app."""
 
 from .account_router import router as account_router
+from .addon import router as addon_router
 from .api_info import router as api_info_router
 from .audit_log import router as audit_log_router
 from .auth import router as auth_router
@@ -30,6 +31,7 @@ __all__ = [
     "bans_router",
     "backup_restore_router",
     "content_router",
+    "addon_router",
     "main_router",
     "plugin_router",
     "server_actions_router",

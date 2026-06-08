@@ -148,7 +148,7 @@ class DownloadPagePlugin(PluginBase):
                 try:
 
                     worlds_list = self.api.list_available_worlds_api()
-                    addons_list = self.api.list_available_addons_api()
+                    addons_list = self.api.list_available_addons()
 
                     if worlds_list["status"] == "success":
                         worlds = [
