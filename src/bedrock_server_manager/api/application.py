@@ -24,10 +24,10 @@ import os
 from typing import Any, Dict, List
 
 from ..context import AppContext
-from ..core import utils as core_utils
 from ..core.system import find_files
 from ..error import AppFileNotFoundError, BSMError, FileError, FileOperationError
 from ..plugins import plugin_method
+from ..utils import server as server_utils
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
 
     try:
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = core_utils.get_servers_data(
+        servers_data, bsm_error_messages = server_utils.get_servers_data(
             app_context=app_context
         )
 

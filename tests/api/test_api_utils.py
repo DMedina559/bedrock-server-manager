@@ -37,7 +37,7 @@ class TestServerValidation:
 class TestStatusAndUpdate:
     def test_update_server_statuses(self, app_context):
         with patch(
-            "bedrock_server_manager.core.utils.get_servers_data",
+            "bedrock_server_manager.utils.server.get_servers_data",
             return_value=([{"name": "server1"}, {"name": "server2"}], []),
         ):
             result = update_server_statuses(app_context=app_context)

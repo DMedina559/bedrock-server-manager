@@ -27,10 +27,10 @@ from typing import Any, Dict
 
 from ..config.const import get_installed_version
 from ..context import AppContext
-from ..core import utils as core_utils
 from ..error import BSMError, ServerStartError, UserInputError
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
+from ..utils import server as server_utils
 from .server import start_server as api_start_server
 from .server import stop_server as api_stop_server
 
@@ -106,7 +106,7 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
 
     This is a stateless check (does not verify if the server actually exists)
     that delegates to
-    :func:`~bedrock_server_manager.core.utils.core_validate_server_name_format`.
+    :func:`~bedrock_server_manager.utils.server.core_validate_server_name_format`.
     It ensures new server names conform to allowed character sets (alphanumeric,
     hyphens, underscores) and are not empty.
 
@@ -121,7 +121,7 @@ def validate_server_name_format(server_name: str) -> Dict[str, str]:
     logger.debug(f"API: Validating format for '{server_name}'")
     try:
         # Delegate validation to the core utility function.
-        core_utils.core_validate_server_name_format(server_name)
+        server_utils.core_validate_server_name_format(server_name)
         logger.debug(f"API: Format valid for '{server_name}'.")
         return {"status": "success", "message": "Server name format is valid."}
     except UserInputError as e:
@@ -162,7 +162,7 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     try:
         # get_servers_data() now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = core_utils.get_servers_data(
+        all_servers_data, discovery_errors = server_utils.get_servers_data(
             app_context=app_context
         )
         if discovery_errors:
@@ -232,7 +232,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
 def stop_all_servers(app_context: AppContext):
     """Stops all running servers."""
     logger.info("API: Stopping all servers...")
-    result = core_utils.get_servers_data(app_context=app_context)
+    result = server_utils.get_servers_data(app_context=app_context)
     if isinstance(result, tuple) and len(result) == 2:
         servers_data, _ = result
     else:

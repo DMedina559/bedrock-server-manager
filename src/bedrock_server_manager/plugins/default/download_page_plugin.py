@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 from bedrock_server_manager import PluginBase
-from bedrock_server_manager.core.utils import core_validate_server_name_format
 from bedrock_server_manager.error import InvalidServerNameError
+from bedrock_server_manager.utils.server import core_validate_server_name_format
 from bedrock_server_manager.web import get_admin_user
 
 
