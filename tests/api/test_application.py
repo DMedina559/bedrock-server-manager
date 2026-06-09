@@ -54,3 +54,34 @@ def test_get_all_servers_data_bsm_error(app_context):
         result = get_all_servers_data(app_context=app_context)
         assert result["status"] == "error"
         assert "Test BSM error" in result["message"]
+
+
+class TestStatusAndUpdate:
+    def test_update_server_statuses(self, app_context):
+        from unittest.mock import patch
+
+        from bedrock_server_manager.api.application import update_server_statuses
+
+        with patch(
+            "bedrock_server_manager.utils.server.get_servers_data",
+            return_value=([{"name": "server1"}, {"name": "server2"}], []),
+        ):
+            result = update_server_statuses(app_context=app_context)
+            assert result["status"] == "success"
+            assert "2 servers" in result["message"]
+
+    def test_get_system_and_app_info(self, app_context):
+        from unittest.mock import patch
+
+        from bedrock_server_manager.api.application import get_system_and_app_info
+
+        app_context.splash_txt = "Hello World"
+        with patch("platform.system", return_value="Linux"):
+            with patch(
+                "bedrock_server_manager.api.application.config_const.get_installed_version",
+                return_value="1.0.0",
+            ):
+                result = get_system_and_app_info(app_context=app_context)
+                assert result["status"] == "success"
+                assert result["os_type"] == "Linux"
+                assert result["app_version"] == "1.0.0"

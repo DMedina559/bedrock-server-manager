@@ -49,7 +49,7 @@ def test_post_install_addon_queues_task_correctly(
     mock_run_task.assert_called_once()
 
 
-@patch("bedrock_server_manager.web.routers.addon.utils_api.validate_server_exist")
+@patch("bedrock_server_manager.utils.server.validate_server")
 @patch("bedrock_server_manager.web.routers.content.os.path.isfile")
 def test_post_install_addon_not_found(
     mock_isfile, mock_validate_server, authenticated_client
@@ -58,7 +58,7 @@ def test_post_install_addon_not_found(
     app_context = MagicMock()
     app_context.settings.get.return_value = "/fake/path"
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = {"status": "success"}
+    mock_validate_server.return_value = True
     mock_isfile.return_value = False
 
     response = authenticated_client.post(

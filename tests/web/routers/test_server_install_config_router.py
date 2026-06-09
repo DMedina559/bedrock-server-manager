@@ -24,12 +24,12 @@ def test_install_server_api_route_success(authenticated_client):
 
     # Mock the utils functions that are called before the task is created
     with patch(
-        "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_name_format",
-        return_value={"status": "success"},
+        "bedrock_server_manager.utils.server.core_validate_server_name_format",
+        return_value=None,
     ):
         with patch(
-            "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_exist",
-            return_value={"status": "error"},
+            "bedrock_server_manager.utils.server.validate_server",
+            return_value=False,
         ):
             response = authenticated_client.post(
                 "/api/server/install",
@@ -303,18 +303,14 @@ def test_add_to_allowlist_api_route(authenticated_client, real_bedrock_server):
     assert response.json()["status"] == "success"
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_exist"
-)
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_name_format"
-)
+@patch("bedrock_server_manager.utils.server.validate_server")
+@patch("bedrock_server_manager.utils.server.core_validate_server_name_format")
 def test_install_server_api_route_confirmation_needed(
     mock_validate_name, mock_validate_exist, authenticated_client
 ):
     """Test the install_server_api_route when confirmation is needed."""
-    mock_validate_name.return_value = {"status": "success"}
-    mock_validate_exist.return_value = {"status": "success"}
+    mock_validate_name.return_value = None
+    mock_validate_exist.return_value = True
 
     response = authenticated_client.post(
         "/api/server/install",
@@ -324,17 +320,14 @@ def test_install_server_api_route_confirmation_needed(
     assert response.json()["status"] == "confirm_needed"
 
 
-@patch(
-    "bedrock_server_manager.web.routers.server_install_config.utils_api.validate_server_name_format"
-)
+@patch("bedrock_server_manager.utils.server.core_validate_server_name_format")
 def test_install_server_api_route_invalid_name(
     mock_validate_name, authenticated_client
 ):
+    from bedrock_server_manager.error import UserInputError
+
     """Test the install_server_api_route with an invalid server name."""
-    mock_validate_name.return_value = {
-        "status": "error",
-        "message": "Invalid server name",
-    }
+    mock_validate_name.side_effect = UserInputError("Invalid server name.")
 
     response = authenticated_client.post(
         "/api/server/install",

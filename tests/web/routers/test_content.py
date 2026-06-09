@@ -58,7 +58,7 @@ def test_install_world_api_route_success(
     mock_run_task.assert_called_once()
 
 
-@patch("bedrock_server_manager.web.routers.content.utils_api.validate_server_exist")
+@patch("bedrock_server_manager.utils.server.validate_server")
 @patch("bedrock_server_manager.web.routers.content.os.path.isfile")
 def test_install_world_api_route_not_found(
     mock_isfile, mock_validate_server, authenticated_client
@@ -67,7 +67,7 @@ def test_install_world_api_route_not_found(
     app_context = MagicMock()
     app_context.settings.get.return_value = "/fake/path"
     authenticated_client.app.state.app_context = app_context
-    mock_validate_server.return_value = {"status": "success"}
+    mock_validate_server.return_value = True
     mock_isfile.return_value = False
 
     response = authenticated_client.post(
@@ -89,10 +89,10 @@ def test_install_world_api_route_queues_task_correctly(
     app_context.task_manager.run_task = MagicMock(return_value="test-task-id-123")
 
     with patch("os.path.isfile", return_value=True):
-        # We also need to patch validate_server_exist as it's a dependency
+        # We also need to patch validate_server as it's a dependency
         with patch(
-            "bedrock_server_manager.api.utils.validate_server_exist",
-            return_value={"status": "success"},
+            "bedrock_server_manager.utils.server.validate_server",
+            return_value=True,
         ):
             response = authenticated_client.post(
                 "/api/server/test-server/world/install",

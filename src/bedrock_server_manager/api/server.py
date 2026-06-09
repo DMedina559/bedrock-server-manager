@@ -18,6 +18,7 @@ and by triggering various plugin events during server operations.
 
 import logging
 import os
+from contextlib import contextmanager
 from typing import Any, Dict
 
 from ..config import API_COMMAND_BLACKLIST
@@ -29,6 +30,7 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
     ServerError,
+    ServerStartError,
 )
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
@@ -653,3 +655,90 @@ def delete_server_data(
             "status": "error",
             "message": f"Unexpected error deleting server data: {e}",
         }
+
+
+@plugin_method("server_lifecycle_manager")
+@contextmanager
+def server_lifecycle_manager(
+    server_name: str,
+    stop_before: bool,
+    app_context: AppContext,
+    start_after: bool = True,
+    restart_on_success_only: bool = False,
+):
+    """A context manager to safely stop and restart a server for an operation."""
+    server = app_context.get_server(server_name)
+    was_running = False
+    operation_succeeded = True
+
+    # If the operation doesn't require a server stop, just yield and exit.
+    if not stop_before:
+        logger.debug(
+            f"Context Mgr: Stop/Start not flagged for '{server_name}'. Skipping."
+        )
+        yield
+        return
+
+    try:
+        # --- PRE-OPERATION: STOP SERVER ---
+        if server.is_running():
+            was_running = True
+            logger.info(f"Context Mgr: Server '{server_name}' is running. Stopping...")
+            stop_result = stop_server(server_name, app_context=app_context)
+            if stop_result.get("status") == "error":
+                error_msg = f"Failed to stop server '{server_name}': {stop_result.get('message')}. Aborted."
+                logger.error(error_msg)
+                # Do not proceed if the server can't be stopped.
+                return {"status": "error", "message": error_msg}
+            logger.info(f"Context Mgr: Server '{server_name}' stopped.")
+        else:
+            logger.debug(
+                f"Context Mgr: Server '{server_name}' is not running. No stop needed."
+            )
+
+        # Yield control to the wrapped code block.
+        yield
+
+    except Exception:
+        # If an error occurs in the `with` block, record it and re-raise.
+        operation_succeeded = False
+        logger.error(
+            f"Context Mgr: Exception occurred during managed operation for '{server_name}'.",
+            exc_info=True,
+        )
+        raise
+    finally:
+        # --- POST-OPERATION: RESTART SERVER ---
+        # Only restart if the server was running initially and `start_after` is true.
+        if was_running and start_after:
+            should_restart = True
+            # If `restart_on_success_only` is set, check if the operation failed.
+            if restart_on_success_only and not operation_succeeded:
+                should_restart = False
+                logger.warning(
+                    f"Context Mgr: Operation for '{server_name}' failed. Skipping restart as requested."
+                )
+
+            if should_restart:
+                logger.info(f"Context Mgr: Restarting server '{server_name}'...")
+                try:
+                    # Use the API function to ensure detached mode and proper handling.
+                    start_result = start_server(
+                        str(server_name), app_context=app_context
+                    )
+                    if start_result.get("status") == "error":
+                        raise ServerStartError(
+                            f"Failed to restart '{server_name}': {start_result.get('message')}"
+                        )
+                    logger.info(
+                        f"Context Mgr: Server '{server_name}' restart initiated."
+                    )
+                except BSMError as e:
+                    logger.error(
+                        f"Context Mgr: FAILED to restart '{server_name}': {e}",
+                        exc_info=True,
+                    )
+                    # If the original operation succeeded, the failure to restart
+                    # becomes the primary error to report.
+                    if operation_succeeded:
+                        raise

@@ -23,7 +23,6 @@ from ...api import info as info_api
 from ...api import misc as misc_api
 from ...api import player as player_api
 from ...api import system as system_api
-from ...api import utils as utils_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
@@ -228,20 +227,19 @@ async def validate_server_api_route(
     logger.info(
         f"API: Request to validate server '{server_name}' by user '{identity}'."
     )
+    from ...utils.server import validate_server
+
     try:
-        result = utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return BaseApiResponse(status="success", message=result.get("message"))
+        if validate_server(server_name=server_name, app_context=app_context):
+            return BaseApiResponse(
+                status="success", message=f"Server '{server_name}' exists and is valid."
+            )
         else:
             # This case handles when the underlying API returns an error status
             # without raising an exception itself.
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=result.get(
-                    "message", f"Server '{server_name}' not found or is invalid."
-                ),
+                detail=f"Server '{server_name}' is not installed or the installation is invalid.",
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -526,8 +524,10 @@ async def get_system_info_api_route(
     Retrieves general system and application information.
     """
     logger.debug("API: Request for system and app info.")
+    from ...api.application import get_system_and_app_info
+
     try:
-        result = utils_api.get_system_and_app_info(app_context=app_context)
+        result = get_system_and_app_info(app_context=app_context)
         if result.get("status") == "success":
             # the dictionary is already flattened, pass the entire result minus the status
             return AppInfoResponse(

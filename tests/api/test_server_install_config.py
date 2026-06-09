@@ -132,12 +132,10 @@ class TestProperties:
 
 
 class TestInstallUpdate:
-    @patch(
-        "bedrock_server_manager.api.server_install_config.validate_server_name_format"
-    )
+    @patch("bedrock_server_manager.utils.server.core_validate_server_name_format")
     @patch("os.path.exists", return_value=False)
     def test_install_new_server(self, mock_exists, mock_validate, app_context):
-        mock_validate.return_value = {"status": "success"}
+        mock_validate.return_value = None
         server = app_context.get_server("new-server")
         with patch.object(server, "install_or_update") as mock_install:
             result = install_new_server("new-server", app_context=app_context)

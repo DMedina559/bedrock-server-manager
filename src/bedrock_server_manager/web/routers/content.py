@@ -13,7 +13,6 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import application as app_api
-from ...api import utils as utils_api
 from ...api import world as world_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
@@ -93,10 +92,10 @@ async def install_world_api_route(
     logger.info(
         f"API: World install of '{selected_filename}' for '{server_name}' by user '{identity}'."
     )
+    from ...utils.server import validate_server
+
     try:
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -184,10 +183,10 @@ async def export_world_api_route(
     logger.info(
         f"API: World export requested for '{server_name}' by user '{identity}'."
     )
+    from ...utils.server import validate_server
+
     try:
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -239,11 +238,11 @@ async def reset_world_api_route(
     """
     identity = current_user.username
     logger.info(f"API: World reset requested for '{server_name}' by user '{identity}'.")
+    from ...utils.server import validate_server
+
     try:
         # Validate server existence before queueing task
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",

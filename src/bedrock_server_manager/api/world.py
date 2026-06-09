@@ -18,7 +18,7 @@ Operations involving world file modifications (export, import, reset) are
 thread-safe using a unified lock (``_world_lock``) to prevent data corruption.
 For actions that require the server to be offline (like import or reset),
 this module utilizes the
-:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+:func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
 to safely stop and restart the server. All functions are exposed to the
 plugin system.
 """
@@ -38,7 +38,7 @@ from ..error import (
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 from ..utils import get_timestamp
-from .utils import server_lifecycle_manager
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def export_world(
 
     This operation is thread-safe due to ``_world_lock``. If `stop_start_server`
     is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped during the export for file consistency, and then
     restarted. The core world export is performed by
     :meth:`~.core.bedrock_server.BedrockServer.export_world_directory_to_mcworld`.
@@ -235,7 +235,7 @@ def import_world(
         will be deleted before the new world is imported.
 
     If `stop_start_server` is ``True``, this function uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped during the import. The core world import is performed by
     :meth:`~.core.bedrock_server.BedrockServer.import_active_world_from_mcworld`.
     Triggers ``before_world_import`` and ``after_world_import`` plugin events.
@@ -339,7 +339,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
         will be permanently removed.
 
     This function uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped before deleting the world and restarted afterwards (which
     will trigger new world generation). The active world directory is deleted using
     :meth:`~.core.bedrock_server.BedrockServer.delete_active_world_directory`.

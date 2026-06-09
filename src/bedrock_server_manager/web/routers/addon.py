@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from ...api import addon as addon_api
-from ...api import utils as utils_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ..auth_utils import get_admin_user, get_moderator_user
@@ -344,10 +343,10 @@ async def post_install_addon(
     logger.info(
         f"API: Addon install of '{selected_filename}' for '{server_name}' by user '{identity}'."
     )
+    from ...utils.server import validate_server
+
     try:
-        if not utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        ):
+        if not validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",

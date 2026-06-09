@@ -20,7 +20,7 @@ Key functionalities include:
 Operations involving file modifications are thread-safe using a unified lock
 (``_backup_restore_lock``). For actions requiring the server to be offline,
 this module utilizes the
-:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+:func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
 to safely stop and restart the server. All functions are exposed to the plugin system.
 """
 
@@ -38,7 +38,7 @@ from ..error import (
 )
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-from .utils import server_lifecycle_manager
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def backup_world(
     :class:`~.core.bedrock_server.BedrockServer` instance, which handles
     determining the active world, exporting it to a ``.mcworld`` file, and
     pruning old world backups. If `stop_start_server` is ``True``, the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     is used to manage the server's state.
     Triggers ``before_backup`` and ``after_backup`` plugin events (with type "world").
 
@@ -197,7 +197,7 @@ def backup_config_file(
     copies the specified file (e.g., ``server.properties``) from the server's
     installation directory to a timestamped backup in the server's backup
     directory, then prunes older backups of that file type.
-    The :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    The :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     is used if `stop_start_server` is ``True``, though typically not strictly
     necessary for config file backups unless there's a concern about live writes.
     Triggers ``before_backup`` and ``after_backup`` plugin events (with type "config_file").
@@ -289,7 +289,7 @@ def backup_all(
     This operation is thread-safe and guarded by a lock. It calls
     :meth:`~.core.bedrock_server.BedrockServer.backup_all_data`.
     If `stop_start_server` is ``True``, the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     is used to stop the server before the backup. **Note:** The server is
     **not** automatically restarted by this specific API function after the backup,
     even if `stop_start_server` is true; only the stop phase of the lifecycle
@@ -377,7 +377,7 @@ def restore_all(
     This operation is thread-safe and guarded by a lock. It calls
     :meth:`~.core.bedrock_server.BedrockServer.restore_all_data_from_latest`.
     If `stop_start_server` is ``True``, the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     is used to manage the server's state, restarting it only if the restore
     operation (all components) is successful.
 
@@ -478,7 +478,7 @@ def restore_world(
 
     This operation is thread-safe and guarded by a lock. If `stop_start_server`
     is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     to manage the server's state, restarting it only if the restore is successful.
     The core world import is performed by
     :meth:`~.core.bedrock_server.BedrockServer.import_active_world_from_mcworld`.
@@ -579,7 +579,7 @@ def restore_config_file(
 
     This operation is thread-safe and guarded by a lock. If `stop_start_server`
     is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     to manage the server's state, restarting it only if the restore is successful.
     The core config file restoration is performed by the internal
     ``_restore_config_file_internal`` method of the

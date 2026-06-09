@@ -4,6 +4,7 @@ import logging
 import mimetypes
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
 import bsm_frontend
 from fastapi import FastAPI, Request
@@ -22,7 +23,6 @@ mimetypes.add_type("application/javascript", ".js")
 def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     """Creates and configures the web application."""
     logger = logging.getLogger(__name__)
-    from .. import api
 
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
@@ -58,7 +58,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             and app_context._task_manager is not None
         ):
             app_context.task_manager.shutdown()
-        api.utils.stop_all_servers(app_context=app_context)
+        app_context.stop_all_servers()
         app_context.plugin_manager.unload_plugins()
         app_context.db.close()
         logger.info("Web app shutdown hooks complete.")
@@ -106,7 +106,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
 
-    api.utils.update_server_statuses(app_context=app_context)
+    from ..api.application import update_server_statuses
+
+    update_server_statuses(app_context=app_context)
 
     # --- Mount Static Assets from bsm-frontend ---
     static_dir = bsm_frontend.get_static_dir()
@@ -199,7 +201,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         return response
 
     # Add CORS Middleware last so it is the outermost middleware (executes first)
-    cors_kwargs = {
+    cors_kwargs: dict[str, Any] = {
         "allow_credentials": True,
         "allow_methods": ["*"],
         "allow_headers": ["*"],

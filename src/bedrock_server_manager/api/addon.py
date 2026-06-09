@@ -12,7 +12,7 @@ Currently, the main functionality offered is:
 
 Operations that modify server files, like addon installation, are designed to be
 thread-safe using a lock (``_addon_lock``). The module also utilizes the
-:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to
+:func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to
 optionally manage the server's state (stopping and restarting) during these
 operations to ensure data integrity. All primary functions are exposed to the
 plugin system.
@@ -35,7 +35,7 @@ from ..error import (
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 from ..utils import list_content_files
-from .utils import server_lifecycle_manager
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def import_addon(  # noqa: C901
 
     The function can optionally manage the server's lifecycle by stopping it
     before the installation and restarting it after, using the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`.
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`.
     Triggers ``before_addon_import`` and ``after_addon_import`` plugin events.
 
     Args:

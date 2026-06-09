@@ -42,7 +42,7 @@ from ..error import (
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 from . import player as player_api
-from .utils import server_lifecycle_manager, validate_server_name_format
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
@@ -543,7 +543,7 @@ def modify_server_properties(
 
     This function first validates all provided properties using
     :func:`~.validate_server_property_value`. If all validations pass, it
-    then uses the :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+    then uses the :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     to manage the server's state (stopping it if `restart_after_modify` is ``True``).
     Within the managed context, it applies each change by calling
     :meth:`~.core.bedrock_server.BedrockServer.set_server_property`.
@@ -639,7 +639,7 @@ def install_new_server(
     Args:
         server_name (str): The name for the new server. Must be unique and
             follow valid naming conventions (checked by
-            :func:`~bedrock_server_manager.api.utils.validate_server_name_format`).
+            :func:`~bedrock_server_manager.utils.server.core_validate_server_name_format`).
         target_version (str, optional): The server version to install
             (e.g., '1.20.10.01', 'LATEST', 'PREVIEW'). Defaults to 'LATEST'.
 
@@ -663,9 +663,9 @@ def install_new_server(
 
     try:
         # Perform pre-flight checks before creating anything.
-        val_res = validate_server_name_format(server_name)
-        if val_res.get("status") == "error":
-            raise UserInputError(val_res.get("message"))
+        from ..utils.server import core_validate_server_name_format
+
+        core_validate_server_name_format(server_name)
 
         settings = app_context.settings
 
@@ -717,7 +717,7 @@ def update_server(
        :meth:`~.core.bedrock_server.BedrockServer.is_update_needed`.
     3. If an update is needed:
 
-        - Uses :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+        - Uses :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
           to stop the server (if running and `send_message` is True, a notification
           may be sent before stopping).
         - Backs up all server data using

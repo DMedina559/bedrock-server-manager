@@ -171,7 +171,7 @@ async def set_plugin_status_api_route(
             app_context=app_context, plugin_name=plugin_name, enabled=payload.enabled
         )
         if result.get("status") == "success":
-            return ActionResponse(status="success", message=result.get("message"))
+            return ActionResponse(status="success", message=str(result.get("message")))
         else:
             detail = result.get("message", f"Failed to {action} plugin.")
             if "not found" in detail.lower() or "invalid plugin" in detail.lower():
@@ -214,7 +214,7 @@ async def reload_plugins_api_route(
     try:
         result = plugins_api.reload_plugins(app_context=app_context)
         if result.get("status") == "success":
-            return ActionResponse(status="success", message=result.get("message"))
+            return ActionResponse(status="success", message=str(result.get("message")))
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

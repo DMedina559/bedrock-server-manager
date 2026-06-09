@@ -23,7 +23,6 @@ from fastapi.responses import JSONResponse
 
 from ...api import server as server_api
 from ...api import server_install_config
-from ...api import utils as utils_api
 from ...context import AppContext
 from ...core.system import find_files
 from ...error import BSMError, UserInputError
@@ -101,18 +100,18 @@ async def install_server_api_route(  # noqa: C901
     logger.info(
         f"API: New server install request from user '{identity}' for server '{payload.server_name}'."
     )
-    validation_result = utils_api.validate_server_name_format(payload.server_name)
-    if validation_result.get("status") == "error":
+    from ...utils.server import core_validate_server_name_format, validate_server
+
+    try:
+        core_validate_server_name_format(payload.server_name)
+    except UserInputError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=validation_result.get("message"),
+            detail=str(e),
         )
 
     try:
-        server_exists_result = utils_api.validate_server_exist(
-            payload.server_name, app_context=app_context
-        )
-        server_exists = server_exists_result.get("status") == "success"
+        server_exists = validate_server(payload.server_name, app_context=app_context)
 
         if not payload.overwrite and server_exists:
             logger.info(
