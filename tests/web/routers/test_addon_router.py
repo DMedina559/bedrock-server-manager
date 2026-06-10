@@ -50,7 +50,7 @@ def test_post_install_addon_queues_task_correctly(
 
 
 @patch("bedrock_server_manager.utils.server.validate_server")
-@patch("bedrock_server_manager.web.routers.content.os.path.isfile")
+@patch("bedrock_server_manager.web.routers.addon.os.path.isfile")
 def test_post_install_addon_not_found(
     mock_isfile, mock_validate_server, authenticated_client
 ):
