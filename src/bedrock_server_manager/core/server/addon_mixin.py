@@ -17,7 +17,7 @@ It is designed to work in conjunction with other mixins of the
       :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` to determine
       the active world.
     - :class:`~.core.server.world_mixin.ServerWorldMixin` for methods like
-      :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
+      :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 
@@ -62,7 +62,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
     relies on methods from other mixins that will be part of the composed
     :class:`~.core.bedrock_server.BedrockServer` class, such as
     :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` and
-    :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`.
+    :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -75,7 +75,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         :class:`.BedrockServerBaseMixin`) and methods (e.g.,
         :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` from
         :class:`~.core.server.state_mixin.ServerStateMixin`, or
-        :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
+        :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`
         from :class:`~.core.server.world_mixin.ServerWorldMixin`) that are
         provided by other base or sibling mixins in the final
         :class:`~.core.bedrock_server.BedrockServer` class.
@@ -88,13 +88,13 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         # This mixin depends on attributes from BaseMixin: self.server_name, self.base_dir, self.server_dir, self.logger.
         # It also depends on methods from other mixins that will be part of the final BedrockServer class, such as:
         # - self.get_world_name() (from StateMixin)
-        # - self.extract_mcworld_to_directory() (from WorldMixin)
+        # - self.extract_mcworld() (from WorldMixin)
 
     if TYPE_CHECKING:
 
         def get_world_name(self) -> str: ...
 
-        def extract_mcworld_to_directory(
+        def extract_mcworld(
             self, mcworld_file_path: str, target_world_dir_name: str
         ) -> str: ...
 
@@ -219,7 +219,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         It identifies and processes:
 
             - ``.mcworld`` files: These are processed by calling
-              :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`,
+              :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`,
               effectively importing the world template into the server's active world.
               Requires :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
               to determine the active world.
@@ -234,11 +234,11 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         Raises:
             FileOperationError: If processing any of the contained ``.mcworld`` or
                 ``.mcpack`` files fails. This can be due to issues raised by
-                :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`
+                :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`
                 or :meth:`._process_mcpack_archive`.
             AttributeError: If required methods from other mixins, such as
                 :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name` or
-                :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld_to_directory`,
+                :meth:`~.core.server.world_mixin.ServerWorldMixin.extract_mcworld`,
                 are not available on the server instance.
         """
         self.logger.debug(
@@ -263,9 +263,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
                 try:
                     # This method is expected to be on the final class from WorldMixin.
-                    self.extract_mcworld_to_directory(
-                        world_file_path, active_world_name
-                    )
+                    self.extract_mcworld(world_file_path, active_world_name)
                     self.logger.info(
                         f"Successfully processed '{world_filename_basename}' into world '{active_world_name}'."
                     )
@@ -846,7 +844,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Failed to write world pack JSON '{json_filename_basename}': {e}"
             ) from e
 
-    def list_world_addons(
+    def list_installed_addons(
         self, world_name: Optional[str] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Lists all behavior and resource packs for a specified world.
@@ -975,7 +973,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             world_json_path, pack_uuid, target_pack["version"]
         )
 
-    def update_addon_subpack(  # noqa: C901
+    def update_subpack(  # noqa: C901
         self,
         pack_uuid: str,
         pack_type: str,

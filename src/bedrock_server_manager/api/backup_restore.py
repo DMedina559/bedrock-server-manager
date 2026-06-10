@@ -481,7 +481,7 @@ def restore_world(
     :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
     to manage the server's state, restarting it only if the restore is successful.
     The core world import is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.import_active_world_from_mcworld`.
+    :meth:`~.core.bedrock_server.BedrockServer.import_world`.
 
     .. warning::
         This is a **DESTRUCTIVE** operation. The existing active world directory
@@ -541,7 +541,7 @@ def restore_world(
                 app_context=app_context,
             ):
                 server = app_context.get_server(server_name)
-                server.import_active_world_from_mcworld(backup_file_path)
+                server.import_world(backup_file_path)
 
             return {
                 "status": "success",

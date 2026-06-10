@@ -17,7 +17,7 @@ def zip_dir(path, zip_path):
                 )
 
 
-def test_export_world_directory_to_mcworld(real_bedrock_server, tmp_path):
+def test_export_world(real_bedrock_server, tmp_path):
     server = real_bedrock_server
     world_name = "world"
     output_path = tmp_path / "world.mcworld"
@@ -26,13 +26,13 @@ def test_export_world_directory_to_mcworld(real_bedrock_server, tmp_path):
     with open(os.path.join(db_path, "test.ldb"), "w") as f:
         f.write("test")
 
-    server.export_world_directory_to_mcworld(world_name, str(output_path))
+    server.export_world(world_name, str(output_path))
     assert os.path.exists(output_path)
     with zipfile.ZipFile(output_path, "r") as zip_ref:
         assert "db/test.ldb" in zip_ref.namelist()
 
 
-def test_import_active_world_from_mcworld(real_bedrock_server, tmp_path):
+def test_import_world(real_bedrock_server, tmp_path):
     server = real_bedrock_server
     world_name = "world"
     mcworld_path = tmp_path / f"{world_name}.mcworld"
@@ -42,33 +42,31 @@ def test_import_active_world_from_mcworld(real_bedrock_server, tmp_path):
         f.write("test")
     zip_dir(world_source_path, mcworld_path)
 
-    imported_world_name = server.import_active_world_from_mcworld(str(mcworld_path))
+    imported_world_name = server.import_world(str(mcworld_path))
     assert imported_world_name == world_name
     assert os.path.exists(
         os.path.join(server.server_dir, "worlds", world_name, "test.txt")
     )
 
 
-def test_extract_mcworld_to_directory_invalid_zip(real_bedrock_server, tmp_path):
+def test_extract_mcworld_invalid_zip(real_bedrock_server, tmp_path):
     server = real_bedrock_server
     invalid_zip_path = tmp_path / "invalid.mcworld"
     invalid_zip_path.write_text("not a zip")
     with pytest.raises(ExtractError):
-        server.extract_mcworld_to_directory(str(invalid_zip_path), "world")
+        server.extract_mcworld(str(invalid_zip_path), "world")
 
 
-def test_export_world_directory_to_mcworld_no_source(real_bedrock_server, tmp_path):
+def test_export_world_no_source(real_bedrock_server, tmp_path):
     server = real_bedrock_server
     with pytest.raises(AppFileNotFoundError):
-        server.export_world_directory_to_mcworld(
-            "non_existent_world", str(tmp_path / "export.mcworld")
-        )
+        server.export_world("non_existent_world", str(tmp_path / "export.mcworld"))
 
 
-def test_delete_active_world_directory_not_exist(real_bedrock_server):
+def test_delete_world_not_exist(real_bedrock_server):
     server = real_bedrock_server
     with patch.object(server, "get_world_name", return_value="non_existent_world"):
-        assert server.delete_active_world_directory() is True
+        assert server.delete_world() is True
 
 
 def test_has_world_icon_missing(real_bedrock_server):

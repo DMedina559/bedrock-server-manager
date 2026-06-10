@@ -86,7 +86,7 @@ async def get_server_addons(
         f"API: List world addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        result = addon_api.list_world_addons(server_name, app_context)
+        result = addon_api.list_installed_addons(server_name, app_context)
         return AddonListResponse(status="success", addons=result.get("addons"))
     except Exception as e:
         logger.error(
@@ -190,7 +190,7 @@ async def post_disable_addon(
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content API"],
 )
-async def post_update_addon_subpack(
+async def post_update_subpack(
     payload: AddonSubpackPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
@@ -213,7 +213,7 @@ async def post_update_addon_subpack(
                 subpack_name = payload_dict[dynamic_key]
 
         task_id = app_context.task_manager.run_task(
-            addon_api.update_addon_subpack,
+            addon_api.update_subpack,
             username=current_user.username,
             server_name=server_name,
             pack_uuid=payload.pack_uuid,
@@ -429,7 +429,7 @@ async def get_server_addon_icon(
     logger.debug(f"API: Get addon icon for '{server_name}' requested.")
 
     try:
-        result = addon_api.list_world_addons(server_name, app_context)
+        result = addon_api.list_installed_addons(server_name, app_context)
 
         # Determine the key to search in based on pack_type
         pack_key = f"{pack_type}_packs"

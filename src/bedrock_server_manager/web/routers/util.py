@@ -17,8 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ...context import AppContext
-from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..dependencies import get_app_context, validate_server_exists
+from ...error import AppFileNotFoundError
+from ..dependencies import get_app_context
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 
@@ -72,76 +72,6 @@ async def serve_custom_panorama_api(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error serving panorama image.",
-        )
-
-
-# --- Route: Serve World Icon ---
-@router.get(
-    "/api/server/{server_name}/world/icon",
-    response_class=FileResponse,
-    tags=["Server Info API"],
-)
-async def serve_world_icon_api(
-    server_name: str = Depends(validate_server_exists),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
-
-    Retrieves the `world_icon.jpeg` associated with the specified server's world.
-    If the server-specific icon doesn't exist or an error occurs (e.g., invalid
-    server name), it falls back to serving a default icon (favicon.ico).
-    """
-    logger.debug(f"Request to serve world icon for server '{server_name}'.")
-    try:
-        server = app_context.get_server(server_name)
-        icon_path = server.world_icon_filesystem_path
-
-        if server.has_world_icon() and icon_path and os.path.isfile(icon_path):
-            logger.debug(f"Serving world icon from path: {icon_path}")
-            return FileResponse(icon_path, media_type="image/jpeg")
-        else:
-
-            logger.info(
-                f"World icon for '{server_name}' not found at '{icon_path}'. Serving default."
-            )
-            raise AppFileNotFoundError(str(icon_path), "World icon")
-
-    except (
-        AppFileNotFoundError,
-        InvalidServerNameError,
-        BSMError,
-    ) as e:
-        if not isinstance(e, AppFileNotFoundError):
-            logger.error(
-                f"Error preparing to serve world icon for '{server_name}': {e}",
-                exc_info=True,
-            )
-
-        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-        if os.path.isfile(default_icon_path):
-            logger.debug(
-                f"Serving default world icon (favicon.ico) from: {default_icon_path}"
-            )
-            return FileResponse(
-                default_icon_path, media_type="image/vnd.microsoft.icon"
-            )
-        else:
-            logger.error(
-                f"Default world icon (favicon.ico) not found at {default_icon_path}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Default world icon not found.",
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Unexpected error serving world icon for '{server_name}': {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error serving icon.",
         )
 
 

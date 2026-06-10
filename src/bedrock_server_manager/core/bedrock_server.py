@@ -89,13 +89,13 @@ class BedrockServer(
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.send_command`
 
         World Management (from :class:`~.core.server.world_mixin.ServerWorldMixin`):
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world_directory_to_mcworld`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_active_world_directory`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_world`
 
         Addon Management (from :class:`~.core.server.addon_mixin.ServerAddonMixin`):
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.process_addon_file`
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_world_addons`
+            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_installed_addons`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.export_addon`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.remove_addon`
 
@@ -262,7 +262,7 @@ class BedrockServer(
             "os_type": self.os_type,
             "player_count": self.player_count,
             "players": getattr(self, "players", []),
-            "installed_addons": getattr(self, "list_world_addons", []),
+            "installed_addons": getattr(self, "list_installed_addons", []),
         }
 
         return summary

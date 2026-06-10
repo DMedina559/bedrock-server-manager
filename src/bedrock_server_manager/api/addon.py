@@ -208,8 +208,8 @@ def import_addon(  # noqa: C901
         _addon_lock.release()
 
 
-@plugin_method("list_world_addons")
-def list_world_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+@plugin_method("list_installed_addons")
+def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Lists all addons for a server's active world.
 
     Args:
@@ -220,7 +220,7 @@ def list_world_addons(server_name: str, app_context: AppContext) -> Dict[str, An
         Dict[str, Any]: A dictionary containing the addon lists.
     """
     server = app_context.get_server(server_name)
-    return {"status": "success", "addons": server.list_world_addons()}
+    return {"status": "success", "addons": server.list_installed_addons()}
 
 
 @plugin_method("enable_addon")
@@ -336,7 +336,7 @@ def disable_addon(
 @trigger_plugin_event(
     before="before_addon_subpack_update", after="after_addon_subpack_update"
 )
-def update_addon_subpack(
+def update_subpack(
     server_name: str,
     pack_uuid: str,
     pack_type: str,
@@ -370,7 +370,7 @@ def update_addon_subpack(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.update_addon_subpack(
+            server.update_subpack(
                 pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
             )
         return {

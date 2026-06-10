@@ -1,42 +1,36 @@
-# src/bedrock_server_manager/web/routers/content.py
-"""
-API routes for content management.
-
-This module provides endpoints for listing, installing, and managing content
-such as worlds (.mcworld) and addons (.mcaddon, .mcpack) for Bedrock servers.
-It includes both HTML view routes and JSON API routes.
-"""
-
 import logging
 import os
 
+import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 
 from ...api import application as app_api
 from ...api import world as world_api
 from ...context import AppContext
-from ...error import BSMError, UserInputError
+from ...error import (
+    AppFileNotFoundError,
+    BSMError,
+    InvalidServerNameError,
+    UserInputError,
+)
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import (
-    ActionResponse,
-    ContentListResponse,
-    FileNamePayload,
-    UserResponse,
-)
+from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, UserResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+STATIC_DIR = bsm_frontend.get_static_dir()
 
-# --- API Routes ---
+
 @router.get(
     "/api/content/worlds",
     response_model=ContentListResponse,
     tags=["Content API"],
 )
-async def list_worlds_api_route(
+async def get_worlds_list(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -75,7 +69,7 @@ async def list_worlds_api_route(
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content API"],
 )
-async def install_world_api_route(
+async def post_world_install(
     payload: FileNamePayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
@@ -83,9 +77,6 @@ async def install_world_api_route(
 ):
     """
     Initiates a background task to install a world from a .mcworld file to a server.
-
-    The selected world file must exist in the application's content/worlds directory.
-    The server will be stopped before import and restarted after if the operation is successful.
     """
     identity = current_user.username
     selected_filename = payload.filename
@@ -168,16 +159,13 @@ async def install_world_api_route(
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content API"],
 )
-async def export_world_api_route(
+async def post_world_export(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates a background task to export the active world of a server to a .mcworld file.
-
-    The exported file will be saved in the application's content/worlds directory.
-    The server will be stopped before export and restarted after.
     """
     identity = current_user.username
     logger.info(
@@ -204,11 +192,11 @@ async def export_world_api_route(
             message=f"World export for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except HTTPException:  # Re-raise HTTPExceptions directly
+    except HTTPException:
         raise
-    except UserInputError as e:  # From validate_server_exist
+    except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:  # Catch any other pre-check errors
+    except Exception as e:
         logger.error(
             f"API Export World '{server_name}': Pre-check error: {e}", exc_info=True
         )
@@ -224,24 +212,19 @@ async def export_world_api_route(
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content API"],
 )
-async def reset_world_api_route(
+async def delete_world_reset(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Initiates a background task to reset a server's world.
-
-    This is a destructive operation: the current active world directory is deleted.
-    The server will be stopped before the reset and restarted afterwards, which
-    will trigger the generation of a new world based on server properties.
     """
     identity = current_user.username
     logger.info(f"API: World reset requested for '{server_name}' by user '{identity}'.")
     from ...utils.server import validate_server
 
     try:
-        # Validate server existence before queueing task
         if not validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -260,15 +243,79 @@ async def reset_world_api_route(
             message=f"World reset for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except HTTPException:  # Re-raise HTTPExceptions directly
+    except HTTPException:
         raise
-    except UserInputError as e:  # From validate_server_exist
+    except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:  # Catch any other pre-check errors
+    except Exception as e:
         logger.error(
             f"API Reset World '{server_name}': Pre-check error: {e}", exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Server error during pre-check: {str(e)}",
+        )
+
+
+@router.get(
+    "/api/server/{server_name}/world/icon",
+    response_class=FileResponse,
+    tags=["Server Info API"],
+)
+async def get_world_icon(
+    server_name: str = Depends(validate_server_exists),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """Serves the `world_icon.jpeg` for a server, or a default icon if not found."""
+    logger.debug(f"Request to serve world icon for server '{server_name}'.")
+    try:
+        server = app_context.get_server(server_name)
+        icon_path = server.world_icon_filesystem_path
+
+        if server.has_world_icon() and icon_path and os.path.isfile(icon_path):
+            logger.debug(f"Serving world icon from path: {icon_path}")
+            return FileResponse(icon_path, media_type="image/jpeg")
+        else:
+
+            logger.info(
+                f"World icon for '{server_name}' not found at '{icon_path}'. Serving default."
+            )
+            raise AppFileNotFoundError(str(icon_path), "World icon")
+
+    except (
+        AppFileNotFoundError,
+        InvalidServerNameError,
+        BSMError,
+    ) as e:
+        if not isinstance(e, AppFileNotFoundError):
+            logger.error(
+                f"Error preparing to serve world icon for '{server_name}': {e}",
+                exc_info=True,
+            )
+
+        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
+        if os.path.isfile(default_icon_path):
+            logger.debug(
+                f"Serving default world icon (favicon.ico) from: {default_icon_path}"
+            )
+            return FileResponse(
+                default_icon_path, media_type="image/vnd.microsoft.icon"
+            )
+        else:
+            logger.error(
+                f"Default world icon (favicon.ico) not found at {default_icon_path}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Default world icon not found.",
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Unexpected error serving world icon for '{server_name}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error serving icon.",
         )

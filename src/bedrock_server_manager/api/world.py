@@ -113,7 +113,7 @@ def export_world(
     :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped during the export for file consistency, and then
     restarted. The core world export is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.export_world_directory_to_mcworld`.
+    :meth:`~.core.bedrock_server.BedrockServer.export_world`.
     Triggers ``before_world_export`` and ``after_world_export`` plugin events.
 
     Args:
@@ -185,9 +185,7 @@ def export_world(
                 logger.info(
                     f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
                 )
-                server.export_world_directory_to_mcworld(
-                    world_name_str, export_file_path
-                )
+                server.export_world(world_name_str, export_file_path)
 
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."
@@ -237,7 +235,7 @@ def import_world(
     If `stop_start_server` is ``True``, this function uses the
     :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped during the import. The core world import is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.import_active_world_from_mcworld`.
+    :meth:`~.core.bedrock_server.BedrockServer.import_world`.
     Triggers ``before_world_import`` and ``after_world_import`` plugin events.
 
     Args:
@@ -295,9 +293,7 @@ def import_world(
                 logger.info(
                     f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
                 )
-                imported_world_name = server.import_active_world_from_mcworld(
-                    selected_file_path
-                )
+                imported_world_name = server.import_world(selected_file_path)
 
             logger.info(
                 f"API: World import from '{selected_filename}' for server '{server_name}' completed."
@@ -342,7 +338,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped before deleting the world and restarted afterwards (which
     will trigger new world generation). The active world directory is deleted using
-    :meth:`~.core.bedrock_server.BedrockServer.delete_active_world_directory`.
+    :meth:`~.core.bedrock_server.BedrockServer.delete_world`.
     Triggers ``before_world_reset`` and ``after_world_reset`` plugin events.
 
     Args:
@@ -391,7 +387,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
                 logger.info(
                     f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."
                 )
-                server.delete_active_world_directory()
+                server.delete_world()
 
             logger.info(
                 f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."

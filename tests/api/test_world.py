@@ -20,7 +20,7 @@ class TestWorldAPI:
     @patch("bedrock_server_manager.api.world.server_lifecycle_manager")
     def test_export_world(self, mock_lifecycle, app_context, tmp_path):
         server = app_context.get_server("test_server")
-        with patch.object(server, "export_world_directory_to_mcworld") as mock_export:
+        with patch.object(server, "export_world") as mock_export:
             result = export_world(
                 "test_server", export_dir=str(tmp_path), app_context=app_context
             )
@@ -31,7 +31,7 @@ class TestWorldAPI:
     @patch("bedrock_server_manager.api.world.server_lifecycle_manager")
     def test_export_world_no_dir(self, mock_lifecycle, app_context):
         server = app_context.get_server("test_server")
-        with patch.object(server, "export_world_directory_to_mcworld") as mock_export:
+        with patch.object(server, "export_world") as mock_export:
             with patch("os.makedirs"):
                 result = export_world("test_server", app_context=app_context)
                 assert result["status"] == "success"
@@ -44,7 +44,7 @@ class TestWorldAPI:
         world_file = tmp_path / "world.mcworld"
         world_file.touch()
 
-        with patch.object(server, "import_active_world_from_mcworld") as mock_import:
+        with patch.object(server, "import_world") as mock_import:
             with patch("os.path.isfile", return_value=True):
                 result = import_world(
                     "test_server", str(world_file), app_context=app_context
@@ -63,7 +63,7 @@ class TestWorldAPI:
     @patch("bedrock_server_manager.api.world.server_lifecycle_manager")
     def test_reset_world(self, mock_lifecycle, app_context):
         server = app_context.get_server("test_server")
-        with patch.object(server, "delete_active_world_directory") as mock_delete:
+        with patch.object(server, "delete_world") as mock_delete:
             result = reset_world("test_server", app_context=app_context)
             assert result["status"] == "success"
             mock_lifecycle.assert_called_once()
