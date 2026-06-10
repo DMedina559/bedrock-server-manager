@@ -233,7 +233,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     app.include_router(routers.server_settings_router)
     app.include_router(routers.websocket_router)
     app.include_router(routers.spa_router)
-    app.include_router(routers.world_router.router)
+    app.include_router(routers.world_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:
