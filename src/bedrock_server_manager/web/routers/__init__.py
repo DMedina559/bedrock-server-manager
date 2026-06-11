@@ -21,7 +21,7 @@ from .spa import router as spa_router
 from .tasks import router as tasks_router
 from .users import router as users_router
 from .util import router as util_router
-from .websocket_router import router as websocket_router
+from .websocket import router as websocket_router
 from .world import router as world_router
 
 __all__ = [
