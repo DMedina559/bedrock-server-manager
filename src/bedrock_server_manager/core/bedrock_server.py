@@ -27,7 +27,9 @@ class BedrockServer(
     server.ServerAddonMixin,
     server.ServerBackupMixin,
     server.ServerPlayerMixin,
-    server.ServerConfigManagementMixin,
+    server.ServerAllowlistMixin,
+    server.ServerPermissionsMixin,
+    server.ServerPropertiesMixin,
     server.ServerInstallUpdateMixin,
     # Foundational BedrockServerBaseMixin is last to ensure its __init__ runs after
     # all other mixins have potentially set up their specific attributes.
@@ -108,12 +110,12 @@ class BedrockServer(
         Player Log Scanning (from :class:`~.core.server.player_mixin.ServerPlayerMixin`):
             - :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
 
-        Config File Management (from :class:`~.core.server.config_management_mixin.ServerConfigManagementMixin`):
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_allowlist`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.add_to_allowlist`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_player_permission`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_server_properties`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_server_property`
+        Config File Management (from :class:`~.core.server.allowlist_mixin.ServerAllowlistMixin`, :class:`~.core.server.permissions_mixin.ServerPermissionsMixin`, and :class:`~.core.server.properties_mixin.ServerPropertiesMixin`):
+            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.get_allowlist`
+            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.add_to_allowlist`
+            - :meth:`~.core.server.permissions_mixin.ServerPermissionsMixin.set_player_permission`
+            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.get_server_properties`
+            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.set_server_property`
 
         Installation & Updates (from :class:`~.core.server.install_update_mixin.ServerInstallUpdateMixin`):
             - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.is_update_needed`

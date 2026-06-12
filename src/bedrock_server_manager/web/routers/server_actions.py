@@ -17,8 +17,8 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from ...api import install
 from ...api import server as server_api
-from ...api import server_install_config
 from ...context import AppContext
 from ...error import (
     BlockedCommandError,
@@ -246,7 +246,7 @@ async def update_server_route(
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
     task_id = app_context.task_manager.run_task(
-        server_install_config.update_server,
+        install.update_server,
         username=current_user.username,
         server_name=server_name,
         app_context=app_context,
