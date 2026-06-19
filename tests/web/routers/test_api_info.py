@@ -27,58 +27,6 @@ def test_get_server_running_status_api_route_failure(
     assert "Unexpected error checking running status." in response.json()["detail"]
 
 
-def test_get_server_config_status_api_route_success(
-    authenticated_client, real_bedrock_server
-):
-    """Test the get_server_config_status_api_route with a successful status."""
-    real_bedrock_server.set_status_in_config("STOPPED")
-    response = authenticated_client.get("/api/server/test_server/config_status")
-    assert response.status_code == 200
-    assert response.json()["config_status"] == "STOPPED"
-
-
-@patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_config_status")
-def test_get_server_config_status_api_route_failure(
-    mock_get_status, authenticated_client
-):
-    """Test the get_server_config_status_api_route with a failed status."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_status.return_value = {
-        "status": "error",
-        "message": "Failed to get config status",
-    }
-    response = authenticated_client.get("/api/server/test-server/config_status")
-    assert response.status_code == 500
-    assert "Unexpected error getting config status." in response.json()["detail"]
-
-
-def test_get_server_version_api_route_success(
-    authenticated_client, real_bedrock_server
-):
-    """Test the get_server_version_api_route with a successful version."""
-    real_bedrock_server.set_version("1.2.3")
-    response = authenticated_client.get("/api/server/test_server/version")
-    assert response.status_code == 200
-    assert response.json()["version"] == "1.2.3"
-
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.info_api.get_server_installed_version"
-)
-def test_get_server_version_api_route_failure(mock_get_version, authenticated_client):
-    """Test the get_server_version_api_route with a failed version."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_version.return_value = {
-        "status": "error",
-        "message": "Failed to get version",
-    }
-    response = authenticated_client.get("/api/server/test-server/version")
-    assert response.status_code == 500
-    assert "Unexpected error getting installed version." in response.json()["detail"]
-
-
 def test_validate_server_api_route_success(authenticated_client, real_bedrock_server):
     """Test the validate_server_api_route with a successful validation."""
     response = authenticated_client.get("/api/server/test_server/validate")

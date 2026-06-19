@@ -118,8 +118,6 @@ __all__ = [
     "PluginPagesResponse",
     "PluginStatusesResponse",
     "ServerRunningStatusResponse",
-    "ServerConfigStatusResponse",
-    "ServerVersionResponse",
     "ServerProcessInfoResponse",
     "UserLoginPayload",
     "CustomZipsResponse",
