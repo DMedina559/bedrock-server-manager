@@ -13,6 +13,18 @@ async def root():
     return RedirectResponse(url="/app")
 
 
+@router.get("/site.webmanifest")
+async def serve_webmanifest():
+    """Serves the site.webmanifest from the static directory."""
+    static_dir = bsm_frontend.get_static_dir()
+    manifest_path = os.path.join(static_dir, "site.webmanifest")
+
+    if os.path.exists(manifest_path):
+        return FileResponse(manifest_path)
+
+    raise HTTPException(status_code=404, detail="Manifest not found.")
+
+
 @router.get("/app")
 @router.get("/app/{full_path:path}")
 async def serve_spa(request: Request, full_path: str = ""):

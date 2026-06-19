@@ -132,6 +132,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             app.mount(
                 "/app/image", StaticFiles(directory=image_subdir), name="app_images"
             )
+            app.mount("/image", StaticFiles(directory=image_subdir), name="root_images")
             logger.info(f"Mounted bsm-frontend images from {image_subdir}")
         else:
             logger.warning(
@@ -155,14 +156,17 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/app",  # The SPA itself
             "/themes",
             "/favicon.ico",
+            "/site.webmanifest",
             "/auth/token",
             "/docs",
             "/openapi.json",
         ]
 
         # Allow static assets to pass through
-        if request.url.path.startswith("/app/assets") or request.url.path.startswith(
-            "/app/image"
+        if (
+            request.url.path.startswith("/app/assets")
+            or request.url.path.startswith("/app/image")
+            or request.url.path.startswith("/image")
         ):
             response = await call_next(request)
             return response
@@ -180,7 +184,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         if not (
             request.url.path.startswith("/app/assets")
             or request.url.path.startswith("/app/image")
+            or request.url.path.startswith("/image")
             or request.url.path.startswith("/themes")
+            or request.url.path == "/site.webmanifest"
         ):
             auth_backend = CustomAuthBackend()
             auth_result = await auth_backend.authenticate(request)
