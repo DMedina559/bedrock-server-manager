@@ -15,7 +15,7 @@ router = APIRouter(
 )
 
 
-@router.get("")
+@router.get("/get")
 def get_server_bans(
     server_name: str, app_context: AppContext = Depends(get_app_context)
 ) -> Dict[str, Any]:
@@ -26,8 +26,8 @@ def get_server_bans(
     return dict(result)
 
 
-@router.post("")
-def add_server_ban(
+@router.post("/add")
+def post_add_server_ban(
     server_name: str,
     payload: BanAddRequest,
     app_context: AppContext = Depends(get_app_context),
@@ -45,8 +45,8 @@ def add_server_ban(
     return dict(result)
 
 
-@router.delete("")
-def remove_server_ban(
+@router.delete("/remove")
+def delete_remove_server_ban(
     server_name: str,
     payload: BanRemoveRequest,
     app_context: AppContext = Depends(get_app_context),

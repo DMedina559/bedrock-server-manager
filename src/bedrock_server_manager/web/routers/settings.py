@@ -35,8 +35,8 @@ router = APIRouter()
 
 
 # --- API Route: Get All Global Settings ---
-@router.get("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
-async def get_all_settings_api_route(
+@router.get("/api/settings/get", response_model=SettingsResponse, tags=["Settings API"])
+async def get_all_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -70,8 +70,10 @@ async def get_all_settings_api_route(
 
 
 # --- API Route: Set a Global Setting ---
-@router.post("/api/settings", response_model=SettingsResponse, tags=["Settings API"])
-async def set_setting_api_route(
+@router.post(
+    "/api/settings/set", response_model=SettingsResponse, tags=["Settings API"]
+)
+async def post_set_setting(
     payload: SettingItemResponse,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -132,7 +134,7 @@ async def set_setting_api_route(
 
 # --- API Route: Get Available Themes ---
 @router.get("/api/themes", response_model=Dict[str, str], tags=["Settings API"])
-async def get_themes_api_route(
+async def get_themes(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -176,7 +178,7 @@ async def get_themes_api_route(
 @router.post(
     "/api/settings/reload", response_model=SettingsResponse, tags=["Settings API"]
 )
-async def reload_settings_api_route(
+async def post_reload_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
