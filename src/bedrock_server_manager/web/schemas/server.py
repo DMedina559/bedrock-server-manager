@@ -91,28 +91,10 @@ class AddPlayersResponse(BaseApiResponse):
     count: Optional[int] = None
 
 
-class ThemeListResponse(BaseApiResponse):
-    """Response model for theme lists."""
-
-    themes: Optional[List[str]] = None
-
-
 class ServerRunningStatusResponse(BaseApiResponse):
     """Response model for server running status."""
 
     running: Optional[bool] = None
-
-
-class ServerConfigStatusResponse(BaseApiResponse):
-    """Response model for server config status."""
-
-    config_status: Optional[str] = None
-
-
-class ServerVersionResponse(BaseApiResponse):
-    """Response model for server installed version."""
-
-    version: Optional[str] = None
 
 
 class ServerProcessInfoResponse(BaseApiResponse):

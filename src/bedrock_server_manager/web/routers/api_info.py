@@ -35,11 +35,9 @@ from ..schemas import (
     PlayerListResponse,
     PruneDownloadsPayload,
     PruneDownloadsResponse,
-    ServerConfigStatusResponse,
     ServerProcessInfoResponse,
     ServerRunningStatusResponse,
     ServersListResponse,
-    ServerVersionResponse,
     ThemeListResponse,
     UserResponse,
 )
@@ -98,115 +96,6 @@ async def get_server_running_status_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected error checking running status.",
-        )
-
-
-@router.get(
-    "/api/server/{server_name}/config_status",
-    response_model=ServerConfigStatusResponse,
-    tags=["Server Info API"],
-)
-async def get_server_config_status_api_route(
-    server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves the last known status from a server's configuration file.
-    """
-    identity = current_user.username
-    logger.info(
-        f"API: Request for config status for server '{server_name}' by user '{identity}'."
-    )
-    try:
-        result = info_api.get_server_config_status(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ServerConfigStatusResponse(
-                status="success",
-                config_status=str(result.get("config_status")),
-                message=result.get("message"),
-            )
-        else:
-            if "not found" in result.get("message", "").lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get server config status."),
-            )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        logger.error(f"API Config Status '{server_name}': BSMError: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"API Config Status '{server_name}': Unexpected error: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error getting config status.",
-        )
-
-
-@router.get(
-    "/api/server/{server_name}/version",
-    response_model=ServerVersionResponse,
-    tags=["Server Info API"],
-)
-async def get_server_version_api_route(
-    server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves the installed version of a specific server.
-    """
-    identity = current_user.username
-    logger.info(
-        f"API: Request for installed version for server '{server_name}' by user '{identity}'."
-    )
-    try:
-        result = info_api.get_server_installed_version(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ServerVersionResponse(
-                status="success",
-                version=str(result.get("installed_version")),
-                message=result.get("message"),
-            )
-        else:
-            if "not found" in result.get("message", "").lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get server version."),
-            )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        logger.error(
-            f"API Installed Version '{server_name}': BSMError: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"API Installed Version '{server_name}': Unexpected error: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error getting installed version.",
         )
 
 
