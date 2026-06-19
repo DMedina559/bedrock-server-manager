@@ -20,7 +20,6 @@ from .server_actions import router as server_actions_router
 from .server_settings import router as server_settings_router
 from .settings import router as settings_router
 from .setup import router as setup_router
-from .spa import router as spa_router
 from .tasks import router as tasks_router
 from .users import router as users_router
 from .util import router as util_router
@@ -46,7 +45,6 @@ __all__ = [
     "server_settings_router",
     "settings_router",
     "setup_router",
-    "spa_router",
     "tasks_router",
     "users_router",
     "util_router",

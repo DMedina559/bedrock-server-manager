@@ -87,3 +87,14 @@ async def get_root_favicon():
         )
     # Return the file directly with the correct media type
     return FileResponse(favicon_path, media_type="image/x-icon")
+
+
+@router.get("/site.webmanifest")
+async def serve_webmanifest():
+    """Serves the site.webmanifest from the static directory."""
+    manifest_path = os.path.join(STATIC_DIR, "site.webmanifest")
+
+    if os.path.exists(manifest_path):
+        return FileResponse(manifest_path)
+
+    raise HTTPException(status_code=404, detail="Manifest not found.")
