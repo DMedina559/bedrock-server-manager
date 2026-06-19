@@ -29,7 +29,7 @@ router = APIRouter()
 
 
 # --- Route: Serve Custom Panorama ---
-@router.get("/api/panorama", response_class=FileResponse, tags=["Global Info API"])
+@router.get("/api/panorama", response_class=FileResponse, tags=["Application"])
 async def serve_custom_panorama_api(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -89,7 +89,7 @@ async def get_root_favicon():
     return FileResponse(favicon_path, media_type="image/x-icon")
 
 
-@router.get("/site.webmanifest")
+@router.get("/site.webmanifest", include_in_schema=False)
 async def serve_webmanifest():
     """Serves the site.webmanifest from the static directory."""
     manifest_path = os.path.join(STATIC_DIR, "site.webmanifest")

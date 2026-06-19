@@ -17,16 +17,17 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    tags=["Player Management", "Server Management", "Permissions Management"],
+)
 
 
 @router.put(
     "/api/server/{server_name}/permissions/set",
     response_model=PermissionsUpdateResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Server Configuration API"],
 )
-async def put_permissions(
+async def put_permissions_set(
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),

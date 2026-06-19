@@ -15,6 +15,7 @@ a server. Responses are generally structured using the :class:`.BaseApiResponse`
 
 import logging
 import os
+from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -51,9 +52,9 @@ router = APIRouter()
 @router.get(
     "/api/server/{server_name}/status",
     response_model=ServerRunningStatusResponse,
-    tags=["Server Info API"],
+    tags=["Server Management", "Process Info"],
 )
-async def get_server_running_status_api_route(
+async def get_server_running_status(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -102,9 +103,9 @@ async def get_server_running_status_api_route(
 @router.get(
     "/api/server/{server_name}/validate",
     response_model=BaseApiResponse,
-    tags=["Server Info API"],
+    tags=["Server Management"],
 )
-async def validate_server_api_route(
+async def get_validate_server(
     server_name: str,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -148,9 +149,9 @@ async def validate_server_api_route(
 @router.get(
     "/api/server/{server_name}/process_info",
     response_model=ServerProcessInfoResponse,
-    tags=["Server Info API"],
+    tags=["Server Management", "Process Info"],
 )
-async def server_process_info_api_route(
+async def get_server_process_info(
     server_name: str,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -195,11 +196,12 @@ async def server_process_info_api_route(
         )
 
 
-# --- Global Action Endpoints ---
 @router.post(
-    "/api/players/scan", response_model=AddPlayersResponse, tags=["Global Players API"]
+    "/api/players/scan",
+    response_model=AddPlayersResponse,
+    tags=["Global Players", "Player Management", "Application"],
 )
-async def scan_players_api_route(
+async def post_scan_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -235,9 +237,11 @@ async def scan_players_api_route(
 
 
 @router.get(
-    "/api/players/get", response_model=PlayerListResponse, tags=["Global Players API"]
+    "/api/players/get",
+    response_model=PlayerListResponse,
+    tags=["Global Players", "Player Management", "Application"],
 )
-async def get_all_players_api_route(
+async def get_all_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -293,9 +297,9 @@ async def get_all_players_api_route(
 @router.post(
     "/api/downloads/prune",
     response_model=PruneDownloadsResponse,
-    tags=["Global Actions API"],
+    tags=["Cleanup", "Downloads"],
 )
-async def prune_downloads_api_route(
+async def post_prune_downloads(
     payload: PruneDownloadsPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -377,9 +381,11 @@ async def prune_downloads_api_route(
 
 
 @router.get(
-    "/api/servers", response_model=ServersListResponse, tags=["Global Info API"]
+    "/api/servers",
+    response_model=ServersListResponse,
+    tags=["Server Management", "Application"],
 )
-async def get_servers_list_api_route(
+async def get_servers_list(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -405,8 +411,8 @@ async def get_servers_list_api_route(
         )
 
 
-@router.get("/api/info", response_model=AppInfoResponse, tags=["Global Info API"])
-async def get_system_info_api_route(
+@router.get("/api/info", response_model=AppInfoResponse, tags=["Application"])
+async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -437,10 +443,8 @@ async def get_system_info_api_route(
         )
 
 
-@router.get(
-    "/api/info/themes", response_model=ThemeListResponse, tags=["Global Info API"]
-)
-async def get_themes_api_route(
+@router.get("/api/info/themes", response_model=ThemeListResponse, tags=["Themes"])
+async def get_themes(
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -482,10 +486,53 @@ async def get_themes_api_route(
         )
 
 
+@router.get("/api/themes", response_model=Dict[str, str], tags=["Themes"])
+async def get_themes_extra(
+    current_user: UserResponse = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves a list of available themes.
+
+    Scans the built-in and custom theme directories for CSS files.
+    """
+    identity = current_user.username
+    logger.info(f"API: Get themes request by '{identity}'.")
+    try:
+        themes = {}
+        # Scan built-in themes
+        builtin_themes_path = os.path.join(
+            os.path.dirname(__file__), "..", "static", "css", "themes"
+        )
+        if os.path.isdir(builtin_themes_path):
+            for filename in os.listdir(builtin_themes_path):
+                if filename.endswith(".css"):
+                    theme_name = os.path.splitext(filename)[0]
+                    themes[theme_name] = f"/static/css/themes/{filename}"
+
+        # Scan custom themes
+        custom_themes_path = app_context.settings.get("paths.themes")
+        if os.path.isdir(custom_themes_path):
+            for filename in os.listdir(custom_themes_path):
+                if filename.endswith(".css"):
+                    theme_name = os.path.splitext(filename)[0]
+                    themes[theme_name] = f"/themes/{filename}"
+
+        return themes
+    except Exception as e:
+        logger.error(f"API Get Themes: Unexpected error. {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while retrieving themes.",
+        )
+
+
 @router.post(
-    "/api/players/add", response_model=AddPlayersResponse, tags=["Global Players API"]
+    "/api/players/add",
+    response_model=AddPlayersResponse,
+    tags=["Global Players", "Application", "Player Management"],
 )
-async def add_players_api_route(
+async def post_add_players(
     payload: AddPlayersPayload,
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),

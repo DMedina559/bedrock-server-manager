@@ -25,14 +25,15 @@ from ..schemas.system import FileNamePayload
 from ..schemas.users import UserResponse
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    tags=["Addon Management", "Content Management"],
+)
 STATIC_DIR = bsm_frontend.get_static_dir()
 
 
 @router.get(
     "/api/content/addons",
     response_model=dict,
-    tags=["Content API"],
 )
 async def get_addons(
     current_user: UserResponse = Depends(get_moderator_user),
@@ -71,7 +72,6 @@ async def get_addons(
 @router.get(
     "/api/server/{server_name}/addons",
     response_model=AddonListResponse,
-    tags=["Content API"],
 )
 async def get_server_addons(
     server_name: str = Depends(validate_server_exists),
@@ -102,7 +102,6 @@ async def get_server_addons(
     "/api/server/{server_name}/addon/enable",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
 )
 async def post_enable_addon(
     payload: AddonActionPayload,
@@ -145,7 +144,6 @@ async def post_enable_addon(
     "/api/server/{server_name}/addon/disable",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
 )
 async def post_disable_addon(
     payload: AddonActionPayload,
@@ -188,7 +186,6 @@ async def post_disable_addon(
     "/api/server/{server_name}/addon/subpack",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
 )
 async def post_update_subpack(
     payload: AddonSubpackPayload,
@@ -241,7 +238,6 @@ async def post_update_subpack(
     "/api/server/{server_name}/addon/uninstall",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
 )
 async def delete_uninstall_addon(
     payload: AddonActionPayload,
@@ -284,7 +280,6 @@ async def delete_uninstall_addon(
     "/api/server/{server_name}/addon/reorder",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
 )
 async def post_reorder_addons(
     payload: AddonReorderPayload,
@@ -327,7 +322,6 @@ async def post_reorder_addons(
     "/api/server/{server_name}/addon/install",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
 )
 async def post_install_addon(
     payload: FileNamePayload,
@@ -415,7 +409,6 @@ async def post_install_addon(
 
 @router.get(
     "/api/server/{server_name}/addon/icon",
-    tags=["Server Info API"],
 )
 async def get_server_addon_icon(
     server_name: str = Depends(validate_server_exists),

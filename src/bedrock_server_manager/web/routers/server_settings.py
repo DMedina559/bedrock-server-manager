@@ -20,14 +20,15 @@ from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResp
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Server Settings"],
+)
 
 
 # --- API Route: Get All Settings for a Server ---
 @router.get(
     "/api/servers/{server_name}/settings/get",
     response_model=ServerSettingsResponse,
-    tags=["Server Settings API"],
 )
 async def get_server_settings(
     server_name: str = Path(..., description="The name of the server."),
@@ -66,7 +67,6 @@ async def get_server_settings(
 @router.post(
     "/api/servers/{server_name}/settings/set",
     response_model=ServerSettingsResponse,
-    tags=["Server Settings API"],
 )
 async def post_set_server_setting(
     payload: ServerSettingItemPayload,

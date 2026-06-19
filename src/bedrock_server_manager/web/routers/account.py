@@ -28,19 +28,25 @@ from ..schemas import (
     UserResponse,
 )
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Account Management"],
+)
 
 
 @router.get("/api/account", response_model=UserResponse)
-async def account_api(user: UserResponse = Depends(get_current_user)):
+async def get_account_api(user: UserResponse = Depends(get_current_user)):
     """
     Retrieves the current user's account details.
     """
     return user
 
 
-@router.post("/api/account/theme", response_model=BaseApiResponse)
-async def update_theme(
+@router.post(
+    "/api/account/theme",
+    response_model=BaseApiResponse,
+    tags=["Themes"],
+)
+async def post_update_theme(
     theme_update: ThemeUpdatePayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -62,7 +68,7 @@ async def update_theme(
 
 
 @router.post("/api/account/profile", response_model=BaseApiResponse)
-async def update_profile(
+async def post_update_profile(
     profile_update: ProfileUpdatePayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -84,8 +90,12 @@ async def update_profile(
     return JSONResponse(status_code=404, content={"message": "UserResponse not found"})
 
 
-@router.post("/api/account/change-password", response_model=BaseApiResponse)
-async def change_password(
+@router.post(
+    "/api/account/change-password",
+    response_model=BaseApiResponse,
+    tags=["Password", "Authentication"],
+)
+async def post_change_password(
     data: ChangePasswordPayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),

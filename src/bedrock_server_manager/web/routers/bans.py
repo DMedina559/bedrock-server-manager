@@ -10,7 +10,7 @@ from ..schemas.ban import BanAddRequest, BanRemoveRequest
 
 router = APIRouter(
     prefix="/api/servers/{server_name}/bans",
-    tags=["Server Bans"],
+    tags=["Server Bans", "Player Management"],
     dependencies=[Depends(get_admin_user), Depends(validate_server_exists)],
 )
 

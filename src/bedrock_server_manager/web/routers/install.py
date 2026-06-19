@@ -25,7 +25,7 @@ router = APIRouter()
 @router.get(
     "/api/downloads/list",
     response_model=CustomZipsResponse,
-    tags=["Server Installation API"],
+    tags=["Application", "Downloads"],
 )
 async def get_custom_zips(
     current_user: UserResponse = Depends(get_moderator_user),
@@ -51,7 +51,7 @@ async def get_custom_zips(
 @router.post(
     "/api/server/install",
     response_model=InstallServerResponse,
-    tags=["Server Installation API"],
+    tags=["Server Installation"],
 )
 async def post_install_server(  # noqa: C901
     payload: InstallServerPayload,

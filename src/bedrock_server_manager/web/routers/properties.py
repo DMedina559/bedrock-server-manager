@@ -15,16 +15,15 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["Properties Management", "Server Management"])
 
 
 @router.post(
     "/api/server/{server_name}/properties/set",
     response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Server Configuration API"],
 )
-async def post_properties(
+async def post_properties_set(
     payload: PropertiesPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
@@ -73,7 +72,6 @@ async def post_properties(
 @router.get(
     "/api/server/{server_name}/properties/get",
     response_model=PropertiesGetResponse,
-    tags=["Server Configuration API"],
 )
 async def get_properties(
     server_name: str = Depends(validate_server_exists),

@@ -8,7 +8,7 @@ from ..auth_utils import get_current_user_for_websocket
 
 router = APIRouter(
     prefix="/ws",
-    tags=["websockets"],
+    tags=["WebSocket", "Application"],
 )
 logger = logging.getLogger(__name__)
 

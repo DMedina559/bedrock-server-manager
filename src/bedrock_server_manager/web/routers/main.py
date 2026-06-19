@@ -12,10 +12,12 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(include_in_schema=False)
 
 
-@router.get("/", include_in_schema=False)
+@router.get(
+    "/",
+)
 async def root_redirect():
     """Redirects the root URL to dashboard."""
     return RedirectResponse(url="/app/")

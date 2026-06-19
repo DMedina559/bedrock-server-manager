@@ -16,14 +16,15 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    tags=["Allowlist Management", "Player Management", "Server Management"],
+)
 
 
 @router.post(
     "/api/server/{server_name}/allowlist/add",
     response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Server Configuration API"],
 )
 async def post_allowlist(
     payload: AllowlistAddPayload,
@@ -71,7 +72,6 @@ async def post_allowlist(
 @router.get(
     "/api/server/{server_name}/allowlist/get",
     response_model=AllowlistGetResponse,
-    tags=["Server Configuration API"],
 )
 async def get_allowlist(
     server_name: str = Depends(validate_server_exists),
@@ -99,7 +99,6 @@ async def get_allowlist(
     "/api/server/{server_name}/allowlist/remove",
     response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
-    tags=["Server Configuration API"],
 )
 async def delete_allowlist(
     payload: AllowlistRemovePayload,

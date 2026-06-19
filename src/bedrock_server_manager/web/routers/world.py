@@ -20,7 +20,9 @@ from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, User
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["World Management"],
+)
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 
@@ -28,7 +30,7 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 @router.get(
     "/api/content/worlds",
     response_model=ContentListResponse,
-    tags=["Content API"],
+    tags=["Content Management"],
 )
 async def get_worlds_list(
     current_user: UserResponse = Depends(get_moderator_user),
@@ -67,7 +69,7 @@ async def get_worlds_list(
     "/api/server/{server_name}/world/install",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
+    tags=["Content Management"],
 )
 async def post_world_install(
     payload: FileNamePayload,
@@ -157,7 +159,7 @@ async def post_world_install(
     "/api/server/{server_name}/world/export",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
+    tags=["Content Management"],
 )
 async def post_world_export(
     server_name: str = Depends(validate_server_exists),
@@ -210,7 +212,7 @@ async def post_world_export(
     "/api/server/{server_name}/world/reset",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Content API"],
+    tags=["Server Management"],
 )
 async def delete_world_reset(
     server_name: str = Depends(validate_server_exists),
@@ -260,7 +262,6 @@ async def delete_world_reset(
 @router.get(
     "/api/server/{server_name}/world/icon",
     response_class=FileResponse,
-    tags=["Server Info API"],
 )
 async def get_world_icon(
     server_name: str = Depends(validate_server_exists),
