@@ -12,7 +12,7 @@ Currently, the main functionality offered is:
 
 Operations that modify server files, like addon installation, are designed to be
 thread-safe using a lock (``_addon_lock``). The module also utilizes the
-:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to
+:func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to
 optionally manage the server's state (stopping and restarting) during these
 operations to ensure data integrity. All primary functions are exposed to the
 plugin system.
@@ -27,17 +27,15 @@ from ..context import AppContext
 from ..error import (
     AppFileNotFoundError,
     BSMError,
+    FileError,
     MissingArgumentError,
     SendCommandError,
     ServerNotRunningError,
 )
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
-
-# Local application imports.
-from .utils import server_lifecycle_manager
+from ..utils import list_content_files
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +43,34 @@ logger = logging.getLogger(__name__)
 # This ensures that only one addon installation can occur at a time,
 # preventing potential file corruption.
 _addon_lock = threading.Lock()
+
+
+@plugin_method("list_available_addons")
+def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
+    """Lists available .mcaddon and .mcpack files from the content directory.
+
+    Scans the ``addons`` sub-folder within the application's global content directory.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
+        list of absolute paths to ``.mcaddon`` or ``.mcpack`` files.
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        FileError: If the content directory is not configured or accessible.
+    """
+    logger.debug("API: Requesting list of available addons.")
+    try:
+        content_dir = app_context.settings.get("paths.content")
+        addons = list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
+        return {"status": "success", "files": addons}
+    except FileError as e:
+        # Handle specific file-related errors.
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
+        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
 @plugin_method("import_addon")
@@ -67,7 +93,7 @@ def import_addon(  # noqa: C901
 
     The function can optionally manage the server's lifecycle by stopping it
     before the installation and restarting it after, using the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`.
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`.
     Triggers ``before_addon_import`` and ``after_addon_import`` plugin events.
 
     Args:
@@ -182,8 +208,8 @@ def import_addon(  # noqa: C901
         _addon_lock.release()
 
 
-@plugin_method("list_world_addons")
-def list_world_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+@plugin_method("list_installed_addons")
+def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Lists all addons for a server's active world.
 
     Args:
@@ -194,7 +220,7 @@ def list_world_addons(server_name: str, app_context: AppContext) -> Dict[str, An
         Dict[str, Any]: A dictionary containing the addon lists.
     """
     server = app_context.get_server(server_name)
-    return {"status": "success", "addons": server.list_world_addons()}
+    return {"status": "success", "addons": server.list_installed_addons()}
 
 
 @plugin_method("enable_addon")
@@ -307,11 +333,10 @@ def disable_addon(
         _addon_lock.release()
 
 
-@plugin_method("update_addon_subpack")
 @trigger_plugin_event(
     before="before_addon_subpack_update", after="after_addon_subpack_update"
 )
-def update_addon_subpack(
+def update_subpack(
     server_name: str,
     pack_uuid: str,
     pack_type: str,
@@ -345,7 +370,7 @@ def update_addon_subpack(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.update_addon_subpack(
+            server.update_subpack(
                 pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
             )
         return {
@@ -368,7 +393,6 @@ def update_addon_subpack(
         _addon_lock.release()
 
 
-@plugin_method("uninstall_addon")
 @trigger_plugin_event(before="before_addon_uninstall", after="after_addon_uninstall")
 def uninstall_addon(
     server_name: str,

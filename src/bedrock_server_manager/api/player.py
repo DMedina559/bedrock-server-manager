@@ -26,11 +26,7 @@ from ..core.player import (
     parse_player_string,
     save_player_data,
 )
-
-# Local application imports.
 from ..error import BSMError, UserInputError
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 

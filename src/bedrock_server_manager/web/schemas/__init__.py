@@ -33,7 +33,6 @@ from .install import (
     PlayerPermissionPayload,
     PropertiesGetResponse,
     PropertiesPayload,
-    ServiceUpdatePayload,
 )
 from .plugin import (
     PluginPagesResponse,
@@ -48,15 +47,12 @@ from .server import (
     AppInfoResponse,
     CommandPayload,
     PlayerListResponse,
-    ServerConfigStatusResponse,
     ServerProcessInfoResponse,
     ServerRunningStatusResponse,
     ServerSchemaResponse,
     ServerSettingItemPayload,
     ServerSettingsResponse,
     ServersListResponse,
-    ServerVersionResponse,
-    ThemeListResponse,
 )
 from .system import (
     AuditLogResponse,
@@ -67,6 +63,7 @@ from .system import (
     SettingItemResponse,
     SettingsResponse,
     SetupStatusResponse,
+    ThemeListResponse,
 )
 from .users import (
     ChangePasswordPayload,
@@ -106,7 +103,6 @@ __all__ = [
     "AllowlistRemovePayload",
     "PlayerPermissionPayload",
     "PermissionsSetPayload",
-    "ServiceUpdatePayload",
     "BackupActionPayload",
     "RestoreActionPayload",
     "PluginStatusSetPayload",
@@ -122,8 +118,6 @@ __all__ = [
     "PluginPagesResponse",
     "PluginStatusesResponse",
     "ServerRunningStatusResponse",
-    "ServerConfigStatusResponse",
-    "ServerVersionResponse",
     "ServerProcessInfoResponse",
     "UserLoginPayload",
     "CustomZipsResponse",

@@ -7,9 +7,7 @@ from fastapi.testclient import TestClient
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.web.auth_utils import UserResponse
-from bedrock_server_manager.web.routers.websocket_router import (
-    router as websocket_router,
-)
+from bedrock_server_manager.web.routers.websocket import router as websocket
 from bedrock_server_manager.web.websocket_manager import ConnectionManager
 
 pytestmark = pytest.mark.asyncio
@@ -41,7 +39,7 @@ def test_app_context():
 def test_app(test_app_context):
     app = FastAPI()
     app.state.app_context = test_app_context
-    app.include_router(websocket_router)
+    app.include_router(websocket)
     return app
 
 
@@ -54,7 +52,7 @@ async def test_send_to_user_integration(test_app, test_app_context, mock_user):
 
     # Use AsyncMock because the function is awaited
     with patch(
-        "bedrock_server_manager.web.routers.websocket_router.get_current_user_for_websocket",
+        "bedrock_server_manager.web.routers.websocket.get_current_user_for_websocket",
         new_callable=AsyncMock,
     ) as mock_auth:
         mock_auth.return_value = mock_user
@@ -84,7 +82,7 @@ async def test_wildcard_subscription(test_app, test_app_context, mock_user):
     client = TestClient(test_app)
 
     with patch(
-        "bedrock_server_manager.web.routers.websocket_router.get_current_user_for_websocket",
+        "bedrock_server_manager.web.routers.websocket.get_current_user_for_websocket",
         new_callable=AsyncMock,
     ) as mock_auth:
         mock_auth.return_value = mock_user

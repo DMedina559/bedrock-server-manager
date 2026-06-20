@@ -36,8 +36,6 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 # Version for the server-specific JSON config schema

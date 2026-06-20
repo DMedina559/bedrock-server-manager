@@ -236,3 +236,16 @@ class AppContext:
 
             # 3. Remove from the AppContext cache.
             del self._servers[server_name]
+
+    def stop_all_servers(self):
+        """Stops all running servers in the application context cache."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info("Context: Stopping all cached servers...")
+
+        for server_name, server in self._servers.items():
+            if server.is_running():
+                # Stop the server locally directly instead of calling API which might cause circular dependency
+                server.stop()
+                logger.info(f"Context: Stopped server '{server_name}'")
