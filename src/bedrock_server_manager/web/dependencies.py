@@ -14,7 +14,6 @@ import logging
 
 from fastapi import HTTPException, Path, Request, status
 
-from ..api import utils as utils_api
 from ..context import AppContext
 from ..error import InvalidServerNameError
 
@@ -38,7 +37,7 @@ async def validate_server_exists(
     """
     FastAPI dependency to validate if a server identified by `server_name` exists.
 
-    This dependency calls :func:`~bedrock_server_manager.api.utils.validate_server_exist`.
+    This dependency calls :func:`~bedrock_server_manager.utils.server.validate_server`.
     If the server does not exist or its name format is invalid, it raises an
     :class:`~fastapi.HTTPException` (status 404 or 400 respectively).
     Otherwise, it allows the request to proceed.
@@ -57,23 +56,18 @@ async def validate_server_exists(
             has an invalid format.
     """
     logger.debug(f"Dependency: Validating existence of server '{server_name}'.")
-    try:
-        name_validation_result = utils_api.validate_server_name_format(server_name)
-        if name_validation_result.get("status") != "success":
-            raise InvalidServerNameError(name_validation_result.get("message"))
+    from ..utils import server as server_utils
 
-        validation_result = utils_api.validate_server_exist(
+    try:
+        server_utils.core_validate_server_name_format(server_name)
+
+        if not server_utils.validate_server(
             server_name=server_name, app_context=app_context
-        )
-        if validation_result.get("status") != "success":
-            logger.warning(
-                f"Dependency: Server '{server_name}' not found or invalid. Message: {validation_result.get('message')}"
-            )
+        ):
+            logger.warning(f"Dependency: Server '{server_name}' not found or invalid.")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=validation_result.get(
-                    "message", f"Server '{server_name}' not found or is invalid."
-                ),
+                detail=f"Server '{server_name}' is not installed or the installation is invalid.",
             )
         # If server exists, the dependency does nothing and request proceeds.
         logger.debug(f"Dependency: Server '{server_name}' validated successfully.")

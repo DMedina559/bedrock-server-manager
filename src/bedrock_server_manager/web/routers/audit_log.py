@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/audit-log",
-    tags=["Audit Log"],
+    tags=["Audit Logs", "Application"],
 )
 
 

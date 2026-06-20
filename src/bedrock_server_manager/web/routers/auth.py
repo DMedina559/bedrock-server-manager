@@ -40,7 +40,7 @@ router = APIRouter(
 
 
 # --- API Login Route ---
-@router.post("/token", response_model=TokenResponse)
+@router.post("/token", response_model=TokenResponse, tags=["Login"])
 async def api_login_for_access_token(
     payload: UserLoginPayload,
     response: Response,

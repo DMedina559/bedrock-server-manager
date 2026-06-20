@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/users",
-    tags=["Users"],
+    tags=["User Management"],
 )
 
 

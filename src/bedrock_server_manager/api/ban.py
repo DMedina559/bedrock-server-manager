@@ -10,6 +10,7 @@ from ..plugins.event_trigger import trigger_plugin_event
 logger = logging.getLogger(__name__)
 
 
+@plugin_method("add_server_ban_api")
 @trigger_plugin_event(before="before_add_server_ban", after="after_add_server_ban")
 def add_server_ban_api(
     app_context: AppContext,

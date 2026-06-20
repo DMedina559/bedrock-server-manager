@@ -18,7 +18,7 @@ def test_backup_all_data(real_bedrock_server):
         f.write("test content")
 
     with patch(
-        "bedrock_server_manager.core.server.world_mixin.ServerWorldMixin.export_world_directory_to_mcworld"
+        "bedrock_server_manager.core.server.world_mixin.ServerWorldMixin.export_world"
     ) as mock_export:
         results = server.backup_all_data()
         assert results["world"] is not None
@@ -59,7 +59,7 @@ def test_restore_all_data_from_latest(real_bedrock_server, tmp_path):
     shutil.copy(backup_file, backup_dir)
 
     with patch(
-        "bedrock_server_manager.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld"
+        "bedrock_server_manager.core.server.world_mixin.ServerWorldMixin.import_world"
     ) as mock_import:
         server.restore_all_data_from_latest()
         mock_import.assert_called_once()

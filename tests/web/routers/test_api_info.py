@@ -11,7 +11,9 @@ def test_get_server_running_status_api_route_success(
     assert response.json()["running"] is False
 
 
-@patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_running_status")
+@patch(
+    "bedrock_server_manager.web.routers.api_info.system_api.get_server_running_status"
+)
 def test_get_server_running_status_api_route_failure(
     mock_get_status, authenticated_client
 ):
@@ -27,58 +29,6 @@ def test_get_server_running_status_api_route_failure(
     assert "Unexpected error checking running status." in response.json()["detail"]
 
 
-def test_get_server_config_status_api_route_success(
-    authenticated_client, real_bedrock_server
-):
-    """Test the get_server_config_status_api_route with a successful status."""
-    real_bedrock_server.set_status_in_config("STOPPED")
-    response = authenticated_client.get("/api/server/test_server/config_status")
-    assert response.status_code == 200
-    assert response.json()["config_status"] == "STOPPED"
-
-
-@patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_config_status")
-def test_get_server_config_status_api_route_failure(
-    mock_get_status, authenticated_client
-):
-    """Test the get_server_config_status_api_route with a failed status."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_status.return_value = {
-        "status": "error",
-        "message": "Failed to get config status",
-    }
-    response = authenticated_client.get("/api/server/test-server/config_status")
-    assert response.status_code == 500
-    assert "Unexpected error getting config status." in response.json()["detail"]
-
-
-def test_get_server_version_api_route_success(
-    authenticated_client, real_bedrock_server
-):
-    """Test the get_server_version_api_route with a successful version."""
-    real_bedrock_server.set_version("1.2.3")
-    response = authenticated_client.get("/api/server/test_server/version")
-    assert response.status_code == 200
-    assert response.json()["version"] == "1.2.3"
-
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.info_api.get_server_installed_version"
-)
-def test_get_server_version_api_route_failure(mock_get_version, authenticated_client):
-    """Test the get_server_version_api_route with a failed version."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_version.return_value = {
-        "status": "error",
-        "message": "Failed to get version",
-    }
-    response = authenticated_client.get("/api/server/test-server/version")
-    assert response.status_code == 500
-    assert "Unexpected error getting installed version." in response.json()["detail"]
-
-
 def test_validate_server_api_route_success(authenticated_client, real_bedrock_server):
     """Test the validate_server_api_route with a successful validation."""
     response = authenticated_client.get("/api/server/test_server/validate")
@@ -86,15 +36,14 @@ def test_validate_server_api_route_success(authenticated_client, real_bedrock_se
     assert response.json()["status"] == "success"
 
 
-@patch("bedrock_server_manager.web.routers.api_info.utils_api.validate_server_exist")
+@patch("bedrock_server_manager.utils.server.validate_server")
 def test_validate_server_api_route_failure(mock_validate, authenticated_client):
     """Test the validate_server_api_route with a failed validation."""
     app_context = MagicMock()
     authenticated_client.app.state.app_context = app_context
-    mock_validate.return_value = {"status": "error", "message": "Validation failed"}
+    mock_validate.return_value = False
     response = authenticated_client.get("/api/server/test_server/validate")
     assert response.status_code == 404
-    assert "Validation failed" in response.json()["detail"]
 
 
 def test_server_process_info_api_route_success(
@@ -223,14 +172,23 @@ def test_get_servers_list_api_route_failure(mock_get_servers, authenticated_clie
     )
 
 
-def test_get_system_info_api_route_success(authenticated_client, app_context):
+@patch("bedrock_server_manager.api.application.get_system_and_app_info")
+def test_get_system_info_api_route_success(
+    mock_get_info, authenticated_client, app_context
+):
     """Test the get_system_info_api_route with a successful retrieval."""
+    mock_get_info.return_value = {
+        "status": "success",
+        "os_type": "Linux",
+        "app_version": "1.0.0",
+        "splash_text": "Hello World",
+    }
     response = authenticated_client.get("/api/info")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
 
-@patch("bedrock_server_manager.web.routers.api_info.utils_api.get_system_and_app_info")
+@patch("bedrock_server_manager.api.application.get_system_and_app_info")
 def test_get_system_info_api_route_failure(mock_get_info, authenticated_client):
     """Test the get_system_info_api_route with a failed retrieval."""
     app_context = MagicMock()

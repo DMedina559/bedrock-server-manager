@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional
 from ..context import AppContext
 from ..error import UserInputError
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,9 @@ def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Failed to get plugin statuses: {e}"}
 
 
+@trigger_plugin_event(
+    before="before_set_plugin_status", after="after_set_plugin_status"
+)
 def set_plugin_status(
     plugin_name: str,
     enabled: bool,

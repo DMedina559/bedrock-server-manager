@@ -35,8 +35,6 @@ from ...error import (
     MissingArgumentError,
 )
 from ..system import base as system_base_utils
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -122,7 +120,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
         return os.path.join(self._worlds_base_dir_in_server, active_world_name)
 
-    def extract_mcworld_to_directory(  # noqa: C901
+    def extract_mcworld(  # noqa: C901
         self, mcworld_file_path: str, target_world_dir_name: str
     ) -> str:
         """Extracts a ``.mcworld`` archive file into a specified world directory name.
@@ -245,7 +243,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Unexpected error extracting world '{mcworld_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def export_world_directory_to_mcworld(  # noqa: C901
+    def export_world(  # noqa: C901
         self, world_dir_name: str, target_mcworld_file_path: str
     ) -> None:
         """Exports a specified world directory into a ``.mcworld`` archive file.
@@ -352,7 +350,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Unexpected error exporting world for server '{self.server_name}', world '{world_dir_name}': {e_unexp}"
             ) from e_unexp
 
-    def import_active_world_from_mcworld(self, mcworld_backup_file_path: str) -> str:
+    def import_world(self, mcworld_backup_file_path: str) -> str:
         """Imports a ``.mcworld`` file, replacing the server's currently active world.
 
         .. warning::
@@ -362,7 +360,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         This method first determines the name of the server's active world by
         calling ``self.get_world_name()`` (expected from
         :class:`~.core.server.state_mixin.ServerStateMixin`). It then uses
-        :meth:`.extract_mcworld_to_directory` to extract the contents of the
+        :meth:`.extract_mcworld` to extract the contents of the
         provided `mcworld_backup_file_path` into a directory with that active
         world name, effectively replacing it.
 
@@ -413,9 +411,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
 
         # 2. Delegate the extraction to the specialized method.
         try:
-            self.extract_mcworld_to_directory(
-                mcworld_backup_file_path, active_world_dir_name
-            )
+            self.extract_mcworld(mcworld_backup_file_path, active_world_dir_name)
             self.logger.info(
                 f"Server '{self.server_name}': Active world import from '{mcworld_filename}' completed successfully into '{active_world_dir_name}'."
             )
@@ -431,7 +427,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"World import for server '{self.server_name}' failed into '{active_world_dir_name}': {e_extract}"
             ) from e_extract
 
-    def delete_active_world_directory(self) -> bool:
+    def delete_world(self) -> bool:
         """Deletes the server's currently active world directory.
 
         .. warning::

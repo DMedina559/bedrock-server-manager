@@ -30,7 +30,6 @@ Note:
 import logging
 from typing import Optional
 
-# Third-party imports. pywin32 is optional but required for IPC.
 try:
     import pywintypes
     import win32file
@@ -55,7 +54,6 @@ try:
 except ImportError:
     PYWIN32_HAS_OPTIONAL_MODULES = False
 
-# Local application imports.
 from ...error import MissingArgumentError, PermissionsError, SystemError
 
 logger = logging.getLogger(__name__)

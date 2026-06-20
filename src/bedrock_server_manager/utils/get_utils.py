@@ -7,7 +7,6 @@ import logging
 import platform
 import random
 
-# Local imports
 from ..config.splash_text import SPLASH_TEXTS
 from ..error import SystemError
 

@@ -29,8 +29,6 @@ except ImportError:
 from ..context import AppContext
 from ..core import service
 from ..core.system import process as system_process_utils
-
-# Local application imports.
 from ..core.system.base import can_manage_services
 from ..error import (
     BSMError,
@@ -39,15 +37,12 @@ from ..error import (
     SystemError,
     UserInputError,
 )
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
 from ..plugins.event_trigger import trigger_plugin_event
 
 logger = logging.getLogger(__name__)
 
 
-@trigger_plugin_event(before="before_web_server_start", after="after_web_server_start")
 def start_web_server_api(  # noqa: C901
     app_context: AppContext,
     host: Optional[str] = None,
@@ -194,7 +189,6 @@ def start_web_server_api(  # noqa: C901
     return {}
 
 
-@trigger_plugin_event(before="before_web_server_stop", after="after_web_server_stop")
 def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
     """Stops the detached web server process.
 
@@ -630,6 +624,7 @@ def remove_web_ui_service(
         }
 
 
+@plugin_method("get_web_ui_service_status")
 def get_web_ui_service_status(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, Any]:

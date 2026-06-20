@@ -16,13 +16,10 @@ import logging
 from typing import Any, Dict
 
 from ..context import AppContext
-
-# Local application imports.
 from ..error import BSMError, MissingArgumentError
 from ..logging import setup_logging
-
-# Plugin system imports to bridge API functionality.
 from ..plugins import plugin_method
+from ..plugins.event_trigger import trigger_plugin_event
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +102,7 @@ def get_all_global_settings(
         }
 
 
+@trigger_plugin_event(before="before_setting_update", after="after_setting_update")
 def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 

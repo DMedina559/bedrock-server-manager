@@ -13,13 +13,12 @@ import logging
 import os
 
 import bsm_frontend
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
-from ...api import addon as addon_api
 from ...context import AppContext
-from ...error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..dependencies import get_app_context, validate_server_exists
+from ...error import AppFileNotFoundError
+from ..dependencies import get_app_context
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 
@@ -29,67 +28,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get(
-    "/api/server/{server_name}/addon/icon",
-    tags=["Server Info API"],
-)
-async def get_server_addon_icon_route(
-    server_name: str = Depends(validate_server_exists),
-    pack_type: str = Query(...),
-    uuid: str = Query(...),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Serves the pack_icon.png image file for a specified addon, or a default icon if not found.
-    """
-    logger.debug(f"API: Get addon icon for '{server_name}' requested.")
-
-    try:
-        result = addon_api.list_world_addons(server_name, app_context)
-
-        # Determine the key to search in based on pack_type
-        pack_key = f"{pack_type}_packs"
-        addons_data = result.get("addons", {})
-        packs = addons_data.get(pack_key, [])
-
-        icon_path = None
-        for pack in packs:
-            if pack.get("uuid") == uuid and pack.get("icon"):
-                icon_path = pack.get("icon")
-                break
-
-        if icon_path and os.path.exists(icon_path):
-            return FileResponse(icon_path, media_type="image/png")
-
-        logger.info(
-            f"Addon icon not found for uuid '{uuid}'. Serving default world icon."
-        )
-        raise AppFileNotFoundError("Addon Icon not found", "Addon Icon")
-
-    except (AppFileNotFoundError, HTTPException):
-        # Fallback to the default world icon
-        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-        if os.path.isfile(default_icon_path):
-            return FileResponse(
-                default_icon_path, media_type="image/vnd.microsoft.icon"
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Default icon not found.",
-            )
-    except Exception as e:
-        logger.error(
-            f"API Get Server Addon Icon '{server_name}': Error: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Server error: {str(e)}",
-        )
-
-
 # --- Route: Serve Custom Panorama ---
-@router.get("/api/panorama", response_class=FileResponse, tags=["Global Info API"])
+@router.get("/api/panorama", response_class=FileResponse, tags=["Application"])
 async def serve_custom_panorama_api(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -135,76 +75,6 @@ async def serve_custom_panorama_api(
         )
 
 
-# --- Route: Serve World Icon ---
-@router.get(
-    "/api/server/{server_name}/world/icon",
-    response_class=FileResponse,
-    tags=["Server Info API"],
-)
-async def serve_world_icon_api(
-    server_name: str = Depends(validate_server_exists),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """Serves the `world_icon.jpeg` for a server, or a default icon if not found.
-
-    Retrieves the `world_icon.jpeg` associated with the specified server's world.
-    If the server-specific icon doesn't exist or an error occurs (e.g., invalid
-    server name), it falls back to serving a default icon (favicon.ico).
-    """
-    logger.debug(f"Request to serve world icon for server '{server_name}'.")
-    try:
-        server = app_context.get_server(server_name)
-        icon_path = server.world_icon_filesystem_path
-
-        if server.has_world_icon() and icon_path and os.path.isfile(icon_path):
-            logger.debug(f"Serving world icon from path: {icon_path}")
-            return FileResponse(icon_path, media_type="image/jpeg")
-        else:
-
-            logger.info(
-                f"World icon for '{server_name}' not found at '{icon_path}'. Serving default."
-            )
-            raise AppFileNotFoundError(str(icon_path), "World icon")
-
-    except (
-        AppFileNotFoundError,
-        InvalidServerNameError,
-        BSMError,
-    ) as e:
-        if not isinstance(e, AppFileNotFoundError):
-            logger.error(
-                f"Error preparing to serve world icon for '{server_name}': {e}",
-                exc_info=True,
-            )
-
-        default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-        if os.path.isfile(default_icon_path):
-            logger.debug(
-                f"Serving default world icon (favicon.ico) from: {default_icon_path}"
-            )
-            return FileResponse(
-                default_icon_path, media_type="image/vnd.microsoft.icon"
-            )
-        else:
-            logger.error(
-                f"Default world icon (favicon.ico) not found at {default_icon_path}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Default world icon not found.",
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Unexpected error serving world icon for '{server_name}': {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error serving icon.",
-        )
-
-
 @router.get("/favicon.ico", include_in_schema=False)
 async def get_root_favicon():
     """Serves the `favicon.ico` file from the static directory."""
@@ -217,3 +87,14 @@ async def get_root_favicon():
         )
     # Return the file directly with the correct media type
     return FileResponse(favicon_path, media_type="image/x-icon")
+
+
+@router.get("/site.webmanifest", include_in_schema=False)
+async def serve_webmanifest():
+    """Serves the site.webmanifest from the static directory."""
+    manifest_path = os.path.join(STATIC_DIR, "site.webmanifest")
+
+    if os.path.exists(manifest_path):
+        return FileResponse(manifest_path)
+
+    raise HTTPException(status_code=404, detail="Manifest not found.")

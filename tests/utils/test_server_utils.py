@@ -1,14 +1,14 @@
 import pytest
 
-from bedrock_server_manager.core.utils import (
-    core_validate_server_name_format,
-    get_servers_data,
-    validate_server,
-)
 from bedrock_server_manager.error import (
     AppFileNotFoundError,
     InvalidServerNameError,
     MissingArgumentError,
+)
+from bedrock_server_manager.utils.server import (
+    core_validate_server_name_format,
+    get_servers_data,
+    validate_server,
 )
 
 

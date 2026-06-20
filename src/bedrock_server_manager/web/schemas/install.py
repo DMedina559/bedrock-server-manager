@@ -109,14 +109,3 @@ class PermissionsSetPayload(BaseModel):
     permissions: List[PlayerPermissionPayload] = Field(
         ..., description="List of player permission entries."
     )
-
-
-class ServiceUpdatePayload(BaseModel):
-    """Request model for updating server-specific service settings."""
-
-    autoupdate: Optional[bool] = Field(
-        default=None, description="Enable/disable automatic updates for the server."
-    )
-    autostart: Optional[bool] = Field(
-        default=None, description="Enable/disable service autostart for the server."
-    )
