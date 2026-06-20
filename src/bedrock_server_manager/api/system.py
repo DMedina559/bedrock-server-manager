@@ -33,6 +33,59 @@ from ..plugins import plugin_method
 logger = logging.getLogger(__name__)
 
 
+@plugin_method("get_server_running_status")
+def get_server_running_status(
+    server_name: str, app_context: AppContext
+) -> Dict[str, Any]:
+    """Checks if the server process is currently running.
+
+    This function queries the operating system to determine if the Bedrock
+    server process associated with the given server name is active by calling
+    :meth:`~.core.bedrock_server.BedrockServer.is_running`.
+
+    Args:
+        server_name (str): The name of the server to check.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "is_running": bool}``
+        (``is_running`` is ``True`` if the process is active, ``False`` otherwise).
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation or
+            if `is_running` encounters a critical issue (e.g., misconfiguration).
+    """
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+
+    logger.info(f"API: Checking running status for server '{server_name}'...")
+    try:
+        server = app_context.get_server(server_name)
+        is_running = server.is_running()
+        logger.debug(
+            f"API: is_running() check for '{server_name}' returned: {is_running}"
+        )
+        return {"status": "success", "is_running": is_running}
+    except BSMError as e:
+        logger.error(
+            f"API: Error checking running status for '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": f"Error checking running status: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error checking running status for '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {
+            "status": "error",
+            "message": f"Unexpected error checking running status: {e}",
+        }
+
+
 @plugin_method("get_bedrock_process_info")
 def get_bedrock_process_info(
     server_name: str, app_context: AppContext

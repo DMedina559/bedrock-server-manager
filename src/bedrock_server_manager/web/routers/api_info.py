@@ -20,7 +20,6 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import application as app_api
-from ...api import info as info_api
 from ...api import misc as misc_api
 from ...api import player as player_api
 from ...api import system as system_api
@@ -67,7 +66,7 @@ async def get_server_running_status(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
     try:
-        result = info_api.get_server_running_status(
+        result = system_api.get_server_running_status(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":

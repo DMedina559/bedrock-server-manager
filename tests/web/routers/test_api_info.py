@@ -11,7 +11,9 @@ def test_get_server_running_status_api_route_success(
     assert response.json()["running"] is False
 
 
-@patch("bedrock_server_manager.web.routers.api_info.info_api.get_server_running_status")
+@patch(
+    "bedrock_server_manager.web.routers.api_info.system_api.get_server_running_status"
+)
 def test_get_server_running_status_api_route_failure(
     mock_get_status, authenticated_client
 ):
