@@ -1,4 +1,4 @@
-# bedrock_server_manager/core/utils.py
+# bedrock_server_manager/utils/server.py
 """
 Provides low-level core utility functions for server management.
 

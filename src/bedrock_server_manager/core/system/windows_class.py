@@ -22,9 +22,6 @@ import sys
 import threading
 from pathlib import Path
 
-# typing imports removed as they were unused
-
-# Third-party imports. pywin32 is optional but required for IPC.
 try:
     import pywintypes
     import servicemanager
@@ -41,8 +38,6 @@ except ImportError:
     win32service = None
     win32serviceutil = None
     pywintypes = None
-
-# Local application imports.
 from ...api.web import start_web_server_api
 
 logger = logging.getLogger(__name__)

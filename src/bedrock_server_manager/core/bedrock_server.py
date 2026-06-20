@@ -13,8 +13,6 @@ from typing import Any, Dict, Optional
 
 from ..config.settings import Settings
 from ..error import ConfigParseError, FileOperationError
-
-# Import all the mixin classes that will be combined to form the BedrockServer.
 from . import server
 
 
@@ -29,7 +27,9 @@ class BedrockServer(
     server.ServerAddonMixin,
     server.ServerBackupMixin,
     server.ServerPlayerMixin,
-    server.ServerConfigManagementMixin,
+    server.ServerAllowlistMixin,
+    server.ServerPermissionsMixin,
+    server.ServerPropertiesMixin,
     server.ServerInstallUpdateMixin,
     # Foundational BedrockServerBaseMixin is last to ensure its __init__ runs after
     # all other mixins have potentially set up their specific attributes.
@@ -91,13 +91,13 @@ class BedrockServer(
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.send_command`
 
         World Management (from :class:`~.core.server.world_mixin.ServerWorldMixin`):
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world_directory_to_mcworld`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_active_world_directory`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_world`
 
         Addon Management (from :class:`~.core.server.addon_mixin.ServerAddonMixin`):
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.process_addon_file`
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_world_addons`
+            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_installed_addons`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.export_addon`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.remove_addon`
 
@@ -110,12 +110,12 @@ class BedrockServer(
         Player Log Scanning (from :class:`~.core.server.player_mixin.ServerPlayerMixin`):
             - :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
 
-        Config File Management (from :class:`~.core.server.config_management_mixin.ServerConfigManagementMixin`):
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_allowlist`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.add_to_allowlist`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_player_permission`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_server_properties`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_server_property`
+        Config File Management (from :class:`~.core.server.allowlist_mixin.ServerAllowlistMixin`, :class:`~.core.server.permissions_mixin.ServerPermissionsMixin`, and :class:`~.core.server.properties_mixin.ServerPropertiesMixin`):
+            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.get_allowlist`
+            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.add_to_allowlist`
+            - :meth:`~.core.server.permissions_mixin.ServerPermissionsMixin.set_player_permission`
+            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.get_server_properties`
+            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.set_server_property`
 
         Installation & Updates (from :class:`~.core.server.install_update_mixin.ServerInstallUpdateMixin`):
             - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.is_update_needed`
@@ -264,6 +264,7 @@ class BedrockServer(
             "os_type": self.os_type,
             "player_count": self.player_count,
             "players": getattr(self, "players", []),
+            "installed_addons": getattr(self, "list_installed_addons", []),
         }
 
         return summary

@@ -11,7 +11,7 @@ from bedrock_server_manager.error import (
 )
 
 
-def test_list_world_addons(real_bedrock_server):
+def test_list_installed_addons(real_bedrock_server):
     server = real_bedrock_server
 
     # Create dummy addons
@@ -31,7 +31,7 @@ def test_list_world_addons(real_bedrock_server):
     with open(os.path.join(world_dir, "world_resource_packs.json"), "w") as f:
         json.dump([{"pack_id": "rp1_uuid", "version": [1, 0, 0]}], f)
 
-    addons = server.list_world_addons()
+    addons = server.list_installed_addons()
 
     assert len(addons["resource_packs"]) == 1
     assert addons["resource_packs"][0]["uuid"] == "rp1_uuid"
@@ -53,7 +53,7 @@ def test_process_addon_file(real_bedrock_server, tmp_path):
 
     server.process_addon_file(str(addon_path))
 
-    assert len(server.list_world_addons()["resource_packs"]) == 1
+    assert len(server.list_installed_addons()["resource_packs"]) == 1
 
 
 def test_process_addon_file_unsupported_type(real_bedrock_server, tmp_path):
@@ -187,7 +187,7 @@ def test_process_mcaddon_with_folders(real_bedrock_server, tmp_path):
     server.process_addon_file(str(mcaddon_path))
 
     # 4. Verify that packs are installed
-    addons = server.list_world_addons()
+    addons = server.list_installed_addons()
 
     # Check behavior packs
     bps = [bp for bp in addons["behavior_packs"] if bp["uuid"] == "bp1_uuid"]
@@ -217,7 +217,7 @@ def test_process_addon_file_script_type(real_bedrock_server, tmp_path):
     server.process_addon_file(str(addon_path))
 
     # Verify it is installed as a behavior pack
-    addons = server.list_world_addons()
+    addons = server.list_installed_addons()
     bps = [bp for bp in addons["behavior_packs"] if bp["uuid"] == "script_uuid"]
     assert len(bps) == 1
     assert bps[0]["status"] == "ACTIVE"

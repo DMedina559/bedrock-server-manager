@@ -143,7 +143,7 @@ class PluginAPI:
             ```python
             # In a plugin method:
             settings = self.api.app_context.settings
-            from bedrock_server_manager.core.utils import get_servers_data
+            from bedrock_server_manager.utils.server import get_servers_data
             all_servers_data, _ = get_servers_data(self.api.app_context)
             ```
 

@@ -27,11 +27,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/register",
-    tags=["Registration"],
+    tags=["Registration", "User Management"],
 )
 
 
-@router.post("/generate-token", response_model=ActionResponse, include_in_schema=False)
+@router.post(
+    "/generate-token",
+    response_model=ActionResponse,
+)
 async def generate_token(
     request: Request,
     data: GenerateTokenPayload,
@@ -66,7 +69,9 @@ async def generate_token(
     )
 
 
-@router.get("/validate/{token}", include_in_schema=False)
+@router.get(
+    "/validate/{token}",
+)
 async def validate_token(
     token: str,
     app_context: AppContext = Depends(get_app_context),
@@ -89,7 +94,9 @@ async def validate_token(
         )
 
 
-@router.post("/{token}", include_in_schema=False)
+@router.post(
+    "/{token}",
+)
 async def register_user(
     token: str,
     data: UserLoginPayload,

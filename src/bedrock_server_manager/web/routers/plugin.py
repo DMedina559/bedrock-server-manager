@@ -36,14 +36,15 @@ from ..schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Plugin Management", "Application"])
 
 
 # --- API Route ---
 @router.get(
-    "/api/plugins/pages", response_model=PluginPagesResponse, tags=["Plugin API"]
+    "/api/plugins/pages",
+    response_model=PluginPagesResponse,
 )
-async def get_plugin_pages_api_route(
+async def get_plugin_pages(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -62,8 +63,11 @@ async def get_plugin_pages_api_route(
         )
 
 
-@router.get("/api/plugins", response_model=PluginStatusesResponse, tags=["Plugin API"])
-async def get_plugins_status_api_route(
+@router.get(
+    "/api/plugins",
+    response_model=PluginStatusesResponse,
+)
+async def get_plugins_status(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -94,9 +98,8 @@ async def get_plugins_status_api_route(
 @router.post(
     "/api/plugins/trigger_event",
     response_model=TriggerEventResponse,
-    tags=["Plugin API"],
 )
-async def trigger_event_api_route(
+async def post_trigger_event(
     payload: TriggerEventPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -149,9 +152,8 @@ async def trigger_event_api_route(
 @router.post(
     "/api/plugins/{plugin_name}",
     response_model=ActionResponse,
-    tags=["Plugin API"],
 )
-async def set_plugin_status_api_route(
+async def post_set_plugin_status(
     plugin_name: str,
     payload: PluginStatusSetPayload,
     current_user: UserResponse = Depends(get_admin_user),
@@ -171,7 +173,7 @@ async def set_plugin_status_api_route(
             app_context=app_context, plugin_name=plugin_name, enabled=payload.enabled
         )
         if result.get("status") == "success":
-            return ActionResponse(status="success", message=result.get("message"))
+            return ActionResponse(status="success", message=str(result.get("message")))
         else:
             detail = result.get("message", f"Failed to {action} plugin.")
             if "not found" in detail.lower() or "invalid plugin" in detail.lower():
@@ -200,8 +202,8 @@ async def set_plugin_status_api_route(
         )
 
 
-@router.put("/api/plugins/reload", response_model=ActionResponse, tags=["Plugin API"])
-async def reload_plugins_api_route(
+@router.put("/api/plugins/reload", response_model=ActionResponse)
+async def put_reload_plugins(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -214,7 +216,7 @@ async def reload_plugins_api_route(
     try:
         result = plugins_api.reload_plugins(app_context=app_context)
         if result.get("status") == "success":
-            return ActionResponse(status="success", message=result.get("message"))
+            return ActionResponse(status="success", message=str(result.get("message")))
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -17,8 +17,8 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from ...api import install
 from ...api import server as server_api
-from ...api import server_install_config
 from ...context import AppContext
 from ...error import (
     BlockedCommandError,
@@ -32,7 +32,9 @@ from ..schemas import ActionResponse, CommandPayload, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Server Mannagement"],
+)
 
 
 # --- API Route: Start Server ---
@@ -40,10 +42,9 @@ router = APIRouter()
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Start a server instance",
-    tags=["Server Actions API"],
+    tags=["Process Management"],
 )
-async def start_server_route(
+async def post_start_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -74,10 +75,9 @@ async def start_server_route(
     "/api/server/{server_name}/stop",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Stop a running server instance",
-    tags=["Server Actions API"],
+    tags=["Process Management"],
 )
-async def stop_server_route(
+async def post_stop_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -108,10 +108,9 @@ async def stop_server_route(
     "/api/server/{server_name}/restart",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Restart a server instance",
-    tags=["Server Actions API"],
+    tags=["Process Management"],
 )
-async def restart_server_route(
+async def post_restart_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -143,10 +142,9 @@ async def restart_server_route(
 @router.post(
     "/api/server/{server_name}/send_command",
     response_model=ActionResponse,
-    summary="Send a command to a running server instance",
-    tags=["Server Actions API"],
+    tags=["Send Command"],
 )
-async def send_command_route(
+async def post_send_command(
     payload: CommandPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
@@ -229,10 +227,9 @@ async def send_command_route(
     "/api/server/{server_name}/update",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Update a server instance to the latest version",
-    tags=["Server Actions API"],
+    tags=["Server Installation"],
 )
-async def update_server_route(
+async def post_update_server(
     server_name: str,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -246,7 +243,7 @@ async def update_server_route(
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
     task_id = app_context.task_manager.run_task(
-        server_install_config.update_server,
+        install.update_server,
         username=current_user.username,
         server_name=server_name,
         app_context=app_context,
@@ -263,10 +260,9 @@ async def update_server_route(
     "/api/server/{server_name}/delete",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Delete a server instance and its data",
-    tags=["Server Actions API"],
+    tags=["Server Installation"],
 )
-async def delete_server_route(
+async def delete_server(
     server_name: str,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),

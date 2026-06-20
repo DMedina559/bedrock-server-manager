@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 def test_get_all_settings_api_route(authenticated_client, app_context):
     """Test the get_all_settings_api_route with a successful response."""
-    response = authenticated_client.get("/api/settings")
+    response = authenticated_client.get("/api/settings/get")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
@@ -12,7 +12,7 @@ def test_get_all_settings_api_route(authenticated_client, app_context):
 def test_set_setting_api_route(authenticated_client, app_context):
     """Test the set_setting_api_route with a successful response."""
     response = authenticated_client.post(
-        "/api/settings", json={"key": "test_key", "value": "test_value"}
+        "/api/settings/set", json={"key": "test_key", "value": "test_value"}
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -47,7 +47,7 @@ def test_set_setting_api_route_user_input_error(mock_set_setting, authenticated_
     authenticated_client.app.state.app_context = app_context
     mock_set_setting.side_effect = UserInputError("Invalid key")
     response = authenticated_client.post(
-        "/api/settings", json={"key": "invalid_key", "value": "test_value"}
+        "/api/settings/set", json={"key": "invalid_key", "value": "test_value"}
     )
     assert response.status_code == 400
     assert "Invalid key" in response.json()["detail"]
@@ -62,7 +62,7 @@ def test_set_setting_api_route_bsm_error(mock_set_setting, authenticated_client)
     authenticated_client.app.state.app_context = app_context
     mock_set_setting.side_effect = BSMError("Failed to set setting")
     response = authenticated_client.post(
-        "/api/settings", json={"key": "test_key", "value": "test_value"}
+        "/api/settings/set", json={"key": "test_key", "value": "test_value"}
     )
     assert response.status_code == 500
     assert "Failed to set setting" in response.json()["detail"]
