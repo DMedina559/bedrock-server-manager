@@ -58,6 +58,12 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             and app_context._task_manager is not None
         ):
             app_context.task_manager.shutdown()
+        # Shut down the process manager
+        if (
+            hasattr(app_context, "_bedrock_process_manager")
+            and app_context._bedrock_process_manager is not None
+        ):
+            app_context.bedrock_process_manager.shutdown()
         app_context.stop_all_servers()
         app_context.plugin_manager.unload_plugins()
         app_context.db.close()

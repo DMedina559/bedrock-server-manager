@@ -215,6 +215,8 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     def stop(self) -> None:  # noqa: C901
         """Stops the Bedrock server process gracefully, with a forceful fallback."""
+        self.intentionally_stopped = True
+
         if not self.is_running():
             self.logger.info(
                 f"Attempted to stop server '{self.server_name}', but it is not currently running."
@@ -254,9 +256,17 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         try:
             self.logger.info(f"Sending 'stop' command to server '{self.server_name}'.")
-            if self._process.stdin:
+            if hasattr(self._process, "stdin") and self._process.stdin:
                 self._process.stdin.write(b"stop\n")
                 self._process.stdin.flush()
+            elif isinstance(self._process, system_process.psutil.Process):
+                # If we recovered a psutil process, we can't write to its stdin
+                # Send terminate signal instead, which allows it to shut down gracefully
+                self.logger.info(
+                    f"Cannot write to stdin of recovered psutil process '{self.server_name}'. Sending terminate signal."
+                )
+                self._process.terminate()
+
             timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
             self._process.wait(timeout=timeout)
             self.logger.info(f"Server '{self.server_name}' stopped gracefully.")
@@ -265,15 +275,22 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"Server '{self.server_name}' did not stop gracefully or pipe was already closed. Killing process. Error: {e}"
             )
             self._process.kill()
+        except system_process.psutil.TimeoutExpired as e:
+            self.logger.warning(
+                f"Server '{self.server_name}' psutil process did not stop gracefully. Killing process. Error: {e}"
+            )
+            self._process.kill()
         except Exception as e:
             self.logger.error(
                 f"An error occurred while stopping server '{self.server_name}': {e}",
                 exc_info=True,
             )
-            self._process.kill()
+            try:
+                self._process.kill()
+            except Exception as kill_e:
+                self.logger.error(f"Failed to kill process after error: {kill_e}")
 
         self._process = None
-        self.intentionally_stopped = True
 
         pid_file_path = self.get_pid_file_path()
         system_process.remove_pid_file_if_exists(pid_file_path)
