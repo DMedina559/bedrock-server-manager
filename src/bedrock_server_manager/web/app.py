@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from ..config import bcm_config, get_installed_version
 from ..context import AppContext
 from . import routers
-from .auth_utils import CustomAuthBackend, get_current_user_optional
+from .auth_utils import get_current_user_optional
 
 mimetypes.add_type("application/javascript", ".js")
 
@@ -179,22 +179,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
                 pass
             elif not request.url.path.startswith("/app"):
                 return RedirectResponse(url="/app")
-
-        # Manually handle authentication to bypass it for static files
-        if not (
-            request.url.path.startswith("/app/assets")
-            or request.url.path.startswith("/app/image")
-            or request.url.path.startswith("/image")
-            or request.url.path.startswith("/themes")
-            or request.url.path == "/site.webmanifest"
-        ):
-            auth_backend = CustomAuthBackend()
-            auth_result = await auth_backend.authenticate(request)
-            if auth_result:
-                creds, user = auth_result
-                request.state.user = user
-            else:
-                request.state.user = None
 
         response = await call_next(request)
         return response
