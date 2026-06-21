@@ -1,4 +1,3 @@
-import os
 from unittest.mock import MagicMock, patch
 
 
@@ -16,19 +15,6 @@ def test_set_setting_api_route(authenticated_client, app_context):
     )
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-
-
-def test_get_themes_api_route(authenticated_client, app_context):
-    """Test the get_themes_api_route with a successful response."""
-    themes_dir = app_context.settings.get("paths.themes")
-    os.makedirs(themes_dir, exist_ok=True)
-    theme_file = os.path.join(themes_dir, "theme1.css")
-    with open(theme_file, "w") as f:
-        f.write("test")
-
-    response = authenticated_client.get("/api/themes")
-    assert response.status_code == 200
-    assert "theme1" in response.json()
 
 
 def test_reload_settings_api_route(authenticated_client, app_context):

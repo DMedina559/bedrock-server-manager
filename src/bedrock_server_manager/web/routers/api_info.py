@@ -15,7 +15,6 @@ a server. Responses are generally structured using the :class:`.BaseApiResponse`
 
 import logging
 import os
-from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -482,47 +481,6 @@ async def get_themes(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred retrieving themes.",
-        )
-
-
-@router.get("/api/themes", response_model=Dict[str, str], tags=["Themes"])
-async def get_themes_extra(
-    current_user: UserResponse = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves a list of available themes.
-
-    Scans the built-in and custom theme directories for CSS files.
-    """
-    identity = current_user.username
-    logger.info(f"API: Get themes request by '{identity}'.")
-    try:
-        themes = {}
-        # Scan built-in themes
-        builtin_themes_path = os.path.join(
-            os.path.dirname(__file__), "..", "static", "css", "themes"
-        )
-        if os.path.isdir(builtin_themes_path):
-            for filename in os.listdir(builtin_themes_path):
-                if filename.endswith(".css"):
-                    theme_name = os.path.splitext(filename)[0]
-                    themes[theme_name] = f"/static/css/themes/{filename}"
-
-        # Scan custom themes
-        custom_themes_path = app_context.settings.get("paths.themes")
-        if os.path.isdir(custom_themes_path):
-            for filename in os.listdir(custom_themes_path):
-                if filename.endswith(".css"):
-                    theme_name = os.path.splitext(filename)[0]
-                    themes[theme_name] = f"/themes/{filename}"
-
-        return themes
-    except Exception as e:
-        logger.error(f"API Get Themes: Unexpected error. {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while retrieving themes.",
         )
 
 
