@@ -27,7 +27,7 @@ router = APIRouter(
 
 # --- API Route: Get All Settings for a Server ---
 @router.get(
-    "/api/servers/{server_name}/settings/get",
+    "/api/server/{server_name}/settings/get",
     response_model=ServerSettingsResponse,
 )
 async def get_server_settings(
@@ -65,7 +65,7 @@ async def get_server_settings(
 
 # --- API Route: Set a Setting for a Server ---
 @router.post(
-    "/api/servers/{server_name}/settings/set",
+    "/api/server/{server_name}/settings/set",
     response_model=ServerSettingsResponse,
 )
 async def post_set_server_setting(
