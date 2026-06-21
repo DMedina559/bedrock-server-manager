@@ -1213,3 +1213,66 @@ def test_prepare_download_assets_custom_zip_not_found(downloader_instance):
             "CUSTOM",
             server_zip_path=non_existent_zip_path,
         )
+
+
+def test_update_server_properties_from_zip(
+    downloader_instance, temp_server_dir, temp_download_base_dir
+):
+    """Test _update_server_properties_from_zip method."""
+    import zipfile
+
+    server_properties_path = temp_server_dir / "server.properties"
+    server_properties_path.write_text("existing_key=existing_value\n")
+
+    new_properties_content = b"existing_key=new_value\nnew_key=new_value\n# comment\n"
+    zip_path = temp_download_base_dir / "test_update_properties.zip"
+    create_dummy_zip(zip_path, {"server.properties": new_properties_content})
+
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        downloader_instance._update_server_properties_from_zip(zip_ref)
+
+    updated_content = server_properties_path.read_text()
+    assert "existing_key=existing_value" in updated_content
+    assert "new_key=new_value" in updated_content
+    assert "existing_key=new_value" not in updated_content
+
+
+def test_update_server_properties_from_zip_no_existing_file(
+    downloader_instance, temp_server_dir, temp_download_base_dir
+):
+    """Test _update_server_properties_from_zip method when server.properties does not exist locally."""
+    import zipfile
+
+    server_properties_path = temp_server_dir / "server.properties"
+    # Ensure it doesn't exist
+    if server_properties_path.exists():
+        server_properties_path.unlink()
+
+    new_properties_content = b"new_key=new_value\n"
+    zip_path = temp_download_base_dir / "test_update_properties_no_exist.zip"
+    create_dummy_zip(zip_path, {"server.properties": new_properties_content})
+
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        downloader_instance._update_server_properties_from_zip(zip_ref)
+
+    # The file should still not exist because the method returns early if it doesn't
+    assert not server_properties_path.exists()
+
+
+def test_update_server_properties_from_zip_no_file_in_zip(
+    downloader_instance, temp_server_dir, temp_download_base_dir
+):
+    """Test _update_server_properties_from_zip method when server.properties does not exist in zip."""
+    import zipfile
+
+    server_properties_path = temp_server_dir / "server.properties"
+    server_properties_path.write_text("existing_key=existing_value\n")
+
+    zip_path = temp_download_base_dir / "test_update_properties_no_file_in_zip.zip"
+    create_dummy_zip(zip_path, {"other_file.txt": b"data"})
+
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        downloader_instance._update_server_properties_from_zip(zip_ref)
+
+    updated_content = server_properties_path.read_text()
+    assert updated_content == "existing_key=existing_value\n"

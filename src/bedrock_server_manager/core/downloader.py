@@ -810,6 +810,68 @@ class BedrockDownloader:
             raise DownloadError("Critical state missing after download preparation.")
         return self.actual_version, self.zip_file_path, self.specific_download_dir
 
+    def _update_server_properties_from_zip(self, zip_ref: zipfile.ZipFile) -> None:
+        """Appends any new properties from the downloaded server.properties file
+        that are missing in the existing server.properties file.
+
+        Args:
+            zip_ref (zipfile.ZipFile): The opened ZIP file containing the new server files.
+        """
+        server_properties_path = os.path.join(self.server_dir, "server.properties")
+
+        if not os.path.exists(server_properties_path):
+            return
+
+        # 1. Read existing keys
+        existing_keys = set()
+        file_content = ""
+        try:
+            with open(server_properties_path, "r", encoding="utf-8") as f:
+                file_content = f.read()
+        except OSError as e:
+            self.logger.warning(
+                f"Could not read existing server.properties to merge new properties: {e}"
+            )
+            return
+
+        for line in file_content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split("=", 1)
+            if len(parts) == 2 and parts[0].strip():
+                existing_keys.add(parts[0].strip())
+
+        # 2. Extract and append new properties from zip
+        try:
+            if "server.properties" not in zip_ref.namelist():
+                return
+
+            with zip_ref.open("server.properties") as zf:
+                new_lines_to_append = []
+                for line_bytes in zf:
+                    decoded_line = line_bytes.decode("utf-8").strip()
+                    if not decoded_line or decoded_line.startswith("#"):
+                        continue
+                    parts = decoded_line.split("=", 1)
+                    if len(parts) == 2 and parts[0].strip():
+                        key = parts[0].strip()
+                        if key not in existing_keys:
+                            new_lines_to_append.append(decoded_line)
+
+                if new_lines_to_append:
+                    with open(server_properties_path, "a", encoding="utf-8") as f:
+                        # Make sure the file ends with a newline before appending
+                        if file_content and not file_content.endswith("\n"):
+                            f.write("\n")
+                        f.write("\n".join(new_lines_to_append) + "\n")
+                    self.logger.info(
+                        f"Appended {len(new_lines_to_append)} new properties to server.properties"
+                    )
+
+        except Exception as e:
+            self.logger.warning(f"Could not merge new server.properties from zip: {e}")
+
     def extract_server_files(self, is_update: bool):  # noqa: C901
         """Extracts server files from the downloaded ZIP to the target server directory.
 
@@ -885,6 +947,10 @@ class BedrockDownloader:
                                 f"Skipping extraction of preserved item: {member_path}"
                             )
                             skipped_count += 1
+
+                    # Merge new properties into the existing server.properties
+                    self._update_server_properties_from_zip(zip_ref)
+
                     self.logger.info(
                         f"Update extraction complete. Extracted {extracted_count} items, skipped {skipped_count} preserved items."
                     )
