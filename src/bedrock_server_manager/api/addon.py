@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # A unified lock to prevent race conditions during addon file operations.
 # This ensures that only one addon installation can occur at a time,
 # preventing potential file corruption.
-_addon_lock = threading.Lock()
+_addon_lock = threading.RLock()
 
 
 @plugin_method("list_available_addons")

@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # A unified lock for all backup, restore, and prune operations.
 # This ensures that only one file-modifying operation can run at a time across
 # the entire module, preventing race conditions and potential data corruption.
-_backup_restore_lock = threading.Lock()
+_backup_restore_lock = threading.RLock()
 
 
 @plugin_method("list_backup_files")

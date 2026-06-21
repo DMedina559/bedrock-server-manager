@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # A unified lock to prevent race conditions during any world file operation
 # (export, import, reset). This ensures data integrity.
-_world_lock = threading.Lock()
+_world_lock = threading.RLock()
 
 
 @plugin_method("get_world_name")

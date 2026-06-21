@@ -17,7 +17,7 @@ from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-_install_update_lock = threading.Lock()
+_install_update_lock = threading.RLock()
 
 
 @plugin_method("install_new_server")
