@@ -73,7 +73,7 @@ def test_server_process_info_api_route_failure(mock_get_info, authenticated_clie
 
 def test_scan_players_api_route_success(authenticated_client, app_context):
     """Test the scan_players_api_route with a successful scan."""
-    response = authenticated_client.post("/api/players/scan")
+    response = authenticated_client.put("/api/players/scan")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
@@ -86,7 +86,7 @@ def test_scan_players_api_route_failure(mock_scan, authenticated_client):
     app_context = MagicMock()
     authenticated_client.app.state.app_context = app_context
     mock_scan.return_value = {"status": "error", "message": "Scan failed"}
-    response = authenticated_client.post("/api/players/scan")
+    response = authenticated_client.put("/api/players/scan")
     assert response.status_code == 500
     assert "Unexpected error scanning player logs." in response.json()["detail"]
 
@@ -121,7 +121,7 @@ def test_prune_downloads_api_route_success(authenticated_client, app_context):
     """Test the prune_downloads_api_route with a successful prune."""
     download_dir = os.path.join(app_context.settings.get("paths.downloads"), "stable")
     os.makedirs(download_dir)
-    response = authenticated_client.post(
+    response = authenticated_client.put(
         "/api/downloads/prune", json={"directory": "stable"}
     )
     assert response.status_code == 200
@@ -135,7 +135,7 @@ def test_prune_downloads_api_route_failure(mock_prune, authenticated_client):
     authenticated_client.app.state.app_context = app_context
     mock_prune.return_value = {"status": "error", "message": "Prune failed"}
     with patch("os.path.isdir", return_value=True):
-        response = authenticated_client.post(
+        response = authenticated_client.put(
             "/api/downloads/prune", json={"directory": "stable"}
         )
     assert response.status_code == 500

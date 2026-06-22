@@ -22,12 +22,12 @@ router = APIRouter(
 )
 
 
-@router.put(
+@router.post(
     "/api/server/{server_name}/permissions/set",
     response_model=PermissionsUpdateResponse,
     status_code=status.HTTP_200_OK,
 )
-async def put_permissions_set(
+async def post_permissions_set(
     payload: PermissionsSetPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
