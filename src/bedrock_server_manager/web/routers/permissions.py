@@ -89,7 +89,6 @@ async def put_permissions_set(
 @router.get(
     "/api/server/{server_name}/permissions/get",
     response_model=PermissionsGetResponse,
-    tags=["Server Configuration API"],
 )
 async def get_permissions(
     server_name: str = Depends(validate_server_exists),
