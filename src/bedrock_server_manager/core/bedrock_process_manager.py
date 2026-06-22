@@ -10,6 +10,7 @@ It also handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
+import struct
 import threading
 import time
 from typing import TYPE_CHECKING, Dict
@@ -231,6 +232,16 @@ class BedrockProcessManager:
                                 save_player_data(
                                     self.settings.db.session_manager(), players
                                 )
+                    except struct.error:
+                        server.player_count = 0
+                        self.logger.debug(
+                            f"Server '{server.server_name}' returned invalid status packet (likely starting up)."
+                        )
+                    except TimeoutError:
+                        server.player_count = 0
+                        self.logger.debug(
+                            f"Server '{server.server_name}' timed out during ping."
+                        )
                     except Exception as e:
                         server.player_count = 0
                         self.logger.error(
