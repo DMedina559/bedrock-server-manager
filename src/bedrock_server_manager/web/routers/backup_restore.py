@@ -42,13 +42,13 @@ router = APIRouter(
 
 
 # --- API Routes ---
-@router.post(
+@router.put(
     "/api/server/{server_name}/backups/prune",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup", "Cleanup"],
 )
-async def post_prune_backups(
+async def put_prune_backups(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),

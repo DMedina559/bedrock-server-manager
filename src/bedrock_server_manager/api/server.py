@@ -260,6 +260,44 @@ def get_all_server_settings(
         return generic_error  # type: ignore[no-any-return]
 
 
+@plugin_method("get_server_summary")
+def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+    """Retrieves the summary information for a specific server.
+
+    This endpoint gets the server summary using the lightweight get_summary_info
+    method, providing a snapshot of the server's basic details like status and
+    player count.
+
+    Args:
+        server_name (str): The name of the server to get the summary for.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: On success, ``{"status": "success", "summary": {...}}``.
+        On error, ``{"status": "error", "message": "<error_message>"}``.
+    """
+    logger.debug(f"API: Requesting summary info for server '{server_name}'.")
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+
+    try:
+        server = app_context.get_server(server_name)
+        if not server.is_installed():
+            return {
+                "status": "error",
+                "message": f"Server '{server_name}' is not installed.",
+            }
+
+        summary = server.get_summary_info()
+        return {"status": "success", "summary": summary}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error getting summary for server '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": str(e)}
+
+
 @plugin_method("start_server")
 @trigger_plugin_event(before="before_server_start", after="after_server_start")
 def start_server(server_name: str, app_context: AppContext) -> Dict[str, str]:

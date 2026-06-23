@@ -14,7 +14,7 @@ def test_put_permissions_user_input_error(
         lambda: "test-server"
     )
     mock_configure_permission.side_effect = UserInputError("Invalid permission level")
-    response = authenticated_client.put(
+    response = authenticated_client.post(
         "/api/server/test-server/permissions/set",
         json={
             "permissions": [
@@ -40,7 +40,7 @@ def test_put_permissions_bsm_error(mock_configure_permission, authenticated_clie
         lambda: "test-server"
     )
     mock_configure_permission.side_effect = BSMError("Failed to configure permission")
-    response = authenticated_client.put(
+    response = authenticated_client.post(
         "/api/server/test-server/permissions/set",
         json={
             "permissions": [
@@ -68,7 +68,7 @@ def test_get_permissions(authenticated_client, real_bedrock_server):
 
 def test_put_permissions(authenticated_client, real_bedrock_server):
     """Test the configure_permissions_api_route with a successful response."""
-    response = authenticated_client.put(
+    response = authenticated_client.post(
         f"/api/server/{real_bedrock_server.server_name}/permissions/set",
         json={
             "permissions": [

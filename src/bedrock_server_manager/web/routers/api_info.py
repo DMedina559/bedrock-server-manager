@@ -194,12 +194,12 @@ async def get_server_process_info(
         )
 
 
-@router.post(
+@router.put(
     "/api/players/scan",
     response_model=AddPlayersResponse,
     tags=["Global Players", "Player Management", "Application"],
 )
-async def post_scan_players(
+async def put_scan_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -292,12 +292,12 @@ async def get_all_players(
         )
 
 
-@router.post(
+@router.put(
     "/api/downloads/prune",
     response_model=PruneDownloadsResponse,
     tags=["Cleanup", "Downloads"],
 )
-async def post_prune_downloads(
+async def put_prune_downloads(
     payload: PruneDownloadsPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),

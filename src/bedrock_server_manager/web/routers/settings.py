@@ -135,8 +135,8 @@ async def post_set_setting(
 
 
 # --- API Route: Reload Global Settings ---
-@router.post("/api/settings/reload", response_model=SettingsResponse)
-async def post_reload_settings(
+@router.put("/api/settings/reload", response_model=SettingsResponse)
+async def put_reload_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):

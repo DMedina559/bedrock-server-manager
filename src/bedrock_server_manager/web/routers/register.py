@@ -65,7 +65,7 @@ async def generate_token(
     return ActionResponse(
         status="success",
         message="Token generated successfully.",
-        redirect_url=f"/app/users?message=Registration link generated: {registration_link}",
+        registration_url=registration_link,
     )
 
 
@@ -139,7 +139,6 @@ async def register_user(
                 content={
                     "status": "success",
                     "message": "Registration successful. Please log in.",
-                    "redirect_url": "/app/login?message=Registration successful. Please log in.",
                 },
                 status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
             )

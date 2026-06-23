@@ -19,7 +19,7 @@ def test_set_setting_api_route(authenticated_client, app_context):
 
 def test_reload_settings_api_route(authenticated_client, app_context):
     """Test the reload_settings_api_route with a successful response."""
-    response = authenticated_client.post("/api/settings/reload")
+    response = authenticated_client.put("/api/settings/reload")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
@@ -66,6 +66,6 @@ def test_reload_settings_api_route_bsm_error(
     app_context = MagicMock()
     authenticated_client.app.state.app_context = app_context
     mock_reload_settings.side_effect = BSMError("Failed to reload settings")
-    response = authenticated_client.post("/api/settings/reload")
+    response = authenticated_client.put("/api/settings/reload")
     assert response.status_code == 500
     assert "Failed to reload settings" in response.json()["detail"]
