@@ -28,12 +28,6 @@ This documentation is provided mostly for contributors working on the core appli
 
 .. toctree::
    :maxdepth: 2
-   :caption: Utils
-
-   utils
-
-.. toctree::
-   :maxdepth: 2
    :caption: Miscellaneous
 
    misc

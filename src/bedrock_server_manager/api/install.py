@@ -28,6 +28,17 @@ def install_new_server(
     target_version: str = "LATEST",
     server_zip_path: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Installs a new server instance.
+
+    Args:
+        server_name (str): The name for the new server.
+        app_context (AppContext): The application context.
+        target_version (str, optional): The target version to install (default: "LATEST").
+        server_zip_path (Optional[str], optional): Path to a local zip file for installation.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the installation status and message.
+    """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 
@@ -76,6 +87,17 @@ def update_server(
     app_context: AppContext,
     send_message: bool = True,
 ) -> Dict[str, Any]:
+    """Updates an existing server instance.
+
+    Args:
+        server_name (str): The name of the server to update.
+        app_context (AppContext): The application context.
+        send_message (bool, optional): Whether to send a message to players before updating.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the update status, a boolean flag `updated`,
+        and a message.
+    """
     if not _install_update_lock.acquire(timeout=300):
         logger.warning(
             f"An install/update operation for '{server_name}' is already in progress. Skipping."

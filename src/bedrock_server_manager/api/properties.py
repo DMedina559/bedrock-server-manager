@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 @plugin_method("get_properties")
 def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+    """Retrieves the current server properties for a given server.
+
+    Args:
+        server_name (str): The name of the server.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the parsed server properties.
+    """
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
     try:
@@ -43,6 +52,15 @@ def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 def validate_property_value(  # noqa: C901
     property_name: str, value: str
 ) -> Dict[str, str]:
+    """Validates a specific server property value before it gets applied.
+
+    Args:
+        property_name (str): The name of the property to validate.
+        value (str): The proposed value for the property.
+
+    Returns:
+        Dict[str, str]: A dictionary indicating success or validation error message.
+    """
     logger.debug(
         f"API: Validating server property: '{property_name}', Value: '{value}'"
     )
@@ -110,6 +128,17 @@ def set_properties(
     app_context: AppContext,
     restart_after_modify: bool = False,
 ) -> Dict[str, str]:
+    """Sets one or multiple server properties for a given server.
+
+    Args:
+        server_name (str): The name of the server.
+        properties_to_update (Dict[str, str]): A dictionary of property keys and new values.
+        app_context (AppContext): The application context.
+        restart_after_modify (bool, optional): Whether to restart the server if running. Defaults to False.
+
+    Returns:
+        Dict[str, str]: A dictionary with the status and result message.
+    """
     if not server_name:
         raise InvalidServerNameError("Server name required.")
     if not isinstance(properties_to_update, dict):

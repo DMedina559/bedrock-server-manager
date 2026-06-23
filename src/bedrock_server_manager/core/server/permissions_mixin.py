@@ -13,6 +13,8 @@ from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerPermissionsMixin(BedrockServerBaseMixin):
+    """Provides methods for managing the permissions.json configuration."""
+
     def set_player_permission(  # noqa: C901
         self, xuid: str, permission_level: str, player_name: Optional[str] = None
     ) -> None:

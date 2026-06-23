@@ -12,6 +12,8 @@ from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerAllowlistMixin(BedrockServerBaseMixin):
+    """Provides methods for managing the allowlist.json configuration."""
+
     def get_allowlist(self) -> List[Dict[str, Any]]:
         self.logger.debug(
             f"Server '{self.server_name}': Loading allowlist from {self.allowlist_json_path}"
