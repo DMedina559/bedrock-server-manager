@@ -12,7 +12,6 @@ code organization and modularity, allowing for clear separation of concerns.
 from typing import Any, Dict, Optional
 
 from ..config.settings import Settings
-from ..error import ConfigParseError, FileOperationError
 from . import server
 
 
@@ -174,97 +173,32 @@ class BedrockServer(
         )
 
     def get_summary_info(self) -> Dict[str, Any]:
-        """Aggregates and returns a comprehensive summary of the server's current state.
+        """Returns a generic summary of the server's current status and state.
 
-        This method gathers information from various other status and configuration
-        methods of the :class:`~.BedrockServer` instance and consolidates it into a
-        single dictionary. This is particularly useful for API endpoints or UI
-        displays that require a snapshot of the server's status.
-
-        The method attempts to fetch all pieces of information gracefully, logging
-        warnings for parts that cannot be retrieved (e.g., process details if the
-        server isn't running, or world name if not installed) and providing
-        default/error values in such cases.
+        This method provides lightweight data suitable for list views and general
+        snapshots, including details like installation status, running status,
+        version, and active players.
 
         Returns:
-            Dict[str, Any]: A dictionary containing a summary of the server.
+            Dict[str, Any]: A dictionary containing a basic summary of the server.
 
             Key keys include:
-
                 - ``"name"`` (str): The unique name of the server.
-                - ``"server_directory"`` (str): Absolute path to the server's
-                  installation directory.
-                - ``"is_installed"`` (bool): ``True`` if the server files appear
-                  to be installed, ``False`` otherwise.
                 - ``"status"`` (str): A textual description of the server's
                   current status (e.g., "Running", "Stopped", "Not Installed").
-                  Derived from :meth:`~.core.server.state_mixin.ServerStateMixin.get_status`.
-                - ``"is_actually_running_process"`` (bool): ``True`` if a server
-                  process is currently running, based on :meth:`~.core.server.process_mixin.ServerProcessMixin.is_running`.
-                - ``"process_details"`` (Optional[Dict[str, Any]]): Information about
-                  the running process (e.g., PID, CPU, memory) if available,
-                  otherwise ``None``. From :meth:`~.core.server.process_mixin.ServerProcessMixin.get_process_info`.
                 - ``"version"`` (str): The installed version of the Bedrock server,
-                  or "N/A". From :meth:`~.core.server.state_mixin.ServerStateMixin.get_version`.
-                - ``"world_name"`` (str): The name of the currently active world,
-                  "N/A" if not determinable, or an error string if reading fails.
-                  From :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
-                - ``"has_world_icon"`` (bool): ``True`` if a ``world_icon.jpeg``
-                  exists for the active world. From :meth:`~.core.server.world_mixin.ServerWorldMixin.has_world_icon`.
-                - ``"os_type"`` (str): The operating system type (e.g., "Linux", "Windows").
-                - ``"systemd_service_file_exists"`` (Optional[bool]): (Linux-only)
-                  ``True`` if a systemd service file exists, ``False`` if not,
-                  ``None`` if not Linux or check fails.
-                - ``"systemd_service_enabled"`` (Optional[bool]): (Linux-only)
-                  ``True`` if systemd service is enabled, ``False`` if not,
-                  ``None`` if not applicable.
-                - ``"systemd_service_active"`` (Optional[bool]): (Linux-only)
-                  ``True`` if systemd service is active, ``False`` if not,
-                  ``None`` if not applicable.
-
+                  or "N/A".
+                - ``"player_count"`` (int): Current number of active players.
+                - ``"players"`` (List[Dict[str, Any]]): List of connected player details.
         """
         self.logger.debug(f"Gathering summary info for server '{self.server_name}'.")
 
-        # Safely get process information.
-        proc_details = None
-        is_server_running = False
-        try:
-            is_server_running = self.is_running()
-            if is_server_running:
-                proc_details = self.get_process_info()
-        except Exception as e_proc:
-            self.logger.warning(
-                f"Could not get process status/info for '{self.server_name}': {e_proc}"
-            )
-
-        # Safely get world information.
-        world_name_val = "N/A"
-        has_icon_val = False
-        if self.is_installed():
-            try:
-                world_name_val = self.get_world_name()
-                has_icon_val = self.has_world_icon()
-            except (FileOperationError, ConfigParseError) as e_world:
-                self.logger.warning(
-                    f"Error reading world name/icon for '{self.server_name}': {e_world}"
-                )
-                world_name_val = f"Error ({type(e_world).__name__})"
-
-        # Build the main summary dictionary.
         summary = {
             "name": self.server_name,
-            "server_directory": self.server_dir,
-            "is_installed": self.is_installed(),
             "status": self.get_status(),
-            "is_actually_running_process": is_server_running,
-            "process_details": proc_details,
             "version": self.get_version(),
-            "world_name": world_name_val,
-            "has_world_icon": has_icon_val,
-            "os_type": self.os_type,
             "player_count": self.player_count,
             "players": getattr(self, "players", []),
-            "installed_addons": getattr(self, "list_installed_addons", []),
         }
 
         return summary

@@ -28,13 +28,51 @@ from ...error import (
 )
 from ..auth_utils import get_admin_user, get_moderator_user
 from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, CommandPayload, UserResponse
+from ..schemas import ActionResponse, CommandPayload, ServerSchemaResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["Server Mannagement"],
 )
+
+
+@router.get(
+    "/api/server/{server_name}/summary",
+    response_model=ServerSchemaResponse,
+    tags=["Server Information"],
+)
+async def get_server_summary(
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves the basic summary information for a specific server instance.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Get server summary request for '{server_name}' by user '{identity}'."
+    )
+
+    result = server_api.get_server_summary_api(
+        server_name=server_name, app_context=app_context
+    )
+
+    if result.get("status") == "success":
+        summary = result.get("summary", {})
+        return ServerSchemaResponse(
+            name=summary.get("name", server_name),
+            status=summary.get("status", "Unknown"),
+            version=summary.get("version", "Unknown"),
+            player_count=summary.get("player_count", 0),
+            players=summary.get("players", []),
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("message", "Failed to get server summary."),
+        )
 
 
 # --- API Route: Start Server ---

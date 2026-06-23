@@ -112,17 +112,7 @@ def get_servers_data(app_context: AppContext) -> Tuple[List[Dict[str, Any]], Lis
                 )
                 continue
 
-            status = server.get_status()
-            version = server.get_version()
-            servers_data.append(
-                {
-                    "name": server.server_name,
-                    "status": status,
-                    "version": version,
-                    "player_count": server.player_count,
-                    "players": getattr(server, "players", []),
-                }
-            )
+            servers_data.append(server.get_summary_info())
 
         except (FileOperationError, ConfigurationError, InvalidServerNameError) as e:
             msg = f"Could not get info for server '{server_name_candidate}': {e}"
