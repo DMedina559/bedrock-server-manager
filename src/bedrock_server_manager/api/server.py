@@ -260,8 +260,8 @@ def get_all_server_settings(
         return generic_error  # type: ignore[no-any-return]
 
 
-@plugin_method("get_server_summary_api")
-def get_server_summary_api(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+@plugin_method("get_server_summary")
+def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the summary information for a specific server.
 
     This endpoint gets the server summary using the lightweight get_summary_info
