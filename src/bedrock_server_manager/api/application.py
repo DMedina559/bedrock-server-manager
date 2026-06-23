@@ -159,8 +159,6 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     before="before_server_statuses_updated", after="after_server_statuses_updated"
 )
 def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
-    from ..utils import server as server_utils
-
     """Reconciles the status in config files with the runtime state for all servers.
 
     This function calls the core function to get servers data.
@@ -180,6 +178,8 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
         like directory access problems, rather than individual server status update failures,
         which are logged and included in the message if `discovery_errors` occur.)
     """
+    from ..utils import server as server_utils
+
     updated_servers_count = 0
     error_messages = []
     logger.debug("API: Updating all server statuses...")

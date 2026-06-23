@@ -16,6 +16,16 @@ def add_to_allowlist(
     new_players_data: List[Dict[str, Any]],
     app_context: AppContext,
 ) -> Dict[str, Any]:
+    """Adds a list of players to the server's allowlist.
+
+    Args:
+        server_name (str): The name of the server.
+        new_players_data (List[Dict[str, Any]]): List of player dictionaries (with 'name' and 'xuid').
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: Status dictionary containing success or error message.
+    """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
     if not isinstance(new_players_data, list):
@@ -55,6 +65,15 @@ def add_to_allowlist(
 
 @plugin_method("get_allowlist")
 def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+    """Retrieves the current allowlist for a given server.
+
+    Args:
+        server_name (str): The name of the server.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the list of players on the allowlist.
+    """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 
@@ -85,6 +104,17 @@ def remove_from_allowlist(
     player_names: List[str],
     app_context: AppContext,
 ) -> Dict[str, Any]:
+    """Removes a list of players from the server's allowlist.
+
+    Args:
+        server_name (str): The name of the server.
+        player_names (List[str]): List of player names to remove.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: Status dictionary containing success or error message,
+        and details of removed vs not_found players.
+    """
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty.")
 

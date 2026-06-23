@@ -21,6 +21,18 @@ def set_permissions(
     permission: str,
     app_context: AppContext,
 ) -> Dict[str, str]:
+    """Sets a player's permission level for a given server.
+
+    Args:
+        server_name (str): The name of the server.
+        xuid (str): The XUID of the player.
+        player_name (Optional[str]): The name of the player.
+        permission (str): The permission level to grant.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, str]: A dictionary with the status and result message.
+    """
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
@@ -51,6 +63,15 @@ def set_permissions(
 def get_permissions(  # noqa: C901
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
+    """Retrieves the permissions configuration for a server, formatted with player names.
+
+    Args:
+        server_name (str): The name of the server.
+        app_context (AppContext): The application context.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing a list of permission objects.
+    """
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
 

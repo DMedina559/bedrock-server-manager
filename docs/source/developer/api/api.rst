@@ -20,9 +20,14 @@ These APIs provide a safe, consistent, and stable way to manage servers and the 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Server Install & Config
+   :caption: Server Configuration
 
-   server_install_config
+   allowlist
+   ban
+   install
+   permissions
+   properties
+   settings
 
 .. toctree::
    :maxdepth: 2
@@ -67,5 +72,3 @@ These APIs provide a safe, consistent, and stable way to manage servers and the 
    :caption: Miscellaneous
 
    misc
-   info
-   utils

@@ -12,6 +12,8 @@ from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerPropertiesMixin(BedrockServerBaseMixin):
+    """Provides methods for managing the server.properties configuration."""
+
     def set_server_property(  # noqa: C901
         self, property_key: str, property_value: Any
     ) -> None:
