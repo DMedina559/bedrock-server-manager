@@ -157,21 +157,6 @@ class BedrockServer(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."
         )
 
-    def __repr__(self) -> str:
-        """Provides an unambiguous, developer-friendly string representation of the instance.
-
-        This representation is primarily useful for debugging and logging purposes.
-        It includes key identifiers of the server instance such as its name,
-        operating system type, installation directory, and the manager executable path.
-
-        Returns:
-            str: A string representation of the :class:`~.BedrockServer` instance.
-        """
-        return (
-            f"<BedrockServer(name='{self.server_name}', os='{self.os_type}', "
-            f"dir='{self.server_dir}')>"
-        )
-
     def get_summary_info(self) -> Dict[str, Any]:
         """Returns a generic summary of the server's current status and state.
 
