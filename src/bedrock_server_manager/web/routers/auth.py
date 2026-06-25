@@ -96,6 +96,7 @@ async def api_login_for_access_token(
         httponly=True,
         max_age=int(expires_delta.total_seconds()),
         samesite="lax",
+        path="/",
     )
     return TokenResponse(
         access_token=access_token,
@@ -107,7 +108,6 @@ async def api_login_for_access_token(
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
-    response: Response,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
@@ -118,8 +118,14 @@ async def logout(
     username = current_user.username
     logger.info(f"User '{username}' explicitly logged out.")
 
-    response.delete_cookie(key="access_token_cookie")
-    return JSONResponse(
+    response = JSONResponse(
         content={"status": "success", "message": "Successfully logged out."},
         status_code=status.HTTP_200_OK,
     )
+    response.delete_cookie(
+        key="access_token_cookie",
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return response

@@ -96,6 +96,7 @@ async def create_first_user(
                 value=access_token,
                 httponly=True,
                 samesite="lax",
+                path="/",
             )
             return response
 
