@@ -74,18 +74,10 @@ The API relies on Bearer tokens for authentication using the `Authorization` hea
 
 The API endpoints require authentication using a JSON Web Token (JWT).
 How: Obtain a token by sending a POST request to the `/auth/token` endpoint.
-Request Body: Include a JSON payload with username, password, and an optional `remember_me` key (default is `false`). Setting `remember_me` to `true` extends the token expiration.
-
-```json
-{
-    "username": "username",
-    "password": "password",
-    "remember_me": true
-}
-```
+Request Body: Include form data (`application/x-www-form-urlencoded`) with `username`, `password`, and an optional `remember_me` key (default is `false`). Setting `remember_me` to `true` extends the token expiration.
 
 Response: On success, the API returns a JSON object containing the access_token:
-```
+```json
 {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",
@@ -100,8 +92,8 @@ Tokens expiration is configurable via web ui (default: 4 weeks).
 Extract the token from the response. You can use tools like `jq` to parse the JSON output.
 
 ```bash
-curl -X POST -H "Content-Type: application/json" \
-     -d '{"username": "your_username", "password": "your_password", "remember_me": true}' \
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "username=your_username&password=your_password&remember_me=true" \
      http://<your-manager-host>:<port>/auth/token
 ```
 
@@ -110,8 +102,8 @@ curl -X POST -H "Content-Type: application/json" \
 Store the authentication token in a variable.
 
 ```powershell
-$body = @{ username = 'your_username'; password = 'your_password'; remember_me = $true } | ConvertTo-Json
-$response = Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/auth/token" -Body $body -ContentType 'application/json'
+$body = @{ username = 'your_username'; password = 'your_password'; remember_me = $true }
+$response = Invoke-RestMethod -Method Post -Uri "http://<your-manager-host>:<port>/auth/token" -Body $body -ContentType 'application/x-www-form-urlencoded'
 $token = $response.access_token
 ```
 
