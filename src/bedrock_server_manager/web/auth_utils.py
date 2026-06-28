@@ -26,7 +26,6 @@ from fastapi import (
     HTTPException,
     Request,
     Security,
-    WebSocket,
     WebSocketException,
     status,
 )
@@ -168,8 +167,13 @@ async def get_current_user_optional(
     if not token:
         return None
 
+    app_context = request.app.state.app_context
+    return _get_user_from_token(app_context, token)
+
+
+def _get_user_from_token(app_context: AppContext, token: str) -> Optional[UserResponse]:
+    """Helper function to decode a JWT and retrieve the associated user."""
     try:
-        app_context = request.app.state.app_context
         settings = app_context.settings
         JWT_SECRET_KEY = get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
@@ -218,21 +222,17 @@ async def get_current_user(
     return user
 
 
-async def get_current_user_for_websocket(
-    websocket: WebSocket,
-) -> UserResponse:
+def authenticate_websocket_token(app_context: AppContext, token: str) -> UserResponse:
     """
-    FastAPI dependency for authenticating WebSocket connections.
+    Authenticates a WebSocket connection using a provided token.
 
-    This dependency extracts a JWT token from the 'token' query parameter
-    of a WebSocket connection URL. It decodes the token and retrieves
-    the corresponding user from the database.
-
+    This function extracts the user using `_get_user_from_token`.
     If the token is missing, invalid, or the user doesn't exist, it raises
-    a WebSocketException to close the connection gracefully.
+    a WebSocketException to allow the router to close the connection gracefully.
 
     Args:
-        websocket (WebSocket): The WebSocket connection object.
+        app_context (AppContext): The application context.
+        token (str): The JWT access token.
 
     Returns:
         UserResponse: The authenticated user object.
@@ -240,39 +240,20 @@ async def get_current_user_for_websocket(
     Raises:
         WebSocketException: With code 1008 if authentication fails.
     """
-    token = websocket.cookies.get("access_token_cookie") or websocket.query_params.get(
-        "token"
-    )
-
     if not token:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
         )
 
-    try:
-        app_context = websocket.app.state.app_context
-        settings = app_context.settings
-        JWT_SECRET_KEY = get_jwt_secret_key(settings)
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        username: Optional[str] = payload.get("sub")
-        if username is None:
-            raise WebSocketException(
-                code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token payload"
-            )
+    user = _get_user_from_token(app_context, token)
 
-        with app_context.db.session_manager() as db:  # type: ignore
-            user = _get_and_update_user_from_db(db, username)
-            if user is None:
-                raise WebSocketException(
-                    code=status.WS_1008_POLICY_VIOLATION,
-                    reason="User not found or inactive",
-                )
-            return user
-
-    except JWTError:
+    if user is None:
         raise WebSocketException(
-            code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token"
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Invalid token, user not found, or inactive",
         )
+
+    return user
 
 
 # --- Utility for Login Route ---

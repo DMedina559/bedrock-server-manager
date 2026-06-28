@@ -1,10 +1,11 @@
 # bedrock_server_manager/web/routers/websocket_router.py
+import asyncio
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
 
 from ...context import AppContext
-from ..auth_utils import get_current_user_for_websocket
+from ..auth_utils import authenticate_websocket_token
 
 router = APIRouter(
     prefix="/ws",
@@ -20,18 +21,39 @@ async def websocket_endpoint(  # noqa: C901
     """
     Handles WebSocket connections.
 
-    Authentication is performed manually via `get_current_user_for_websocket`.
-    Clients can send JSON messages to subscribe or unsubscribe from topics.
+    Authentication is performed manually on the first message via `authenticate_websocket_token`.
+    Clients must send an authentication message within 5 seconds of connecting:
+    `{"action": "authenticate", "token": "<your_jwt_token>"}`
+
+    After authentication, clients can send JSON messages to subscribe or unsubscribe from topics.
 
     Example messages:
     - `{"action": "subscribe", "topic": "some_topic"}`
     - `{"action": "unsubscribe", "topic": "some_topic"}`
     """
-    # Accept connection first to handle errors gracefully
     await websocket.accept()
+    app_context: AppContext = websocket.app.state.app_context
 
+    # Wait for the first message to authenticate
     try:
-        user = await get_current_user_for_websocket(websocket)
+        data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+        action = data.get("action")
+        token = data.get("token")
+
+        if action != "authenticate" or not token:
+            logger.warning("WebSocket auth failed: Missing authentication message")
+            await websocket.close(code=1008, reason="Missing authentication message")
+            return
+
+        user = authenticate_websocket_token(app_context, token)
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket auth failed: Client disconnected during authentication")
+        return
+    except asyncio.TimeoutError:
+        logger.warning("WebSocket auth failed: Authentication timeout")
+        await websocket.close(code=1008, reason="Authentication timeout")
+        return
     except WebSocketException as e:
         logger.warning(f"WebSocket auth failed: {e.reason}")
         await websocket.close(code=e.code, reason=e.reason)
@@ -41,9 +63,17 @@ async def websocket_endpoint(  # noqa: C901
         await websocket.close(code=1008, reason="Internal Authentication Error")
         return
 
-    app_context: AppContext = websocket.app.state.app_context
     connection_manager = app_context.connection_manager
     client_id = await connection_manager.connect(websocket, user)
+
+    # Send authentication success response
+    await connection_manager.send_to_client(
+        {
+            "status": "success",
+            "message": "Authenticated successfully",
+        },
+        client_id,
+    )
 
     try:
         while True:

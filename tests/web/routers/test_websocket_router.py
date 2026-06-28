@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -50,15 +50,21 @@ async def test_websocket_connection_and_auth(test_app, mock_user):
 
     # Patch where it is imported in websocket.py
     with patch(
-        "bedrock_server_manager.web.routers.websocket.get_current_user_for_websocket",
-        new_callable=AsyncMock,
+        "bedrock_server_manager.web.routers.websocket.authenticate_websocket_token",
     ) as mock_auth:
         mock_auth.return_value = mock_user
 
         try:
             with client.websocket_connect("/ws") as websocket:
+                # Send auth message
+                websocket.send_json({"action": "authenticate", "token": "dummy_token"})
+
+                # Receive success response
+                auth_response = websocket.receive_json()
+                assert auth_response["status"] == "success"
+                assert auth_response["message"] == "Authenticated successfully"
+
                 assert websocket
-                # If the connection is successful, the test passes.
         except Exception as e:
             pytest.fail(f"WebSocket connection failed for authenticated user: {e}")
 
@@ -70,12 +76,16 @@ async def test_websocket_subscription(test_app, mock_user):
     client = TestClient(test_app)
 
     with patch(
-        "bedrock_server_manager.web.routers.websocket.get_current_user_for_websocket",
-        new_callable=AsyncMock,
+        "bedrock_server_manager.web.routers.websocket.authenticate_websocket_token",
     ) as mock_auth:
         mock_auth.return_value = mock_user
 
         with client.websocket_connect("/ws") as websocket:
+            # Authenticate
+            websocket.send_json({"action": "authenticate", "token": "dummy_token"})
+            auth_response = websocket.receive_json()
+            assert auth_response["status"] == "success"
+
             # Subscribe
             topic = "event:test_subscription"
             websocket.send_json({"action": "subscribe", "topic": topic})
