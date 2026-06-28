@@ -139,6 +139,7 @@ exclude_lines = [
 local_scheme = "no-local-version"
 
 [tool.black]
+target-version = ["py311", "py312", "py313", "py314"]
 
 [tool.isort]
 profile = "black"
