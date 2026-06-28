@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -50,14 +50,17 @@ async def test_send_to_user_integration(test_app, test_app_context, mock_user):
     """
     client = TestClient(test_app)
 
-    # Use AsyncMock because the function is awaited
     with patch(
-        "bedrock_server_manager.web.routers.websocket.get_current_user_for_websocket",
-        new_callable=AsyncMock,
+        "bedrock_server_manager.web.routers.websocket.authenticate_websocket_token",
     ) as mock_auth:
         mock_auth.return_value = mock_user
 
         with client.websocket_connect("/ws") as websocket:
+            # Authenticate
+            websocket.send_json({"action": "authenticate", "token": "dummy_token"})
+            auth_response = websocket.receive_json()
+            assert auth_response["status"] == "success"
+
             # Verify auth was called
             mock_auth.assert_called_once()
 
@@ -82,12 +85,16 @@ async def test_wildcard_subscription(test_app, test_app_context, mock_user):
     client = TestClient(test_app)
 
     with patch(
-        "bedrock_server_manager.web.routers.websocket.get_current_user_for_websocket",
-        new_callable=AsyncMock,
+        "bedrock_server_manager.web.routers.websocket.authenticate_websocket_token",
     ) as mock_auth:
         mock_auth.return_value = mock_user
 
         with client.websocket_connect("/ws") as websocket:
+            # Authenticate
+            websocket.send_json({"action": "authenticate", "token": "dummy_token"})
+            auth_response = websocket.receive_json()
+            assert auth_response["status"] == "success"
+
             websocket.send_json({"action": "subscribe", "topic": "*"})
             confirmation = websocket.receive_json()
             assert confirmation["status"] == "success"
