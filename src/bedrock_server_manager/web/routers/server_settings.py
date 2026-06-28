@@ -5,7 +5,7 @@ FastAPI router for managing server-specific settings.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...context import AppContext
 from ...error import (
@@ -15,7 +15,7 @@ from ...error import (
     UserInputError,
 )
 from ..auth_utils import get_admin_user, get_current_user
-from ..dependencies import get_app_context
+from ..dependencies import get_app_context, validate_server_exists
 from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResponse
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ router = APIRouter(
     response_model=ServerSettingsResponse,
 )
 async def get_server_settings(
-    server_name: str = Path(..., description="The name of the server."),
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -70,7 +70,7 @@ async def get_server_settings(
 )
 async def post_set_server_setting(
     payload: ServerSettingItemPayload,
-    server_name: str = Path(..., description="The name of the server."),
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):

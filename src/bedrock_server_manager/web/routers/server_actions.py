@@ -268,7 +268,7 @@ async def post_send_command(
     tags=["Server Installation"],
 )
 async def post_update_server(
-    server_name: str,
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -301,7 +301,7 @@ async def post_update_server(
     tags=["Server Installation"],
 )
 async def delete_server(
-    server_name: str,
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):

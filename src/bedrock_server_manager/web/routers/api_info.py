@@ -150,7 +150,7 @@ async def get_validate_server(
     tags=["Server Management", "Process Info"],
 )
 async def get_server_process_info(
-    server_name: str,
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
