@@ -18,8 +18,8 @@ from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...db.models import RegistrationToken, User
-from ..auth_utils import get_admin_user, get_password_hash
-from ..dependencies import get_app_context
+from ...utils import get_password_hash
+from ..deps import get_admin_user, get_app_context
 from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
 

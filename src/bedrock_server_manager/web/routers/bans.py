@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ...api.ban import add_server_ban_api, get_server_bans_api, remove_server_ban_api
 from ...context import AppContext
-from ..auth_utils import get_admin_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import get_admin_user, get_app_context, validate_server_exists
 from ..schemas.ban import BanAddRequest, BanRemoveRequest
 
 router = APIRouter(

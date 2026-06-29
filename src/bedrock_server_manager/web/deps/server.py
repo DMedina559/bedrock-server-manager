@@ -1,33 +1,12 @@
-# bedrock_server_manager/web/dependencies.py
-"""Defines FastAPI dependencies for use in web route handlers.
-
-Dependencies in FastAPI are a way to share logic, enforce constraints, or
-provide resources to path operation functions. This module centralizes
-common dependencies used across various API routes, such as validating
-the existence of a server instance.
-
-See Also:
-    FastAPI Dependencies: https://fastapi.tiangolo.com/tutorial/dependencies/
-"""
-
 import logging
 
-from fastapi import HTTPException, Path, Request, status
+from fastapi import Depends, HTTPException, Path, status
 
-from ..context import AppContext
-from ..error import InvalidServerNameError
+from ...context import AppContext
+from ...error import InvalidServerNameError
+from .context import get_app_context
 
 logger = logging.getLogger(__name__)
-
-
-def get_app_context(request: Request) -> "AppContext":
-    """
-    FastAPI dependency to get the application context from the request state.
-    """
-    return request.app.state.app_context  # type: ignore
-
-
-from fastapi import Depends  # noqa: E402
 
 
 async def validate_server_exists(
@@ -56,7 +35,7 @@ async def validate_server_exists(
             has an invalid format.
     """
     logger.debug(f"Dependency: Validating existence of server '{server_name}'.")
-    from ..utils import server as server_utils
+    from ...utils import server as server_utils
 
     try:
         server_utils.core_validate_server_name_format(server_name)

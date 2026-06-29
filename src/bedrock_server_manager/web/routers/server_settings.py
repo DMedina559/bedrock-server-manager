@@ -14,8 +14,12 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-from ..auth_utils import get_admin_user, get_current_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import (
+    get_admin_user,
+    get_app_context,
+    get_current_user,
+    validate_server_exists,
+)
 from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResponse
 
 logger = logging.getLogger(__name__)

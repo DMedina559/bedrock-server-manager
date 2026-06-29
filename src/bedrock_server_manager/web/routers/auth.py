@@ -25,12 +25,11 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 from ...context import AppContext
-from ..auth_utils import (
+from ...utils import (
     authenticate_user,
     create_access_token,
-    get_current_user,
 )
-from ..dependencies import get_app_context
+from ..deps import get_app_context, get_current_user
 from ..schemas import TokenResponse, UserResponse
 
 logger = logging.getLogger(__name__)

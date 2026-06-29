@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from .auth_utils import UserResponse
+from .schemas import UserResponse
 
 logger = logging.getLogger(__name__)
 

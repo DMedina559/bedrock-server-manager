@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from ..config import bcm_config, get_installed_version
 from ..context import AppContext
 from . import routers
-from .auth_utils import get_current_user_optional
+from .deps import get_current_user_optional
 
 mimetypes.add_type("application/javascript", ".js")
 

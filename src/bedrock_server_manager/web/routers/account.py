@@ -14,12 +14,11 @@ from fastapi.responses import JSONResponse
 
 from ...context import AppContext
 from ...db.models import User as UserModel
-from ..auth_utils import (
-    get_current_user,
+from ...utils import (
     get_password_hash,
     verify_password,
 )
-from ..dependencies import get_app_context
+from ..deps import get_app_context, get_current_user
 from ..schemas import (
     BaseApiResponse,
     ChangePasswordPayload,

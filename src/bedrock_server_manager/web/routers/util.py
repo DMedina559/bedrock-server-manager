@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 
 from ...context import AppContext
 from ...error import AppFileNotFoundError
-from ..dependencies import get_app_context
+from ..deps import get_app_context
 
 STATIC_DIR = bsm_frontend.get_static_dir()
 

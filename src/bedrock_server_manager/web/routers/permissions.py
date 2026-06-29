@@ -7,8 +7,7 @@ from fastapi.responses import JSONResponse
 from ...api import permissions as permissions_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     PermissionsGetResponse,
     PermissionsSetPayload,
