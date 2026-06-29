@@ -12,8 +12,12 @@ from fastapi.responses import FileResponse
 from ...api import addon as addon_api
 from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import (
+    get_admin_user,
+    get_app_context,
+    get_moderator_user,
+    validate_server_exists,
+)
 from ..schemas.addon import (
     AddonActionPayload,
     AddonListResponse,

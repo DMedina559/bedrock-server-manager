@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from bedrock_server_manager.error import BSMError, UserInputError
-from bedrock_server_manager.web.dependencies import validate_server_exists
+from bedrock_server_manager.web.deps import validate_server_exists
 
 
 @patch("bedrock_server_manager.web.routers.allowlist.allowlist_api.add_to_allowlist")

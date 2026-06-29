@@ -23,8 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from ...api import settings as settings_api
 from ...context import AppContext
 from ...error import BSMError, MissingArgumentError, UserInputError
-from ..auth_utils import get_admin_user
-from ..dependencies import get_app_context
+from ..deps import get_admin_user, get_app_context
 from ..schemas import SettingItemResponse, SettingsResponse, UserResponse
 
 logger = logging.getLogger(__name__)

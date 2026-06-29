@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from bedrock_server_manager.web.dependencies import validate_server_exists
+from bedrock_server_manager.web.deps import validate_server_exists
 
 
 @patch("bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions")

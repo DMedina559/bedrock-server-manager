@@ -1,7 +1,7 @@
 import click
 
 from ..db.models import User
-from ..web.auth_utils import get_password_hash
+from ..utils import get_password_hash
 
 
 @click.command("reset-password", help="Resets the password for a user.")

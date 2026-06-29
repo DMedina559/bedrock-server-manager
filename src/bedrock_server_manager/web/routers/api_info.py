@@ -24,8 +24,13 @@ from ...api import player as player_api
 from ...api import system as system_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import (
+    get_admin_user,
+    get_app_context,
+    get_current_user,
+    get_moderator_user,
+    validate_server_exists,
+)
 from ..schemas import (
     AddPlayersPayload,
     AddPlayersResponse,

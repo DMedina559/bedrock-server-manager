@@ -17,8 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...context import AppContext
 from ...db.models import User
-from ..auth_utils import get_admin_user, get_moderator_user
-from ..dependencies import get_app_context
+from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
 from .audit_log import create_audit_log

@@ -14,11 +14,11 @@ from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...db.models import User
-from ..auth_utils import (
+from ...utils import (
     create_access_token,
     get_password_hash,
 )
-from ..dependencies import get_app_context
+from ..deps import get_app_context
 from ..schemas import SetupStatusResponse, UserLoginPayload
 
 logger = logging.getLogger(__name__)

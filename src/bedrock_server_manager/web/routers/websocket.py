@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
 
 from ...context import AppContext
-from ..auth_utils import authenticate_websocket_token
+from ...utils import authenticate_websocket_token
 
 router = APIRouter(
     prefix="/ws",

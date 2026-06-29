@@ -6,13 +6,15 @@ from fastapi.testclient import TestClient
 from jose import jwt
 
 from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.web.auth_utils import (
+from bedrock_server_manager.utils.auth import (
     ALGORITHM,
     create_access_token,
-    get_current_user,
-    get_current_user_optional,
     get_password_hash,
     verify_password,
+)
+from bedrock_server_manager.web.deps import (
+    get_current_user,
+    get_current_user_optional,
 )
 from bedrock_server_manager.web.routers import auth_router, users_router
 from bedrock_server_manager.web.schemas import UserResponse
@@ -51,7 +53,7 @@ def test_verify_password():
 
 def test_create_access_token(app_context):
     """Test access token creation."""
-    from bedrock_server_manager.web.auth_utils import get_jwt_secret_key
+    from bedrock_server_manager.utils import get_jwt_secret_key
 
     access_token = create_access_token(
         app_context,

@@ -25,8 +25,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     ActionResponse,
     BackupActionPayload,

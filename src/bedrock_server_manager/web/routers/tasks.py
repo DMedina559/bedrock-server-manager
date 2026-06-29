@@ -2,8 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ...context import AppContext
-from ..auth_utils import get_current_user
-from ..dependencies import get_app_context
+from ..deps import get_app_context, get_current_user
 from ..schemas import UserResponse
 
 router = APIRouter(tags=["Background Tasks"])

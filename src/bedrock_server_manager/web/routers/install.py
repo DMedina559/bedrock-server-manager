@@ -8,8 +8,7 @@ from ...api import server as server_api
 from ...context import AppContext
 from ...core.system import find_files
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_moderator_user
-from ..dependencies import get_app_context
+from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import (
     CustomZipsResponse,
     InstallServerPayload,

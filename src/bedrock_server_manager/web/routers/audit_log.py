@@ -10,8 +10,7 @@ from fastapi import APIRouter, Depends
 
 from ...context import AppContext
 from ...db.models import AuditLog
-from ..auth_utils import get_admin_user
-from ..dependencies import get_app_context
+from ..deps import get_admin_user, get_app_context
 from ..schemas import AuditLogResponse, UserResponse
 
 logger = logging.getLogger(__name__)

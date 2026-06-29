@@ -22,8 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from ...api import plugins as plugins_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_current_user
-from ..dependencies import get_app_context
+from ..deps import get_admin_user, get_app_context, get_current_user
 from ..schemas import (
     ActionResponse,
     PluginPagesResponse,
