@@ -58,13 +58,13 @@ First, install the main application package from PyPI:
 pip install --upgrade bedrock-server-manager
 ```
 
-#### (Optional) Install the API Client for CLI Management
+#### (Optional) Install the CLI Client for CLI Management
 
 To manage your servers from the command line, install the optional API client:
 ```bash
-pip install --upgrade "bsm-api-client[cli]"
+pip install --upgrade "bsm-cli"
 ```
-This provides the `bsm-api-client` command, which allows you to perform various tasks via the API.
+This provides the `bsm-cli` command, which allows you to perform various tasks via the API.
 
 > See the [Installation Guide](../extras/installation.md) for beta or development versions.
 
@@ -106,7 +106,7 @@ Bedrock Server Manager is a powerful tool for managing Minecraft Bedrock Dedicat
 
 -   [Web Usage](../web/general.md): Discover how to use the web interface for server management.
 -   [CLI Commands](../cli/commands.rst): View what commands are available for the core application.
--   [API Client CLI Commands](../cli/api_client_commands.rst): View what commands are available in the `bsm-api-client` package.
+-   [API Client CLI Commands](../cli/api_client_commands.rst): View what commands are available in the `bsm-cli` package.
 -   [Plugins](../plugins/introduction.md): Explore how to extend the functionality of Bedrock Server Manager with custom plugins.
 -   [Changelog](../changelog.md): Stay updated with the latest changes and improvements in each release.
 -   [Troubleshooting](./troubleshooting.md): Find solutions to common issues.

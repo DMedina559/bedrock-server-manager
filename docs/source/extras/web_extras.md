@@ -57,8 +57,6 @@ The `bsm-api-client` is an asynchronous Python library for interacting with the 
 
 This library allows developers to programmatically manage their Minecraft Bedrock servers. It is ideal for automating administrative tasks, building custom control panels, or integrating BSM into other systems and workflows.
 
-It also provides a Command-Line Interface (CLI), allowing you to execute commands on the BSM web server from a local or remote machine.
-
 - **Repository**: [https://github.com/DMedina559/bsm-api-client](https://github.com/DMedina559/bsm-api-client)
 
 ## Home Assistant Integration
