@@ -1,4 +1,3 @@
-# bedrock_server_manager/core/server/installation_mixin.py
 """Provides the :class:`.ServerInstallationMixin` for the :class:`~.core.bedrock_server.BedrockServer` class.
 
 This mixin is focused on aspects of a server's lifecycle that involve its
@@ -64,7 +63,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         multiple inheritance. It depends on attributes initialized by
         :class:`.BedrockServerBaseMixin` and assumes methods from other mixins
         (like :meth:`~.ServerProcessMixin.is_running` and :meth:`~.ServerProcessMixin.stop`)
-        will be available on the composed :class:`~.core.bedrock_server.BedrockServer` object.
+        will be available on the final composed :class:`~.core.bedrock_server.BedrockServer` object.
 
         Args:
             *args (Any): Variable length argument list passed to `super()`.
@@ -225,6 +224,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
                 3. The server's entire backup directory (derived from ``paths.backups`` setting).
                 4. The server's PID file.
+                5. Database entries related to the server (e.g. Server and ServerBan records).
 
         The method will attempt to stop a running server (using ``self.stop()``,
         expected from :class:`~.ServerProcessMixin`) before proceeding with deletions.
@@ -350,9 +350,9 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 f"Successfully deleted all data for server: '{self.server_name}'."
             )
 
-            # Remove server and settings from the database
+            # Remove server and associated bans/settings from the database
             if self.settings.db is not None:
-                from ...db.models import Server, Setting
+                from ...db.models import Server, ServerBan
 
                 with self.settings.db.session_manager() as db_session:
                     db_server = (
@@ -361,11 +361,14 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                         .first()
                     )
                     if db_server:
-                        db_session.query(Setting).filter(
-                            Setting.server_id == db_server.id
+                        # Clear associated bans first to prevent foreign key errors
+                        db_session.query(ServerBan).filter(
+                            ServerBan.server_id == db_server.id
                         ).delete()
+
+                        # Delete the server record (which also drops 'custom' settings JSON column)
                         db_session.delete(db_server)
                         db_session.commit()
                         self.logger.info(
-                            f"Successfully deleted server '{self.server_name}' from the database."
+                            f"Successfully deleted server '{self.server_name}' and its associated data from the database."
                         )
