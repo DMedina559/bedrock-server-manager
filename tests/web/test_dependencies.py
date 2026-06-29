@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-from bedrock_server_manager.web.dependencies import validate_server_exists
+from bedrock_server_manager.web.deps import validate_server_exists
 
 # Test data
 TEST_SERVER_NAME = "test-server"

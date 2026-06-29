@@ -8,13 +8,15 @@ from fastapi.testclient import TestClient
 
 from bedrock_server_manager.core.bedrock_server import BedrockServer
 from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.web.app import create_web_app
-from bedrock_server_manager.web.auth_utils import (
+from bedrock_server_manager.utils.auth import (
     create_access_token,
-    get_current_user_optional,
     get_password_hash,
 )
-from bedrock_server_manager.web.dependencies import validate_server_exists
+from bedrock_server_manager.web.app import create_web_app
+from bedrock_server_manager.web.deps import (
+    get_current_user_optional,
+    validate_server_exists,
+)
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))

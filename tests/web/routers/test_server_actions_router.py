@@ -1,6 +1,6 @@
 from unittest.mock import ANY, patch
 
-from bedrock_server_manager.web.dependencies import validate_server_exists
+from bedrock_server_manager.web.deps import validate_server_exists
 
 
 def test_start_server_route(authenticated_client, real_bedrock_server):

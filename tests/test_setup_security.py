@@ -2,8 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.db.models import User
+from bedrock_server_manager.utils import get_password_hash
 from bedrock_server_manager.web.app import create_web_app
-from bedrock_server_manager.web.auth_utils import get_password_hash
 
 
 @pytest.fixture

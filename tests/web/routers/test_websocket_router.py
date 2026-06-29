@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.web.auth_utils import UserResponse
 from bedrock_server_manager.web.routers.websocket import router as websocket
+from bedrock_server_manager.web.schemas import UserResponse
 from bedrock_server_manager.web.websocket_manager import ConnectionManager
 
 # Mark all tests in this module as asyncio
