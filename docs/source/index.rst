@@ -34,9 +34,10 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
-   :caption: Changelog
+   :caption: CLI Commands
 
-   changelog
+   cli/commands
+   cli/api_client_commands
 
 .. toctree::
    :maxdepth: 2
@@ -51,10 +52,9 @@ Browse through the sections below to find various information about Bedrock Serv
 
 .. toctree::
    :maxdepth: 2
-   :caption: CLI Commands
+   :caption: Changelog
 
-   cli/commands
-   cli/api_client_commands
+   changelog
 
 .. toctree::
    :maxdepth: 2
