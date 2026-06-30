@@ -35,8 +35,8 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from ..utils import get_timestamp
 from .server import server_lifecycle_manager
 
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 _world_lock = threading.RLock()
 
 
-@plugin_method("get_world_name")
+@api_method("get_world_name")
 def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
@@ -98,8 +98,8 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@plugin_method("export_world")
-@trigger_plugin_event(before="before_world_export", after="after_world_export")
+@api_method("export_world")
+@trigger_app_event(before="before_world_export", after="after_world_export")
 def export_world(
     server_name: str,
     app_context: AppContext,
@@ -215,8 +215,8 @@ def export_world(
         _world_lock.release()
 
 
-@plugin_method("import_world")
-@trigger_plugin_event(before="before_world_import", after="after_world_import")
+@api_method("import_world")
+@trigger_app_event(before="before_world_import", after="after_world_import")
 def import_world(
     server_name: str,
     selected_file_path: str,
@@ -322,7 +322,7 @@ def import_world(
         _world_lock.release()
 
 
-@trigger_plugin_event(before="before_world_reset", after="after_world_reset")
+@trigger_app_event(before="before_world_reset", after="after_world_reset")
 def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 

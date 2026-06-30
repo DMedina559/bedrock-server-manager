@@ -36,8 +36,8 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 _backup_restore_lock = threading.RLock()
 
 
-@plugin_method("list_backup_files")
+@api_method("list_backup_files")
 def list_backup_files(
     server_name: str, backup_type: str, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -96,8 +96,8 @@ def list_backup_files(
         return {"status": "error", "message": "An unexpected server error occurred."}
 
 
-@plugin_method("backup_world")
-@trigger_plugin_event(before="before_backup", after="after_backup")
+@api_method("backup_world")
+@trigger_app_event(before="before_backup", after="after_backup")
 def backup_world(
     server_name: str,
     app_context: AppContext,
@@ -181,8 +181,8 @@ def backup_world(
         _backup_restore_lock.release()
 
 
-@plugin_method("backup_config_file")
-@trigger_plugin_event(before="before_backup", after="after_backup")
+@api_method("backup_config_file")
+@trigger_app_event(before="before_backup", after="after_backup")
 def backup_config_file(
     server_name: str,
     file_to_backup: str,
@@ -277,8 +277,8 @@ def backup_config_file(
         _backup_restore_lock.release()
 
 
-@plugin_method("backup_all")
-@trigger_plugin_event(before="before_backup", after="after_backup")
+@api_method("backup_all")
+@trigger_app_event(before="before_backup", after="after_backup")
 def backup_all(
     server_name: str,
     app_context: AppContext,
@@ -365,8 +365,8 @@ def backup_all(
         _backup_restore_lock.release()
 
 
-@plugin_method("restore_all")
-@trigger_plugin_event(before="before_restore", after="after_restore")
+@api_method("restore_all")
+@trigger_app_event(before="before_restore", after="after_restore")
 def restore_all(
     server_name: str,
     app_context: AppContext,
@@ -466,8 +466,8 @@ def restore_all(
         _backup_restore_lock.release()
 
 
-@plugin_method("restore_world")
-@trigger_plugin_event(before="before_restore", after="after_restore")
+@api_method("restore_world")
+@trigger_app_event(before="before_restore", after="after_restore")
 def restore_world(
     server_name: str,
     backup_file_path: str,
@@ -567,8 +567,8 @@ def restore_world(
         _backup_restore_lock.release()
 
 
-@plugin_method("restore_config_file")
-@trigger_plugin_event(before="before_restore", after="after_restore")
+@api_method("restore_config_file")
+@trigger_app_event(before="before_restore", after="after_restore")
 def restore_config_file(
     server_name: str,
     backup_file_path: str,
@@ -670,8 +670,8 @@ def restore_config_file(
         _backup_restore_lock.release()
 
 
-@plugin_method("prune_old_backups")
-@trigger_plugin_event(before="before_prune_backups", after="after_prune_backups")
+@api_method("prune_old_backups")
+@trigger_app_event(before="before_prune_backups", after="after_prune_backups")
 def prune_old_backups(  # noqa: C901
     server_name: str, app_context: AppContext
 ) -> Dict[str, str]:

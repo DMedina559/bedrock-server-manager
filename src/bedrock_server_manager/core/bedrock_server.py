@@ -9,7 +9,10 @@ each contributing a distinct set of features. This compositional approach promot
 code organization and modularity, allowing for clear separation of concerns.
 """
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from ..context import AppContext
 
 from ..config.settings import Settings
 from . import server
@@ -127,7 +130,10 @@ class BedrockServer(
     """
 
     def __init__(
-        self, server_name: str, settings_instance: Optional[Settings] = None
+        self,
+        server_name: str,
+        settings_instance: Optional[Settings] = None,
+        app_context: Optional["AppContext"] = None,
     ) -> None:
         """Initializes a BedrockServer instance.
 
@@ -152,6 +158,7 @@ class BedrockServer(
         super().__init__(
             server_name=server_name,
             settings_instance=settings_instance,
+            app_context=app_context,
         )
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."

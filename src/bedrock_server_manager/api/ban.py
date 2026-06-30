@@ -4,14 +4,14 @@ from typing import Any, Dict, Optional
 from ..context import AppContext
 from ..db.models import Server, ServerBan
 from ..error import UserInputError
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("add_server_ban_api")
-@trigger_plugin_event(before="before_add_server_ban", after="after_add_server_ban")
+@api_method("add_server_ban_api")
+@trigger_app_event(before="before_add_server_ban", after="after_add_server_ban")
 def add_server_ban_api(
     app_context: AppContext,
     server_name: str,
@@ -64,9 +64,7 @@ def add_server_ban_api(
         }
 
 
-@trigger_plugin_event(
-    before="before_remove_server_ban", after="after_remove_server_ban"
-)
+@trigger_app_event(before="before_remove_server_ban", after="after_remove_server_ban")
 def remove_server_ban_api(
     app_context: AppContext, server_name: str, xuid: str
 ) -> Dict[str, Any]:
@@ -104,7 +102,7 @@ def remove_server_ban_api(
         return {"status": "success", "message": f"Ban removed successfully."}
 
 
-@plugin_method("get_server_bans_api")
+@api_method("get_server_bans_api")
 def get_server_bans_api(app_context: AppContext, server_name: str) -> Dict[str, Any]:
     """Retrieves all bans for a specific server."""
     if not server_name:

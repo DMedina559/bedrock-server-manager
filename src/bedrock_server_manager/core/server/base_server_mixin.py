@@ -13,7 +13,10 @@ import logging
 import os
 import platform
 from functools import cached_property
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from ...context import AppContext
 
 from ...config.settings import Settings
 from ...error import ConfigurationError, MissingArgumentError
@@ -51,6 +54,7 @@ class BedrockServerBaseMixin:
         server_name: str,
         settings_instance: Settings,
         *args: Any,
+        app_context: Optional["AppContext"] = None,
         **kwargs: Any,
     ) -> None:
         """Initializes the base attributes for a Bedrock server instance.

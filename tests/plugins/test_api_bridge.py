@@ -5,7 +5,7 @@ import pytest
 from bedrock_server_manager.plugins.api_bridge import (
     PluginAPI,
     _api_registry,
-    plugin_method,
+    api_method,
 )
 
 
@@ -17,26 +17,26 @@ def clear_api_registry():
     _api_registry.clear()
 
 
-def test_plugin_method_decorator():
-    """Tests that the plugin_method decorator correctly registers a function."""
+def test_api_method_decorator():
+    """Tests that the api_method decorator correctly registers a function."""
 
-    @plugin_method("my_test_api")
+    @api_method("my_test_api")
     def my_test_function():
         return "hello"
 
     assert "my_test_api" in _api_registry
-    assert _api_registry["my_test_api"] == my_test_function
+    assert _api_registry["my_test_api"][0] == my_test_function
     assert my_test_function() == "hello"
 
 
-def test_plugin_method_decorator_overwrite_warning(caplog):
-    """Tests that the plugin_method decorator logs a warning when overwriting an API."""
+def test_api_method_decorator_overwrite_warning(caplog):
+    """Tests that the api_method decorator logs a warning when overwriting an API."""
 
-    @plugin_method("my_test_api")
+    @api_method("my_test_api")
     def my_test_function():
         return "hello"
 
-    @plugin_method("my_test_api")
+    @api_method("my_test_api")
     def my_new_test_function():
         return "world"
 
@@ -64,7 +64,7 @@ class TestPluginAPI:
     def test_getattr_success(self, plugin_api):
         """Tests that __getattr__ successfully retrieves a registered API function."""
 
-        @plugin_method("my_test_api")
+        @api_method("my_test_api")
         def my_test_function():
             return "hello"
 
@@ -78,7 +78,7 @@ class TestPluginAPI:
     def test_list_available_apis(self, plugin_api):
         """Tests that list_available_apis returns a correct list of registered APIs."""
 
-        @plugin_method("my_test_api")
+        @api_method("my_test_api")
         def my_test_function(param1: str, param2: int = 5) -> str:
             """This is a test function."""
             return f"{param1}, {param2}"

@@ -13,8 +13,8 @@ from typing import Dict, Optional
 from ..context import AppContext
 from ..core import prune_old_downloads
 from ..error import BSMError, MissingArgumentError, UserInputError
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 _misc_lock = threading.RLock()
 
 
-@plugin_method("prune_download_cache")
-@trigger_plugin_event(
+@api_method("prune_download_cache")
+@trigger_app_event(
     before="before_prune_download_cache", after="after_prune_download_cache"
 )
 def prune_download_cache(  # noqa: C901

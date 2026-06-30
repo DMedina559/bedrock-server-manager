@@ -32,8 +32,8 @@ from ..error import (
     SendCommandError,
     ServerNotRunningError,
 )
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from ..utils import list_content_files
 from .server import server_lifecycle_manager
 
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 _addon_lock = threading.RLock()
 
 
-@plugin_method("list_available_addons")
+@api_method("list_available_addons")
 def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
@@ -73,8 +73,8 @@ def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-@plugin_method("import_addon")
-@trigger_plugin_event(before="before_addon_import", after="after_addon_import")
+@api_method("import_addon")
+@trigger_app_event(before="before_addon_import", after="after_addon_import")
 def import_addon(  # noqa: C901
     server_name: str,
     addon_file_path: str,
@@ -208,7 +208,7 @@ def import_addon(  # noqa: C901
         _addon_lock.release()
 
 
-@plugin_method("list_installed_addons")
+@api_method("list_installed_addons")
 def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Lists all addons for a server's active world.
 
@@ -223,8 +223,8 @@ def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str
     return {"status": "success", "addons": server.list_installed_addons()}
 
 
-@plugin_method("enable_addon")
-@trigger_plugin_event(before="before_addon_enable", after="after_addon_enable")
+@api_method("enable_addon")
+@trigger_app_event(before="before_addon_enable", after="after_addon_enable")
 def enable_addon(
     server_name: str,
     pack_uuid: str,
@@ -278,8 +278,8 @@ def enable_addon(
         _addon_lock.release()
 
 
-@plugin_method("disable_addon")
-@trigger_plugin_event(before="before_addon_disable", after="after_addon_disable")
+@api_method("disable_addon")
+@trigger_app_event(before="before_addon_disable", after="after_addon_disable")
 def disable_addon(
     server_name: str,
     pack_uuid: str,
@@ -333,7 +333,7 @@ def disable_addon(
         _addon_lock.release()
 
 
-@trigger_plugin_event(
+@trigger_app_event(
     before="before_addon_subpack_update", after="after_addon_subpack_update"
 )
 def update_subpack(
@@ -393,7 +393,7 @@ def update_subpack(
         _addon_lock.release()
 
 
-@trigger_plugin_event(before="before_addon_uninstall", after="after_addon_uninstall")
+@trigger_app_event(before="before_addon_uninstall", after="after_addon_uninstall")
 def uninstall_addon(
     server_name: str,
     pack_uuid: str,
@@ -447,8 +447,8 @@ def uninstall_addon(
         _addon_lock.release()
 
 
-@plugin_method("reorder_addons")
-@trigger_plugin_event(before="before_addon_reorder", after="after_addon_reorder")
+@api_method("reorder_addons")
+@trigger_app_event(before="before_addon_reorder", after="after_addon_reorder")
 def reorder_addons(
     server_name: str,
     uuids: list[str],

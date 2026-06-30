@@ -3,14 +3,14 @@ from typing import Any, Dict, List
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError, MissingArgumentError
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("add_to_allowlist")
-@trigger_plugin_event(before="before_allowlist_change", after="after_allowlist_change")
+@api_method("add_to_allowlist")
+@trigger_app_event(before="before_allowlist_change", after="after_allowlist_change")
 def add_to_allowlist(
     server_name: str,
     new_players_data: List[Dict[str, Any]],
@@ -63,7 +63,7 @@ def add_to_allowlist(
         }
 
 
-@plugin_method("get_allowlist")
+@api_method("get_allowlist")
 def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the current allowlist for a given server.
 
@@ -97,8 +97,8 @@ def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@plugin_method("remove_from_allowlist")
-@trigger_plugin_event(before="before_allowlist_change", after="after_allowlist_change")
+@api_method("remove_from_allowlist")
+@trigger_app_event(before="before_allowlist_change", after="after_allowlist_change")
 def remove_from_allowlist(
     server_name: str,
     player_names: List[str],

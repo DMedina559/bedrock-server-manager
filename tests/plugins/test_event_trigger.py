@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from bedrock_server_manager.plugins.event_trigger import trigger_plugin_event
+from bedrock_server_manager.plugins.event_trigger import trigger_app_event
 
 
 @pytest.fixture
@@ -20,8 +20,8 @@ def app_context():
     return mock_context
 
 
-def test_trigger_plugin_event_sync(app_context):
-    @trigger_plugin_event(before="before_sync", after="after_sync")
+def test_trigger_app_event_sync(app_context):
+    @trigger_app_event(before="before_sync", after="after_sync")
     def my_sync_func(app_context, a, b=10):
         return a + b
 
@@ -55,8 +55,8 @@ def test_trigger_plugin_event_sync(app_context):
 
 
 @pytest.mark.asyncio
-async def test_trigger_plugin_event_async(app_context):
-    @trigger_plugin_event(before="before_async", after="after_async")
+async def test_trigger_app_event_async(app_context):
+    @trigger_app_event(before="before_async", after="after_async")
     async def my_async_func(app_context, a, b=20):
         await asyncio.sleep(0)  # Simulate async operation
         return a + b
@@ -89,8 +89,8 @@ async def test_trigger_plugin_event_async(app_context):
     )
 
 
-def test_trigger_plugin_event_no_args(app_context):
-    @trigger_plugin_event
+def test_trigger_app_event_no_args(app_context):
+    @trigger_app_event
     def my_func(app_context):
         return "done"
 
@@ -99,8 +99,8 @@ def test_trigger_plugin_event_no_args(app_context):
     app_context.connection_manager.broadcast_to_topic.assert_not_called()
 
 
-def test_trigger_plugin_event_only_before(app_context):
-    @trigger_plugin_event(before="only_before")
+def test_trigger_app_event_only_before(app_context):
+    @trigger_app_event(before="only_before")
     def my_func(app_context):
         pass
 
@@ -111,8 +111,8 @@ def test_trigger_plugin_event_only_before(app_context):
     app_context.connection_manager.broadcast_to_topic.assert_called_once()
 
 
-def test_trigger_plugin_event_only_after(app_context):
-    @trigger_plugin_event(after="only_after")
+def test_trigger_app_event_only_after(app_context):
+    @trigger_app_event(after="only_after")
     def my_func(app_context):
         return "finished"
 

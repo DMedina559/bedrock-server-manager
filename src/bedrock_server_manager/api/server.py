@@ -12,7 +12,7 @@ The functions within this module are designed to return structured dictionary
 responses, making them suitable for consumption by web API routes, command-line
 interface (CLI) commands, or other parts of the application. This module also
 integrates with the plugin system by exposing many of its functions as callable
-APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`)
+APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.api_method`)
 and by triggering various plugin events during server operations.
 """
 
@@ -32,13 +32,13 @@ from ..error import (
     ServerError,
     ServerStartError,
 )
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("get_server_setting")
+@api_method("get_server_setting")
 def get_server_setting(
     server_name: str, key: str, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -91,9 +91,7 @@ def get_server_setting(
         return generic_error
 
 
-@trigger_plugin_event(
-    before="before_set_server_setting", after="after_set_server_setting"
-)
+@trigger_app_event(before="before_set_server_setting", after="after_set_server_setting")
 def set_server_setting(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -152,7 +150,7 @@ def set_server_setting(
         return generic_error
 
 
-@plugin_method("set_server_custom_value")
+@api_method("set_server_custom_value")
 def set_server_custom_value(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -210,7 +208,7 @@ def set_server_custom_value(
         return generic_error
 
 
-@plugin_method("get_all_server_settings")
+@api_method("get_all_server_settings")
 def get_all_server_settings(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -260,7 +258,7 @@ def get_all_server_settings(
         return generic_error  # type: ignore[no-any-return]
 
 
-@plugin_method("get_server_summary")
+@api_method("get_server_summary")
 def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the summary information for a specific server.
 
@@ -298,9 +296,9 @@ def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, A
         return {"status": "error", "message": str(e)}
 
 
-@plugin_method("start_server")
-@trigger_plugin_event(before="before_server_start", after="after_server_start")
-def start_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
+@api_method("start_server")
+@trigger_app_event(before="before_server_start", after="after_server_start")
+def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -342,8 +340,8 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, str]:
         }
 
 
-@plugin_method("stop_server")
-@trigger_plugin_event(before="before_server_stop", after="after_server_stop")
+@api_method("stop_server")
+@trigger_app_event(before="before_server_stop", after="after_server_stop")
 def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Stops the specified Bedrock server.
 
@@ -390,6 +388,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         return {
             "status": "success",
             "message": f"Server '{server_name}' stopped successfully.",
+            "server_name": server_name,
         }  # type: ignore[no-any-return]
     except BSMError as e:
         logger.error(f"API: Failed to stop server '{server_name}': {e}", exc_info=True)
@@ -418,7 +417,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
                 )
 
 
-@plugin_method("restart_server")
+@api_method("restart_server")
 def restart_server(  # noqa: C901
     server_name: str,
     app_context: AppContext,
@@ -520,8 +519,8 @@ def restart_server(  # noqa: C901
         return {"status": "error", "message": f"Unexpected error during restart: {e}"}
 
 
-@plugin_method("send_command")
-@trigger_plugin_event(before="before_command_send", after="after_command_send")
+@api_method("send_command")
+@trigger_app_event(before="before_command_send", after="after_command_send")
 def send_command(
     server_name: str, command: str, app_context: AppContext
 ) -> Dict[str, str]:
@@ -601,9 +600,7 @@ def send_command(
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
 
-@trigger_plugin_event(
-    before="before_delete_server_data", after="after_delete_server_data"
-)
+@trigger_app_event(before="before_delete_server_data", after="after_delete_server_data")
 def delete_server_data(
     server_name: str,
     app_context: AppContext,
@@ -695,7 +692,7 @@ def delete_server_data(
         }
 
 
-@plugin_method("server_lifecycle_manager")
+@api_method("server_lifecycle_manager")
 @contextmanager
 def server_lifecycle_manager(
     server_name: str,
@@ -780,3 +777,46 @@ def server_lifecycle_manager(
                     # becomes the primary error to report.
                     if operation_succeeded:
                         raise
+
+
+@api_method("set_server_status_api", expose_to_plugins=False)
+@trigger_app_event(
+    before="before_server_status_change", after="after_server_status_change"
+)
+def set_server_status_api(
+    server_name: str, status: str, app_context: "AppContext"
+) -> Dict[str, Any]:
+    """Internal API to set server status and trigger events."""
+    server = app_context.get_server(server_name)
+    previous_status = server.get_status_from_config()
+
+    server._manage_json_config(
+        key="server_info.status", operation="write", value=status
+    )
+    server.logger.info(
+        f"Status in JSON config for '{server.server_name}' set to '{status}'."
+    )
+
+    return {
+        "status": "success",
+        "message": f"Server status set to {status}.",
+        "server_name": server_name,
+        "previous_status": previous_status,
+        "new_status": status,
+    }
+
+
+@api_method("update_server_player_stats_api", expose_to_plugins=False)
+@trigger_app_event(
+    before="before_server_statuses_updated", after="after_server_statuses_updated"
+)
+def update_server_player_stats_api(
+    server_name: str, player_count: int, players: list, app_context: "AppContext"
+) -> Dict[str, Any]:
+    """Internal API to trigger player stat updates for websockets/plugins."""
+    return {
+        "status": "success",
+        "server_name": server_name,
+        "player_count": player_count,
+        "players": players,
+    }

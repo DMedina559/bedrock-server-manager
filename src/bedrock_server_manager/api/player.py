@@ -27,14 +27,14 @@ from ..core.player import (
     save_player_data,
 )
 from ..error import BSMError, UserInputError
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("add_players_manually_api")
-@trigger_plugin_event(before="before_players_add", after="after_players_add")
+@api_method("add_players_manually_api")
+@trigger_app_event(before="before_players_add", after="after_players_add")
 def add_players_manually_api(
     player_strings: List[str],
     app_context: AppContext,
@@ -108,7 +108,7 @@ def add_players_manually_api(
         }
 
 
-@plugin_method("get_all_known_players_api")
+@api_method("get_all_known_players_api")
 def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves all player data from the database.
 
@@ -136,8 +136,8 @@ def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@plugin_method("scan_and_update_player_db_api")
-@trigger_plugin_event(before="before_player_db_scan", after="after_player_db_scan")
+@api_method("scan_and_update_player_db_api")
+@trigger_app_event(before="before_player_db_scan", after="after_player_db_scan")
 def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, Any]:
     """Scans all server logs to discover and save player data.
 

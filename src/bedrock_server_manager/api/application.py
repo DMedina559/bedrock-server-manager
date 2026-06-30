@@ -15,7 +15,7 @@ Key functionalities include:
       using :func:`~.get_all_servers_data`.
 
 These functions are exposed to the plugin system via
-:func:`~bedrock_server_manager.plugins.api_bridge.plugin_method` and are
+:func:`~bedrock_server_manager.plugins.api_bridge.api_method` and are
 intended for use by UIs, CLIs, or other high-level components.
 """
 
@@ -25,14 +25,13 @@ from typing import Any, Dict
 from ..config import const as config_const
 from ..context import AppContext
 from ..error import BSMError, FileError
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
 from ..utils import list_content_files
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("list_available_worlds_api")
+@api_method("list_available_worlds_api")
 def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
@@ -60,7 +59,7 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-@plugin_method("get_all_servers_data")
+@api_method("get_all_servers_data")
 def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
@@ -128,7 +127,7 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
-@plugin_method("get_system_and_app_info")
+@api_method("get_system_and_app_info")
 def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves basic system and application information.
 
@@ -155,9 +154,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
-@trigger_plugin_event(
-    before="before_server_statuses_updated", after="after_server_statuses_updated"
-)
+# Handled internally by core APIs so we don't duplicate the event.
 def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 

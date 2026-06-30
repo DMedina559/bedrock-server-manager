@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 # Values are the actual callable functions from the core application.
 # This registry is populated at runtime by the `plugin_api` function,
 # typically during the application's initialization phase.
-_api_registry: Dict[str, Callable[..., Any]] = {}
+_api_registry: Dict[str, tuple[Callable[..., Any], bool]] = {}
 
 # Type variable for annotating the decorated function, preserving its signature.
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def plugin_method(name: str) -> Callable[[F], F]:
+def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
     """Decorator to register a function with the PluginAPI bridge.
 
     This decorator registers the decorated function in the ``_api_registry``
@@ -81,10 +81,10 @@ def plugin_method(name: str) -> Callable[[F], F]:
                 f"while registering '{func.__module__}.{func.__name__}'. "
                 "This may be intentional (e.g., overriding a default) or a naming conflict."
             )
-        _api_registry[name] = func
+        _api_registry[name] = (func, expose_to_plugins)
         logger.debug(
             f"API Registration (decorator): Core API function '{func.__module__}.{func.__name__}' "
-            f"successfully registered as '{name}'."
+            f"successfully registered as '{name}' (expose_to_plugins={expose_to_plugins})."
         )
         return func  # Return the original function, unmodified.
 
@@ -204,9 +204,17 @@ class PluginAPI:
             )
             raise AttributeError(
                 f"The API function '{name}' has not been registered or does not exist. "
-                f"Available APIs: {list(_api_registry.keys())}"
+                f"Available APIs: {[k for k, v in _api_registry.items() if v[1]]}"
             )
-        api_function = _api_registry[name]
+        api_function, expose_to_plugins = _api_registry[name]
+
+        if not expose_to_plugins:
+            logger.error(
+                f"Plugin '{self._plugin_name}' attempted to access internal API '{name}'."
+            )
+            raise AttributeError(
+                f"The API function '{name}' is not exposed to plugins."
+            )
 
         # --- Automatic AppContext Injection ---
         # Inspect the function's signature to see if it wants the app_context.
@@ -235,7 +243,9 @@ class PluginAPI:
         )
         return api_function
 
-    def list_available_apis(self) -> List[Dict[str, Any]]:
+    def list_available_apis(
+        self, include_internal: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         Returns a detailed list of all registered API functions, including
         their names, parameters, and documentation.
@@ -243,6 +253,10 @@ class PluginAPI:
         This method can be useful for plugins that need to introspect the
         available core functionalities at runtime, or for debugging purposes
         to verify which APIs are exposed and how to call them.
+
+        Args:
+            include_internal (bool): If True, includes APIs not exposed to plugins.
+                                     Default is False.
 
         Returns:
             List[Dict[str, Any]]: A list of dictionaries, where each dictionary
@@ -252,11 +266,13 @@ class PluginAPI:
 
         api_details = []
         logger.debug(
-            f"Plugin '{self._plugin_name}' requested detailed list of available APIs."
+            f"Plugin '{self._plugin_name}' requested detailed list of available APIs (include_internal={include_internal})."
         )
 
         # Iterate through the registered name and the actual function object
-        for name, func in sorted(_api_registry.items()):
+        for name, (func, expose_to_plugins) in sorted(_api_registry.items()):
+            if not expose_to_plugins and not include_internal:
+                continue
             try:
                 # Use inspect.signature to get the function's signature
                 sig = inspect.signature(func)
@@ -282,7 +298,12 @@ class PluginAPI:
                 )
 
                 api_details.append(
-                    {"name": name, "parameters": params_info, "docstring": summary}
+                    {
+                        "name": name,
+                        "parameters": params_info,
+                        "docstring": summary,
+                        "expose_to_plugins": expose_to_plugins,
+                    }
                 )
             except (ValueError, TypeError) as e:
                 # Handle cases where we can't get a signature (e.g., for some built-in C functions)
@@ -294,6 +315,7 @@ class PluginAPI:
                             {"name": "unknown", "type": "Any", "default": "unknown"}
                         ],
                         "docstring": "Could not inspect function signature.",
+                        "expose_to_plugins": expose_to_plugins,
                     }
                 )
 
@@ -353,3 +375,46 @@ class PluginAPI:
             event_name, self._plugin_name, *args, **kwargs
         )
         # Note: The PluginManager's method will log the details of the event dispatch.
+
+
+class CoreAPI:
+    """An unrestricted API bridge for internal application use."""
+
+    def __init__(self, app_context: "AppContext"):
+        self._app_context = app_context
+
+    @property
+    def app_context(self) -> "AppContext":
+        return self._app_context
+
+    def list_available_apis(
+        self, include_internal: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns a detailed list of all registered API functions, including internal ones by default.
+        """
+        # To avoid duplication, instantiate a dummy PluginAPI and call its method.
+        dummy_api = PluginAPI(
+            "CoreAPI_Dummy",
+            getattr(self.app_context, "plugin_manager", None),  # type: ignore[arg-type]
+            self.app_context,
+        )
+        return dummy_api.list_available_apis(include_internal=include_internal)
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        if name not in _api_registry:
+            logger.error(f"Internal access to unregistered API function: '{name}'.")
+            raise AttributeError(
+                f"The API function '{name}' has not been registered or does not exist. "
+                f"Available APIs: {list(_api_registry.keys())}"
+            )
+        api_function, _ = _api_registry[name]
+
+        try:
+            sig = inspect.signature(api_function)
+            if "app_context" in sig.parameters:
+                return functools.partial(api_function, app_context=self.app_context)
+        except (ValueError, TypeError):
+            pass
+
+        return api_function

@@ -9,14 +9,14 @@ from ..error import (
     InvalidServerNameError,
     UserInputError,
 )
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("get_properties")
+@api_method("get_properties")
 def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the current server properties for a given server.
 
@@ -48,7 +48,7 @@ def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Unexpected error: {e}"}
 
 
-@plugin_method("validate_property_value")
+@api_method("validate_property_value")
 def validate_property_value(  # noqa: C901
     property_name: str, value: str
 ) -> Dict[str, str]:
@@ -118,10 +118,8 @@ def validate_property_value(  # noqa: C901
     return {"status": "success"}
 
 
-@plugin_method("set_properties")
-@trigger_plugin_event(
-    before="before_properties_change", after="after_properties_change"
-)
+@api_method("set_properties")
+@trigger_app_event(before="before_properties_change", after="after_properties_change")
 def set_properties(
     server_name: str,
     properties_to_update: Dict[str, str],
