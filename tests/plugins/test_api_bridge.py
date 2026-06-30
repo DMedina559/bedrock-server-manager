@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from bedrock_server_manager.plugins.api_bridge import (
-    PluginAPI,
+    AppAPI,
     _api_registry,
     api_method,
 )
@@ -43,8 +43,8 @@ def test_api_method_decorator_overwrite_warning(caplog):
     assert "Overwriting existing API function 'my_test_api'" in caplog.text
 
 
-class TestPluginAPI:
-    """Tests for the PluginAPI class."""
+class TestAppAPI:
+    """Tests for the AppAPI class."""
 
     @pytest.fixture
     def mock_plugin_manager(self):
@@ -58,8 +58,8 @@ class TestPluginAPI:
 
     @pytest.fixture
     def plugin_api(self, mock_plugin_manager, mock_app_context):
-        """Fixture for a PluginAPI instance."""
-        return PluginAPI("test_plugin", mock_plugin_manager, mock_app_context)
+        """Fixture for a AppAPI instance."""
+        return AppAPI("test_plugin", mock_plugin_manager, mock_app_context)
 
     def test_getattr_success(self, plugin_api):
         """Tests that __getattr__ successfully retrieves a registered API function."""

@@ -17,7 +17,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, List
 
-from .api_bridge import PluginAPI
+from .api_bridge import AppAPI
 
 
 class PluginBase(ABC):
@@ -35,7 +35,7 @@ class PluginBase(ABC):
     Attributes:
         name (str): The plugin's name, typically derived from its Python module
             filename (e.g., "my_plugin" for ``my_plugin.py``).
-        api (:class:`~bedrock_server_manager.plugins.api_bridge.PluginAPI`): An instance
+        api (:class:`~bedrock_server_manager.plugins.api_bridge.AppAPI`): An instance
             of the API bridge, providing safe access to core application functions.
         logger (:class:`logging.Logger`): A pre-configured logger instance, specific
             to this plugin. Log messages will automatically include the plugin's name.
@@ -60,7 +60,7 @@ class PluginBase(ABC):
     version: str = "N/A"  # Default placeholder, should be overridden.
     author: str = "N/A"  # Optional class attribute for plugin author information.
 
-    def __init__(self, plugin_name: str, api: PluginAPI, logger: Logger):
+    def __init__(self, plugin_name: str, api: AppAPI, logger: Logger):
         """Initializes the plugin instance.
 
         This constructor is called by the
@@ -71,7 +71,7 @@ class PluginBase(ABC):
         Args:
             plugin_name (str): The name of the plugin, typically derived from
                 its Python module filename (e.g., "my_plugin" for ``my_plugin.py``).
-            api (:class:`~bedrock_server_manager.plugins.api_bridge.PluginAPI`):
+            api (:class:`~bedrock_server_manager.plugins.api_bridge.AppAPI`):
                 An instance of the API bridge that provides a safe way for the
                 plugin to call core application functions.
             logger (:class:`logging.Logger`): A pre-configured logger instance
@@ -79,7 +79,7 @@ class PluginBase(ABC):
                 will automatically be prefixed with the plugin's context.
         """
         self.name: str = plugin_name
-        self.api: PluginAPI = api
+        self.api: AppAPI = api
         self.logger: Logger = logger
 
         # Retrieve the version from the class attribute of the concrete plugin.

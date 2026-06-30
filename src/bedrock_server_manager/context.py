@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
-    from .plugins.api_bridge import CoreAPI
+    from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
     from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
@@ -67,7 +67,7 @@ class AppContext:
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
         self.loop: Optional["AbstractEventLoop"] = None
-        self._api: Optional["CoreAPI"] = None
+        self._api: Optional["AppAPI"] = None
         self._web_server: Optional[Any] = None
         self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
 
@@ -99,17 +99,17 @@ class AppContext:
         # self._servers.clear()
 
     @property
-    def api(self) -> "CoreAPI":
+    def api(self) -> "AppAPI":
         """
-        Lazily loads and returns the CoreAPI instance.
+        Lazily loads and returns the API instance.
 
         Returns:
-            CoreAPI: The internal core API bridge.
+            AppAPI: The internal core API bridge.
         """
         if not hasattr(self, "_api") or self._api is None:
-            from .plugins.api_bridge import CoreAPI
+            from .plugins.api_bridge import AppAPI
 
-            self._api = CoreAPI(self)
+            self._api = AppAPI("CoreAPI", self.plugin_manager, self, is_core=True)
         return self._api
 
     @property

@@ -3,14 +3,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bedrock_server_manager.plugins.api_bridge import PluginAPI
+from bedrock_server_manager.plugins.api_bridge import AppAPI
 from bedrock_server_manager.plugins.plugin_base import PluginBase
 
 
 @pytest.fixture
 def mock_api():
-    """Fixture for a mocked PluginAPI."""
-    return MagicMock(spec=PluginAPI)
+    """Fixture for a mocked AppAPI."""
+    return MagicMock(spec=AppAPI)
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def test_plugin_base_is_abc():
     """Tests that PluginBase cannot be instantiated directly."""
     with pytest.raises(TypeError):
         PluginBase(
-            "test_plugin", MagicMock(spec=PluginAPI), MagicMock(spec=logging.Logger)
+            "test_plugin", MagicMock(spec=AppAPI), MagicMock(spec=logging.Logger)
         )
 
 

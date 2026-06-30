@@ -33,7 +33,7 @@ from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABL
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
 from ..config.settings import Settings
 from ..db.models import Plugin
-from .api_bridge import PluginAPI
+from .api_bridge import AppAPI
 from .plugin_base import PluginBase
 
 # Standard logger for this module.
@@ -539,7 +539,7 @@ class PluginManager:
 
                     iii.If class loading is successful, instantiates the plugin class.
                         The instance is provided with its name, a
-                        :class:`.api_bridge.PluginAPI` instance (for core interaction),
+                        :class:`.api_bridge.AppAPI` instance (for core interaction),
                         and a dedicated :class:`logging.Logger` instance.
 
                     iv. Appends the new plugin instance to the ``self.plugins`` list.
@@ -608,7 +608,7 @@ class PluginManager:
             if plugin_class:
                 try:
                     plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                    api_instance = PluginAPI(
+                    api_instance = AppAPI(
                         plugin_name=plugin_name,
                         plugin_manager=self,
                         app_context=self.app_context,
@@ -1035,12 +1035,17 @@ class PluginManager:
         if not identity_key_names:  # Empty tuple means event name itself is the key
             return event_name
 
-        key_parts = [event_name]
-        for key_name in identity_key_names:
-            value = kwargs.get(key_name, _MISSING_PARAM_PLACEHOLDER)
-            key_parts.append(str(value))
-
-        return "|".join(key_parts)
+        # Optimize by using string format or generator to string join
+        # avoiding intermediate list append overhead.
+        return "|".join(
+            (
+                event_name,
+                *(
+                    str(kwargs.get(k, _MISSING_PARAM_PLACEHOLDER))
+                    for k in identity_key_names
+                ),
+            )
+        )
 
     def trigger_event(self, event: str, *args: Any, **kwargs: Any):
         """Triggers a standard application event on all loaded plugins.
