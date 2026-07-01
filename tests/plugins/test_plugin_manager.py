@@ -7,7 +7,7 @@ class TestPluginManager:
     def test_not_singleton(self, app_context):
         """Tests that the PluginManager is NOT a singleton."""
         pm1 = app_context.plugin_manager
-        pm2 = PluginManager(app_context.settings)
+        pm2 = PluginManager(app_context)
         assert pm1 is not pm2
 
     def test_init_once(self, app_context):

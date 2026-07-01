@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from ...context import AppContext
 
-from ...config.settings import Settings
 from ...error import ConfigurationError, MissingArgumentError
 from ..system import base as system_base
 
@@ -52,7 +51,6 @@ class BedrockServerBaseMixin:
     def __init__(
         self,
         server_name: str,
-        settings_instance: Settings,
         *args: Any,
         app_context: Optional["AppContext"] = None,
         **kwargs: Any,
@@ -62,8 +60,6 @@ class BedrockServerBaseMixin:
         Args:
             server_name (str): The unique name of the server. This name is used
                 to derive directory paths and identify the server.
-            settings_instance (Settings): A pre-configured
-                :class:`~.config.settings.Settings` object.
             *args (Any): Variable length argument list, passed to `super().__init__`
                 to support cooperative multiple inheritance.
             **kwargs (Any): Arbitrary keyword arguments, passed to `super().__init__`
@@ -86,7 +82,11 @@ class BedrockServerBaseMixin:
         self.logger: logging.Logger = logging.getLogger(__name__)
 
         self.server_name: str = server_name
-        self.settings = settings_instance
+
+        if app_context is None:
+            raise ConfigurationError("AppContext is required but not provided.")
+        self.app_context = app_context
+        self.settings = app_context.settings
 
         if self.settings is None:
             raise ConfigurationError("Settings instance is not available.")

@@ -109,7 +109,7 @@ class AppContext:
         if not hasattr(self, "_api") or self._api is None:
             from .plugins.api_bridge import AppAPI
 
-            self._api = AppAPI("CoreAPI", self.plugin_manager, self, is_core=True)
+            self._api = AppAPI("CoreAPI", self, is_core=True)
         return self._api
 
     @property
@@ -154,8 +154,7 @@ class AppContext:
         if self._plugin_manager is None:
             from .plugins.plugin_manager import PluginManager
 
-            self._plugin_manager = PluginManager(self.settings)
-            self._plugin_manager.set_app_context(self)
+            self._plugin_manager = PluginManager(self)
         return self._plugin_manager
 
     @property
@@ -227,9 +226,7 @@ class AppContext:
         from .core.bedrock_server import BedrockServer
 
         if server_name not in self._servers:
-            self._servers[server_name] = BedrockServer(
-                server_name, settings_instance=self.settings, app_context=self
-            )
+            self._servers[server_name] = BedrockServer(server_name, app_context=self)
         return self._servers[server_name]
 
     def remove_server(self, server_name: str):

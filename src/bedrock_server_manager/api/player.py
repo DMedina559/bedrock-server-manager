@@ -174,7 +174,6 @@ def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, Any]:
         scan_result = discover_and_store_players(
             base_dir,
             app_context,
-            db.session_manager(),
         )
 
         # Format a comprehensive success message from the scan results.

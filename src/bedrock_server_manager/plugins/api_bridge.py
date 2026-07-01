@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     # Used for type hinting to avoid circular import at runtime.
     # The PluginManager is central to plugin operations and event handling.
     from ..context import AppContext
-    from .plugin_manager import PluginManager
 
 # Initialize a logger for this module.
 # Log messages will be prefixed with "bedrock_server_manager.plugins.api_bridge".
@@ -116,7 +115,6 @@ class AppAPI:
     def __init__(
         self,
         plugin_name: str,
-        plugin_manager: "PluginManager",
         app_context: Optional["AppContext"],
         is_core: bool = False,
     ):
@@ -128,17 +126,16 @@ class AppAPI:
         Args:
             plugin_name (str): The name of the plugin for which this API
                 instance is being created. This is used for logging and context.
-            plugin_manager (PluginManager): A reference to the `PluginManager`
-                instance. This is used to delegate custom event operations
-                (listening and sending) to the manager.
             app_context (Optional[AppContext]): A reference to the global
                 application context, providing access to shared application state
                 and managers. This can be `None` during initial setup phases.
             is_core (bool): If True, bypasses internal plugin API access checks.
         """
         self._plugin_name: str = plugin_name
-        self._plugin_manager: "PluginManager" = plugin_manager
         self._app_context: Optional["AppContext"] = app_context
+        self._plugin_manager = (
+            self._app_context.plugin_manager if self._app_context else None
+        )
         self._is_core: bool = is_core
         logger.debug(
             f"AppAPI instance created for plugin '{self._plugin_name}' (is_core={is_core})."
@@ -358,6 +355,9 @@ class AppAPI:
             f"Plugin '{self._plugin_name}' is attempting to register a listener "
             f"for custom event '{event_name}' with callback '{callback.__name__}'."
         )
+        assert (
+            self._plugin_manager is not None
+        ), "PluginManager was not found in AppContext!"
         # Delegate the actual registration to the PluginManager
         self._plugin_manager.register_plugin_event_listener(
             event_name, callback, self._plugin_name
@@ -384,6 +384,9 @@ class AppAPI:
             f"Plugin '{self._plugin_name}' is attempting to send custom event "
             f"'{event_name}' with args: {args}, kwargs: {kwargs}."
         )
+        assert (
+            self._plugin_manager is not None
+        ), "PluginManager was not found in AppContext!"
         # Delegate the actual event triggering to the PluginManager
         self._plugin_manager.trigger_custom_plugin_event(
             event_name, self._plugin_name, *args, **kwargs

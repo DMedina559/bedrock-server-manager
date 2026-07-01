@@ -23,7 +23,7 @@ def test_initialization(real_bedrock_server):
 def test_missing_server_name(real_bedrock_server):
     with pytest.raises(MissingArgumentError):
         BedrockServerBaseMixin(
-            server_name="", settings_instance=real_bedrock_server.settings
+            server_name="", app_context=real_bedrock_server.app_context
         )
 
 
@@ -31,7 +31,7 @@ def test_missing_base_dir_setting(real_bedrock_server):
     real_bedrock_server.settings.set("paths.servers", None)
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
-            server_name="test_server", settings_instance=real_bedrock_server.settings
+            server_name="test_server", app_context=real_bedrock_server.app_context
         )
 
 
@@ -39,7 +39,7 @@ def test_missing_config_dir_setting(real_bedrock_server, monkeypatch):
     monkeypatch.setattr(Settings, "config_dir", property(lambda self: None))
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
-            server_name="test_server", settings_instance=real_bedrock_server.settings
+            server_name="test_server", app_context=real_bedrock_server.app_context
         )
 
 
@@ -76,21 +76,23 @@ def test_get_pid_file_path(real_bedrock_server):
     assert server.get_pid_file_path() == expected_path
 
 
-def test_init_no_server_name():
+def test_init_no_server_name(real_bedrock_server):
     with pytest.raises(MissingArgumentError):
-        BedrockServerBaseMixin(server_name="", settings_instance=Settings())
+        BedrockServerBaseMixin(
+            server_name="", app_context=real_bedrock_server.app_context
+        )
 
 
 def test_init_no_settings():
     with pytest.raises(ConfigurationError):
-        BedrockServerBaseMixin(server_name="test_server", settings_instance=None)
+        BedrockServerBaseMixin(server_name="test_server", app_context=None)
 
 
 def test_init_no_base_dir(real_bedrock_server):
     real_bedrock_server.settings.set("paths.servers", None)
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
-            server_name="test_server", settings_instance=real_bedrock_server.settings
+            server_name="test_server", app_context=real_bedrock_server.app_context
         )
 
 
@@ -98,7 +100,7 @@ def test_init_no_app_config_dir(real_bedrock_server, monkeypatch):
     monkeypatch.setattr(Settings, "config_dir", property(lambda self: None))
     with pytest.raises(ConfigurationError):
         BedrockServerBaseMixin(
-            server_name="test_server", settings_instance=real_bedrock_server.settings
+            server_name="test_server", app_context=real_bedrock_server.app_context
         )
 
 

@@ -118,7 +118,7 @@ def test_discover_and_store_players_from_all_server_logs(app_context, mocker):
     )
     db_manager = app_context.db.session_manager
     results = discover_and_store_players(
-        app_context.settings.get("paths.servers", ""), app_context, db_manager()
+        app_context.settings.get("paths.servers", ""), app_context
     )
 
     assert results["total_entries_in_logs"] == 2
@@ -134,8 +134,7 @@ def test_discover_and_store_players_from_all_server_logs(app_context, mocker):
 
 def test_discover_players_base_dir_not_exist(app_context, mocker):
     base_dir = "/path/to/non_existent_base"
-    db_manager = app_context.db.session_manager
     mocker.patch("os.path.isdir", return_value=False)
 
     with pytest.raises(AppFileNotFoundError, match="Server base directory"):
-        discover_and_store_players(base_dir, app_context, db_manager())
+        discover_and_store_players(base_dir, app_context)

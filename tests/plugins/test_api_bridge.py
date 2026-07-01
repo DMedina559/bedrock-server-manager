@@ -59,7 +59,8 @@ class TestAppAPI:
     @pytest.fixture
     def plugin_api(self, mock_plugin_manager, mock_app_context):
         """Fixture for a AppAPI instance."""
-        return AppAPI("test_plugin", mock_plugin_manager, mock_app_context)
+        mock_app_context.plugin_manager = mock_plugin_manager
+        return AppAPI("test_plugin", mock_app_context)
 
     def test_getattr_success(self, plugin_api):
         """Tests that __getattr__ successfully retrieves a registered API function."""
