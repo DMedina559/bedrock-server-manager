@@ -56,6 +56,9 @@ Event topics broadcast a message when a specific event occurs on the server. The
 -   `event:after_players_add`
 -   `event:before_player_db_scan`
 -   `event:after_player_db_scan`
+-   `event:before_server_status_change`
+-   `event:after_server_status_change`
+-   `event:before_server_statuses_updated`
 -   `event:before_server_start`
 -   `event:after_server_start`
 -   `event:before_server_stop`
@@ -70,7 +73,6 @@ Event topics broadcast a message when a specific event occurs on the server. The
 -   `event:after_server_update`
 -   `event:before_autostart_change`
 -   `event:after_autostart_change`
--   `event:after_server_statuses_updated`
 -   `event:before_web_server_start`
 -   `event:after_web_server_start`
 -   `event:before_web_server_stop`

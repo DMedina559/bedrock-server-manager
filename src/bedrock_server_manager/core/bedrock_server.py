@@ -9,9 +9,11 @@ each contributing a distinct set of features. This compositional approach promot
 code organization and modularity, allowing for clear separation of concerns.
 """
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ..config.settings import Settings
+if TYPE_CHECKING:
+    from ..context import AppContext
+
 from . import server
 
 
@@ -127,7 +129,9 @@ class BedrockServer(
     """
 
     def __init__(
-        self, server_name: str, settings_instance: Optional[Settings] = None
+        self,
+        server_name: str,
+        app_context: Optional["AppContext"] = None,
     ) -> None:
         """Initializes a BedrockServer instance.
 
@@ -145,13 +149,13 @@ class BedrockServer(
                 is also used as the directory name for the server's files under
                 the application's base server directory (defined by
                 ``paths.servers_base_dir`` in settings).
-            settings_instance (:class:`~bedrock_server_manager.config.settings.Settings`):
-                An instance of the application's global :class:`~bedrock_server_manager.config.settings.Settings`
-                object. This is a required dependency.
+            app_context (:class:`~bedrock_server_manager.context.AppContext`):
+                An instance of the application's global :class:`~bedrock_server_manager.context.AppContext`
+                object.
         """
         super().__init__(
             server_name=server_name,
-            settings_instance=settings_instance,
+            app_context=app_context,
         )
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."

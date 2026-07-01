@@ -8,7 +8,6 @@ shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
 
-import asyncio
 import logging
 import struct
 import threading
@@ -161,34 +160,18 @@ class BedrockProcessManager:
                             self.logger.info(
                                 f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
                             )
-                            # Broadcast the update
-                            if (
-                                self.app_context.loop
-                                and self.app_context.loop.is_running()
-                            ):
-                                message = {
-                                    "type": "event",
-                                    "topic": "event:after_server_statuses_updated",
-                                    "data": {
-                                        "server_name": server.server_name,
-                                        "player_count": server.player_count,
-                                        "players": server.players,
-                                    },
-                                }
-                                asyncio.run_coroutine_threadsafe(
-                                    self.app_context.connection_manager.broadcast_to_topic(
-                                        "event:after_server_statuses_updated", message
-                                    ),
-                                    self.app_context.loop,
-                                )
-
-                            # Trigger plugin event
-                            self.app_context.plugin_manager.trigger_event(
-                                "after_server_statuses_updated",
-                                server_name=server.server_name,
-                                player_count=server.player_count,
-                                players=server.players,
-                            )
+                            # Call the API bridge to handle events and websockets properly
+                            if hasattr(self.app_context, "api"):
+                                try:
+                                    self.app_context.api.update_server_player_stats_api(
+                                        server.server_name,
+                                        server.player_count,
+                                        server.players,
+                                    )
+                                except AttributeError as e:
+                                    self.logger.warning(
+                                        f"Could not trigger player stats update API: {e}"
+                                    )
 
                         # Enforce bans
                         if server.players:

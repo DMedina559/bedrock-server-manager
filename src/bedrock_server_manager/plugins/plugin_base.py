@@ -17,7 +17,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, List
 
-from .api_bridge import PluginAPI
+from .api_bridge import AppAPI
 
 
 class PluginBase(ABC):
@@ -35,7 +35,7 @@ class PluginBase(ABC):
     Attributes:
         name (str): The plugin's name, typically derived from its Python module
             filename (e.g., "my_plugin" for ``my_plugin.py``).
-        api (:class:`~bedrock_server_manager.plugins.api_bridge.PluginAPI`): An instance
+        api (:class:`~bedrock_server_manager.plugins.api_bridge.AppAPI`): An instance
             of the API bridge, providing safe access to core application functions.
         logger (:class:`logging.Logger`): A pre-configured logger instance, specific
             to this plugin. Log messages will automatically include the plugin's name.
@@ -60,7 +60,7 @@ class PluginBase(ABC):
     version: str = "N/A"  # Default placeholder, should be overridden.
     author: str = "N/A"  # Optional class attribute for plugin author information.
 
-    def __init__(self, plugin_name: str, api: PluginAPI, logger: Logger):
+    def __init__(self, plugin_name: str, api: AppAPI, logger: Logger):
         """Initializes the plugin instance.
 
         This constructor is called by the
@@ -71,7 +71,7 @@ class PluginBase(ABC):
         Args:
             plugin_name (str): The name of the plugin, typically derived from
                 its Python module filename (e.g., "my_plugin" for ``my_plugin.py``).
-            api (:class:`~bedrock_server_manager.plugins.api_bridge.PluginAPI`):
+            api (:class:`~bedrock_server_manager.plugins.api_bridge.AppAPI`):
                 An instance of the API bridge that provides a safe way for the
                 plugin to call core application functions.
             logger (:class:`logging.Logger`): A pre-configured logger instance
@@ -79,7 +79,7 @@ class PluginBase(ABC):
                 will automatically be prefixed with the plugin's context.
         """
         self.name: str = plugin_name
-        self.api: PluginAPI = api
+        self.api: AppAPI = api
         self.logger: Logger = logger
 
         # Retrieve the version from the class attribute of the concrete plugin.
@@ -583,6 +583,120 @@ class PluginBase(ABC):
             result (Dict[str, Any]): A dictionary containing the outcome, possibly including
                 a list of pruned files or a count.
         """
+        pass
+
+    # --- System & Setup Hooks ---
+
+    def before_setting_update(self, **kwargs: Any):
+        """Called before a global application setting is updated."""
+        pass
+
+    def after_setting_update(self, **kwargs: Any):
+        """Called after a global application setting is updated."""
+        pass
+
+    def before_add_server_ban(self, **kwargs: Any):
+        """Called before a player is banned from a server."""
+        pass
+
+    def after_add_server_ban(self, **kwargs: Any):
+        """Called after a player is banned from a server."""
+        pass
+
+    def before_addon_enable(self, **kwargs: Any):
+        """Called before an installed addon is enabled on a server."""
+        pass
+
+    def after_addon_enable(self, **kwargs: Any):
+        """Called after an installed addon is enabled on a server."""
+        pass
+
+    def before_addon_disable(self, **kwargs: Any):
+        """Called before an enabled addon is disabled on a server."""
+        pass
+
+    def after_addon_disable(self, **kwargs: Any):
+        """Called after an enabled addon is disabled on a server."""
+        pass
+
+    def before_addon_uninstall(self, **kwargs: Any):
+        """Called before an addon is completely uninstalled from a server."""
+        pass
+
+    def after_addon_uninstall(self, **kwargs: Any):
+        """Called after an addon is completely uninstalled from a server."""
+        pass
+
+    def before_remove_server_ban(self, **kwargs: Any):
+        """Called before a player ban is removed from a server."""
+        pass
+
+    def after_remove_server_ban(self, **kwargs: Any):
+        """Called after a player ban is removed from a server."""
+        pass
+
+    def before_set_plugin_status(self, **kwargs: Any):
+        """Called before a plugin's enabled status is changed."""
+        pass
+
+    def after_set_plugin_status(self, **kwargs: Any):
+        """Called after a plugin's enabled status is changed."""
+        pass
+
+    def before_set_server_setting(self, **kwargs: Any):
+        """Called before a specific server setting is changed."""
+        pass
+
+    def after_set_server_setting(self, **kwargs: Any):
+        """Called after a specific server setting is changed."""
+        pass
+
+    def before_delete_server_data(self, **kwargs: Any):
+        """Called before all data for a server is deleted."""
+        pass
+
+    def after_delete_server_data(self, **kwargs: Any):
+        """Called after all data for a server is deleted."""
+        pass
+
+    def before_web_service_change(self, **kwargs: Any):
+        """Called before the web UI system service is changed."""
+        pass
+
+    def after_web_service_change(self, **kwargs: Any):
+        """Called after the web UI system service is changed."""
+        pass
+
+    def before_addon_subpack_update(self, **kwargs: Any):
+        """Called before a subpack is updated for an addon."""
+        pass
+
+    def after_addon_subpack_update(self, **kwargs: Any):
+        """Called after a subpack is updated for an addon."""
+        pass
+
+    def before_addon_reorder(self, **kwargs: Any):
+        """Called before the active addons on a server are reordered."""
+        pass
+
+    def after_addon_reorder(self, **kwargs: Any):
+        """Called after the active addons on a server are reordered."""
+        pass
+
+    def before_server_status_change(self, **kwargs: Any):
+        """Called before a server's status is updated in its configuration."""
+        pass
+
+    def after_server_status_change(self, **kwargs: Any):
+        """Called after a server's status is updated in its configuration."""
+        pass
+
+    def before_server_statuses_updated(self, **kwargs: Any):
+        """Called before a server's player count and player list are broadcasted."""
+        pass
+
+    def after_server_statuses_updated(self, **kwargs: Any):
+        """Called after a server's player count and player list are broadcasted."""
         pass
 
     # --- Plugin Extension Hooks ---

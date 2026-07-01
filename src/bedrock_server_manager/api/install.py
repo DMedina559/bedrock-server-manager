@@ -11,8 +11,8 @@ from ..error import (
     MissingArgumentError,
     UserInputError,
 )
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 _install_update_lock = threading.RLock()
 
 
-@plugin_method("install_new_server")
-@trigger_plugin_event(before="before_server_install", after="after_server_install")
+@api_method("install_new_server")
+@trigger_app_event(before="before_server_install", after="after_server_install")
 def install_new_server(
     server_name: str,
     app_context: AppContext,
@@ -80,8 +80,8 @@ def install_new_server(
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
 
-@plugin_method("update_server")
-@trigger_plugin_event(before="before_server_update", after="after_server_update")
+@api_method("update_server")
+@trigger_app_event(before="before_server_update", after="after_server_update")
 def update_server(
     server_name: str,
     app_context: AppContext,

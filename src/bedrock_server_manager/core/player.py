@@ -94,7 +94,7 @@ def get_known_players(db_session_manager) -> List[Dict[str, str]]:
 
 
 def discover_and_store_players(  # noqa: C901
-    base_dir: str, app_context: AppContext, db_session_manager
+    base_dir: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Scans all server logs for player data and updates the central player database."""
     if not base_dir or not os.path.isdir(base_dir):
@@ -158,7 +158,7 @@ def discover_and_store_players(  # noqa: C901
         try:
             # Save all unique players to the central database.
             saved_count = save_player_data(
-                db_session_manager, unique_players_to_save_list
+                app_context.db.session_manager(), unique_players_to_save_list
             )
         except (FileOperationError, Exception) as e_save:
             logger.error(

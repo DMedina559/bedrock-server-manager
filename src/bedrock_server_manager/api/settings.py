@@ -8,7 +8,7 @@ typically stored in the main ``bedrock_server_manager.json`` configuration file.
 
 The functions provided here allow other parts of the application, including
 plugins (via methods exposed by
-:func:`~bedrock_server_manager.plugins.api_bridge.plugin_method`), to
+:func:`~bedrock_server_manager.plugins.api_bridge.api_method`), to
 programmatically access and modify these global settings.
 """
 
@@ -18,13 +18,13 @@ from typing import Any, Dict
 from ..context import AppContext
 from ..error import BSMError, MissingArgumentError
 from ..logging import setup_logging
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("get_global_setting")
+@api_method("get_global_setting")
 def get_global_setting(key: str, app_context: AppContext) -> Dict[str, Any]:
     """Reads a single value from the global application settings.
 
@@ -67,7 +67,7 @@ def get_global_setting(key: str, app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@plugin_method("get_all_global_settings")
+@api_method("get_all_global_settings")
 def get_all_global_settings(
     app_context: AppContext,
 ) -> Dict[str, Any]:
@@ -102,7 +102,7 @@ def get_all_global_settings(
         }
 
 
-@trigger_plugin_event(before="before_setting_update", after="after_setting_update")
+@trigger_app_event(before="before_setting_update", after="after_setting_update")
 def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
@@ -156,7 +156,7 @@ def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[st
         }
 
 
-@plugin_method("set_custom_global_setting")
+@api_method("set_custom_global_setting")
 def set_custom_global_setting(
     key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:

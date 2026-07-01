@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
+    from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
     from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
@@ -55,6 +56,8 @@ class AppContext:
             settings (Optional[Settings]): Pre-existing settings instance.
             db (Optional[Database]): Pre-existing database instance.
         """
+        from .utils import get_utils
+
         self._settings: Optional["Settings"] = settings
         self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
@@ -64,9 +67,8 @@ class AppContext:
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
         self.loop: Optional["AbstractEventLoop"] = None
+        self._api: Optional["AppAPI"] = None
         self._web_server: Optional[Any] = None
-        from .utils import get_utils
-
         self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
 
     def load(self):
@@ -95,6 +97,20 @@ class AppContext:
         self.settings.reload()
         self.plugin_manager.reload()
         # self._servers.clear()
+
+    @property
+    def api(self) -> "AppAPI":
+        """
+        Lazily loads and returns the API instance.
+
+        Returns:
+            AppAPI: The internal core API bridge.
+        """
+        if not hasattr(self, "_api") or self._api is None:
+            from .plugins.api_bridge import AppAPI
+
+            self._api = AppAPI("CoreAPI", self, is_core=True)
+        return self._api
 
     @property
     def settings(self) -> "Settings":
@@ -138,8 +154,7 @@ class AppContext:
         if self._plugin_manager is None:
             from .plugins.plugin_manager import PluginManager
 
-            self._plugin_manager = PluginManager(self.settings)
-            self._plugin_manager.set_app_context(self)
+            self._plugin_manager = PluginManager(self)
         return self._plugin_manager
 
     @property
@@ -211,9 +226,7 @@ class AppContext:
         from .core.bedrock_server import BedrockServer
 
         if server_name not in self._servers:
-            self._servers[server_name] = BedrockServer(
-                server_name, settings_instance=self.settings
-            )
+            self._servers[server_name] = BedrockServer(server_name, app_context=self)
         return self._servers[server_name]
 
     def remove_server(self, server_name: str):
@@ -238,7 +251,7 @@ class AppContext:
             del self._servers[server_name]
 
     def stop_all_servers(self):
-        """Stops all running servers in the application context cache."""
+        """Stops all running servers in the application context cache using the API bridge."""
         import logging
 
         logger = logging.getLogger(__name__)
@@ -246,6 +259,14 @@ class AppContext:
 
         for server_name, server in self._servers.items():
             if server.is_running():
-                # Stop the server locally directly instead of calling API which might cause circular dependency
-                server.stop()
+                if hasattr(self, "api"):
+                    try:
+                        self.api.stop_server(server_name)
+                    except Exception as e:
+                        logger.error(
+                            f"Context: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                        )
+                        server.stop()
+                else:
+                    server.stop()
                 logger.info(f"Context: Stopped server '{server_name}'")

@@ -3,17 +3,15 @@ from typing import Any, Dict, List, Optional
 
 from ..context import AppContext
 from ..error import AppFileNotFoundError, BSMError, InvalidServerNameError
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from . import player as player_api
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("set_permissions")
-@trigger_plugin_event(
-    before="before_permission_change", after="after_permission_change"
-)
+@api_method("set_permissions")
+@trigger_app_event(before="before_permission_change", after="after_permission_change")
 def set_permissions(
     server_name: str,
     xuid: str,
@@ -59,7 +57,7 @@ def set_permissions(
         return {"status": "error", "message": f"Unexpected error: {e}"}
 
 
-@plugin_method("get_permissions")
+@api_method("get_permissions")
 def get_permissions(  # noqa: C901
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:

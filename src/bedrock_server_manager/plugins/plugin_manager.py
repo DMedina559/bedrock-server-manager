@@ -31,9 +31,8 @@ if TYPE_CHECKING:
 
 from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
-from ..config.settings import Settings
 from ..db.models import Plugin
-from .api_bridge import PluginAPI
+from .api_bridge import AppAPI
 from .plugin_base import PluginBase
 
 # Standard logger for this module.
@@ -59,7 +58,7 @@ class PluginManager:
     and dispatches various events to them.
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(self, app_context: "AppContext"):
         """
         Initializes the PluginManager.
 
@@ -69,7 +68,8 @@ class PluginManager:
         that the configured plugin directories exist on the filesystem.
         """
 
-        self.settings = settings
+        self.app_context = app_context
+        self.settings = app_context.settings
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -89,7 +89,6 @@ class PluginManager:
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
-        self.app_context: Optional["AppContext"] = None
 
         for directory in self.plugin_dirs:
             try:
@@ -102,11 +101,6 @@ class PluginManager:
 
         logger.info("PluginManager initialized.")
 
-    def set_app_context(self, app_context: "AppContext"):
-        """Sets the application context for the plugin manager."""
-        self.app_context = app_context
-        logger.debug("Application context set for PluginManager.")
-
     def _load_config(self) -> Dict[str, Dict[str, Any]]:
         """Loads plugin configurations from the database.
         Returns:
@@ -114,7 +108,6 @@ class PluginManager:
             mapping plugin names to their configuration dictionaries.
             Returns an empty dict if loading fails or the file is not found.
         """
-        assert self.app_context is not None
         with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
             return {
@@ -129,7 +122,6 @@ class PluginManager:
 
     def _save_config(self):
         """Saves the current in-memory plugin configuration to the database."""
-        assert self.app_context is not None
         with self.app_context.db.session_manager() as db:
             for plugin_name, config in self.plugin_config.items():
                 plugin = (
@@ -539,7 +531,7 @@ class PluginManager:
 
                     iii.If class loading is successful, instantiates the plugin class.
                         The instance is provided with its name, a
-                        :class:`.api_bridge.PluginAPI` instance (for core interaction),
+                        :class:`.api_bridge.AppAPI` instance (for core interaction),
                         and a dedicated :class:`logging.Logger` instance.
 
                     iv. Appends the new plugin instance to the ``self.plugins`` list.
@@ -608,9 +600,8 @@ class PluginManager:
             if plugin_class:
                 try:
                     plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                    api_instance = PluginAPI(
+                    api_instance = AppAPI(
                         plugin_name=plugin_name,
-                        plugin_manager=self,
                         app_context=self.app_context,
                     )
                     logger.debug(
@@ -1035,12 +1026,17 @@ class PluginManager:
         if not identity_key_names:  # Empty tuple means event name itself is the key
             return event_name
 
-        key_parts = [event_name]
-        for key_name in identity_key_names:
-            value = kwargs.get(key_name, _MISSING_PARAM_PLACEHOLDER)
-            key_parts.append(str(value))
-
-        return "|".join(key_parts)
+        # Optimize by using string format or generator to string join
+        # avoiding intermediate list append overhead.
+        return "|".join(
+            (
+                event_name,
+                *(
+                    str(kwargs.get(k, _MISSING_PARAM_PLACEHOLDER))
+                    for k in identity_key_names
+                ),
+            )
+        )
 
     def trigger_event(self, event: str, *args: Any, **kwargs: Any):
         """Triggers a standard application event on all loaded plugins.

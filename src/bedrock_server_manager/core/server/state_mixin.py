@@ -526,6 +526,20 @@ class ServerStateMixin(BedrockServerBaseMixin):
             raise UserInputError(
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
+
+        if (
+            hasattr(self, "app_context")
+            and self.app_context
+            and hasattr(self.app_context, "api")
+        ):
+            try:
+                self.app_context.api.set_server_status_api(
+                    self.server_name, status_string
+                )
+                return
+            except AttributeError:
+                pass
+
         self._manage_json_config(
             key="server_info.status", operation="write", value=status_string
         )

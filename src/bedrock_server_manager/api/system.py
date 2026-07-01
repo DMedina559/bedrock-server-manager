@@ -28,12 +28,12 @@ from ..error import (
     BSMError,
     InvalidServerNameError,
 )
-from ..plugins import plugin_method
+from ..plugins.api_bridge import api_method
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("get_server_running_status")
+@api_method("get_server_running_status")
 def get_server_running_status(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -86,7 +86,7 @@ def get_server_running_status(
         }
 
 
-@plugin_method("get_bedrock_process_info")
+@api_method("get_bedrock_process_info")
 def get_bedrock_process_info(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
