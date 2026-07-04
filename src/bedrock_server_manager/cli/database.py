@@ -1,7 +1,7 @@
+import json
 import shutil
 from datetime import datetime
 from importlib.resources import files
-from typing import Any
 
 import click
 import questionary
@@ -9,10 +9,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect
 
-from ..config import bcm_config
 from ..context import AppContext
 from ..db import models
-from ..db.database import Database
 
 
 @click.group()
@@ -226,60 +224,126 @@ def downgrade(ctx: click.Context, revision: str):
         raise click.Abort()
 
 
-@database.command(name="migrate")
+@database.command(name="backup")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="The output path for the JSON backup file. If not provided, it will be saved in the configured backups directory.",
+)
 @click.pass_context
-def migrate_db(ctx: click.Context):  # noqa: C901
-    """Migrates all data from the current database to a new database."""
+def backup_db(ctx: click.Context, output: str | None):
+    """Backups all database records to a JSON file."""
     app_context: AppContext = ctx.obj["app_context"]
     source_db = app_context.db
 
-    click.secho("Database Migration Utility", fg="cyan", bold=True)
-    click.echo(
-        "This utility will migrate all your data from the current database to a new one."
-    )
+    if not output:
+        backup_dir = app_context.settings.get("paths.backups")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output = f"{backup_dir}/db_data_backup_{timestamp}.json"
+
+    MODELS_TO_BACKUP = [
+        models.User,
+        models.Server,
+        models.ServerBan,
+        models.Setting,
+        models.Plugin,
+        models.RegistrationToken,
+        models.Player,
+        models.AuditLog,
+    ]
+
+    # Include alembic version metadata
+    backup_data = {}
+
+    alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("skip_logging_config", "true")
+
+    def default_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    try:
+        # Get the current alembic revision
+        engine = app_context.db.engine
+        if engine:
+            with engine.connect() as connection:
+                inspector = inspect(connection)
+                if inspector.has_table("alembic_version"):
+                    from sqlalchemy import text
+
+                    current_rev = connection.execute(
+                        text("SELECT version_num FROM alembic_version")
+                    ).scalar_one_or_none()
+                    if current_rev:
+                        backup_data["_metadata"] = {"alembic_version": current_rev}
+
+        with source_db.session_manager() as session:  # type: ignore
+            for model in MODELS_TO_BACKUP:
+                model_name = model.__name__
+                click.echo(f"Backing up table: {model_name}...")
+
+                records = session.query(model).all()
+                model_data = []
+                for record in records:
+                    record_dict = {
+                        c.name: getattr(record, c.name)
+                        for c in record.__table__.columns
+                    }
+                    model_data.append(record_dict)
+
+                backup_data[model_name] = model_data
+                click.echo(f"  Backed up {len(model_data)} records for {model_name}.")
+
+        with open(output, "w") as f:
+            json.dump(backup_data, f, default=default_serializer, indent=4)
+
+        click.secho(f"\nDatabase data backup successful! Saved to {output}", fg="green")
+
+    except Exception as e:
+        click.secho(
+            f"\nAn error occurred during data backup: {e}", fg="red", exc_info=True
+        )
+        raise click.Abort()
+
+
+@database.command(name="restore")
+@click.option(
+    "--input",
+    "-i",
+    type=click.Path(exists=True, dir_okay=False),
+    required=True,
+    help="The input path for the JSON backup file.",
+)
+@click.pass_context
+def restore_db(ctx: click.Context, input: str):
+    """Restores database records from a JSON file. Wipes existing data!"""
+    app_context: AppContext = ctx.obj["app_context"]
+    target_db = app_context.db
+
+    click.secho("Database Restore Utility", fg="cyan", bold=True)
+    click.echo(f"This utility will restore data from: {input}")
     click.secho(
-        "WARNING: This is a one-way operation. Make sure to have a backup of your current data.",
+        "WARNING: This operation will WIPE ALL EXISTING DATA in the current database before restoring.",
         fg="red",
+        bold=True,
     )
 
     if not questionary.confirm(
-        "Are you sure you want to proceed?", default=False
+        "Are you absolutely sure you want to proceed? ALL CURRENT DATA WILL BE LOST.",
+        default=False,
     ).ask():
         click.secho("Operation cancelled.", fg="yellow")
         raise click.Abort()
 
-    # Get destination database URL
-    new_db_url = questionary.text(
-        "Enter the full URL for the new database:",
-        validate=lambda url: url.startswith(
-            ("sqlite://", "postgresql://", "mysql://", "mariadb://")
-        ),
-        instruction="e.g., postgresql://user:pass@host/dbname",
-    ).ask()
-
-    if not new_db_url:
-        click.secho("No database URL entered. Operation cancelled.", fg="yellow")
-        raise click.Abort()
-
-    click.echo(f"Migrating to new database at: {new_db_url}")
-
-    # Create and initialize destination database
-    dest_db = Database(db_url=new_db_url)
-    try:
-        dest_db.initialize()
-        # Test connection and create tables
-        with dest_db.session_manager():
-            click.echo(
-                "Successfully connected to the destination database and created tables."
-            )
-    except Exception as e:
-        click.secho(f"Failed to connect to the destination database: {e}", fg="red")
-        raise click.Abort()
-
-    # Define the order of migration to respect foreign key constraints
-    MODELS_TO_MIGRATE = [
+    # The order matters for restoring to satisfy foreign keys
+    # To delete, we go in reverse order.
+    MODELS_TO_RESTORE = [
         models.User,
         models.Server,
+        models.ServerBan,
         models.Setting,
         models.Plugin,
         models.RegistrationToken,
@@ -288,57 +352,115 @@ def migrate_db(ctx: click.Context):  # noqa: C901
     ]
 
     try:
-        with (
-            source_db.session_manager() as source_session,  # type: ignore
-            dest_db.session_manager() as dest_session,  # type: ignore
-        ):
-            for model in MODELS_TO_MIGRATE:
-                model_name = model.__name__
-                click.echo(f"Migrating table: {model_name}...")
-
-                objects_to_migrate: Any = source_session.query(model).all()
-
-                if not objects_to_migrate:
-                    click.echo(f"  No records to migrate for {model_name}.")
-                    continue
-
-                new_objects = []
-                for obj in objects_to_migrate:
-                    obj_data = {
-                        c.name: getattr(obj, c.name) for c in obj.__table__.columns
-                    }
-                    new_objects.append(model(**obj_data))
-
-                dest_session.bulk_save_objects(new_objects)
-                click.echo(f"  Migrated {len(new_objects)} records for {model_name}.")
-
-            dest_session.commit()
-            click.secho("\nData migration successful!", fg="green")
-
+        with open(input, "r") as f:
+            backup_data = json.load(f)
     except Exception as e:
-        click.secho(
-            f"\nAn error occurred during data migration: {e}", fg="red", exc_info=True
-        )
-        click.secho(
-            "Rolling back changes. The original database and configuration are untouched.",
-            fg="yellow",
-        )
+        click.secho(f"Failed to read backup file: {e}", fg="red")
         raise click.Abort()
 
-    # Update the configuration
-    try:
-        click.echo("Updating configuration to use the new database...")
-        bcm_config.set_config_value("db_url", new_db_url)
-        click.secho("Configuration updated successfully.", fg="green")
+    # Check for version mismatch
+    engine = app_context.db.engine
+    current_db_rev = None
+    if engine:
+        with engine.connect() as connection:
+            inspector = inspect(connection)
+            if inspector.has_table("alembic_version"):
+                from sqlalchemy import text
+
+                current_db_rev = connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one_or_none()
+
+    backup_rev = backup_data.get("_metadata", {}).get("alembic_version")
+    if current_db_rev and backup_rev and current_db_rev != backup_rev:
+        click.secho(f"\nWARNING: Database version mismatch!", fg="yellow", bold=True)
+        click.secho(f"Current database version: {current_db_rev}", fg="yellow")
+        click.secho(f"Backup file database version: {backup_rev}", fg="yellow")
         click.secho(
-            "\nMigration complete! Please restart the application to apply the changes.",
-            fg="cyan",
-            bold=True,
+            "Restoring data to a different schema version may cause errors or data corruption.",
+            fg="red",
         )
-    except Exception as e:
-        click.secho(f"Failed to update configuration file: {e}", fg="red")
+        if not questionary.confirm(
+            "Do you still want to proceed despite the version mismatch?", default=False
+        ).ask():
+            click.secho("Operation cancelled.", fg="yellow")
+            raise click.Abort()
+    elif not backup_rev:
         click.secho(
-            f"Please manually update the 'db_url' in your config file to: {new_db_url}",
+            "\nWARNING: The backup file does not contain database version metadata.",
+            fg="yellow",
+        )
+        if not questionary.confirm(
+            "Do you want to proceed without version verification?", default=True
+        ).ask():
+            click.secho("Operation cancelled.", fg="yellow")
+            raise click.Abort()
+
+    try:
+        with target_db.session_manager() as session:  # type: ignore
+            # 1. Delete existing data (reverse order)
+            click.echo("Wiping existing data...")
+            for model in reversed(MODELS_TO_RESTORE):
+                model_name = model.__name__
+                count = session.query(model).delete()
+                click.echo(f"  Deleted {count} records from {model_name}.")
+
+            # 2. Insert new data
+            click.echo("\nRestoring data...")
+            for model in MODELS_TO_RESTORE:
+                model_name = model.__name__
+                if model_name not in backup_data:
+                    click.secho(
+                        f"  Warning: No backup data found for {model_name}.",
+                        fg="yellow",
+                    )
+                    continue
+
+                records_data = backup_data[model_name]
+                new_objects = []
+                for record_dict in records_data:
+                    # Convert ISO datetime strings back to datetime objects
+                    for col in getattr(model, "__table__").columns:
+                        col_name = col.name
+                        if (
+                            col_name in record_dict
+                            and record_dict[col_name] is not None
+                        ):
+                            # Heuristic: if it looks like an ISO format string and the column is DateTime
+                            is_datetime = type(col.type).__name__ == "DateTime"
+                            if not is_datetime and target_db.engine:
+                                try:
+                                    is_datetime = isinstance(
+                                        col.type,
+                                        target_db.engine.dialect.type_compiler.process(
+                                            col.type
+                                        ).__class__,
+                                    )
+                                except Exception:
+                                    pass
+
+                            if is_datetime:
+                                if isinstance(record_dict[col_name], str):
+                                    try:
+                                        # Handle standard isoformat
+                                        record_dict[col_name] = datetime.fromisoformat(
+                                            record_dict[col_name]
+                                        )
+                                    except ValueError:
+                                        pass
+
+                    new_objects.append(model(**record_dict))
+
+                session.bulk_save_objects(new_objects)
+                click.echo(f"  Restored {len(new_objects)} records for {model_name}.")
+
+            session.commit()
+            click.secho("\nDatabase data restore successful!", fg="green")
+
+    except Exception as e:
+        click.secho(f"\nAn error occurred during data restore: {e}", fg="red")
+        click.secho(
+            "The database might be in an inconsistent state. Please restore from a secure backup.",
             fg="yellow",
         )
         raise click.Abort()
