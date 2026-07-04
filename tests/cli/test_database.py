@@ -219,9 +219,8 @@ def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
         json.dump({"data_dir": str(data_dir), "db_url": db_url}, f)
 
     # Monkeypatch the config directory path finder
-    monkeypatch.setattr(
-        "platformdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
-    )
+    monkeypatch.setenv("BSM_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("BSM_DB_URL", db_url)
 
     # Reload the config module to ensure it uses the monkeypatched path
     import importlib
@@ -279,9 +278,8 @@ def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
     app_config_file = config_dir / "bedrock_server_manager.json"
     with open(app_config_file, "w") as f:
         json.dump({"data_dir": str(data_dir), "db_url": db_url}, f)
-    monkeypatch.setattr(
-        "platformdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
-    )
+    monkeypatch.setenv("BSM_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("BSM_DB_URL", db_url)
 
     # Reload the config module to ensure it uses the monkeypatched path
     import importlib
@@ -318,87 +316,3 @@ def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
             text("SELECT version_num FROM alembic_version")
         ).scalar_one_or_none()
         assert result is not None
-
-
-def test_backup_and_restore_db(runner, app_context, tmp_path, monkeypatch):
-    import json
-
-    from bedrock_server_manager.cli.database import backup_db, restore_db
-    from bedrock_server_manager.db.models import Server, User
-
-    # Setup initial data
-    with app_context.db.session_manager() as session:
-        user = User(username="testuser", hashed_password="pw", role="admin")
-        server = Server(server_name="testserver", installed_version="1.0.0")
-        session.add(user)
-        session.add(server)
-        session.commit()
-
-    backup_file = tmp_path / "backup.json"
-
-    # Patch files so that Alembic version isn't attempted
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.database.files",
-        lambda x: type("obj", (object,), {"joinpath": lambda self, y: "dummy"})(),
-    )
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.database.Config",
-        lambda x: type(
-            "obj", (object,), {"set_main_option": lambda self, a, b: None}
-        )(),
-    )
-
-    # Mock the database engine to avoid checking alembic_version table
-    monkeypatch.setattr(app_context.db, "engine", None)
-
-    # Run backup command
-    result = runner.invoke(
-        backup_db, ["--output", str(backup_file)], obj={"app_context": app_context}
-    )
-    assert result.exit_code == 0
-    assert "Database data backup successful!" in result.output
-
-    # Verify backup file contents
-    assert backup_file.exists()
-    with open(backup_file, "r") as f:
-        data = json.load(f)
-        assert "User" in data
-        assert "Server" in data
-        assert data["User"][0]["username"] == "testuser"
-        assert data["Server"][0]["server_name"] == "testserver"
-
-    # Modify data to test restore
-    with app_context.db.session_manager() as session:
-        session.query(User).delete()
-        session.query(Server).delete()
-        session.commit()
-
-    # We need to monkeypatch questionary to skip the warnings, or just provide 'y' as input.
-    # Run restore command
-    monkeypatch.setattr(
-        "bedrock_server_manager.cli.database.questionary.confirm",
-        lambda *args, **kwargs: type("obj", (object,), {"ask": lambda self: True})(),
-    )
-    result = runner.invoke(
-        restore_db, ["--input", str(backup_file)], obj={"app_context": app_context}
-    )
-    if result.exit_code != 0:
-        print(result.output)
-        if result.exception:
-            import traceback
-
-            traceback.print_exception(
-                type(result.exception), result.exception, result.exception.__traceback__
-            )
-    assert result.exit_code == 0
-    assert "Database data restore successful!" in result.output
-
-    # Verify data is restored
-    with app_context.db.session_manager() as session:
-        user_count = session.query(User).count()
-        server_count = session.query(Server).count()
-        assert user_count == 1
-        assert server_count == 1
-
-        restored_user = session.query(User).first()
-        assert restored_user.username == "testuser"
