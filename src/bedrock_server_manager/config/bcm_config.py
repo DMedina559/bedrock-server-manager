@@ -8,6 +8,7 @@ It uses the `platformdirs` library to locate the appropriate user-specific
 configuration directory in a cross-platform way.
 
 The main components are:
+- get_config_dir(): Returns the cross-platform configuration directory path.
 - get_config_path(): Returns the path to the config file.
 - load_config(): Reads the config file and returns its contents.
 - save_config(data): Writes data to the config file.
@@ -22,21 +23,22 @@ from typing import TYPE_CHECKING, Any, Dict
 
 from platformdirs import user_config_dir
 
-from .const import env_name, package_name
+from .const import CONFIG_FILE_NAME, env_name, package_name
 
 if TYPE_CHECKING:
     from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_FILE_NAME = "bedrock_server_manager.json"
-_config_dir = user_config_dir(package_name)
-_config_path = os.path.join(_config_dir, _CONFIG_FILE_NAME)
+
+def get_config_dir() -> str:
+    """Returns the cross-platform configuration directory path."""
+    return str(user_config_dir(package_name))
 
 
 def get_config_path() -> str:
     """Returns the full, platform-specific path to the configuration file."""
-    return _config_path
+    return os.path.join(get_config_dir(), CONFIG_FILE_NAME)
 
 
 def load_config() -> Dict[str, Any]:
@@ -54,12 +56,13 @@ def load_config() -> Dict[str, Any]:
         Dict[str, Any]: The loaded and validated configuration data.
     """
     config = {}
-    if os.path.exists(_config_path):
+    config_path = get_config_path()
+    if os.path.exists(config_path):
         try:
-            with open(_config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            logger.error(f"Failed to load configuration file at {_config_path}: {e}")
+            logger.error(f"Failed to load configuration file at {config_path}: {e}")
             # Continue with an empty config, the defaults will be applied.
             config = {}
 
@@ -93,9 +96,7 @@ def load_config() -> Dict[str, Any]:
     else:
         config_dir = os.path.join(final_data_dir, ".config")
         os.makedirs(config_dir, exist_ok=True)
-        final_db_url = (
-            f"sqlite:///{os.path.join(config_dir, 'bedrock-server-manager.db')}"
-        )
+        final_db_url = f"sqlite:///{os.path.join(config_dir, f'{package_name}.db')}"
         config_for_saving["db_url"] = final_db_url
         logger.info(f"Configuration 'db_url' not set. Defaulting to {final_db_url}.")
         config_changed = True
@@ -121,11 +122,11 @@ def save_config(data: Dict[str, Any]):
         data (Dict[str, Any]): The configuration data to save.
     """
     try:
-        os.makedirs(_config_dir, exist_ok=True)
-        with open(_config_path, "w", encoding="utf-8") as f:
+        os.makedirs(get_config_dir(), exist_ok=True)
+        with open(get_config_path(), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
     except OSError as e:
-        logger.error(f"Failed to save configuration file at {_config_path}: {e}")
+        logger.error(f"Failed to save configuration file at {get_config_path()}: {e}")
 
 
 def get_config_value(key: str, default: Any = None) -> Any:

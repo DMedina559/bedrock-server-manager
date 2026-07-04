@@ -20,16 +20,21 @@ app_author: str = "bedrock-server-manager"
 executable_name: str = package_name
 """The name of the main executable script for the application."""
 
+app_module_name: str = package_name.replace("-", "_").title()
+"""A user-friendly, title-cased version of the application name."""
+
 app_name_title: str = package_name.replace("-", " ").title()
 """A user-friendly, title-cased version of the application name."""
 
 env_name: str = "BSM"
-"""The prefix used for environment variables related to this application (e.g., BSM_PASSWORD)."""
+"""The prefix used for environment variables related to this application (e.g., BSM_DB_URL)."""
 
 # --- Package Information ---
 
-SCRIPT_DIR: str = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-"""The root directory of the application scripts (typically the `src` directory)."""
+APP_DIR: str = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+"""The root directory of the application."""
+
+CONFIG_FILE_NAME = f"{app_module_name}.json"
 
 GUARD_VARIABLE = "BSM_PLUGIN_RECURSION_GUARD"
 

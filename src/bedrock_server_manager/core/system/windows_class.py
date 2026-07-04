@@ -104,7 +104,6 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
             os.chdir(script_dir)
             # --- The service runs the web app DIRECTLY in a thread ---
-            # No more complex subprocess calls.
             self.logger.info(f"Starting web server logic in a background thread.")
 
             web_thread = threading.Thread(
