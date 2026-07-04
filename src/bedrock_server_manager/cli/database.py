@@ -11,6 +11,7 @@ from sqlalchemy import inspect
 
 from ..context import AppContext
 from ..db import models
+from ..utils.database import backup_database, get_current_db_revision, restore_database
 
 
 @click.group()
@@ -242,66 +243,10 @@ def backup_db(ctx: click.Context, output: str | None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
 
-    MODELS_TO_BACKUP = [
-        models.User,
-        models.Server,
-        models.ServerBan,
-        models.Setting,
-        models.Plugin,
-        models.RegistrationToken,
-        models.Player,
-        models.AuditLog,
-    ]
-
-    # Include alembic version metadata
-    backup_data = {}
-
-    alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
-    alembic_cfg = Config(str(alembic_ini_path))
-    alembic_cfg.set_main_option("skip_logging_config", "true")
-
-    def default_serializer(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        raise TypeError(f"Type {type(obj)} not serializable")
-
+    click.echo("Backing up database to JSON...")
     try:
-        # Get the current alembic revision
-        engine = app_context.db.engine
-        if engine:
-            with engine.connect() as connection:
-                inspector = inspect(connection)
-                if inspector.has_table("alembic_version"):
-                    from sqlalchemy import text
-
-                    current_rev = connection.execute(
-                        text("SELECT version_num FROM alembic_version")
-                    ).scalar_one_or_none()
-                    if current_rev:
-                        backup_data["_metadata"] = {"alembic_version": current_rev}
-
-        with source_db.session_manager() as session:  # type: ignore
-            for model in MODELS_TO_BACKUP:
-                model_name = model.__name__
-                click.echo(f"Backing up table: {model_name}...")
-
-                records = session.query(model).all()
-                model_data = []
-                for record in records:
-                    record_dict = {
-                        c.name: getattr(record, c.name)
-                        for c in record.__table__.columns
-                    }
-                    model_data.append(record_dict)
-
-                backup_data[model_name] = model_data
-                click.echo(f"  Backed up {len(model_data)} records for {model_name}.")
-
-        with open(output, "w") as f:
-            json.dump(backup_data, f, default=default_serializer, indent=4)
-
-        click.secho(f"\nDatabase data backup successful! Saved to {output}", fg="green")
-
+        backup_database(source_db, output)
+        click.secho(f"Database data backup successful! Saved to {output}", fg="green")
     except Exception as e:
         click.secho(
             f"\nAn error occurred during data backup: {e}", fg="red", exc_info=True
@@ -338,19 +283,6 @@ def restore_db(ctx: click.Context, input: str):
         click.secho("Operation cancelled.", fg="yellow")
         raise click.Abort()
 
-    # The order matters for restoring to satisfy foreign keys
-    # To delete, we go in reverse order.
-    MODELS_TO_RESTORE = [
-        models.User,
-        models.Server,
-        models.ServerBan,
-        models.Setting,
-        models.Plugin,
-        models.RegistrationToken,
-        models.Player,
-        models.AuditLog,
-    ]
-
     try:
         with open(input, "r") as f:
             backup_data = json.load(f)
@@ -359,21 +291,11 @@ def restore_db(ctx: click.Context, input: str):
         raise click.Abort()
 
     # Check for version mismatch
-    engine = app_context.db.engine
-    current_db_rev = None
-    if engine:
-        with engine.connect() as connection:
-            inspector = inspect(connection)
-            if inspector.has_table("alembic_version"):
-                from sqlalchemy import text
-
-                current_db_rev = connection.execute(
-                    text("SELECT version_num FROM alembic_version")
-                ).scalar_one_or_none()
-
+    current_db_rev = get_current_db_revision(target_db.engine)
     backup_rev = backup_data.get("_metadata", {}).get("alembic_version")
+
     if current_db_rev and backup_rev and current_db_rev != backup_rev:
-        click.secho(f"\nWARNING: Database version mismatch!", fg="yellow", bold=True)
+        click.secho("\nWARNING: Database version mismatch!", fg="yellow", bold=True)
         click.secho(f"Current database version: {current_db_rev}", fg="yellow")
         click.secho(f"Backup file database version: {backup_rev}", fg="yellow")
         click.secho(
@@ -396,67 +318,10 @@ def restore_db(ctx: click.Context, input: str):
             click.secho("Operation cancelled.", fg="yellow")
             raise click.Abort()
 
+    click.echo("Wiping existing data and restoring...")
     try:
-        with target_db.session_manager() as session:  # type: ignore
-            # 1. Delete existing data (reverse order)
-            click.echo("Wiping existing data...")
-            for model in reversed(MODELS_TO_RESTORE):
-                model_name = model.__name__
-                count = session.query(model).delete()
-                click.echo(f"  Deleted {count} records from {model_name}.")
-
-            # 2. Insert new data
-            click.echo("\nRestoring data...")
-            for model in MODELS_TO_RESTORE:
-                model_name = model.__name__
-                if model_name not in backup_data:
-                    click.secho(
-                        f"  Warning: No backup data found for {model_name}.",
-                        fg="yellow",
-                    )
-                    continue
-
-                records_data = backup_data[model_name]
-                new_objects = []
-                for record_dict in records_data:
-                    # Convert ISO datetime strings back to datetime objects
-                    for col in getattr(model, "__table__").columns:
-                        col_name = col.name
-                        if (
-                            col_name in record_dict
-                            and record_dict[col_name] is not None
-                        ):
-                            # Heuristic: if it looks like an ISO format string and the column is DateTime
-                            is_datetime = type(col.type).__name__ == "DateTime"
-                            if not is_datetime and target_db.engine:
-                                try:
-                                    is_datetime = isinstance(
-                                        col.type,
-                                        target_db.engine.dialect.type_compiler.process(
-                                            col.type
-                                        ).__class__,
-                                    )
-                                except Exception:
-                                    pass
-
-                            if is_datetime:
-                                if isinstance(record_dict[col_name], str):
-                                    try:
-                                        # Handle standard isoformat
-                                        record_dict[col_name] = datetime.fromisoformat(
-                                            record_dict[col_name]
-                                        )
-                                    except ValueError:
-                                        pass
-
-                    new_objects.append(model(**record_dict))
-
-                session.bulk_save_objects(new_objects)
-                click.echo(f"  Restored {len(new_objects)} records for {model_name}.")
-
-            session.commit()
-            click.secho("\nDatabase data restore successful!", fg="green")
-
+        restore_database(target_db, backup_data)
+        click.secho("\nDatabase data restore successful!", fg="green")
     except Exception as e:
         click.secho(f"\nAn error occurred during data restore: {e}", fg="red")
         click.secho(
