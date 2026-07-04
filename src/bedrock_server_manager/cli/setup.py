@@ -23,7 +23,7 @@ def setup(ctx: click.Context):  # noqa: C901
         current_config = bcm_config.load_config()
 
         # --- Prompt for Data Directory ---
-        default_data_dir = bcm_config._config_dir
+        default_data_dir = bcm_config.get_config_dir
         data_dir = questionary.text(
             "Enter the path for the data directory:",
             default=current_config.get("data_dir", default_data_dir),
