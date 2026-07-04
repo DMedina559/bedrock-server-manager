@@ -104,7 +104,7 @@ def load_config() -> Dict[str, Any]:
     if config_changed:
         save_config(config_for_saving)
 
-    final_config = config.copy()
+    final_config = config_for_saving.copy()
     final_config["data_dir"] = final_data_dir
     final_config["db_url"] = final_db_url
 
