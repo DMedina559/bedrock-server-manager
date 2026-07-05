@@ -20,8 +20,8 @@ app_author: str = "bedrock-server-manager"
 executable_name: str = package_name
 """The name of the main executable script for the application."""
 
-app_module_name: str = package_name.replace("-", "_").title()
-"""A user-friendly, title-cased version of the application name."""
+app_module_name: str = package_name.replace("-", "_")
+"""A user-friendly, snake_case version of the application name."""
 
 app_name_title: str = package_name.replace("-", " ").title()
 """A user-friendly, title-cased version of the application name."""
