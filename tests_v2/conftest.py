@@ -69,6 +69,11 @@ def db(isolated_bcm_config, tmp_path, monkeypatch):
     database = Database(f"sqlite:///{db_path}")
     database.initialize()
 
+    # Ensure tables are created for tests
+    from bedrock_server_manager.db.models import Base
+
+    Base.metadata.create_all(database.engine)
+
     yield database
 
     database.close()

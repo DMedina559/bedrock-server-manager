@@ -372,6 +372,8 @@ async def put_prune_downloads(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API Prune Downloads: Unexpected error for relative_dir '{payload.directory}': {e}",
