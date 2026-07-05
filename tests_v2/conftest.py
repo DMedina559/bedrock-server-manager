@@ -5,6 +5,7 @@ import sys
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -12,6 +13,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 from bedrock_server_manager.config.settings import Settings  # noqa: E402
 from bedrock_server_manager.context import AppContext  # noqa: E402
 from bedrock_server_manager.db.database import Database  # noqa: E402
+from bedrock_server_manager.db.models import User as UserModel  # noqa: E402
+from bedrock_server_manager.utils.auth import (  # noqa: E402
+    create_access_token,
+    get_password_hash,
+)
+from bedrock_server_manager.web.app import create_web_app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -131,3 +138,62 @@ def db_session(db):
     """Fixture to get a database session directly."""
     with db.session_manager() as session:
         yield session
+
+
+@pytest.fixture
+def test_app(app_context):
+    """Provides a FastAPI application instance for testing."""
+    app = create_web_app(app_context)
+    return app
+
+
+@pytest.fixture
+def unauth_client(test_app):
+    """Provides an unauthenticated TestClient instance."""
+    return TestClient(test_app)
+
+
+@pytest.fixture
+def test_user(db_session):
+    """Creates a test user in the database."""
+    user = UserModel(
+        username="testuser",
+        hashed_password=get_password_hash("testpassword"),
+        role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def test_admin_user(db_session):
+    """Creates a test admin user in the database."""
+    user = UserModel(
+        username="adminuser",
+        hashed_password=get_password_hash("adminpassword"),
+        role="admin",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def auth_client(test_app, app_context, test_user):
+    """Provides an authenticated TestClient instance with a valid token cookie."""
+    token = create_access_token(app_context, {"sub": test_user.username})
+    client = TestClient(test_app)
+    client.cookies.set("access_token_cookie", token)
+    return client
+
+
+@pytest.fixture
+def admin_auth_client(test_app, app_context, test_admin_user):
+    """Provides an authenticated TestClient instance for an admin user."""
+    token = create_access_token(app_context, {"sub": test_admin_user.username})
+    client = TestClient(test_app)
+    client.cookies.set("access_token_cookie", token)
+    return client
