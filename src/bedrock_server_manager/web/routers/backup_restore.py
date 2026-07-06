@@ -151,6 +151,8 @@ async def get_list_server_backups(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API List Backups '{server_name}/{backup_type}': Unexpected error. {e}",

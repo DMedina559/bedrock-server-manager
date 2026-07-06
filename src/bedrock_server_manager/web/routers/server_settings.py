@@ -54,6 +54,8 @@ async def get_server_settings(
             settings=config,
             message=f"Successfully retrieved settings for server '{server_name}'.",
         )
+    except HTTPException:
+        raise
     except InvalidServerNameError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -95,6 +97,8 @@ async def post_set_server_setting(
             message=f"Setting '{payload.key}' updated successfully for server '{server_name}'.",
             setting=payload,
         )
+    except HTTPException:
+        raise
     except InvalidServerNameError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

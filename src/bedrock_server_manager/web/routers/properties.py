@@ -56,6 +56,8 @@ async def post_properties_set(
     except UserInputError as e:
         _ = e
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except BSMError as e:
         _ = e
         raise HTTPException(

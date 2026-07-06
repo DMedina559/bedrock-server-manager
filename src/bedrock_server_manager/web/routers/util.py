@@ -67,6 +67,8 @@ async def serve_custom_panorama_api(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Default panorama image not found.",
             )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error serving panorama: {e}", exc_info=True)
         raise HTTPException(

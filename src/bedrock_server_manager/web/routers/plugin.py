@@ -86,6 +86,8 @@ async def get_plugins_status(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to get plugin statuses."),
             )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"API Get Plugin Statuses: Unexpected error: {e}", exc_info=True)
         raise HTTPException(
@@ -130,6 +132,8 @@ async def post_trigger_event(
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except BSMError as e:
         logger.error(
             f"API Trigger Event '{payload.event_name}': BSMError: {e}", exc_info=True
@@ -186,6 +190,8 @@ async def post_set_plugin_status(
 
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except BSMError as e:
         logger.error(f"API Set Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
         raise HTTPException(
@@ -221,6 +227,8 @@ async def put_reload_plugins(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to reload plugins."),
             )
+    except HTTPException:
+        raise
     except BSMError as e:
         logger.error(f"API Reload Plugins: BSMError: {e}", exc_info=True)
         raise HTTPException(
