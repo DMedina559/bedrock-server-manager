@@ -38,11 +38,21 @@ async def websocket_endpoint(  # noqa: C901
     try:
         data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
         action = data.get("action")
-        token = data.get("token")
 
-        if action != "authenticate" or not token:
+        if action != "authenticate":
             logger.warning("WebSocket auth failed: Missing authentication message")
             await websocket.close(code=1008, reason="Missing authentication message")
+            return
+
+        token = data.get("token")
+        if not token:
+            token = websocket.cookies.get("access_token_cookie")
+
+        if not token:
+            logger.warning(
+                "WebSocket auth failed: Missing token in payload and cookies"
+            )
+            await websocket.close(code=1008, reason="Missing token")
             return
 
         user = authenticate_websocket_token(app_context, token)

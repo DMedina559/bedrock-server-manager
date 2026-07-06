@@ -17,6 +17,7 @@ Authentication is required for most parts of the application, and these routes
 facilitate that access control.
 """
 
+import datetime
 import logging
 from typing import Annotated
 
@@ -69,8 +70,6 @@ async def api_login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    import datetime
-
     settings = app_context.settings
     if remember_me:
         try:
@@ -101,6 +100,49 @@ async def api_login_for_access_token(
         access_token=access_token,
         token_type="bearer",
         message="Successfully authenticated.",
+    )
+
+
+@router.post("/reauth", response_model=TokenResponse, tags=["Login"])
+async def reauth(
+    response: Response,
+    remember_me: Annotated[bool, Form()] = False,
+    current_user: UserResponse = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Refreshes the JWT access token for an already authenticated user.
+    """
+    settings = app_context.settings
+    if remember_me:
+        try:
+            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
+        except (ValueError, TypeError):
+            jwt_expires_weeks = 4.0
+        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
+        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
+    else:
+        expires_delta = datetime.timedelta(hours=24)
+
+    access_token = create_access_token(
+        data={"sub": current_user.username},
+        app_context=app_context,
+        expires_delta=expires_delta,
+    )
+
+    logger.info(f"Token refreshed for '{current_user.username}'.")
+    response.set_cookie(
+        key="access_token_cookie",
+        value=access_token,
+        httponly=True,
+        max_age=int(expires_delta.total_seconds()),
+        samesite="lax",
+        path="/",
+    )
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        message="Successfully refreshed token.",
     )
 
 
