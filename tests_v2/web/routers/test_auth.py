@@ -90,3 +90,44 @@ def test_logout_unauthorized(unauth_client: TestClient):
     ):
         response = unauth_client.get("/auth/logout")
         assert response.status_code == 401
+
+
+def test_reauth_success(auth_client: TestClient):
+    """Test successful reauth for an existing authenticated user."""
+    old_cookie = auth_client.cookies.get("access_token_cookie")
+
+    response = auth_client.post("/auth/reauth")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+    assert data["message"] == "Successfully refreshed token."
+
+    # We should have a new cookie
+    new_cookie = response.cookies.get("access_token_cookie")
+    assert new_cookie is not None
+    assert old_cookie != new_cookie
+
+
+def test_reauth_remember_me(auth_client: TestClient):
+    """Test reauth properly accepts the remember_me flag."""
+    # By sending remember_me as True, the cookie's expiration should be longer.
+    # While we cannot easily assert the exact datetime delta on the client side,
+    # we can ensure the endpoint successfully processes the flag without failing.
+    response = auth_client.post("/auth/reauth", data={"remember_me": "true"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert "access_token_cookie" in response.cookies
+
+
+def test_reauth_unauthorized(unauth_client: TestClient):
+    """Test reauth fails properly when a user is unauthenticated."""
+    with patch(
+        "bedrock_server_manager.config.bcm_config.needs_setup", return_value=False
+    ):
+        response = unauth_client.post("/auth/reauth")
+        assert response.status_code == 401
+        assert "Not authenticated" in response.json()["detail"]
