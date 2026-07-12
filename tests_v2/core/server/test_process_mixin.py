@@ -3,27 +3,25 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def test_start_server(real_bedrock_server):
+def test_start_server(real_bedrock_server, fp):
     """Test starting the server."""
     server = real_bedrock_server
 
     with patch.object(server, "is_installed", return_value=True):
         with patch.object(server, "is_running", return_value=False):
-            with patch("subprocess.Popen") as mock_popen:
-                # Need to mock the write of PID file that happens in start()
-                with patch(
-                    "bedrock_server_manager.core.server.process_mixin.system_process.write_pid_to_file"
-                ) as mock_write_pid:
-                    mock_proc = MagicMock()
-                    mock_proc.pid = 1234
-                    mock_popen.return_value = mock_proc
+            # fp will mock the executable path call.
+            fp.register([server.bedrock_executable_path], stdout=b"server started\n")
 
-                    server.start()
+            # Need to mock the write of PID file that happens in start()
+            with patch(
+                "bedrock_server_manager.core.server.process_mixin.system_process.write_pid_to_file"
+            ) as mock_write_pid:
+                server.start()
 
-                    mock_popen.assert_called_once()
-                    mock_write_pid.assert_called_once_with(
-                        server.get_pid_file_path(), 1234
-                    )
+                # Check that process was registered as called.
+                assert fp.call_count([server.bedrock_executable_path]) == 1
+
+                mock_write_pid.assert_called_once()
 
 
 def test_start_server_already_running(real_bedrock_server):
