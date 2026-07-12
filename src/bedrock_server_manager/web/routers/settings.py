@@ -61,6 +61,8 @@ async def get_all_settings(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to retrieve settings."),
             )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"API Get Settings: Unexpected error. {e}", exc_info=True)
         raise HTTPException(
@@ -118,6 +120,8 @@ async def post_set_setting(
     ) as e:  # These might be raised by settings_api or earlier checks
         logger.warning(f"API Set Setting '{payload.key}': Input error. {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except BSMError as e:  # Catch other BSM specific errors (e.g., ConfigWriteError)
         logger.error(f"API Set Setting '{payload.key}': BSMError. {e}", exc_info=True)
         raise HTTPException(
@@ -158,6 +162,8 @@ async def put_reload_settings(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=result.get("message", "Failed to reload settings."),
             )
+    except HTTPException:
+        raise
     except BSMError as e:  # E.g. ConfigLoadError
         logger.error(f"API Reload Settings: BSMError. {e}", exc_info=True)
         raise HTTPException(

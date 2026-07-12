@@ -138,6 +138,8 @@ async def post_install_server(  # noqa: C901
             f"API Install Server '{payload.server_name}': UserInputError. {e}"
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except BSMError as e:
         logger.error(
             f"API Install Server '{payload.server_name}': BSMError. {e}", exc_info=True

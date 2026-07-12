@@ -210,7 +210,7 @@ class AuditLog(Base):  # type: ignore
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     user_id = Column(Integer, ForeignKey("users.id"))
     action = Column(String(255))
     details = Column(JSON)

@@ -59,6 +59,8 @@ async def get_worlds_list(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=api_result.get("message", "Failed to list worlds."),
             )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API: Unexpected critical error listing worlds: {e}", exc_info=True
@@ -149,6 +151,8 @@ async def post_world_install(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API Install World '{server_name}': Pre-check error: {e}", exc_info=True
@@ -202,6 +206,8 @@ async def post_world_export(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API Export World '{server_name}': Pre-check error: {e}", exc_info=True
@@ -253,6 +259,8 @@ async def delete_world_reset(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API Reset World '{server_name}': Pre-check error: {e}", exc_info=True
@@ -315,6 +323,8 @@ async def get_world_icon(
                 detail="Default world icon not found.",
             )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"Unexpected error serving world icon for '{server_name}': {e}",
