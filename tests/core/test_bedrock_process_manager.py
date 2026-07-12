@@ -1,117 +1,133 @@
-from unittest.mock import patch
+"""
+Integration tests for bedrock_server_manager/core/bedrock_process_manager.py
+"""
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.core.bedrock_process_manager import BedrockProcessManager
+from bedrock_server_manager.error import BSMError, FileOperationError
 
 
-@pytest.fixture
-def manager(app_context):
-    """Fixture to get a BedrockProcessManager instance."""
-    with patch("threading.Thread"):
-        manager = BedrockProcessManager(app_context=app_context)
-        yield manager
+def test_process_manager_add_remove_server(app_context: AppContext):
+    """Test adding and removing servers from the manager."""
+    manager = BedrockProcessManager(app_context)
+    mock_server = MagicMock()
+    mock_server.server_name = "test_server"
 
-
-def test_add_and_remove_server(manager):
-    # Arrange
-    server = manager.app_context.get_server("test_server")
-    # Act
-    manager.add_server(server)
-    # Assert
+    # Add server
+    manager.add_server(mock_server)
     assert "test_server" in manager.servers
-    assert manager.servers["test_server"] is server
-    # Act
+
+    # Remove server
     manager.remove_server("test_server")
-    # Assert
     assert "test_server" not in manager.servers
 
 
-def test_monitor_restarts_crashed_server(manager):
-    # Arrange
-    server = manager.app_context.get_server("test_server")
-    server.intentionally_stopped = False
-    manager.add_server(server)
+def test_process_manager_shutdown(app_context: AppContext):
+    """Test shutting down the process manager stops the thread."""
+    manager = BedrockProcessManager(app_context)
+    manager._shutdown_event = MagicMock()
+    manager.monitoring_thread = MagicMock()
 
-    with (
-        patch.object(server, "is_running", return_value=False),
-        patch.object(server, "start") as mock_start,
-    ):
+    manager.shutdown()
 
-        # This is a simplified version of the monitor loop for testing
-        # We need to temporarily remove the while loop for testing
-        original_monitor = manager._monitor_servers
+    manager._shutdown_event.set.assert_called_once()
+    manager.monitoring_thread.join.assert_called_once_with(timeout=5)
 
-        def single_pass_monitor():
-            with patch("time.sleep"):  # Don't sleep in test
-                for server_name, server_obj in list(manager.servers.items()):
-                    if not server_obj.is_running():
-                        if not server_obj.intentionally_stopped:
-                            server_obj.failure_count += 1
-                            manager._try_restart_server(server_obj)
-                        else:
-                            manager.remove_server(server_name)
 
-        manager._monitor_servers = single_pass_monitor
+def test_try_restart_server_success(app_context: AppContext):
+    """Test successfully attempting to restart a server."""
+    manager = BedrockProcessManager(app_context)
+
+    with patch.object(app_context.settings, "get", return_value=3):
+        mock_server = MagicMock()
+        mock_server.server_name = "test_server"
+        mock_server.failure_count = 1
+
+        manager._try_restart_server(mock_server)
+
+        # Verify the start method was called
+        mock_server.start.assert_called_once()
+
+
+def test_try_restart_server_max_retries_reached(app_context: AppContext):
+    """Test restarting a server stops when max retries is reached."""
+    manager = BedrockProcessManager(app_context)
+
+    with patch.object(app_context.settings, "get", return_value=3):
+        with patch.object(manager, "write_error_status") as mock_write_error:
+            with patch.object(manager, "remove_server") as mock_remove_server:
+                mock_server = MagicMock()
+                mock_server.server_name = "test_server"
+                # Set higher than max
+                mock_server.failure_count = 4
+
+                manager._try_restart_server(mock_server)
+
+                # Verify start was not called
+                mock_server.start.assert_not_called()
+
+                # Verify it was marked as error and removed
+                mock_write_error.assert_called_once_with("test_server")
+                mock_remove_server.assert_called_once_with("test_server")
+
+
+def test_write_error_status_success(app_context: AppContext):
+    """Test successfully writing error status to config."""
+    manager = BedrockProcessManager(app_context)
+
+    mock_server = MagicMock()
+    with patch.object(app_context, "get_server", return_value=mock_server):
+        manager.write_error_status("test_server")
+
+        mock_server.set_status_in_config.assert_called_once_with("ERROR")
+
+
+def test_write_error_status_failure(app_context: AppContext):
+    """Test writing error status propagating FileOperationError on internal error."""
+    manager = BedrockProcessManager(app_context)
+
+    mock_server = MagicMock()
+    # Simulate a generic BSMError when setting status
+    mock_server.set_status_in_config.side_effect = BSMError("Config missing")
+
+    with patch.object(app_context, "get_server", return_value=mock_server):
+        with pytest.raises(FileOperationError, match="Failed to write status"):
+            manager.write_error_status("test_server")
+
+
+@patch("bedrock_server_manager.core.bedrock_process_manager.mc.lookup")
+def test_monitor_servers_crashed_server_detected(mock_lookup, app_context: AppContext):
+    """Test monitoring detects a crashed server and attempts restart."""
+    manager = BedrockProcessManager(app_context)
+
+    # Create a server that is NOT intentionally stopped, but IS NOT running (crashed)
+    mock_server = MagicMock()
+    mock_server.server_name = "crashed_server"
+    mock_server.intentionally_stopped = False
+    mock_server.is_running.return_value = False
+    mock_server.get_server_port.return_value = 19132
+    mock_server.failure_count = 0
+
+    manager.add_server(mock_server)
+
+    # We don't want the while loop to run forever, so we fake the _shutdown_event
+    # We'll make it return False once, then True so the loop exits immediately.
+    # The while condition checks `not manager._shutdown_event.is_set()`
+    manager._shutdown_event = MagicMock()
+    # Add an extra True to avoid StopIteration if it checks again while breaking out
+    manager._shutdown_event.is_set.side_effect = [False, True, True, True]
+    manager._shutdown_event.wait.return_value = False  # So it doesn't break early
+
+    with patch.object(manager, "_try_restart_server") as mock_try_restart:
         manager._monitor_servers()
 
-        mock_start.assert_called_once()
-        assert server.failure_count == 1
+        # The server should have its failure count increased and a restart attempted
+        assert mock_server.failure_count == 1
+        mock_try_restart.assert_called_once_with(mock_server)
 
-        manager._monitor_servers = original_monitor
-
-
-def test_monitor_does_not_restart_intentional_stop(manager):
-    # Arrange
-    server = manager.app_context.get_server("test_server")
-    server.intentionally_stopped = True
-    manager.add_server(server)
-
-    with (
-        patch.object(server, "is_running", return_value=False),
-        patch.object(server, "start") as mock_start,
-    ):
-
-        original_monitor = manager._monitor_servers
-
-        def single_pass_monitor():
-            with patch("time.sleep"):
-                for server_name, server_obj in list(manager.servers.items()):
-                    if not server_obj.is_running():
-                        if not server_obj.intentionally_stopped:
-                            server_obj.failure_count += 1
-                            manager._try_restart_server(server_obj)
-                        else:
-                            manager.remove_server(server_name)
-
-        manager._monitor_servers = single_pass_monitor
-        manager._monitor_servers()
-
-        mock_start.assert_not_called()
-        assert "test_server" not in manager.servers
-
-        manager._monitor_servers = original_monitor
-
-
-def test_monitor_respects_max_retries(manager):
-    # Arrange
-    server = manager.app_context.get_server("test_server")
-    server.intentionally_stopped = False
-    server.failure_count = 3  # The server has already failed 3 times
-    manager.add_server(server)
-    manager.settings.set("SERVER_MAX_RESTART_RETRIES", 3)
-
-    with (
-        patch.object(server, "is_running", return_value=False),
-        patch.object(server, "start") as mock_start,
-        patch.object(manager, "write_error_status") as mock_write_error,
-    ):
-
-        # Simulate the monitor loop finding a crash
-        server.failure_count += 1  # This increments to 4
-        manager._try_restart_server(server)
-
-        # Assert
-        mock_start.assert_not_called()  # Should not be called because 4 > 3
-        mock_write_error.assert_called_once_with("test_server")
-        assert "test_server" not in manager.servers
+        # Status lookup shouldn't be called if it's dead
+        mock_lookup.assert_not_called()

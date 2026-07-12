@@ -1,181 +1,118 @@
+import json
 import os
+import platform
 import sys
-from datetime import timedelta
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from bedrock_server_manager.core.bedrock_server import BedrockServer
-from bedrock_server_manager.db.models import User as UserModel
-from bedrock_server_manager.utils.auth import (
-    create_access_token,
-    get_password_hash,
-)
-from bedrock_server_manager.web.app import create_web_app
-from bedrock_server_manager.web.deps import (
-    get_current_user_optional,
-    validate_server_exists,
-)
-
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+from bedrock_server_manager.config.settings import Settings  # noqa: E402
+from bedrock_server_manager.context import AppContext  # noqa: E402
+from bedrock_server_manager.db.database import Database  # noqa: E402
+from bedrock_server_manager.db.models import User as UserModel  # noqa: E402
+from bedrock_server_manager.utils.auth import (  # noqa: E402
+    create_access_token,
+    get_password_hash,
+)
+from bedrock_server_manager.web.app import create_web_app  # noqa: E402
+
 
 @pytest.fixture(autouse=True)
-def isolated_settings(monkeypatch, tmp_path):
+def isolated_bcm_config(monkeypatch, tmp_path):
     """
     This fixture creates a temporary data and config directory and mocks
     platformdirs.user_config_dir to ensure all configuration and data files
     are isolated to the temporary location for the duration of the test.
     """
-    # Create a temporary directory for the app's data
     test_data_dir = tmp_path / "test_data"
     test_data_dir.mkdir()
 
-    # Create a temporary directory for the app's config files
     test_config_dir = tmp_path / "test_config"
     test_config_dir.mkdir()
 
-    # Mock the user_config_dir function to return our temporary config directory
     monkeypatch.setattr(
-        "platformdirs.user_config_dir", lambda *args, **kwargs: str(test_config_dir)
+        "bedrock_server_manager.config.bcm_config.user_config_dir",
+        lambda *args, **kwargs: str(test_config_dir),
     )
 
-    # We also need to set the `data_dir` in the mocked config file
-    # for the `Settings` class to find it.
+    db_path = test_data_dir / "test.db"
     config_file = test_config_dir / "bedrock_server_manager.json"
-    config_data = {"data_dir": str(test_data_dir)}
-    with open(config_file, "w") as f:
-        import json
+    config_data = {"data_dir": str(test_data_dir), "db_url": f"sqlite:///{db_path}"}
 
+    with open(config_file, "w") as f:
         json.dump(config_data, f)
 
-    # The `Settings` class also checks the BSM_DATA_DIR environment variable
-    # as a fallback. It's a good practice to mock this as well to be explicit
-    # about test isolation, even though the primary path is now mocked.
     monkeypatch.setenv("BSM_DATA_DIR", str(test_data_dir))
 
-    # Reload the bcm_config module to ensure the new mocked paths are used
-    import importlib
+    # Reloading inside a fixture is a nightmare because other fixtures import the module
+    # and hold a reference to the OLD namespace. Let's try NOT reloading. We already patched it globally.
+    # We will just patch the values.
 
-    import bedrock_server_manager.config.bcm_config as bcm_config
+    yield test_config_dir
 
-    importlib.reload(bcm_config)
-
-    yield
-
-    # Teardown: Remove the mocked environment variable
-    monkeypatch.delenv("BSM_DATA_DIR")
-    # Reset the bcm_config module to its original state
-    importlib.reload(bcm_config)
+    monkeypatch.delenv("BSM_DATA_DIR", raising=False)
 
 
 @pytest.fixture
-def mock_settings(mocker):
-    """Fixture for a mocked Settings object."""
-    settings = MagicMock()
-    settings.get.return_value = "/tmp"
-    settings.config_dir = "/tmp/config"
-    return settings
+def db(isolated_bcm_config, tmp_path, monkeypatch):
+    """Provides a fresh Database instance initialized with an isolated SQLite DB."""
+    # We use a memory database for speed and isolation
+    db_path = tmp_path / "test_data" / "test.db"
+
+    # ensure mock for alembic files since they might be missing or not findable in tests sometimes
+    monkeypatch.setattr("bedrock_server_manager.cli.database.files", MagicMock())
+
+    database = Database(f"sqlite:///{db_path}")
+    database.initialize()
+
+    # Ensure tables are created for tests
+    from bedrock_server_manager.db.models import Base
+
+    Base.metadata.create_all(database.engine)
+
+    yield database
+
+    database.close()
 
 
 @pytest.fixture
-def mock_bedrock_server(tmp_path):
-    """Fixture for a mocked BedrockServer."""
-    # Create a mock object with the same interface as BedrockServer
-    server = MagicMock(spec=BedrockServer)
-
-    # Set default attributes for the mock
-    server.server_name = "test_server"
-    server.server_dir = str(tmp_path / "test_server")
-    server.server_config_dir = str(tmp_path / "test_server_config")
-    server.is_running.return_value = False
-    server.get_status.return_value = "STOPPED"
-    server.get_version.return_value = "1.20.0"
-
-    return server
+def settings(db):
+    """Provides a fresh Settings instance."""
+    settings_instance = Settings(db=db)
+    settings_instance.load()
+    return settings_instance
 
 
 @pytest.fixture
-def temp_file(tmp_path):
-    """Creates a temporary file for tests."""
-    file = tmp_path / "temp_file"
-    file.touch()
-    return str(file)
+def app_context(settings, db, tmp_path):
+    """Provides a real AppContext instance."""
+    context = AppContext(settings=settings, db=db)
+    context.load()
 
-
-@pytest.fixture
-def temp_dir(tmp_path):
-    """Creates a temporary directory for tests."""
-    return str(tmp_path)
-
-
-@pytest.fixture
-def mock_db_session_manager(mocker):
-    def _mock_db_session_manager(db_session):
-        mock_session_manager = mocker.MagicMock()
-        mock_session_manager.return_value.__enter__.return_value = db_session
-        return mock_session_manager
-
-    return _mock_db_session_manager
-
-
-@pytest.fixture
-def db_session(app_context):
-    """
-    Fixture to get a database session from the app_context.
-    """
-    with app_context.db.session_manager() as session:
-        yield session
-
-
-@pytest.fixture
-def real_bedrock_server(app_context):
-    """Fixture for a real BedrockServer instance."""
-    server = app_context.get_server("test_server")
-    return server
-
-
-@pytest.fixture(autouse=True)
-def app_context(isolated_settings, tmp_path, monkeypatch):
-    """Fixture for a real AppContext instance."""
-    import os
-    import platform
-
-    from bedrock_server_manager.config.settings import Settings
-    from bedrock_server_manager.context import AppContext
-    from bedrock_server_manager.db.database import Database
-
-    # Setup: initialize the database with a test-specific URL
-    db_path = tmp_path / "test.db"
-    db = Database(f"sqlite:///{db_path}")
-    db.initialize()
-
-    # Create dummy plugin
+    # Create dummy plugin dir so plugin manager can load
     plugins_dir = tmp_path / "plugins"
-    plugins_dir.mkdir()
-    plugin1_dir = plugins_dir / "plugin1"
-    plugin1_dir.mkdir()
-    with open(plugin1_dir / "__init__.py", "w") as f:
-        f.write(
-            "from bedrock_server_manager.plugins.plugin_base import PluginBase\n"
-            "class Plugin(PluginBase):\n"
-            '    version = "1.0"\n'
-            "    def on_load(self):\n"
-            "        pass\n"
-        )
-
-    settings = Settings(db=db)
-    settings.load()
+    plugins_dir.mkdir(exist_ok=True)
     settings.set("paths.plugins", str(plugins_dir))
 
-    # Create dummy server files
+    context.plugin_manager.plugin_dirs = [plugins_dir]
+    context.plugin_manager.load_plugins()
+
+    yield context
+
+
+@pytest.fixture
+def real_bedrock_server(app_context, tmp_path):
+    """Fixture to create dummy files representing a server for BedrockServer instance testing."""
     server_name = "test_server"
-    server_dir = os.path.join(settings.get("paths.servers"), server_name)
+
+    server_dir = os.path.join(app_context.settings.get("paths.servers"), server_name)
     os.makedirs(server_dir, exist_ok=True)
 
-    server_config_dir = os.path.join(settings.config_dir, server_name)
+    server_config_dir = os.path.join(app_context.settings.config_dir, server_name)
     os.makedirs(server_config_dir, exist_ok=True)
 
     properties_file = os.path.join(server_dir, "server.properties")
@@ -197,81 +134,71 @@ def app_context(isolated_settings, tmp_path, monkeypatch):
         )
     os.chmod(executable_path, 0o755)
 
-    context = AppContext(settings=settings, db=db)
-    context.load()
-
-    # Load plugins
-    context.plugin_manager.plugin_dirs = [plugins_dir]
-    context.plugin_manager.load_plugins()
-
-    yield context
-
-
-TEST_USER = "testuser"
-TEST_PASSWORD = "testpassword"
+    server = app_context.get_server(server_name)
+    return server
 
 
 @pytest.fixture
-def app(app_context, mocker):
-    """Create a FastAPI app instance for testing."""
-    # Mock the resource monitor to prevent its background task from running during most tests
-    mocker.patch("bedrock_server_manager.web.resource_monitor.ResourceMonitor.start")
-    _app = create_web_app(app_context)
-    return _app
+def db_session(db):
+    """Fixture to get a database session directly."""
+    with db.session_manager() as session:
+        yield session
 
 
 @pytest.fixture
-def mock_dependencies(monkeypatch, app):
-    """Mock dependencies for tests."""
-
-    def mock_needs_setup(app_context):
-        return False
-
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup", mock_needs_setup
-    )
-    app.dependency_overrides[validate_server_exists] = lambda: "test-server"
-    yield
-    app.dependency_overrides = {}
+def test_app(app_context):
+    """Provides a FastAPI application instance for testing."""
+    app = create_web_app(app_context)
+    return app
 
 
 @pytest.fixture
-def client(app):
-    """Create a test client for the app, with mocked dependencies."""
-
-    def get_db_override():
-        with app.state.app_context.db.session_manager() as session:
-            yield session
-
-    with TestClient(app) as client:
-        yield client
-    app.dependency_overrides.clear()
+def unauth_client(test_app):
+    """Provides an unauthenticated TestClient instance."""
+    return TestClient(test_app)
 
 
 @pytest.fixture
-def authenticated_user(db_session):
+def test_user(db_session):
+    """Creates a test user in the database."""
     user = UserModel(
-        username=TEST_USER,
-        hashed_password=get_password_hash(TEST_PASSWORD),
-        role="admin",
+        username="testuser",
+        hashed_password=get_password_hash("testpassword"),
+        role="user",
+        is_active=True,
     )
     db_session.add(user)
     db_session.commit()
-    db_session.refresh(user)
     return user
 
 
 @pytest.fixture
-def authenticated_client(client, authenticated_user, app, app_context):
-    async def mock_get_current_user():
-        return authenticated_user
-
-    app.dependency_overrides[get_current_user_optional] = mock_get_current_user
-    access_token = create_access_token(
-        app_context,
-        data={"sub": authenticated_user.username},
-        expires_delta=timedelta(minutes=15),
+def test_admin_user(db_session):
+    """Creates a test admin user in the database."""
+    user = UserModel(
+        username="adminuser",
+        hashed_password=get_password_hash("adminpassword"),
+        role="admin",
+        is_active=True,
     )
-    client.headers["Authorization"] = f"Bearer {access_token}"
-    yield client
-    app.dependency_overrides.clear()
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def auth_client(test_app, app_context, test_user):
+    """Provides an authenticated TestClient instance with a valid token cookie."""
+    token = create_access_token(app_context, {"sub": test_user.username})
+    client = TestClient(test_app)
+    client.cookies.set("access_token_cookie", token)
+    return client
+
+
+@pytest.fixture
+def admin_auth_client(test_app, app_context, test_admin_user):
+    """Provides an authenticated TestClient instance for an admin user."""
+    token = create_access_token(app_context, {"sub": test_admin_user.username})
+    client = TestClient(test_app)
+    client.cookies.set("access_token_cookie", token)
+    return client

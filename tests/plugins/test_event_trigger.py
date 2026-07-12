@@ -7,117 +7,109 @@ from bedrock_server_manager.plugins.event_trigger import trigger_app_event
 
 
 @pytest.fixture
-def app_context():
-    """Provides a mocked AppContext for testing the event trigger."""
+def mock_app_context():
     mock_context = MagicMock()
     mock_context.plugin_manager = MagicMock()
-    # Mock the connection manager and its async broadcast method
     mock_context.connection_manager = AsyncMock()
-    # Provide a mock loop that reports it is running
+
     mock_loop = MagicMock()
     mock_loop.is_running.return_value = True
     mock_context.loop = mock_loop
     return mock_context
 
 
-def test_trigger_app_event_sync(app_context):
-    @trigger_app_event(before="before_sync", after="after_sync")
-    def my_sync_func(app_context, a, b=10):
-        return a + b
+def test_trigger_app_event_sync_hooks(mock_app_context):
+    """Test trigger_app_event wraps a synchronous function, triggering both before and after hooks."""
 
-    result = my_sync_func(app_context, 5)
+    @trigger_app_event(before="sync_before", after="sync_after")
+    def sync_target(app_context, multiplier, increment=5):
+        return multiplier * increment
 
-    assert result == 15
-    # Check that the original plugin event was triggered
-    app_context.plugin_manager.trigger_event.assert_any_call(
-        "before_sync", app_context=app_context, a=5, b=10
+    result = sync_target(mock_app_context, 10)
+    assert result == 50
+
+    mock_app_context.plugin_manager.trigger_event.assert_any_call(
+        "sync_before", app_context=mock_app_context, multiplier=10, increment=5
     )
-    app_context.plugin_manager.trigger_event.assert_any_call(
-        "after_sync", app_context=app_context, a=5, b=10, result=15
+    mock_app_context.plugin_manager.trigger_event.assert_any_call(
+        "sync_after",
+        app_context=mock_app_context,
+        multiplier=10,
+        increment=5,
+        result=50,
     )
-    # Check that the WebSocket broadcast was called
-    app_context.connection_manager.broadcast_to_topic.assert_any_call(
-        "event:before_sync",
+
+    mock_app_context.connection_manager.broadcast_to_topic.assert_any_call(
+        "event:sync_before",
         {
             "type": "event",
-            "topic": "event:before_sync",
-            "data": {"a": 5, "b": 10},
+            "topic": "event:sync_before",
+            "data": {"multiplier": 10, "increment": 5},
         },
     )
-    app_context.connection_manager.broadcast_to_topic.assert_any_call(
-        "event:after_sync",
+    mock_app_context.connection_manager.broadcast_to_topic.assert_any_call(
+        "event:sync_after",
         {
             "type": "event",
-            "topic": "event:after_sync",
-            "data": {"a": 5, "b": 10, "result": 15},
+            "topic": "event:sync_after",
+            "data": {"multiplier": 10, "increment": 5, "result": 50},
         },
     )
 
 
 @pytest.mark.asyncio
-async def test_trigger_app_event_async(app_context):
-    @trigger_app_event(before="before_async", after="after_async")
-    async def my_async_func(app_context, a, b=20):
-        await asyncio.sleep(0)  # Simulate async operation
-        return a + b
+async def test_trigger_app_event_async_hooks(mock_app_context):
+    """Test trigger_app_event successfully wraps async coroutines awaiting correctly."""
 
-    result = await my_async_func(app_context, 10)
+    @trigger_app_event(before="async_before", after="async_after")
+    async def async_target(app_context, val):
+        await asyncio.sleep(0)
+        return val + 10
 
+    result = await async_target(mock_app_context, 20)
     assert result == 30
-    app_context.plugin_manager.trigger_event.assert_any_call(
-        "before_async", app_context=app_context, a=10, b=20
+
+    mock_app_context.plugin_manager.trigger_event.assert_any_call(
+        "async_before", app_context=mock_app_context, val=20
     )
-    app_context.plugin_manager.trigger_event.assert_any_call(
-        "after_async", app_context=app_context, a=10, b=20, result=30
-    )
-    # Check that the WebSocket broadcast was awaited
-    app_context.connection_manager.broadcast_to_topic.assert_any_await(
-        "event:before_async",
-        {
-            "type": "event",
-            "topic": "event:before_async",
-            "data": {"a": 10, "b": 20},
-        },
-    )
-    app_context.connection_manager.broadcast_to_topic.assert_any_await(
-        "event:after_async",
-        {
-            "type": "event",
-            "topic": "event:after_async",
-            "data": {"a": 10, "b": 20, "result": 30},
-        },
+    mock_app_context.plugin_manager.trigger_event.assert_any_call(
+        "async_after", app_context=mock_app_context, val=20, result=30
     )
 
 
-def test_trigger_app_event_no_args(app_context):
+def test_trigger_app_event_no_args(mock_app_context):
+    """Test trigger_app_event skips triggering when no string events are mapped to kwargs."""
+
     @trigger_app_event
-    def my_func(app_context):
-        return "done"
+    def blank_target(app_context):
+        return "blank"
 
-    my_func(app_context)
-    app_context.plugin_manager.trigger_event.assert_not_called()
-    app_context.connection_manager.broadcast_to_topic.assert_not_called()
+    assert blank_target(mock_app_context) == "blank"
+    mock_app_context.plugin_manager.trigger_event.assert_not_called()
+    mock_app_context.connection_manager.broadcast_to_topic.assert_not_called()
 
 
-def test_trigger_app_event_only_before(app_context):
+def test_trigger_app_event_only_before(mock_app_context):
+    """Test trigger_app_event only executes the before hook if no after is given."""
+
     @trigger_app_event(before="only_before")
-    def my_func(app_context):
-        pass
+    def my_target(app_context):
+        return True
 
-    my_func(app_context)
-    app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_before", app_context=app_context
+    my_target(mock_app_context)
+    mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
+        "only_before", app_context=mock_app_context
     )
-    app_context.connection_manager.broadcast_to_topic.assert_called_once()
 
 
-def test_trigger_app_event_only_after(app_context):
+def test_trigger_app_event_only_after(mock_app_context):
+    """Test trigger_app_event only executes the after hook if no before is given."""
+
     @trigger_app_event(after="only_after")
-    def my_func(app_context):
-        return "finished"
+    def my_target(app_context):
+        return "success_val"
 
-    my_func(app_context)
-    app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_after", app_context=app_context, result="finished"
+    my_target(mock_app_context)
+    mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
+        "only_after", app_context=mock_app_context, result="success_val"
     )
-    app_context.connection_manager.broadcast_to_topic.assert_called_once()

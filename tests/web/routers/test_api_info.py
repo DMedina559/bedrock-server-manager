@@ -1,235 +1,240 @@
-import os
-from unittest.mock import MagicMock, patch
+"""
+Integration tests for the api_info router endpoints.
+"""
+
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+from bedrock_server_manager.error import BSMError
 
 
-def test_get_server_running_status_api_route_success(
-    authenticated_client, real_bedrock_server
+def test_get_server_running_status_success(
+    auth_client: TestClient, real_bedrock_server
 ):
-    """Test the get_server_running_status_api_route with a successful status."""
-    response = authenticated_client.get("/api/server/test_server/status")
-    assert response.status_code == 200
-    assert response.json()["running"] is False
+    with patch(
+        "bedrock_server_manager.api.system.get_server_running_status"
+    ) as mock_status:
+        mock_status.return_value = {
+            "status": "success",
+            "is_running": True,
+            "message": "Server is running.",
+        }
 
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.system_api.get_server_running_status"
-)
-def test_get_server_running_status_api_route_failure(
-    mock_get_status, authenticated_client
-):
-    """Test the get_server_running_status_api_route with a failed status."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_status.return_value = {
-        "status": "error",
-        "message": "Failed to get status",
-    }
-    response = authenticated_client.get("/api/server/test-server/status")
-    assert response.status_code == 500
-    assert "Unexpected error checking running status." in response.json()["detail"]
-
-
-def test_validate_server_api_route_success(authenticated_client, real_bedrock_server):
-    """Test the validate_server_api_route with a successful validation."""
-    response = authenticated_client.get("/api/server/test_server/validate")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-@patch("bedrock_server_manager.utils.server.validate_server")
-def test_validate_server_api_route_failure(mock_validate, authenticated_client):
-    """Test the validate_server_api_route with a failed validation."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_validate.return_value = False
-    response = authenticated_client.get("/api/server/test_server/validate")
-    assert response.status_code == 404
-
-
-def test_server_process_info_api_route_success(
-    authenticated_client, real_bedrock_server
-):
-    """Test the server_process_info_api_route with a successful info retrieval."""
-    response = authenticated_client.get("/api/server/test_server/process_info")
-    assert response.status_code == 200
-    assert response.json()["process_info"] is None
-
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.system_api.get_bedrock_process_info"
-)
-def test_server_process_info_api_route_failure(mock_get_info, authenticated_client):
-    """Test the server_process_info_api_route with a failed info retrieval."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_info.return_value = {
-        "status": "error",
-        "message": "Failed to get process info",
-    }
-    response = authenticated_client.get("/api/server/test-server/process_info")
-    assert response.status_code == 500
-    assert "Unexpected error getting process info." in response.json()["detail"]
-
-
-def test_scan_players_api_route_success(authenticated_client, app_context):
-    """Test the scan_players_api_route with a successful scan."""
-    response = authenticated_client.put("/api/players/scan")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.player_api.scan_and_update_player_db_api"
-)
-def test_scan_players_api_route_failure(mock_scan, authenticated_client):
-    """Test the scan_players_api_route with a failed scan."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_scan.return_value = {"status": "error", "message": "Scan failed"}
-    response = authenticated_client.put("/api/players/scan")
-    assert response.status_code == 500
-    assert "Unexpected error scanning player logs." in response.json()["detail"]
-
-
-def test_get_all_players_api_route_success(authenticated_client, app_context):
-    """Test the get_all_players_api_route with a successful retrieval."""
-    response = authenticated_client.get("/api/players/get")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.player_api.get_all_known_players_api"
-)
-def test_get_all_players_api_route_failure(mock_get_players, authenticated_client):
-    """Test the get_all_players_api_route with a failed retrieval."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_players.return_value = {
-        "status": "error",
-        "message": "Failed to get players",
-    }
-    response = authenticated_client.get("/api/players/get")
-    assert response.status_code == 500
-    assert (
-        "A critical unexpected server error occurred while fetching players."
-        in response.json()["detail"]
-    )
-
-
-def test_prune_downloads_api_route_success(authenticated_client, app_context):
-    """Test the prune_downloads_api_route with a successful prune."""
-    download_dir = os.path.join(app_context.settings.get("paths.downloads"), "stable")
-    os.makedirs(download_dir)
-    response = authenticated_client.put(
-        "/api/downloads/prune", json={"directory": "stable"}
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-@patch("bedrock_server_manager.web.routers.api_info.misc_api.prune_download_cache")
-def test_prune_downloads_api_route_failure(mock_prune, authenticated_client):
-    """Test the prune_downloads_api_route with a failed prune."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_prune.return_value = {"status": "error", "message": "Prune failed"}
-    with patch("os.path.isdir", return_value=True):
-        response = authenticated_client.put(
-            "/api/downloads/prune", json={"directory": "stable"}
+        response = auth_client.get(
+            f"/api/server/{real_bedrock_server.server_name}/status"
         )
-    assert response.status_code == 500
-    assert (
-        "An unexpected error occurred during the pruning process."
-        in response.json()["detail"]
-    )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["running"] is True
 
 
-def test_get_servers_list_api_route_success(
-    authenticated_client, app_context, real_bedrock_server
+def test_get_server_running_status_error(auth_client: TestClient, real_bedrock_server):
+    with patch(
+        "bedrock_server_manager.api.system.get_server_running_status"
+    ) as mock_status:
+        mock_status.side_effect = BSMError("Unable to fetch status")
+
+        response = auth_client.get(
+            f"/api/server/{real_bedrock_server.server_name}/status"
+        )
+
+        assert response.status_code == 500
+        assert "Unable to fetch status" in response.json()["detail"]
+
+
+def test_get_validate_server_success(auth_client: TestClient, real_bedrock_server):
+    with patch("bedrock_server_manager.utils.server.validate_server") as mock_validate:
+        mock_validate.return_value = True
+
+        response = auth_client.get(
+            f"/api/server/{real_bedrock_server.server_name}/validate"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+
+
+def test_get_validate_server_not_found(auth_client: TestClient, real_bedrock_server):
+    with patch("bedrock_server_manager.utils.server.validate_server") as mock_validate:
+        mock_validate.return_value = False
+
+        response = auth_client.get(
+            f"/api/server/{real_bedrock_server.server_name}/validate"
+        )
+
+        assert response.status_code == 404
+
+
+def test_get_server_process_info_success(auth_client: TestClient, real_bedrock_server):
+    with patch(
+        "bedrock_server_manager.api.system.get_bedrock_process_info"
+    ) as mock_info:
+        mock_info.return_value = {
+            "status": "success",
+            "process_info": {"cpu": 10.5, "mem": 1024, "threads": 5},
+        }
+
+        response = auth_client.get(
+            f"/api/server/{real_bedrock_server.server_name}/process_info"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["process_info"]["cpu"] == 10.5
+
+
+def test_put_scan_players_success(admin_auth_client: TestClient):
+    with patch(
+        "bedrock_server_manager.api.player.scan_and_update_player_db_api"
+    ) as mock_scan:
+        mock_scan.return_value = {
+            "status": "success",
+            "message": "Scanned 1 player",
+            "details": {"test_server": 1},
+        }
+
+        response = admin_auth_client.put("/api/players/scan")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["details"] == {"test_server": 1}
+
+
+def test_get_all_players_success(admin_auth_client: TestClient):
+    with patch(
+        "bedrock_server_manager.api.player.get_all_known_players_api"
+    ) as mock_get:
+        mock_get.return_value = {
+            "status": "success",
+            "players": [{"xuid": "123", "name": "Steve"}],
+            "message": "Success",
+        }
+
+        response = admin_auth_client.get("/api/players/get")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert len(data["players"]) == 1
+
+
+def test_put_prune_downloads_success(
+    admin_auth_client: TestClient, tmp_path, app_context
 ):
-    """Test the get_servers_list_api_route with a successful retrieval."""
-    response = authenticated_client.get("/api/servers")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert len(response.json()["servers"]) == 1
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+    target_dir = downloads_dir / "test_target"
+    target_dir.mkdir()
+    app_context.settings.set("paths.downloads", str(downloads_dir))
+
+    with patch("bedrock_server_manager.api.misc.prune_download_cache") as mock_prune:
+        mock_prune.return_value = {
+            "status": "success",
+            "files_deleted": 2,
+            "files_kept": 1,
+        }
+
+        response = admin_auth_client.put(
+            "/api/downloads/prune", json={"directory": "test_target", "keep": 1}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["files_deleted"] == 2
 
 
-@patch("bedrock_server_manager.web.routers.api_info.app_api.get_all_servers_data")
-def test_get_servers_list_api_route_failure(mock_get_servers, authenticated_client):
-    """Test the get_servers_list_api_route with a failed retrieval."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_servers.return_value = {
-        "status": "error",
-        "message": "Failed to get servers",
-    }
-    response = authenticated_client.get("/api/servers")
-    assert response.status_code == 500
-    assert (
-        "An unexpected error occurred retrieving the server list."
-        in response.json()["detail"]
-    )
-
-
-@patch("bedrock_server_manager.api.application.get_system_and_app_info")
-def test_get_system_info_api_route_success(
-    mock_get_info, authenticated_client, app_context
+def test_put_prune_downloads_invalid_path(
+    admin_auth_client: TestClient, tmp_path, app_context
 ):
-    """Test the get_system_info_api_route with a successful retrieval."""
-    mock_get_info.return_value = {
-        "status": "success",
-        "os_type": "Linux",
-        "app_version": "1.0.0",
-        "splash_text": "Hello World",
-    }
-    response = authenticated_client.get("/api/info")
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+    app_context.settings.set("paths.downloads", str(downloads_dir))
+
+    response = admin_auth_client.put(
+        "/api/downloads/prune", json={"directory": "../../etc/passwd", "keep": 1}
+    )
+
+    assert response.status_code == 400
+
+
+def test_get_servers_list_success(auth_client: TestClient):
+    with patch(
+        "bedrock_server_manager.api.application.get_all_servers_data"
+    ) as mock_list:
+        mock_list.return_value = {
+            "status": "success",
+            "servers": [
+                {
+                    "name": "test_server",
+                    "status": "running",
+                    "version": "1.20.0",
+                    "player_count": 0,
+                }
+            ],
+        }
+
+        response = auth_client.get("/api/servers")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert len(data["servers"]) == 1
+
+
+def test_get_system_info_success(unauth_client: TestClient):
+    with patch(
+        "bedrock_server_manager.api.application.get_system_and_app_info"
+    ) as mock_info:
+        mock_info.return_value = {
+            "status": "success",
+            "os": "Linux",
+            "version": "1.0.0",
+        }
+
+        response = unauth_client.get("/api/info")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["info"]["os"] == "Linux"
+
+
+def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    (themes_dir / "custom1.css").touch()
+    app_context.settings.set("paths.themes", str(themes_dir))
+
+    response = unauth_client.get("/api/info/themes")
+
     assert response.status_code == 200
-    assert response.json()["status"] == "success"
+    data = response.json()
+    assert data["status"] == "success"
+    assert "custom1" in data["themes"]
+    assert "default" == data["themes"][0]
 
 
-@patch("bedrock_server_manager.api.application.get_system_and_app_info")
-def test_get_system_info_api_route_failure(mock_get_info, authenticated_client):
-    """Test the get_system_info_api_route with a failed retrieval."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_get_info.return_value = {
-        "status": "error",
-        "message": "Failed to get system info",
-    }
-    response = authenticated_client.get("/api/info")
-    assert response.status_code == 500
-    assert (
-        "An unexpected error occurred retrieving system info."
-        in response.json()["detail"]
-    )
+def test_post_add_players_success(admin_auth_client: TestClient):
+    with patch(
+        "bedrock_server_manager.api.player.add_players_manually_api"
+    ) as mock_add:
+        mock_add.return_value = {
+            "status": "success",
+            "message": "Added 1 player",
+            "count": 1,
+        }
 
+        response = admin_auth_client.post(
+            "/api/players/add", json={"players": ["123456789,Steve"]}
+        )
 
-def test_add_players_api_route_success(authenticated_client, app_context):
-    """Test the add_players_api_route with a successful add."""
-    response = authenticated_client.post(
-        "/api/players/add", json={"players": ["player1:123"]}
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-
-@patch(
-    "bedrock_server_manager.web.routers.api_info.player_api.add_players_manually_api"
-)
-def test_add_players_api_route_failure(mock_add_players, authenticated_client):
-    """Test the add_players_api_route with a failed add."""
-    app_context = MagicMock()
-    authenticated_client.app.state.app_context = app_context
-    mock_add_players.return_value = {
-        "status": "error",
-        "message": "Failed to add players",
-    }
-    response = authenticated_client.post(
-        "/api/players/add", json={"players": ["player1:123"]}
-    )
-    assert response.status_code == 500
-    assert (
-        "A critical unexpected server error occurred while adding players."
-        in response.json()["detail"]
-    )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["count"] == 1

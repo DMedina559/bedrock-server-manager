@@ -1,44 +1,88 @@
-import json
-import os
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
-from bedrock_server_manager.api.permissions import (
-    get_permissions,
-    set_permissions,
-)
+import pytest
+
+from bedrock_server_manager.api.permissions import get_permissions, set_permissions
+from bedrock_server_manager.error import BSMError, InvalidServerNameError
 
 
-class TestPermissions:
-    def test_set_permissions(self, app_context):
-        server = app_context.get_server("test_server")
-        result = set_permissions(
-            "test_server", "123", "player1", "operator", app_context=app_context
-        )
-        assert result["status"] == "success"
+def test_set_permissions_success(app_context, monkeypatch):
+    """Test set_permissions maps directly to the server core effectively."""
+    mock_server = MagicMock()
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-        # Check the permissions file
-        permissions_path = os.path.join(server.server_dir, "permissions.json")
-        with open(permissions_path, "r") as f:
-            permissions_data = json.load(f)
+    result = set_permissions("test_server", "xuid1", "p1", "operator", app_context)
 
-        assert len(permissions_data) == 1
-        assert permissions_data[0]["xuid"] == "123"
+    assert result["status"] == "success"
+    assert "set to 'operator'" in result["message"]
 
-    def test_get_permissions(self, app_context):
-        server = app_context.get_server("test_server")
-        # Add a permission to the permissions file first
-        permissions_path = os.path.join(server.server_dir, "permissions.json")
-        with open(permissions_path, "w") as f:
-            json.dump([{"xuid": "123", "permission": "operator", "name": "player1"}], f)
 
-        with patch(
-            "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api"
-        ) as mock_get_players:
-            mock_get_players.return_value = {
+def test_set_permissions_invalid_server(app_context):
+    """Test set_permissions raises on bad server names."""
+    with pytest.raises(InvalidServerNameError):
+        set_permissions("", "xuid1", "p1", "operator", app_context)
+
+
+def test_set_permissions_error(app_context, monkeypatch):
+    """Test set_permissions catches specific permission assignment failures."""
+    mock_server = MagicMock()
+    mock_server.set_player_permission.side_effect = BSMError("Access denied")
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    result = set_permissions("test_server", "xuid1", "p1", "operator", app_context)
+
+    assert result["status"] == "error"
+    assert "Failed to configure permission" in result["message"]
+
+
+def test_get_permissions_success(app_context, monkeypatch):
+    """Test get_permissions aggregates known players from the system appropriately."""
+    mock_server = MagicMock()
+    mock_server.get_formatted_permissions.return_value = [
+        {"xuid": "xuid1", "name": "p1", "permission_level": "operator"}
+    ]
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    # Mock player API
+    monkeypatch.setattr(
+        "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api",
+        MagicMock(
+            return_value={
                 "status": "success",
-                "players": [{"name": "player1", "xuid": "123"}],
+                "players": [{"xuid": "xuid2", "name": "p2"}],
             }
-            result = get_permissions("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            assert len(result["permissions"]) == 1
-            assert result["permissions"][0]["name"] == "player1"
+        ),
+    )
+
+    result = get_permissions("test_server", app_context)
+
+    assert result["status"] == "success"
+    assert (
+        len(result["permissions"]) == 2
+    )  # One from formatted, one appended from known players
+    assert result["permissions"][0]["name"] == "p1"
+    assert result["permissions"][1]["name"] == "p2"
+
+
+def test_get_permissions_missing_name(app_context):
+    """Test get_permissions explicitly handles empty paths safely."""
+    result = get_permissions("", app_context)
+    assert result["status"] == "error"
+    assert "cannot be empty" in result["message"]
+
+
+def test_get_permissions_error(app_context, monkeypatch):
+    """Test get_permissions relays core extraction issues accurately."""
+    mock_server = MagicMock()
+    mock_server.get_formatted_permissions.side_effect = BSMError("Config busted")
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    monkeypatch.setattr(
+        "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api",
+        MagicMock(return_value={"status": "success"}),
+    )
+
+    result = get_permissions("test_server", app_context)
+
+    assert result["status"] == "error"
+    assert "Config busted" in result["message"]
