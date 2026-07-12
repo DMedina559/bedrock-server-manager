@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import psutil
@@ -45,7 +46,10 @@ def test_find_files(tmp_path: Path):
     assert str(file2) in files
 
     # Test metadata
-    metadata = find_files(str(dir_path), pattern="*.txt", include_metadata=True)
+    metadata = cast(
+        list[dict[str, Any]],
+        find_files(str(dir_path), pattern="*.txt", include_metadata=True),
+    )
     assert len(metadata) == 2
     # Find specific files in metadata
     meta1 = next(m for m in metadata if m["name"] == "a.txt")
