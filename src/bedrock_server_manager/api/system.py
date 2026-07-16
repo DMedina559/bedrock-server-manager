@@ -24,23 +24,69 @@ import logging
 from typing import Any, Dict
 
 from ..context import AppContext
-
-# Local application imports.
 from ..error import (
     BSMError,
     InvalidServerNameError,
-    MissingArgumentError,
-    UserInputError,
 )
-
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("get_bedrock_process_info")
+@api_method("get_server_running_status")
+def get_server_running_status(
+    server_name: str, app_context: AppContext
+) -> Dict[str, Any]:
+    """Checks if the server process is currently running.
+
+    This function queries the operating system to determine if the Bedrock
+    server process associated with the given server name is active by calling
+    :meth:`~.core.bedrock_server.BedrockServer.is_running`.
+
+    Args:
+        server_name (str): The name of the server to check.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the operation result.
+        On success: ``{"status": "success", "is_running": bool}``
+        (``is_running`` is ``True`` if the process is active, ``False`` otherwise).
+        On error: ``{"status": "error", "message": "<error_message>"}``.
+
+    Raises:
+        InvalidServerNameError: If `server_name` is not provided.
+        BSMError: Can be raised by
+            :class:`~.core.bedrock_server.BedrockServer` instantiation or
+            if `is_running` encounters a critical issue (e.g., misconfiguration).
+    """
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+
+    logger.info(f"API: Checking running status for server '{server_name}'...")
+    try:
+        server = app_context.get_server(server_name)
+        is_running = server.is_running()
+        logger.debug(
+            f"API: is_running() check for '{server_name}' returned: {is_running}"
+        )
+        return {"status": "success", "is_running": is_running}
+    except BSMError as e:
+        logger.error(
+            f"API: Error checking running status for '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "message": f"Error checking running status: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error checking running status for '{server_name}': {e}",
+            exc_info=True,
+        )
+        return {
+            "status": "error",
+            "message": f"Unexpected error checking running status: {e}",
+        }
+
+
+@api_method("get_bedrock_process_info")
 def get_bedrock_process_info(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -98,137 +144,4 @@ def get_bedrock_process_info(
         return {
             "status": "error",
             "message": f"Unexpected error getting process info: {e}",
-        }
-
-
-def set_autoupdate(
-    server_name: str, autoupdate_value: str, app_context: AppContext
-) -> Dict[str, str]:
-    """Sets the 'autoupdate' flag in the server's specific JSON configuration file.
-
-    This function modifies the server-specific JSON configuration file to
-    enable or disable the automatic update check before the server starts,
-    by calling :meth:`~.core.bedrock_server.BedrockServer.set_autoupdate`.
-    Triggers ``before_autoupdate_change`` and ``after_autoupdate_change`` plugin events.
-
-    Args:
-        server_name (str): The name of the server.
-        autoupdate_value (str): The desired state for autoupdate.
-            Must be 'true' or 'false' (case-insensitive).
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        On success: ``{"status": "success", "message": "Autoupdate setting for '<name>' updated to <bool_value>."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        MissingArgumentError: If `autoupdate_value` is not provided.
-        UserInputError: If `autoupdate_value` is not 'true' or 'false'.
-        FileOperationError: If writing the server's JSON configuration file fails.
-        ConfigParseError: If the server's JSON configuration is malformed during load/save.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if autoupdate_value is None:
-        raise MissingArgumentError("Autoupdate value cannot be empty.")
-
-    # Validate and convert the input string to a boolean.
-    value_lower = str(autoupdate_value).lower()
-    if value_lower not in ("true", "false"):
-        raise UserInputError("Autoupdate value must be 'true' or 'false'.")
-    value_bool = value_lower == "true"
-
-    try:
-        logger.info(
-            f"API: Setting 'autoupdate' config for server '{server_name}' to {value_bool}..."
-        )
-        server = app_context.get_server(server_name)
-        server.set_autoupdate(value_bool)
-        return {
-            "status": "success",
-            "message": f"Autoupdate setting for '{server_name}' updated to {value_bool}.",
-        }
-
-    except BSMError as e:
-        logger.error(
-            f"API: Failed to set autoupdate config for '{server_name}': {e}",
-            exc_info=True,
-        )
-        return {"status": "error", "message": f"Failed to set autoupdate config: {e}"}
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error setting autoupdate for '{server_name}': {e}",
-            exc_info=True,
-        )
-        return {
-            "status": "error",
-            "message": f"Unexpected error setting autoupdate: {e}",
-        }
-
-
-@trigger_plugin_event(before="before_autostart_change", after="after_autostart_change")
-def set_autostart(
-    server_name: str, autostart_value: str, app_context: AppContext
-) -> Dict[str, str]:
-    """Sets the 'autostart' flag in the server's specific JSON configuration file.
-
-    This function modifies the server-specific JSON configuration file to
-    enable or disable the automatic update check before the server starts,
-    by calling :meth:`~.core.bedrock_server.BedrockServer.set_autostart`.
-    Triggers ``before_autostart_change`` and ``after_autostart_change`` plugin events.
-
-    Args:
-        server_name (str): The name of the server.
-        autostart_value (str): The desired state for autostart.
-            Must be 'true' or 'false' (case-insensitive).
-
-    Returns:
-        Dict[str, str]: A dictionary with the operation result.
-        On success: ``{"status": "success", "message": "autostart setting for '<name>' updated to <bool_value>."}``
-        On error: ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        InvalidServerNameError: If `server_name` is not provided.
-        MissingArgumentError: If `autostart_value` is not provided.
-        UserInputError: If `autostart_value` is not 'true' or 'false'.
-        FileOperationError: If writing the server's JSON configuration file fails.
-        ConfigParseError: If the server's JSON configuration is malformed during load/save.
-    """
-    if not server_name:
-        raise InvalidServerNameError("Server name cannot be empty.")
-    if autostart_value is None:
-        raise MissingArgumentError("autostart value cannot be empty.")
-
-    # Validate and convert the input string to a boolean.
-    value_lower = str(autostart_value).lower()
-    if value_lower not in ("true", "false"):
-        raise UserInputError("autostart value must be 'true' or 'false'.")
-    value_bool = value_lower == "true"
-
-    try:
-        logger.info(
-            f"API: Setting 'autostart' config for server '{server_name}' to {value_bool}..."
-        )
-        server = app_context.get_server(server_name)
-        server.set_autostart(value_bool)
-        return {
-            "status": "success",
-            "message": f"autostart setting for '{server_name}' updated to {value_bool}.",
-        }
-
-    except BSMError as e:
-        logger.error(
-            f"API: Failed to set autostart config for '{server_name}': {e}",
-            exc_info=True,
-        )
-        return {"status": "error", "message": f"Failed to set autostart config: {e}"}
-    except Exception as e:
-        logger.error(
-            f"API: Unexpected error setting autostart for '{server_name}': {e}",
-            exc_info=True,
-        )
-        return {
-            "status": "error",
-            "message": f"Unexpected error setting autostart: {e}",
         }

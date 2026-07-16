@@ -81,6 +81,10 @@ class ContentListResponse(BaseApiResponse):
         files (Optional[List[str]]): A list of filenames found.
     """
 
-    # status: str -> Inherited
-    # message: Optional[str] = None -> Inherited
     files: Optional[List[str]] = None
+
+
+class ThemeListResponse(BaseApiResponse):
+    """Response model for theme lists."""
+
+    themes: Optional[List[str]] = None

@@ -1,126 +1,147 @@
-import os
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from bedrock_server_manager.config.settings import CONFIG_SCHEMA_VERSION, deep_merge
+from bedrock_server_manager.config.settings import Settings
 from bedrock_server_manager.db.models import Setting
+from bedrock_server_manager.error import ConfigurationError
 
 
-@pytest.fixture
-def settings(app_context):
-    return app_context.settings
+def test_settings_initialization(db):
+    """Test Settings initializes properties correctly without loading."""
+    settings = Settings(db=db)
+    assert settings.db == db
+    assert settings._settings == {}
 
 
-def test_initialization_with_defaults(settings):
-    """Test that settings are initialized with default values."""
-    assert settings.get("config_version") == CONFIG_SCHEMA_VERSION
-    assert settings.get("retention.backups") == 3
+def test_settings_load_populates_defaults(db):
+    """Test loading on an empty database populates default settings."""
+    settings = Settings(db=db)
+    settings.load()
+
+    # Check that settings were populated from default_config
+    assert "web" in settings._settings
+    assert "port" in settings._settings["web"]
+
+    # Verify they were saved to the DB
+    with db.session_manager() as session:
+        count = session.query(Setting).count()
+        assert count > 0
+
+
+def test_settings_load_merges_existing_db(db):
+    """Test loading merges DB user config over defaults."""
+    # Pre-populate DB with a custom setting that overrides a default
+    with db.session_manager() as session:
+        session.add(
+            Setting(
+                key="web",
+                value={"port": 9999, "host": "127.0.0.1", "token_expires_weeks": 4},
+            )
+        )
+        session.add(Setting(key="custom", value={"my_setting": "val"}))
+        session.commit()
+
+    settings = Settings(db=db)
+    settings.load()
+
+    assert settings.get("web.port") == 9999
+    assert settings.get("custom.my_setting") == "val"
+
+    # Check that other defaults still exist
+    assert settings.get("retention.backups") is not None
+
+
+def test_settings_get(settings):
+    """Test getting deeply nested keys and defaults."""
+    assert settings.get("paths.servers") is not None
     assert settings.get("web.port") == 11325
+    assert settings.get("does.not.exist", "fallback") == "fallback"
+    assert settings.get("web.invalid", "fallback") == "fallback"
 
 
-def test_setting_and_getting_values(settings, db_session):
-    """Test that setting a value is persisted and retrievable."""
-    settings.set("web.port", 8000)
-    assert settings.get("web.port") == 8000
+def test_settings_set(settings, db):
+    """Test setting deeply nested keys."""
+    # Test setting existing key
+    settings.set("web.port", 8080)
+    assert settings.get("web.port") == 8080
 
-    # Check the database directly
-    setting_in_db = db_session.query(Setting).filter_by(key="web").one()
-    assert setting_in_db.value["port"] == 8000
+    # Test setting new nested key
+    settings.set("custom.plugin.enabled", True)
+    assert settings.get("custom.plugin.enabled") is True
 
-    settings.set("retention.logs", 10)
-    assert settings.get("retention.logs") == 10
-
-    # Check the database directly
-    setting_in_db = db_session.query(Setting).filter_by(key="retention").one()
-    assert setting_in_db.value["logs"] == 10
-
-
-def test_nested_setting_and_getting(settings, db_session, tmp_path):
-    """Test that nested values can be set and retrieved."""
-    new_path = tmp_path / "new_server_path"
-    settings.set("paths.servers", str(new_path))
-    assert settings.get("paths.servers") == str(new_path)
-
-    # Check the database directly
-    setting_in_db = db_session.query(Setting).filter_by(key="paths").one()
-    assert setting_in_db.value["servers"] == str(new_path)
-
-    # Ensure other nested values are not affected
-    assert settings.get("paths.backups") is not None
+    # Verify written to DB
+    with db.session_manager() as session:
+        custom_setting = session.query(Setting).filter_by(key="custom").first()
+        assert custom_setting.value["plugin"]["enabled"] is True
 
 
-def test_reload_settings(settings, db_session):
-    """Test that settings can be reloaded from the database."""
-    settings.set("web.port", 12345)
+def test_settings_set_no_change_skips_write(settings, monkeypatch):
+    """Test setting the same value skips database write."""
+    mock_write = MagicMock()
+    monkeypatch.setattr(settings, "_write_config", mock_write)
 
-    # Manually change the value in the database
-    setting_in_db = db_session.query(Setting).filter_by(key="web").first()
+    current_val = settings.get("web.port")
+    settings.set("web.port", current_val)
 
-    # The value is stored as a dictionary
-    setting_in_db.value = {"port": 54321}
-    db_session.commit()
+    mock_write.assert_not_called()
 
-    # Re-fetch to confirm the change in the DB
-    refreshed_setting = db_session.query(Setting).filter_by(key="web").first()
-    assert refreshed_setting.value["port"] == 54321
 
+def test_settings_set_conflict_raises_error(settings):
+    """Test setting a key where a path conflict exists raises ConfigurationError."""
+    # We must try to set a sub-key on a path that is already a primitive value, not a dict.
+    # web.port is an int, so setting web.port.sub should throw a ConfigurationError.
+
+    with pytest.raises(ConfigurationError, match="Cannot set key"):
+        settings.set("web.port.sub.another", "value")
+
+
+def test_settings_reload(settings, db):
+    """Test reload pulls fresh changes from the database."""
+    # Modify db directly
+    with db.session_manager() as session:
+        setting = session.query(Setting).filter_by(key="web").first()
+        if not setting:
+            setting = Setting(key="web", value={"port": 11325})
+            session.add(setting)
+
+        # we have to replace the whole dict in sqlalchemy JSON columns for it to register update sometimes,
+        # or use flag_modified. The safest way is to reassign.
+        new_val = dict(setting.value) if setting.value else {}
+        new_val["port"] = 5555
+        setting.value = new_val
+        session.commit()
+
+    assert settings.get("web.port") == 11325  # Before reload
     settings.reload()
-
-    assert settings.get("web.port") == 54321
-
-
-def test_get_with_default_value(settings):
-    """Test that the get method returns the default value if the key does not exist."""
-    assert settings.get("non_existent_key", "default_value") == "default_value"
+    assert settings.get("web.port") == 5555  # After reload
 
 
-def test_set_with_new_key(settings):
-    """Test that the set method can create a new key."""
-    settings.set("new_key", "new_value")
-    assert settings.get("new_key") == "new_value"
+def test_settings_ensure_dirs_exist(settings, tmp_path):
+    """Test _ensure_dirs_exist creates critical directories."""
+    # Change a path to a new location
+    new_dir = tmp_path / "new_servers_dir"
+    settings.set("paths.servers", str(new_dir))
 
-
-def test_determine_app_data_dir_uses_config(settings, monkeypatch, tmp_path):
-    """Test that _determine_app_data_dir uses the data_dir from bcm_config."""
-    with patch(
-        "bedrock_server_manager.config.settings.bcm_config.load_config"
-    ) as mock_load_config:
-        config_dir = str(tmp_path / "config_dir")
-        mock_load_config.return_value = {"data_dir": config_dir}
-        assert settings._determine_app_data_dir() == config_dir
-
-
-def test_determine_app_config_dir(settings):
-    """Test that the _determine_app_config_dir method returns the correct directory."""
-    assert settings._determine_app_config_dir() == os.path.join(
-        settings.app_data_dir, ".config"
-    )
-
-
-def test_ensure_dirs_exist(settings):
-    """Test that the _ensure_dirs_exist method creates the necessary directories."""
+    assert not new_dir.exists()
     settings._ensure_dirs_exist()
-    for path in settings.get("paths").values():
-        assert os.path.exists(path)
+    assert new_dir.exists()
 
 
-def test_write_config_error(settings, db_session, monkeypatch):
-    """Test that a ConfigurationError is raised if the config cannot be written."""
+def test_settings_ensure_dirs_raises_error_on_failure(settings, monkeypatch):
+    """Test _ensure_dirs_exist raises ConfigurationError on OSError."""
 
-    def mock_commit():
-        raise Exception("Test Exception")
+    def mock_makedirs(*args, **kwargs):
+        raise OSError("Permission denied")
 
-    monkeypatch.setattr(db_session, "commit", mock_commit)
-    with pytest.raises(Exception, match="Test Exception"):
-        settings._write_config(db_session)
+    monkeypatch.setattr("os.makedirs", mock_makedirs)
+
+    with pytest.raises(ConfigurationError, match="Could not create critical directory"):
+        settings._ensure_dirs_exist()
 
 
-def test_deep_merge():
-    """Test the deep_merge function."""
-    source = {"a": 1, "b": {"c": 2, "d": 3}}
-    destination = {"b": {"c": 4, "e": 5}, "f": 6}
-
-    deep_merge(source, destination)
-
-    assert destination == {"a": 1, "b": {"c": 2, "d": 3, "e": 5}, "f": 6}
+def test_settings_properties(settings):
+    """Test property getters like config_dir and app_data_dir."""
+    assert settings.config_dir is not None
+    assert settings.app_data_dir is not None
+    assert isinstance(settings.version, str)

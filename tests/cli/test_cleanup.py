@@ -1,114 +1,115 @@
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
-from bedrock_server_manager.cli import cleanup
+from bedrock_server_manager.cli.cleanup import (
+    _cleanup_log_files,
+    _cleanup_pycache,
+    cleanup,
+)
 
 
-@patch("bedrock_server_manager.cli.cleanup._cleanup_pycache")
-def test_cleanup_no_options(mocker):
-    runner = CliRunner()
-    mock_app_context = mocker.MagicMock()
-    result = runner.invoke(
-        cleanup.cleanup,
-        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
-    )
+@pytest.fixture
+def runner():
+    return CliRunner()
+
+
+def test_cleanup_no_options(runner, app_context):
+    """Test cleanup command warns the user when neither --cache nor --logs is passed."""
+    result = runner.invoke(cleanup, obj={"app_context": app_context})
     assert result.exit_code == 0
     assert "No cleanup options specified" in result.output
 
 
-@patch("bedrock_server_manager.cli.cleanup._cleanup_pycache", return_value=1)
-def test_cleanup_cache(mock_cleanup_pycache, mocker):
-    runner = CliRunner()
-    mock_app_context = mocker.MagicMock()
+def test_cleanup_cache(runner, app_context, monkeypatch):
+    """Test cleanup command successfully removes mock __pycache__ directories."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.cleanup._cleanup_pycache", lambda: 5
+    )
+
+    result = runner.invoke(cleanup, ["--cache"], obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "Cleaned up 5 __pycache__ director(ies)" in result.output
+
+
+def test_cleanup_cache_none(runner, app_context, monkeypatch):
+    """Test cleanup command correctly reports when no __pycache__ is found."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.cleanup._cleanup_pycache", lambda: 0
+    )
+
+    result = runner.invoke(cleanup, ["--cache"], obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "No __pycache__ directories found to clean" in result.output
+
+
+def test_cleanup_logs(runner, app_context, tmp_path, monkeypatch):
+    """Test cleanup command successfully removes mock .log files."""
+    app_context.settings.set("paths.logs", str(tmp_path))
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.cleanup._cleanup_log_files", lambda x: 3
+    )
+
+    result = runner.invoke(cleanup, ["--logs"], obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "Cleaned up 3 log file(s)" in result.output
+
+
+def test_cleanup_logs_missing_dir(runner, app_context):
+    """Test cleanup command fails gracefully when logs directory is unconfigured."""
+    app_context.settings.set("paths.logs", None)
+    result = runner.invoke(cleanup, ["--logs"], obj={"app_context": app_context})
+    assert result.exit_code == 1  # Abort
+    assert "Log directory not specified" in result.output
+
+
+def test_cleanup_logs_with_override(runner, app_context, tmp_path, monkeypatch):
+    """Test cleanup command prioritizes --log-dir override flag."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.cleanup._cleanup_log_files", lambda x: 1
+    )
+
     result = runner.invoke(
-        cleanup.cleanup,
-        ["--cache"],
-        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
+        cleanup,
+        ["--logs", "--log-dir", str(tmp_path)],
+        obj={"app_context": app_context},
     )
     assert result.exit_code == 0
-    mock_cleanup_pycache.assert_called_once()
+    assert "Cleaned up 1 log file(s)" in result.output
+    assert str(tmp_path) in result.output
 
 
-def test_cleanup_logs(mocker):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        log_dir = Path("logs")
-        log_dir.mkdir()
-        (log_dir / "log1.log.1").touch()
-        time.sleep(0.1)
-        (log_dir / "log2.log.2").touch()
+def test_internal_cleanup_log_files(tmp_path):
+    """Test the internal log file cleanup core logic respecting mtimes."""
+    import time
 
-        mock_app_context = mocker.MagicMock()
-        mock_app_context.settings.get.return_value = str(log_dir)
+    # Empty dir
+    assert _cleanup_log_files(tmp_path) == 0
 
-        result = runner.invoke(
-            cleanup.cleanup,
-            ["--logs"],
-            obj={
-                "app_context": mock_app_context,
-                "bsm": MagicMock(),
-                "cli": MagicMock(),
-            },
-        )
+    # 1 file (kept)
+    (tmp_path / "app.log.1").touch()
+    assert _cleanup_log_files(tmp_path) == 0
+    assert (tmp_path / "app.log.1").exists()
 
-        assert result.exit_code == 0
-        assert (log_dir / "log2.log.2").exists()
-        assert not (log_dir / "log1.log.1").exists()
+    # 3 files (2 removed, newest kept)
+    time.sleep(0.01)
+    (tmp_path / "app.log.2").touch()
+    time.sleep(0.01)
+    (tmp_path / "app.log.3").touch()  # Newest
+
+    assert _cleanup_log_files(tmp_path) == 2
+    assert not (tmp_path / "app.log.1").exists()
+    assert not (tmp_path / "app.log.2").exists()
+    assert (tmp_path / "app.log.3").exists()
 
 
-@patch("bedrock_server_manager.cli.cleanup._cleanup_pycache", return_value=1)
-def test_cleanup_all(mock_cleanup_pycache, mocker):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        log_dir = Path("logs")
-        log_dir.mkdir()
-        (log_dir / "log1.log.1").touch()
-        time.sleep(0.1)
-        (log_dir / "log2.log.2").touch()
+def test_internal_cleanup_pycache_error(monkeypatch):
+    """Test the internal pycache cleanup logic silently handling exceptions."""
 
-        mock_app_context = mocker.MagicMock()
-        mock_app_context.settings.get.return_value = str(log_dir)
+    def mock_rglob(*args, **kwargs):
+        raise Exception("Rglob error")
 
-        result = runner.invoke(
-            cleanup.cleanup,
-            ["--cache", "--logs"],
-            obj={
-                "app_context": mock_app_context,
-                "bsm": MagicMock(),
-                "cli": MagicMock(),
-            },
-        )
+    monkeypatch.setattr(Path, "rglob", mock_rglob)
 
-        assert result.exit_code == 0
-        mock_cleanup_pycache.assert_called_once()
-        assert not (log_dir / "log1.log.1").exists()
-        assert (log_dir / "log2.log.2").exists()
-
-
-def test_cleanup_log_dir_override(mocker):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        log_dir = Path("custom_logs")
-        log_dir.mkdir()
-        (log_dir / "log1.log.1").touch()
-        time.sleep(0.1)
-        (log_dir / "log2.log.2").touch()
-
-        mock_app_context = mocker.MagicMock()
-
-        result = runner.invoke(
-            cleanup.cleanup,
-            ["--logs", "--log-dir", str(log_dir)],
-            obj={
-                "app_context": mock_app_context,
-                "bsm": MagicMock(),
-                "cli": MagicMock(),
-            },
-        )
-
-        assert result.exit_code == 0
-        assert (log_dir / "log2.log.2").exists()
-        assert not (log_dir / "log1.log.1").exists()
+    assert _cleanup_pycache() == 0

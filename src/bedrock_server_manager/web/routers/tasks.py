@@ -2,14 +2,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ...context import AppContext
-from ..auth_utils import get_current_user
-from ..dependencies import get_app_context
+from ..deps import get_app_context, get_current_user
 from ..schemas import UserResponse
 
-router = APIRouter()
+router = APIRouter(tags=["Background Tasks"])
 
 
-@router.get("/api/tasks/status/{task_id}", tags=["Tasks"])
+@router.get(
+    "/api/tasks/status/{task_id}",
+)
 async def get_task_status(
     task_id: str,
     current_user: UserResponse = Depends(get_current_user),
@@ -24,7 +25,9 @@ async def get_task_status(
     return task
 
 
-@router.get("/api/tasks/list", tags=["Tasks"])
+@router.get(
+    "/api/tasks/list",
+)
 async def list_tasks(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),

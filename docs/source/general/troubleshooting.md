@@ -14,7 +14,7 @@ Start with these simple steps, as they resolve many common problems.
 
 ### 1. Update to the Latest Version
 
-The issue you're facing may have already been fixed in a newer release. Ensure both the Bedrock Server Manager and the `bsm-api-client` (if you use it) are up to date.
+The issue you're facing may have already been fixed in a newer release. Ensure both the Bedrock Server Manager and the `bsm-cli` (if you use it) are up to date.
 
 You can check your version in the BSM web UI and compare it with the [latest release on GitHub](https://github.com/DMedina559/bedrock-server-manager/releases/latest).
 
@@ -85,10 +85,11 @@ If you are a developer and have identified the source of the bug, consider contr
 This section contains solutions for common problems, often related to major updates.
 
 *   **Updates and Graceful Shutdowns**: As of version 3.6.0, BSM automatically attempts to shut down all running servers and unload plugins gracefully when the main application stops. While the old advice to "stop servers before updating" is less critical now, it remains a good practice, especially if upgrading from a version before 3.6.0.
+*   **Bedrock Updates**: Sometimes Mojang releases new versions of the server that requires new server properties. Before BSM version 3.10.0 BSM would preserve the original server properties file when updating the server. As of version 3.10.0, BSM will now **merge any new server properties with your existing ones**. This means that if Mojang adds a new property, it will be added to your existing `server.properties` file instead of being overwritten. If you updated your servers before 3.10.0, you may need to manually update your `server.properties` file to include any new properties introduced in the latest Bedrock server version using the Web UI.
 *   **Web UI Login Fails After v3.5.0 Update**: The migration from Flask to FastAPI in v3.5.0 required a new password hashing system (`bcrypt`). If you updated from a version prior to 3.5.0, **you must regenerate your password hash and auth tokens** to log in.
-*   **CLI Commands Don't Work After v3.6.0 Update**: In v3.6.0, most CLI commands were moved to the `bsm-api-client` package. The core `bedrock-server-manager` package no longer handles most command-line actions directly.
+*   **CLI Commands Don't Work After v3.10.0 Update**: In v3.10.0, most CLI commands were moved to the `bsm-cli` package. The core `bedrock-server-manager` package no longer handles most command-line actions directly.
     *   Install the new CLI with: `pip install bedrock-server-manager[cli]`
-    *   Use the new command: `bsm-api-client <command>`
+    *   Use the new command: `bsm-cli <command>`
 *   **Slow Web UI (3.6+)**: Using the default database has been observed to cause slow loadding times for the web server on some systems, if you experience this issue, consider using an external database such as `MySQL` or `PostgreSQL`.
 
 ## Platform Information

@@ -3,114 +3,91 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bedrock_server_manager.plugins.api_bridge import PluginAPI
+from bedrock_server_manager.plugins.api_bridge import AppAPI
 from bedrock_server_manager.plugins.plugin_base import PluginBase
 
 
 @pytest.fixture
 def mock_api():
-    """Fixture for a mocked PluginAPI."""
-    return MagicMock(spec=PluginAPI)
+    """Fixture providing a mock AppAPI."""
+    return MagicMock(spec=AppAPI)
 
 
 @pytest.fixture
 def mock_logger():
-    """Fixture for a mocked Logger."""
+    """Fixture providing a mock Logger."""
     return MagicMock(spec=logging.Logger)
 
 
-def test_plugin_base_is_abc():
-    """Tests that PluginBase cannot be instantiated directly."""
-    with pytest.raises(TypeError):
-        PluginBase(
-            "test_plugin", MagicMock(spec=PluginAPI), MagicMock(spec=logging.Logger)
+def test_plugin_base_is_abstract():
+    """Test PluginBase correctly enforces abstract instantiation restrictions."""
+    with pytest.raises(TypeError) as exc_info:
+        PluginBase("test", MagicMock(), MagicMock())
+    assert "Can't instantiate abstract class" in str(exc_info.value)
+
+
+class ValidPlugin(PluginBase):
+    version = "1.2.3"
+
+    def on_load(self):
+        pass
+
+
+class VersionlessPlugin(PluginBase):
+    def on_load(self):
+        pass
+
+
+def test_concrete_plugin_initialization(mock_api, mock_logger):
+    """Test successful initialization of a concrete plugin inheriting PluginBase."""
+    plugin = ValidPlugin("my_plugin", mock_api, mock_logger)
+    assert plugin.name == "my_plugin"
+    assert plugin.api == mock_api
+    assert plugin.logger == mock_logger
+    assert plugin.version == "1.2.3"
+    mock_logger.info.assert_called_with(
+        "Plugin 'my_plugin' v1.2.3 initialized and active."
+    )
+
+
+def test_concrete_plugin_no_version_warning(mock_api, mock_logger):
+    """Test plugin initialization warns when a class is missing the version property."""
+    with patch.object(mock_logger, "warning") as mock_warning:
+        plugin = VersionlessPlugin("no_version_plugin", mock_api, mock_logger)
+        assert plugin.version == "N/A"
+        mock_warning.assert_called_once_with(
+            "Plugin 'no_version_plugin' class is missing a 'version' attribute or it's 'N/A'. "
+            "This should be defined in the plugin class."
         )
 
 
-class TestConcretePlugin:
-    """Tests for a concrete implementation of PluginBase."""
+def test_all_base_hooks_exist_and_callable(mock_api, mock_logger):
+    """Test that all anticipated plugin lifecycle hooks are defined as methods on PluginBase and can be invoked cleanly."""
+    plugin = ValidPlugin("my_plugin", mock_api, mock_logger)
 
-    class ConcretePlugin(PluginBase):
-        version = "1.0.0"
+    # Expected hook signatures
+    hooks = [
+        ("on_load", {}),
+        ("on_unload", {}),
+        ("before_server_start", {"server_name": "s1", "target_version": "1.0"}),
+        ("after_server_start", {"server_name": "s1", "result": {}}),
+        ("before_command_send", {"server_name": "s1", "command": "cmd"}),
+        ("after_command_send", {"server_name": "s1", "command": "cmd", "result": {}}),
+        ("before_backup", {"server_name": "s1", "backup_type": "full"}),
+        ("after_backup", {"server_name": "s1", "backup_type": "full", "result": {}}),
+        ("on_any_event", {"event_name": "foo", "arg1": "bar"}),
+    ]
 
-        def on_load(self):
-            pass
+    for hook_name, kwargs in hooks:
+        assert hasattr(plugin, hook_name)
+        method = getattr(plugin, hook_name)
+        assert callable(method)
+        # Verify it doesn't throw NotImplementedError or anything
+        method(**kwargs)
 
-    class NoVersionPlugin(PluginBase):
-        def on_load(self):
-            pass
 
-    def test_init_success(self, mock_api, mock_logger):
-        """Tests successful initialization of a concrete plugin."""
-        plugin = self.ConcretePlugin("my_plugin", mock_api, mock_logger)
-        assert plugin.name == "my_plugin"
-        assert plugin.api == mock_api
-        assert plugin.logger == mock_logger
-        assert plugin.version == "1.0.0"
-        mock_logger.info.assert_called_with(
-            "Plugin 'my_plugin' v1.0.0 initialized and active."
-        )
-
-    def test_init_no_version_warning(self, mock_api, mock_logger):
-        """Tests that a warning is logged if a plugin is missing a version."""
-        with patch.object(mock_logger, "warning") as mock_warning:
-            plugin = self.NoVersionPlugin("no_version_plugin", mock_api, mock_logger)
-            assert plugin.version == "N/A"
-            mock_warning.assert_called_once_with(
-                "Plugin 'no_version_plugin' class is missing a 'version' attribute or it's 'N/A'. "
-                "This should be defined in the plugin class."
-            )
-
-    def test_all_hooks_exist_and_are_callable(self, mock_api, mock_logger):
-        """Tests that all hook methods exist and can be called without errors."""
-        plugin = self.ConcretePlugin("my_plugin", mock_api, mock_logger)
-
-        # A selection of hooks to test for existence and callability
-        hooks = [
-            ("on_load", {}),
-            ("on_unload", {}),
-            (
-                "before_server_start",
-                {"server_name": "server1", "target_version": "1.0.0"},
-            ),
-            (
-                "after_server_start",
-                {"server_name": "server1", "result": {"status": "success"}},
-            ),
-            ("before_command_send", {"server_name": "server1", "command": "say hello"}),
-            (
-                "after_command_send",
-                {
-                    "server_name": "server1",
-                    "command": "say hello",
-                    "result": {"status": "success"},
-                },
-            ),
-            ("before_backup", {"server_name": "server1", "backup_type": "world"}),
-            (
-                "after_backup",
-                {
-                    "server_name": "server1",
-                    "backup_type": "world",
-                    "result": {"status": "success"},
-                },
-            ),
-            # Test new wildcard hook
-            ("on_any_event", {"event_name": "test_event", "arg": "value"}),
-        ]
-
-        for hook_name, kwargs in hooks:
-            assert hasattr(plugin, hook_name)
-            method = getattr(plugin, hook_name)
-            assert callable(method)
-            try:
-                method(**kwargs)
-            except Exception as e:
-                pytest.fail(f"Hook '{hook_name}' raised an exception: {e}")
-
-    def test_extension_hooks_return_empty_lists(self, mock_api, mock_logger):
-        """Tests that the extension hooks return empty lists by default."""
-        plugin = self.ConcretePlugin("my_plugin", mock_api, mock_logger)
-
-        assert plugin.get_fastapi_routers() == []
-        assert plugin.get_static_mounts() == []
+def test_extension_hooks_return_default_empty_lists(mock_api, mock_logger):
+    """Test extension hooks return valid empty lists instead of NotImplemented or None."""
+    plugin = ValidPlugin("my_plugin", mock_api, mock_logger)
+    assert plugin.get_fastapi_routers() == []
+    assert plugin.get_static_mounts() == []

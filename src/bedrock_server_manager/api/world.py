@@ -18,7 +18,7 @@ Operations involving world file modifications (export, import, reset) are
 thread-safe using a unified lock (``_world_lock``) to prevent data corruption.
 For actions that require the server to be offline (like import or reset),
 this module utilizes the
-:func:`~bedrock_server_manager.api.utils.server_lifecycle_manager`
+:func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
 to safely stop and restart the server. All functions are exposed to the
 plugin system.
 """
@@ -35,23 +35,19 @@ from ..error import (
     InvalidServerNameError,
     MissingArgumentError,
 )
-
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 from ..utils import get_timestamp
-
-# Local application imports.
-from .utils import server_lifecycle_manager
+from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
 # A unified lock to prevent race conditions during any world file operation
 # (export, import, reset). This ensures data integrity.
-_world_lock = threading.Lock()
+_world_lock = threading.RLock()
 
 
-@plugin_method("get_world_name")
+@api_method("get_world_name")
 def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
@@ -102,8 +98,8 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@plugin_method("export_world")
-@trigger_plugin_event(before="before_world_export", after="after_world_export")
+@api_method("export_world")
+@trigger_app_event(before="before_world_export", after="after_world_export")
 def export_world(
     server_name: str,
     app_context: AppContext,
@@ -114,10 +110,10 @@ def export_world(
 
     This operation is thread-safe due to ``_world_lock``. If `stop_start_server`
     is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped during the export for file consistency, and then
     restarted. The core world export is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.export_world_directory_to_mcworld`.
+    :meth:`~.core.bedrock_server.BedrockServer.export_world`.
     Triggers ``before_world_export`` and ``after_world_export`` plugin events.
 
     Args:
@@ -189,9 +185,7 @@ def export_world(
                 logger.info(
                     f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
                 )
-                server.export_world_directory_to_mcworld(
-                    world_name_str, export_file_path
-                )
+                server.export_world(world_name_str, export_file_path)
 
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."
@@ -221,8 +215,8 @@ def export_world(
         _world_lock.release()
 
 
-@plugin_method("import_world")
-@trigger_plugin_event(before="before_world_import", after="after_world_import")
+@api_method("import_world")
+@trigger_app_event(before="before_world_import", after="after_world_import")
 def import_world(
     server_name: str,
     selected_file_path: str,
@@ -239,9 +233,9 @@ def import_world(
         will be deleted before the new world is imported.
 
     If `stop_start_server` is ``True``, this function uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped during the import. The core world import is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.import_active_world_from_mcworld`.
+    :meth:`~.core.bedrock_server.BedrockServer.import_world`.
     Triggers ``before_world_import`` and ``after_world_import`` plugin events.
 
     Args:
@@ -299,9 +293,7 @@ def import_world(
                 logger.info(
                     f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
                 )
-                imported_world_name = server.import_active_world_from_mcworld(
-                    selected_file_path
-                )
+                imported_world_name = server.import_world(selected_file_path)
 
             logger.info(
                 f"API: World import from '{selected_filename}' for server '{server_name}' completed."
@@ -330,8 +322,7 @@ def import_world(
         _world_lock.release()
 
 
-@plugin_method("reset_world")
-@trigger_plugin_event(before="before_world_reset", after="after_world_reset")
+@trigger_app_event(before="before_world_reset", after="after_world_reset")
 def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 
@@ -344,10 +335,10 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
         will be permanently removed.
 
     This function uses the
-    :func:`~bedrock_server_manager.api.utils.server_lifecycle_manager` to ensure
+    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
     the server is stopped before deleting the world and restarted afterwards (which
     will trigger new world generation). The active world directory is deleted using
-    :meth:`~.core.bedrock_server.BedrockServer.delete_active_world_directory`.
+    :meth:`~.core.bedrock_server.BedrockServer.delete_world`.
     Triggers ``before_world_reset`` and ``after_world_reset`` plugin events.
 
     Args:
@@ -396,7 +387,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
                 logger.info(
                     f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."
                 )
-                server.delete_active_world_directory()
+                server.delete_world()
 
             logger.info(
                 f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."

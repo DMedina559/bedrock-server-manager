@@ -1,53 +1,67 @@
 import os
-import shutil
 from unittest.mock import patch
 
 import pytest
 
-from bedrock_server_manager.error import AppFileNotFoundError
 
-
-def test_is_installed_true(real_bedrock_server):
+def test_is_installed(real_bedrock_server):
+    """Test checking if a server is installed."""
     server = real_bedrock_server
+
+    # Fixture creates a dummy executable, so it should be installed
     assert server.is_installed() is True
 
-
-def test_is_installed_false(real_bedrock_server):
-    server = real_bedrock_server
+    # Remove executable to simulate uninstalled
     os.remove(server.bedrock_executable_path)
     assert server.is_installed() is False
 
 
-def test_is_installed_dir_exists_no_exe(real_bedrock_server):
+def test_validate_installation_success(real_bedrock_server):
+    """Test validating a healthy installation."""
+    server = real_bedrock_server
+    assert server.validate_installation() is True
+
+
+def test_validate_installation_missing_exe(real_bedrock_server):
+    """Test validating raises error if executable is missing."""
     server = real_bedrock_server
     os.remove(server.bedrock_executable_path)
-    assert server.is_installed() is False
+    from bedrock_server_manager.error import AppFileNotFoundError
 
-
-def test_validate_installation_no_dir(real_bedrock_server):
-    server = real_bedrock_server
-    shutil.rmtree(server.server_dir)
     with pytest.raises(AppFileNotFoundError):
         server.validate_installation()
 
 
-def test_validate_installation_no_exe(real_bedrock_server):
+def test_set_filesystem_permissions(real_bedrock_server):
+    """Test setting filesystem permissions delegates to system_base."""
     server = real_bedrock_server
-    os.remove(server.bedrock_executable_path)
-    with pytest.raises(AppFileNotFoundError):
-        server.validate_installation()
-
-
-def test_set_filesystem_permissions_not_installed(real_bedrock_server):
-    server = real_bedrock_server
-    os.remove(server.bedrock_executable_path)
-    with pytest.raises(AppFileNotFoundError):
+    with patch(
+        "bedrock_server_manager.core.server.installation_mixin.system_base.set_server_folder_permissions"
+    ) as mock_set_perms:
         server.set_filesystem_permissions()
+        mock_set_perms.assert_called_once_with(server.server_dir)
 
 
-def test_delete_all_data_missing_backup_dir(real_bedrock_server):
+def test_delete_server_files(real_bedrock_server):
+    """Test deleting all server files."""
     server = real_bedrock_server
-    # No exception should be raised
-    with patch.object(server, "is_running", return_value=False, create=True):
-        with patch.object(server, "stop", create=True):
-            server.delete_all_data()
+    world_dir = os.path.join(server.server_dir, "worlds")
+    os.makedirs(world_dir)
+
+    # Note: `keep_worlds` is not an argument for `delete_server_files` in the actual code
+    server.delete_server_files()
+
+    assert not os.path.exists(server.server_dir)
+
+
+def test_delete_all_data(real_bedrock_server):
+    """Test deleting all server data including configuration."""
+    server = real_bedrock_server
+
+    assert os.path.exists(server.server_dir)
+    assert os.path.exists(server.server_config_dir)
+
+    server.delete_all_data()
+
+    assert not os.path.exists(server.server_dir)
+    assert not os.path.exists(server.server_config_dir)

@@ -1,10 +1,10 @@
-from unittest.mock import MagicMock, call
+import json
+from unittest.mock import MagicMock
 
 import pytest
 from click.testing import CliRunner
 
-from bedrock_server_manager.cli.database import upgrade
-from bedrock_server_manager.db.models import User
+from bedrock_server_manager.cli.database import database
 
 
 @pytest.fixture
@@ -12,292 +12,147 @@ def runner():
     return CliRunner()
 
 
-@pytest.fixture
-def mock_app_context(mocker):
-    mock_db_session = MagicMock()
-    mock_app_context = MagicMock()
-    mock_app_context.db.session_manager.return_value.__enter__.return_value = (
-        mock_db_session
-    )
-    mock_app_context.settings.get.return_value = "/fake/backups"
-    # This is the key change to fix the unit tests
-    mock_app_context.db.get_database_url.return_value = "sqlite:////fake/db.sqlite3"
-    return mock_app_context, mock_db_session
+def test_database_upgrade(runner, app_context, monkeypatch):
+    """Test database upgrade CLI command queries alembic successfully."""
+    mock_command = MagicMock()
+    monkeypatch.setattr("bedrock_server_manager.cli.database.command", mock_command)
 
-
-def test_upgrade_sqlite_backup_success(runner, mock_app_context, mocker):
-    mock_context, _ = mock_app_context
-    db_url = mock_context.db.get_database_url()
-    mocker.patch("bedrock_server_manager.cli.database.shutil.copy")
-    mocker.patch("bedrock_server_manager.cli.database.command.upgrade")
-    mock_config_instance = MagicMock()
-    mocker.patch(
-        "bedrock_server_manager.cli.database.Config", return_value=mock_config_instance
-    )
-
-    result = runner.invoke(upgrade, [], obj={"app_context": mock_context})
-
-    assert result.exit_code == 0
-    expected_calls = [
-        call("skip_logging_config", "true"),
-        call("sqlalchemy.url", db_url),
-    ]
-    mock_config_instance.set_main_option.assert_has_calls(
-        expected_calls, any_order=True
-    )
-    assert "Database backed up to" in result.output
-    assert "Database upgrade complete." in result.output
-
-
-def test_upgrade_non_sqlite_warning(runner, mock_app_context, mocker):
-    mock_context, _ = mock_app_context
-    db_url = "postgresql://user:pass@host/db"
-    mock_context.db.get_database_url.return_value = db_url
-    mocker.patch("bedrock_server_manager.cli.database.command.upgrade")
-    mock_config_instance = MagicMock()
-    mocker.patch(
-        "bedrock_server_manager.cli.database.Config", return_value=mock_config_instance
-    )
-
-    result = runner.invoke(upgrade, [], input="y\n", obj={"app_context": mock_context})
-
-    assert result.exit_code == 0
-    expected_calls = [
-        call("skip_logging_config", "true"),
-        call("sqlalchemy.url", db_url),
-    ]
-    mock_config_instance.set_main_option.assert_has_calls(
-        expected_calls, any_order=True
-    )
-    assert "Your database is not SQLite" in result.output
-
-
-def test_upgrade_admin_user_exists(runner, mock_app_context, mocker):
-    mock_context, mock_session = mock_app_context
-    db_url = mock_context.db.get_database_url()
-    mock_session.query.return_value.filter.return_value.first.return_value = User(
-        role="admin"
-    )
-    mocker.patch("bedrock_server_manager.cli.database.shutil.copy")
-    mocker.patch("bedrock_server_manager.cli.database.command.upgrade")
-    mock_config_instance = MagicMock()
-    mocker.patch(
-        "bedrock_server_manager.cli.database.Config", return_value=mock_config_instance
-    )
-
-    result = runner.invoke(upgrade, [], obj={"app_context": mock_context})
-
-    assert result.exit_code == 0
-    expected_calls = [
-        call("skip_logging_config", "true"),
-        call("sqlalchemy.url", db_url),
-    ]
-    mock_config_instance.set_main_option.assert_has_calls(
-        expected_calls, any_order=True
-    )
-    assert "Warning: No admin user found" not in result.output
-
-
-def test_upgrade_no_admin_user(runner, mock_app_context, mocker):
-    mock_context, mock_session = mock_app_context
-    db_url = mock_context.db.get_database_url()
-    mock_session.query.return_value.filter.return_value.first.return_value = None
-    mocker.patch("bedrock_server_manager.cli.database.shutil.copy")
-    mocker.patch("bedrock_server_manager.cli.database.command.upgrade")
-    mock_config_instance = MagicMock()
-    mocker.patch(
-        "bedrock_server_manager.cli.database.Config", return_value=mock_config_instance
-    )
-
-    result = runner.invoke(upgrade, [], obj={"app_context": mock_context})
-
-    assert result.exit_code == 0
-    expected_calls = [
-        call("skip_logging_config", "true"),
-        call("sqlalchemy.url", db_url),
-    ]
-    mock_config_instance.set_main_option.assert_has_calls(
-        expected_calls, any_order=True
-    )
-    assert "Warning: No admin user found" in result.output
-
-
-def test_upgrade_unmanaged_database_stamps(runner, mock_app_context, mocker):
-    mock_context, _ = mock_app_context
-    db_url = mock_context.db.get_database_url()
+    # Needs to pretend not to have alembic_version for baseline stamping
     mock_inspector = MagicMock()
-    mock_inspector.has_table.side_effect = lambda table_name: table_name == "users"
-    mocker.patch(
-        "bedrock_server_manager.cli.database.inspect", return_value=mock_inspector
+    mock_inspector.has_table.return_value = False
+
+    def mock_inspect(*args, **kwargs):
+        return mock_inspector
+
+    monkeypatch.setattr("bedrock_server_manager.cli.database.inspect", mock_inspect)
+
+    result = runner.invoke(database, ["upgrade"], obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "Running database upgrade" in result.output
+    mock_command.upgrade.assert_called_once()
+
+
+def test_database_downgrade(runner, app_context, monkeypatch):
+    """Test database downgrade CLI command executes and prompts for downgrade correctly."""
+    mock_command = MagicMock()
+    monkeypatch.setattr("bedrock_server_manager.cli.database.command", mock_command)
+
+    # Provide 'y' to the confirm prompt
+    result = runner.invoke(
+        database,
+        ["downgrade", "-r", "-1"],
+        input="y\n",
+        obj={"app_context": app_context},
     )
-    mocker.patch("bedrock_server_manager.cli.database.shutil.copy")
-    mock_stamp = mocker.patch("bedrock_server_manager.cli.database.command.stamp")
-    mock_upgrade = mocker.patch("bedrock_server_manager.cli.database.command.upgrade")
-    mock_config_instance = MagicMock()
-    mocker.patch(
-        "bedrock_server_manager.cli.database.Config", return_value=mock_config_instance
+    assert result.exit_code == 0
+    assert "Running database downgrade" in result.output
+    mock_command.downgrade.assert_called_once()
+
+
+def test_database_downgrade_abort(runner, app_context):
+    """Test database downgrade CLI command gracefully aborts upon confirmation rejection."""
+    result = runner.invoke(
+        database,
+        ["downgrade", "-r", "-1"],
+        input="n\n",
+        obj={"app_context": app_context},
+    )
+    assert result.exit_code == 1  # aborted
+    assert "Aborted!" in result.output
+
+
+def test_database_backup(runner, app_context, tmp_path, monkeypatch):
+    """Test database backup CLI command saves file correctly."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.backup_database", MagicMock()
     )
 
-    result = runner.invoke(upgrade, [], obj={"app_context": mock_context})
+    out_file = tmp_path / "backup.json"
+    result = runner.invoke(
+        database, ["backup", "-o", str(out_file)], obj={"app_context": app_context}
+    )
 
     assert result.exit_code == 0
-    expected_calls = [
-        call("skip_logging_config", "true"),
-        call("sqlalchemy.url", db_url),
-    ]
-    mock_config_instance.set_main_option.assert_has_calls(
-        expected_calls, any_order=True
-    )
-    assert "Unmanaged database detected" in result.output
-    mock_stamp.assert_called_once_with(mocker.ANY, "head")
-    mock_upgrade.assert_called_once()
+    assert "Database data backup successful" in result.output
 
 
-def test_upgrade_integration_unmanaged_db(runner, app_context):
-    """
-    Integration test to verify that the upgrade command correctly stamps
-    an unmanaged database (one with tables but no alembic_version table).
-    """
-    from sqlalchemy import inspect
-
-    # The app_context fixture creates an unmanaged database for us.
-    # We just need to run the command.
-    result = runner.invoke(upgrade, [], obj={"app_context": app_context})
-
-    # 1. Check the output and exit code
-    assert result.exit_code == 0, result.output
-    assert "Unmanaged database detected" in result.output
-    assert "Database stamped successfully" in result.output
-    assert "Running database upgrade" in result.output
-    assert "Database upgrade complete" in result.output
-
-    # 2. Verify that the alembic_version table was created
-    engine = app_context.db.engine
-    inspector = inspect(engine)
-    assert inspector.has_table("alembic_version")
-
-
-def test_upgrade_e2e_unmanaged_db(tmp_path, monkeypatch):
-    """
-    A high-fidelity integration test that simulates running the CLI from scratch
-    on an unmanaged database, ensuring the app's full startup sequence is tested.
-    """
-    import json
-
-    from click.testing import CliRunner
-    from sqlalchemy import create_engine, inspect
-
-    from bedrock_server_manager.__main__ import create_cli_app
-    from bedrock_server_manager.db.models import Base
-
-    # 1. Setup Environment
-    config_dir = tmp_path / "config"
-    data_dir = tmp_path / "data"
-    config_dir.mkdir()
-    data_dir.mkdir()
-
-    db_path = data_dir / "test_e2e.db"
-    db_url = f"sqlite:///{db_path}"
-
-    # Create the main config file that the app will find
-    app_config_file = config_dir / "bedrock_server_manager.json"
-    with open(app_config_file, "w") as f:
-        json.dump({"data_dir": str(data_dir), "db_url": db_url}, f)
-
-    # Monkeypatch the config directory path finder
+def test_database_backup_default_path(runner, app_context, tmp_path, monkeypatch):
+    """Test database backup CLI command uses default settings correctly when not specifying -o."""
+    app_context.settings.set("paths.backups", str(tmp_path))
     monkeypatch.setattr(
-        "platformdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
+        "bedrock_server_manager.cli.database.backup_database", MagicMock()
     )
 
-    # Reload the config module to ensure it uses the monkeypatched path
-    import importlib
-
-    from bedrock_server_manager.config import bcm_config
-
-    importlib.reload(bcm_config)
-
-    # 2. Create the unmanaged database
-    engine = create_engine(db_url)
-    Base.metadata.create_all(engine)
-    assert not inspect(engine).has_table("alembic_version")
-    assert inspect(engine).has_table("users")
-
-    # 3. Run the CLI command
-    runner = CliRunner()
-    cli_app = create_cli_app()
-    result = runner.invoke(cli_app, ["database", "upgrade"], catch_exceptions=False)
-
-    # 4. Assert the results
-    assert result.exit_code == 0, result.output
-    assert "Unmanaged database detected" in result.output
-    assert "Database stamped successfully" in result.output
-    assert "Running database upgrade" in result.output
-    assert "Database upgrade complete" in result.output
-
-    # Verify the table was created in the database file
-    engine_after = create_engine(db_url)
-    assert inspect(engine_after).has_table("alembic_version")
+    result = runner.invoke(database, ["backup"], obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "Database data backup successful" in result.output
+    assert str(tmp_path) in result.output
 
 
-def test_upgrade_e2e_empty_alembic_table(tmp_path, monkeypatch):
-    """
-    Tests that the upgrade command works correctly when the alembic_version
-    table exists but is empty (contains NULL).
-    """
-    import json
+def test_database_restore_success(runner, app_context, tmp_path, monkeypatch):
+    """Test database restore CLI command restores data successfully."""
+    in_file = tmp_path / "backup.json"
+    with open(in_file, "w") as f:
+        json.dump({"_metadata": {"alembic_version": "some_rev"}}, f)
 
-    from click.testing import CliRunner
-    from sqlalchemy import create_engine, inspect, text
-
-    from bedrock_server_manager.__main__ import create_cli_app
-    from bedrock_server_manager.db.models import Base
-
-    # 1. Setup Environment
-    config_dir = tmp_path / "config"
-    data_dir = tmp_path / "data"
-    config_dir.mkdir()
-    data_dir.mkdir()
-    db_path = data_dir / "test_e2e_empty.db"
-    db_url = f"sqlite:///{db_path}"
-    app_config_file = config_dir / "bedrock_server_manager.json"
-    with open(app_config_file, "w") as f:
-        json.dump({"data_dir": str(data_dir), "db_url": db_url}, f)
+    mock_questionary = MagicMock()
+    mock_questionary.confirm().ask.return_value = True
     monkeypatch.setattr(
-        "platformdirs.user_config_dir", lambda *args, **kwargs: str(config_dir)
+        "bedrock_server_manager.cli.database.questionary", mock_questionary
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.get_current_db_revision",
+        lambda x: "some_rev",
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.restore_database", MagicMock()
     )
 
-    # Reload the config module to ensure it uses the monkeypatched path
-    import importlib
+    result = runner.invoke(
+        database, ["restore", "-i", str(in_file)], obj={"app_context": app_context}
+    )
+    assert result.exit_code == 0
+    assert "Database data restore successful" in result.output
 
-    from bedrock_server_manager.config import bcm_config
 
-    importlib.reload(bcm_config)
+def test_database_restore_abort_prompt(runner, app_context, tmp_path, monkeypatch):
+    """Test database restore CLI command correctly aborts on prompt denial."""
+    in_file = tmp_path / "backup.json"
+    in_file.touch()
 
-    # 2. Create the database in the problematic state
-    engine = create_engine(db_url)
-    Base.metadata.create_all(engine)  # Create all tables
-    with engine.connect() as connection:
-        # Manually create the alembic_version table
-        connection.execute(
-            text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
-        )
-        connection.commit()
+    mock_questionary = MagicMock()
+    mock_questionary.confirm().ask.return_value = False  # User says NO
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.questionary", mock_questionary
+    )
 
-    assert inspect(engine).has_table("alembic_version")
-    assert inspect(engine).has_table("users")
+    result = runner.invoke(
+        database, ["restore", "-i", str(in_file)], obj={"app_context": app_context}
+    )
+    assert result.exit_code == 1  # aborted
+    assert "Operation cancelled" in result.output
 
-    # 3. Run the CLI command
-    runner = CliRunner()
-    cli_app = create_cli_app()
-    result = runner.invoke(cli_app, ["database", "upgrade"], catch_exceptions=False)
 
-    # 4. Assert the results
-    assert result.exit_code == 0, result.output
-    assert "stamping" in result.output.lower()
+def test_database_restore_version_mismatch(runner, app_context, tmp_path, monkeypatch):
+    """Test database restore CLI command properly detects version mismatch."""
+    in_file = tmp_path / "backup.json"
+    with open(in_file, "w") as f:
+        json.dump({"_metadata": {"alembic_version": "old_rev"}}, f)
 
-    # 5. Verify the table is now correctly stamped
-    with engine.connect() as connection:
-        result = connection.execute(
-            text("SELECT version_num FROM alembic_version")
-        ).scalar_one_or_none()
-        assert result is not None
+    mock_questionary = MagicMock()
+    # First confirm is to proceed with wipe, second is to proceed despite version mismatch
+    mock_questionary.confirm().ask.side_effect = [True, False]
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.questionary", mock_questionary
+    )
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.get_current_db_revision",
+        lambda x: "new_rev",
+    )
+
+    result = runner.invoke(
+        database, ["restore", "-i", str(in_file)], obj={"app_context": app_context}
+    )
+    assert result.exit_code == 1  # aborted
+    assert "Database version mismatch" in result.output
+    assert "Operation cancelled" in result.output

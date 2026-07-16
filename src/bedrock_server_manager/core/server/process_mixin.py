@@ -24,14 +24,12 @@ import os
 import platform
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
     import psutil as psutil_for_types
 
-
-# Local application imports.
 from ...error import (
     BSMError,
     MissingArgumentError,
@@ -186,6 +184,13 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             self.intentionally_stopped = False
             self.start_time = time.time()
 
+            if hasattr(self, "players"):
+                self.players: List[Dict[str, str]] = []
+            if hasattr(self, "_log_file_cursor"):
+                self._log_file_cursor = 0
+            if hasattr(self, "_scan_log_cursor"):
+                self._scan_log_cursor = 0
+
             if hasattr(self, "set_status_in_config"):
                 self.set_status_in_config("RUNNING")
             self.logger.info(
@@ -210,6 +215,8 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     def stop(self) -> None:  # noqa: C901
         """Stops the Bedrock server process gracefully, with a forceful fallback."""
+        self.intentionally_stopped = True
+
         if not self.is_running():
             self.logger.info(
                 f"Attempted to stop server '{self.server_name}', but it is not currently running."
@@ -249,9 +256,17 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         try:
             self.logger.info(f"Sending 'stop' command to server '{self.server_name}'.")
-            if self._process.stdin:
+            if hasattr(self._process, "stdin") and self._process.stdin:
                 self._process.stdin.write(b"stop\n")
                 self._process.stdin.flush()
+            elif isinstance(self._process, system_process.psutil.Process):
+                # If we recovered a psutil process, we can't write to its stdin
+                # Send terminate signal instead, which allows it to shut down gracefully
+                self.logger.info(
+                    f"Cannot write to stdin of recovered psutil process '{self.server_name}'. Sending terminate signal."
+                )
+                self._process.terminate()
+
             timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
             self._process.wait(timeout=timeout)
             self.logger.info(f"Server '{self.server_name}' stopped gracefully.")
@@ -260,15 +275,22 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"Server '{self.server_name}' did not stop gracefully or pipe was already closed. Killing process. Error: {e}"
             )
             self._process.kill()
+        except system_process.psutil.TimeoutExpired as e:
+            self.logger.warning(
+                f"Server '{self.server_name}' psutil process did not stop gracefully. Killing process. Error: {e}"
+            )
+            self._process.kill()
         except Exception as e:
             self.logger.error(
                 f"An error occurred while stopping server '{self.server_name}': {e}",
                 exc_info=True,
             )
-            self._process.kill()
+            try:
+                self._process.kill()
+            except Exception as kill_e:
+                self.logger.error(f"Failed to kill process after error: {kill_e}")
 
         self._process = None
-        self.intentionally_stopped = True
 
         pid_file_path = self.get_pid_file_path()
         system_process.remove_pid_file_if_exists(pid_file_path)
@@ -278,6 +300,12 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         if hasattr(self, "player_count"):
             self.player_count = 0
+            self.players = []
+
+        if hasattr(self, "_log_file_cursor"):
+            self._log_file_cursor = 0
+        if hasattr(self, "_scan_log_cursor"):
+            self._scan_log_cursor = 0
 
         self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 

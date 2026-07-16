@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 
 from bedrock_server_manager import PluginBase
 from bedrock_server_manager.web import get_admin_user
@@ -148,7 +148,6 @@ class ContentUploaderPlugin(PluginBase):
                 )
 
             message = ""
-            message_type = "info"
             destination_path_for_event: Optional[str] = None
             event_status = "error"
 
@@ -160,7 +159,6 @@ class ContentUploaderPlugin(PluginBase):
                     message = (
                         "Upload failed: Server content directory is not configured."
                     )
-                    message_type = "error"
                     raise ValueError("MODULE_CONTENT_DIR_PATH not set")
 
                 if not filename:
@@ -179,7 +177,6 @@ class ContentUploaderPlugin(PluginBase):
                         f"Upload failed: File '{filename}' has an invalid or unsupported extension '{file_ext}'."
                     )
                     message = f"Upload failed: File type '{file_ext}' is not allowed or unsupported."
-                    message_type = "error"
                 else:
                     target_base_dir = MODULE_CONTENT_DIR_PATH / target_subdir_name
                     target_base_dir.mkdir(parents=True, exist_ok=True)
@@ -201,7 +198,6 @@ class ContentUploaderPlugin(PluginBase):
                         f"File '{filename}' saved successfully to '{destination_path}'."
                     )
                     message = f"File '{safe_filename}' uploaded successfully to: {target_subdir_name}/{safe_filename}"
-                    message_type = "success"
                     event_status = "success"
 
                     if file_ext == ".mcworld":
@@ -221,7 +217,6 @@ class ContentUploaderPlugin(PluginBase):
                 message = (
                     "An unexpected error occurred while processing the file upload."
                 )
-                message_type = "error"
                 event_status = "error"
             finally:
                 if hasattr(file, "file") and file.file:
@@ -236,21 +231,14 @@ class ContentUploaderPlugin(PluginBase):
                         details_message=message,
                     )
 
-            accept_header = request.headers.get("accept", "")
-            if "application/json" in accept_header or request.query_params.get("json"):
-                return JSONResponse(
-                    content={
-                        "status": event_status,
-                        "message": message,
-                        "destination": destination_path_for_event,
-                    },
-                    status_code=200 if event_status == "success" else 400,
-                )
-
-            redirect_url = request.url_for("Content Upload Page").include_query_params(
-                message=message, message_type=message_type
+            return JSONResponse(
+                content={
+                    "status": event_status,
+                    "message": message,
+                    "destination": destination_path_for_event,
+                },
+                status_code=200 if event_status == "success" else 400,
             )
-            return RedirectResponse(url=str(redirect_url), status_code=303)
 
     def on_unload(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")

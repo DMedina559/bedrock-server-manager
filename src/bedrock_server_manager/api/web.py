@@ -2,8 +2,7 @@
 """Provides API functions for managing the application's own web user interface.
 
 This module contains the logic for controlling the lifecycle and querying the
-status of the built-in web UI, which is powered by FastAPI. It interfaces with the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager` to handle:
+status of the built-in web UI, which is powered by FastAPI. It handles:
 
     - Starting the web server in 'direct' (blocking) or 'detached' (background) modes
       (:func:`~.start_web_server_api`).
@@ -28,9 +27,9 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 from ..context import AppContext
-
-# Local application imports.
+from ..core import service
 from ..core.system import process as system_process_utils
+from ..core.system.base import can_manage_services
 from ..error import (
     BSMError,
     FileOperationError,
@@ -38,15 +37,12 @@ from ..error import (
     SystemError,
     UserInputError,
 )
-
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@trigger_plugin_event(before="before_web_server_start", after="after_web_server_start")
 def start_web_server_api(  # noqa: C901
     app_context: AppContext,
     host: Optional[str] = None,
@@ -61,8 +57,7 @@ def start_web_server_api(  # noqa: C901
           Useful for development or when managed by an external process manager.
         - 'detached': Launches the server as a new background process and creates
           a PID file to track it. Requires the `psutil` library. Uses various
-          methods from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`
-          and :mod:`~bedrock_server_manager.core.system.process` for process management.
+          methods from :mod:`~bedrock_server_manager.core.system.process` for process management.
 
     Triggers ``before_web_server_start`` and ``after_web_server_start`` plugin events.
 
@@ -95,10 +90,24 @@ def start_web_server_api(  # noqa: C901
             raise UserInputError("Invalid mode. Must be 'direct' or 'detached'.")
 
         logger.info(f"API: Attempting to start web server in '{mode}' mode...")
-        manager = app_context.manager
         # --- Direct (Blocking) Mode ---
         if mode == "direct":
-            manager.start_web_ui_direct(app_context, host, port, debug)
+            logger.info("BSM: Starting web application in direct mode (blocking)...")
+            try:
+                from ..web.main import run_web_server as run_bsm_web_application
+
+                run_bsm_web_application(
+                    app_context=app_context,
+                    host=host,
+                    port=port,
+                    debug=debug,
+                )
+                logger.info("BSM: Web application (direct mode) shut down.")
+            except (RuntimeError, ImportError) as e:
+                logger.critical(
+                    f"BSM: Failed to start web application directly: {e}", exc_info=True
+                )
+                raise
             return {
                 "status": "success",
                 "message": "Web server (direct mode) shut down.",
@@ -112,8 +121,11 @@ def start_web_server_api(  # noqa: C901
                 )
 
             logger.info("API: Starting web server in detached mode...")
-            pid_file_path = manager.get_web_ui_pid_path()
-            expected_exe = manager.get_web_ui_executable_path()
+            import sys
+
+            pid_file_path = os.path.join(
+                app_context.settings.config_dir, "web_server.pid"
+            )
 
             # Check for an existing, valid PID file.
             existing_pid = None
@@ -126,9 +138,8 @@ def start_web_server_api(  # noqa: C901
             if existing_pid and system_process_utils.is_process_running(existing_pid):
                 try:
                     system_process_utils.verify_process_identity(
-                        existing_pid,
-                        expected_exe,
-                        manager.get_web_ui_expected_start_arg(),  # type: ignore[arg-type]
+                        pid=existing_pid,
+                        expected_command_args=["web", "start"],
                     )
                     # If verification passes, the server is already running.
                     raise ServerProcessError(
@@ -142,7 +153,15 @@ def start_web_server_api(  # noqa: C901
                 system_process_utils.remove_pid_file_if_exists(pid_file_path)
 
             # Construct the command to launch the new detached process.
-            command = [str(expected_exe), "web", "start", "--mode", "direct"]
+            command = [
+                sys.executable,
+                "-m",
+                "bedrock_server_manager",
+                "web",
+                "start",
+                "--mode",
+                "direct",
+            ]
             hosts_to_add = []
             if host:
                 hosts_to_add.append(host)
@@ -170,14 +189,11 @@ def start_web_server_api(  # noqa: C901
     return {}
 
 
-@trigger_plugin_event(before="before_web_server_stop", after="after_web_server_stop")
 def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
     """Stops the detached web server process.
 
-    This function reads the PID from the web server's PID file (path obtained
-    via :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_web_ui_pid_path`),
-    verifies that the process is the correct one using expected executable and arguments
-    (from :class:`~bedrock_server_manager.core.manager.BedrockServerManager`),
+    This function reads the PID from the web server's PID file,
+    verifies that the process is the correct one using expected executable and arguments,
     and then terminates it. Uses utilities from
     :mod:`~bedrock_server_manager.core.system.process`.
     Requires the `psutil` library.
@@ -203,9 +219,7 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         if not PSUTIL_AVAILABLE:
             raise SystemError("'psutil' not installed. Cannot manage processes.")
 
-        manager = app_context.manager
-        pid_file_path = manager.get_web_ui_pid_path()
-        expected_exe = manager.get_web_ui_executable_path()
+        pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
 
         # Read the PID from the file.
         pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -225,15 +239,18 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
             }
 
         # Verify it's the correct process before terminating.
-        system_process_utils.verify_process_identity(pid, expected_exe)
+        system_process_utils.verify_process_identity(
+            pid=pid, expected_command_args=["web", "start"]
+        )
         system_process_utils.terminate_process_by_pid(pid)
         system_process_utils.remove_pid_file_if_exists(pid_file_path)
         return {"status": "success", "message": f"Web server (PID: {pid}) stopped."}
 
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
-        manager = app_context.manager
-        system_process_utils.remove_pid_file_if_exists(manager.get_web_ui_pid_path())
+        system_process_utils.remove_pid_file_if_exists(
+            os.path.join(app_context.settings.config_dir, "web_server.pid")
+        )
         error_type = (
             "PID file error"
             if isinstance(e, FileOperationError)
@@ -247,19 +264,16 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-@plugin_method("get_web_server_status")
+@api_method("get_web_server_status")
 def get_web_server_status_api(  # noqa: C901
     app_context: AppContext,
 ) -> Dict[str, Any]:
     """Checks the status of the web server process.
 
     This function verifies the web server's status by checking for a valid
-    PID file (path obtained via
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_web_ui_pid_path`)
-    and then inspecting the process itself (using utilities from
+    PID file and then inspecting the process itself (using utilities from
     :mod:`~bedrock_server_manager.core.system.process`) to ensure it is running
-    and is the correct executable (details from
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager`).
+    and is the correct executable.
     Requires the `psutil` library.
 
     Returns:
@@ -272,9 +286,8 @@ def get_web_server_status_api(  # noqa: C901
 
     Raises:
         BSMError: Can be raised by underlying operations if critical errors occur
-            (e.g., :class:`~.error.ConfigurationError` if web UI paths are not set up
-            in BedrockServerManager), though many operational errors are returned
-            in the status dictionary.
+            (e.g., :class:`~.error.ConfigurationError` if web UI paths are not set up),
+            though many operational errors are returned in the status dictionary.
     """
     logger.debug("API: Getting web server status...")
     if not PSUTIL_AVAILABLE:
@@ -284,10 +297,8 @@ def get_web_server_status_api(  # noqa: C901
         }
     pid = None
     try:
-        manager = app_context.manager
-        pid_file_path = manager.get_web_ui_pid_path()
-        expected_exe = manager.get_web_ui_executable_path()
-        expected_arg = manager.get_web_ui_expected_start_arg()
+        pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
+        expected_arg = ["web", "start"]
 
         try:
             pid = system_process_utils.read_pid_from_file(pid_file_path)
@@ -321,7 +332,7 @@ def get_web_server_status_api(  # noqa: C901
         # Case: Process is running, verify it's the correct one.
         try:
             system_process_utils.verify_process_identity(
-                pid, expected_exe, expected_arg  # type: ignore[arg-type]
+                pid=pid, expected_command_args=expected_arg
             )
             return {
                 "status": "RUNNING",
@@ -349,9 +360,7 @@ def get_web_server_status_api(  # noqa: C901
         }
 
 
-@trigger_plugin_event(
-    before="before_web_service_change", after="after_web_service_change"
-)
+@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
 def create_web_ui_service(
     app_context: AppContext,
     autostart: bool = False,
@@ -364,10 +373,10 @@ def create_web_ui_service(
     On Linux, this creates a systemd user service. On Windows, this creates a
     Windows Service (typically requires Administrator privileges).
     This function calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.create_web_service_file`,
+    :meth:`~bedrock_server_manager.core.service.create_web_service_file`,
     and then either
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service` or
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
+    :meth:`~bedrock_server_manager.core.service.enable_web_service` or
+    :meth:`~bedrock_server_manager.core.service.disable_web_service`
     based on the `autostart` flag.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
 
@@ -393,22 +402,24 @@ def create_web_ui_service(
             :class:`~.error.CommandNotFoundError`, or :class:`~.error.FileOperationError`.
     """
     try:
-        manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        manager.create_web_service_file(
-            system=system, username=username, password=password
+        service.create_web_service_file(
+            app_data_dir=app_context.settings.app_data_dir,
+            system=system,
+            username=username,
+            password=password,
         )
 
         if autostart:
-            manager.enable_web_service(system=system)
+            service.enable_web_service(system=system)
             action_done = "created and enabled"
         else:
-            manager.disable_web_service()
+            service.disable_web_service()
             action_done = "created and disabled"
 
         return {
@@ -429,9 +440,7 @@ def create_web_ui_service(
         }
 
 
-@trigger_plugin_event(
-    before="before_web_service_change", after="after_web_service_change"
-)
+@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
 def enable_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -440,7 +449,7 @@ def enable_web_ui_service(
     On Linux, this enables the systemd user service. On Windows, this sets the
     Windows Service start type to 'Automatic' (typically requires Administrator
     privileges). It calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`.
+    :meth:`~bedrock_server_manager.core.service.enable_web_service`.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
 
     Args:
@@ -456,17 +465,16 @@ def enable_web_ui_service(
 
     Raises:
         BSMError: Propagates errors from the underlying
-            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.enable_web_service`
+            :meth:`~bedrock_server_manager.core.service.enable_web_service`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        manager.enable_web_service(system=system)
+        service.enable_web_service(system=system)
         return {
             "status": "success",
             "message": "Web UI service enabled successfully.",
@@ -484,9 +492,7 @@ def enable_web_ui_service(
         }
 
 
-@trigger_plugin_event(
-    before="before_web_service_change", after="after_web_service_change"
-)
+@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
 def disable_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -495,7 +501,7 @@ def disable_web_ui_service(
     On Linux, this disables the systemd user service. On Windows, this sets the
     Windows Service start type to 'Disabled' or 'Manual' (typically requires
     Administrator privileges). It calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`.
+    :meth:`~bedrock_server_manager.core.service.disable_web_service`.
     Triggers ``before_web_service_change`` and ``after_web_service_change`` plugin events.
 
     Args:
@@ -511,17 +517,16 @@ def disable_web_ui_service(
 
     Raises:
         BSMError: Propagates errors from the underlying
-            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.disable_web_service`
+            :meth:`~bedrock_server_manager.core.service.disable_web_service`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`).
     """
     try:
-        manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
-        manager.disable_web_service(system=system)
+        service.disable_web_service(system=system)
         return {
             "status": "success",
             "message": "Web UI service disabled successfully.",
@@ -544,9 +549,7 @@ def disable_web_ui_service(
         }
 
 
-@trigger_plugin_event(
-    before="before_web_service_change", after="after_web_service_change"
-)
+@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
 def remove_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -554,7 +557,7 @@ def remove_web_ui_service(
 
     The service should ideally be stopped and disabled before removal.
     This function calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.remove_web_service_file`.
+    :meth:`~bedrock_server_manager.core.service.remove_web_service_file`.
 
     .. warning::
         This is a **DESTRUCTIVE** operation that removes the service definition
@@ -576,19 +579,18 @@ def remove_web_ui_service(
 
     Raises:
         BSMError: Propagates errors from the underlying
-            :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.remove_web_service_file`
+            :meth:`~bedrock_server_manager.core.service.remove_web_service_file`
             call (e.g., :class:`~.error.SystemError`, :class:`~.error.PermissionsError`,
             :class:`~.error.FileOperationError`).
     """
     try:
-        manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "error",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot manage Web UI service.",
             }
 
-        removed = manager.remove_web_service_file(system=system)
+        removed = service.remove_web_service_file(system=system)
         if removed:
             return {
                 "status": "success",
@@ -614,16 +616,16 @@ def remove_web_ui_service(
         }
 
 
+@api_method("get_web_ui_service_status")
 def get_web_ui_service_status(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, Any]:
     """Gets the current status of the Web UI system service.
 
-    This function calls several methods on the
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance:
-    :meth:`~.check_web_service_exists`,
-    :meth:`~.is_web_service_active`, and
-    :meth:`~.is_web_service_enabled`.
+    This function calls several service-related functions:
+    :meth:`~bedrock_server_manager.core.service.check_web_service_exists`,
+    :meth:`~bedrock_server_manager.core.service.is_web_service_active`, and
+    :meth:`~bedrock_server_manager.core.service.is_web_service_enabled`.
 
     Args:
         system (bool, optional): If ``True``, checks a system-wide service on
@@ -644,20 +646,19 @@ def get_web_ui_service_status(
         "is_enabled": False,
     }
     try:
-        manager = app_context.manager
-        if not manager.can_manage_services:
+        if not can_manage_services():
             return {
                 "status": "success",
                 "message": "System service management tool (systemctl/sc.exe) not found. Cannot determine Web UI service status.",
                 **response_data,
             }
 
-        response_data["service_exists"] = manager.check_web_service_exists(
+        response_data["service_exists"] = service.check_web_service_exists(
             system=system
         )
         if response_data["service_exists"]:
-            response_data["is_active"] = manager.is_web_service_active(system=system)
-            response_data["is_enabled"] = manager.is_web_service_enabled(system=system)
+            response_data["is_active"] = service.is_web_service_active(system=system)
+            response_data["is_enabled"] = service.is_web_service_enabled(system=system)
 
         return {"status": "success", **response_data}
 

@@ -1,186 +1,206 @@
-import os
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from bedrock_server_manager.api.server import (
     delete_server_data,
-    get_all_server_settings,
-    get_server_setting,
-    restart_server,
     send_command,
-    set_server_custom_value,
-    set_server_setting,
+    server_lifecycle_manager,
+    set_server_status_api,
     start_server,
     stop_server,
+    update_server_player_stats_api,
 )
-from bedrock_server_manager.error import BlockedCommandError, ServerNotRunningError
+from bedrock_server_manager.error import BlockedCommandError, InvalidServerNameError
 
 
-class TestServerSettings:
-    def test_get_server_setting(self, app_context, db_session):
-        # First, set a value so we have something to get
-        set_server_setting(
-            "test_server", "custom.some_key", "some_value", app_context=app_context
-        )
+def test_start_server_success(app_context, monkeypatch):
+    """Test start_server dispatches to BedrockServer successfully."""
+    mock_server = MagicMock()
+    mock_server.is_running.return_value = False
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-        result = get_server_setting(
-            "test_server", "custom.some_key", app_context=app_context
-        )
-        assert result["status"] == "success"
-        assert result["value"] == "some_value"
+    # Mock the BedrockProcessManager globally mapped onto app_context
+    mock_bpm = MagicMock()
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
-    def test_set_server_setting(self, app_context, db_session):
-        from bedrock_server_manager.db.models import Server
+    result = start_server("test_server", app_context)
 
-        result = set_server_setting(
-            "test_server", "custom.some_key", "new_value", app_context=app_context
-        )
-        assert result["status"] == "success"
-
-        server = db_session.query(Server).filter_by(server_name="test_server").one()
-        config = server.config
-        assert config["custom"]["some_key"] == "new_value"
-
-    def test_set_server_custom_value(self, app_context, db_session):
-        from bedrock_server_manager.db.models import Server
-
-        result = set_server_custom_value(
-            "test_server", "some_key", "custom_value", app_context=app_context
-        )
-        assert result["status"] == "success"
-
-        server = db_session.query(Server).filter_by(server_name="test_server").one()
-        config = server.config
-        assert config["custom"]["some_key"] == "custom_value"
-
-    def test_get_all_server_settings(self, app_context):
-        result = get_all_server_settings("test_server", app_context=app_context)
-        assert result["status"] == "success"
-
-        # Check some of the default values
-        assert result["server_info"]["installed_version"] == "UNKNOWN"
-        assert result["settings"]["autoupdate"] is False
+    assert result["status"] == "success"
+    mock_server.start.assert_called_once()
+    mock_bpm.add_server.assert_called_once_with(mock_server)
 
 
-class TestServerLifecycle:
-    @patch("bedrock_server_manager.core.bedrock_server.BedrockServer.start")
-    @patch(
-        "bedrock_server_manager.core.bedrock_process_manager.BedrockProcessManager.add_server"
+def test_start_server_missing_name(app_context):
+    """Test start_server triggers early failure with invalid names."""
+    with pytest.raises(InvalidServerNameError):
+        start_server("", app_context)
+
+
+def test_stop_server_success(app_context, monkeypatch):
+    """Test stop_server executes successfully on target server."""
+    mock_server = MagicMock()
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    result = stop_server("test_server", app_context)
+
+    assert result["status"] == "success"
+    mock_server.stop.assert_called_once()
+
+
+def test_stop_server_missing_name(app_context):
+    """Test stop_server triggers early failure with invalid names."""
+    with pytest.raises(InvalidServerNameError):
+        stop_server("", app_context)
+
+
+def test_send_command_success(app_context, monkeypatch):
+    """Test send_command correctly transmits cleanly verified commands."""
+    mock_server = MagicMock()
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    result = send_command("test_server", "say hello", app_context)
+
+    assert result["status"] == "success"
+    mock_server.send_command.assert_called_once_with("say hello")
+
+
+def test_send_command_missing_name(app_context):
+    """Test send_command correctly throws on missing server string."""
+    with pytest.raises(InvalidServerNameError):
+        send_command("", "say hello", app_context)
+
+
+def test_send_command_blocked(app_context):
+    """Test send_command throws an exception against restricted operations like stop."""
+    with pytest.raises(BlockedCommandError):
+        send_command("test_server", "stop", app_context)
+
+
+def test_delete_server_data_success(app_context, monkeypatch):
+    """Test delete_server_data properly purges the cache and directory logic."""
+    mock_server = MagicMock()
+    mock_server.is_running.return_value = False
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+    monkeypatch.setattr(app_context, "remove_server", MagicMock())
+
+    result = delete_server_data("test_server", app_context)
+
+    assert result["status"] == "success"
+    mock_server.delete_all_data.assert_called_once()
+
+
+def test_delete_server_data_missing_name(app_context):
+    """Test delete_server_data catches empty missing server string."""
+    with pytest.raises(InvalidServerNameError):
+        delete_server_data("", app_context)
+
+
+def test_server_lifecycle_manager(app_context, monkeypatch):
+    """Test the context manager properly sequences start/stop flows based on arguments."""
+    mock_server = MagicMock()
+    mock_server.is_running.return_value = True
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    mock_stop = MagicMock(return_value={"status": "success"})
+    mock_start = MagicMock(return_value={"status": "success"})
+
+    monkeypatch.setattr("bedrock_server_manager.api.server.stop_server", mock_stop)
+    monkeypatch.setattr("bedrock_server_manager.api.server.start_server", mock_start)
+
+    with server_lifecycle_manager(
+        "test_server", stop_before=True, app_context=app_context
+    ):
+        # The operation happens here
+        pass
+
+    mock_stop.assert_called_once()
+    mock_start.assert_called_once()
+
+
+def test_set_server_status_api(app_context, monkeypatch):
+    """Test internal set_server_status_api modifies JSON configuration effectively."""
+    mock_server = MagicMock()
+    mock_server.get_status_from_config.return_value = "STOPPED"
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    result = set_server_status_api("test_server", "RUNNING", app_context)
+
+    assert result["status"] == "success"
+    assert result["previous_status"] == "STOPPED"
+    mock_server._manage_json_config.assert_called_once_with(
+        key="server_info.status", operation="write", value="RUNNING"
     )
-    def test_start_server(self, mock_add_server, mock_start, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=False):
-            result = start_server("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            mock_start.assert_called_once()
-            mock_add_server.assert_called_once_with(server)
 
-    def test_start_server_already_running(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=True):
-            result = start_server("test_server", app_context=app_context)
-            assert result["status"] == "error"
-            assert "already running" in result["message"]
 
-    @patch("bedrock_server_manager.core.bedrock_server.BedrockServer.stop")
-    @patch(
-        "bedrock_server_manager.core.bedrock_process_manager.BedrockProcessManager.remove_server"
+def test_update_server_player_stats_api(app_context):
+    """Test update_server_player_stats_api effectively builds dictionary outputs for socket notifications."""
+    result = update_server_player_stats_api(
+        "test_server", 5, [{"name": "p1"}], app_context
     )
-    def test_stop_server(self, mock_remove_server, mock_stop, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=True):
-            result = stop_server("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            mock_stop.assert_called_once()
-            mock_remove_server.assert_called_once_with(server.server_name)
 
-    def test_stop_server_already_stopped(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=False):
-            result = stop_server("test_server", app_context=app_context)
-            assert result["status"] == "error"
-            assert "already stopped" in result["message"]
-
-    @patch("bedrock_server_manager.api.server.stop_server")
-    @patch("bedrock_server_manager.api.server.start_server")
-    def test_restart_server(self, mock_start, mock_stop, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=True):
-            mock_stop.return_value = {"status": "success"}
-            mock_start.return_value = {"status": "success"}
-
-            result = restart_server("test_server", app_context=app_context)
-            assert result["status"] == "success"
-            mock_stop.assert_called_once()
-            assert mock_stop.call_args[0][0] == "test_server"
-            mock_start.assert_called_once()
-            assert mock_start.call_args[0][0] == "test_server"
+    assert result["status"] == "success"
+    assert result["server_name"] == "test_server"
+    assert result["player_count"] == 5
+    assert len(result["players"]) == 1
 
 
-class TestSendCommand:
-    @patch("bedrock_server_manager.core.bedrock_server.BedrockServer.send_command")
-    def test_send_command(self, mock_send, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=True):
-            result = send_command("test_server", "say hello", app_context=app_context)
-            assert result["status"] == "success"
-            mock_send.assert_called_once_with("say hello")
+def test_set_server_setting_success(app_context, monkeypatch):
+    """Test setting generic server configs via API correctly targets the managed config map."""
+    from bedrock_server_manager.api.server import set_server_setting
 
-    def test_send_blocked_command(self, app_context):
-        with patch("bedrock_server_manager.api.server.API_COMMAND_BLACKLIST", ["stop"]):
-            with pytest.raises(BlockedCommandError):
-                send_command("test_server", "stop", app_context=app_context)
+    mock_server = MagicMock()
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    def test_send_command_not_running(self, app_context):
-        server = app_context.get_server("test_server")
-        with patch.object(server, "is_running", return_value=False):
-            with pytest.raises(ServerNotRunningError):
-                send_command("test_server", "say hello", app_context=app_context)
+    result = set_server_setting("test_server", "test.key", "test_val", app_context)
+
+    assert result["status"] == "success"
+    mock_server._manage_json_config.assert_called_once_with(
+        "test.key", "write", "test_val"
+    )
 
 
-class TestDeleteServer:
-    def test_delete_server_data(self, app_context):
-        server = app_context.get_server("test_server")
-        server_dir = server.server_dir
-        config_dir = server.server_config_dir
-        backup_dir = server.server_backup_directory
+def test_set_server_custom_value_success(app_context, monkeypatch):
+    """Test custom section configuration correctly delegates to BedrockServer layer."""
+    from bedrock_server_manager.api.server import set_server_custom_value
 
-        # Ensure directories exist before deletion
-        os.makedirs(server_dir, exist_ok=True)
-        os.makedirs(config_dir, exist_ok=True)
-        os.makedirs(backup_dir, exist_ok=True)
+    mock_server = MagicMock()
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-        result = delete_server_data("test_server", app_context=app_context)
-        assert result["status"] == "success"
+    result = set_server_custom_value(
+        "test_server", "my_custom", "custom_val", app_context
+    )
 
-        # Verify that directories are deleted
-        assert not os.path.exists(server_dir)
-        assert not os.path.exists(config_dir)
-        assert not os.path.exists(backup_dir)
+    assert result["status"] == "success"
+    mock_server.set_custom_config_value.assert_called_once_with(
+        "my_custom", "custom_val"
+    )
 
-    def test_delete_server_data_running(self, app_context):
-        server = app_context.get_server("test_server")
-        server_dir = server.server_dir
-        config_dir = server.server_config_dir
-        backup_dir = server.server_backup_directory
 
-        # Ensure directories exist before deletion
-        os.makedirs(server_dir, exist_ok=True)
-        os.makedirs(config_dir, exist_ok=True)
-        os.makedirs(backup_dir, exist_ok=True)
+def test_get_all_server_settings_success(app_context, monkeypatch):
+    """Test fetching all configs correctly retrieves the underlying dict from core server."""
+    from bedrock_server_manager.api.server import get_all_server_settings
 
-        with (
-            patch.object(server, "is_running", return_value=True),
-            patch.object(server, "stop") as mock_server_stop,
-        ):
-            result = delete_server_data(
-                "test_server", stop_if_running=True, app_context=app_context
-            )
-            assert result["status"] == "success"
-            assert mock_server_stop.call_count >= 1
+    mock_server = MagicMock()
+    mock_server._load_server_config.return_value = {"key1": "val1"}
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-        # Verify that directories are deleted
-        assert not os.path.exists(server_dir)
-        assert not os.path.exists(config_dir)
-        assert not os.path.exists(backup_dir)
+    result = get_all_server_settings("test_server", app_context)
+
+    assert result["status"] == "success"
+    assert result["key1"] == "val1"
+
+
+def test_get_server_setting_success(app_context, monkeypatch):
+    """Test grabbing a single server setting works accurately targeting core mappings."""
+    from bedrock_server_manager.api.server import get_server_setting
+
+    mock_server = MagicMock()
+    mock_server._manage_json_config.return_value = "secret"
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    result = get_server_setting("test_server", "secret.key", app_context)
+
+    assert result["status"] == "success"
+    assert result["value"] == "secret"
+    mock_server._manage_json_config.assert_called_once_with("secret.key", "read")

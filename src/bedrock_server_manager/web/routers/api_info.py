@@ -19,15 +19,18 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import application as app_api
-from ...api import info as info_api
 from ...api import misc as misc_api
 from ...api import player as player_api
 from ...api import system as system_api
-from ...api import utils as utils_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_admin_user, get_current_user, get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import (
+    get_admin_user,
+    get_app_context,
+    get_current_user,
+    get_moderator_user,
+    validate_server_exists,
+)
 from ..schemas import (
     AddPlayersPayload,
     AddPlayersResponse,
@@ -36,11 +39,9 @@ from ..schemas import (
     PlayerListResponse,
     PruneDownloadsPayload,
     PruneDownloadsResponse,
-    ServerConfigStatusResponse,
     ServerProcessInfoResponse,
     ServerRunningStatusResponse,
     ServersListResponse,
-    ServerVersionResponse,
     ThemeListResponse,
     UserResponse,
 )
@@ -54,9 +55,9 @@ router = APIRouter()
 @router.get(
     "/api/server/{server_name}/status",
     response_model=ServerRunningStatusResponse,
-    tags=["Server Info API"],
+    tags=["Server Management", "Process Info"],
 )
-async def get_server_running_status_api_route(
+async def get_server_running_status(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -69,7 +70,7 @@ async def get_server_running_status_api_route(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
     try:
-        result = info_api.get_server_running_status(
+        result = system_api.get_server_running_status(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
@@ -103,120 +104,11 @@ async def get_server_running_status_api_route(
 
 
 @router.get(
-    "/api/server/{server_name}/config_status",
-    response_model=ServerConfigStatusResponse,
-    tags=["Server Info API"],
-)
-async def get_server_config_status_api_route(
-    server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves the last known status from a server's configuration file.
-    """
-    identity = current_user.username
-    logger.info(
-        f"API: Request for config status for server '{server_name}' by user '{identity}'."
-    )
-    try:
-        result = info_api.get_server_config_status(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ServerConfigStatusResponse(
-                status="success",
-                config_status=str(result.get("config_status")),
-                message=result.get("message"),
-            )
-        else:
-            if "not found" in result.get("message", "").lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get server config status."),
-            )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        logger.error(f"API Config Status '{server_name}': BSMError: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"API Config Status '{server_name}': Unexpected error: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error getting config status.",
-        )
-
-
-@router.get(
-    "/api/server/{server_name}/version",
-    response_model=ServerVersionResponse,
-    tags=["Server Info API"],
-)
-async def get_server_version_api_route(
-    server_name: str = Depends(validate_server_exists),
-    current_user: UserResponse = Depends(get_current_user),
-    app_context: AppContext = Depends(get_app_context),
-):
-    """
-    Retrieves the installed version of a specific server.
-    """
-    identity = current_user.username
-    logger.info(
-        f"API: Request for installed version for server '{server_name}' by user '{identity}'."
-    )
-    try:
-        result = info_api.get_server_installed_version(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return ServerVersionResponse(
-                status="success",
-                version=str(result.get("installed_version")),
-                message=result.get("message"),
-            )
-        else:
-            if "not found" in result.get("message", "").lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get server version."),
-            )
-    except UserInputError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except BSMError as e:
-        logger.error(
-            f"API Installed Version '{server_name}': BSMError: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except Exception as e:
-        logger.error(
-            f"API Installed Version '{server_name}': Unexpected error: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error getting installed version.",
-        )
-
-
-@router.get(
     "/api/server/{server_name}/validate",
     response_model=BaseApiResponse,
-    tags=["Server Info API"],
+    tags=["Server Management"],
 )
-async def validate_server_api_route(
+async def get_validate_server(
     server_name: str,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
@@ -228,20 +120,19 @@ async def validate_server_api_route(
     logger.info(
         f"API: Request to validate server '{server_name}' by user '{identity}'."
     )
+    from ...utils.server import validate_server
+
     try:
-        result = utils_api.validate_server_exist(
-            server_name=server_name, app_context=app_context
-        )
-        if result.get("status") == "success":
-            return BaseApiResponse(status="success", message=result.get("message"))
+        if validate_server(server_name=server_name, app_context=app_context):
+            return BaseApiResponse(
+                status="success", message=f"Server '{server_name}' exists and is valid."
+            )
         else:
             # This case handles when the underlying API returns an error status
             # without raising an exception itself.
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=result.get(
-                    "message", f"Server '{server_name}' not found or is invalid."
-                ),
+                detail=f"Server '{server_name}' is not installed or the installation is invalid.",
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -261,10 +152,10 @@ async def validate_server_api_route(
 @router.get(
     "/api/server/{server_name}/process_info",
     response_model=ServerProcessInfoResponse,
-    tags=["Server Info API"],
+    tags=["Server Management", "Process Info"],
 )
-async def server_process_info_api_route(
-    server_name: str,
+async def get_server_process_info(
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -308,11 +199,12 @@ async def server_process_info_api_route(
         )
 
 
-# --- Global Action Endpoints ---
-@router.post(
-    "/api/players/scan", response_model=AddPlayersResponse, tags=["Global Players API"]
+@router.put(
+    "/api/players/scan",
+    response_model=AddPlayersResponse,
+    tags=["Global Players", "Player Management", "Application"],
 )
-async def scan_players_api_route(
+async def put_scan_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -348,9 +240,11 @@ async def scan_players_api_route(
 
 
 @router.get(
-    "/api/players/get", response_model=PlayerListResponse, tags=["Global Players API"]
+    "/api/players/get",
+    response_model=PlayerListResponse,
+    tags=["Global Players", "Player Management", "Application"],
 )
-async def get_all_players_api_route(
+async def get_all_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -403,12 +297,12 @@ async def get_all_players_api_route(
         )
 
 
-@router.post(
+@router.put(
     "/api/downloads/prune",
     response_model=PruneDownloadsResponse,
-    tags=["Global Actions API"],
+    tags=["Cleanup", "Downloads"],
 )
-async def prune_downloads_api_route(
+async def put_prune_downloads(
     payload: PruneDownloadsPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
@@ -478,6 +372,8 @@ async def prune_downloads_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API Prune Downloads: Unexpected error for relative_dir '{payload.directory}': {e}",
@@ -490,9 +386,11 @@ async def prune_downloads_api_route(
 
 
 @router.get(
-    "/api/servers", response_model=ServersListResponse, tags=["Global Info API"]
+    "/api/servers",
+    response_model=ServersListResponse,
+    tags=["Server Management", "Application"],
 )
-async def get_servers_list_api_route(
+async def get_servers_list(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -518,16 +416,18 @@ async def get_servers_list_api_route(
         )
 
 
-@router.get("/api/info", response_model=AppInfoResponse, tags=["Global Info API"])
-async def get_system_info_api_route(
+@router.get("/api/info", response_model=AppInfoResponse, tags=["Application"])
+async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Retrieves general system and application information.
     """
     logger.debug("API: Request for system and app info.")
+    from ...api.application import get_system_and_app_info
+
     try:
-        result = utils_api.get_system_and_app_info(app_context=app_context)
+        result = get_system_and_app_info(app_context=app_context)
         if result.get("status") == "success":
             # the dictionary is already flattened, pass the entire result minus the status
             return AppInfoResponse(
@@ -548,10 +448,8 @@ async def get_system_info_api_route(
         )
 
 
-@router.get(
-    "/api/info/themes", response_model=ThemeListResponse, tags=["Global Info API"]
-)
-async def get_themes_api_route(
+@router.get("/api/info/themes", response_model=ThemeListResponse, tags=["Themes"])
+async def get_themes(
     app_context: AppContext = Depends(get_app_context),
 ):
     """
@@ -594,9 +492,11 @@ async def get_themes_api_route(
 
 
 @router.post(
-    "/api/players/add", response_model=AddPlayersResponse, tags=["Global Players API"]
+    "/api/players/add",
+    response_model=AddPlayersResponse,
+    tags=["Global Players", "Application", "Player Management"],
 )
-async def add_players_api_route(
+async def post_add_players(
     payload: AddPlayersPayload,
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),

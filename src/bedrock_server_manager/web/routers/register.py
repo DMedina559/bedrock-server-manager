@@ -18,8 +18,8 @@ from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...db.models import RegistrationToken, User
-from ..auth_utils import get_admin_user, get_password_hash
-from ..dependencies import get_app_context
+from ...utils import get_password_hash
+from ..deps import get_admin_user, get_app_context
 from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
 
@@ -27,11 +27,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/register",
-    tags=["Registration"],
+    tags=["Registration", "User Management"],
 )
 
 
-@router.post("/generate-token", response_model=ActionResponse, include_in_schema=False)
+@router.post(
+    "/generate-token",
+    response_model=ActionResponse,
+)
 async def generate_token(
     request: Request,
     data: GenerateTokenPayload,
@@ -62,11 +65,13 @@ async def generate_token(
     return ActionResponse(
         status="success",
         message="Token generated successfully.",
-        redirect_url=f"/app/users?message=Registration link generated: {registration_link}",
+        registration_url=registration_link,
     )
 
 
-@router.get("/validate/{token}", include_in_schema=False)
+@router.get(
+    "/validate/{token}",
+)
 async def validate_token(
     token: str,
     app_context: AppContext = Depends(get_app_context),
@@ -89,7 +94,9 @@ async def validate_token(
         )
 
 
-@router.post("/{token}", include_in_schema=False)
+@router.post(
+    "/{token}",
+)
 async def register_user(
     token: str,
     data: UserLoginPayload,
@@ -132,7 +139,6 @@ async def register_user(
                 content={
                     "status": "success",
                     "message": "Registration successful. Please log in.",
-                    "redirect_url": "/app/login?message=Registration successful. Please log in.",
                 },
                 status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
             )

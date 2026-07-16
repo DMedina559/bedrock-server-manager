@@ -4,6 +4,7 @@ import logging
 import mimetypes
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
 import bsm_frontend
 from fastapi import FastAPI, Request
@@ -14,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from ..config import bcm_config, get_installed_version
 from ..context import AppContext
 from . import routers
-from .auth_utils import CustomAuthBackend, get_current_user_optional
+from .deps import get_current_user_optional
 
 mimetypes.add_type("application/javascript", ".js")
 
@@ -22,7 +23,6 @@ mimetypes.add_type("application/javascript", ".js")
 def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     """Creates and configures the web application."""
     logger = logging.getLogger(__name__)
-    from .. import api
 
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
@@ -58,7 +58,13 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             and app_context._task_manager is not None
         ):
             app_context.task_manager.shutdown()
-        api.utils.stop_all_servers(app_context=app_context)
+        # Shut down the process manager
+        if (
+            hasattr(app_context, "_bedrock_process_manager")
+            and app_context._bedrock_process_manager is not None
+        ):
+            app_context.bedrock_process_manager.shutdown()
+        app_context.stop_all_servers()
         app_context.plugin_manager.unload_plugins()
         app_context.db.close()
         logger.info("Web app shutdown hooks complete.")
@@ -106,7 +112,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
 
-    api.utils.update_server_statuses(app_context=app_context)
+    from ..api.application import update_server_statuses
+
+    update_server_statuses(app_context=app_context)
 
     # --- Mount Static Assets from bsm-frontend ---
     static_dir = bsm_frontend.get_static_dir()
@@ -130,6 +138,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             app.mount(
                 "/app/image", StaticFiles(directory=image_subdir), name="app_images"
             )
+            app.mount("/image", StaticFiles(directory=image_subdir), name="root_images")
             logger.info(f"Mounted bsm-frontend images from {image_subdir}")
         else:
             logger.warning(
@@ -153,14 +162,17 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/app",  # The SPA itself
             "/themes",
             "/favicon.ico",
+            "/site.webmanifest",
             "/auth/token",
             "/docs",
             "/openapi.json",
         ]
 
         # Allow static assets to pass through
-        if request.url.path.startswith("/app/assets") or request.url.path.startswith(
-            "/app/image"
+        if (
+            request.url.path.startswith("/app/assets")
+            or request.url.path.startswith("/app/image")
+            or request.url.path.startswith("/image")
         ):
             response = await call_next(request)
             return response
@@ -174,20 +186,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             elif not request.url.path.startswith("/app"):
                 return RedirectResponse(url="/app")
 
-        # Manually handle authentication to bypass it for static files
-        if not (
-            request.url.path.startswith("/app/assets")
-            or request.url.path.startswith("/app/image")
-            or request.url.path.startswith("/themes")
-        ):
-            auth_backend = CustomAuthBackend()
-            auth_result = await auth_backend.authenticate(request)
-            if auth_result:
-                creds, user = auth_result
-                request.state.user = user
-            else:
-                request.state.user = None
-
         response = await call_next(request)
         return response
 
@@ -199,7 +197,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         return response
 
     # Add CORS Middleware last so it is the outermost middleware (executes first)
-    cors_kwargs = {
+    cors_kwargs: dict[str, Any] = {
         "allow_credentials": True,
         "allow_methods": ["*"],
         "allow_headers": ["*"],
@@ -217,11 +215,15 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     app.include_router(routers.users_router)
     app.include_router(routers.register_router)
     app.include_router(routers.server_actions_router)
-    app.include_router(routers.server_install_config_router)
+    app.include_router(routers.allowlist_router)
+    app.include_router(routers.permissions_router)
+    app.include_router(routers.properties_router)
+    app.include_router(routers.install_router)
     app.include_router(routers.backup_restore_router)
-    app.include_router(routers.content_router)
+    app.include_router(routers.addon_router)
     app.include_router(routers.settings_router)
     app.include_router(routers.api_info_router)
+    app.include_router(routers.bans_router)
     app.include_router(routers.plugin_router)
     app.include_router(routers.tasks_router)
     app.include_router(routers.main_router)
@@ -229,7 +231,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     app.include_router(routers.audit_log_router)
     app.include_router(routers.server_settings_router)
     app.include_router(routers.websocket_router)
-    app.include_router(routers.spa_router)
+    app.include_router(routers.world_router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:

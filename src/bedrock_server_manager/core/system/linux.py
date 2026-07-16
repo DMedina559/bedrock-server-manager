@@ -33,7 +33,6 @@ import shutil
 import subprocess
 from typing import Optional
 
-# Local application imports.
 from ...error import (
     AppFileNotFoundError,
     CommandNotFoundError,

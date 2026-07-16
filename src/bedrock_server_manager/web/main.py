@@ -146,7 +146,7 @@ def run_web_server(  # noqa: C901
         # Create the FastAPI app
         app = create_web_app(app_context)
 
-        uvicorn.run(
+        config = uvicorn.Config(
             app,
             host=final_host_to_bind,
             port=final_port,
@@ -157,6 +157,9 @@ def run_web_server(  # noqa: C901
             forwarded_allow_ips="*",
             proxy_headers=True,
         )
+        server = uvicorn.Server(config)
+        app_context._web_server = server
+        server.run()
     except Exception as e:
         logger.critical(f"Failed to start Uvicorn: {e}", exc_info=True)
 

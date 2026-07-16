@@ -34,8 +34,6 @@ from ...error import (
     UserInputError,
 )
 from ...utils import get_timestamp
-
-# Local application imports.
 from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -58,7 +56,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         - Methods from :class:`~.core.server.state_mixin.ServerStateMixin` (e.g.,
           ``get_world_name()``) to identify the active world.
         - Methods from :class:`~.core.server.world_mixin.ServerWorldMixin` (e.g.,
-          ``export_world_directory_to_mcworld()``, ``import_active_world_from_mcworld()``)
+          ``export_world()``, ``import_world()``)
           for world archiving and extraction.
 
     Properties:
@@ -72,8 +70,8 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         multiple inheritance. It depends on attributes initialized by
         :class:`.BedrockServerBaseMixin` and assumes methods from other mixins
         (like :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`,
-        :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world_directory_to_mcworld`,
-        and :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`)
+        :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world`,
+        and :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`)
         will be available on the composed :class:`~.core.bedrock_server.BedrockServer` object.
 
         Args:
@@ -373,7 +371,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             3. Constructs a timestamped backup filename, e.g.,
                ``<SafeWorldName>_backup_YYYYMMDD_HHMMSS.mcworld``.
                The world name is sanitized for filesystem compatibility.
-            4. Invokes ``self.export_world_directory_to_mcworld()`` (from
+            4. Invokes ``self.export_world()`` (from
                :class:`~.core.server.world_mixin.ServerWorldMixin`) to create the
                ``.mcworld`` archive in the backup directory.
             5. After successful archive creation, it calls :meth:`.prune_server_backups`
@@ -388,30 +386,30 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             AppFileNotFoundError: If the active world's directory (determined via
                 ``get_world_name()``) does not exist or is inaccessible.
             FileOperationError: For general file I/O errors during backup directory
-                creation or if ``self.export_world_directory_to_mcworld()`` fails
+                creation or if ``self.export_world()`` fails
                 due to filesystem issues (e.g., permissions, disk full).
             BackupRestoreError: If the world export process itself
-                (``self.export_world_directory_to_mcworld()``) reports a failure
+                (``self.export_world()``) reports a failure
                 (e.g., issues with ``.mcworld`` creation).
             AttributeError: If ``get_world_name()`` or
-                ``export_world_directory_to_mcworld()`` methods are not available
+                ``export_world()`` methods are not available
                 on the server instance (indicating missing or incorrectly configured
                 :class:`~.core.server.state_mixin.ServerStateMixin` or
                 :class:`~.core.server.world_mixin.ServerWorldMixin`).
         """
-        if not hasattr(self, "get_world_name") or not hasattr(
-            self, "export_world_directory_to_mcworld"
-        ):
+        if not hasattr(self, "get_world_name") or not hasattr(self, "export_world"):
             self.logger.error(
-                "Missing required methods (get_world_name or export_world_directory_to_mcworld) for world backup."
+                "Missing required methods (get_world_name or export_world) for world backup."
             )
             raise AttributeError(
                 "Required world management methods are missing from this server instance."
             )
 
         active_world_name: str = self.get_world_name()  # type: ignore
-        active_world_dir_path = os.path.join(  # For logging/validation, export_world_directory_to_mcworld uses world_dir_name
-            self.server_dir, "worlds", active_world_name
+        active_world_dir_path = (
+            os.path.join(  # For logging/validation, export_world uses world_dir_name
+                self.server_dir, "worlds", active_world_name
+            )
         )
 
         server_bck_dir = self.server_backup_directory
@@ -440,7 +438,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         )
         try:
             # This method is expected to be on the final class from WorldMixin.
-            self.export_world_directory_to_mcworld(active_world_name, backup_file_path)  # type: ignore
+            self.export_world(active_world_name, backup_file_path)  # type: ignore
             self.logger.info(
                 f"World backup for '{self.server_name}' created: {backup_file_path}"
             )
@@ -581,7 +579,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                                 directory is missing) can also propagate.
             AttributeError: If required methods from other mixins (e.g.,
                 ``get_world_name()`` from :class:`~.core.server.state_mixin.ServerStateMixin`
-                or ``export_world_directory_to_mcworld()`` from
+                or ``export_world()`` from
                 :class:`~.core.server.world_mixin.ServerWorldMixin`) are not available.
         """
         server_bck_dir = self.server_backup_directory
@@ -722,7 +720,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         specific backup directory (see :attr:`.server_backup_directory`):
 
             - The active world: Restored using
-              :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
+              :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`
               after finding the latest ``.mcworld`` backup matching the active world's name.
             - ``server.properties``: Restored via :meth:`._restore_config_file_internal`.
             - ``allowlist.json``: Restored via :meth:`._restore_config_file_internal`.
@@ -758,7 +756,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             BackupRestoreError: If one or more components (world or configuration files)
                                 fail to restore. The error message will summarize all failures.
             AttributeError: If required methods from other mixins (e.g.,
-                ``get_world_name()`` or ``import_active_world_from_mcworld()``)
+                ``get_world_name()`` or ``import_world()``)
                 are not available on the server instance.
         """
         server_bck_dir = self.server_backup_directory
@@ -788,11 +786,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         # Restore World
         try:
-            if not hasattr(self, "get_world_name") or not hasattr(
-                self, "import_active_world_from_mcworld"
-            ):
+            if not hasattr(self, "get_world_name") or not hasattr(self, "import_world"):
                 raise AttributeError(
-                    "Missing get_world_name or import_active_world_from_mcworld method for world restore."
+                    "Missing get_world_name or import_world method for world restore."
                 )
 
             world_backup_files = self._find_and_sort_backups(
@@ -820,8 +816,8 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 self.logger.info(
                     f"Found latest world backup for '{active_world_name}': {os.path.basename(latest_world_backup_path)}"
                 )
-                # import_active_world_from_mcworld is expected from WorldMixin
-                imported_world_name_check = self.import_active_world_from_mcworld(latest_world_backup_path)  # type: ignore
+                # import_world is expected from WorldMixin
+                imported_world_name_check = self.import_world(latest_world_backup_path)  # type: ignore
                 # The path stored should be the actual world path in the server directory, not the backup path
                 restore_results["world"] = os.path.join(
                     self.server_dir, "worlds", imported_world_name_check

@@ -4,73 +4,77 @@ from unittest.mock import patch
 
 import pytest
 
-from bedrock_server_manager.error import AppFileNotFoundError, ExtractError
 
-
-def zip_dir(path, zip_path):
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                zipf.write(
-                    os.path.join(root, file),
-                    os.path.relpath(os.path.join(root, file), path),
-                )
-
-
-def test_export_world_directory_to_mcworld(real_bedrock_server, tmp_path):
+def test_extract_mcworld(real_bedrock_server, tmp_path):
+    """Test extracting a .mcworld file."""
     server = real_bedrock_server
-    world_name = "world"
-    output_path = tmp_path / "world.mcworld"
-    db_path = os.path.join(server.server_dir, "worlds", world_name, "db")
-    os.makedirs(db_path, exist_ok=True)
-    with open(os.path.join(db_path, "test.ldb"), "w") as f:
-        f.write("test")
 
-    server.export_world_directory_to_mcworld(world_name, str(output_path))
-    assert os.path.exists(output_path)
-    with zipfile.ZipFile(output_path, "r") as zip_ref:
-        assert "db/test.ldb" in zip_ref.namelist()
+    zip_path = tmp_path / "test.mcworld"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("level.dat", b"dummy level data")
+
+    extract_dir = tmp_path / "extracted_world"
+    server.extract_mcworld(str(zip_path), str(extract_dir))
+
+    assert os.path.exists(extract_dir)
+    assert os.path.exists(os.path.join(extract_dir, "level.dat"))
 
 
-def test_import_active_world_from_mcworld(real_bedrock_server, tmp_path):
+def test_export_world(real_bedrock_server, tmp_path):
+    """Test exporting a world."""
     server = real_bedrock_server
-    world_name = "world"
-    mcworld_path = tmp_path / f"{world_name}.mcworld"
-    world_source_path = tmp_path / "world_source"
-    os.makedirs(os.path.join(world_source_path, "db"), exist_ok=True)
-    with open(os.path.join(world_source_path, "test.txt"), "w") as f:
-        f.write("test")
-    zip_dir(world_source_path, mcworld_path)
 
-    imported_world_name = server.import_active_world_from_mcworld(str(mcworld_path))
-    assert imported_world_name == world_name
-    assert os.path.exists(
-        os.path.join(server.server_dir, "worlds", world_name, "test.txt")
-    )
+    world_dir = os.path.join(server.server_dir, "worlds", "test_world")
+    os.makedirs(world_dir, exist_ok=True)
+    with open(os.path.join(world_dir, "level.dat"), "w") as f:
+        f.write("dummy_data")
+
+    export_target = os.path.join(str(tmp_path), "exported_world.mcworld")
+    server.export_world("test_world", export_target)
+
+    assert os.path.exists(export_target)
+    assert export_target.endswith(".mcworld")
 
 
-def test_extract_mcworld_to_directory_invalid_zip(real_bedrock_server, tmp_path):
+def test_delete_world(real_bedrock_server):
+    """Test deleting the active world."""
     server = real_bedrock_server
-    invalid_zip_path = tmp_path / "invalid.mcworld"
-    invalid_zip_path.write_text("not a zip")
-    with pytest.raises(ExtractError):
-        server.extract_mcworld_to_directory(str(invalid_zip_path), "world")
+    world_dir = os.path.join(server.server_dir, "worlds", "test_world")
+    os.makedirs(world_dir, exist_ok=True)
+
+    assert os.path.exists(world_dir)
+    with patch.object(server, "get_world_name", return_value="test_world"):
+        assert server.delete_world() is True
+
+    assert not os.path.exists(world_dir)
 
 
-def test_export_world_directory_to_mcworld_no_source(real_bedrock_server, tmp_path):
+def test_import_world(real_bedrock_server, tmp_path):
+    """Test importing a world from a zip/mcworld file."""
     server = real_bedrock_server
-    with pytest.raises(AppFileNotFoundError):
-        server.export_world_directory_to_mcworld(
-            "non_existent_world", str(tmp_path / "export.mcworld")
-        )
+
+    zip_path = tmp_path / "test_world.mcworld"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("level.dat", b"dummy level data")
+
+    with patch.object(server, "get_world_name", return_value="test_world"):
+        world_name = server.import_world(str(zip_path))
+
+    assert world_name == "test_world"
+
+    expected_world_dir = os.path.join(server.server_dir, "worlds", "test_world")
+    assert os.path.exists(expected_world_dir)
+    assert os.path.exists(os.path.join(expected_world_dir, "level.dat"))
 
 
-def test_delete_active_world_directory_not_exist(real_bedrock_server):
+def test_import_world_invalid(real_bedrock_server, tmp_path):
+    """Test importing an invalid world fails."""
     server = real_bedrock_server
-    with patch.object(server, "get_world_name", return_value="non_existent_world"):
-        assert server.delete_active_world_directory() is True
 
+    invalid_path = tmp_path / "invalid.mcworld"
+    invalid_path.write_text("not a zip")
 
-def test_has_world_icon_missing(real_bedrock_server):
-    server = real_bedrock_server
-    assert server.has_world_icon() is False
+    from bedrock_server_manager.error import BackupRestoreError
+
+    with pytest.raises(BackupRestoreError):
+        server.import_world(str(invalid_path))

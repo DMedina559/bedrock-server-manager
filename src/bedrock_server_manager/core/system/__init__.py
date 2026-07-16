@@ -26,7 +26,6 @@ from .process import (
     terminate_process_by_pid,
     write_pid_to_file,
 )
-from .task_scheduler import get_task_scheduler
 
 __all__ = [
     # From base.py
@@ -47,6 +46,4 @@ __all__ = [
     "terminate_process_by_pid",
     "remove_pid_file_if_exists",
     "get_verified_bedrock_process",
-    # From task_scheduler.py
-    "get_task_scheduler",
 ]

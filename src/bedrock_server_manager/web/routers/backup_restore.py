@@ -25,8 +25,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
 from ...error import BSMError, UserInputError
-from ..auth_utils import get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
+from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     ActionResponse,
     BackupActionPayload,
@@ -36,17 +35,19 @@ from ..schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Backup & Restore"],
+)
 
 
 # --- API Routes ---
-@router.post(
+@router.put(
     "/api/server/{server_name}/backups/prune",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Backup & Restore API"],
+    tags=["Backup", "Cleanup"],
 )
-async def prune_backups_api_route(
+async def put_prune_backups(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -77,9 +78,9 @@ async def prune_backups_api_route(
 @router.get(
     "/api/server/{server_name}/backup/list/{backup_type}",
     response_model=ActionResponse,
-    tags=["Backup & Restore API"],
+    tags=["Backup"],
 )
-async def list_server_backups_api_route(
+async def get_list_server_backups(
     backup_type: str,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
@@ -150,6 +151,8 @@ async def list_server_backups_api_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"API List Backups '{server_name}/{backup_type}': Unexpected error. {e}",
@@ -165,9 +168,9 @@ async def list_server_backups_api_route(
     "/api/server/{server_name}/backup/action",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Backup & Restore API"],
+    tags=["Backup"],
 )
-async def backup_action_api_route(
+async def post_backup_action(
     server_name: str = Depends(validate_server_exists),
     payload: BackupActionPayload = Body(...),
     current_user: UserResponse = Depends(get_moderator_user),
@@ -234,9 +237,9 @@ async def backup_action_api_route(
     "/api/server/{server_name}/restore/action",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    tags=["Backup & Restore API"],
+    tags=["Restore"],
 )
-async def restore_action_api_route(  # noqa: C901
+async def post_restore_action(  # noqa: C901
     payload: RestoreActionPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),

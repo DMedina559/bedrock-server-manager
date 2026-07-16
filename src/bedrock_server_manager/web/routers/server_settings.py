@@ -5,7 +5,7 @@ FastAPI router for managing server-specific settings.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...context import AppContext
 from ...error import (
@@ -14,23 +14,28 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-from ..auth_utils import get_admin_user, get_current_user
-from ..dependencies import get_app_context
+from ..deps import (
+    get_admin_user,
+    get_app_context,
+    get_current_user,
+    validate_server_exists,
+)
 from ..schemas import ServerSettingItemPayload, ServerSettingsResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Server Settings"],
+)
 
 
 # --- API Route: Get All Settings for a Server ---
 @router.get(
-    "/api/servers/{server_name}/settings",
+    "/api/server/{server_name}/settings/get",
     response_model=ServerSettingsResponse,
-    tags=["Server Settings API"],
 )
-async def get_server_settings_api_route(
-    server_name: str = Path(..., description="The name of the server."),
+async def get_server_settings(
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -49,6 +54,8 @@ async def get_server_settings_api_route(
             settings=config,
             message=f"Successfully retrieved settings for server '{server_name}'.",
         )
+    except HTTPException:
+        raise
     except InvalidServerNameError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -64,13 +71,12 @@ async def get_server_settings_api_route(
 
 # --- API Route: Set a Setting for a Server ---
 @router.post(
-    "/api/servers/{server_name}/settings",
+    "/api/server/{server_name}/settings/set",
     response_model=ServerSettingsResponse,
-    tags=["Server Settings API"],
 )
-async def set_server_setting_api_route(
+async def post_set_server_setting(
     payload: ServerSettingItemPayload,
-    server_name: str = Path(..., description="The name of the server."),
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -91,6 +97,8 @@ async def set_server_setting_api_route(
             message=f"Setting '{payload.key}' updated successfully for server '{server_name}'.",
             setting=payload,
         )
+    except HTTPException:
+        raise
     except InvalidServerNameError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -1,6 +1,8 @@
-from unittest.mock import MagicMock, patch
+"""
+Integration tests for the API functions in bedrock_server_manager/api/web.py.
+"""
 
-import pytest
+from unittest.mock import patch
 
 from bedrock_server_manager.api.web import (
     create_web_ui_service,
@@ -12,92 +14,192 @@ from bedrock_server_manager.api.web import (
     start_web_server_api,
     stop_web_server_api,
 )
+from bedrock_server_manager.context import AppContext
 
 
-@pytest.fixture
-def mock_system_linux_utils(mocker):
-    """Fixture to patch system_linux_utils."""
-    return mocker.patch(
-        "bedrock_server_manager.core.manager_mixins.web_service_mixin.system_linux_utils"
-    )
+def test_start_web_server_api_direct_success(app_context: AppContext):
+    """Test starting web server directly."""
+    with patch("bedrock_server_manager.web.main.run_web_server") as mock_run:
+        result = start_web_server_api(app_context, mode="direct")
 
-
-class TestWebServerLifecycle:
-    def test_start_web_server_direct(self, app_context):
-        app_context.manager.start_web_ui_direct = MagicMock()
-        start_web_server_api(mode="direct", app_context=app_context)
-        app_context.manager.start_web_ui_direct.assert_called_once_with(
-            app_context, None, None, False
-        )
-
-    @patch("bedrock_server_manager.api.web.system_process_utils")
-    @patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True)
-    def test_start_web_server_detached(self, mock_system_process, app_context):
-        mock_system_process.read_pid_from_file.return_value = None
-        mock_system_process.launch_detached_process.return_value = 12345
-        result = start_web_server_api(mode="detached", app_context=app_context)
         assert result["status"] == "success"
-        assert result["pid"] == 12345
-
-    @patch("bedrock_server_manager.api.web.system_process_utils")
-    @patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True)
-    def test_stop_web_server_api(self, mock_system_process, app_context):
-        mock_system_process.read_pid_from_file.return_value = 12345
-        mock_system_process.is_process_running.return_value = True
-        result = stop_web_server_api(app_context=app_context)
-        assert result["status"] == "success"
-        mock_system_process.terminate_process_by_pid.assert_called_once_with(12345)
-
-    @patch("bedrock_server_manager.api.web.system_process_utils")
-    @patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True)
-    def test_get_web_server_status_api_running(self, mock_system_process, app_context):
-        mock_system_process.read_pid_from_file.return_value = 12345
-        mock_system_process.is_process_running.return_value = True
-        result = get_web_server_status_api(app_context=app_context)
-        assert result["status"] == "RUNNING"
-        assert result["pid"] == 12345
+        mock_run.assert_called_once()
 
 
-class TestWebServiceManagement:
-    def test_create_web_ui_service_autostart(
-        self, app_context, mock_system_linux_utils
-    ):
-        create_web_ui_service(app_context=app_context, autostart=True)
-        mock_system_linux_utils.create_systemd_service_file.assert_called_once()
-        mock_system_linux_utils.enable_systemd_service.assert_called_once()
+def test_start_web_server_api_invalid_mode(app_context: AppContext):
+    """Test starting web server with invalid mode raises UserInputError."""
+    # The API catches the error and returns a status dictionary
+    result = start_web_server_api(app_context, mode="invalid")
+    assert result["status"] == "error"
+    assert "Invalid mode" in result["message"]
 
-    def test_enable_web_ui_service(self, app_context, mock_system_linux_utils):
-        enable_web_ui_service(app_context=app_context)
-        mock_system_linux_utils.enable_systemd_service.assert_called_once()
 
-    def test_disable_web_ui_service(self, app_context, mock_system_linux_utils):
-        disable_web_ui_service(app_context=app_context)
-        mock_system_linux_utils.disable_systemd_service.assert_called_once()
-
-    @pytest.mark.skip(reason="Failing due to mock issues")
-    @patch("bedrock_server_manager.core.manager.os.remove")
-    def test_remove_web_ui_service(
-        self, mock_os_remove, app_context, mock_system_linux_utils
-    ):
+def test_start_web_server_api_detached_success(app_context: AppContext):
+    """Test starting web server detached."""
+    with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True):
         with patch(
-            "bedrock_server_manager.api.web.get_manager_instance",
-            return_value=app_context.manager,
-        ):
-            mock_system_linux_utils.get_systemd_service_file_path.return_value = (
-                "/etc/systemd/user/bedrock-server-manager-webui.service"
-            )
-            result = remove_web_ui_service(app_context=app_context)
-            assert result["status"] == "success"
-            mock_os_remove.assert_called_once_with(
-                "/etc/systemd/user/bedrock-server-manager-webui.service"
-            )
+            "bedrock_server_manager.core.system.process.launch_detached_process"
+        ) as mock_launch:
+            with patch(
+                "bedrock_server_manager.core.system.process.is_process_running",
+                return_value=False,
+            ):
+                mock_launch.return_value = 1234
+                result = start_web_server_api(app_context, mode="detached")
 
-    def test_get_web_ui_service_status(self, app_context, mock_system_linux_utils):
-        app_context.manager.check_web_service_exists = MagicMock(return_value=True)
-        app_context.manager.is_web_service_active = MagicMock(return_value=True)
-        app_context.manager.is_web_service_enabled = MagicMock(return_value=True)
-        result = get_web_ui_service_status(app_context=app_context)
-        assert result["status"] == "success"
-        assert result["service_exists"] is True
-        assert result["is_active"] is True
-        assert result["is_enabled"] is True
+                assert result["status"] == "success"
+                assert result["pid"] == 1234
+                mock_launch.assert_called_once()
+
+
+def test_stop_web_server_api_success(app_context: AppContext):
+    """Test stopping the detached web server."""
+    with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True):
+        with patch(
+            "bedrock_server_manager.core.system.process.read_pid_from_file",
+            return_value=1234,
+        ):
+            with patch(
+                "bedrock_server_manager.core.system.process.is_process_running",
+                return_value=True,
+            ):
+                with patch(
+                    "bedrock_server_manager.core.system.process.verify_process_identity"
+                ):
+                    with patch(
+                        "bedrock_server_manager.core.system.process.terminate_process_by_pid"
+                    ) as mock_terminate:
+                        with patch(
+                            "bedrock_server_manager.core.system.process.remove_pid_file_if_exists"
+                        ):
+                            result = stop_web_server_api(app_context)
+
+                            assert result["status"] == "success"
+                            mock_terminate.assert_called_once_with(1234)
+
+
+def test_stop_web_server_api_no_psutil(app_context: AppContext):
+    """Test stopping the detached web server when psutil is not available."""
+    with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", False):
+        result = stop_web_server_api(app_context)
+        assert result["status"] == "error"
+        assert "psutil" in result["message"]
+
+
+def test_get_web_server_status_api_running(app_context: AppContext):
+    """Test checking status when it's running."""
+    with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True):
+        with patch(
+            "bedrock_server_manager.core.system.process.read_pid_from_file",
+            return_value=1234,
+        ):
+            with patch(
+                "bedrock_server_manager.core.system.process.is_process_running",
+                return_value=True,
+            ):
+                with patch(
+                    "bedrock_server_manager.core.system.process.verify_process_identity"
+                ):
+                    result = get_web_server_status_api(app_context)
+
+                    assert result["status"] == "RUNNING"
+                    assert result["pid"] == 1234
+
+
+def test_create_web_ui_service_success(app_context: AppContext):
+    """Test creating a web ui service successfully."""
+    with patch("bedrock_server_manager.api.web.can_manage_services", return_value=True):
+        with patch(
+            "bedrock_server_manager.core.service.create_web_service_file"
+        ) as mock_create:
+            with patch(
+                "bedrock_server_manager.core.service.enable_web_service"
+            ) as mock_enable:
+                result = create_web_ui_service(app_context, autostart=True)
+
+                assert result["status"] == "success"
+                mock_create.assert_called_once()
+                mock_enable.assert_called_once()
+
+
+def test_create_web_ui_service_disabled(app_context: AppContext):
+    """Test creating a web ui service with autostart false."""
+    with patch("bedrock_server_manager.api.web.can_manage_services", return_value=True):
+        with patch(
+            "bedrock_server_manager.core.service.create_web_service_file"
+        ) as mock_create:
+            with patch(
+                "bedrock_server_manager.core.service.disable_web_service"
+            ) as mock_disable:
+                result = create_web_ui_service(app_context, autostart=False)
+
+                assert result["status"] == "success"
+                mock_create.assert_called_once()
+                mock_disable.assert_called_once()
+
+
+def test_create_web_ui_service_cannot_manage(app_context: AppContext):
+    """Test creating a web ui service when management tools are missing."""
+    with patch(
+        "bedrock_server_manager.api.web.can_manage_services", return_value=False
+    ):
+        result = create_web_ui_service(app_context, autostart=True)
+        assert result["status"] == "error"
+        assert "not found" in result["message"]
+
+
+def test_enable_web_ui_service_success(app_context: AppContext):
+    """Test enabling web ui service successfully."""
+    with patch("bedrock_server_manager.api.web.can_manage_services", return_value=True):
+        with patch(
+            "bedrock_server_manager.core.service.enable_web_service"
+        ) as mock_enable:
+            result = enable_web_ui_service(app_context)
+            assert result["status"] == "success"
+            mock_enable.assert_called_once()
+
+
+def test_disable_web_ui_service_success(app_context: AppContext):
+    """Test disabling web ui service successfully."""
+    with patch("bedrock_server_manager.api.web.can_manage_services", return_value=True):
+        with patch(
+            "bedrock_server_manager.core.service.disable_web_service"
+        ) as mock_disable:
+            result = disable_web_ui_service(app_context)
+            assert result["status"] == "success"
+            mock_disable.assert_called_once()
+
+
+def test_remove_web_ui_service_success(app_context: AppContext):
+    """Test removing web ui service successfully."""
+    with patch("bedrock_server_manager.api.web.can_manage_services", return_value=True):
+        with patch(
+            "bedrock_server_manager.core.service.remove_web_service_file",
+            return_value=True,
+        ) as mock_remove:
+            result = remove_web_ui_service(app_context)
+            assert result["status"] == "success"
+            mock_remove.assert_called_once()
+
+
+def test_get_web_ui_service_status_success(app_context: AppContext):
+    """Test getting web ui service status successfully."""
+    with patch("bedrock_server_manager.api.web.can_manage_services", return_value=True):
+        with patch(
+            "bedrock_server_manager.core.service.check_web_service_exists",
+            return_value=True,
+        ):
+            with patch(
+                "bedrock_server_manager.core.service.is_web_service_active",
+                return_value=True,
+            ):
+                with patch(
+                    "bedrock_server_manager.core.service.is_web_service_enabled",
+                    return_value=False,
+                ):
+                    result = get_web_ui_service_status(app_context)
+
+                    assert result["status"] == "success"
+                    assert result["service_exists"] is True
+                    assert result["is_active"] is True
+                    assert result["is_enabled"] is False

@@ -53,12 +53,14 @@ class ServerSchemaResponse(BaseModel):
         status (str): The server's status (e.g., "Running", "Stopped").
         version (str): The installed version of the server.
         player_count (int): The number of players currently online.
+        players (list): The list of players currently online.
     """
 
     name: str
     status: str
     version: str
     player_count: int
+    players: List[Dict[str, str]] = Field(default_factory=list)
 
 
 # --- Specific Response Models replacing GeneralApiResponse ---
@@ -89,28 +91,10 @@ class AddPlayersResponse(BaseApiResponse):
     count: Optional[int] = None
 
 
-class ThemeListResponse(BaseApiResponse):
-    """Response model for theme lists."""
-
-    themes: Optional[List[str]] = None
-
-
 class ServerRunningStatusResponse(BaseApiResponse):
     """Response model for server running status."""
 
     running: Optional[bool] = None
-
-
-class ServerConfigStatusResponse(BaseApiResponse):
-    """Response model for server config status."""
-
-    config_status: Optional[str] = None
-
-
-class ServerVersionResponse(BaseApiResponse):
-    """Response model for server installed version."""
-
-    version: Optional[str] = None
 
 
 class ServerProcessInfoResponse(BaseApiResponse):

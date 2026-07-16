@@ -14,22 +14,24 @@ from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...db.models import User
-from ..auth_utils import (
+from ...utils import (
     create_access_token,
     get_password_hash,
 )
-from ..dependencies import get_app_context
+from ..deps import get_app_context
 from ..schemas import SetupStatusResponse, UserLoginPayload
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/api/setup",
-    tags=["Setup"],
+    prefix="/api/setup", tags=["Application Setup"], include_in_schema=False
 )
 
 
-@router.get("/status", response_model=SetupStatusResponse, tags=["Setup"])
+@router.get(
+    "/status",
+    response_model=SetupStatusResponse,
+)
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -41,7 +43,9 @@ async def get_setup_status(
         return SetupStatusResponse(needs_setup=not user_exists)
 
 
-@router.post("/create-first-user", include_in_schema=False)
+@router.post(
+    "/create-first-user",
+)
 async def create_first_user(
     data: UserLoginPayload,
     app_context: AppContext = Depends(get_app_context),
@@ -92,6 +96,7 @@ async def create_first_user(
                 value=access_token,
                 httponly=True,
                 samesite="lax",
+                path="/",
             )
             return response
 
