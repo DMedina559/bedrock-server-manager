@@ -165,7 +165,7 @@ You can then start the application with a single command: `docker-compose up -d`
 
 ### Accessing the CLI
 
-You can access the `bedrock-server-manager` CLI using `docker exec`.
+You can access the `bedrock-server-manager` CLI using `docker exec` when the container is already running.
 
 To run a single command:
 ```bash
@@ -176,6 +176,28 @@ To get an interactive shell:
 ```bash
 docker exec -it bsm-container /bin/bash
 ```
+
+### Overriding the Startup Command (e.g., for Migrations)
+
+If you need to perform maintenance tasks—such as running database migrations or setting up configurations—before starting the web server, you can override the default startup command.
+
+When you start the container, passing a custom command will replace the default behavior of starting the web server. For example, to temporarily run database migrations interactively without starting the web server, use:
+
+```bash
+docker run -it --rm \
+  -v bsm_config:/root/.config/bedrock-server-manager \
+  -v bsm_data:/root/bedrock-server-manager \
+  dmedina559/bedrock-server-manager:stable \
+  bedrock-server-manager database upgrade
+```
+
+Or, to launch an interactive bash shell instead of the web server:
+
+```bash
+docker run -it --rm dmedina559/bedrock-server-manager:stable bash
+```
+
+*Note: The `--rm` flag automatically removes the container once the command finishes. Remove this flag if you want to keep the container.*
 
 ### Changing the Database URL
 

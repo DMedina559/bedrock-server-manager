@@ -6,11 +6,20 @@
 :align: center
 ```
 
-<img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bedrock-server-manager?label=Version&color=green">
-<img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/bedrock-server-manager?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=YELLOW&left_text=PYPI+Installs">
-<img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/dmedina559/bedrock-server-manager?label=Docker%20Pulls&color=pink">
-<img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dmedina559/bedrock-server-manager/build-test.yml?branch=dev&label=Test
-">
+<p align="center">
+  <a href="https://github.com/DMedina559/bedrock-server-manager/releases">
+    <img alt="Stable" src="https://img.shields.io/github/v/release/DMedina559/bedrock-server-manager?label=Stable&color=blue">
+  </a>
+  <a href="https://github.com/DMedina559/bedrock-server-manager/releases">
+    <img alt="Pre-Release" src="https://img.shields.io/github/v/release/DMedina559/bedrock-server-manager?include_prereleases&label=Pre-Release&color=red">
+  </a>
+  <a href="https://github.com/DMedina559/bsm-stats">
+    <img alt="Downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/DMedina559/bsm-stats/main/downloads.json">
+  </a>
+  <a href="https://github.com/DMedina559/bedrock-server-manager/actions">
+    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/DMedina559/bedrock-server-manager/build-test.yml?label=Tests&event=push">
+  </a>
+</p>
 
 Bedrock Server Manager is a comprehensive python server designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease, compatible with Linux/Windows.
 
@@ -49,13 +58,13 @@ First, install the main application package from PyPI:
 pip install --upgrade bedrock-server-manager
 ```
 
-#### (Optional) Install the API Client for CLI Management
+#### (Optional) Install the CLI Client for CLI Management
 
 To manage your servers from the command line, install the optional API client:
 ```bash
-pip install --upgrade "bsm-api-client[cli]"
+pip install --upgrade "bsm-cli"
 ```
-This provides the `bsm-api-client` command, which allows you to perform various tasks via the API.
+This provides the `bsm-cli` command, which allows you to perform various tasks via the API.
 
 > See the [Installation Guide](../extras/installation.md) for beta or development versions.
 
@@ -97,7 +106,7 @@ Bedrock Server Manager is a powerful tool for managing Minecraft Bedrock Dedicat
 
 -   [Web Usage](../web/general.md): Discover how to use the web interface for server management.
 -   [CLI Commands](../cli/commands.rst): View what commands are available for the core application.
--   [API Client CLI Commands](../cli/api_client_commands.rst): View what commands are available in the `bsm-api-client` package.
+-   [API Client CLI Commands](../cli/api_client_commands.rst): View what commands are available in the `bsm-cli` package.
 -   [Plugins](../plugins/introduction.md): Explore how to extend the functionality of Bedrock Server Manager with custom plugins.
 -   [Changelog](../changelog.md): Stay updated with the latest changes and improvements in each release.
 -   [Troubleshooting](./troubleshooting.md): Find solutions to common issues.

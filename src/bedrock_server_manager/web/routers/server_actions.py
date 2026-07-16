@@ -17,8 +17,8 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from ...api import install
 from ...api import server as server_api
-from ...api import server_install_config
 from ...context import AppContext
 from ...error import (
     BlockedCommandError,
@@ -26,13 +26,57 @@ from ...error import (
     ServerNotRunningError,
     UserInputError,
 )
-from ..auth_utils import get_admin_user, get_moderator_user
-from ..dependencies import get_app_context, validate_server_exists
-from ..schemas import ActionResponse, CommandPayload, UserResponse
+from ..deps import (
+    get_admin_user,
+    get_app_context,
+    get_moderator_user,
+    validate_server_exists,
+)
+from ..schemas import ActionResponse, CommandPayload, ServerSchemaResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Server Mannagement"],
+)
+
+
+@router.get(
+    "/api/server/{server_name}/summary",
+    response_model=ServerSchemaResponse,
+    tags=["Server Information"],
+)
+async def get_server_summary(
+    server_name: str = Depends(validate_server_exists),
+    current_user: UserResponse = Depends(get_moderator_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Retrieves the basic summary information for a specific server instance.
+    """
+    identity = current_user.username
+    logger.info(
+        f"API: Get server summary request for '{server_name}' by user '{identity}'."
+    )
+
+    result = server_api.get_server_summary(
+        server_name=server_name, app_context=app_context
+    )
+
+    if result.get("status") == "success":
+        summary = result.get("summary", {})
+        return ServerSchemaResponse(
+            name=summary.get("name", server_name),
+            status=summary.get("status", "Unknown"),
+            version=summary.get("version", "Unknown"),
+            player_count=summary.get("player_count", 0),
+            players=summary.get("players", []),
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("message", "Failed to get server summary."),
+        )
 
 
 # --- API Route: Start Server ---
@@ -40,10 +84,9 @@ router = APIRouter()
     "/api/server/{server_name}/start",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Start a server instance",
-    tags=["Server Actions API"],
+    tags=["Process Management"],
 )
-async def start_server_route(
+async def post_start_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -74,10 +117,9 @@ async def start_server_route(
     "/api/server/{server_name}/stop",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Stop a running server instance",
-    tags=["Server Actions API"],
+    tags=["Process Management"],
 )
-async def stop_server_route(
+async def post_stop_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -108,10 +150,9 @@ async def stop_server_route(
     "/api/server/{server_name}/restart",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Restart a server instance",
-    tags=["Server Actions API"],
+    tags=["Process Management"],
 )
-async def restart_server_route(
+async def post_restart_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -143,10 +184,9 @@ async def restart_server_route(
 @router.post(
     "/api/server/{server_name}/send_command",
     response_model=ActionResponse,
-    summary="Send a command to a running server instance",
-    tags=["Server Actions API"],
+    tags=["Send Command"],
 )
-async def send_command_route(
+async def post_send_command(
     payload: CommandPayload,
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
@@ -208,6 +248,8 @@ async def send_command_route(
         if "not found" in str(e).lower():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
     except BSMError as e:  # Catch other BSM specific errors
         logger.error(
             f"API Send Command '{server_name}': Application error. {e}", exc_info=True
@@ -229,11 +271,10 @@ async def send_command_route(
     "/api/server/{server_name}/update",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Update a server instance to the latest version",
-    tags=["Server Actions API"],
+    tags=["Server Installation"],
 )
-async def update_server_route(
-    server_name: str,
+async def post_update_server(
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):
@@ -246,7 +287,7 @@ async def update_server_route(
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
     task_id = app_context.task_manager.run_task(
-        server_install_config.update_server,
+        install.update_server,
         username=current_user.username,
         server_name=server_name,
         app_context=app_context,
@@ -263,11 +304,10 @@ async def update_server_route(
     "/api/server/{server_name}/delete",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Delete a server instance and its data",
-    tags=["Server Actions API"],
+    tags=["Server Installation"],
 )
-async def delete_server_route(
-    server_name: str,
+async def delete_server(
+    server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
 ):

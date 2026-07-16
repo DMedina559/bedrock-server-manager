@@ -1,7 +1,7 @@
 # CLI Usage
 
 <div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/cli_menu.png" alt="CLI Menu" width="300" height="200">
+    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/cli_menu.png" alt="CLI Menu" width="300" height="200"/>
 </div>
 
 For a complete list of commands, see [CLI Commands](./commands.rst).

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from click.testing import CliRunner
@@ -11,78 +11,80 @@ def runner():
     return CliRunner()
 
 
-@patch("bedrock_server_manager.cli.setup.bcm_config")
-@patch("bedrock_server_manager.cli.setup.questionary")
-def test_setup_command_basic(mock_questionary, mock_bcm_config, runner):
-    # Mock app_context and its settings
-    mock_app_context = MagicMock()
-    mock_settings = MagicMock()
-    mock_app_context.settings = mock_settings
-
-    # Mock bcm_config
-    mock_bcm_config.load_config.return_value = {}
-
-    # Mock questionary prompts
-    mock_questionary.text.return_value.ask.side_effect = [
-        "test_data_dir",  # Data directory
-        "testhost",  # Web host
-        "12345",  # Web port
-    ]
-    mock_questionary.confirm.return_value.ask.return_value = False  # No advanced DB
-
-    result = runner.invoke(
-        setup,
-        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
+def test_setup_interactive_workflow(runner, app_context, monkeypatch):
+    """Test interactive setup workflow successfully applies base configurations."""
+    # Mock Questionary
+    mock_questionary = MagicMock()
+    # 1. data_dir prompt
+    # 2. advance_db confirm (False)
+    # 3. web_host
+    # 4. web_port
+    # 5. service config confirm (True)
+    mock_questionary.text().ask.side_effect = ["/mocked/data/dir", "0.0.0.0", "12345"]
+    mock_questionary.confirm().ask.side_effect = [False, True]
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.setup.questionary", mock_questionary
     )
 
+    mock_workflow = MagicMock()
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.setup.interactive_web_service_workflow",
+        mock_workflow,
+    )
+
+    # Mock bcm_config logic so it doesnt actually overwrite real state
+    mock_bcm = MagicMock()
+    mock_bcm.get_config_dir.return_value = "/mock/dir"
+    mock_bcm.load_config.return_value = {}
+    monkeypatch.setattr("bedrock_server_manager.cli.setup.bcm_config", mock_bcm)
+
+    result = runner.invoke(setup, obj={"app_context": app_context})
     assert result.exit_code == 0
     assert "Setup complete!" in result.output
+    assert "Using the default SQLite database" in result.output
 
-    # Verify config saving
-    mock_bcm_config.set_config_value.assert_called_once_with(
-        "data_dir", "test_data_dir"
-    )
-
-    # Verify settings saving
-    mock_settings.set.assert_any_call("web.host", "testhost")
-    mock_settings.set.assert_any_call("web.port", 12345)
+    mock_bcm.set_config_value.assert_called_with("data_dir", "/mocked/data/dir")
+    assert app_context.settings.get("web.host") == "0.0.0.0"
+    assert app_context.settings.get("web.port") == 12345
+    mock_workflow.assert_called_once()
 
 
-@patch("bedrock_server_manager.cli.setup.bcm_config")
-@patch("bedrock_server_manager.cli.setup.questionary")
-def test_setup_command_advanced_db(mock_questionary, mock_bcm_config, runner):
-    # Mock app_context and its settings
-    mock_app_context = MagicMock()
-    mock_settings = MagicMock()
-    mock_app_context.settings = mock_settings
-
-    # Mock bcm_config
-    mock_bcm_config.load_config.return_value = {}
-
-    # Mock questionary prompts
-    mock_questionary.text.return_value.ask.side_effect = [
-        "test_data_dir",
-        "test_db_url",  # DB URL
-        "testhost",
-        "12345",
+def test_setup_advanced_db(runner, app_context, monkeypatch):
+    """Test setup workflow successfully configures advanced database values and overrides configs."""
+    mock_questionary = MagicMock()
+    # 1. data_dir
+    # 2. advance_db confirm (True)
+    # 3. DB Url
+    # 4. web_host
+    # 5. web_port
+    # 6. service config confirm (False)
+    mock_questionary.text().ask.side_effect = [
+        "/mocked/data/dir",
+        "postgresql://url",
+        "1.2.3.4",
+        "80",
     ]
-    mock_questionary.confirm.return_value.ask.side_effect = [
-        True,
-        False,
-    ]  # Yes to advanced DB, No to service
-
-    result = runner.invoke(
-        setup,
-        obj={"app_context": mock_app_context, "bsm": MagicMock(), "cli": MagicMock()},
+    mock_questionary.confirm().ask.side_effect = [True, False]
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.setup.questionary", mock_questionary
     )
 
-    assert result.exit_code == 0, result.output
-    assert "Setup complete!" in result.output
+    mock_workflow = MagicMock()
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.setup.interactive_web_service_workflow",
+        mock_workflow,
+    )
 
-    # Verify config saving
-    mock_bcm_config.set_config_value.assert_any_call("data_dir", "test_data_dir")
-    mock_bcm_config.set_config_value.assert_any_call("db_url", "test_db_url")
+    mock_bcm = MagicMock()
+    mock_bcm.get_config_dir.return_value = "/mock/dir"
+    mock_bcm.load_config.return_value = {}
+    monkeypatch.setattr("bedrock_server_manager.cli.setup.bcm_config", mock_bcm)
 
-    # Verify settings saving
-    mock_settings.set.assert_any_call("web.host", "testhost")
-    mock_settings.set.assert_any_call("web.port", 12345)
+    result = runner.invoke(setup, obj={"app_context": app_context})
+    assert result.exit_code == 0
+    assert "Database URL set to: postgresql://url" in result.output
+    assert "Skipping service configuration." in result.output
+
+    mock_workflow.assert_not_called()
+    assert app_context.settings.get("web.host") == "1.2.3.4"
+    assert app_context.settings.get("web.port") == 80

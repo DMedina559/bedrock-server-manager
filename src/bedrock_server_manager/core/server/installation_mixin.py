@@ -1,4 +1,3 @@
-# bedrock_server_manager/core/server/installation_mixin.py
 """Provides the :class:`.ServerInstallationMixin` for the :class:`~.core.bedrock_server.BedrockServer` class.
 
 This mixin is focused on aspects of a server's lifecycle that involve its
@@ -32,8 +31,6 @@ from ...error import (
     ServerStopError,
 )
 from ..system import base as system_base
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -66,7 +63,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         multiple inheritance. It depends on attributes initialized by
         :class:`.BedrockServerBaseMixin` and assumes methods from other mixins
         (like :meth:`~.ServerProcessMixin.is_running` and :meth:`~.ServerProcessMixin.stop`)
-        will be available on the composed :class:`~.core.bedrock_server.BedrockServer` object.
+        will be available on the final composed :class:`~.core.bedrock_server.BedrockServer` object.
 
         Args:
             *args (Any): Variable length argument list passed to `super()`.
@@ -227,6 +224,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
                 3. The server's entire backup directory (derived from ``paths.backups`` setting).
                 4. The server's PID file.
+                5. Database entries related to the server (e.g. Server and ServerBan records).
 
         The method will attempt to stop a running server (using ``self.stop()``,
         expected from :class:`~.ServerProcessMixin`) before proceeding with deletions.
@@ -351,8 +349,26 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             self.logger.info(
                 f"Successfully deleted all data for server: '{self.server_name}'."
             )
-            # Set status to UNKNOWN or similar to indicate it's gone, if status methods are available
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("DELETED")  # Or "UNKNOWN"
-            if hasattr(self, "set_version"):
-                self.set_version("UNKNOWN")  # type: ignore
+
+            # Remove server and associated bans/settings from the database
+            if self.settings.db is not None:
+                from ...db.models import Server, ServerBan
+
+                with self.settings.db.session_manager() as db_session:
+                    db_server = (
+                        db_session.query(Server)
+                        .filter(Server.server_name == self.server_name)
+                        .first()
+                    )
+                    if db_server:
+                        # Clear associated bans first to prevent foreign key errors
+                        db_session.query(ServerBan).filter(
+                            ServerBan.server_id == db_server.id
+                        ).delete()
+
+                        # Delete the server record (which also drops 'custom' settings JSON column)
+                        db_session.delete(db_server)
+                        db_session.commit()
+                        self.logger.info(
+                            f"Successfully deleted server '{self.server_name}' and its associated data from the database."
+                        )

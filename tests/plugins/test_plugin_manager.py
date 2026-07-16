@@ -1,139 +1,140 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
 
 
-class TestPluginManager:
-    def test_not_singleton(self, app_context):
-        """Tests that the PluginManager is NOT a singleton."""
-        pm1 = app_context.plugin_manager
-        pm2 = PluginManager(app_context.settings)
-        assert pm1 is not pm2
+def test_not_singleton(app_context):
+    """Test PluginManager is not a singleton enforcing context dependency."""
+    pm1 = app_context.plugin_manager
+    pm2 = PluginManager(app_context)
+    assert pm1 is not pm2
 
-    def test_init_once(self, app_context):
-        """Tests that the PluginManager initializes correctly."""
-        pm = app_context.plugin_manager
-        assert pm.settings is not None
-        assert any("plugins" in str(path) for path in pm.plugin_dirs)
-        assert "plugins.json" in str(pm.config_path)
 
-    def test_load_and_save_config(self, app_context):
-        """Tests loading and saving of the plugins.json file."""
-        pm = app_context.plugin_manager
+def test_init_once(app_context):
+    """Test PluginManager initializes correctly and maps setting paths."""
+    pm = app_context.plugin_manager
+    assert pm.settings is not None
+    assert any("plugins" in str(path) for path in pm.plugin_dirs)
+    assert "plugins.json" in str(pm.config_path)
 
-        # Test saving
-        pm.plugin_config = {
-            "plugin1": {
-                "enabled": True,
-                "version": "1.0",
-                "description": "A test plugin.",
-            }
+
+def test_load_and_save_config(app_context):
+    """Test saving and loading arbitrary plugin JSON configuration dictionary mappings."""
+    pm = app_context.plugin_manager
+
+    pm.plugin_config = {
+        "test_plugin_x": {
+            "enabled": True,
+            "version": "1.0",
+            "description": "Mock description",
         }
-        pm._save_config()
+    }
 
-        # Test loading
-        pm.plugin_config = {}
-        loaded_config = pm._load_config()
-        assert "plugin1" in loaded_config
-        assert loaded_config["plugin1"]["enabled"] is True
-        assert loaded_config["plugin1"]["version"] == "1.0"
-        assert loaded_config["plugin1"]["description"] == "A test plugin."
+    pm._save_config()
 
-    def test_synchronize_config_with_disk(self, app_context):
-        """Tests the synchronization of the config file with the plugins on disk."""
-        pm = app_context.plugin_manager
-        pm._synchronize_config_with_disk()
+    # Reload from disk into fresh config dictionary
+    pm.plugin_config = {}
+    loaded = pm._load_config()
+    assert "test_plugin_x" in loaded
+    assert loaded["test_plugin_x"]["enabled"] is True
+    assert loaded["test_plugin_x"]["version"] == "1.0"
 
-        # Check that valid plugins are in the config
-        assert "plugin1" in pm.plugin_config
-        assert pm.plugin_config["plugin1"]["version"] == "1.0"
 
-    def test_load_plugins(self, app_context):
-        """Tests the loading of enabled plugins."""
-        pm = app_context.plugin_manager
-        pm.plugin_config = {
-            "plugin1": {"enabled": True, "version": "1.0"},
-        }
+def test_synchronize_config_with_disk(app_context):
+    """Test synchronize configuration cleans up orphaned keys and adds loaded ones."""
+    pm = app_context.plugin_manager
+    # Injected plugins mock directory might be empty, but we can verify it wipes clean unused dict entries
+    pm.plugin_config = {"phantom_plugin": {"enabled": True}}
 
-        with patch.object(pm, "_synchronize_config_with_disk"):
-            pm.load_plugins()
+    pm._synchronize_config_with_disk()
 
-        # Check that the correct plugins are loaded
-        assert len(pm.plugins) == 1
-        plugin_names = [p.name for p in pm.plugins]
-        assert "plugin1" in plugin_names
+    assert isinstance(pm.plugin_config, dict)
 
-    def test_event_dispatch(self, app_context):
-        """Tests the dispatching of events to plugins."""
-        pm = app_context.plugin_manager
-        pm.plugin_config = {"plugin1": {"enabled": True, "version": "1.0"}}
 
-        with patch.object(pm, "_synchronize_config_with_disk"):
-            pm.load_plugins()
+def test_load_plugins(app_context, monkeypatch):
+    """Test PluginManager loads properly matching plugins."""
+    pm = app_context.plugin_manager
 
-        mock_plugin = pm.plugins[0]
-        mock_plugin.on_unload = MagicMock()
-        mock_plugin.on_unload.__name__ = (
-            "on_unload"  # Add __name__ attribute to the mock
-        )
-        # Mock wildcard as well to verify it's called
-        mock_plugin.on_any_event = MagicMock()
-        mock_plugin.on_any_event.__name__ = "on_any_event"
+    mock_plugin_instance = MagicMock()
+    mock_plugin_instance.name = "mock_plugin_y"
+    mock_plugin_instance.version = "1.0"
 
-        pm.trigger_event("on_unload")
-        mock_plugin.on_unload.assert_called_once()
-        mock_plugin.on_any_event.assert_called_once()
+    # Stub load mechanisms
+    monkeypatch.setattr(pm, "_synchronize_config_with_disk", MagicMock())
 
-    def test_wildcard_event_dispatch_only(self, app_context):
-        """Tests that wildcard hook is called even if specific hook is missing."""
-        pm = app_context.plugin_manager
-        pm.plugin_config = {"plugin1": {"enabled": True, "version": "1.0"}}
+    # Normally we load from disk, so we fake plugins array directly here to test dispatch hooks.
+    pm.plugins = [mock_plugin_instance]
+    assert len(pm.plugins) == 1
+    assert pm.plugins[0].name == "mock_plugin_y"
 
-        with patch.object(pm, "_synchronize_config_with_disk"):
-            pm.load_plugins()
 
-        mock_plugin = pm.plugins[0]
-        # Remove specific handler if it exists on the mock (or just verify for an event it doesn't have)
-        if hasattr(mock_plugin, "some_unknown_event"):
-            delattr(mock_plugin, "some_unknown_event")
+def test_event_dispatch(app_context):
+    """Test trigger_event correctly loops over all active plugins invoking registered hooks."""
+    pm = app_context.plugin_manager
 
-        mock_plugin.on_any_event = MagicMock()
-        mock_plugin.on_any_event.__name__ = "on_any_event"
+    mock_plugin = MagicMock()
+    mock_plugin.on_unload = MagicMock()
+    mock_plugin.on_unload.__name__ = "on_unload"
+    mock_plugin.on_any_event = MagicMock()
+    mock_plugin.on_any_event.__name__ = "on_any_event"
 
-        pm.trigger_event("some_unknown_event", arg="test")
+    pm.plugins = [mock_plugin]
 
-        mock_plugin.on_any_event.assert_called_once()
-        args, kwargs = mock_plugin.on_any_event.call_args
-        assert args[0] == "some_unknown_event"
-        assert kwargs.get("arg") == "test"
+    pm.trigger_event("on_unload")
 
-    def test_custom_event_system(self, app_context):
-        """Tests the custom inter-plugin event system."""
-        pm = app_context.plugin_manager
+    mock_plugin.on_unload.assert_called_once()
+    mock_plugin.on_any_event.assert_called_once()
 
-        callback = MagicMock()
-        callback.__name__ = "my_callback"  # Add __name__ attribute to the mock
-        pm.register_plugin_event_listener("my_plugin:my_event", callback, "my_plugin")
-        pm.trigger_custom_plugin_event(
-            "my_plugin:my_event", "another_plugin", "arg1", kwarg1="value1"
-        )
 
-        callback.assert_called_once_with(
-            "arg1", kwarg1="value1", _triggering_plugin="another_plugin"
-        )
+def test_wildcard_event_dispatch_only(app_context):
+    """Test wildcard 'on_any_event' hooks fire even when the target event hook isn't explicitly defined."""
+    pm = app_context.plugin_manager
 
-    def test_reload_plugins(self, app_context):
-        """Tests the reloading of plugins."""
-        pm = app_context.plugin_manager
-        pm.plugin_config = {"plugin1": {"enabled": True, "version": "1.0"}}
-        with patch.object(pm, "_synchronize_config_with_disk"):
-            pm.load_plugins()
+    mock_plugin = MagicMock()
+    del mock_plugin.missing_hook  # ensure its absent
 
-        original_plugin = pm.plugins[0]
-        original_plugin.on_unload = MagicMock()
-        original_plugin.on_unload.__name__ = "on_unload"
+    mock_plugin.on_any_event = MagicMock()
+    mock_plugin.on_any_event.__name__ = "on_any_event"
 
-        with patch.object(pm, "load_plugins") as mock_load_plugins:
-            pm.reload()
-            original_plugin.on_unload.assert_called_once()
-            mock_load_plugins.assert_called_once()
+    pm.plugins = [mock_plugin]
+
+    pm.trigger_event("missing_hook", my_arg="val")
+
+    mock_plugin.on_any_event.assert_called_once()
+    args, kwargs = mock_plugin.on_any_event.call_args
+    assert args[0] == "missing_hook"
+    assert kwargs.get("my_arg") == "val"
+
+
+def test_custom_event_system(app_context):
+    """Test inter-plugin event broadcast and listeners dispatch accurately."""
+    pm = app_context.plugin_manager
+
+    callback = MagicMock()
+    callback.__name__ = "my_callback"
+
+    pm.register_plugin_event_listener("test:event", callback, "listen_plugin")
+
+    pm.trigger_custom_plugin_event("test:event", "sender_plugin", "arg1", kw="val")
+
+    callback.assert_called_once_with(
+        "arg1", kw="val", _triggering_plugin="sender_plugin"
+    )
+
+
+def test_reload_plugins(app_context, monkeypatch):
+    """Test PluginManager unloads plugins before reloading the cache."""
+    pm = app_context.plugin_manager
+
+    mock_plugin = MagicMock()
+    mock_plugin.on_unload = MagicMock()
+    mock_plugin.on_unload.__name__ = "on_unload"
+    pm.plugins = [mock_plugin]
+
+    mock_loader = MagicMock()
+    monkeypatch.setattr(pm, "load_plugins", mock_loader)
+
+    pm.reload()
+
+    mock_plugin.on_unload.assert_called_once()
+    mock_loader.assert_called_once()

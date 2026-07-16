@@ -1,7 +1,7 @@
 # Theming
 
 <div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/web_ui_red_theme.png" alt="Red Theme" width="300" height="200">
+    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/web_ui_red_theme.png" alt="Red Theme" width="300" height="200"/>
 </div>
 
 The Bedrock Server Manager web UI now supports theming, allowing you to customize the look and feel of the application.
@@ -122,9 +122,9 @@ Plugins can also use the theme engine to style their own custom pages. To do thi
 ## Images
 
 <div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/web_ui_blue_theme.png" alt="Blue Theme" width="300" height="200">
+    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/web_ui_blue_theme.png" alt="Blue Theme" width="300" height="200"/>
 </div>
 
 <div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/web_ui_green_theme.png" alt="Green Theme" width="300" height="200">
+    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/web_ui_green_theme.png" alt="Green Theme" width="300" height="200"/>
 </div>

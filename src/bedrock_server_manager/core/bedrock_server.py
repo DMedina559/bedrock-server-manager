@@ -9,12 +9,11 @@ each contributing a distinct set of features. This compositional approach promot
 code organization and modularity, allowing for clear separation of concerns.
 """
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ..config.settings import Settings
-from ..error import ConfigParseError, FileOperationError
+if TYPE_CHECKING:
+    from ..context import AppContext
 
-# Import all the mixin classes that will be combined to form the BedrockServer.
 from . import server
 
 
@@ -29,7 +28,9 @@ class BedrockServer(
     server.ServerAddonMixin,
     server.ServerBackupMixin,
     server.ServerPlayerMixin,
-    server.ServerConfigManagementMixin,
+    server.ServerAllowlistMixin,
+    server.ServerPermissionsMixin,
+    server.ServerPropertiesMixin,
     server.ServerInstallUpdateMixin,
     # Foundational BedrockServerBaseMixin is last to ensure its __init__ runs after
     # all other mixins have potentially set up their specific attributes.
@@ -91,13 +92,13 @@ class BedrockServer(
             - :meth:`~.core.server.process_mixin.ServerProcessMixin.send_command`
 
         World Management (from :class:`~.core.server.world_mixin.ServerWorldMixin`):
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world_directory_to_mcworld`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_active_world_from_mcworld`
-            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_active_world_directory`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.export_world`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`
+            - :meth:`~.core.server.world_mixin.ServerWorldMixin.delete_world`
 
         Addon Management (from :class:`~.core.server.addon_mixin.ServerAddonMixin`):
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.process_addon_file`
-            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_world_addons`
+            - :meth:`~.core.server.addon_mixin.ServerAddonMixin.list_installed_addons`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.export_addon`
             - :meth:`~.core.server.addon_mixin.ServerAddonMixin.remove_addon`
 
@@ -110,12 +111,12 @@ class BedrockServer(
         Player Log Scanning (from :class:`~.core.server.player_mixin.ServerPlayerMixin`):
             - :meth:`~.core.server.player_mixin.ServerPlayerMixin.scan_log_for_players`
 
-        Config File Management (from :class:`~.core.server.config_management_mixin.ServerConfigManagementMixin`):
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_allowlist`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.add_to_allowlist`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_player_permission`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.get_server_properties`
-            - :meth:`~.core.server.config_management_mixin.ServerConfigManagementMixin.set_server_property`
+        Config File Management (from :class:`~.core.server.allowlist_mixin.ServerAllowlistMixin`, :class:`~.core.server.permissions_mixin.ServerPermissionsMixin`, and :class:`~.core.server.properties_mixin.ServerPropertiesMixin`):
+            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.get_allowlist`
+            - :meth:`~.core.server.allowlist_mixin.ServerAllowlistMixin.add_to_allowlist`
+            - :meth:`~.core.server.permissions_mixin.ServerPermissionsMixin.set_player_permission`
+            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.get_server_properties`
+            - :meth:`~.core.server.properties_mixin.ServerPropertiesMixin.set_server_property`
 
         Installation & Updates (from :class:`~.core.server.install_update_mixin.ServerInstallUpdateMixin`):
             - :meth:`~.core.server.install_update_mixin.ServerInstallUpdateMixin.is_update_needed`
@@ -128,7 +129,9 @@ class BedrockServer(
     """
 
     def __init__(
-        self, server_name: str, settings_instance: Optional[Settings] = None
+        self,
+        server_name: str,
+        app_context: Optional["AppContext"] = None,
     ) -> None:
         """Initializes a BedrockServer instance.
 
@@ -146,123 +149,45 @@ class BedrockServer(
                 is also used as the directory name for the server's files under
                 the application's base server directory (defined by
                 ``paths.servers_base_dir`` in settings).
-            settings_instance (:class:`~bedrock_server_manager.config.settings.Settings`):
-                An instance of the application's global :class:`~bedrock_server_manager.config.settings.Settings`
-                object. This is a required dependency.
+            app_context (:class:`~bedrock_server_manager.context.AppContext`):
+                An instance of the application's global :class:`~bedrock_server_manager.context.AppContext`
+                object.
         """
         super().__init__(
             server_name=server_name,
-            settings_instance=settings_instance,
+            app_context=app_context,
         )
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."
         )
 
-    def __repr__(self) -> str:
-        """Provides an unambiguous, developer-friendly string representation of the instance.
-
-        This representation is primarily useful for debugging and logging purposes.
-        It includes key identifiers of the server instance such as its name,
-        operating system type, installation directory, and the manager executable path.
-
-        Returns:
-            str: A string representation of the :class:`~.BedrockServer` instance.
-        """
-        return (
-            f"<BedrockServer(name='{self.server_name}', os='{self.os_type}', "
-            f"dir='{self.server_dir}')>"
-        )
-
     def get_summary_info(self) -> Dict[str, Any]:
-        """Aggregates and returns a comprehensive summary of the server's current state.
+        """Returns a generic summary of the server's current status and state.
 
-        This method gathers information from various other status and configuration
-        methods of the :class:`~.BedrockServer` instance and consolidates it into a
-        single dictionary. This is particularly useful for API endpoints or UI
-        displays that require a snapshot of the server's status.
-
-        The method attempts to fetch all pieces of information gracefully, logging
-        warnings for parts that cannot be retrieved (e.g., process details if the
-        server isn't running, or world name if not installed) and providing
-        default/error values in such cases.
+        This method provides lightweight data suitable for list views and general
+        snapshots, including details like installation status, running status,
+        version, and active players.
 
         Returns:
-            Dict[str, Any]: A dictionary containing a summary of the server.
+            Dict[str, Any]: A dictionary containing a basic summary of the server.
 
             Key keys include:
-
                 - ``"name"`` (str): The unique name of the server.
-                - ``"server_directory"`` (str): Absolute path to the server's
-                  installation directory.
-                - ``"is_installed"`` (bool): ``True`` if the server files appear
-                  to be installed, ``False`` otherwise.
                 - ``"status"`` (str): A textual description of the server's
                   current status (e.g., "Running", "Stopped", "Not Installed").
-                  Derived from :meth:`~.core.server.state_mixin.ServerStateMixin.get_status`.
-                - ``"is_actually_running_process"`` (bool): ``True`` if a server
-                  process is currently running, based on :meth:`~.core.server.process_mixin.ServerProcessMixin.is_running`.
-                - ``"process_details"`` (Optional[Dict[str, Any]]): Information about
-                  the running process (e.g., PID, CPU, memory) if available,
-                  otherwise ``None``. From :meth:`~.core.server.process_mixin.ServerProcessMixin.get_process_info`.
                 - ``"version"`` (str): The installed version of the Bedrock server,
-                  or "N/A". From :meth:`~.core.server.state_mixin.ServerStateMixin.get_version`.
-                - ``"world_name"`` (str): The name of the currently active world,
-                  "N/A" if not determinable, or an error string if reading fails.
-                  From :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
-                - ``"has_world_icon"`` (bool): ``True`` if a ``world_icon.jpeg``
-                  exists for the active world. From :meth:`~.core.server.world_mixin.ServerWorldMixin.has_world_icon`.
-                - ``"os_type"`` (str): The operating system type (e.g., "Linux", "Windows").
-                - ``"systemd_service_file_exists"`` (Optional[bool]): (Linux-only)
-                  ``True`` if a systemd service file exists, ``False`` if not,
-                  ``None`` if not Linux or check fails.
-                - ``"systemd_service_enabled"`` (Optional[bool]): (Linux-only)
-                  ``True`` if systemd service is enabled, ``False`` if not,
-                  ``None`` if not applicable.
-                - ``"systemd_service_active"`` (Optional[bool]): (Linux-only)
-                  ``True`` if systemd service is active, ``False`` if not,
-                  ``None`` if not applicable.
-
+                  or "N/A".
+                - ``"player_count"`` (int): Current number of active players.
+                - ``"players"`` (List[Dict[str, Any]]): List of connected player details.
         """
         self.logger.debug(f"Gathering summary info for server '{self.server_name}'.")
 
-        # Safely get process information.
-        proc_details = None
-        is_server_running = False
-        try:
-            is_server_running = self.is_running()
-            if is_server_running:
-                proc_details = self.get_process_info()
-        except Exception as e_proc:
-            self.logger.warning(
-                f"Could not get process status/info for '{self.server_name}': {e_proc}"
-            )
-
-        # Safely get world information.
-        world_name_val = "N/A"
-        has_icon_val = False
-        if self.is_installed():
-            try:
-                world_name_val = self.get_world_name()
-                has_icon_val = self.has_world_icon()
-            except (FileOperationError, ConfigParseError) as e_world:
-                self.logger.warning(
-                    f"Error reading world name/icon for '{self.server_name}': {e_world}"
-                )
-                world_name_val = f"Error ({type(e_world).__name__})"
-
-        # Build the main summary dictionary.
         summary = {
             "name": self.server_name,
-            "server_directory": self.server_dir,
-            "is_installed": self.is_installed(),
             "status": self.get_status(),
-            "is_actually_running_process": is_server_running,
-            "process_details": proc_details,
             "version": self.get_version(),
-            "world_name": world_name_val,
-            "has_world_icon": has_icon_val,
-            "os_type": self.os_type,
             "player_count": self.player_count,
+            "players": getattr(self, "players", []),
         }
 
         return summary

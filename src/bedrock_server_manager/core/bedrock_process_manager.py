@@ -8,8 +8,8 @@ shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
 
-import asyncio
 import logging
+import struct
 import threading
 import time
 from typing import TYPE_CHECKING, Dict
@@ -18,6 +18,7 @@ from mcstatus import BedrockServer as mc
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError, ServerStartError
+from .player import save_player_data
 
 if TYPE_CHECKING:
     from .bedrock_server import BedrockServer
@@ -105,22 +106,18 @@ class BedrockProcessManager:
         1. If registered servers are running. If a server has crashed (stopped
            without ``intentionally_stopped`` flag), it attempts restart.
         2. Queries server status for player counts.
-        3. Scans logs for player activity if enabled.
+        3. Scans logs for player activity.
         """
         try:
-            monitoring_interval = self.settings.get(
-                "SERVER_MONITORING_INTERVAL_SEC", 10
+            monitoring_interval = int(
+                self.settings.get("monitoring.process_interval_sec", 10)
             )
-            player_log_monitoring_enabled = self.settings.get(
-                "server_monitoring.player_log_monitoring_enabled", True
-            )
-            player_log_monitoring_interval_sec = self.settings.get(
-                "server_monitoring.player_log_monitoring_interval_sec", 60
+            player_log_monitoring_interval_sec = int(
+                self.settings.get("monitoring.player_interval_sec", 10)
             )
         except Exception:
             monitoring_interval = 10
-            player_log_monitoring_enabled = True
-            player_log_monitoring_interval_sec = 60
+            player_log_monitoring_interval_sec = 10
 
         self.logger.info(
             f"Server monitoring thread started with a {monitoring_interval} second interval."
@@ -144,10 +141,7 @@ class BedrockProcessManager:
                             f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
                         )
                         self.remove_server(server_name)
-                elif (
-                    player_log_monitoring_enabled
-                    and self.player_scan_counter >= player_log_monitoring_interval_sec
-                ):
+                elif self.player_scan_counter >= player_log_monitoring_interval_sec:
                     try:
                         bedrock_server = mc.lookup(
                             f"127.0.0.1:{server.get_server_property('server-port')}"
@@ -155,39 +149,82 @@ class BedrockProcessManager:
                         status = bedrock_server.status()
 
                         previous_player_count = getattr(server, "player_count", 0)
+                        previous_players = getattr(server, "players", []).copy()
                         server.player_count = status.players.online
+                        server.players = server.update_online_players()
 
-                        if server.player_count != previous_player_count:
+                        if (
+                            server.player_count != previous_player_count
+                            or server.players != previous_players
+                        ):
                             self.logger.info(
-                                f"Player count changed for server '{server.server_name}': {previous_player_count} -> {server.player_count}"
+                                f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
                             )
-                            # Broadcast the update
-                            if (
-                                self.app_context.loop
-                                and self.app_context.loop.is_running()
-                            ):
-                                message = {
-                                    "type": "event",
-                                    "topic": "event:after_server_statuses_updated",
-                                    "data": {
-                                        "server_name": server.server_name,
-                                        "player_count": server.player_count,
-                                    },
-                                }
-                                asyncio.run_coroutine_threadsafe(
-                                    self.app_context.connection_manager.broadcast_to_topic(
-                                        "event:after_server_statuses_updated", message
-                                    ),
-                                    self.app_context.loop,
+                            # Call the API bridge to handle events and websockets properly
+                            if hasattr(self.app_context, "api"):
+                                try:
+                                    self.app_context.api.update_server_player_stats_api(
+                                        server.server_name,
+                                        server.player_count,
+                                        server.players,
+                                    )
+                                except AttributeError as e:
+                                    self.logger.warning(
+                                        f"Could not trigger player stats update API: {e}"
+                                    )
+
+                        # Enforce bans
+                        if server.players:
+                            from ..plugins.api_bridge import _api_registry
+
+                            get_bans = _api_registry.get("get_server_bans_api")
+                            if get_bans:
+                                ban_res = get_bans(
+                                    app_context=self.app_context,
+                                    server_name=server.server_name,
                                 )
+                                if ban_res.get("status") == "success":
+                                    bans = ban_res.get("bans", [])
+                                    banned_xuids = {b["xuid"]: b for b in bans}
+                                    for p in server.players:
+                                        xuid = p.get("uuid")
+                                        if xuid in banned_xuids:
+                                            reason = (
+                                                banned_xuids[xuid].get("reason")
+                                                or "You have been banned from this server."
+                                            )
+                                            p_name = p.get("name", "Unknown")
+                                            self.logger.warning(
+                                                f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
+                                            )
+                                            try:
+                                                server.send_command(
+                                                    f'kick "{p_name}" {reason}'
+                                                )
+                                            except Exception as kick_err:
+                                                self.logger.error(
+                                                    f"Failed to kick banned player '{p_name}': {kick_err}"
+                                                )
 
                         if status.players.online > 0:
                             self.logger.info(
                                 f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
                             )
-                            players = server.scan_log_for_players()
+                            players = server.scan_log_for_players(incremental=True)
                             if players:
-                                self.app_context.manager.save_player_data(players)
+                                save_player_data(
+                                    self.settings.db.session_manager(), players
+                                )
+                    except struct.error:
+                        server.player_count = 0
+                        self.logger.debug(
+                            f"Server '{server.server_name}' returned invalid status packet (likely starting up)."
+                        )
+                    except TimeoutError:
+                        server.player_count = 0
+                        self.logger.debug(
+                            f"Server '{server.server_name}' timed out during ping."
+                        )
                     except Exception as e:
                         server.player_count = 0
                         self.logger.error(
@@ -205,7 +242,7 @@ class BedrockProcessManager:
         Args:
             server (BedrockServer): The server instance to restart.
         """
-        max_retries = self.settings.get("SERVER_MAX_RESTART_RETRIES", 3)
+        max_retries = self.settings.get("monitoring.max_retries", 3)
 
         if server.failure_count > max_retries:
             self.logger.critical(

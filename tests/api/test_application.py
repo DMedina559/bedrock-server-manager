@@ -1,88 +1,136 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 from bedrock_server_manager.api.application import (
     get_all_servers_data,
-    get_application_info_api,
-    list_available_addons_api,
+    get_system_and_app_info,
     list_available_worlds_api,
+    update_server_statuses,
 )
 from bedrock_server_manager.error import BSMError, FileError
 
 
-class TestApplicationInfo:
-    def test_get_application_info_api(self, app_context):
-        result = get_application_info_api(app_context=app_context)
-        assert result["status"] == "success"
-        assert result["application_name"] == "Bedrock Server Manager"
+def test_list_available_worlds_api_success(app_context, monkeypatch):
+    """Test list_available_worlds_api properly routes request and formats response."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.api.application.list_content_files",
+        MagicMock(return_value=["/world1.mcworld"]),
+    )
+
+    result = list_available_worlds_api(app_context)
+
+    assert result["status"] == "success"
+    assert result["files"] == ["/world1.mcworld"]
 
 
-class TestContentListing:
-    def test_list_available_worlds_api(self, app_context, tmp_path):
-        worlds_dir = tmp_path / "content" / "worlds"
-        worlds_dir.mkdir(parents=True, exist_ok=True)
-        (worlds_dir / "world1.mcworld").touch()
-        app_context.manager._content_dir = str(tmp_path / "content")
+def test_list_available_worlds_api_error(app_context, monkeypatch):
+    """Test list_available_worlds_api handles FileError safely."""
+    monkeypatch.setattr(
+        "bedrock_server_manager.api.application.list_content_files",
+        MagicMock(side_effect=FileError("No dir")),
+    )
 
-        result = list_available_worlds_api(app_context=app_context)
-        assert result["status"] == "success"
-        assert len(result["files"]) == 1
-        assert "world1.mcworld" in result["files"][0]
+    result = list_available_worlds_api(app_context)
 
-    def test_list_available_addons_api(self, app_context, tmp_path):
-        addons_dir = tmp_path / "content" / "addons"
-        addons_dir.mkdir(parents=True, exist_ok=True)
-        (addons_dir / "addon1.mcpack").touch()
-        app_context.manager._content_dir = str(tmp_path / "content")
-
-        result = list_available_addons_api(app_context=app_context)
-        assert result["status"] == "success"
-        assert len(result["files"]) == 1
-        assert "addon1.mcpack" in result["files"][0]
-
-    def test_list_available_worlds_api_file_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "list_available_worlds",
-            side_effect=FileError("Test error"),
-        ):
-            result = list_available_worlds_api(app_context=app_context)
-            assert result["status"] == "error"
-            assert "Test error" in result["message"]
-
-    def test_list_available_addons_api_file_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "list_available_addons",
-            side_effect=FileError("Test error"),
-        ):
-            result = list_available_addons_api(app_context=app_context)
-            assert result["status"] == "error"
-            assert "Test error" in result["message"]
+    assert result["status"] == "error"
+    assert "No dir" in result["message"]
 
 
-class TestGetAllServersData:
-    def test_get_all_servers_data_success(self, app_context, real_bedrock_server):
-        result = get_all_servers_data(app_context=app_context)
-        assert result["status"] == "success"
-        assert len(result["servers"]) == 1
+def test_get_all_servers_data_success(app_context, monkeypatch):
+    """Test get_all_servers_data formats success dictionary correctly."""
+    mock_get = MagicMock(return_value=([{"name": "srv1"}], []))
+    monkeypatch.setattr(
+        "bedrock_server_manager.utils.server.get_servers_data", mock_get
+    )
 
-    def test_get_all_servers_data_partial_success(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "get_servers_data",
-            return_value=([{"name": "server1"}], ["Error on server2"]),
-        ):
-            result = get_all_servers_data(app_context=app_context)
-            assert result["status"] == "success"
-            assert len(result["servers"]) == 1
-            assert "Completed with errors" in result["message"]
+    result = get_all_servers_data(app_context)
 
-    def test_get_all_servers_data_bsm_error(self, app_context):
-        with patch.object(
-            app_context.manager,
-            "get_servers_data",
-            side_effect=BSMError("Test BSM error"),
-        ):
-            result = get_all_servers_data(app_context=app_context)
-            assert result["status"] == "error"
-            assert "Test BSM error" in result["message"]
+    assert result["status"] == "success"
+    assert result["servers"][0]["name"] == "srv1"
+
+
+def test_get_all_servers_data_partial_errors(app_context, monkeypatch):
+    """Test get_all_servers_data includes partial error arrays in message string."""
+    mock_get = MagicMock(return_value=([{"name": "srv1"}], ["Error reading srv2"]))
+    monkeypatch.setattr(
+        "bedrock_server_manager.utils.server.get_servers_data", mock_get
+    )
+
+    result = get_all_servers_data(app_context)
+    assert result["status"] == "success"
+    assert "Error reading srv2" in result["message"]
+    assert len(result["servers"]) == 1
+
+
+def test_get_all_servers_data_bsm_error(app_context, monkeypatch):
+    """Test get_all_servers_data correctly wraps full BSMError throws."""
+    mock_get = MagicMock(side_effect=BSMError("Base directory gone"))
+    monkeypatch.setattr(
+        "bedrock_server_manager.utils.server.get_servers_data", mock_get
+    )
+
+    result = get_all_servers_data(app_context)
+    assert result["status"] == "error"
+    assert "Base directory gone" in result["message"]
+
+
+def test_get_system_and_app_info_success(app_context, monkeypatch):
+    """Test get_system_and_app_info correctly builds response payload."""
+    monkeypatch.setattr("platform.system", lambda: "Linux")
+
+    result = get_system_and_app_info(app_context)
+
+    assert result["status"] == "success"
+    assert result["os_type"] == "Linux"
+    assert "app_version" in result
+    assert "splash_text" in result
+
+
+def test_get_system_and_app_info_error(app_context, monkeypatch):
+    """Test get_system_and_app_info handles platform failure gracefully."""
+
+    def mock_fail():
+        raise Exception("Platform failure")
+
+    monkeypatch.setattr("platform.system", mock_fail)
+
+    result = get_system_and_app_info(app_context)
+    assert result["status"] == "error"
+
+
+def test_update_server_statuses_success(app_context, monkeypatch):
+    """Test update_server_statuses handles core responses and formats messages properly."""
+    mock_get = MagicMock(return_value=([{"name": "srv1"}], []))
+    monkeypatch.setattr(
+        "bedrock_server_manager.utils.server.get_servers_data", mock_get
+    )
+
+    result = update_server_statuses(app_context)
+
+    assert result["status"] == "success"
+    assert result["message"] == "Status check completed for 1 servers."
+
+
+def test_update_server_statuses_with_errors(app_context, monkeypatch):
+    """Test update_server_statuses handles core responses returning partial failure cleanly."""
+    mock_get = MagicMock(return_value=([{"name": "srv1"}], ["Error on srv2"]))
+    monkeypatch.setattr(
+        "bedrock_server_manager.utils.server.get_servers_data", mock_get
+    )
+
+    result = update_server_statuses(app_context)
+
+    assert result["status"] == "error"
+    assert "Completed with errors" in result["message"]
+    assert result["updated_servers_count"] == 1
+
+
+def test_update_server_statuses_bsm_error(app_context, monkeypatch):
+    """Test update_server_statuses catches base discovery BSMError calls."""
+    mock_get = MagicMock(side_effect=BSMError("App issue"))
+    monkeypatch.setattr(
+        "bedrock_server_manager.utils.server.get_servers_data", mock_get
+    )
+
+    result = update_server_statuses(app_context)
+    assert result["status"] == "error"
+    assert "Error accessing directories" in result["message"]

@@ -2,9 +2,8 @@
 """Provides API functions for managing the central player database.
 
 This module offers an interface to interact with the application's central
-player database, typically stored in ``players.json``. It leverages the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager`
-to perform operations such as:
+player database, typically stored in the database. It leverages the
+application context to perform operations such as:
 
 - Manually adding or updating player entries (gamertag and XUID) via
   :func:`~.add_players_manually_api`.
@@ -21,19 +20,21 @@ import logging
 from typing import Any, Dict, List
 
 from ..context import AppContext
-
-# Local application imports.
+from ..core.player import (
+    discover_and_store_players,
+    get_known_players,
+    parse_player_string,
+    save_player_data,
+)
 from ..error import BSMError, UserInputError
-
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
-from ..plugins.event_trigger import trigger_plugin_event
+from ..plugins.api_bridge import api_method
+from ..plugins.event_trigger import trigger_app_event
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("add_players_manually_api")
-@trigger_plugin_event(before="before_players_add", after="after_players_add")
+@api_method("add_players_manually_api")
+@trigger_app_event(before="before_players_add", after="after_players_add")
 def add_players_manually_api(
     player_strings: List[str],
     app_context: AppContext,
@@ -42,10 +43,7 @@ def add_players_manually_api(
 
     This function takes a list of strings, each containing a player's
     gamertag and XUID, parses them, and saves the data to the
-    player database. It uses
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.parse_player_cli_argument`
-    (after joining the list into a single comma-separated string) and then
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.save_player_data`.
+    player database.
     Triggers ``before_players_add`` and ``after_players_add`` plugin events.
 
     Args:
@@ -65,6 +63,11 @@ def add_players_manually_api(
         BSMError: If saving to the database fails.
     """
     logger.info(f"API: Adding players manually: {player_strings}")
+
+    db = app_context.db
+    if db is None:
+        return {"status": "error", "message": "Database is not initialized."}
+
     # --- Input Validation ---
     if (
         not player_strings
@@ -78,7 +81,9 @@ def add_players_manually_api(
 
     try:
         combined_input = ",".join(player_strings)
-        app_context.manager.parse_player_cli_argument(combined_input)
+        players_data = parse_player_string(combined_input)
+        if players_data:
+            save_player_data(db.session_manager(), players_data)
 
         return {
             "status": "success",
@@ -103,11 +108,9 @@ def add_players_manually_api(
         }
 
 
-@plugin_method("get_all_known_players_api")
+@api_method("get_all_known_players_api")
 def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves all player data from the database.
-
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_known_players`.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -117,8 +120,13 @@ def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
         On unexpected error: ``{"status": "error", "message": "<error_message>"}``.
     """
     logger.info("API: Request to get all known players.")
+
+    db = app_context.db
+    if db is None:
+        return {"status": "error", "message": "Database is not initialized."}
+
     try:
-        players = app_context.manager.get_known_players()
+        players = get_known_players(db.session_manager())
         return {"status": "success", "players": players}
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
@@ -128,15 +136,14 @@ def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@plugin_method("scan_and_update_player_db_api")
-@trigger_plugin_event(before="before_player_db_scan", after="after_player_db_scan")
+@api_method("scan_and_update_player_db_api")
+@trigger_app_event(before="before_player_db_scan", after="after_player_db_scan")
 def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, Any]:
     """Scans all server logs to discover and save player data.
 
     This function iterates through the log files of all managed servers,
     extracts player connection information (gamertag and XUID), and updates
-    the central player database with any new findings. It calls
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.discover_and_store_players_from_all_server_logs`.
+    the central player database with any new findings.
     Triggers ``before_player_db_scan`` and ``after_player_db_scan`` plugin events.
 
     Returns:
@@ -158,12 +165,15 @@ def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.info("API: Request to scan all server logs and update player DB.")
 
+    db = app_context.db
+    if db is None:
+        return {"status": "error", "message": "Database is not initialized."}
+
     try:
-        # Delegate the entire discovery and saving process to the core manager.
-        scan_result = (
-            app_context.manager.discover_and_store_players_from_all_server_logs(
-                app_context
-            )
+        base_dir = app_context.settings.get("paths.servers", "")
+        scan_result = discover_and_store_players(
+            base_dir,
+            app_context,
         )
 
         # Format a comprehensive success message from the scan results.

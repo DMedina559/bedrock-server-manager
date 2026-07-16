@@ -17,19 +17,21 @@ Authentication is required for most parts of the application, and these routes
 facilitate that access control.
 """
 
+import datetime
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Response, status
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 
 from ...context import AppContext
-from ..auth_utils import (
+from ...utils import (
     authenticate_user,
     create_access_token,
-    get_current_user,
 )
-from ..dependencies import get_app_context
-from ..schemas import TokenResponse, UserLoginPayload, UserResponse
+from ..deps import get_app_context, get_current_user
+from ..schemas import TokenResponse, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -40,37 +42,36 @@ router = APIRouter(
 
 
 # --- API Login Route ---
-@router.post("/token", response_model=TokenResponse)
+@router.post("/token", response_model=TokenResponse, tags=["Login"])
 async def api_login_for_access_token(
-    payload: UserLoginPayload,
     response: Response,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    remember_me: Annotated[bool, Form()] = False,
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Handles API user login and returns a JWT access token.
     """
-    if not payload.username or not payload.password:
+    if not form_data.username or not form_data.password:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Username and password cannot be empty.",
         )
 
-    logger.info(f"API login attempt for '{payload.username}'")
+    logger.info(f"API login attempt for '{form_data.username}'")
     authenticated_username = authenticate_user(
-        app_context, payload.username, payload.password
+        app_context, form_data.username, form_data.password
     )
 
     if not authenticated_username:
-        logger.warning(f"Invalid API login attempt for '{payload.username}'.")
+        logger.warning(f"Invalid API login attempt for '{form_data.username}'.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    import datetime
-
     settings = app_context.settings
-    if payload.remember_me:
+    if remember_me:
         try:
             jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
         except (ValueError, TypeError):
@@ -86,13 +87,14 @@ async def api_login_for_access_token(
         expires_delta=expires_delta,
     )
 
-    logger.info(f"API login successful for '{payload.username}'. JWT created.")
+    logger.info(f"API login successful for '{form_data.username}'. JWT created.")
     response.set_cookie(
         key="access_token_cookie",
         value=access_token,
         httponly=True,
         max_age=int(expires_delta.total_seconds()),
         samesite="lax",
+        path="/",
     )
     return TokenResponse(
         access_token=access_token,
@@ -101,10 +103,52 @@ async def api_login_for_access_token(
     )
 
 
+@router.post("/reauth", response_model=TokenResponse, tags=["Login"])
+async def reauth(
+    response: Response,
+    remember_me: Annotated[bool, Form()] = False,
+    current_user: UserResponse = Depends(get_current_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Refreshes the JWT access token for an already authenticated user.
+    """
+    settings = app_context.settings
+    if remember_me:
+        try:
+            jwt_expires_weeks = float(settings.get("web.token_expires_weeks", 4.0))
+        except (ValueError, TypeError):
+            jwt_expires_weeks = 4.0
+        access_token_expire_minutes = jwt_expires_weeks * 7 * 24 * 60
+        expires_delta = datetime.timedelta(minutes=access_token_expire_minutes)
+    else:
+        expires_delta = datetime.timedelta(hours=24)
+
+    access_token = create_access_token(
+        data={"sub": current_user.username},
+        app_context=app_context,
+        expires_delta=expires_delta,
+    )
+
+    logger.info(f"Token refreshed for '{current_user.username}'.")
+    response.set_cookie(
+        key="access_token_cookie",
+        value=access_token,
+        httponly=True,
+        max_age=int(expires_delta.total_seconds()),
+        samesite="lax",
+        path="/",
+    )
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        message="Successfully refreshed token.",
+    )
+
+
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
-    response: Response,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
@@ -115,8 +159,14 @@ async def logout(
     username = current_user.username
     logger.info(f"User '{username}' explicitly logged out.")
 
-    response.delete_cookie(key="access_token_cookie")
-    return JSONResponse(
+    response = JSONResponse(
         content={"status": "success", "message": "Successfully logged out."},
         status_code=status.HTTP_200_OK,
     )
+    response.delete_cookie(
+        key="access_token_cookie",
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return response

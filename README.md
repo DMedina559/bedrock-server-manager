@@ -6,11 +6,20 @@
 
 Bedrock Server Manager is a comprehensive python server designed for installing, managing, and maintaining Minecraft Bedrock Dedicated Servers with ease, compatible with Linux/Windows.
 
-<img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bedrock-server-manager?label=Version&color=green">
-<img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/bedrock-server-manager?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=YELLOW&left_text=PYPI+Installs">
-<img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/dmedina559/bedrock-server-manager?label=Docker%20Pulls&color=pink">
-<img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/dmedina559/bedrock-server-manager/build-test.yml?branch=dev&label=Test
-">
+<p align="center">
+  <a href="https://github.com/DMedina559/bedrock-server-manager/releases">
+    <img alt="Stable" src="https://img.shields.io/github/v/release/DMedina559/bedrock-server-manager?label=Stable&color=blue">
+  </a>
+  <a href="https://github.com/DMedina559/bedrock-server-manager/releases">
+    <img alt="Pre-Release" src="https://img.shields.io/github/v/release/DMedina559/bedrock-server-manager?include_prereleases&label=Pre-Release&color=red">
+  </a>
+  <a href="https://github.com/DMedina559/bsm-stats">
+    <img alt="Downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/DMedina559/bsm-stats/main/downloads.json">
+  </a>
+  <a href="https://github.com/DMedina559/bedrock-server-manager/actions">
+    <img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/DMedina559/bedrock-server-manager/build-test.yml?label=Tests&event=push">
+  </a>
+</p>
 
 See the [documentation](https://bedrock-server-manager.readthedocs.io/en/latest/) for more information.
 

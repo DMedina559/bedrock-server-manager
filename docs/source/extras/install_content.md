@@ -9,7 +9,7 @@
 Easily import addons and worlds into your servers. The app will look in the configured `CONTENT_DIR` directories for addon files.
 
 <div style="text-align: left;">
-    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/cli_install_content.png" alt="Install Worlds" width="300" height="200">
+    <img src="https://raw.githubusercontent.com/DMedina559/bedrock-server-manager/main/docs/images/cli_install_content.png" alt="Install Worlds" width="300" height="200"/>
 </div>
 
 Place .mcworld files in `CONTENT_DIR/worlds` or .mcpack/.mcaddon files in `CONTENT_DIR/addons`

@@ -185,7 +185,7 @@ def setup_logging(  # noqa: C901
 
 def log_separator(  # noqa: C901
     logger: logging.Logger,
-    app_name: Optional[str] = "BedrockServerManager",
+    app_name: Optional[str] = None,
     app_version: str = "0.0.0",
 ) -> None:
     """

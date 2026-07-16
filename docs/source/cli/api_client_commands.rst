@@ -1,6 +1,3 @@
-API Client Commands
-===================
-
-.. click:: bsm_api_client.cli.__main__:cli
-   :prog: bsm-api-client
+.. click:: bsm_cli.__main__:cli
+   :prog: bsm-cli
    :nested: full

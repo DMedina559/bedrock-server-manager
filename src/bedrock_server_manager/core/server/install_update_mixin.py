@@ -36,8 +36,6 @@ from ...error import (
     ServerStopError,
 )
 from ..downloader import BedrockDownloader
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 

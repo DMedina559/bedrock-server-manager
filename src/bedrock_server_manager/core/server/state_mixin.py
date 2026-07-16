@@ -27,7 +27,7 @@ Key functionalities:
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ...db.models import Server
 from ...error import (
@@ -36,8 +36,6 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-
-# Local application imports.
 from .base_server_mixin import BedrockServerBaseMixin
 
 # Version for the server-specific JSON config schema
@@ -92,6 +90,9 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """
         super().__init__(*args, **kwargs)
         self.player_count = 0
+        self.players: List[Dict[str, str]] = []
+        self._log_file_cursor = 0
+        self._scan_log_cursor = 0
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
@@ -152,18 +153,51 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )
             if server:
-                return dict(server.config)
+                return {
+                    "config_schema_version": SERVER_CONFIG_SCHEMA_VERSION,
+                    "server_info": {
+                        "installed_version": server.installed_version,
+                        "status": server.status,
+                    },
+                    "settings": {
+                        "autoupdate": server.autoupdate,
+                        "autostart": server.autostart,
+                        "target_version": server.target_version,
+                    },
+                    "custom": dict(server.custom) if server.custom is not None else {},
+                }
 
             # Create new server config in DB
             self.logger.info(
                 f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
             )
             default_config = self._get_default_server_config()
-            server = Server(server_name=self.server_name, config=default_config)
+            server = Server(
+                server_name=self.server_name,
+                installed_version=default_config["server_info"]["installed_version"],
+                status=default_config["server_info"]["status"],
+                autoupdate=default_config["settings"]["autoupdate"],
+                autostart=default_config["settings"]["autostart"],
+                target_version=default_config["settings"]["target_version"],
+                custom=default_config["custom"],
+            )
             db.add(server)
             db.commit()
             db.refresh(server)
-            return dict(server.config)
+
+            return {
+                "config_schema_version": SERVER_CONFIG_SCHEMA_VERSION,
+                "server_info": {
+                    "installed_version": server.installed_version,
+                    "status": server.status,
+                },
+                "settings": {
+                    "autoupdate": server.autoupdate,
+                    "autostart": server.autostart,
+                    "target_version": server.target_version,
+                },
+                "custom": dict(server.custom) if server.custom is not None else {},
+            }
 
     def _save_server_config(self, config_data: Dict[str, Any]) -> None:
         """Saves the server configuration data to the database.
@@ -179,7 +213,23 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 db.query(Server).filter(Server.server_name == self.server_name).first()
             )
             if server:
-                server.config = config_data
+                server_info = config_data.get("server_info", {})
+                settings = config_data.get("settings", {})
+
+                if "installed_version" in server_info:
+                    server.installed_version = server_info["installed_version"]
+                if "status" in server_info:
+                    server.status = server_info["status"]
+
+                if "autoupdate" in settings:
+                    server.autoupdate = settings["autoupdate"]
+                if "autostart" in settings:
+                    server.autostart = settings["autostart"]
+                if "target_version" in settings:
+                    server.target_version = settings["target_version"]
+
+                if "custom" in config_data:
+                    server.custom = config_data["custom"]
                 db.commit()
 
     def _manage_json_config(  # noqa: C901
@@ -476,6 +526,20 @@ class ServerStateMixin(BedrockServerBaseMixin):
             raise UserInputError(
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
+
+        if (
+            hasattr(self, "app_context")
+            and self.app_context
+            and hasattr(self.app_context, "api")
+        ):
+            try:
+                self.app_context.api.set_server_status_api(
+                    self.server_name, status_string
+                )
+                return
+            except AttributeError:
+                pass
+
         self._manage_json_config(
             key="server_info.status", operation="write", value=status_string
         )

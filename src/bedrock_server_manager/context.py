@@ -10,7 +10,7 @@ via lazy loading and property accessors.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from .config.settings import Settings
     from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
-    from .core.manager import BedrockServerManager
     from .db.database import Database
+    from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
     from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
@@ -31,23 +31,22 @@ class AppContext:
     A context object that holds application-wide instances and caches.
 
     The ``AppContext`` acts as a central hub for accessing core application components.
-    It manages the lifecycle of singletons like the :class:`~.core.manager.BedrockServerManager`,
-    :class:`~.plugins.plugin_manager.PluginManager`, and database connection.
+    It manages the lifecycle of singletons like the :class:`~.plugins.plugin_manager.PluginManager`,
+    settings, and database connection.
     Most properties are lazily initialized to improve startup time and handle
     dependency resolution order.
 
     Attributes:
         _settings (Optional[Settings]): Internal storage for the settings instance.
-        _manager (Optional[BedrockServerManager]): Internal storage for the main manager.
         _db (Optional[Database]): Internal storage for the database handler.
         _servers (Dict[str, BedrockServer]): Cache of instantiated server objects.
+        _web_server (Optional[Any]): The running Uvicorn server instance, if available.
         loop (Optional[AbstractEventLoop]): The asyncio event loop, if set.
     """
 
     def __init__(
         self,
         settings: Optional["Settings"] = None,
-        manager: Optional["BedrockServerManager"] = None,
         db: Optional["Database"] = None,
     ):
         """
@@ -55,11 +54,11 @@ class AppContext:
 
         Args:
             settings (Optional[Settings]): Pre-existing settings instance.
-            manager (Optional[BedrockServerManager]): Pre-existing manager instance.
             db (Optional[Database]): Pre-existing database instance.
         """
+        from .utils import get_utils
+
         self._settings: Optional["Settings"] = settings
-        self._manager: Optional["BedrockServerManager"] = manager
         self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
@@ -68,19 +67,18 @@ class AppContext:
         self._resource_monitor: Optional["ResourceMonitor"] = None
         self._servers: Dict[str, "BedrockServer"] = {}
         self.loop: Optional["AbstractEventLoop"] = None
-        from .utils import get_utils
-
+        self._api: Optional["AppAPI"] = None
+        self._web_server: Optional[Any] = None
         self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
 
     def load(self):
         """
-        Loads the application context by initializing the settings and manager.
+        Loads the application context by initializing the settings.
 
         This method should be called early in the application startup phase to
         ensure core components like the database and settings are ready.
         """
         from .config.settings import Settings
-        from .core.manager import BedrockServerManager
 
         self.db.initialize()
 
@@ -88,23 +86,31 @@ class AppContext:
             self._settings = Settings(db=self.db)
             self._settings.load()
 
-        if self._manager is None:
-            assert self._settings is not None
-            self._manager = BedrockServerManager(self._settings)
-            self._manager.load()
-
     def reload(self):
         """
         Reloads the application context by reloading settings and all components.
 
-        This triggers a reload on the settings, main manager, and plugin manager,
+        This triggers a reload on the settings and plugin manager,
         allowing configuration changes to take effect without restarting the
         entire process.
         """
         self.settings.reload()
-        self.manager.reload()
         self.plugin_manager.reload()
         # self._servers.clear()
+
+    @property
+    def api(self) -> "AppAPI":
+        """
+        Lazily loads and returns the API instance.
+
+        Returns:
+            AppAPI: The internal core API bridge.
+        """
+        if not hasattr(self, "_api") or self._api is None:
+            from .plugins.api_bridge import AppAPI
+
+            self._api = AppAPI("CoreAPI", self, is_core=True)
+        return self._api
 
     @property
     def settings(self) -> "Settings":
@@ -122,23 +128,6 @@ class AppContext:
                 "Settings have not been loaded. Please call AppContext.load() first."
             )
         return self._settings
-
-    @property
-    def manager(self) -> "BedrockServerManager":
-        """
-        Returns the BedrockServerManager instance.
-
-        Returns:
-            BedrockServerManager: The main application manager.
-
-        Raises:
-            RuntimeError: If the manager has not been loaded yet.
-        """
-        if self._manager is None:
-            raise RuntimeError(
-                "BedrockServerManager have not been loaded. Please call AppContext.load() first."
-            )
-        return self._manager
 
     @property
     def db(self) -> "Database":
@@ -165,8 +154,7 @@ class AppContext:
         if self._plugin_manager is None:
             from .plugins.plugin_manager import PluginManager
 
-            self._plugin_manager = PluginManager(self.settings)
-            self._plugin_manager.set_app_context(self)
+            self._plugin_manager = PluginManager(self)
         return self._plugin_manager
 
     @property
@@ -238,9 +226,7 @@ class AppContext:
         from .core.bedrock_server import BedrockServer
 
         if server_name not in self._servers:
-            self._servers[server_name] = BedrockServer(
-                server_name, settings_instance=self.settings
-            )
+            self._servers[server_name] = BedrockServer(server_name, app_context=self)
         return self._servers[server_name]
 
     def remove_server(self, server_name: str):
@@ -263,3 +249,24 @@ class AppContext:
 
             # 3. Remove from the AppContext cache.
             del self._servers[server_name]
+
+    def stop_all_servers(self):
+        """Stops all running servers in the application context cache using the API bridge."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info("Context: Stopping all cached servers...")
+
+        for server_name, server in self._servers.items():
+            if server.is_running():
+                if hasattr(self, "api"):
+                    try:
+                        self.api.stop_server(server_name)
+                    except Exception as e:
+                        logger.error(
+                            f"Context: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                        )
+                        server.stop()
+                else:
+                    server.stop()
+                logger.info(f"Context: Stopped server '{server_name}'")

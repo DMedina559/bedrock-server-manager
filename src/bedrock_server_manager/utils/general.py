@@ -9,16 +9,18 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from ..context import AppContext
+from ..core.system import find_files
+from ..error import AppFileNotFoundError, FileOperationError
 
 logger = logging.getLogger(__name__)
 
 
 def startup_checks(
     app_context: AppContext,
-    app_name: Optional[str] = "BedrockServerManager",
+    app_name: Optional[str] = None,
     version: Optional[str] = "0.0.0",
 ) -> None:
     """
@@ -63,11 +65,13 @@ def startup_checks(
         "LOG_DIR": settings.get("paths.logs"),
     }
 
+    logger.debug("Insuring essential directories exist...")
+
     for name, dir_path in dirs_to_create.items():
         if dir_path and isinstance(dir_path, str):
             try:
                 os.makedirs(dir_path, exist_ok=True)
-                logger.debug(f"Ensured directory exists: {dir_path} (Setting: {name})")
+                # logger.debug(f"Ensured directory exists: {dir_path} (Setting: {name})")
             except OSError as e:
                 logger.error(
                     f"Failed to create directory {dir_path}: {e}", exc_info=True
@@ -88,5 +92,35 @@ def get_timestamp() -> str:
         str: The current timestamp in YYYYMMDD_HHMMSS format.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    logger.debug(f"Generated timestamp: {timestamp}")
+    # logger.debug(f"Generated timestamp: {timestamp}")
     return timestamp
+
+
+def list_content_files(
+    content_dir: str | None, sub_folder: str, extensions: List[str]
+) -> List[str]:
+    """
+    Internal helper to list files with specified extensions from a sub-folder
+    within the global content directory.
+    """
+    if not content_dir or not os.path.isdir(content_dir):
+        raise AppFileNotFoundError(str(content_dir), "Content directory")
+
+    target_dir = os.path.join(content_dir, sub_folder)
+    if not os.path.isdir(target_dir):
+        logger.debug(
+            f"BSM: Content sub-directory '{target_dir}' not found. Returning empty list."
+        )
+        return []
+
+    found_files: List[str] = []
+    try:
+        for ext in extensions:
+            pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
+            files = find_files(target_dir, pattern=pattern)
+            found_files.extend(os.path.abspath(str(f)) for f in files)
+    except OSError as e:
+        raise FileOperationError(
+            f"Error scanning content directory {target_dir}: {e}"
+        ) from e
+    return sorted(list(set(found_files)))

@@ -3,8 +3,7 @@
 
 This module offers endpoints to retrieve general details about the Bedrock
 Server Manager application itself and to perform operations that span across
-multiple server instances. It primarily interfaces with the
-:class:`~bedrock_server_manager.core.manager.BedrockServerManager` core class.
+multiple server instances.
 
 Key functionalities include:
     - Retrieving application metadata (name, version, OS, key directories) via
@@ -16,64 +15,27 @@ Key functionalities include:
       using :func:`~.get_all_servers_data`.
 
 These functions are exposed to the plugin system via
-:func:`~bedrock_server_manager.plugins.api_bridge.plugin_method` and are
+:func:`~bedrock_server_manager.plugins.api_bridge.api_method` and are
 intended for use by UIs, CLIs, or other high-level components.
 """
 
 import logging
 from typing import Any, Dict
 
+from ..config import const as config_const
 from ..context import AppContext
-
-# Local application imports.
 from ..error import BSMError, FileError
-
-# Plugin system imports to bridge API functionality.
-from ..plugins import plugin_method
+from ..plugins.api_bridge import api_method
+from ..utils import list_content_files
 
 logger = logging.getLogger(__name__)
 
 
-@plugin_method("get_application_info_api")
-def get_application_info_api(app_context: AppContext) -> Dict[str, Any]:
-    """Retrieves general information about the application.
-
-    Accesses properties from the global
-    :class:`~bedrock_server_manager.core.manager.BedrockServerManager` instance.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", **ApplicationInfoDict}``
-        where ``ApplicationInfoDict`` contains keys like:
-        ``"application_name"`` (str), ``"version"`` (str), ``"os_type"`` (str),
-        ``"base_directory"`` (str, path to servers),
-        ``"content_directory"`` (str, path to global content),
-        ``"config_directory"`` (str, path to app config).
-        On error (unexpected): ``{"status": "error", "message": "<error_message>"}``.
-    """
-    logger.debug("API: Requesting application info.")
-    try:
-        manager = app_context.manager
-        info = {
-            "application_name": manager._app_name_title,
-            "version": manager.get_app_version(),
-            "os_type": manager.get_os_type(),
-            "base_directory": manager._base_dir,
-            "content_directory": manager._content_dir,
-            "config_directory": manager._config_dir,
-        }
-        return {"status": "success", **info}
-    except Exception as e:
-        logger.error(f"API: Unexpected error getting app info: {e}", exc_info=True)
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
-
-
-@plugin_method("list_available_worlds_api")
+@api_method("list_available_worlds_api")
 def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_worlds`
-    to scan the ``worlds`` sub-folder within the application's global content directory.
+    Scans the ``worlds`` sub-folder within the application's global content directory.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -86,53 +48,23 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.debug("API: Requesting list of available worlds.")
     try:
-        manager = app_context.manager
-        worlds = manager.list_available_worlds()
+        content_dir = app_context.settings.get("paths.content")
+        worlds = list_content_files(content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
-        # Handle specific file-related errors from the core manager.
+        # Handle specific file-related errors.
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error(f"API: Unexpected error listing worlds: {e}", exc_info=True)
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-@plugin_method("list_available_addons_api")
-def list_available_addons_api(app_context: AppContext) -> Dict[str, Any]:
-    """Lists available .mcaddon and .mcpack files from the content directory.
-
-    Calls :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.list_available_addons`
-    to scan the ``addons`` sub-folder within the application's global content directory.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "files": List[str]}`` where `files` is a
-        list of absolute paths to ``.mcaddon`` or ``.mcpack`` files.
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        FileError: If the content directory is not configured or accessible.
-    """
-    logger.debug("API: Requesting list of available addons.")
-    try:
-        manager = app_context.manager
-        addons = manager.list_available_addons()
-        return {"status": "success", "files": addons}
-    except FileError as e:
-        # Handle specific file-related errors from the core manager.
-        return {"status": "error", "message": str(e)}
-    except Exception as e:
-        logger.error(f"API: Unexpected error listing addons: {e}", exc_info=True)
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
-
-
-@plugin_method("get_all_servers_data")
+@api_method("get_all_servers_data")
 def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
-    This function acts as an API orchestrator, calling the core
-    :meth:`~bedrock_server_manager.core.manager.BedrockServerManager.get_servers_data`
-    to gather data from all individual server instances. It can handle
+    This function acts as an API orchestrator to gather data from all individual
+    server instances. It can handle
     partial failures, where data for some servers is retrieved successfully
     while others fail (errors for individual servers are included in the message).
     The status of each server is also reconciled with its live state during this call.
@@ -155,11 +87,11 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
             directory (e.g., :class:`~.error.AppFileNotFoundError`).
     """
     logger.debug("API: Getting status for all servers...")
+    from ..utils import server as server_utils
 
     try:
-        manager = app_context.manager
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = manager.get_servers_data(
+        servers_data, bsm_error_messages = server_utils.get_servers_data(
             app_context=app_context
         )
 
@@ -192,4 +124,103 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
         logger.error(
             f"API: Unexpected error in get_all_servers_data: {e}", exc_info=True
         )
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+
+
+@api_method("get_system_and_app_info")
+def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
+    """Retrieves basic system and application information.
+
+    Uses global settings to get OS type and app version.
+
+    Returns:
+        Dict[str, Any]: On success: ``{"status": "success", "os_type": "...", "app_version": "...", "splash_text": "..."}``.
+        On error: ``{"status": "error", "message": "An unexpected error occurred."}``
+    """
+    import platform
+
+    logger.debug("API: Requesting system and app info.")
+    try:
+        splash_txt = app_context.splash_txt
+        data = {
+            "os_type": platform.system(),
+            "app_version": config_const.get_installed_version(),
+            "splash_text": splash_txt,
+        }
+        logger.info(f"API: Successfully retrieved system info: {data}")
+        return {"status": "success", **data}
+    except Exception as e:
+        logger.error(f"API: Unexpected error getting system info: {e}", exc_info=True)
+        return {"status": "error", "message": "An unexpected error occurred."}
+
+
+# Handled internally by core APIs so we don't duplicate the event.
+def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
+    """Reconciles the status in config files with the runtime state for all servers.
+
+    This function calls the core function to get servers data.
+    During that call, for each discovered server, its
+    :meth:`~.core.bedrock_server.BedrockServer.get_status` method is invoked.
+    This method determines the actual running state of the server process and
+    updates the ``status`` field in the server's JSON configuration file
+    (e.g., ``<server_name>_config.json``) if there's a discrepancy between
+    the stored status and the live status.
+
+    Returns:
+        Dict[str, Any]: A dictionary summarizing the operation.
+        On success (even with individual server errors during discovery):
+        ``{"status": "success", "message": "Status check completed for <n> servers."}`` or
+        ``{"status": "error", "message": "Completed with errors: <details>", "updated_servers_count": <n>}``
+        (The "error" status here primarily reflects issues during the overall scan,
+        like directory access problems, rather than individual server status update failures,
+        which are logged and included in the message if `discovery_errors` occur.)
+    """
+    from ..utils import server as server_utils
+
+    updated_servers_count = 0
+    error_messages = []
+    logger.debug("API: Updating all server statuses...")
+
+    try:
+        # get_servers_data() now handles the reconciliation internally.
+        # It returns both the server data and any errors encountered during discovery.
+        all_servers_data, discovery_errors = server_utils.get_servers_data(
+            app_context=app_context
+        )
+        if discovery_errors:
+            error_messages.extend(discovery_errors)
+
+        for server_data in all_servers_data:
+            server_name = server_data.get("name")
+            if not server_name:
+                continue
+
+            try:
+                # The status is already reconciled by the get_servers_data call.
+                logger.info(
+                    f"API: Status for '{server_name}' was reconciled by get_servers_data."
+                )
+                updated_servers_count += 1
+            except Exception as e:
+                # This block catches errors if processing a specific server's data fails post-discovery.
+                msg = f"Could not update status for server '{server_name}': {e}"
+                logger.error(f"API.update_server_statuses: {msg}", exc_info=True)
+                error_messages.append(msg)
+
+        if error_messages:
+            return {
+                "status": "error",
+                "message": f"Completed with errors: {'; '.join(error_messages)}",
+                "updated_servers_count": updated_servers_count,
+            }
+        return {
+            "status": "success",
+            "message": f"Status check completed for {updated_servers_count} servers.",
+        }
+
+    except BSMError as e:
+        logger.error(f"API: Setup error during status update: {e}", exc_info=True)
+        return {"status": "error", "message": f"Error accessing directories: {e}"}
+    except Exception as e:
+        logger.error(f"API: Unexpected error during status update: {e}", exc_info=True)
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
