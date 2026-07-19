@@ -84,7 +84,9 @@ async def get_properties(
     )
     if result.get("status") == "success":
         return PropertiesGetResponse(
-            status=result["status"], properties=result.get("properties", {})
+            status=result["status"],
+            properties=result.get("properties", {}),
+            raw_content=result.get("raw_content"),
         )
     if "not found" in result.get("message", "").lower():
         raise HTTPException(

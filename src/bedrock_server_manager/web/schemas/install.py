@@ -35,6 +35,7 @@ class PropertiesGetResponse(BaseApiResponse):
     """Response model for server properties."""
 
     properties: Dict[str, Any]
+    raw_content: Optional[str] = None
 
 
 class AllowlistGetResponse(BaseApiResponse):
