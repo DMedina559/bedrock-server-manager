@@ -811,8 +811,8 @@ class BedrockDownloader:
         return self.actual_version, self.zip_file_path, self.specific_download_dir
 
     def _update_server_properties_from_zip(self, zip_ref: zipfile.ZipFile) -> None:
-        """Appends any new properties from the downloaded server.properties file
-        that are missing in the existing server.properties file.
+        """Updates the server.properties file by applying existing user values
+        on top of the fresh file from the zip archive.
 
         Args:
             zip_ref (zipfile.ZipFile): The opened ZIP file containing the new server files.
@@ -822,52 +822,68 @@ class BedrockDownloader:
         if not os.path.exists(server_properties_path):
             return
 
-        # 1. Read existing keys
-        existing_keys = set()
-        file_content = ""
+        if "server.properties" not in zip_ref.namelist():
+            return
+
+        # 1. Read existing properties (user's custom settings)
+        user_properties = {}
         try:
             with open(server_properties_path, "r", encoding="utf-8") as f:
-                file_content = f.read()
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    parts = stripped.split("=", 1)
+                    if len(parts) == 2 and parts[0].strip():
+                        user_properties[parts[0].strip()] = parts[1].strip()
         except OSError as e:
             self.logger.warning(
                 f"Could not read existing server.properties to merge new properties: {e}"
             )
             return
 
-        for line in file_content.splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-            parts = stripped.split("=", 1)
-            if len(parts) == 2 and parts[0].strip():
-                existing_keys.add(parts[0].strip())
-
-        # 2. Extract and append new properties from zip
+        # 2. Extract properties from zip and merge
         try:
-            if "server.properties" not in zip_ref.namelist():
-                return
-
+            merged_lines = []
+            keys_in_new_file = set()
             with zip_ref.open("server.properties") as zf:
-                new_lines_to_append = []
                 for line_bytes in zf:
-                    decoded_line = line_bytes.decode("utf-8").strip()
-                    if not decoded_line or decoded_line.startswith("#"):
+                    decoded_line = line_bytes.decode("utf-8").rstrip("\r\n")
+                    stripped = decoded_line.strip()
+
+                    if not stripped or stripped.startswith("#"):
+                        merged_lines.append(decoded_line)
                         continue
-                    parts = decoded_line.split("=", 1)
+
+                    parts = stripped.split("=", 1)
                     if len(parts) == 2 and parts[0].strip():
                         key = parts[0].strip()
-                        if key not in existing_keys:
-                            new_lines_to_append.append(decoded_line)
+                        keys_in_new_file.add(key)
 
-                if new_lines_to_append:
-                    with open(server_properties_path, "a", encoding="utf-8") as f:
-                        # Make sure the file ends with a newline before appending
-                        if file_content and not file_content.endswith("\n"):
-                            f.write("\n")
-                        f.write("\n".join(new_lines_to_append) + "\n")
-                    self.logger.info(
-                        f"Appended {len(new_lines_to_append)} new properties to server.properties"
-                    )
+                        # If user has this property, use their value
+                        if key in user_properties:
+                            merged_lines.append(f"{key}={user_properties[key]}")
+                        else:
+                            # Use default from zip
+                            merged_lines.append(decoded_line)
+                    else:
+                        merged_lines.append(decoded_line)
+
+            # 3. Find legacy or custom properties that are not in the new file
+            legacy_keys = [k for k in user_properties if k not in keys_in_new_file]
+            if legacy_keys:
+                merged_lines.append("")
+                merged_lines.append("# Legacy or custom properties")
+                for k in legacy_keys:
+                    merged_lines.append(f"{k}={user_properties[k]}")
+
+            # 4. Write back out to disk
+            with open(server_properties_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(merged_lines) + "\n")
+
+            self.logger.info(
+                "Successfully merged user values into new server.properties"
+            )
 
         except Exception as e:
             self.logger.warning(f"Could not merge new server.properties from zip: {e}")

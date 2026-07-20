@@ -219,7 +219,9 @@ def test_downloader_extract_server_files_update(app_context: AppContext, tmp_pat
 
     # Create existing server properties
     existing_props = server_dir / "server.properties"
-    existing_props.write_text("server-name=My Custom Server")
+    existing_props.write_text(
+        "server-name=My Custom Server\nold-prop=false\n# some custom comment\nlegacy-prop=123"
+    )
 
     zip_path = tmp_path / "test.zip"
 
@@ -227,7 +229,8 @@ def test_downloader_extract_server_files_update(app_context: AppContext, tmp_pat
     with zipfile.ZipFile(zip_path, "w") as zipf:
         zipf.writestr("bedrock_server", "executable content")
         zipf.writestr(
-            "server.properties", "server-name=Dedicated Server\nnew-prop=true"
+            "server.properties",
+            "# Server Name Comment\nserver-name=Dedicated Server\nnew-prop=true\nold-prop=true",
         )
 
     downloader = BedrockDownloader(app_context.settings, str(server_dir), "LATEST")
@@ -240,8 +243,11 @@ def test_downloader_extract_server_files_update(app_context: AppContext, tmp_pat
 
     # Assert properties were updated but preserved custom value
     content = existing_props.read_text()
-    assert "server-name=My Custom Server" in content
+    assert "# Server Name Comment\nserver-name=My Custom Server" in content
     assert "new-prop=true" in content
+    assert "old-prop=false" in content
+    assert "# Legacy or custom properties" in content
+    assert "legacy-prop=123" in content
 
 
 @patch(
