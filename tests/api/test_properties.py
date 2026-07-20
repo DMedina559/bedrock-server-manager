@@ -43,7 +43,9 @@ def test_validate_property_value():
     assert validate_property_value("level-name", "B" * 81)["status"] == "error"
 
     # Test numerical constraints
-    assert validate_property_value("server-port", "999")["status"] == "error"
+    assert validate_property_value("server-port", "0")["status"] == "error"
+    assert validate_property_value("server-port", "65536")["status"] == "error"
+    assert validate_property_value("server-portv6", "0")["status"] == "error"
     assert validate_property_value("server-portv6", "90000")["status"] == "error"
     assert validate_property_value("max-players", "0")["status"] == "error"
     assert validate_property_value("view-distance", "4")["status"] == "error"
@@ -72,7 +74,7 @@ def test_set_properties_success(app_context, monkeypatch):
 
 def test_set_properties_validation_failure(app_context):
     """Test set_properties returns a validation error gracefully preventing writes."""
-    result = set_properties("test_server", {"server-port": "99"}, app_context)
+    result = set_properties("test_server", {"server-port": "0"}, app_context)
 
     assert result["status"] == "error"
     assert "Validation failed" in result["message"]
