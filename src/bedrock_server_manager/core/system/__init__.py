@@ -11,9 +11,7 @@ from .base import (
     find_files,
 )
 from .base import is_server_running as is_bedrock_server_running
-from .base import (
-    set_server_folder_permissions,
-)
+from .base import set_server_folder_permissions
 from .process import (
     GuardedProcess,
     get_bedrock_launcher_pid_file_path,
