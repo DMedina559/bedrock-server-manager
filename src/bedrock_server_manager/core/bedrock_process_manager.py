@@ -177,9 +177,10 @@ class BedrockProcessManager:
                         if server.players:
                             from ..plugins.api_bridge import _api_registry
 
-                            get_bans = _api_registry.get("get_server_bans_api")
-                            if get_bans:
-                                ban_res = get_bans(
+                            get_bans_entry = _api_registry.get("get_server_bans_api")
+                            if get_bans_entry:
+                                get_bans_func = get_bans_entry[0]
+                                ban_res = get_bans_func(
                                     app_context=self.app_context,
                                     server_name=server.server_name,
                                 )
