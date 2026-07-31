@@ -21,8 +21,14 @@ def database():
 
 
 @database.command()
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompts and automatically backup.",
+)
 @click.pass_context
-def upgrade(ctx: click.Context):  # noqa: C901
+def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     """Upgrades the database to the latest version, stamping it if necessary."""
     app_context: AppContext = ctx.obj["app_context"]
     alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
@@ -32,26 +38,20 @@ def upgrade(ctx: click.Context):  # noqa: C901
     # --- Backup Database ---
     db_url = app_context.db.get_database_url()
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-    if db_url.startswith("sqlite:///"):
-        db_path = db_url.split("sqlite:///")[1]
+
+    click.echo("Creating database backup before upgrading...")
+    try:
         backup_dir = app_context.settings.get("paths.backups")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{backup_dir}/db_backup_{timestamp}.sqlite3"
-        try:
-            shutil.copy(db_path, backup_path)
-            click.secho(f"Database backed up to {backup_path}", fg="green")
-        except Exception as e:
-            click.secho(f"Failed to create database backup: {e}", fg="red")
-            if not click.confirm(
-                "Do you want to continue without a backup?", default=False
-            ):
-                raise click.Abort()
-    else:
-        click.secho(
-            "Your database is not SQLite. Please make sure you have a backup before proceeding.",
-            fg="yellow",
-        )
-        if not click.confirm("Do you want to continue?", default=False):
+        output = f"{backup_dir}/db_data_backup_{timestamp}.json"
+        backup_database(app_context.db, output)
+        click.secho(f"Database data backup successful! Saved to {output}", fg="green")
+    except Exception as e:
+
+        click.secho(f"Failed to create database backup: {e}", fg="red")
+        if not yes and not click.confirm(
+            "Do you want to continue without a backup?", default=False
+        ):
             raise click.Abort()
 
     # --- Run Migrations ---
