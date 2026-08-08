@@ -175,37 +175,37 @@ class BedrockProcessManager:
 
                         # Enforce bans
                         if server.players:
-                            from ..plugins.api_bridge import _api_registry
-
-                            get_bans_entry = _api_registry.get("get_server_bans_api")
-                            if get_bans_entry:
-                                get_bans_func = get_bans_entry[0]
-                                ban_res = get_bans_func(
-                                    app_context=self.app_context,
-                                    server_name=server.server_name,
-                                )
-                                if ban_res.get("status") == "success":
-                                    bans = ban_res.get("bans", [])
-                                    banned_xuids = {b["xuid"]: b for b in bans}
-                                    for p in server.players:
-                                        xuid = p.get("uuid")
-                                        if xuid in banned_xuids:
-                                            reason = (
-                                                banned_xuids[xuid].get("reason")
-                                                or "You have been banned from this server."
-                                            )
-                                            p_name = p.get("name", "Unknown")
-                                            self.logger.warning(
-                                                f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
-                                            )
-                                            try:
-                                                server.send_command(
-                                                    f'kick "{p_name}" {reason}'
+                            if hasattr(self.app_context, "api"):
+                                try:
+                                    ban_res = self.app_context.api.get_server_bans_api(
+                                        server_name=server.server_name,
+                                    )
+                                    if ban_res.get("status") == "success":
+                                        bans = ban_res.get("bans", [])
+                                        banned_xuids = {b["xuid"]: b for b in bans}
+                                        for p in server.players:
+                                            xuid = p.get("uuid")
+                                            if xuid in banned_xuids:
+                                                reason = (
+                                                    banned_xuids[xuid].get("reason")
+                                                    or "You have been banned from this server."
                                                 )
-                                            except Exception as kick_err:
-                                                self.logger.error(
-                                                    f"Failed to kick banned player '{p_name}': {kick_err}"
+                                                p_name = p.get("name", "Unknown")
+                                                self.logger.warning(
+                                                    f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
                                                 )
+                                                try:
+                                                    server.send_command(
+                                                        f'kick "{p_name}" {reason}'
+                                                    )
+                                                except Exception as kick_err:
+                                                    self.logger.error(
+                                                        f"Failed to kick banned player '{p_name}': {kick_err}"
+                                                    )
+                                except AttributeError as e:
+                                    self.logger.warning(
+                                        f"Could not trigger get_server_bans_api: {e}"
+                                    )
 
                         if status.players.online > 0:
                             self.logger.info(
