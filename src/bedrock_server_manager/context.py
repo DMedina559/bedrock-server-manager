@@ -281,9 +281,6 @@ class AppContext:
             server = self._servers[server_name]
 
             # 2. Stop the server if it is running.
-            # The BedrockServer.stop() method should handle setting the
-            # intentionally_stopped flag, which will cause the process manager
-            # to automatically un-monitor it.
             if server.is_running():
                 server.stop()
 
