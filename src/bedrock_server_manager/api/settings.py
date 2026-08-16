@@ -247,9 +247,9 @@ def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
         # Step 2: Re-apply logging configuration with the new settings
         logger.info("API: Re-applying logging configuration...")
         setup_logging(
-            log_dir=settings.get("paths.logs"),
+            log_dir=app_context.log_dir,
             log_keep=settings.get("retention.logs"),
-            log_level=settings.get("logging.level"),
+            log_level=app_context.log_level,
             force_reconfigure=True,  # Crucial flag to force removal of old handlers
         )
         logger.info("API: Logging configuration successfully re-applied.")

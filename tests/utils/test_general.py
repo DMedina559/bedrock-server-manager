@@ -10,14 +10,18 @@ from bedrock_server_manager.utils.general import (
 )
 
 
-def test_startup_checks_creates_dirs(app_context, tmp_path):
+def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
     """Test startup_checks creates missing essential app directories."""
     app_context.settings.set("paths.servers", str(tmp_path / "servers"))
     app_context.settings.set("paths.content", str(tmp_path / "content"))
     app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     app_context.settings.set("paths.plugins", str(tmp_path / "plugins"))
     app_context.settings.set("paths.backups", str(tmp_path / "backups"))
-    app_context.settings.set("paths.logs", str(tmp_path / "logs"))
+    monkeypatch.setattr(
+        "bedrock_server_manager.context.AppContext.log_dir",
+        str(tmp_path / "logs"),
+        raising=False,
+    )
 
     startup_checks(app_context)
 
