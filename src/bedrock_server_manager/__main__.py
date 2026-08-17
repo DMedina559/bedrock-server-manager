@@ -64,6 +64,11 @@ def create_cli_app():
         help="Override the application data directory.",
     )
     @click.option(
+        "--db-url",
+        type=str,
+        help="Override the database URL connection string.",
+    )
+    @click.option(
         "--log-level",
         type=click.Choice(
             ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False
@@ -78,12 +83,14 @@ def create_cli_app():
         ctx: click.Context,
         config_dir: str | None,
         data_dir: str | None,
+        db_url: str | None,
         log_level: str | None,
     ):
         from .config import bcm_config
 
         bcm_config.set_custom_config_dir(config_dir)
         bcm_config.set_custom_data_dir(data_dir)
+        bcm_config.set_custom_db_url(db_url)
         bcm_config.set_custom_log_level(log_level)
 
         """A comprehensive CLI for managing Minecraft Bedrock servers.
