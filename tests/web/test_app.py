@@ -31,7 +31,11 @@ def test_setup_check_middleware_redirect(app_context, monkeypatch):
     # Access a non-API route that is not allowed during setup
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers["location"] == "/app"
+    # Note: request.url_for('serve_spa') resolves to an absolute URL, so it might include the domain
+    assert (
+        response.headers["location"].endswith("/app")
+        or response.headers["location"] == "/app"
+    )
 
 
 def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):

@@ -33,12 +33,16 @@ async def test_log_streamer_start_stop(log_streamer):
 
 
 @pytest.mark.asyncio
-async def test_log_streamer_reads_app_log(log_streamer, app_context, tmp_path):
+async def test_log_streamer_reads_app_log(
+    log_streamer, app_context, tmp_path, monkeypatch
+):
     """Test that the log streamer reads and broadcasts app_log."""
     # Setup mock file
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
-    app_context.settings.set("paths.logs", str(log_dir))
+    monkeypatch.setattr(
+        "bedrock_server_manager.context.AppContext.log_dir", str(log_dir), raising=False
+    )
     log_file = log_dir / "bedrock_server_manager.log"
     log_file.write_text("initial log\n")
 
@@ -118,11 +122,15 @@ async def test_log_streamer_reads_server_log(
 
 
 @pytest.mark.asyncio
-async def test_log_streamer_file_rotation(log_streamer, app_context, tmp_path):
+async def test_log_streamer_file_rotation(
+    log_streamer, app_context, tmp_path, monkeypatch
+):
     """Test log streamer handles file rotation (file getting smaller)."""
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
-    app_context.settings.set("paths.logs", str(log_dir))
+    monkeypatch.setattr(
+        "bedrock_server_manager.context.AppContext.log_dir", str(log_dir), raising=False
+    )
     log_file = log_dir / "bedrock_server_manager.log"
     # Use binary write to ensure explicit length
     log_file.write_bytes(b"old data\n" * 100)  # Big file

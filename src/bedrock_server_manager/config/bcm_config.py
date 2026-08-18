@@ -31,8 +31,44 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_custom_config_dir: str | None = None
+_custom_data_dir: str | None = None
+_custom_log_level: str | None = None
+_custom_db_url: str | None = None
+
+
+def set_custom_config_dir(path: str | None) -> None:
+    global _custom_config_dir
+    _custom_config_dir = path
+
+
+def set_custom_data_dir(path: str | None) -> None:
+    global _custom_data_dir
+    _custom_data_dir = path
+
+
+def set_custom_db_url(url: str | None) -> None:
+    global _custom_db_url
+    _custom_db_url = url
+
+
+def set_custom_log_level(level: str | int | None) -> None:
+    global _custom_log_level
+    if isinstance(level, int):
+        level = logging.getLevelName(level)
+    if level:
+        _custom_log_level = level.upper()
+    else:
+        _custom_log_level = None
+
+
 def get_config_dir() -> str:
     """Returns the cross-platform configuration directory path."""
+    if _custom_config_dir:
+        return _custom_config_dir
+    env_config_dir = os.getenv(f"{env_name}_CONFIG_DIR")
+    if env_config_dir:
+        return env_config_dir
     return str(user_config_dir(package_name))
 
 
@@ -71,15 +107,18 @@ def load_config() -> Dict[str, Any]:
 
     # Determine data_dir
     env_data_dir = os.getenv(f"{env_name}_DATA_DIR")
-    if env_data_dir:
+    if _custom_data_dir:
+        final_data_dir = _custom_data_dir
+        logger.info(f"Using CLI argument for data_dir: {_custom_data_dir}")
+    elif env_data_dir:
         final_data_dir = env_data_dir
         logger.info(
-            f"Using BSM_DATA_DIR environment variable for data_dir: {env_data_dir}"
+            f"Using {env_name}_DATA_DIR environment variable for data_dir: {env_data_dir}"
         )
     elif "data_dir" in config and config["data_dir"]:
         final_data_dir = config["data_dir"]
     else:
-        final_data_dir = os.path.join(os.path.expanduser("~"), f"{package_name}")
+        final_data_dir = os.path.join(get_config_dir(), "data")
         config_for_saving["data_dir"] = final_data_dir
         logger.info(
             f"Configuration 'data_dir' not set. Defaulting to {final_data_dir}."
@@ -88,17 +127,34 @@ def load_config() -> Dict[str, Any]:
 
     # Determine db_url
     env_db_url = os.getenv(f"{env_name}_DB_URL")
-    if env_db_url:
+    if _custom_db_url:
+        final_db_url = _custom_db_url
+        logger.info(f"Using CLI argument for db_url: {_custom_db_url}")
+    elif env_db_url:
         final_db_url = env_db_url
         logger.info(f"Using BSM_DB_URL environment variable for db_url: {env_db_url}")
     elif "db_url" in config and config["db_url"]:
         final_db_url = config["db_url"]
     else:
-        config_dir = os.path.join(final_data_dir, ".config")
+        # Default db_url in config_dir
+        config_dir = get_config_dir()
         os.makedirs(config_dir, exist_ok=True)
         final_db_url = f"sqlite:///{os.path.join(config_dir, f'{package_name}.db')}"
         config_for_saving["db_url"] = final_db_url
         logger.info(f"Configuration 'db_url' not set. Defaulting to {final_db_url}.")
+        config_changed = True
+
+    # Determine log_level
+    env_log_level = os.getenv(f"{env_name}_LOG_LEVEL")
+    if _custom_log_level:
+        final_log_level = _custom_log_level
+    elif env_log_level:
+        final_log_level = env_log_level.upper()
+    elif "logging_level" in config and config["logging_level"]:
+        final_log_level = config["logging_level"]
+    else:
+        final_log_level = "INFO"
+        config_for_saving["logging_level"] = final_log_level
         config_changed = True
 
     if config_changed:
@@ -107,6 +163,7 @@ def load_config() -> Dict[str, Any]:
     final_config = config.copy()
     final_config["data_dir"] = final_data_dir
     final_config["db_url"] = final_db_url
+    final_config["logging_level"] = final_log_level
 
     return final_config
 
