@@ -61,15 +61,6 @@ async def serve_spa(request: Request, full_path: str = ""):
         # Use proper \n (newline), not \\n (literal backslash + n).
         content = content.replace("<head>", f'<head>\n    <base href="{safe_url}" />')
 
-        # Strip the /app/ prefix or leading slash from absolute asset paths so they
-        # become strictly relative to the <base href> tag injected above.
-        content = content.replace('src="/app/', 'src="')
-        content = content.replace('href="/app/', 'href="')
-
-        # Also catch any other root absolute paths (e.g. /src/main.jsx during dev)
-        content = content.replace('src="/', 'src="')
-        content = content.replace('href="/', 'href="')
-
         from fastapi.responses import HTMLResponse
 
         return HTMLResponse(content=content)

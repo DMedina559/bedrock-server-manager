@@ -19,10 +19,9 @@ class IngressMiddleware:
                 decoded_path = ingress_path.decode("latin-1")
                 scope["root_path"] = decoded_path
 
-                if not scope["path"].startswith(decoded_path):
-                    # Combine without duplicating slashes
-                    scope["path"] = (
-                        decoded_path.rstrip("/") + "/" + scope["path"].lstrip("/")
-                    )
+                if scope["path"].startswith(decoded_path):
+                    scope["path"] = scope["path"][len(decoded_path) :]  # noqa: E203
+                    if not scope["path"]:
+                        scope["path"] = "/"
 
         await self.app(scope, receive, send)

@@ -116,6 +116,27 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     update_server_statuses(app_context=app_context)
 
+    # Custom StaticFiles class to handle Ingress stripped paths
+    class IngressAwareStaticFiles(StaticFiles):
+        async def __call__(self, scope, receive, send):
+
+            original_root_path = scope.get("root_path", "")
+
+            ingress_path = ""
+            headers = dict(scope.get("headers", []))
+            if b"x-ingress-path" in headers:
+                ingress_path = headers[b"x-ingress-path"].decode("latin-1")
+
+                if original_root_path.startswith(ingress_path):
+                    scope["root_path"] = original_root_path[
+                        len(ingress_path) :  # noqa: E203
+                    ]
+
+            try:
+                await super().__call__(scope, receive, send)
+            finally:
+                scope["root_path"] = original_root_path
+
     # --- Mount Static Assets from bsm-frontend ---
     static_dir = bsm_frontend.get_static_dir()
 
@@ -126,7 +147,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
         if os.path.isdir(assets_subdir):
             app.mount(
-                "/app/assets", StaticFiles(directory=assets_subdir), name="app_assets"
+                "/app/assets",
+                IngressAwareStaticFiles(directory=assets_subdir),
+                name="app_assets",
             )
             logger.info(f"Mounted bsm-frontend assets from {assets_subdir}")
         else:
@@ -136,9 +159,15 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
         if os.path.isdir(image_subdir):
             app.mount(
-                "/app/image", StaticFiles(directory=image_subdir), name="app_images"
+                "/app/image",
+                IngressAwareStaticFiles(directory=image_subdir),
+                name="app_images",
             )
-            app.mount("/image", StaticFiles(directory=image_subdir), name="root_images")
+            app.mount(
+                "/image",
+                IngressAwareStaticFiles(directory=image_subdir),
+                name="root_images",
+            )
             logger.info(f"Mounted bsm-frontend images from {image_subdir}")
         else:
             logger.warning(
@@ -151,7 +180,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     # Mount custom themes directory
     themes_path = settings.get("paths.themes")
     if os.path.isdir(themes_path):
-        app.mount("/themes", StaticFiles(directory=themes_path), name="themes")
+        app.mount(
+            "/themes", IngressAwareStaticFiles(directory=themes_path), name="themes"
+        )
 
     @app.middleware("http")
     async def setup_check_middleware(request: Request, call_next):
