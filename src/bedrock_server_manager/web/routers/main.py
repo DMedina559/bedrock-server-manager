@@ -18,12 +18,16 @@ router = APIRouter(include_in_schema=False)
 @router.get(
     "/",
 )
-async def root_redirect():
+async def root_redirect(request: Request):
     """Redirects the root URL to dashboard."""
-    return RedirectResponse(url="/app/")
+    # Build URL dynamically to respect root_path (e.g., behind Ingress)
+    redirect_url = request.url_for("serve_spa")
+    # Ensure it has a trailing slash for consistency if desired
+    return RedirectResponse(url=str(redirect_url))
 
 
 @router.get("/app")
+@router.get("/app/")
 @router.get("/app/{full_path:path}")
 async def serve_spa(request: Request, full_path: str = ""):
     """Serves the SPA index.html for all /app routes, excluding assets."""

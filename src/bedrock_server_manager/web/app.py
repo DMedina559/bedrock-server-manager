@@ -168,23 +168,26 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/openapi.json",
         ]
 
+        req_path = request.scope.get("path", "")
+
         # Allow static assets to pass through
         if (
-            request.url.path.startswith("/app/assets")
-            or request.url.path.startswith("/app/image")
-            or request.url.path.startswith("/image")
+            req_path.startswith("/app/assets")
+            or req_path.startswith("/app/image")
+            or req_path.startswith("/image")
         ):
             response = await call_next(request)
             return response
 
         if bcm_config.needs_setup(request.app.state.app_context) and not any(
-            request.url.path.startswith(p) for p in allowed_paths
+            req_path.startswith(p) for p in allowed_paths
         ):
 
-            if request.url.path.startswith("/api"):
+            if req_path.startswith("/api"):
                 pass
-            elif not request.url.path.startswith("/app"):
-                return RedirectResponse(url="/app")
+            elif not req_path.startswith("/app"):
+                app_url = request.url_for("serve_spa")
+                return RedirectResponse(url=str(app_url))
 
         response = await call_next(request)
         return response
@@ -196,7 +199,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         response = await call_next(request)
         return response
 
-    # Add CORS Middleware last so it is the outermost middleware (executes first)
+    # Add CORS Middleware
     cors_kwargs: dict[str, Any] = {
         "allow_credentials": True,
         "allow_methods": ["*"],
@@ -209,6 +212,11 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         cors_kwargs["allow_origins"] = allowed_origins
 
     app.add_middleware(CORSMiddleware, **cors_kwargs)
+
+    # Add ASGI middleware for Ingress support (executes first)
+    from .middleware.ingress import IngressMiddleware
+
+    app.add_middleware(IngressMiddleware)
 
     app.include_router(routers.setup_router)
     app.include_router(routers.auth_router)
