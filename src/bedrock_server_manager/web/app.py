@@ -169,6 +169,11 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         ]
 
         req_path = request.scope.get("path", "")
+        root_path = request.scope.get("root_path", "")
+        if root_path and req_path.startswith(root_path):
+            req_path = req_path[len(root_path) :]  # noqa: E203
+            if not req_path:
+                req_path = "/"
 
         # Allow static assets to pass through
         if (

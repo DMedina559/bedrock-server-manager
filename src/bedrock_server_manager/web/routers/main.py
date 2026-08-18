@@ -27,7 +27,6 @@ async def root_redirect(request: Request):
 
 
 @router.get("/app")
-@router.get("/app/")
 @router.get("/app/{full_path:path}")
 async def serve_spa(request: Request, full_path: str = ""):
     """Serves the SPA index.html for all /app routes, excluding assets."""
@@ -39,6 +38,40 @@ async def serve_spa(request: Request, full_path: str = ""):
     index_path = os.path.join(static_dir, "index.html")
 
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        root_path = request.scope.get("root_path", "")
+        if not root_path:
+            return FileResponse(index_path)
+
+        # Dynamically rewrite absolute /app/ asset paths in the HTML
+        # to include the reverse proxy's root_path.
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        import html
+
+        # Add a trailing slash for the base url injection so relative paths work
+        base_app_url = str(request.url_for("serve_spa"))
+        if not base_app_url.endswith("/"):
+            base_app_url += "/"
+
+        # Escape the URL to prevent XSS from malicious Host or Ingress-Path headers
+        safe_url = html.escape(base_app_url)
+
+        # Inject the <base href> tag into the <head> to fix all relative assets.
+        # Use proper \n (newline), not \\n (literal backslash + n).
+        content = content.replace("<head>", f'<head>\n    <base href="{safe_url}" />')
+
+        # Strip the /app/ prefix or leading slash from absolute asset paths so they
+        # become strictly relative to the <base href> tag injected above.
+        content = content.replace('src="/app/', 'src="')
+        content = content.replace('href="/app/', 'href="')
+
+        # Also catch any other root absolute paths (e.g. /src/main.jsx during dev)
+        content = content.replace('src="/', 'src="')
+        content = content.replace('href="/', 'href="')
+
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse(content=content)
 
     raise HTTPException(status_code=404, detail="Frontend not found.")

@@ -19,10 +19,10 @@ class IngressMiddleware:
                 decoded_path = ingress_path.decode("latin-1")
                 scope["root_path"] = decoded_path
 
-                # Must strip the root_path from path for ASGI routing
-                if scope["path"].startswith(decoded_path):
-                    scope["path"] = scope["path"][len(decoded_path) :]  # noqa: E203
-                    if not scope["path"]:
-                        scope["path"] = "/"
+                if not scope["path"].startswith(decoded_path):
+                    # Combine without duplicating slashes
+                    scope["path"] = (
+                        decoded_path.rstrip("/") + "/" + scope["path"].lstrip("/")
+                    )
 
         await self.app(scope, receive, send)
