@@ -52,11 +52,47 @@ def create_cli_app():
         invoke_without_command=True,
         context_settings=dict(help_option_names=["-h", "--help"]),
     )
+    @click.option(
+        "--config-dir",
+        type=click.Path(file_okay=False, dir_okay=True, resolve_path=True),
+        hidden=True,
+        help="Override the configuration directory.",
+    )
+    @click.option(
+        "--data-dir",
+        type=click.Path(file_okay=False, dir_okay=True, resolve_path=True),
+        help="Override the application data directory.",
+    )
+    @click.option(
+        "--db-url",
+        type=str,
+        help="Override the database URL connection string.",
+    )
+    @click.option(
+        "--log-level",
+        type=click.Choice(
+            ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False
+        ),
+        help="Set the logging level.",
+    )
     @click.version_option(
         __version__, "-v", "--version", message=f"{app_name_title} %(version)s"
     )
     @click.pass_context
-    def cli(ctx: click.Context):
+    def cli(
+        ctx: click.Context,
+        config_dir: str | None,
+        data_dir: str | None,
+        db_url: str | None,
+        log_level: str | None,
+    ):
+        from .config import bcm_config
+
+        bcm_config.set_custom_config_dir(config_dir)
+        bcm_config.set_custom_data_dir(data_dir)
+        bcm_config.set_custom_db_url(db_url)
+        bcm_config.set_custom_log_level(log_level)
+
         """A comprehensive CLI for managing Minecraft Bedrock servers.
 
         This tool provides a full suite of commands to install, configure,
@@ -90,11 +126,10 @@ def create_cli_app():
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
 
-                log_dir = app_context.settings.get("paths.logs")
                 logger = setup_logging(
-                    log_dir=log_dir,
+                    log_dir=app_context.log_dir,
                     log_keep=app_context.settings.get("retention.logs"),
-                    log_level=app_context.settings.get("logging.level"),
+                    log_level=app_context.log_level,
                     force_reconfigure=True,
                     plugin_dir=app_context.settings.get("paths.plugins"),
                 )

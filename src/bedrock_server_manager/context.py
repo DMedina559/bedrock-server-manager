@@ -58,6 +58,10 @@ class AppContext:
         """
         from .utils import get_utils
 
+        self._config_dir: Optional[str] = None
+        self._data_dir: Optional[str] = None
+        self._log_level: Optional[str] = None
+        self._log_dir: Optional[str] = None
         self._settings: Optional["Settings"] = settings
         self._db: Optional["Database"] = db
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
@@ -97,6 +101,42 @@ class AppContext:
         self.settings.reload()
         self.plugin_manager.reload()
         # self._servers.clear()
+
+    @property
+    def config_dir(self) -> str:
+        """str: The absolute path to the application's configuration directory."""
+        if self._config_dir is None:
+            from .config import bcm_config
+
+            self._config_dir = bcm_config.get_config_dir()
+        return self._config_dir
+
+    @property
+    def data_dir(self) -> str:
+        """str: The absolute path to the application's main data directory."""
+        if self._data_dir is None:
+            from .config import bcm_config
+
+            self._data_dir = str(bcm_config.load_config()["data_dir"])
+        return self._data_dir
+
+    @property
+    def log_level(self) -> str:
+        """str: The application's configured log level."""
+        if self._log_level is None:
+            from .config import bcm_config
+
+            self._log_level = str(bcm_config.load_config().get("logging_level", "INFO"))
+        return self._log_level
+
+    @property
+    def log_dir(self) -> str:
+        """str: The absolute path to the application's logs directory."""
+        if self._log_dir is None:
+            import os
+
+            self._log_dir = os.path.join(self.config_dir, "logs")
+        return self._log_dir
 
     @property
     def api(self) -> "AppAPI":
@@ -241,9 +281,6 @@ class AppContext:
             server = self._servers[server_name]
 
             # 2. Stop the server if it is running.
-            # The BedrockServer.stop() method should handle setting the
-            # intentionally_stopped flag, which will cause the process manager
-            # to automatically un-monitor it.
             if server.is_running():
                 server.stop()
 

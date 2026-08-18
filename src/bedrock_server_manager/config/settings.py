@@ -148,23 +148,9 @@ class Settings:
     def _determine_app_config_dir(self) -> str:
         """Determines the application's configuration directory.
 
-        This directory is typically named ``.config`` and is nested within the main
-        application data directory (determined by :meth:`_determine_app_data_dir`).
-        For example, if the app data directory is ``~/.bedrock-server-manager``,
-        the config directory will be ``~/.bedrock-server-manager/.config``.
-        It is created if it doesn't exist.
-
-        Returns:
-            str: The absolute path to the application configuration directory.
+        This relies on bcm_config to determine the correct path.
         """
-        # Ensure _app_data_dir_path is initialized
-        if self._app_data_dir_path is None:
-            self._app_data_dir_path = self._determine_app_data_dir()
-
-        # self._app_data_dir_path is guaranteed to be str here by _determine_app_data_dir logic
-        # but type hint is Optional[str]. We can assert or cast.
-        assert self._app_data_dir_path is not None
-        config_dir = os.path.join(self._app_data_dir_path, ".config")
+        config_dir = bcm_config.get_config_dir()
         os.makedirs(config_dir, exist_ok=True)
         return config_dir
 
@@ -189,15 +175,11 @@ class Settings:
                     "downloads": "<app_data_dir>/.downloads",
                     "backups": "<app_data_dir>/backups",
                     "plugins": "<app_data_dir>/plugins",
-                    "logs": "<app_data_dir>/.logs",
                 },
                 "retention": {
                     "backups": 3,
                     "downloads": 3,
                     "logs": 3,
-                },
-                "logging": {
-                    "level": logging.INFO,
                 },
                 "web": {
                     "host": "127.0.0.1",
@@ -230,16 +212,12 @@ class Settings:
                 "downloads": os.path.join(app_data_dir_val, ".downloads"),
                 "backups": os.path.join(app_data_dir_val, "backups"),
                 "plugins": os.path.join(app_data_dir_val, "plugins"),
-                "logs": os.path.join(app_data_dir_val, ".logs"),
                 "themes": os.path.join(app_data_dir_val, "themes"),
             },
             "retention": {
                 "backups": 3,
                 "downloads": 3,
                 "logs": 3,
-            },
-            "logging": {
-                "level": logging.INFO,
             },
             "monitoring": {
                 "max_retiries": 3,
@@ -315,8 +293,8 @@ class Settings:
         """Ensures that all critical directories specified in the settings exist.
 
         Iterates through the directory paths defined in ``paths`` section of the
-        configuration (e.g., ``paths.servers``, ``paths.logs``) and creates them
-        if they do not already exist.
+        configuration (e.g., ``paths.servers``) and creates them
+        if they do not already exist. It also ensures the primary logs directory exists.
 
         Raises:
             ConfigurationError: If a directory cannot be created (e.g., due to
@@ -328,9 +306,13 @@ class Settings:
             self.get("paths.downloads"),
             self.get("paths.backups"),
             self.get("paths.plugins"),
-            self.get("paths.logs"),
             self.get("paths.themes"),
         ]
+
+        # Ensure base logs directory exists
+        logs_dir = os.path.join(self.config_dir, "logs")
+        dirs_to_check.append(logs_dir)
+
         for dir_path in dirs_to_check:
             if dir_path and isinstance(dir_path, str):
                 try:

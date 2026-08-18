@@ -190,7 +190,7 @@ def cleanup(
         # Determine the correct log directory, prioritizing the command-line override.
         final_log_dir = log_dir_override
         if not final_log_dir:
-            settings_log_dir = app_context.settings.get("paths.logs")
+            settings_log_dir = app_context.log_dir
             if settings_log_dir:
                 final_log_dir = Path(settings_log_dir)
 

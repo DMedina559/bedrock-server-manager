@@ -31,6 +31,7 @@ Bedrock Server Manager is a comprehensive python server designed for installing,
 
 ## Features
 
+-   **Easiest Way to Manage Minecraft Bedrock Servers**: Easy to use manager for Minecraft Bedrock Dedicated Servers, with a simple and intuitive web interface.
 -   **Install New Servers**: Quickly set up a server with customizable options like version (LATEST, PREVIEW, or CUSTOM versions).
 -   **Update Existing Servers**: Seamlessly download and update server files while preserving critical configuration files and backups.
 -   **Backup Management**: Automatically backup worlds and configuration files, with pruning for older backups.

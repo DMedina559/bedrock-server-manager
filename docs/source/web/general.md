@@ -12,7 +12,7 @@
 :align: center
 ```
 
-Bedrock Server Manager 3.1.0 includes a Web server you can run to easily manage your bedrock servers in your web browser, and is also mobile friendly!
+Bedrock Server Manager includes a Web server you can run to easily manage your bedrock servers in your web browser, and is also mobile friendly!
 
 With the web server you can:
 
@@ -26,10 +26,6 @@ With the web server you can:
 - Manage Plugins
 
 ## Hosts:
-
-```{note}
-As of BSM 3.5.0, the web server will only accept one host at a time, if multiple hosts are specified, the first one will be used.
-```
 
 By Default Bedrock Server Manager will only listen to local host only interfaces `127.0.0.1`
 
@@ -58,11 +54,6 @@ bedrock-server-manager setup
 By default Bedrock Server Manager will use port `11325`. This can be change with the `setup` command.
 
 ### HTTP API:
-
-```{note}
-As of BSM 3.5.0, the HTTP API docs are now integrated in the web server using FastAPIs Swagger UI.
-Visit: `http(s)://<bsm_host:port>/docs` after starting the web server.
-```
 
 An HTTP API is provided allowing tools like `curl` or `Invoke-RestMethod` to interact with server.
 

@@ -46,7 +46,11 @@ def test_cleanup_cache_none(runner, app_context, monkeypatch):
 
 def test_cleanup_logs(runner, app_context, tmp_path, monkeypatch):
     """Test cleanup command successfully removes mock .log files."""
-    app_context.settings.set("paths.logs", str(tmp_path))
+    monkeypatch.setattr(
+        "bedrock_server_manager.context.AppContext.log_dir",
+        str(tmp_path),
+        raising=False,
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.cli.cleanup._cleanup_log_files", lambda x: 3
     )
@@ -56,9 +60,11 @@ def test_cleanup_logs(runner, app_context, tmp_path, monkeypatch):
     assert "Cleaned up 3 log file(s)" in result.output
 
 
-def test_cleanup_logs_missing_dir(runner, app_context):
+def test_cleanup_logs_missing_dir(runner, app_context, monkeypatch):
     """Test cleanup command fails gracefully when logs directory is unconfigured."""
-    app_context.settings.set("paths.logs", None)
+    monkeypatch.setattr(
+        "bedrock_server_manager.context.AppContext.log_dir", None, raising=False
+    )
     result = runner.invoke(cleanup, ["--logs"], obj={"app_context": app_context})
     assert result.exit_code == 1  # Abort
     assert "Log directory not specified" in result.output

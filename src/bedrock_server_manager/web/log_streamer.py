@@ -53,7 +53,7 @@ class LogStreamer:
                 # Check for app log subscription
                 if "app_log" in active_topics and subscriptions["app_log"]:
                     log_path = os.path.abspath(
-                        f"{self.app_context.settings.get('paths.logs')}/bedrock_server_manager.log"
+                        f"{self.app_context.log_dir}/bedrock_server_manager.log"
                     )
                     if os.path.exists(log_path):
                         files_to_watch["app_log"] = log_path

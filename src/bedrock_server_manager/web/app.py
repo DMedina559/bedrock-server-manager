@@ -116,6 +116,27 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     update_server_statuses(app_context=app_context)
 
+    # Custom StaticFiles class to handle Ingress stripped paths
+    class IngressAwareStaticFiles(StaticFiles):
+        async def __call__(self, scope, receive, send):
+
+            original_root_path = scope.get("root_path", "")
+
+            ingress_path = ""
+            headers = dict(scope.get("headers", []))
+            if b"x-ingress-path" in headers:
+                ingress_path = headers[b"x-ingress-path"].decode("latin-1")
+
+                if original_root_path.startswith(ingress_path):
+                    scope["root_path"] = original_root_path[
+                        len(ingress_path) :  # noqa: E203
+                    ]
+
+            try:
+                await super().__call__(scope, receive, send)
+            finally:
+                scope["root_path"] = original_root_path
+
     # --- Mount Static Assets from bsm-frontend ---
     static_dir = bsm_frontend.get_static_dir()
 
@@ -126,7 +147,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
         if os.path.isdir(assets_subdir):
             app.mount(
-                "/app/assets", StaticFiles(directory=assets_subdir), name="app_assets"
+                "/app/assets",
+                IngressAwareStaticFiles(directory=assets_subdir),
+                name="app_assets",
             )
             logger.info(f"Mounted bsm-frontend assets from {assets_subdir}")
         else:
@@ -136,9 +159,15 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
         if os.path.isdir(image_subdir):
             app.mount(
-                "/app/image", StaticFiles(directory=image_subdir), name="app_images"
+                "/app/image",
+                IngressAwareStaticFiles(directory=image_subdir),
+                name="app_images",
             )
-            app.mount("/image", StaticFiles(directory=image_subdir), name="root_images")
+            app.mount(
+                "/image",
+                IngressAwareStaticFiles(directory=image_subdir),
+                name="root_images",
+            )
             logger.info(f"Mounted bsm-frontend images from {image_subdir}")
         else:
             logger.warning(
@@ -151,7 +180,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     # Mount custom themes directory
     themes_path = settings.get("paths.themes")
     if os.path.isdir(themes_path):
-        app.mount("/themes", StaticFiles(directory=themes_path), name="themes")
+        app.mount(
+            "/themes", IngressAwareStaticFiles(directory=themes_path), name="themes"
+        )
 
     @app.middleware("http")
     async def setup_check_middleware(request: Request, call_next):
@@ -168,23 +199,31 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/openapi.json",
         ]
 
+        req_path = request.scope.get("path", "")
+        root_path = request.scope.get("root_path", "")
+        if root_path and req_path.startswith(root_path):
+            req_path = req_path[len(root_path) :]  # noqa: E203
+            if not req_path:
+                req_path = "/"
+
         # Allow static assets to pass through
         if (
-            request.url.path.startswith("/app/assets")
-            or request.url.path.startswith("/app/image")
-            or request.url.path.startswith("/image")
+            req_path.startswith("/app/assets")
+            or req_path.startswith("/app/image")
+            or req_path.startswith("/image")
         ):
             response = await call_next(request)
             return response
 
         if bcm_config.needs_setup(request.app.state.app_context) and not any(
-            request.url.path.startswith(p) for p in allowed_paths
+            req_path.startswith(p) for p in allowed_paths
         ):
 
-            if request.url.path.startswith("/api"):
+            if req_path.startswith("/api"):
                 pass
-            elif not request.url.path.startswith("/app"):
-                return RedirectResponse(url="/app")
+            elif not req_path.startswith("/app"):
+                app_url = request.url_for("serve_spa")
+                return RedirectResponse(url=str(app_url))
 
         response = await call_next(request)
         return response
@@ -196,7 +235,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         response = await call_next(request)
         return response
 
-    # Add CORS Middleware last so it is the outermost middleware (executes first)
+    # Add CORS Middleware
     cors_kwargs: dict[str, Any] = {
         "allow_credentials": True,
         "allow_methods": ["*"],
@@ -209,6 +248,11 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         cors_kwargs["allow_origins"] = allowed_origins
 
     app.add_middleware(CORSMiddleware, **cors_kwargs)
+
+    # Add ASGI middleware for Ingress support (executes first)
+    from .middleware.ingress import IngressMiddleware
+
+    app.add_middleware(IngressMiddleware)
 
     app.include_router(routers.setup_router)
     app.include_router(routers.auth_router)

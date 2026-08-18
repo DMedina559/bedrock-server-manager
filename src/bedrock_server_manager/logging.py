@@ -55,7 +55,7 @@ def setup_logging(  # noqa: C901
     log_dir: str = DEFAULT_LOG_DIR,
     log_filename: str = "bedrock_server_manager.log",
     log_keep: int = DEFAULT_LOG_KEEP,
-    log_level: int = logging.INFO,
+    log_level: int | str = logging.INFO,
     when: str = "midnight",
     interval: int = 1,
     force_reconfigure: bool = False,
@@ -85,6 +85,8 @@ def setup_logging(  # noqa: C901
 
     # Configure root logger first
     root_logger = logging.getLogger()
+    if isinstance(log_level, str):
+        log_level = logging.getLevelName(log_level)
     root_logger.setLevel(log_level)
 
     # If already configured and not forcing a reconfigure, do nothing.

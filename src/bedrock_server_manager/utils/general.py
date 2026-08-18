@@ -62,7 +62,7 @@ def startup_checks(
         "DOWNLOAD_DIR": settings.get("paths.downloads"),
         "PLUGIN_DIR": settings.get("paths.plugins"),
         "BACKUP_DIR": settings.get("paths.backups"),
-        "LOG_DIR": settings.get("paths.logs"),
+        "LOG_DIR": app_context.log_dir,
     }
 
     logger.debug("Insuring essential directories exist...")
