@@ -382,6 +382,8 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
                 "message": f"Server '{server_name}' was already stopped.",
             }
 
+        app_context.api.set_server_status_api(server_name, "STOPPING")
+
         server.stop()
         app_context.bedrock_process_manager.remove_server(server.server_name)
         logger.info(f"API: Server '{server_name}' stopped successfully.")
@@ -808,7 +810,7 @@ def set_server_status_api(
 
 @api_method("update_server_player_stats_api", expose_to_plugins=False)
 @trigger_app_event(
-    before="before_server_statuses_updated", after="after_server_statuses_updated"
+    before="before_server_players_change", after="after_server_players_change"
 )
 def update_server_player_stats_api(
     server_name: str, player_count: int, players: list, app_context: "AppContext"

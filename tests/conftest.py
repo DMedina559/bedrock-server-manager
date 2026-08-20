@@ -24,8 +24,8 @@ from bedrock_server_manager.web.app import create_web_app  # noqa: E402
 @pytest.fixture(autouse=True)
 def isolated_bcm_config(monkeypatch, tmp_path):
     """
-    This fixture creates a temporary data and config directory and mocks
-    platformdirs.user_config_dir to ensure all configuration and data files
+    This fixture creates a temporary data and config directory and uses
+    bcm_config setter methods to ensure all configuration and data files
     are isolated to the temporary location for the duration of the test.
     """
     test_data_dir = tmp_path / "test_data"
@@ -34,10 +34,10 @@ def isolated_bcm_config(monkeypatch, tmp_path):
     test_config_dir = tmp_path / "test_config"
     test_config_dir.mkdir()
 
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.user_config_dir",
-        lambda *args, **kwargs: str(test_config_dir),
-    )
+    from bedrock_server_manager.config import bcm_config
+
+    bcm_config.set_custom_config_dir(str(test_config_dir))
+    bcm_config.set_custom_data_dir(str(test_data_dir))
 
     db_path = test_data_dir / "test.db"
     config_file = test_config_dir / "bedrock_server_manager.json"
@@ -46,15 +46,12 @@ def isolated_bcm_config(monkeypatch, tmp_path):
     with open(config_file, "w") as f:
         json.dump(config_data, f)
 
-    monkeypatch.setenv("BSM_DATA_DIR", str(test_data_dir))
-
-    # Reloading inside a fixture is a nightmare because other fixtures import the module
-    # and hold a reference to the OLD namespace. Let's try NOT reloading. We already patched it globally.
-    # We will just patch the values.
-
     yield test_config_dir
 
-    monkeypatch.delenv("BSM_DATA_DIR", raising=False)
+    bcm_config.set_custom_config_dir(None)
+    bcm_config.set_custom_data_dir(None)
+    bcm_config.set_custom_db_url(None)
+    bcm_config.set_custom_log_level(None)
 
 
 @pytest.fixture
