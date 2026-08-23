@@ -45,7 +45,7 @@ def startup_checks(
 
     # Ensure essential directories exist
     dirs_to_create = {
-        "BASE_DIR": settings.get("paths.servers"),
+        "SERVERS_DIR": settings.get("paths.servers"),
         "CONTENT_DIR": settings.get("paths.content"),
         "WORLDS_SUBDIR": (
             os.path.join(str(settings.get("paths.content")), "worlds")

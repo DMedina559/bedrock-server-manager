@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 
 from ..db.models import Setting
 from ..error import ConfigurationError
-from . import bcm_config
-from .const import get_installed_version
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +92,12 @@ class Settings:
     Attributes:
     """
 
-    def __init__(self, db: "Database"):
+    def __init__(
+        self,
+        db: "Database",
+        config_dir: Optional[str] = None,
+        data_dir: Optional[str] = None,
+    ):
         """Initializes the Settings object.
 
         This constructor performs the following actions:
@@ -108,39 +111,41 @@ class Settings:
 
         """
         logger.debug("Initializing Settings")
-        self._app_data_dir_path: Optional[str] = None
-        self._config_dir_path: Optional[str] = None
-        self._version_val = get_installed_version()
-        self._settings: Dict[str, Any] = {}
         self.db = db
+        self._data_dir: Optional[str] = data_dir
+        self._config_dir: Optional[str] = config_dir
+        self._settings: Dict[str, Any] = {}
 
-    def _determine_app_data_dir(self) -> str:
-        """Determines the main application data directory.
+    @property
+    def config_dir(self) -> str:
+        """str: The absolute path to the application's configuration directory.
 
-        It prioritizes the ``data_dir`` from bcm_config if set.
-        Otherwise, it defaults to a ``bedrock-server-manager`` directory in the
-        user's home folder (e.g., ``~/.bedrock-server-manager`` on Linux/macOS or
-        ``%USERPROFILE%\\bedrock-server-manager`` on Windows).
-        The directory is created if it doesn't exist.
-
-        Returns:
-            str: The absolute path to the application data directory.
+        This is determined by :meth:`_determine_app_config_dir`.
+        Example: ``~/.bedrock-server-manager/.config``
         """
-        # 1. Check config file
-        config = bcm_config.load_config()
-        data_dir = config["data_dir"]
+        if self._config_dir is None:
+            from . import bcm_config
 
-        os.makedirs(data_dir, exist_ok=True)
-        return str(data_dir)
+            config_dir = bcm_config.get_config_dir()
 
-    def _determine_app_config_dir(self) -> str:
-        """Determines the application's configuration directory.
+            return config_dir
+        return self._config_dir
 
-        This relies on bcm_config to determine the correct path.
+    @property
+    def data_dir(self) -> str:
+        """str: The absolute path to the application's main data directory.
+
+        This is determined by :meth:`_determine_app_data_dir`.
+        Example: ``~/.bedrock-server-manager``
         """
-        config_dir = bcm_config.get_config_dir()
-        os.makedirs(config_dir, exist_ok=True)
-        return config_dir
+        if self._data_dir is None:
+            from . import bcm_config
+
+            config = bcm_config.load_config()
+            data_dir = config["data_dir"]
+
+            return str(data_dir)
+        return self._data_dir
 
     @property
     def default_config(self) -> dict:
@@ -184,20 +189,15 @@ class Settings:
         Returns:
             dict: A dictionary of default settings with a nested structure.
         """
-        app_data_dir_val = self._app_data_dir_path
-        if app_data_dir_val is None:
-            # Should technically be set by _determine_app_data_dir call in __init__
-            # or lazy access. But mypy doesn't know.
-            app_data_dir_val = self._determine_app_data_dir()
 
         return {
             "paths": {
-                "servers": os.path.join(app_data_dir_val, "servers"),
-                "content": os.path.join(app_data_dir_val, "content"),
-                "downloads": os.path.join(app_data_dir_val, ".downloads"),
-                "backups": os.path.join(app_data_dir_val, "backups"),
-                "plugins": os.path.join(app_data_dir_val, "plugins"),
-                "themes": os.path.join(app_data_dir_val, "themes"),
+                "servers": os.path.join(self.data_dir, "servers"),
+                "content": os.path.join(self.data_dir, "content"),
+                "downloads": os.path.join(self.data_dir, ".downloads"),
+                "backups": os.path.join(self.data_dir, "backups"),
+                "plugins": os.path.join(self.data_dir, "plugins"),
+                "themes": os.path.join(self.data_dir, "themes"),
             },
             "retention": {
                 "backups": 3,
@@ -235,9 +235,6 @@ class Settings:
                critical application directories.
 
         """
-        # Determine the primary application data and config directories.
-        self._app_data_dir_path = self._determine_app_data_dir()
-        self._config_dir_path = self._determine_app_config_dir()
 
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
@@ -264,41 +261,6 @@ class Settings:
                         f"Could not load config from database: {e}. "
                         "Using default settings. A new config will be saved on the next settings change."
                     )
-
-        self._ensure_dirs_exist()
-
-    def _ensure_dirs_exist(self) -> None:
-        """Ensures that all critical directories specified in the settings exist.
-
-        Iterates through the directory paths defined in ``paths`` section of the
-        configuration (e.g., ``paths.servers``) and creates them
-        if they do not already exist. It also ensures the primary logs directory exists.
-
-        Raises:
-            ConfigurationError: If a directory cannot be created (e.g., due to
-                permission issues).
-        """
-        dirs_to_check: list[Any] = [
-            self.get("paths.servers"),
-            self.get("paths.content"),
-            self.get("paths.downloads"),
-            self.get("paths.backups"),
-            self.get("paths.plugins"),
-            self.get("paths.themes"),
-        ]
-
-        # Ensure base logs directory exists
-        logs_dir = os.path.join(self.config_dir, "logs")
-        dirs_to_check.append(logs_dir)
-
-        for dir_path in dirs_to_check:
-            if dir_path and isinstance(dir_path, str):
-                try:
-                    os.makedirs(dir_path, exist_ok=True)
-                except OSError as e:
-                    raise ConfigurationError(
-                        f"Could not create critical directory: {dir_path}"
-                    ) from e
 
     def _write_config(self, db: Any) -> None:
         """Writes the current settings dictionary to the database.
@@ -383,9 +345,9 @@ class Settings:
         if isinstance(d, dict):
             d[keys[-1]] = value
         if key != "web.jwt_token_secret":
-            logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
+            logger.debug(f"Setting '{key}' updated to '{value}'. Saving configuration.")
         else:
-            logger.info(f"Setting '{key}' updated. Saving configuration.")
+            logger.debug(f"Setting '{key}' updated. Saving configuration.")
         assert self.db is not None
         with self.db.session_manager() as db:  # type: ignore
             self._write_config(db)
@@ -401,36 +363,3 @@ class Settings:
         logger.info("Reloading configuration from database")
         self.load()
         logger.info("Configuration reloaded successfully.")
-
-    @property
-    def config_dir(self) -> str:
-        """str: The absolute path to the application's configuration directory.
-
-        This is determined by :meth:`_determine_app_config_dir`.
-        Example: ``~/.bedrock-server-manager/.config``
-        """
-        if self._config_dir_path is None:
-            self._config_dir_path = self._determine_app_config_dir()
-        assert self._config_dir_path is not None
-        return self._config_dir_path
-
-    @property
-    def app_data_dir(self) -> str:
-        """str: The absolute path to the application's main data directory.
-
-        This is determined by :meth:`_determine_app_data_dir`.
-        Example: ``~/.bedrock-server-manager``
-        """
-        if self._app_data_dir_path is None:
-            self._app_data_dir_path = self._determine_app_data_dir()
-        assert self._app_data_dir_path is not None
-        return self._app_data_dir_path
-
-    @property
-    def version(self) -> str:
-        """str: The installed version of the ``bedrock_server_manager`` package.
-
-        This is retrieved using ``get_installed_version()`` from
-        ``bedrock_server_manager.config.const``.
-        """
-        return self._version_val

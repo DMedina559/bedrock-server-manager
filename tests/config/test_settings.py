@@ -117,31 +117,7 @@ def test_settings_reload(settings, db):
     assert settings.get("web.port") == 5555  # After reload
 
 
-def test_settings_ensure_dirs_exist(settings, tmp_path):
-    """Test _ensure_dirs_exist creates critical directories."""
-    # Change a path to a new location
-    new_dir = tmp_path / "new_servers_dir"
-    settings.set("paths.servers", str(new_dir))
-
-    assert not new_dir.exists()
-    settings._ensure_dirs_exist()
-    assert new_dir.exists()
-
-
-def test_settings_ensure_dirs_raises_error_on_failure(settings, monkeypatch):
-    """Test _ensure_dirs_exist raises ConfigurationError on OSError."""
-
-    def mock_makedirs(*args, **kwargs):
-        raise OSError("Permission denied")
-
-    monkeypatch.setattr("os.makedirs", mock_makedirs)
-
-    with pytest.raises(ConfigurationError, match="Could not create critical directory"):
-        settings._ensure_dirs_exist()
-
-
 def test_settings_properties(settings):
-    """Test property getters like config_dir and app_data_dir."""
+    """Test property getters like config_dir and data_dir."""
     assert settings.config_dir is not None
-    assert settings.app_data_dir is not None
-    assert isinstance(settings.version, str)
+    assert settings.data_dir is not None

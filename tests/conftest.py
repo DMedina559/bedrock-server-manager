@@ -18,6 +18,7 @@ from bedrock_server_manager.utils.auth import (  # noqa: E402
     create_access_token,
     get_password_hash,
 )
+from bedrock_server_manager.utils.general import startup_checks  # noqa: E402
 from bedrock_server_manager.web.app import create_web_app  # noqa: E402
 
 
@@ -91,6 +92,8 @@ def app_context(settings, db, tmp_path):
     context._settings = settings
     context._db = db
     context.load()
+
+    startup_checks(context)
 
     # Create dummy plugin dir so plugin manager can load
     plugins_dir = tmp_path / "plugins"
