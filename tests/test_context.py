@@ -22,9 +22,10 @@ def test_app_context_initialization(app_context):
     assert app_context._task_manager is task_manager
 
 
-def test_app_context_load_without_prior_settings(isolated_bcm_config):
+def test_app_context_load_without_prior_settings(db, isolated_bcm_config):
     """Test load() creates settings if not provided."""
     context = AppContext()
+    context._db = db
     context.load()
     assert context.settings is not None
 
