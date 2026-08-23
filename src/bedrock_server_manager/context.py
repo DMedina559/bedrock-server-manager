@@ -10,6 +10,7 @@ via lazy loading and property accessors.
 
 from __future__ import annotations
 
+from logging import Logger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
@@ -46,8 +47,11 @@ class AppContext:
 
     def __init__(
         self,
-        settings: Optional["Settings"] = None,
-        db: Optional["Database"] = None,
+        config_dir: Optional[str] = None,
+        data_dir: Optional[str] = None,
+        db_url: Optional[str] = None,
+        log_level: Optional[str] = None,
+        logger: Optional[Logger] = None,
     ):
         """
         Initializes the AppContext.
@@ -58,12 +62,13 @@ class AppContext:
         """
         from .utils import get_utils
 
-        self._config_dir: Optional[str] = None
-        self._data_dir: Optional[str] = None
-        self._log_level: Optional[str] = None
-        self._log_dir: Optional[str] = None
-        self._settings: Optional["Settings"] = settings
-        self._db: Optional["Database"] = db
+        self._config_dir: Optional[str] = config_dir
+        self._data_dir: Optional[str] = data_dir
+        self._db_url: Optional[str] = db_url
+        self._log_level: Optional[str] = log_level
+        self._logger: Optional[Logger] = logger
+        self._settings: Optional["Settings"] = None
+        self._db: Optional["Database"] = None
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
@@ -74,6 +79,7 @@ class AppContext:
         self._api: Optional["AppAPI"] = None
         self._web_server: Optional[Any] = None
         self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
+        self._log_dir: Optional[str] = None
 
     def load(self):
         """
@@ -119,6 +125,15 @@ class AppContext:
 
             self._data_dir = str(bcm_config.load_config()["data_dir"])
         return self._data_dir
+
+    @property
+    def db_url(self) -> str:
+        """str: The application's configured database URL."""
+        if self._db_url is None:
+            from .config import bcm_config
+
+            self._db_url = str(bcm_config.load_config().get("db_url"))
+        return self._db_url
 
     @property
     def log_level(self) -> str:
@@ -180,7 +195,7 @@ class AppContext:
         if self._db is None:
             from .db.database import Database
 
-            self._db = Database()
+            self._db = Database(self.db_url)
         return self._db
 
     @property

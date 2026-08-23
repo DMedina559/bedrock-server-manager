@@ -52,6 +52,8 @@ def _prune_old_logs(
 
 def setup_logging(  # noqa: C901
     force_reconfigure: bool = False,
+    config_dir: Optional[str] = None,
+    log_level: Optional[str] = None,
 ) -> logging.Logger:
     """
     Sets up or re-configures the root logger with file and console handlers.
@@ -69,11 +71,15 @@ def setup_logging(  # noqa: C901
     global _logging_configured
 
     # Read configuration directly from early loading system
-    config = load_config()
-    log_level_str = config.get("logging_level", "INFO")
+    if log_level is None:
+        config = load_config()
+        log_level_str = config.get("logging_level", "INFO")
+    else:
+        log_level_str = log_level
 
     # Resolve log directory
-    config_dir = get_config_dir()
+    if config_dir is None:
+        config_dir = get_config_dir()
     log_dir = os.path.join(config_dir, "logs")
 
     # Configure root logger first

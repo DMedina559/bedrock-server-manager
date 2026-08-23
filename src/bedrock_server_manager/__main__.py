@@ -100,7 +100,13 @@ def create_cli_app():
 
         try:
             # --- Initial Application Setup ---
-            app_context = AppContext()
+            app_context = AppContext(
+                config_dir=config_dir,
+                data_dir=data_dir,
+                db_url=db_url,
+                log_level=log_level,
+                logger=logger,
+            )
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app(app_context: AppContext):
@@ -115,7 +121,7 @@ def create_cli_app():
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
 
-                startup_checks(app_context, app_name_title, __version__)
+                startup_checks(app_context)
 
         except Exception as setup_e:
             logging.getLogger("bsm_critical_setup").critical(
