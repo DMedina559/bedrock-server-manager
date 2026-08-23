@@ -87,7 +87,9 @@ def settings(db):
 @pytest.fixture
 def app_context(settings, db, tmp_path):
     """Provides a real AppContext instance."""
-    context = AppContext(settings=settings, db=db)
+    context = AppContext()
+    context._settings = settings
+    context._db = db
     context.load()
 
     # Create dummy plugin dir so plugin manager can load
