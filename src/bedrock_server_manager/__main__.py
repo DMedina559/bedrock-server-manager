@@ -55,7 +55,6 @@ def create_cli_app():
     @click.option(
         "--config-dir",
         type=click.Path(file_okay=False, dir_okay=True, resolve_path=True),
-        hidden=True,
         help="Override the configuration directory.",
     )
     @click.option(
@@ -86,13 +85,6 @@ def create_cli_app():
         db_url: str | None,
         log_level: str | None,
     ):
-        from .config import bcm_config
-
-        bcm_config.set_custom_config_dir(config_dir)
-        bcm_config.set_custom_data_dir(data_dir)
-        bcm_config.set_custom_db_url(db_url)
-        bcm_config.set_custom_log_level(log_level)
-
         """A comprehensive CLI for managing Minecraft Bedrock servers.
 
         This tool provides a full suite of commands to install, configure,
@@ -101,6 +93,25 @@ def create_cli_app():
         If run without any arguments, it launches a user-friendly interactive
         menu to guide you through all available actions.
         """
+        from .config import bcm_config
+
+        # --- Configuration Overrides ---
+        bcm_config.set_custom_config_dir(config_dir)
+        bcm_config.set_custom_data_dir(data_dir)
+        bcm_config.set_custom_db_url(db_url)
+        bcm_config.set_custom_log_level(log_level)
+
+        try:
+            logger = setup_logging(force_reconfigure=True)
+            log_separator(logger, app_name=app_name_title, app_version=__version__)
+            logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
+        except Exception as log_setup_e:
+            # If logging setup fails, we still want to inform the user.
+            print(
+                f"CRITICAL ERROR: Failed to set up logging: {log_setup_e}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         try:
             # --- Initial Application Setup ---
@@ -109,34 +120,15 @@ def create_cli_app():
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app(app_context: AppContext):
                 """A cleanup function to be run on exit."""
-                # Use a generic logger, as the full logger may not be configured
-                # for all commands (e.g., setup, migrate).
-                shutdown_logger = logging.getLogger("bsm_shutdown")
-                shutdown_logger.info("Running CLI app shutdown hooks...")
+
+                logger.info("Running CLI app shutdown hooks...")
                 app_context.db.close()
-                shutdown_logger.info("CLI app shutdown hooks complete.")
+                logger.info("CLI app shutdown hooks complete.")
 
             atexit.register(shutdown_cli_app, app_context)
 
-            # Load the full application context only if the command is not 'setup' or 'migrate'
-            if ctx.invoked_subcommand in ["setup", "migrate"]:
-                logging.basicConfig(level=logging.INFO)
-                logger = logging.getLogger("bsm_setup")
-
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
-
-                logger = setup_logging(
-                    log_dir=app_context.log_dir,
-                    log_keep=app_context.settings.get("retention.logs"),
-                    log_level=app_context.log_level,
-                    force_reconfigure=True,
-                    plugin_dir=app_context.settings.get("paths.plugins"),
-                )
-                log_separator(logger, app_name=app_name_title, app_version=__version__)
-                logger.info(
-                    f"Starting {app_name_title} v{__version__} (CLI context)..."
-                )
 
                 startup_checks(app_context, app_name_title, __version__)
 

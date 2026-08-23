@@ -179,7 +179,6 @@ class Settings:
                 "retention": {
                     "backups": 3,
                     "downloads": 3,
-                    "logs": 3,
                 },
                 "web": {
                     "host": "127.0.0.1",
@@ -217,7 +216,6 @@ class Settings:
             "retention": {
                 "backups": 3,
                 "downloads": 3,
-                "logs": 3,
             },
             "monitoring": {
                 "max_retiries": 3,
@@ -433,7 +431,6 @@ class Settings:
         """
         if self._config_dir_path is None:
             self._config_dir_path = self._determine_app_config_dir()
-        # Mypy might still see _config_dir_path as Optional[str]
         assert self._config_dir_path is not None
         return self._config_dir_path
 
@@ -446,7 +443,6 @@ class Settings:
         """
         if self._app_data_dir_path is None:
             self._app_data_dir_path = self._determine_app_data_dir()
-        # Mypy might still see _app_data_dir_path as Optional[str]
         assert self._app_data_dir_path is not None
         return self._app_data_dir_path
 

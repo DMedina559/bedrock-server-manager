@@ -2,91 +2,83 @@
 """
 Configures and manages logging for the bedrock-server-manager application.
 
-Provides functions to set up file rotation and console logging,
-and to add separator lines to log files for clarity during restarts.
+Provides functions to set up file logging (with timestamped filenames and
+retention limits) and console logging, and to add separator lines to log
+files for clarity during restarts.
 """
 
+import glob
 import logging
-import logging.handlers
 import os
 import platform
 import sys
 from datetime import datetime
 from typing import Optional
 
+from .config.bcm_config import get_config_dir, load_config
+
 # --- Constants ---
-DEFAULT_LOG_DIR: str = "logs"  # Default directory if not specified by settings
-DEFAULT_LOG_KEEP: int = 3  # Default number of backup logs to keep
+DEFAULT_LOG_KEEP: int = 5  # Hardcoded default for log file retention
 _logging_configured = False
 
 
-class AppAndPluginFilter(logging.Filter):
+def _prune_old_logs(
+    log_dir: str, base_name: str = "bedrock_server_manager", keep: int = 5
+):
     """
-    A logging filter that allows records from 'bedrock_server_manager'
-    or from a specified plugin directory.
+    Helper function to prune old log files in the specified directory.
+    Assumes log files follow the pattern '<base_name>_*.log'.
     """
+    try:
+        pattern = os.path.join(log_dir, f"{base_name}_*.log")
+        files = glob.glob(pattern)
+        # Sort files by modification time, oldest first
+        files.sort(key=os.path.getmtime)
 
-    def __init__(self, plugin_dir: Optional[str] = None):
-        super().__init__()
-        self.plugin_dir = os.path.abspath(plugin_dir) if plugin_dir else None
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """
-        Determines if a log record should be processed.
-
-        Args:
-            record: The log record to check.
-
-        Returns:
-            True if the record's name starts with 'bedrock_server_manager'
-            or if the record's pathname is within the plugin directory,
-            False otherwise.
-        """
-        if record.name.startswith("bedrock_server_manager") or record.name.startswith(
-            "plugin."
-        ):
-            return True
-        if self.plugin_dir and record.pathname.startswith(self.plugin_dir):
-            return True
-        return False
+        # If we have more files than we want to keep, delete the oldest
+        if len(files) >= keep:
+            files_to_delete = files[: len(files) - keep + 1]
+            for f in files_to_delete:
+                try:
+                    os.remove(f)
+                except OSError as e:
+                    print(
+                        f"Warning: Could not delete old log file '{f}': {e}",
+                        file=sys.stderr,
+                    )
+    except Exception as e:
+        print(f"Warning: Error while pruning old logs: {e}", file=sys.stderr)
 
 
 def setup_logging(  # noqa: C901
-    log_dir: str = DEFAULT_LOG_DIR,
-    log_filename: str = "bedrock_server_manager.log",
-    log_keep: int = DEFAULT_LOG_KEEP,
-    log_level: int | str = logging.INFO,
-    when: str = "midnight",
-    interval: int = 1,
     force_reconfigure: bool = False,
-    plugin_dir: Optional[str] = None,
 ) -> logging.Logger:
     """
     Sets up or re-configures the root logger with file and console handlers.
 
-    On first call, it configures logging. On subsequent calls (if
-    `force_reconfigure` is True), it removes existing handlers and adds new
-    ones with the updated settings, allowing for dynamic log level changes.
+    On first call, it configures logging based on settings from bcm_config.
+    It creates a new timestamped log file in the configured logs directory
+    and ensures only the 5 most recent logs are kept.
 
     Args:
-        log_dir: Directory to store log files.
-        log_filename: The base name of the log file.
-        log_keep: Number of backup log files to keep.
-        log_level: The log level for both file and console handlers.
-        when: Time interval for rotation (e.g., 'midnight', 'h', 'd').
-        interval: The interval number based on 'when'.
         force_reconfigure: If True, remove existing handlers and re-apply
                            configuration. Defaults to False.
-        plugin_dir: The absolute path to the plugins directory.
     Returns:
         The configured logger instance.
     """
     global _logging_configured
 
+    # Read configuration directly from early loading system
+    config = load_config()
+    log_level_str = config.get("logging_level", "INFO")
+
+    # Resolve log directory
+    config_dir = get_config_dir()
+    log_dir = os.path.join(config_dir, "logs")
+
     # Configure root logger first
     root_logger = logging.getLogger()
-    if isinstance(log_level, str):
-        log_level = logging.getLevelName(log_level)
+    log_level = logging.getLevelName(log_level_str)
     root_logger.setLevel(log_level)
 
     # If already configured and not forcing a reconfigure, do nothing.
@@ -101,9 +93,7 @@ def setup_logging(  # noqa: C901
         handlers_to_remove = [
             h
             for h in root_logger.handlers
-            if isinstance(
-                h, (logging.StreamHandler, logging.handlers.TimedRotatingFileHandler)
-            )
+            if isinstance(h, (logging.StreamHandler, logging.FileHandler))
         ]
         for handler in handlers_to_remove:
             root_logger.debug(f"Removing handler: {handler}")
@@ -137,8 +127,13 @@ def setup_logging(  # noqa: C901
             )
         return root_logger
 
+    # Prune old logs before creating a new one
+    _prune_old_logs(log_dir, base_name="bedrock_server_manager", keep=DEFAULT_LOG_KEEP)
+
+    # Generate timestamped filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"bedrock_server_manager_{timestamp}.log"
     log_path = os.path.join(log_dir, log_filename)
-    app_and_plugin_filter = AppAndPluginFilter(plugin_dir)
 
     try:
         # --- Define Log Formats ---
@@ -148,23 +143,18 @@ def setup_logging(  # noqa: C901
         console_formatter = logging.Formatter("%(levelname)s: %(message)s")
 
         # --- File Handler ---
-        file_handler = logging.handlers.TimedRotatingFileHandler(
+        file_handler = logging.FileHandler(
             log_path,
-            when=when,
-            interval=interval,
-            backupCount=log_keep,
             encoding="utf-8",
         )
         file_handler.setLevel(log_level)
         file_handler.setFormatter(file_formatter)
-        file_handler.addFilter(app_and_plugin_filter)
         root_logger.addHandler(file_handler)
 
         # --- Console Handler ---
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(log_level)
         console_handler.setFormatter(console_formatter)
-        console_handler.addFilter(app_and_plugin_filter)
         root_logger.addHandler(console_handler)
 
         _logging_configured = True
@@ -226,10 +216,7 @@ def log_separator(  # noqa: C901
         handlers_written = 0
         for handler in logger.handlers:
             # Only write to file-based handlers that seem active
-            if isinstance(
-                handler,
-                (logging.FileHandler, logging.handlers.TimedRotatingFileHandler),
-            ):
+            if isinstance(handler, (logging.FileHandler,)):
                 # Check if the stream exists and is not closed (basic check)
                 if (
                     hasattr(handler, "stream")
