@@ -124,7 +124,7 @@ def create_cli_app():
                 startup_checks(app_context)
 
         except Exception as setup_e:
-            logging.getLogger("bsm_critical_setup").critical(
+            logger.critical(
                 f"An unrecoverable error occurred during CLI application startup: {setup_e}",
                 exc_info=True,
             )
