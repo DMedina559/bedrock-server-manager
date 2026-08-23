@@ -14,26 +14,7 @@ import sys
 
 import click
 
-try:
-    from . import __version__
-    from .config import app_name_title
-    from .context import AppContext
-    from .logging import log_separator, setup_logging
-    from .utils.general import startup_checks
-except ImportError as e:
-    # Use basic logging as a fallback if our custom logger isn't available.
-    logging.basicConfig(level=logging.CRITICAL)
-    logger = logging.getLogger("bsm_critical_setup")
-    logger.critical(f"A critical module could not be imported: {e}", exc_info=True)
-    print(
-        f"CRITICAL ERROR: A required module could not be found: {e}.\n"
-        "Please ensure the package is installed correctly.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-# --- Import all Click command modules ---
-# These are grouped logically for clarity.
+from . import __version__
 from .cli import (
     cleanup,
     database,
@@ -43,6 +24,10 @@ from .cli import (
     setup,
     web,
 )
+from .config import app_name_title
+from .context import AppContext
+from .logging import log_separator, setup_logging
+from .utils.general import startup_checks
 
 
 def create_cli_app():
