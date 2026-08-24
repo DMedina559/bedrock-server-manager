@@ -35,6 +35,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context = app.state.app_context
         app_context.loop = asyncio.get_running_loop()
         app_context.resource_monitor.start()
+        app_context.api.update_server_statuses()
 
         # Initialize and start LogStreamer
         from .log_streamer import LogStreamer
@@ -111,10 +112,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     logger.info(f"CORS Allowed Origins: {allowed_origins}")
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
-
-    from ..api.application import update_server_statuses
-
-    update_server_statuses(app_context=app_context)
 
     # Custom StaticFiles class to handle Ingress stripped paths
     class IngressAwareStaticFiles(StaticFiles):
