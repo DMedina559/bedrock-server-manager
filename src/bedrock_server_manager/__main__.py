@@ -18,7 +18,6 @@ from . import __version__
 from .cli import (
     cleanup,
     database,
-    migrate,
     reset_password,
     service,
     setup,
@@ -120,7 +119,6 @@ def create_cli_app():
 
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
-
                 startup_checks(app_context)
 
         except Exception as setup_e:
@@ -147,7 +145,6 @@ def create_cli_app():
         cli.add_command(setup.setup)
         cli.add_command(reset_password.reset_password_command)
         cli.add_command(service.service)
-        cli.add_command(migrate.migrate)
         cli.add_command(database.database)
 
     # Call the assembly function to build the CLI with core and plugin commands
