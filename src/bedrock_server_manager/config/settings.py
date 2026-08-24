@@ -19,7 +19,7 @@ Key components:
 import collections.abc
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     from ..db.database import Database
@@ -95,8 +95,8 @@ class Settings:
     def __init__(
         self,
         db: "Database",
-        config_dir: Optional[str] = None,
-        data_dir: Optional[str] = None,
+        config_dir: str,
+        data_dir: str,
     ):
         """Initializes the Settings object.
 
@@ -112,40 +112,9 @@ class Settings:
         """
         logger.debug("Initializing Settings")
         self.db = db
-        self._data_dir: Optional[str] = data_dir
-        self._config_dir: Optional[str] = config_dir
+        self.data_dir = data_dir
+        self.config_dir = config_dir
         self._settings: Dict[str, Any] = {}
-
-    @property
-    def config_dir(self) -> str:
-        """str: The absolute path to the application's configuration directory.
-
-        This is determined by :meth:`_determine_app_config_dir`.
-        Example: ``~/.bedrock-server-manager/.config``
-        """
-        if self._config_dir is None:
-            from . import bcm_config
-
-            config_dir = bcm_config.get_config_dir()
-
-            return config_dir
-        return self._config_dir
-
-    @property
-    def data_dir(self) -> str:
-        """str: The absolute path to the application's main data directory.
-
-        This is determined by :meth:`_determine_app_data_dir`.
-        Example: ``~/.bedrock-server-manager``
-        """
-        if self._data_dir is None:
-            from . import bcm_config
-
-            config = bcm_config.load_config()
-            data_dir = config["data_dir"]
-
-            return str(data_dir)
-        return self._data_dir
 
     @property
     def default_config(self) -> dict:

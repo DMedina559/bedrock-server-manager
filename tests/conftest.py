@@ -42,7 +42,11 @@ def isolated_bcm_config(monkeypatch, tmp_path):
 
     db_path = test_data_dir / "test.db"
     config_file = test_config_dir / "bedrock_server_manager.json"
-    config_data = {"data_dir": str(test_data_dir), "db_url": f"sqlite:///{db_path}"}
+    config_data = {
+        "data_dir": str(test_data_dir),
+        "db_url": f"sqlite:///{db_path}",
+        "log_level": "DEBUG",
+    }
 
     with open(config_file, "w") as f:
         json.dump(config_data, f)
@@ -78,9 +82,17 @@ def db(isolated_bcm_config, tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def settings(db):
+def settings(db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
-    settings_instance = Settings(db=db)
+
+    base_dir = isolated_bcm_config
+    print(f"Base dir for settings fixture: {base_dir}")
+    test_config_dir = base_dir / "test_config"
+    test_data_dir = base_dir / "test_data"
+
+    settings_instance = Settings(
+        db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
+    )
     settings_instance.load()
     return settings_instance
 
