@@ -1,11 +1,6 @@
 # src/bedrock_server_manager/context.py
 """
 Defines the central application context.
-
-This module provides the :class:`~.AppContext` class, which serves as a singleton-like
-container for application-wide objects and services, such as settings, database,
-plugin manager, and server instances. It ensures circular dependencies are managed
-via lazy loading and property accessors.
 """
 
 from __future__ import annotations
@@ -30,19 +25,6 @@ if TYPE_CHECKING:
 class AppContext:
     """
     A context object that holds application-wide instances and caches.
-
-    The ``AppContext`` acts as a central hub for accessing core application components.
-    It manages the lifecycle of singletons like the :class:`~.plugins.plugin_manager.PluginManager`,
-    settings, and database connection.
-    Most properties are lazily initialized to improve startup time and handle
-    dependency resolution order.
-
-    Attributes:
-        _settings (Optional[Settings]): Internal storage for the settings instance.
-        _db (Optional[Database]): Internal storage for the database handler.
-        _servers (Dict[str, BedrockServer]): Cache of instantiated server objects.
-        _web_server (Optional[Any]): The running Uvicorn server instance, if available.
-        loop (Optional[AbstractEventLoop]): The asyncio event loop, if set.
     """
 
     def __init__(
@@ -55,10 +37,6 @@ class AppContext:
     ):
         """
         Initializes the AppContext.
-
-        Args:
-            settings (Optional[Settings]): Pre-existing settings instance.
-            db (Optional[Database]): Pre-existing database instance.
         """
 
         self._config_dir: Optional[str] = config_dir
@@ -83,9 +61,6 @@ class AppContext:
     def load(self):
         """
         Loads the application context by initializing the settings.
-
-        This method should be called early in the application startup phase to
-        ensure core components like the database and settings are ready.
         """
         from .config.settings import Settings
 
@@ -103,10 +78,6 @@ class AppContext:
     def reload(self):
         """
         Reloads the application context by reloading settings and all components.
-
-        This triggers a reload on the settings and plugin manager,
-        allowing configuration changes to take effect without restarting the
-        entire process.
         """
         self.settings.reload()
         self.plugin_manager.reload()
@@ -123,7 +94,7 @@ class AppContext:
 
     @property
     def data_dir(self) -> str:
-        """str: The absolute path to the application's main data directory."""
+        """str: The absolute path to the application's data directory."""
         if self._data_dir is None:
             from .config import bcm_config
 
@@ -161,9 +132,6 @@ class AppContext:
     def api(self) -> "AppAPI":
         """
         Lazily loads and returns the API instance.
-
-        Returns:
-            AppAPI: The internal core API bridge.
         """
         if not hasattr(self, "_api") or self._api is None:
             from .plugins.api_bridge import AppAPI
@@ -175,9 +143,6 @@ class AppContext:
     def db(self) -> "Database":
         """
         Lazily loads and returns the Database instance.
-
-        Returns:
-            Database: The database handler.
         """
         if self._db is None:
             from .db.database import Database
@@ -189,12 +154,6 @@ class AppContext:
     def settings(self) -> "Settings":
         """
         Returns the Settings instance.
-
-        Returns:
-            Settings: The global settings object.
-
-        Raises:
-            RuntimeError: If the settings have not been loaded yet.
         """
         if self._settings is None:
             raise RuntimeError(
@@ -206,9 +165,6 @@ class AppContext:
     def plugin_manager(self) -> "PluginManager":
         """
         Lazily loads and returns the PluginManager instance.
-
-        Returns:
-            PluginManager: The plugin manager.
         """
         if self._plugin_manager is None:
             from .plugins.plugin_manager import PluginManager
@@ -220,9 +176,6 @@ class AppContext:
     def task_manager(self) -> "TaskManager":
         """
         Lazily loads and returns the TaskManager instance.
-
-        Returns:
-            TaskManager: The task manager for background operations.
         """
         if self._task_manager is None:
             from .web.tasks import TaskManager
@@ -234,9 +187,6 @@ class AppContext:
     def connection_manager(self) -> "ConnectionManager":
         """
         Lazily loads and returns the ConnectionManager instance.
-
-        Returns:
-            ConnectionManager: The WebSocket connection manager.
         """
         if self._connection_manager is None:
             from .web.websocket_manager import ConnectionManager
@@ -248,9 +198,6 @@ class AppContext:
     def resource_monitor(self) -> "ResourceMonitor":
         """
         Lazily loads and returns the ResourceMonitor instance.
-
-        Returns:
-            ResourceMonitor: The system resource monitor.
         """
         if self._resource_monitor is None:
             from .web.resource_monitor import ResourceMonitor
@@ -262,9 +209,6 @@ class AppContext:
     def bedrock_process_manager(self) -> "BedrockProcessManager":
         """
         Lazily loads and returns the BedrockProcessManager instance.
-
-        Returns:
-            BedrockProcessManager: The server process monitor.
         """
         if self._bedrock_process_manager is None:
             from .core.bedrock_process_manager import BedrockProcessManager
@@ -275,12 +219,6 @@ class AppContext:
     def get_server(self, server_name: str) -> "BedrockServer":
         """
         Retrieve or create a BedrockServer instance.
-
-        Args:
-            server_name (str): The name of the server to get.
-
-        Returns:
-            BedrockServer: The requested BedrockServer instance.
         """
         from .core.bedrock_server import BedrockServer
 
@@ -291,9 +229,6 @@ class AppContext:
     def remove_server(self, server_name: str):
         """
         Stops a server, removes it from the process manager, and discards it from the context cache.
-
-        Args:
-            server_name (str): The name of the server to remove.
         """
         # 1. Get the server instance from the cache.
         if server_name in self._servers:

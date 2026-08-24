@@ -1,10 +1,6 @@
 # bedrock_server_manager/error.py
 """Custom exception hierarchy for the bedrock_server_manager package.
 
-This module defines a simplified and structured set of exceptions. The design
-prioritizes clarity, reduces redundancy, and integrates properly with Python's
-built-in exception types.
-
 Key Principles:
     - A single base exception, `BSMError`, for all application errors.
     - A clear hierarchy with logical categories (e.g., FileError, ServerError).

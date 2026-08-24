@@ -1,11 +1,6 @@
 # bedrock_server_manager/__main__.py
 """
 Main entry point for the Bedrock Server Manager command-line interface.
-
-This module is responsible for setting up the application environment (logging,
-settings), assembling all `click` commands and groups, and launching the
-main application logic. If no command is specified, it defaults to running
-the interactive menu system.
 """
 
 import atexit
@@ -69,14 +64,7 @@ def create_cli_app():
         db_url: str | None,
         log_level: str | None,
     ):
-        """A comprehensive CLI for managing Minecraft Bedrock servers.
-
-        This tool provides a full suite of commands to install, configure,
-        manage, and monitor Bedrock dedicated server instances.
-
-        If run without any arguments, it launches a user-friendly interactive
-        menu to guide you through all available actions.
-        """
+        """A comprehensive Web Server for managing Minecraft Bedrock Dedicated Servers."""
         from .config import bcm_config
 
         # --- Configuration Overrides ---
@@ -160,7 +148,7 @@ def main():
         cli()
     except Exception as e:
         # This is a last-resort catch-all for unexpected errors not handled by Click.
-        logger = logging.getLogger("bsm_critical_fatal")
+        logger = logging.getLogger(__name__)
         logger.critical("A fatal, unhandled error occurred.", exc_info=True)
         click.secho(
             f"\nFATAL UNHANDLED ERROR: {type(e).__name__}: {e}", fg="red", bold=True

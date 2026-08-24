@@ -1,10 +1,6 @@
 # bedrock_server_manager/logging.py
 """
 Configures and manages logging for the bedrock-server-manager application.
-
-Provides functions to set up file logging (with timestamped filenames and
-retention limits) and console logging, and to add separator lines to log
-files for clarity during restarts.
 """
 
 import glob
@@ -58,15 +54,6 @@ def setup_logging(  # noqa: C901
     """
     Sets up or re-configures the root logger with file and console handlers.
 
-    On first call, it configures logging based on settings from bcm_config.
-    It creates a new timestamped log file in the configured logs directory
-    and ensures only the 5 most recent logs are kept.
-
-    Args:
-        force_reconfigure: If True, remove existing handlers and re-apply
-                           configuration. Defaults to False.
-    Returns:
-        The configured logger instance.
     """
     global _logging_configured
 
@@ -188,15 +175,6 @@ def log_separator(  # noqa: C901
 ) -> None:
     """
     Writes a separator line with system and app info directly to file handlers.
-
-    This helps visually distinguish application restarts or different runs
-    within the log files. Information includes OS, Python version, app name/version,
-    and timestamp. It writes directly to the stream of FileHandler instances.
-
-    Args:
-        logger: The logger object whose file handlers will be written to.
-        app_name: The name of the application (optional).
-        app_version: The version of the application (optional).
     """
     try:
         os_name = platform.system()
@@ -215,10 +193,6 @@ def log_separator(  # noqa: C901
             f"Timestamp: {current_time}",
         ]
 
-        logger.debug(
-            f"Attempting to write log separator. App: {app_name}, Version: {app_version}"
-        )
-
         handlers_written = 0
         for handler in logger.handlers:
             # Only write to file-based handlers that seem active
@@ -235,9 +209,6 @@ def log_separator(  # noqa: C901
                             handler.stream.write(line + "\n")
                         handler.stream.write(separator_line + "\n\n")
                         handler.stream.flush()  # Ensure it's written immediately
-                        logger.debug(
-                            f"Separator written to handler's stream: {getattr(handler, 'baseFilename', 'Unknown File')}"
-                        )
                         handlers_written += 1
                     except ValueError as e:
                         # This specific check helps diagnose closed file issues
