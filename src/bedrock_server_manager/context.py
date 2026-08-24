@@ -60,7 +60,6 @@ class AppContext:
             settings (Optional[Settings]): Pre-existing settings instance.
             db (Optional[Database]): Pre-existing database instance.
         """
-        from .utils import get_utils
 
         self._config_dir: Optional[str] = config_dir
         self._data_dir: Optional[str] = data_dir
@@ -78,7 +77,7 @@ class AppContext:
         self.loop: Optional["AbstractEventLoop"] = None
         self._api: Optional["AppAPI"] = None
         self._web_server: Optional[Any] = None
-        self.splash_txt: Optional[str] = str(get_utils._get_splash_text())
+        self.splash_txt: Optional[str] = None
         self._log_dir: Optional[str] = None
 
     def load(self):
@@ -92,9 +91,14 @@ class AppContext:
 
         self.db.initialize()
 
-        if self._settings is None:
-            self._settings = Settings(db=self.db)
-            self._settings.load()
+        self._settings = Settings(
+            db=self.db, config_dir=self.config_dir, data_dir=self.data_dir
+        )
+        self._settings.load()
+
+        from .utils import get_utils
+
+        self.splash_txt = get_utils._get_splash_text()
 
     def reload(self):
         """
@@ -168,6 +172,20 @@ class AppContext:
         return self._api
 
     @property
+    def db(self) -> "Database":
+        """
+        Lazily loads and returns the Database instance.
+
+        Returns:
+            Database: The database handler.
+        """
+        if self._db is None:
+            from .db.database import Database
+
+            self._db = Database(self.db_url)
+        return self._db
+
+    @property
     def settings(self) -> "Settings":
         """
         Returns the Settings instance.
@@ -183,20 +201,6 @@ class AppContext:
                 "Settings have not been loaded. Please call AppContext.load() first."
             )
         return self._settings
-
-    @property
-    def db(self) -> "Database":
-        """
-        Lazily loads and returns the Database instance.
-
-        Returns:
-            Database: The database handler.
-        """
-        if self._db is None:
-            from .db.database import Database
-
-            self._db = Database(self.db_url)
-        return self._db
 
     @property
     def plugin_manager(self) -> "PluginManager":
