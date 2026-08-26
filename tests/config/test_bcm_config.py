@@ -114,7 +114,8 @@ def test_load_config_defaults(clean_env, monkeypatch, tmp_path):
     assert "logging_level" in config
     assert config["data_dir"] == os.path.join(str(mock_config_dir), "data")
     assert config["logging_level"] == "INFO"
-    assert os.path.exists(
+    # Ensure config file is not implicitly written by load_config
+    assert not os.path.exists(
         os.path.join(str(mock_config_dir), "bedrock_server_manager.json")
     )
 
