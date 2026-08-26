@@ -2,7 +2,7 @@
 Integration tests for the auth router endpoints.
 """
 
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -86,7 +86,9 @@ def test_logout_success(auth_client: TestClient):
 def test_logout_unauthorized(unauth_client: TestClient):
     """Test logout without being logged in."""
     with patch(
-        "bedrock_server_manager.config.bcm_config.needs_setup", return_value=False
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        new_callable=PropertyMock,
+        return_value=False,
     ):
         response = unauth_client.get("/auth/logout")
         assert response.status_code == 401
@@ -126,7 +128,9 @@ def test_reauth_remember_me(auth_client: TestClient):
 def test_reauth_unauthorized(unauth_client: TestClient):
     """Test reauth fails properly when a user is unauthenticated."""
     with patch(
-        "bedrock_server_manager.config.bcm_config.needs_setup", return_value=False
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        new_callable=PropertyMock,
+        return_value=False,
     ):
         response = unauth_client.post("/auth/reauth")
         assert response.status_code == 401

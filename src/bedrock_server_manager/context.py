@@ -57,6 +57,7 @@ class AppContext:
         self._web_server: Optional[Any] = None
         self.splash_txt: Optional[str] = None
         self._log_dir: Optional[str] = None
+        self._needs_setup: Optional[bool] = None
 
     def load(self):
         """
@@ -127,6 +128,35 @@ class AppContext:
 
             self._log_dir = os.path.join(self.config_dir, "logs")
         return self._log_dir
+
+    @property
+    def needs_setup(self) -> bool:
+        """
+        bool: Indicates whether the application requires initial setup.
+
+        Evaluates to True if no user with the role 'admin' exists in the database.
+        The result is cached internally after the first check that returns False.
+        """
+        if self._needs_setup is False:
+            return False
+
+        if not self._db:
+            return True
+
+        from sqlalchemy.orm import Session
+
+        from .db.models import User
+
+        try:
+            with Session(self.db.engine) as session:
+                admin_user = session.query(User).filter(User.role == "admin").first()
+                if admin_user:
+                    self._needs_setup = False
+                    return False
+        except Exception:
+            return True
+
+        return True
 
     @property
     def api(self) -> "AppAPI":

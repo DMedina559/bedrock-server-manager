@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock
 
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -21,8 +21,8 @@ def test_create_web_app_initialization(app_context):
 def test_setup_check_middleware_redirect(app_context, monkeypatch):
     """Test that the setup_check_middleware redirects to /app when setup is needed."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -41,8 +41,8 @@ def test_setup_check_middleware_redirect(app_context, monkeypatch):
 def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
     """Test that API requests during setup don't redirect (they either pass or get handled by the route)."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -57,8 +57,8 @@ def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
 def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
     """Test that allowed paths pass through even when setup is needed."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -71,8 +71,8 @@ def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
 def test_setup_check_middleware_static_assets(app_context, monkeypatch):
     """Test that static assets paths pass through even when setup is needed."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)

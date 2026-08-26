@@ -212,7 +212,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             response = await call_next(request)
             return response
 
-        if bcm_config.needs_setup(request.app.state.app_context) and not any(
+        if request.app.state.app_context.needs_setup and not any(
             req_path.startswith(p) for p in allowed_paths
         ):
 

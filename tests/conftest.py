@@ -173,8 +173,8 @@ def unauth_client(test_app):
 
 
 @pytest.fixture
-def test_user(db_session):
-    """Creates a test user in the database."""
+def test_user(db_session, test_admin_user):
+    """Creates a test user in the database, also ensuring an admin user exists."""
     user = UserModel(
         username="testuser",
         hashed_password=get_password_hash("testpassword"),

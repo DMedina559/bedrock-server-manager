@@ -19,14 +19,11 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict
+from typing import Any, Dict
 
 from platformdirs import user_config_dir
 
 from .const import CONFIG_FILE_NAME, env_name, package_name
-
-if TYPE_CHECKING:
-    from ..context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -223,13 +220,3 @@ def set_config_value(key: str, value: Any):
     config = load_config()
     config[key] = value
     save_config(config)
-
-
-def needs_setup(app_context: AppContext) -> bool:
-    """
-    Checks if the application needs to be set up by checking if there are any users in the database.
-    """
-    from ..db.models import User
-
-    with app_context.db.session_manager() as db:
-        return db.query(User).first() is None
