@@ -58,6 +58,7 @@ class AppContext:
         self.splash_txt: Optional[str] = None
         self._log_dir: Optional[str] = None
         self._needs_setup: Optional[bool] = None
+        self._pre_app_config_cache: Optional[Dict[str, Any]] = None
 
     def load(self):
         """
@@ -85,6 +86,39 @@ class AppContext:
         # self._servers.clear()
 
     @property
+    def pre_app_config(self) -> Dict[str, Any]:
+        """
+        Lazily loads and caches the pre-application configuration dictionary
+        from bedrock_server_manager.json (resolving CLI and Env overrides).
+        """
+        if self._pre_app_config_cache is None:
+            from .config import bcm_config
+
+            self._pre_app_config_cache = bcm_config.load_config()
+        return self._pre_app_config_cache
+
+    def get_pre_app_config(self, key: str, default: Any = None) -> Any:
+        """
+        Retrieves a single value from the cached pre-application configuration.
+        Supports dot notation for nested keys (e.g., 'web.cors_origins').
+
+        Args:
+            key (str): The key of the value to retrieve.
+            default (Any, optional): The default value to return if the key is not found.
+
+        Returns:
+            Any: The configuration value or the default.
+        """
+        keys = key.split(".")
+        value = self.pre_app_config
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+
+    @property
     def config_dir(self) -> str:
         """str: The absolute path to the application's configuration directory."""
         if self._config_dir is None:
@@ -97,27 +131,21 @@ class AppContext:
     def data_dir(self) -> str:
         """str: The absolute path to the application's data directory."""
         if self._data_dir is None:
-            from .config import bcm_config
-
-            self._data_dir = str(bcm_config.load_config()["data_dir"])
+            self._data_dir = str(self.pre_app_config["data_dir"])
         return self._data_dir
 
     @property
     def db_url(self) -> str:
         """str: The application's configured database URL."""
         if self._db_url is None:
-            from .config import bcm_config
-
-            self._db_url = str(bcm_config.load_config().get("db_url"))
+            self._db_url = str(self.pre_app_config.get("db_url"))
         return self._db_url
 
     @property
     def log_level(self) -> str:
         """str: The application's configured log level."""
         if self._log_level is None:
-            from .config import bcm_config
-
-            self._log_level = str(bcm_config.load_config().get("logging_level", "INFO"))
+            self._log_level = str(self.pre_app_config.get("logging_level", "INFO"))
         return self._log_level
 
     @property

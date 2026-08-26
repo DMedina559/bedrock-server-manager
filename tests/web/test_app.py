@@ -105,7 +105,7 @@ def test_add_user_to_request_middleware(app_context, auth_client, test_user):
 def test_cors_middleware_configuration(app_context, monkeypatch):
     """Test CORS wildcard configuration dynamically sets allow_origin_regex."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.get_config_value",
+        "bedrock_server_manager.context.AppContext.get_pre_app_config",
         MagicMock(return_value=["*"]),
     )
 

@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..config import bcm_config, get_installed_version
+from ..config import get_installed_version
 from ..context import AppContext
 from . import routers
 from .deps import get_current_user_optional
@@ -96,7 +96,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
-    allowed_origins = bcm_config.get_config_value("web.cors_origins", default_origins)
+    allowed_origins = app_context.get_pre_app_config(
+        "web.cors_origins", default_origins
+    )
 
     # If user provided a string (e.g. "*"), wrap it in a list
     if isinstance(allowed_origins, str):
