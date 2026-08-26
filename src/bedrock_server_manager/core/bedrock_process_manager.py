@@ -88,16 +88,20 @@ class BedrockProcessManager:
             self.logger.info(f"Removing server '{server_name}' from process manager.")
             del self.servers[server_name]
 
-    def shutdown(self):
-        """Signals the monitoring thread to shut down.
+    async def shutdown(self):
+        """Signals the monitoring thread to shut down asynchronously.
 
         This method sets the shutdown event, causing the background monitoring
-        thread to exit its loop. It waits (up to 5 seconds) for the thread to join.
+        thread to exit its loop. It waits (up to 5 seconds) asynchronously
+        for the thread to join.
         """
+        import asyncio
+
         self.logger.info("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
-        # Optional: wait for the thread to finish
-        self.monitoring_thread.join(timeout=5)
+
+        # Wait for the thread to finish without blocking the event loop
+        await asyncio.to_thread(self.monitoring_thread.join, timeout=5)
 
     def _monitor_servers(self):  # noqa: C901
         """Monitors server processes and restarts them if they crash.

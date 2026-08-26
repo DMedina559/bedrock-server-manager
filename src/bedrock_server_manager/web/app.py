@@ -57,14 +57,21 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             hasattr(app_context, "_task_manager")
             and app_context._task_manager is not None
         ):
-            app_context.task_manager.shutdown()
+            await app_context.task_manager.shutdown()
 
-        # Shut down the process manager
+        # Shut down the connection manager gracefully
+        if (
+            hasattr(app_context, "_connection_manager")
+            and app_context._connection_manager is not None
+        ):
+            await app_context.connection_manager.shutdown()
+
+        # Shut down the process manager gracefully
         if (
             hasattr(app_context, "_bedrock_process_manager")
             and app_context._bedrock_process_manager is not None
         ):
-            app_context.bedrock_process_manager.shutdown()
+            await app_context.bedrock_process_manager.shutdown()
 
         # Asynchronously stop all servers concurrently to respect graceful timeouts
         await app_context.stop_all_servers_async()

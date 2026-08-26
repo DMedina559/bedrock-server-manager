@@ -87,11 +87,14 @@ async def test_run_task_websocket_notification_user_specific(
     assert mock_send.call_count >= 1
 
 
-def test_task_manager_shutdown(task_manager):
-    def infinite_task():
+@pytest.mark.asyncio
+async def test_task_manager_shutdown(task_manager):
+    def short_task():
+        import time
+
         time.sleep(0.1)
 
-    task_manager.run_task(infinite_task)
-    task_manager.shutdown()
+    task_manager.run_task(short_task)
+    await task_manager.shutdown()
 
     assert task_manager._shutdown_started
