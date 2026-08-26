@@ -52,6 +52,20 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
         app_context.resource_monitor.stop()
 
+        # Shut down the process manager gracefully
+        if (
+            hasattr(app_context, "_bedrock_process_manager")
+            and app_context._bedrock_process_manager is not None
+        ):
+            await app_context.bedrock_process_manager.shutdown()
+
+        # Shut down the plugin manager gracefully
+        if (
+            hasattr(app_context, "_plugin_manager")
+            and app_context._plugin_manager is not None
+        ):
+            await app_context.plugin_manager.shutdown()
+
         # Shut down the task manager gracefully
         if (
             hasattr(app_context, "_task_manager")
@@ -66,18 +80,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         ):
             await app_context.connection_manager.shutdown()
 
-        # Shut down the process manager gracefully
-        if (
-            hasattr(app_context, "_bedrock_process_manager")
-            and app_context._bedrock_process_manager is not None
-        ):
-            await app_context.bedrock_process_manager.shutdown()
-
-        # Asynchronously stop all servers concurrently to respect graceful timeouts
-        await app_context.stop_all_servers_async()
-
-        app_context.plugin_manager.unload_plugins()
-        app_context.db.close()
+        await app_context.db.shutdown()
         logger.info("Web app shutdown hooks complete.")
 
     version = get_installed_version()

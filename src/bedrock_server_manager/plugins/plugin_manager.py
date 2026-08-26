@@ -704,6 +704,12 @@ class PluginManager:
             f"{len(self.plugin_static_mounts)} total static mounts."
         )
 
+    async def shutdown(self):
+        """Gracefully unloads all plugins asynchronously to prevent blocking."""
+        import asyncio
+
+        await asyncio.to_thread(self.unload_plugins)
+
     def unload_plugins(self):
         """Unloads all currently active plugins.
 

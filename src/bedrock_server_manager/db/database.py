@@ -124,3 +124,9 @@ class Database:
         """Closes the database connection engine."""
         if self.engine:
             self.engine.dispose()
+
+    async def shutdown(self):
+        """Gracefully closes the database connection asynchronously."""
+        import asyncio
+
+        await asyncio.to_thread(self.close)

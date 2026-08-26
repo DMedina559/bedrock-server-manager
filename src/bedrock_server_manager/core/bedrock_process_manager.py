@@ -89,16 +89,46 @@ class BedrockProcessManager:
             del self.servers[server_name]
 
     async def shutdown(self):
-        """Signals the monitoring thread to shut down asynchronously.
+        """Shuts down all managed servers concurrently and stops the monitoring thread.
 
-        This method sets the shutdown event, causing the background monitoring
-        thread to exit its loop. It waits (up to 5 seconds) asynchronously
-        for the thread to join.
+        This method:
+        1. Sets the shutdown event for the monitoring thread.
+        2. Spawns tasks to stop all currently running servers concurrently.
+        3. Waits asynchronously for the monitoring thread to exit (up to 5 seconds).
         """
         import asyncio
 
         self.logger.info("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
+
+        # Concurrently shut down all servers
+        self.logger.info("ProcessManager: Stopping all running servers concurrently...")
+
+        async def _stop_server(server_name, server):
+            if not server.is_running():
+                return
+
+            def _do_stop():
+                if hasattr(self.app_context, "api"):
+                    try:
+                        self.app_context.api.stop_server(server_name)
+                    except Exception as e:
+                        self.logger.error(
+                            f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                        )
+                        server.stop()
+                else:
+                    server.stop()
+
+            await asyncio.to_thread(_do_stop)
+            self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
+
+        tasks = []
+        for server_name, server in self.servers.items():
+            tasks.append(_stop_server(server_name, server))
+
+        if tasks:
+            await asyncio.gather(*tasks)
 
         # Wait for the thread to finish without blocking the event loop
         await asyncio.to_thread(self.monitoring_thread.join, timeout=5)

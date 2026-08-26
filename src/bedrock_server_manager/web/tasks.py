@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import uuid
-from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
@@ -19,7 +18,7 @@ class TaskManager:
         """Initializes the TaskManager and the thread pool executor."""
         self.app_context = app_context
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.tasks: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self.tasks: Dict[str, Dict[str, Any]] = {}
         self.futures: Dict[str, Future] = {}
         self._shutdown_started = False
         self._max_tasks = 100
