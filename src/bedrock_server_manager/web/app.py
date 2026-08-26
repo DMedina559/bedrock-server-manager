@@ -7,15 +7,13 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import bsm_frontend
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import get_installed_version
 from ..context import AppContext
 from . import routers
-from .deps import get_current_user_optional
 
 mimetypes.add_type("application/javascript", ".js")
 
@@ -53,19 +51,24 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             app_context.log_streamer.stop()
 
         app_context.resource_monitor.stop()
+
         # Shut down the task manager gracefully
         if (
             hasattr(app_context, "_task_manager")
             and app_context._task_manager is not None
         ):
             app_context.task_manager.shutdown()
+
         # Shut down the process manager
         if (
             hasattr(app_context, "_bedrock_process_manager")
             and app_context._bedrock_process_manager is not None
         ):
             app_context.bedrock_process_manager.shutdown()
-        app_context.stop_all_servers()
+
+        # Asynchronously stop all servers concurrently to respect graceful timeouts
+        await app_context.stop_all_servers_async()
+
         app_context.plugin_manager.unload_plugins()
         app_context.db.close()
         logger.info("Web app shutdown hooks complete.")
@@ -115,26 +118,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
 
-    # Custom StaticFiles class to handle Ingress stripped paths
-    class IngressAwareStaticFiles(StaticFiles):
-        async def __call__(self, scope, receive, send):
-
-            original_root_path = scope.get("root_path", "")
-
-            ingress_path = ""
-            headers = dict(scope.get("headers", []))
-            if b"x-ingress-path" in headers:
-                ingress_path = headers[b"x-ingress-path"].decode("latin-1")
-
-                if original_root_path.startswith(ingress_path):
-                    scope["root_path"] = original_root_path[
-                        len(ingress_path) :  # noqa: E203
-                    ]
-
-            try:
-                await super().__call__(scope, receive, send)
-            finally:
-                scope["root_path"] = original_root_path
+    from .middleware.static import IngressAwareStaticFiles
 
     # --- Mount Static Assets from bsm-frontend ---
     static_dir = bsm_frontend.get_static_dir()
@@ -183,56 +167,11 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "/themes", IngressAwareStaticFiles(directory=themes_path), name="themes"
         )
 
-    @app.middleware("http")
-    async def setup_check_middleware(request: Request, call_next):
-        # Paths that should be accessible even if setup is not complete
-        allowed_paths = [
-            "/setup/status",  # API status check
-            "/setup/create-first-user",  # API create user
-            "/app",  # The SPA itself
-            "/themes",
-            "/favicon.ico",
-            "/site.webmanifest",
-            "/auth/token",
-            "/docs",
-            "/openapi.json",
-        ]
+    from .middleware.auth import add_user_to_request
+    from .middleware.setup import setup_check_middleware
 
-        req_path = request.scope.get("path", "")
-        root_path = request.scope.get("root_path", "")
-        if root_path and req_path.startswith(root_path):
-            req_path = req_path[len(root_path) :]  # noqa: E203
-            if not req_path:
-                req_path = "/"
-
-        # Allow static assets to pass through
-        if (
-            req_path.startswith("/app/assets")
-            or req_path.startswith("/app/image")
-            or req_path.startswith("/image")
-        ):
-            response = await call_next(request)
-            return response
-
-        if request.app.state.app_context.needs_setup and not any(
-            req_path.startswith(p) for p in allowed_paths
-        ):
-
-            if req_path.startswith("/api"):
-                pass
-            elif not req_path.startswith("/app"):
-                app_url = request.url_for("serve_spa")
-                return RedirectResponse(url=str(app_url))
-
-        response = await call_next(request)
-        return response
-
-    @app.middleware("http")
-    async def add_user_to_request(request: Request, call_next):
-        user = await get_current_user_optional(request)
-        request.state.current_user = user
-        response = await call_next(request)
-        return response
+    app.middleware("http")(setup_check_middleware)
+    app.middleware("http")(add_user_to_request)
 
     # Add CORS Middleware
     cors_kwargs: dict[str, Any] = {
@@ -253,28 +192,8 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
 
     app.add_middleware(IngressMiddleware)
 
-    app.include_router(routers.setup_router)
-    app.include_router(routers.auth_router)
-    app.include_router(routers.users_router)
-    app.include_router(routers.register_router)
-    app.include_router(routers.server_actions_router)
-    app.include_router(routers.allowlist_router)
-    app.include_router(routers.permissions_router)
-    app.include_router(routers.properties_router)
-    app.include_router(routers.install_router)
-    app.include_router(routers.backup_restore_router)
-    app.include_router(routers.addon_router)
-    app.include_router(routers.settings_router)
-    app.include_router(routers.api_info_router)
-    app.include_router(routers.bans_router)
-    app.include_router(routers.plugin_router)
-    app.include_router(routers.tasks_router)
-    app.include_router(routers.main_router)
-    app.include_router(routers.account_router)
-    app.include_router(routers.audit_log_router)
-    app.include_router(routers.server_settings_router)
-    app.include_router(routers.websocket_router)
-    app.include_router(routers.world_router)
+    for router in routers.all_routers:
+        app.include_router(router)
 
     # --- Dynamically include FastAPI routers from plugins ---
     if plugin_manager.plugin_fastapi_routers:
@@ -316,7 +235,5 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
                     f"Failed to mount static directory '{dir_path}' at '{mount_path}': {e}",
                     exc_info=True,
                 )
-
-    app.include_router(routers.util_router)
 
     return app
