@@ -409,7 +409,7 @@ def create_web_ui_service(
             }
 
         service.create_web_service_file(
-            app_data_dir=app_context.settings.app_data_dir,
+            app_data_dir=app_context.data_dir,
             system=system,
             username=username,
             password=password,

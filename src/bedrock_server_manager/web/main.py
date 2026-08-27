@@ -30,40 +30,6 @@ def run_web_server(  # noqa: C901
 ) -> None:
     """
     Configures and starts the Uvicorn web server to serve the FastAPI application.
-
-    This function is the main entry point for launching the web interface and API
-    for the Bedrock Server Manager. It handles:
-    - Checking for required authentication environment variables.
-    - Determining the host and port based on command-line arguments and application settings.
-    - Configuring Uvicorn's operational mode (debug/production), log level, and worker count.
-    - Launching Uvicorn to serve the FastAPI application located at
-      ``bedrock_server_manager.web.main:app``.
-
-    Extensive logging is performed throughout the configuration and startup sequence.
-
-    Args:
-        host (Optional[str]): Specifies the host address
-            for Uvicorn to bind to. This can be a single IP address/hostname as a
-            string, or a list of addresses/hostnames. If provided via CLI, these
-            values take precedence over the ``web.host`` setting in the application
-            configuration.
-            Defaults to ``None``, in which case the host is determined by the
-            ``web.host`` setting (defaulting to "127.0.0.1").
-        debug (bool): If ``True``, Uvicorn is run in development mode. This typically
-            enables auto-reload on code changes, sets a more verbose log level (debug),
-            and uses a single worker process. If ``False`` (default), Uvicorn runs in
-            production mode.
-
-    Raises:
-        Exception: Re-raises any exception encountered during `uvicorn.run` if
-            Uvicorn itself fails to start (e.g., port already in use, invalid app path).
-
-    Settings Interaction:
-        This function reads the following keys from the global ``settings`` object:
-        - ``web.port`` (int): The port number for Uvicorn to listen on.
-          Defaults to 11325 if not set or invalid. Valid range: 1-65535.
-        - ``web.host`` (Union[str, List[str]]): The host address(es) to bind to if
-          not overridden by the ``host`` argument. Defaults to "127.0.0.1".
     """
     settings = app_context.settings
 

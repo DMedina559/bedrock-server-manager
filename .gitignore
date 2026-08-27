@@ -176,6 +176,7 @@ data
 # VisualCode
 .vs
 .vscode
+TestResults
 
 
 *Zone.Identifier
@@ -184,9 +185,3 @@ data
 
 test.db
 test.db-journal
-
-# Frontend
-**/node_modules/
-frontend/v2/dist/
-frontend/v2/build/
-src/bedrock_server_manager/web/static/v2/

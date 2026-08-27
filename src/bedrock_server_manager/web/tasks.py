@@ -21,6 +21,7 @@ class TaskManager:
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.futures: Dict[str, Future] = {}
         self._shutdown_started = False
+        self._max_tasks = 100
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         try:
             self._loop = asyncio.get_running_loop()
@@ -114,6 +115,15 @@ class TaskManager:
             )
 
         task_id = str(uuid.uuid4())
+
+        # Enforce max tasks limit to prevent memory leaks
+        if len(self.tasks) >= self._max_tasks:
+            # Remove the oldest task (first item inserted)
+            oldest_task_id = next(iter(self.tasks))
+            del self.tasks[oldest_task_id]
+            if oldest_task_id in self.futures:
+                del self.futures[oldest_task_id]
+
         self.tasks[task_id] = {
             "status": "in_progress",
             "message": "Task is running.",
@@ -136,11 +146,15 @@ class TaskManager:
         """Retrieves all tasks."""
         return self.tasks
 
-    def shutdown(self):
-        """Shuts down the thread pool and waits for all tasks to complete."""
+    async def shutdown(self):
+        """Shuts down the thread pool and waits for all tasks to complete asynchronously."""
         self._shutdown_started = True
         logger.info(
             "Task manager shutting down. Waiting for running tasks to complete."
         )
-        self.executor.shutdown(wait=True)
+
+        def _do_shutdown():
+            self.executor.shutdown(wait=True)
+
+        await asyncio.to_thread(_do_shutdown)
         logger.info("All tasks have completed. Task manager shutdown finished.")

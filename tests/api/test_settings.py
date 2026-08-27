@@ -1,4 +1,4 @@
-from unittest.mock import PropertyMock, patch
+from unittest.mock import patch
 
 """
 Integration tests for the API functions in bedrock_server_manager/api/settings.py.
@@ -78,31 +78,9 @@ def test_reload_global_settings_success(app_context: AppContext):
     """Test reloading global settings successfully."""
     with patch.object(app_context, "reload") as mock_app_reload:
         with patch.object(app_context.settings, "reload") as mock_settings_reload:
-            with patch.object(
-                app_context.settings, "get", return_value=10
-            ) as mock_settings_get:
-                with patch(
-                    "bedrock_server_manager.context.AppContext.log_dir",
-                    new_callable=PropertyMock,
-                    return_value="/logs",
-                ):
-                    with patch(
-                        "bedrock_server_manager.context.AppContext.log_level",
-                        new_callable=PropertyMock,
-                        return_value="INFO",
-                    ):
-                        with patch(
-                            "bedrock_server_manager.api.settings.setup_logging"
-                        ) as mock_setup_logging:
-                            result = reload_global_settings(app_context)
 
-                            assert result["status"] == "success"
-                            mock_app_reload.assert_called_once()
-                            mock_settings_reload.assert_called_once()
-                            mock_settings_get.assert_called_once_with("retention.logs")
-                            mock_setup_logging.assert_called_once_with(
-                                log_dir="/logs",
-                                log_keep=10,
-                                log_level="INFO",
-                                force_reconfigure=True,
-                            )
+            result = reload_global_settings(app_context)
+
+            assert result["status"] == "success"
+            mock_app_reload.assert_called_once()
+            mock_settings_reload.assert_called_once()

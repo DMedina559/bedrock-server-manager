@@ -26,13 +26,14 @@ def test_process_manager_add_remove_server(app_context: AppContext):
     assert "test_server" not in manager.servers
 
 
-def test_process_manager_shutdown(app_context: AppContext):
+@pytest.mark.asyncio
+async def test_process_manager_shutdown(app_context: AppContext):
     """Test shutting down the process manager stops the thread."""
     manager = BedrockProcessManager(app_context)
     manager._shutdown_event = MagicMock()
     manager.monitoring_thread = MagicMock()
 
-    manager.shutdown()
+    await manager.shutdown()
 
     manager._shutdown_event.set.assert_called_once()
     manager.monitoring_thread.join.assert_called_once_with(timeout=5)

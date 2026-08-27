@@ -1,5 +1,6 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
+import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
@@ -21,8 +22,8 @@ def test_create_web_app_initialization(app_context):
 def test_setup_check_middleware_redirect(app_context, monkeypatch):
     """Test that the setup_check_middleware redirects to /app when setup is needed."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -41,8 +42,8 @@ def test_setup_check_middleware_redirect(app_context, monkeypatch):
 def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
     """Test that API requests during setup don't redirect (they either pass or get handled by the route)."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -57,8 +58,8 @@ def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
 def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
     """Test that allowed paths pass through even when setup is needed."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -71,8 +72,8 @@ def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
 def test_setup_check_middleware_static_assets(app_context, monkeypatch):
     """Test that static assets paths pass through even when setup is needed."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.needs_setup",
-        MagicMock(return_value=True),
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        PropertyMock(return_value=True),
     )
 
     app = create_web_app(app_context)
@@ -105,7 +106,7 @@ def test_add_user_to_request_middleware(app_context, auth_client, test_user):
 def test_cors_middleware_configuration(app_context, monkeypatch):
     """Test CORS wildcard configuration dynamically sets allow_origin_regex."""
     monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.get_config_value",
+        "bedrock_server_manager.context.AppContext.get_pre_app_config",
         MagicMock(return_value=["*"]),
     )
 
@@ -123,3 +124,44 @@ def test_cors_middleware_configuration(app_context, monkeypatch):
     assert cors_mw is not None
 
     assert cors_mw.kwargs.get("allow_origin_regex") == ".*"
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_shutdown(app_context):
+    """Test the lifespan hook properly initializes and stops components."""
+    app = create_web_app(app_context)
+
+    with patch("bedrock_server_manager.web.app.asyncio.to_thread") as mock_to_thread:
+        # Define a mock to_thread that just calls the function immediately
+        # (or does nothing, just so we can verify it was called)
+        async def mock_to_thread_impl(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        mock_to_thread.side_effect = mock_to_thread_impl
+
+        # Mock start and stop methods for our internal components
+        app_context.resource_monitor.start = MagicMock()
+        app_context.resource_monitor.stop = MagicMock()
+
+        # We need to extract the actual lifespan function from the app router
+        lifespan_manager = app.router.lifespan_context
+
+        # Create a mock for log streamer
+        with patch(
+            "bedrock_server_manager.web.log_streamer.LogStreamer"
+        ) as MockLogStreamer:
+            mock_ls_instance = MagicMock()
+            MockLogStreamer.return_value = mock_ls_instance
+
+            async with lifespan_manager(app):
+                # Verify startup logic
+                app_context.resource_monitor.start.assert_called_once()
+                mock_to_thread.assert_any_call(app_context.api.update_server_statuses)
+
+                # Check log streamer was initialized
+                MockLogStreamer.assert_called_once_with(app_context)
+                mock_ls_instance.start.assert_called_once()
+
+            # Verification of shutdown logic
+            mock_ls_instance.stop.assert_called_once()
+            app_context.resource_monitor.stop.assert_called_once()

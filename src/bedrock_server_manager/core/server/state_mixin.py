@@ -9,16 +9,13 @@ configuration values.
 These states are stored in a server-specific JSON configuration file, typically
 named ``<server_name>_config.json``, located within the server's dedicated
 configuration directory (see :meth:`.BedrockServerBaseMixin.server_config_dir`).
-The structure of this JSON file is managed by this mixin, including schema
-versioning (see :const:`.SERVER_CONFIG_SCHEMA_VERSION`) and migration from
-older formats.
+The structure of this configuration is managed by this mixin in the database.
 
 Additionally, this mixin handles reading essential dynamic properties from the
 server's live ``server.properties`` file, such as the world name (`level-name`).
 
 Key functionalities:
     - Loading and saving the server-specific JSON configuration.
-    - Migrating older server configuration formats to the current schema.
     - Providing getter and setter methods for various state attributes like
       installed version, target version, status, and custom key-value pairs.
     - Reading the world name from ``server.properties``.
@@ -38,18 +35,6 @@ from ...error import (
 )
 from .base_server_mixin import BedrockServerBaseMixin
 
-# Version for the server-specific JSON config schema
-SERVER_CONFIG_SCHEMA_VERSION: int = 2
-"""The schema version for the server-specific JSON configuration file.
-This version number is stored within the JSON file itself (e.g., in
-``<server_name>_config.json`` under the key ``config_schema_version``).
-It's used by :meth:`.ServerStateMixin._load_server_config` and
-:meth:`.ServerStateMixin._migrate_server_config_v1_to_v2` to determine if
-a configuration file needs migration from an older format.
-Currently, version 2 represents a nested structure, while older (v1) configs
-were flat and lacked a version key.
-"""
-
 
 class ServerStateMixin(BedrockServerBaseMixin):
     """Manages persistent state and configuration for a Bedrock server instance.
@@ -64,8 +49,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
     Key responsibilities:
         - Loading the server-specific JSON configuration file upon initialization,
           creating it with defaults if it doesn't exist.
-        - Handling migration of the server JSON configuration from older schema
-          versions (e.g., v1 flat structure to v2 nested structure).
         - Providing a centralized method (:meth:`._manage_json_config`) for reading
           and writing values to the JSON configuration using dot-notation for keys.
         - Offering public getter and setter methods for common state properties
@@ -98,17 +81,13 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Returns the default structure and values for a server's JSON config file.
 
         This structure is used when a server's configuration file is first created
-        or when migrating from an older, unrecognized format. It includes the
-        current :const:`.SERVER_CONFIG_SCHEMA_VERSION`.
-
-        Returns:
+        or when migrating from an older, unrecognized format.         Returns:
             Dict[str, Any]: A dictionary representing the default server configuration.
-            The structure includes keys like "config_schema_version", "server_info"
+            The structure includes keys like "server_info"
             (with "installed_version", "status"), "settings" (with "autoupdate",
             "target_version"), and an empty "custom" dictionary.
         """
         return {
-            "config_schema_version": SERVER_CONFIG_SCHEMA_VERSION,
             "server_info": {
                 "installed_version": "UNKNOWN",
                 "status": "UNKNOWN",
@@ -131,14 +110,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
             -   Reading the JSON content if the file exists.
             -   Handling empty or malformed JSON files by initializing with defaults
                 and attempting migration if necessary.
-            -   Checking the ``config_schema_version`` and triggering migration
-                (via :meth:`._migrate_server_config_v1_to_v2`) if an older schema
-                (specifically v1, identified by lack of version key) is detected.
-                The migrated configuration is then saved.
-
         Returns:
-            Dict[str, Any]: The loaded (and potentially migrated) server configuration
-            as a dictionary.
+            Dict[str, Any]: The loaded server configuration as a dictionary.
 
         Raises:
             FileOperationError: If directory creation or file reading fails due
@@ -154,7 +127,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             if server:
                 return {
-                    "config_schema_version": SERVER_CONFIG_SCHEMA_VERSION,
                     "server_info": {
                         "installed_version": server.installed_version,
                         "status": server.status,
@@ -186,7 +158,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             db.refresh(server)
 
             return {
-                "config_schema_version": SERVER_CONFIG_SCHEMA_VERSION,
                 "server_info": {
                     "installed_version": server.installed_version,
                     "status": server.status,
@@ -550,7 +521,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     def get_target_version(self) -> str:
         """Retrieves the 'target_version' from the server's JSON config.
 
-        Accesses ``settings.target_version`` (note: schema v2 location) via
+        Accesses ``settings.target_version`` via
         :meth:`._manage_json_config`. This indicates the version the server aims
         to be on, often "LATEST" or a specific version string.
 
@@ -561,7 +532,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             f"Getting stored target_version for '{self.server_name}' from JSON config."
         )
         try:
-            # Path changed in v2 schema to settings.target_version
             version = self._manage_json_config(
                 key="settings.target_version", operation="read"
             )
@@ -580,7 +550,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     def set_target_version(self, version_string: str) -> None:
         """Sets the 'target_version' in the server's JSON config.
 
-        Updates ``settings.target_version`` (note: schema v2 location) via
+        Updates ``settings.target_version`` via
         :meth:`._manage_json_config`.
 
         Args:
@@ -596,7 +566,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             raise UserInputError(
                 f"target_version for '{self.server_name}' must be a string, got {type(version_string).__name__}."
             )
-        # Path changed in v2 schema to settings.target_version
         self._manage_json_config(
             key="settings.target_version", operation="write", value=version_string
         )

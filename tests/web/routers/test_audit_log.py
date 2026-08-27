@@ -2,7 +2,7 @@
 Integration tests for the audit_log router endpoints.
 """
 
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -16,7 +16,9 @@ def test_list_audit_logs_unauthorized(unauth_client: TestClient):
     # Need to mock needs_setup because unauth_client doesn't create a user,
     # causing the auth middleware to trigger setup bypass.
     with patch(
-        "bedrock_server_manager.config.bcm_config.needs_setup", return_value=False
+        "bedrock_server_manager.context.AppContext.needs_setup",
+        new_callable=PropertyMock,
+        return_value=False,
     ):
         response = unauth_client.get("/audit-log/list")
         assert response.status_code == 401

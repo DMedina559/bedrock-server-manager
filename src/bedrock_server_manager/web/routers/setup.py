@@ -38,9 +38,7 @@ async def get_setup_status(
     """
     Returns whether the application needs initial setup.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user_exists = db.query(User).first() is not None
-        return SetupStatusResponse(needs_setup=not user_exists)
+    return SetupStatusResponse(needs_setup=app_context.needs_setup)
 
 
 @router.post(
@@ -53,17 +51,14 @@ async def create_first_user(
     """
     Creates the first user (admin) in the database.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        if db.query(User).first():
-            # If a user already exists, prevent creating another first user
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "status": "error",
-                    "message": "Setup already completed. Users exist.",
-                },
-            )
+    if not app_context.needs_setup:
+        # If an admin user already exists, prevent creating another first user
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Application has already been set up.",
+        )
 
+    with app_context.db.session_manager() as db:  # type: ignore
         hashed_password = get_password_hash(data.password)
         user = User(
             username=data.username, hashed_password=hashed_password, role="admin"
@@ -75,6 +70,9 @@ async def create_first_user(
             db.refresh(user)  # Refresh the user object to get its ID if needed
 
             logger.info(f"First user '{data.username}' created with admin role.")
+
+            # Reset the setup cache since an admin user now exists
+            app_context._needs_setup = False
 
             # Log the user in by creating an access token and returning it
             access_token = create_access_token(

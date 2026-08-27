@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlalchemy.engine import Engine
 
 from bedrock_server_manager.db.database import Database
@@ -16,38 +15,6 @@ def test_database_initialization_with_url():
     assert db.SessionLocal is not None
     assert not db._tables_created
     db.close()
-
-
-def test_database_initialization_without_url(
-    isolated_bcm_config, monkeypatch, tmp_path
-):
-    """Test Database initialization fetches URL from config."""
-    db_path = tmp_path / "test_data" / "test.db"
-    mock_config = {"db_url": f"sqlite:///{db_path}"}
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.load_config", lambda: mock_config
-    )
-
-    db = Database()
-    db.initialize()
-
-    assert db.engine is not None
-    assert db.SessionLocal is not None
-
-    assert "test.db" in str(db.engine.url)
-    db.close()
-
-
-def test_database_missing_url_raises_error(isolated_bcm_config, monkeypatch):
-    """Test get_database_url raises error if missing from config."""
-    # Mock config to return empty
-    monkeypatch.setattr(
-        "bedrock_server_manager.config.bcm_config.load_config", lambda: {}
-    )
-
-    db = Database()
-    with pytest.raises(RuntimeError, match="Database URL not found in config"):
-        db.get_database_url()
 
 
 def test_database_session_manager(db):

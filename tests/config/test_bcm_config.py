@@ -114,7 +114,8 @@ def test_load_config_defaults(clean_env, monkeypatch, tmp_path):
     assert "logging_level" in config
     assert config["data_dir"] == os.path.join(str(mock_config_dir), "data")
     assert config["logging_level"] == "INFO"
-    assert os.path.exists(
+    # Ensure config file is not implicitly written by load_config
+    assert not os.path.exists(
         os.path.join(str(mock_config_dir), "bedrock_server_manager.json")
     )
 
@@ -176,17 +177,21 @@ def test_save_config_error(isolated_bcm_config, monkeypatch, caplog):
 
 
 def test_needs_setup(app_context):
-    """Test needs_setup correctly identifies if users exist."""
+    """Test needs_setup correctly identifies if admin users exist."""
     from bedrock_server_manager.db.models import User
+
+    app_context._needs_setup = None  # Reset cache
 
     with app_context.db.session_manager() as db:
         db.query(User).delete()
         db.commit()
 
-    assert bcm_config.needs_setup(app_context) is True
+    assert app_context.needs_setup is True
+
+    app_context._needs_setup = None  # Reset cache
 
     with app_context.db.session_manager() as db:
-        db.add(User(username="test", hashed_password="pw"))
+        db.add(User(username="test", hashed_password="pw", role="admin"))
         db.commit()
 
-    assert bcm_config.needs_setup(app_context) is False
+    assert app_context.needs_setup is False
