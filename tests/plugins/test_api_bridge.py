@@ -7,10 +7,12 @@ from bedrock_server_manager.plugins.api_bridge import AppAPI, _api_registry, api
 
 @pytest.fixture(autouse=True)
 def clear_api_registry():
-    """Fixture to ensure the global API registry is cleared before and after each test."""
+    """Fixture to ensure the global API registry is cleared before each test and restored afterwards."""
+    original_registry = _api_registry.copy()
     _api_registry.clear()
     yield
     _api_registry.clear()
+    _api_registry.update(original_registry)
 
 
 def test_api_method_decorator():

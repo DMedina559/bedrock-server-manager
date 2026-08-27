@@ -64,6 +64,7 @@ class AppContext:
         """
         Loads the application context by initializing the settings.
         """
+        from . import api  # noqa: F401
         from .config.settings import Settings
 
         self.db.initialize()
