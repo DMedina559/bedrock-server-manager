@@ -81,8 +81,24 @@ class AppContext:
         """
         Reloads the application context by reloading settings and all components.
         """
+        self._pre_app_config_cache = None
+        self._needs_setup = None
+        self._config_dir = None
+        self._data_dir = None
+        self._db_url = None
+        self._log_level = None
+        self._log_dir = None
+
         self.settings.reload()
         self.plugin_manager.reload()
+
+        if self._resource_monitor is not None:
+            self._resource_monitor.stop()
+            self._resource_monitor.start()
+
+        if hasattr(self, "log_streamer") and self.log_streamer is not None:
+            self.log_streamer.stop()
+            self.log_streamer.start()
         # self._servers.clear()
 
     @property

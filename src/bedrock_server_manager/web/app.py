@@ -33,7 +33,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context = app.state.app_context
         app_context.loop = asyncio.get_running_loop()
         app_context.resource_monitor.start()
-        app_context.api.update_server_statuses()
+        await asyncio.to_thread(app_context.api.update_server_statuses)
 
         # Initialize and start LogStreamer
         from .log_streamer import LogStreamer
