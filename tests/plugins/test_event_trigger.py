@@ -10,6 +10,7 @@ from bedrock_server_manager.plugins.event_trigger import trigger_app_event
 def mock_app_context():
     mock_context = MagicMock()
     mock_context.plugin_manager = MagicMock()
+    mock_context.plugin_manager.trigger_event_async = AsyncMock()
     mock_context.connection_manager = AsyncMock()
 
     mock_loop = MagicMock()
@@ -69,12 +70,21 @@ async def test_trigger_app_event_async_hooks(mock_app_context):
     result = await async_target(mock_app_context, 20)
     assert result == 30
 
-    mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "async_before", app_context=mock_app_context, val=20
-    )
-    mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "async_after", app_context=mock_app_context, val=20, result=30
-    )
+    # In tests, if trigger_event_async is available, it should be called
+    if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
+        mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
+            "async_before", app_context=mock_app_context, val=20
+        )
+        mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
+            "async_after", app_context=mock_app_context, val=20, result=30
+        )
+    else:
+        mock_app_context.plugin_manager.trigger_event.assert_any_call(
+            "async_before", app_context=mock_app_context, val=20
+        )
+        mock_app_context.plugin_manager.trigger_event.assert_any_call(
+            "async_after", app_context=mock_app_context, val=20, result=30
+        )
 
 
 def test_trigger_app_event_no_args(mock_app_context):

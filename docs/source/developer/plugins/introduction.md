@@ -93,7 +93,7 @@ Every plugin **must** inherit from `bedrock_server_manager.PluginBase` (typicall
 
 *   `self.name` (str): The name of your plugin, derived from its filename.
 *   `self.logger` (logging.Logger): A pre-configured Python logger. **Always use this for logging.**
-*   `self.api` (PluginAPI): Your gateway to interacting with the main application.
+*   `self.api` (AppAPI): Your gateway to interacting with the main application. It dynamically exposes core application APIs to plugins safely and with robust type hints available in most modern IDEs.
 
 ```{important}
 **Important Plugin Class Requirements:**
@@ -108,6 +108,29 @@ Event hooks are methods from `PluginBase` that you can override. The Plugin Mana
 
 *   **`before_*` events:** Called *before* an action is attempted.
 *   **`after_*` events:** Called *after* an action has been attempted. They are always passed a `result` dictionary that you can inspect to see if the action succeeded or failed.
+
+### Asynchronous Event Hooks (New in 3.x)
+
+To prevent plugins from blocking the main event loop (e.g., during long network requests or heavy I/O), BSM supports fully asynchronous event hooks.
+
+You can define any of your event handlers as an `async def` instead of a standard synchronous `def`. The plugin manager will detect this and safely `await` your hook without freezing the rest of the application!
+
+```python
+import asyncio
+from bedrock_server_manager import PluginBase
+
+class MyAsyncPlugin(PluginBase):
+    version = "1.1.0"
+
+    async def before_start_server(self, server_name: str, **kwargs):
+        """This hook will be awaited by the core application asynchronously!"""
+        self.logger.info(f"Preparing to start {server_name} in 3 seconds...")
+
+        # We can perform non-blocking waits, HTTP requests, or file I/O here
+        await asyncio.sleep(3)
+
+        self.logger.info(f"Done waiting. Let the server start!")
+```
 
 ## 4. Custom Plugin Events (Inter-Plugin Communication)
 

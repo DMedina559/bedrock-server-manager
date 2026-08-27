@@ -6,7 +6,7 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction, inc
 
     - Locating plugin files in designated directories.
     - Reading and writing plugin configurations (e.g., enabled status, metadata)
-      from/to a JSON file (typically ``plugins.json``).
+      from/to the application database.
     - Validating plugins (e.g., ensuring they subclass
       :class:`~.plugin_base.PluginBase` and have a ``version`` attribute).
     - Dynamically loading valid and enabled plugins.
@@ -54,7 +54,7 @@ class PluginManager:
     """Manages the discovery, loading, aconfiguration, and lifecycle of all plugins.
 
     This class is the core of the plugin system. It scans for plugins,
-    manages their configuration in ``plugins.json``, loads enabled plugins,
+    manages their configuration in the database, loads enabled plugins,
     and dispatches various events to them.
     """
 
@@ -62,10 +62,9 @@ class PluginManager:
         """
         Initializes the PluginManager.
 
-        Sets up plugin directories (user and default), determines the path for
-        ``plugins.json``, initializes internal state for plugin configurations,
-        loaded plugin instances, and custom event listeners. It also ensures
-        that the configured plugin directories exist on the filesystem.
+        Sets up plugin directories (user and default), initializes internal state
+        for plugin configurations, loaded plugin instances, and custom event listeners.
+        It also ensures that the configured plugin directories exist on the filesystem.
         """
 
         self.app_context = app_context
@@ -75,9 +74,6 @@ class PluginManager:
 
         self.plugin_dirs: List[Path] = [user_plugin_dir, default_plugin_dir]
         logger.debug(f"Plugin directories configured: {self.plugin_dirs}")
-
-        self.config_path: Path = Path(self.settings.config_dir) / "plugins.json"
-        logger.debug(f"Plugin configuration file path: {self.config_path}")
 
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
@@ -106,7 +102,7 @@ class PluginManager:
         Returns:
             Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
             mapping plugin names to their configuration dictionaries.
-            Returns an empty dict if loading fails or the file is not found.
+            Returns an empty dict if loading fails or no configuration is found.
         """
         with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
@@ -284,13 +280,13 @@ class PluginManager:
         return None
 
     def _synchronize_config_with_disk(self) -> None:  # noqa: C901
-        """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
+        """Scans plugin directories, validates plugins, extracts metadata, and updates the database.
 
-        This crucial method ensures the ``plugins.json`` configuration file is
+        This crucial method ensures the plugin configuration database is
         consistent with the actual plugin files found on disk. It performs the
         following steps:
 
-            1.  Loads the existing ``plugins.json`` (via :meth:`._load_config`).
+            1.  Loads the existing plugin configuration (via :meth:`._load_config`).
             2.  Scans all directories in ``self.plugin_dirs`` for potential plugin
                 files (``.py`` files not starting with an underscore).
             3.  For each potential plugin file:
@@ -977,34 +973,122 @@ class PluginManager:
             *args (Any): Positional arguments to pass to the event handler method.
             **kwargs (Any): Keyword arguments to pass to the event handler method.
         """
+        plugin_class = type(target_plugin)
+
         if hasattr(target_plugin, event):
-            handler_method = getattr(target_plugin, event)
-            logger.debug(
-                f"Dispatching standard event '{event}' to plugin '{target_plugin.name}' "
-                f"(handler: '{handler_method.__name__}'). Args: {args}, Kwargs: {kwargs}"
-            )
-            try:
-                handler_method(*args, **kwargs)
-            except Exception as e:
-                logger.error(
-                    f"Error encountered in plugin '{target_plugin.name}' during event handler "
-                    f"'{event}': {e}",
-                    exc_info=True,
+            # Check if the method is actually overridden from the base class
+            class_method = getattr(plugin_class, event, None)
+            base_method = getattr(PluginBase, event, None)
+
+            if class_method is not base_method:
+                handler_method = getattr(target_plugin, event)
+                logger.debug(
+                    f"Dispatching standard event '{event}' to plugin '{target_plugin.name}' "
+                    f"(handler: '{handler_method.__name__}'). Args: {args}, Kwargs: {kwargs}"
                 )
-        else:
-            logger.debug(
-                f"Plugin '{target_plugin.name}' does not have a handler method for event '{event}'. Skipping."
-            )
+                try:
+                    if inspect.iscoroutinefunction(handler_method):
+                        if self.app_context.loop and self.app_context.loop.is_running():
+                            import asyncio
+
+                            asyncio.run_coroutine_threadsafe(
+                                handler_method(*args, **kwargs), self.app_context.loop
+                            )
+                        else:
+                            logger.warning(
+                                f"Event '{event}' on plugin '{target_plugin.name}' is an async function, but no event loop is running. "
+                                f"Consider using an asynchronous trigger instead."
+                            )
+                    else:
+                        handler_method(*args, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Error encountered in plugin '{target_plugin.name}' during event handler "
+                        f"'{event}': {e}",
+                        exc_info=True,
+                    )
 
         # Dispatch to the wildcard 'on_any_event' handler, if implemented (default in base is pass)
-        try:
-            target_plugin.on_any_event(event, *args, **kwargs)
-        except Exception as e:
-            logger.error(
-                f"Error encountered in plugin '{target_plugin.name}' during wildcard event handler "
-                f"'on_any_event' for event '{event}': {e}",
-                exc_info=True,
-            )
+        if getattr(plugin_class, "on_any_event", None) is not getattr(
+            PluginBase, "on_any_event", None
+        ):
+            try:
+                if inspect.iscoroutinefunction(target_plugin.on_any_event):
+                    if self.app_context.loop and self.app_context.loop.is_running():
+                        import asyncio
+
+                        asyncio.run_coroutine_threadsafe(
+                            target_plugin.on_any_event(event, *args, **kwargs),
+                            self.app_context.loop,
+                        )
+                    else:
+                        logger.warning(
+                            f"Wildcard event 'on_any_event' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
+                        )
+                else:
+                    target_plugin.on_any_event(event, *args, **kwargs)
+            except Exception as e:
+                logger.error(
+                    f"Error encountered in plugin '{target_plugin.name}' during wildcard event handler "
+                    f"'on_any_event' for event '{event}': {e}",
+                    exc_info=True,
+                )
+
+    async def dispatch_event_async(
+        self, target_plugin: PluginBase, event: str, *args, **kwargs
+    ):
+        """Asynchronously dispatches a single standard application event to a specific plugin instance.
+
+        This method attempts to call the method corresponding to `event` on the
+        `target_plugin` instance, passing ``*args`` and ``**kwargs``. It correctly awaits
+        asynchronous handlers and executes synchronous handlers normally.
+
+        Args:
+            target_plugin (:class:`.PluginBase`): The plugin instance to which the event
+                should be dispatched.
+            event (str): The name of the event method to call on the plugin.
+            *args (Any): Positional arguments to pass to the event handler method.
+            **kwargs (Any): Keyword arguments to pass to the event handler method.
+        """
+        plugin_class = type(target_plugin)
+
+        if hasattr(target_plugin, event):
+            class_method = getattr(plugin_class, event, None)
+            base_method = getattr(PluginBase, event, None)
+
+            if class_method is not base_method:
+                handler_method = getattr(target_plugin, event)
+                logger.debug(
+                    f"Async dispatching standard event '{event}' to plugin '{target_plugin.name}' "
+                    f"(handler: '{handler_method.__name__}'). Args: {args}, Kwargs: {kwargs}"
+                )
+                try:
+                    if inspect.iscoroutinefunction(handler_method):
+                        await handler_method(*args, **kwargs)
+                    else:
+                        handler_method(*args, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Error encountered in plugin '{target_plugin.name}' during async event handler "
+                        f"'{event}': {e}",
+                        exc_info=True,
+                    )
+
+        # Dispatch to the wildcard 'on_any_event' handler, if implemented
+        if getattr(plugin_class, "on_any_event", None) is not getattr(
+            PluginBase, "on_any_event", None
+        ):
+            try:
+                if inspect.iscoroutinefunction(target_plugin.on_any_event):
+                    await target_plugin.on_any_event(event, *args, **kwargs)
+                else:
+                    target_plugin.on_any_event(event, *args, **kwargs)
+            except Exception as e:
+                logger.error(
+                    f"Error encountered in plugin '{target_plugin.name}' during async wildcard event handler "
+                    f"'on_any_event' for event '{event}': {e}",
+                    exc_info=True,
+                )
 
     def _generate_event_key(self, event_name: str, **kwargs) -> str:
         """Generates a unique key for an event instance for re-entrancy checking.
@@ -1112,6 +1196,61 @@ class PluginManager:
 
             logger.debug(
                 f"Finished dispatching standard event '{event}' (key: '{current_event_key}'). "
+                f"Stack after pop: {getattr(_event_context, 'stack', [])}"
+            )
+
+    async def trigger_event_async(self, event: str, *args: Any, **kwargs: Any):
+        """Asynchronously triggers a standard application event on all loaded plugins.
+
+        This method works identically to `trigger_event`, but correctly handles and awaits
+        asynchronous event handlers in plugins using `dispatch_event_async`.
+
+        Args:
+            event (str): The name of the event to trigger.
+            *args (Any): Positional arguments to pass to each plugin's event handler.
+            **kwargs (Any): Keyword arguments to pass to each plugin's event handler.
+        """
+        if not hasattr(_event_context, "stack"):
+            _event_context.stack = []
+
+        current_event_key = self._generate_event_key(event, **kwargs)
+
+        if current_event_key in _event_context.stack:
+            logger.debug(
+                f"Skipping recursive trigger of standard async event '{event}' (key: '{current_event_key}'). "
+                f"Event key is already in the processing stack: {_event_context.stack}"
+            )
+            return
+
+        _event_context.stack.append(current_event_key)
+        logger.debug(
+            f"Dispatching standard async event '{event}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
+            f"Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
+        )
+
+        try:
+            for plugin_instance in list(self.plugins):  # Iterate over a copy
+                await self.dispatch_event_async(plugin_instance, event, *args, **kwargs)
+        finally:
+            if hasattr(_event_context, "stack") and _event_context.stack:
+                if _event_context.stack[-1] == current_event_key:
+                    _event_context.stack.pop()
+                else:
+                    logger.warning(
+                        f"Event key '{current_event_key}' was expected at the top of the stack "
+                        f"but found '{_event_context.stack[-1]}'. Stack: {_event_context.stack}. "
+                        f"Attempting to remove '{current_event_key}' by value."
+                    )
+                    try:
+                        _event_context.stack.remove(current_event_key)
+                    except ValueError:
+                        logger.error(
+                            f"Failed to remove event key '{current_event_key}' from stack by value. "
+                            f"Stack corruption may have occurred. Stack: {_event_context.stack}"
+                        )
+
+            logger.debug(
+                f"Finished dispatching standard async event '{event}' (key: '{current_event_key}'). "
                 f"Stack after pop: {getattr(_event_context, 'stack', [])}"
             )
 

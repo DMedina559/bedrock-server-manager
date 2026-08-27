@@ -15,7 +15,6 @@ def test_init_once(app_context):
     pm = app_context.plugin_manager
     assert pm.settings is not None
     assert any("plugins" in str(path) for path in pm.plugin_dirs)
-    assert "plugins.json" in str(pm.config_path)
 
 
 def test_load_and_save_config(app_context):

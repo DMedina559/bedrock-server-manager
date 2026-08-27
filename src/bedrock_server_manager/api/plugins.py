@@ -76,7 +76,7 @@ def set_plugin_status(
     in the plugin configuration, which is managed by the
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
     The configuration is synchronized with disk before modification, and the
-    changes are saved back to ``plugins.json``.
+    changes are saved back to the database.
 
     Note:
         For the change in enabled status to take full effect (i.e., for the

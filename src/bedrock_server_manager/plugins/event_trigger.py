@@ -150,14 +150,24 @@ def trigger_app_event(  # noqa: C901
             app_context = event_kwargs.get("app_context")
 
             if before and app_context:
-                app_context.plugin_manager.trigger_event(before, **event_kwargs)
+                if hasattr(app_context.plugin_manager, "trigger_event_async"):
+                    await app_context.plugin_manager.trigger_event_async(
+                        before, **event_kwargs
+                    )
+                else:
+                    app_context.plugin_manager.trigger_event(before, **event_kwargs)
                 await _async_broadcast_event(app_context, before, event_kwargs)
 
             result = await cast(Awaitable[R], func(*args, **kwargs))
 
             if after and app_context:
                 event_kwargs["result"] = result
-                app_context.plugin_manager.trigger_event(after, **event_kwargs)
+                if hasattr(app_context.plugin_manager, "trigger_event_async"):
+                    await app_context.plugin_manager.trigger_event_async(
+                        after, **event_kwargs
+                    )
+                else:
+                    app_context.plugin_manager.trigger_event(after, **event_kwargs)
                 await _async_broadcast_event(app_context, after, event_kwargs)
 
             return result
