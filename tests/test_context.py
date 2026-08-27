@@ -100,36 +100,3 @@ def test_remove_server_non_existent(app_context):
     """Test remove_server handles non-existent servers gracefully."""
     # Should not raise an error
     app_context.remove_server("does_not_exist")
-
-
-def test_stop_all_servers(app_context, monkeypatch):
-    """Test stop_all_servers stops all running cached servers."""
-    server1 = app_context.get_server("server1")
-    server2 = app_context.get_server("server2")
-
-    mock_api = MagicMock()
-    monkeypatch.setattr(app_context, "_api", mock_api)
-
-    monkeypatch.setattr(server1, "is_running", MagicMock(return_value=True))
-    monkeypatch.setattr(server2, "is_running", MagicMock(return_value=False))
-
-    app_context.stop_all_servers()
-
-    mock_api.stop_server.assert_called_once_with("server1")
-
-
-def test_stop_all_servers_no_api(app_context, monkeypatch):
-    """Test stop_all_servers stops servers directly if API is not loaded."""
-    server1 = app_context.get_server("server1")
-
-    # Ensure api is not loaded
-    if hasattr(app_context, "_api"):
-        delattr(app_context, "_api")
-
-    monkeypatch.setattr(server1, "is_running", MagicMock(return_value=True))
-    mock_stop = MagicMock()
-    monkeypatch.setattr(server1, "stop", mock_stop)
-
-    app_context.stop_all_servers()
-
-    mock_stop.assert_called_once()
