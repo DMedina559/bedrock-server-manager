@@ -3,6 +3,7 @@
 Plugin that automatically reloads server configurations after changes.
 """
 
+import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase
@@ -62,8 +63,9 @@ class AutoReloadPlugin(PluginBase):
                 f"Server '{server_name}' is not running, skipping reload after {context} change."
             )
 
-    def after_allowlist_change(self, **kwargs: Any):
+    async def after_allowlist_change(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
+
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
@@ -74,7 +76,12 @@ class AutoReloadPlugin(PluginBase):
             removed_players = result.get("details", {}).get("removed", [])
 
             if added_count > 0 or len(removed_players) > 0:
-                self._send_reload_command(server_name, "allowlist reload", "allowlist")
+                await asyncio.to_thread(
+                    self._send_reload_command,
+                    server_name,
+                    "allowlist reload",
+                    "allowlist",
+                )
             else:
                 self.logger.info(
                     f"Allowlist operation for '{server_name}' reported no changes, skipping reload."
@@ -84,14 +91,20 @@ class AutoReloadPlugin(PluginBase):
                 f"Allowlist change for '{server_name}' was not successful, skipping reload."
             )
 
-    def after_permission_change(self, **kwargs: Any):
+    async def after_permission_change(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
+
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
         if result.get("status") == "success":
-            self._send_reload_command(server_name, "permission reload", "permission")
+            await asyncio.to_thread(
+                self._send_reload_command,
+                server_name,
+                "permission reload",
+                "permission",
+            )
         else:
             self.logger.debug(
                 f"Permission change for '{server_name}' was not successful, skipping reload."

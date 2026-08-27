@@ -1,4 +1,5 @@
 # <PLUGIN_DIR>/api_docs_generator.py
+import asyncio
 import inspect
 import os
 from datetime import datetime
@@ -20,11 +21,12 @@ class APIDocsGenerator(PluginBase):
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
-    def on_manager_startup(self, **kwargs: Any):
+    async def on_manager_startup(self, **kwargs: Any):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API.
         """
+
         self.logger.info("Generating API documentation...")
         self.settings = self.api.app_context.settings
 
@@ -40,8 +42,12 @@ class APIDocsGenerator(PluginBase):
             output_path = os.path.join(
                 self.settings.config_dir, "PLUGIN_API_REFERENCE.md"
             )
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(markdown_content)
+
+            def write_file():
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(markdown_content)
+
+            await asyncio.to_thread(write_file)
 
             self.logger.info(
                 f"Successfully generated API documentation at: {output_path}"

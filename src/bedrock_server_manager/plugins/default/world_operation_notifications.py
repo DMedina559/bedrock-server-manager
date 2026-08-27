@@ -3,6 +3,7 @@
 Plugin to send in-game notifications before world operations like export, import, or reset.
 """
 
+import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase
@@ -64,8 +65,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} warning."
             )
 
-    def before_world_export(self, **kwargs: Any):
+    async def before_world_export(self, **kwargs: Any):
         """Notifies players before a world export begins."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         export_dir = kwargs.get("export_dir")
@@ -74,13 +76,17 @@ class WorldOperationNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
-                self._send_ingame_warning(
-                    server_name, "World export starting...", "world export"
+            if getattr(server, "player_count", 0) > 0:
+                await asyncio.to_thread(
+                    self._send_ingame_warning,
+                    server_name,
+                    "World export starting...",
+                    "world export",
                 )
 
-    def before_world_import(self, **kwargs: Any):
+    async def before_world_import(self, **kwargs: Any):
         """Notifies players before a world import begins."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         file_path = kwargs.get("file_path")
@@ -89,15 +95,17 @@ class WorldOperationNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
-                self._send_ingame_warning(
+            if getattr(server, "player_count", 0) > 0:
+                await asyncio.to_thread(
+                    self._send_ingame_warning,
                     server_name,
                     "World import starting... Current world will be replaced.",
                     "world import",
                 )
 
-    def before_world_reset(self, **kwargs: Any):
+    async def before_world_reset(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
@@ -106,8 +114,9 @@ class WorldOperationNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
-                self._send_ingame_warning(
+            if getattr(server, "player_count", 0) > 0:
+                await asyncio.to_thread(
+                    self._send_ingame_warning,
                     server_name,
                     "CRITICAL WARNING: Server world is being reset NOW!",
                     "world reset",

@@ -29,7 +29,7 @@ class PingPlugin(PluginBase):
             f"'{self.name}' v{self.version} loaded. Will send 'pingplugin:ping' events after successful server starts."
         )
 
-    def after_server_start(self, **kwargs: Any):
+    async def after_server_start(self, **kwargs: Any):
         """
         An application event hook, called by the PluginManager after a server
         start attempt.

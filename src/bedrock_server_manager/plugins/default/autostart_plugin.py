@@ -1,4 +1,5 @@
 # autostart_servers.py
+import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase
@@ -20,13 +21,21 @@ class AutostartServers(PluginBase):
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
-    def on_manager_startup(self, **kwargs: Any):
-        result = self.api.get_all_servers_data()
-        servers = result["servers"]
+    async def on_manager_startup(self, **kwargs: Any):
+
+        # Run API calls in thread to not block startup loop
+        result = await asyncio.to_thread(self.api.get_all_servers_data)
+        servers = result.get("servers", [])
+
         for server in servers:
-            server_name = server["name"]
-            result = self.api.get_server_setting(server_name, "settings.autostart")
-            server_settings = result["value"]
+            server_name = server.get("name")
+            if not server_name:
+                continue
+
+            setting_result = await asyncio.to_thread(
+                self.api.get_server_setting, server_name, "settings.autostart"
+            )
+            server_settings = setting_result.get("value")
 
             if server_settings:
                 self.logger.info(

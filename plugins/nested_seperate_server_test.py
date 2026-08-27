@@ -47,6 +47,7 @@ What to Look For in the Logs:
   - Crucially, NO "Skipping recursive trigger..." message for the "server2" event.
 """
 
+import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase
@@ -95,8 +96,9 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"  5. Expect to see 'before_server_start' logs from this plugin for BOTH '{SERVER_A_NAME_TRIGGER}' AND '{SERVER_B_NAME_NESTED}'."
         )
 
-    def before_server_start(self, **kwargs: Any):
+    async def before_server_start(self, **kwargs: Any):
         global _server_b_triggered_by_this_plugin
+
         server_name = kwargs.get("server_name")
 
         self.logger.info(
@@ -115,7 +117,9 @@ class NestedDifferentServerStartPlugin(PluginBase):
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
-                self.api.start_server(server_name=SERVER_B_NAME_NESTED)
+                await asyncio.to_thread(
+                    self.api.start_server, server_name=SERVER_B_NAME_NESTED
+                )
                 self.logger.info(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
                 )

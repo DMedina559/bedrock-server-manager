@@ -35,6 +35,7 @@ What to look for in the logs:
   indicating the API call didn't crash due to an event stack overflow.
 """
 
+import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase
@@ -60,8 +61,9 @@ class RecursiveLoopPlugin(PluginBase):
             "A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop."
         )
 
-    def before_server_start(self, **kwargs: Any):
+    async def before_server_start(self, **kwargs: Any):
         """This is EVENT A in the A -> B -> A' loop."""
+
         server_name = kwargs.get("server_name")
         self.logger.info(
             f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}'."
@@ -71,7 +73,9 @@ class RecursiveLoopPlugin(PluginBase):
         )
         try:
             # Assuming the server is not yet running, so stop_start_server=False is appropriate.
-            self.api.backup_all(server_name=server_name, stop_start_server=False)
+            await asyncio.to_thread(
+                self.api.backup_all, server_name=server_name, stop_start_server=False
+            )
         except Exception as e:
             self.logger.error(
                 f"--- LOOP TEST (EVENT A): API call self.api.backup_all() failed unexpectedly: {e}",
@@ -82,8 +86,9 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (EVENT A - Handler Call): Finished 'before_server_start' handler execution."
         )
 
-    def before_backup(self, **kwargs: Any):
+    async def before_backup(self, **kwargs: Any):
         """This is EVENT B in the A -> B -> A' loop."""
+
         server_name = kwargs.get("server_name")
         self.logger.info(
             f"--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '{server_name}'."
@@ -97,9 +102,7 @@ class RecursiveLoopPlugin(PluginBase):
             # The PluginManager's event stack guard should prevent the *handlers* for this
             # recursive 'before_server_start' from executing.
             # The api.start_server() function itself will still run its internal logic.
-            self.api.start_server(
-                server_name=server_name
-            )  # Using "detached" for the API call
+            await asyncio.to_thread(self.api.start_server, server_name=server_name)
 
             self.logger.info(
                 "--- LOOP TEST (EVENT B): Recursive self.api.start_server() call completed. "
