@@ -7,6 +7,9 @@ from bedrock_server_manager import PluginBase
 
 class LifecycleTestPlugin(PluginBase):
     version = "1.0.0"
+    author = "dmedina559"
+    description = "A custom Bedrock Server Manager plugin."
+    name = "Lifecycle Test"
 
     def on_load(self, **kwargs):
         self.logger.info("Lifecycle Test Plugin loaded.")

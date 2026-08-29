@@ -14,7 +14,9 @@ class DynamicPageTestPlugin(PluginBase):
     """
 
     version = "1.0.0"
+    description = "A plugin to test all Dynamic Page UI components."
     author = "dmedina559"
+    name = "Dynamic Page Test"
 
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Dynamic Page Test Plugin"])

@@ -12,6 +12,9 @@ from .routes import define_routes
 
 class EventSenderPlugin(PluginBase):
     version = "1.2.0"
+    author = "dmedina559"
+    description = "A plugin that provides a web UI for sending custom plugin events."
+    name = "Event Sender"
 
     def on_load(self):
         self.logger.info(

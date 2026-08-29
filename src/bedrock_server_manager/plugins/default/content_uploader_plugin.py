@@ -23,7 +23,9 @@ class ContentUploaderPlugin(PluginBase):
     """Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."""
 
     version = "2.0.0"
+    description = "Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."
     author = "dmedina559"
+    name = "Content Uploader"
 
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])

@@ -16,6 +16,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
     """
 
     version = "1.1.1"
+    description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
     author = "dmedina559"
 
     def on_load(self):

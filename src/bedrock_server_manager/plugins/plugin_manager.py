@@ -417,7 +417,11 @@ class PluginManager:
             valid_plugins_found_on_disk.add(plugin_name)
             version = str(version_attr).strip()
             author = str(author_attr).strip()
-            description = inspect.getdoc(plugin_class) or "No description available."
+            description = (
+                getattr(plugin_class, "description", "")
+                or inspect.getdoc(plugin_class)
+                or "No description available."
+            )
             description = " ".join(description.strip().split())
 
             current_config_entry = self.plugin_config.get(plugin_name)
@@ -613,6 +617,23 @@ class PluginManager:
                         f"Dispatching 'on_load' event to plugin '{plugin_name}'."
                     )
                     self.dispatch_event(instance, "on_load")
+
+                    # Register methods decorated with @plugin_event
+                    try:
+                        for method_name, method in inspect.getmembers(
+                            instance, predicate=inspect.ismethod
+                        ):
+                            event_name = getattr(method, "_plugin_event_name", None)
+                            if event_name:
+                                logger.debug(
+                                    f"Auto-registering listener for custom event '{event_name}' on plugin '{plugin_name}'."
+                                )
+                                instance.api.listen_for_event(event_name, method)
+                    except Exception as e_event:
+                        logger.error(
+                            f"Error auto-registering @plugin_event listeners for plugin '{plugin_name}': {e_event}",
+                            exc_info=True,
+                        )
 
                     # Collect FastAPI routers
                     try:

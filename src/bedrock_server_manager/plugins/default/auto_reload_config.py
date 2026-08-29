@@ -17,7 +17,9 @@ class AutoReloadPlugin(PluginBase):
     """
 
     version = "1.1.1"
+    description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."
     author = "dmedina559"
+    name = "Auto Reload Config"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
@@ -47,6 +49,9 @@ class AutoReloadPlugin(PluginBase):
 
     def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""
+        if not self.get_plugin_setting("enable_auto_reload", default=True):
+            self.logger.info("Auto reload is disabled in plugin settings.")
+            return
         if self._is_server_running(server_name):
             try:
                 self.logger.info(

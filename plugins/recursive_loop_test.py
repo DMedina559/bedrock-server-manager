@@ -48,6 +48,9 @@ class RecursiveLoopPlugin(PluginBase):
     """
 
     version = "1.1.0"
+    author = "dmedina559"
+    description = "Tests the PluginManager's stack-based re-entrancy guard using a 'before_server_start' -> 'before_backup' -> 'before_server_start' event chain."
+    name = "Recursive Loop Test"
 
     def on_load(self):
         self.logger.info(

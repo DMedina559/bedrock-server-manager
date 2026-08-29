@@ -17,7 +17,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     """
 
     version = "1.1.1"
+    description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
+    name = "Server Lifecycle Notifications"
 
     def on_load(self) -> None:
         """Initializes default delays and logs plugin activation."""

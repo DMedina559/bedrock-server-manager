@@ -20,6 +20,9 @@ class PingPlugin(PluginBase):
     """
 
     version = "1.1.0"
+    author = "dmedina559"
+    description = "A plugin that demonstrates how to send custom events to other plugins. It sends a 'pingplugin:ping' event after a server successfully starts."
+    name = "Ping Test"
 
     def on_load(self):
         """

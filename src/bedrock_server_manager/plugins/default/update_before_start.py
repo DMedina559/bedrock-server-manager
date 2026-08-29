@@ -18,7 +18,9 @@ class AutoupdatePlugin(PluginBase):
     """
 
     version = "1.1.1"
+    description = "Automatically updates a server to the latest version before it starts. This plugin checks for a server-specific `autoupdate: true` setting in its configuration."
     author = "dmedina559"
+    name = "Auto Update on Start"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""

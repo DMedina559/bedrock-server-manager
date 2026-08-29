@@ -16,7 +16,11 @@ class DownloadPagePlugin(PluginBase):
     """Adds a download page to the web interface for server backups and content."""
 
     version = "1.0.0"
+    description = (
+        "Adds a download page to the web interface for server backups and content."
+    )
     author = "dmedina559"
+    name = "Download Page"
 
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Download Page Plugin"])

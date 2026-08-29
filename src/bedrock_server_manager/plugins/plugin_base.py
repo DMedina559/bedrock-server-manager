@@ -15,7 +15,7 @@ of the server manager.
 from abc import ABC, abstractmethod
 from logging import Logger
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List, cast
 
 from .api_bridge import AppAPI
 
@@ -57,8 +57,10 @@ class PluginBase(ABC):
     # If not defined by a subclass, it will default to "N/A" during instantiation,
     # but the PluginManager's synchronization step enforces its presence for a plugin
     # to be considered valid and loadable.
+    name: str = "N/A"  # Optional class attribute for a friendly display name.
     version: str = "N/A"  # Default placeholder, should be overridden.
     author: str = "N/A"  # Optional class attribute for plugin author information.
+    description: str = ""  # Optional class attribute for plugin description.
 
     def __init__(self, plugin_name: str, api: AppAPI, logger: Logger):
         """Initializes the plugin instance.
@@ -78,7 +80,9 @@ class PluginBase(ABC):
                 that is scoped to this plugin. Log messages sent via ``self.logger``
                 will automatically be prefixed with the plugin's context.
         """
-        self.name: str = plugin_name
+        # Use class property name if provided, else fallback to module name
+        class_name = getattr(self.__class__, "name", "N/A")
+        self.name: str = class_name if class_name != "N/A" else plugin_name
         self.api: AppAPI = api
         self.logger: Logger = logger
 
@@ -101,6 +105,39 @@ class PluginBase(ABC):
         # This is an INFO level log as it's a significant lifecycle event for the plugin.
         self.logger.info(
             f"Plugin '{self.name}' v{self.version} initialized and active."
+        )
+
+    def get_plugin_setting(self, key: str, default: Any = None) -> Any:
+        """Retrieves a setting specific to this plugin.
+
+        Args:
+            key (str): The setting key.
+            default (Any): The default value to return if the setting is not found.
+
+        Returns:
+            Any: The setting value or the default.
+        """
+        full_key = f"plugins.{self.name}.{key}"
+        result = self.api.get_global_setting(key=full_key)
+        if result and result.get("status") == "success":
+            value = result.get("value")
+            if value is not None:
+                return value
+        return default
+
+    def set_plugin_setting(self, key: str, value: Any) -> Dict[str, Any]:
+        """Saves a setting specific to this plugin.
+
+        Args:
+            key (str): The setting key.
+            value (Any): The value to save.
+
+        Returns:
+            Dict[str, Any]: The result of the save operation.
+        """
+        full_key = f"plugins.{self.name}.{key}"
+        return cast(
+            Dict[str, Any], self.api.set_global_setting(key=full_key, value=value)
         )
 
     # --- Plugin Lifecycle Hooks ---

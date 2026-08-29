@@ -8,6 +8,7 @@ which sends this event.
 """
 
 from bedrock_server_manager import PluginBase
+from bedrock_server_manager.plugins import plugin_event
 
 
 class PongPlugin(PluginBase):
@@ -17,6 +18,9 @@ class PongPlugin(PluginBase):
     """
 
     version = "1.1.0"
+    author = "dmedina559"
+    description = "A plugin that demonstrates how to listen for and handle custom events sent by other plugins. It specifically listens for 'pingplugin:ping'."
+    name = "Pong Test"
 
     def on_load(self):
         """
@@ -32,8 +36,8 @@ class PongPlugin(PluginBase):
         # The first argument is the event name (string).
         # The second argument is the callback method that will be invoked when the event occurs.
         # It's good practice to namespace event names, e.g., "source_plugin_name:event_description".
-        self.api.listen_for_event("pingplugin:ping", self.handle_ping_event)
 
+    @plugin_event("pingplugin:ping")
     def handle_ping_event(self, *args, **kwargs):
         """
         Callback method for the 'pingplugin:ping' custom event.

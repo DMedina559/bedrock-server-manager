@@ -17,7 +17,9 @@ class AutoBackupOnStart(PluginBase):
     """
 
     version = "1.1.1"
+    description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
+    name = "Auto Backup On Start"
 
     def on_load(self):
         """Logs a message when the plugin is loaded."""
@@ -29,6 +31,10 @@ class AutoBackupOnStart(PluginBase):
         """
         Triggers a full backup of the server before it starts.
         """
+        if not self.get_plugin_setting("enable_backup_on_start", default=True):
+            self.logger.info("Backup on start is disabled in plugin settings.")
+            return
+
         server_name = kwargs.get("server_name")
         if not server_name:
             return

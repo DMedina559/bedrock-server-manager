@@ -73,6 +73,9 @@ class NestedDifferentServerStartPlugin(PluginBase):
     """
 
     version = "1.1.0"
+    author = "dmedina559"
+    description = "Tests that the granular re-entrancy guard allows nested event dispatches for the same event type but different identifying parameters (e.g., different server names)."
+    name = "Nested Different Server Start"
 
     def on_load(self):
         global _server_b_triggered_by_this_plugin

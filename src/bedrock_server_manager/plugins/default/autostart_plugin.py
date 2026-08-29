@@ -11,7 +11,11 @@ class AutostartServers(PluginBase):
     """
 
     version = "1.0.2"
+    description = (
+        "Starts all servers with the autostart setting set to true on manager startup."
+    )
     author = "dmedina559"
+    name = "Auto Start Servers"
 
     def on_load(self):
         """

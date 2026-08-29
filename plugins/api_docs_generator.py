@@ -15,6 +15,9 @@ class APIDocsGenerator(PluginBase):
     """
 
     version = "1.1.0"
+    author = "dmedina559"
+    description = "A utility plugin that automatically generates Markdown documentation for all registered plugin API functions."
+    name = "API Docs Generator"
 
     def on_load(self):
         self.logger.info(
