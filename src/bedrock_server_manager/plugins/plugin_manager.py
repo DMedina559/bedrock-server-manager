@@ -1076,7 +1076,7 @@ class PluginManager:
             )
         )
 
-    def trigger_event(self, event: str, *args: Any, **kwargs: Any):
+    def trigger_event(self, event_name: str, *args: Any, **kwargs: Any):
         """Triggers a standard application event on all loaded plugins.
 
         This method iterates through all currently loaded and active plugins
@@ -1090,7 +1090,7 @@ class PluginManager:
         same call stack.
 
         Args:
-            event (str): The name of the event to trigger (e.g., "before_server_start").
+            event_name (str): The name of the event to trigger (e.g., "before_server_start").
             *args (Any): Positional arguments to pass to each plugin's event handler.
             **kwargs (Any): Keyword arguments to pass to each plugin's event handler.
                        Some of these may be used by :meth:`._generate_event_key`
@@ -1099,24 +1099,24 @@ class PluginManager:
         if not hasattr(_event_context, "stack"):
             _event_context.stack = []
 
-        current_event_key = self._generate_event_key(event, **kwargs)
+        current_event_key = self._generate_event_key(event_name, **kwargs)
 
         if current_event_key in _event_context.stack:
             logger.debug(
-                f"Skipping recursive trigger of standard event '{event}' (key: '{current_event_key}'). "
+                f"Skipping recursive trigger of standard event '{event_name}' (key: '{current_event_key}'). "
                 f"Event key is already in the processing stack: {_event_context.stack}"
             )
             return
 
         _event_context.stack.append(current_event_key)
         logger.debug(
-            f"Dispatching standard event '{event}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
+            f"Dispatching standard event '{event_name}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
             f"Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
         )
 
         try:
             for plugin_instance in list(self.plugins):  # Iterate over a copy
-                self.dispatch_event(plugin_instance, event, *args, **kwargs)
+                self.dispatch_event(plugin_instance, event_name, *args, **kwargs)
         finally:
             if hasattr(_event_context, "stack") and _event_context.stack:
                 # Ensure we pop the exact key we added, in case of complex scenarios,
@@ -1143,42 +1143,44 @@ class PluginManager:
                         )
 
             logger.debug(
-                f"Finished dispatching standard event '{event}' (key: '{current_event_key}'). "
+                f"Finished dispatching standard event '{event_name}' (key: '{current_event_key}'). "
                 f"Stack after pop: {getattr(_event_context, 'stack', [])}"
             )
 
-    async def trigger_event_async(self, event: str, *args: Any, **kwargs: Any):
+    async def trigger_event_async(self, event_name: str, *args: Any, **kwargs: Any):
         """Asynchronously triggers a standard application event on all loaded plugins.
 
         This method works identically to `trigger_event`, but correctly handles and awaits
         asynchronous event handlers in plugins using `dispatch_event_async`.
 
         Args:
-            event (str): The name of the event to trigger.
+            event_name (str): The name of the event to trigger.
             *args (Any): Positional arguments to pass to each plugin's event handler.
             **kwargs (Any): Keyword arguments to pass to each plugin's event handler.
         """
         if not hasattr(_event_context, "stack"):
             _event_context.stack = []
 
-        current_event_key = self._generate_event_key(event, **kwargs)
+        current_event_key = self._generate_event_key(event_name, **kwargs)
 
         if current_event_key in _event_context.stack:
             logger.debug(
-                f"Skipping recursive trigger of standard async event '{event}' (key: '{current_event_key}'). "
+                f"Skipping recursive trigger of standard async event '{event_name}' (key: '{current_event_key}'). "
                 f"Event key is already in the processing stack: {_event_context.stack}"
             )
             return
 
         _event_context.stack.append(current_event_key)
         logger.debug(
-            f"Dispatching standard async event '{event}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
+            f"Dispatching standard async event '{event_name}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
             f"Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
         )
 
         try:
             for plugin_instance in list(self.plugins):  # Iterate over a copy
-                await self.dispatch_event_async(plugin_instance, event, *args, **kwargs)
+                await self.dispatch_event_async(
+                    plugin_instance, event_name, *args, **kwargs
+                )
         finally:
             if hasattr(_event_context, "stack") and _event_context.stack:
                 if _event_context.stack[-1] == current_event_key:
@@ -1198,7 +1200,7 @@ class PluginManager:
                         )
 
             logger.debug(
-                f"Finished dispatching standard async event '{event}' (key: '{current_event_key}'). "
+                f"Finished dispatching standard async event '{event_name}' (key: '{current_event_key}'). "
                 f"Stack after pop: {getattr(_event_context, 'stack', [])}"
             )
 
