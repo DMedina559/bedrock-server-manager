@@ -17,6 +17,7 @@ from typing import (
     overload,
 )
 
+from .cancellable_event import CancellableEvent
 from .util import async_broadcast_event, broadcast_event
 
 logger = logging.getLogger(__name__)
@@ -63,10 +64,21 @@ def trigger_app_event(  # noqa: C901
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
+            cancellable_event = CancellableEvent()
+            event_kwargs["event"] = cancellable_event
 
             if before and app_context:
                 app_context.plugin_manager.trigger_event(before, **event_kwargs)
                 broadcast_event(app_context, before, event_kwargs)
+                if cancellable_event.is_cancelled:
+                    return cast(
+                        R,
+                        {
+                            "status": "canceled",
+                            "message": cancellable_event.cancel_reason
+                            or "Canceled by plugin",
+                        },
+                    )
 
             result = func(*args, **kwargs)
 
@@ -81,6 +93,8 @@ def trigger_app_event(  # noqa: C901
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
+            cancellable_event = CancellableEvent()
+            event_kwargs["event"] = cancellable_event
 
             if before and app_context:
                 if hasattr(app_context.plugin_manager, "trigger_event_async"):
@@ -90,6 +104,15 @@ def trigger_app_event(  # noqa: C901
                 else:
                     app_context.plugin_manager.trigger_event(before, **event_kwargs)
                 await async_broadcast_event(app_context, before, event_kwargs)
+                if cancellable_event.is_cancelled:
+                    return cast(
+                        R,
+                        {
+                            "status": "canceled",
+                            "message": cancellable_event.cancel_reason
+                            or "Canceled by plugin",
+                        },
+                    )
 
             result = await cast(Awaitable[R], func(*args, **kwargs))
 

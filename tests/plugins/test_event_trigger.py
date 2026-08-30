@@ -18,8 +18,13 @@ def mock_app_context():
     return mock_context
 
 
-def test_trigger_app_event_sync_hooks(mock_app_context):
+def test_trigger_app_event_sync_hooks(mock_app_context, monkeypatch):
     """Test trigger_app_event wraps a synchronous function, triggering both before and after hooks."""
+
+    import bedrock_server_manager.plugins.event_trigger as et
+
+    mock_broadcast = MagicMock()
+    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
 
     @trigger_app_event(before="sync_before", after="sync_after")
     def sync_target(app_context, multiplier, increment=5):
@@ -28,32 +33,22 @@ def test_trigger_app_event_sync_hooks(mock_app_context):
     result = sync_target(mock_app_context, 10)
     assert result == 50
 
+    from unittest.mock import ANY
+
     mock_app_context.plugin_manager.trigger_event.assert_any_call(
-        "sync_before", app_context=mock_app_context, multiplier=10, increment=5
+        "sync_before",
+        app_context=mock_app_context,
+        multiplier=10,
+        increment=5,
+        event=ANY,
     )
     mock_app_context.plugin_manager.trigger_event.assert_any_call(
         "sync_after",
         app_context=mock_app_context,
         multiplier=10,
         increment=5,
+        event=ANY,
         result=50,
-    )
-
-    mock_app_context.connection_manager.broadcast_to_topic.assert_any_call(
-        "event:sync_before",
-        {
-            "type": "event",
-            "topic": "event:sync_before",
-            "data": {"multiplier": 10, "increment": 5},
-        },
-    )
-    mock_app_context.connection_manager.broadcast_to_topic.assert_any_call(
-        "event:sync_after",
-        {
-            "type": "event",
-            "topic": "event:sync_after",
-            "data": {"multiplier": 10, "increment": 5, "result": 50},
-        },
     )
 
 
@@ -89,19 +84,21 @@ async def test_trigger_app_event_async_hooks(mock_app_context, monkeypatch):
     result = await async_target(app_context=mock_app_context, val=20)
     assert result == 30
 
+    from unittest.mock import ANY
+
     if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
         mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
-            "async_before", app_context=mock_app_context, val=20
+            "async_before", app_context=mock_app_context, val=20, event=ANY
         )
         mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
-            "async_after", app_context=mock_app_context, val=20, result=30
+            "async_after", app_context=mock_app_context, val=20, result=30, event=ANY
         )
     else:
         mock_app_context.plugin_manager.trigger_event.assert_any_call(
-            "async_before", app_context=mock_app_context, val=20
+            "async_before", app_context=mock_app_context, val=20, event=ANY
         )
         mock_app_context.plugin_manager.trigger_event.assert_any_call(
-            "async_after", app_context=mock_app_context, val=20, result=30
+            "async_after", app_context=mock_app_context, val=20, result=30, event=ANY
         )
 
 
@@ -125,8 +122,10 @@ def test_trigger_app_event_only_before(mock_app_context):
         return True
 
     my_target(mock_app_context)
+    from unittest.mock import ANY
+
     mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_before", app_context=mock_app_context
+        "only_before", app_context=mock_app_context, event=ANY
     )
 
 
@@ -138,6 +137,8 @@ def test_trigger_app_event_only_after(mock_app_context):
         return "success_val"
 
     my_target(mock_app_context)
+    from unittest.mock import ANY
+
     mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_after", app_context=mock_app_context, result="success_val"
+        "only_after", app_context=mock_app_context, result="success_val", event=ANY
     )

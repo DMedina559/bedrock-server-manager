@@ -32,6 +32,8 @@ def broadcast_event(app_context: Any, event_name: str, event_data: dict):
         del sanitized_data["app_context"]
     if "current_user" in sanitized_data:
         sanitized_data["current_user"] = str(sanitized_data["current_user"])
+    if "event" in sanitized_data:
+        del sanitized_data["event"]
 
     message = {
         "type": "event",
@@ -58,6 +60,8 @@ async def async_broadcast_event(app_context: Any, event_name: str, event_data: d
         del sanitized_data["app_context"]
     if "current_user" in sanitized_data:
         sanitized_data["current_user"] = str(sanitized_data["current_user"])
+    if "event" in sanitized_data:
+        del sanitized_data["event"]
 
     message = {
         "type": "event",
