@@ -79,9 +79,7 @@ def test_reload_plugins_success(app_context: AppContext):
 
 def test_trigger_external_plugin_event_api_success(app_context: AppContext):
     """Test triggering external plugin event successfully."""
-    with patch.object(
-        app_context.plugin_manager, "trigger_custom_plugin_event"
-    ) as mock_trigger:
+    with patch.object(app_context.plugin_manager, "trigger_event") as mock_trigger:
         result = trigger_external_plugin_event_api(
             "test:event", app_context, {"data": 123}
         )
@@ -89,7 +87,7 @@ def test_trigger_external_plugin_event_api_success(app_context: AppContext):
         assert result["status"] == "success"
         assert "test:event" in result["message"]
         mock_trigger.assert_called_once_with(
-            "test:event", "external_api_trigger", data=123
+            "test:event", data=123, _triggering_plugin="external_api_trigger"
         )
 
 

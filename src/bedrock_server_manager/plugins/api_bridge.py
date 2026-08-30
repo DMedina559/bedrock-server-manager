@@ -365,30 +365,32 @@ class AppAPI:
         # Note: The PluginManager's method will log the success/failure of registration.
 
     def send_event(self, event_name: str, *args: Any, **kwargs: Any):
-        """Triggers a custom plugin event, notifying all registered listeners.
+        """Triggers an event, notifying all registered listeners and broadcasting to WebSockets.
 
-        This method allows a plugin to broadcast a custom event to other plugins
-        that have registered a listener for it using `listen_for_event()`.
-        The `PluginManager` handles the dispatch of this event to all
-        subscribed callbacks.
+        This method allows a plugin to trigger an event that other plugins
+        can listen for using `@plugin_event("event_name")`. It routes directly
+        through the core application's event dispatcher.
 
         Args:
-            event_name (str): The unique name of the custom event to trigger.
-                This should match the `event_name` used by listening plugins.
-            *args (Any): Positional arguments to pass to the event listeners'
-                callback functions.
-            **kwargs (Any): Keyword arguments to pass to the event listeners'
-                callback functions.
+            event_name (str): The name of the event to trigger.
+            *args (Any): Positional arguments to pass to listeners.
+            **kwargs (Any): Keyword arguments to pass to listeners.
         """
         logger.debug(
-            f"Plugin '{self._plugin_name}' is attempting to send custom event "
+            f"Plugin '{self._plugin_name}' is attempting to send event "
             f"'{event_name}' with args: {args}, kwargs: {kwargs}."
         )
         assert (
             self._plugin_manager is not None
         ), "PluginManager was not found in AppContext!"
-        # Delegate the actual event triggering to the PluginManager
-        self._plugin_manager.trigger_custom_plugin_event(
-            event_name, self._plugin_name, *args, **kwargs
-        )
-        # Note: The PluginManager's method will log the details of the event dispatch.
+
+        # Include the triggering plugin name in the event data
+        kwargs["_triggering_plugin"] = self._plugin_name
+
+        # Delegate the event triggering to the unified PluginManager
+        self._plugin_manager.trigger_event(event_name, *args, **kwargs)
+
+        # Broadcast the custom event via WebSockets
+        from bedrock_server_manager.plugins.util import broadcast_event
+
+        broadcast_event(self.app_context, event_name, kwargs)

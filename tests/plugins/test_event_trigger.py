@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -59,18 +58,37 @@ def test_trigger_app_event_sync_hooks(mock_app_context):
 
 
 @pytest.mark.asyncio
-async def test_trigger_app_event_async_hooks(mock_app_context):
+async def test_trigger_app_event_async_hooks(mock_app_context, monkeypatch):
     """Test trigger_app_event successfully wraps async coroutines awaiting correctly."""
 
-    @trigger_app_event(before="async_before", after="async_after")
+    mock_broadcast = MagicMock()
+
+    async def mock_async_broadcast(*args, **kwargs):
+        pass
+
+    import bedrock_server_manager.plugins.event_trigger as et
+
+    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
+    monkeypatch.setattr(
+        et, "async_broadcast_event", mock_async_broadcast, raising=False
+    )
+
+    @et.trigger_app_event(before="async_before", after="async_after")
     async def async_target(app_context, val):
+        import asyncio
+
         await asyncio.sleep(0)
         return val + 10
 
-    result = await async_target(mock_app_context, 20)
+    # Ensure trigger_event_async is properly mocked if it exists
+    if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
+        from unittest.mock import AsyncMock
+
+        mock_app_context.plugin_manager.trigger_event_async = AsyncMock()
+
+    result = await async_target(app_context=mock_app_context, val=20)
     assert result == 30
 
-    # In tests, if trigger_event_async is available, it should be called
     if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
         mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
             "async_before", app_context=mock_app_context, val=20

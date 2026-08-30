@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, plugin_event
 from bedrock_server_manager.web import get_admin_user
 
 # Define allowed extensions
@@ -27,6 +27,7 @@ class ContentUploaderPlugin(PluginBase):
     author = "dmedina559"
     name = "Content Uploader"
 
+    @plugin_event("on_load")
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
         self._define_routes()
@@ -242,6 +243,7 @@ class ContentUploaderPlugin(PluginBase):
                 status_code=200 if event_status == "success" else 400,
             )
 
+    @plugin_event("on_unload")
     def on_unload(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 

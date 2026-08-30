@@ -6,7 +6,7 @@ Plugin to send in-game notifications before world operations like export, import
 import asyncio
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, plugin_event
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -19,6 +19,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
     description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
     author = "dmedina559"
 
+    @plugin_event("on_load")
     def on_load(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info("Plugin loaded. Will send notifications for world operations.")
@@ -66,6 +67,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} warning."
             )
 
+    @plugin_event("before_world_export")
     async def before_world_export(self, **kwargs: Any):
         """Notifies players before a world export begins."""
 
@@ -85,6 +87,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                     "world export",
                 )
 
+    @plugin_event("before_world_import")
     async def before_world_import(self, **kwargs: Any):
         """Notifies players before a world import begins."""
 
@@ -104,6 +107,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                     "world import",
                 )
 
+    @plugin_event("before_world_reset")
     async def before_world_reset(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
 

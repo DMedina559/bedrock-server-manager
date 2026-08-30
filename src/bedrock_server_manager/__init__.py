@@ -14,7 +14,7 @@ from .core import (
 )
 
 # Plugin system essentials
-from .plugins import PluginBase, PluginManager
+from .plugins import PluginBase, PluginManager, plugin_event
 
 # --- Version ---
 __version__ = get_installed_version()
@@ -31,6 +31,7 @@ __all__ = [
     # Plugins
     "PluginBase",
     "PluginManager",
+    "plugin_event",
     # Errors
     "errors",
     # Version

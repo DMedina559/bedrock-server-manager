@@ -2,7 +2,7 @@
 import asyncio
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, plugin_event
 
 
 class AutostartServers(PluginBase):
@@ -17,6 +17,7 @@ class AutostartServers(PluginBase):
     author = "dmedina559"
     name = "Auto Start Servers"
 
+    @plugin_event("on_load")
     def on_load(self):
         """
         This event is called when the plugin is loaded by the manager.
@@ -25,6 +26,7 @@ class AutostartServers(PluginBase):
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
+    @plugin_event("on_manager_startup")
     async def on_manager_startup(self, **kwargs: Any):
 
         # Run API calls in thread to not block startup loop

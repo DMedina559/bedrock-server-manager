@@ -3,7 +3,6 @@
 Provides a decorator for triggering plugin events and broadcasting them.
 """
 
-import asyncio
 import functools
 import inspect
 import logging
@@ -18,25 +17,9 @@ from typing import (
     overload,
 )
 
+from .util import async_broadcast_event, broadcast_event
+
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_for_json(data: Any) -> Any:
-    """
-    Recursively sanitizes data to make it JSON serializable.
-    Converts complex objects to their string representation.
-    """
-    if isinstance(data, (str, int, float, bool, type(None))):
-        return data
-    if isinstance(data, dict):
-        return {_sanitize_for_json(k): _sanitize_for_json(v) for k, v in data.items()}
-    if isinstance(data, (list, tuple)):
-        return [_sanitize_for_json(item) for item in data]
-    # For any other type, convert to string
-    try:
-        return str(data)
-    except Exception:
-        return f"<Unserializable object of type {type(data).__name__}>"
 
 
 P = ParamSpec("P")
@@ -76,56 +59,6 @@ def trigger_app_event(  # noqa: C901
             bound_args.apply_defaults()
             return dict(bound_args.arguments)
 
-        def _broadcast_event(app_context, event_name, event_data):
-            """Helper to broadcast event to websockets."""
-            if not app_context or not hasattr(app_context, "connection_manager"):
-                return
-
-            connection_manager = app_context.connection_manager
-            sanitized_data = _sanitize_for_json(event_data)
-
-            # Remove sensitive or unnecessary data before broadcasting
-            if "app_context" in sanitized_data:
-                del sanitized_data["app_context"]
-            if "current_user" in sanitized_data:
-                # You might want to keep the username, but remove the full object
-                sanitized_data["current_user"] = str(sanitized_data["current_user"])
-
-            message = {
-                "type": "event",
-                "topic": f"event:{event_name}",
-                "data": sanitized_data,
-            }
-
-            if app_context.loop and app_context.loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    connection_manager.broadcast_to_topic(
-                        f"event:{event_name}", message
-                    ),
-                    app_context.loop,
-                )
-
-        async def _async_broadcast_event(app_context, event_name, event_data):
-            """Async helper to broadcast event to websockets."""
-            if not app_context or not hasattr(app_context, "connection_manager"):
-                return
-
-            connection_manager = app_context.connection_manager
-            sanitized_data = _sanitize_for_json(event_data)
-
-            # Remove sensitive or unnecessary data before broadcasting
-            if "app_context" in sanitized_data:
-                del sanitized_data["app_context"]
-            if "current_user" in sanitized_data:
-                sanitized_data["current_user"] = str(sanitized_data["current_user"])
-
-            message = {
-                "type": "event",
-                "topic": f"event:{event_name}",
-                "data": sanitized_data,
-            }
-            await connection_manager.broadcast_to_topic(f"event:{event_name}", message)
-
         @functools.wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
@@ -133,14 +66,14 @@ def trigger_app_event(  # noqa: C901
 
             if before and app_context:
                 app_context.plugin_manager.trigger_event(before, **event_kwargs)
-                _broadcast_event(app_context, before, event_kwargs)
+                broadcast_event(app_context, before, event_kwargs)
 
             result = func(*args, **kwargs)
 
             if after and app_context:
                 event_kwargs["result"] = result
                 app_context.plugin_manager.trigger_event(after, **event_kwargs)
-                _broadcast_event(app_context, after, event_kwargs)
+                broadcast_event(app_context, after, event_kwargs)
 
             return result
 
@@ -156,7 +89,7 @@ def trigger_app_event(  # noqa: C901
                     )
                 else:
                     app_context.plugin_manager.trigger_event(before, **event_kwargs)
-                await _async_broadcast_event(app_context, before, event_kwargs)
+                await async_broadcast_event(app_context, before, event_kwargs)
 
             result = await cast(Awaitable[R], func(*args, **kwargs))
 
@@ -168,7 +101,7 @@ def trigger_app_event(  # noqa: C901
                     )
                 else:
                     app_context.plugin_manager.trigger_event(after, **event_kwargs)
-                await _async_broadcast_event(app_context, after, event_kwargs)
+                await async_broadcast_event(app_context, after, event_kwargs)
 
             return result
 

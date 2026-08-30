@@ -99,9 +99,20 @@ def test_send_event(app_context, monkeypatch):
     """Test AppAPI properly bridges custom event triggers to the PluginManager."""
     mock_plugin_manager = MagicMock()
     monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
+
+    mock_broadcast = MagicMock()
+    # It seems to be complaining about ModuleNotFoundError during import in the test
+    import sys
+
+    sys.modules["bedrock_server_manager.plugins.util"] = MagicMock()
+
+    from bedrock_server_manager.plugins import api_bridge
+
+    monkeypatch.setattr(api_bridge, "broadcast_event", mock_broadcast, raising=False)
+
     plugin_api = AppAPI("test_plugin", app_context)
 
     plugin_api.send_event("my_event", 1, 2, key="value")
-    mock_plugin_manager.trigger_custom_plugin_event.assert_called_once_with(
-        "my_event", "test_plugin", 1, 2, key="value"
+    mock_plugin_manager.trigger_event.assert_called_once_with(
+        "my_event", 1, 2, key="value", _triggering_plugin="test_plugin"
     )

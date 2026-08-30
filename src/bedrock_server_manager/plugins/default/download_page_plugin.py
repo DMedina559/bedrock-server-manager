@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, plugin_event
 from bedrock_server_manager.error import InvalidServerNameError
 from bedrock_server_manager.utils.server import core_validate_server_name_format
 from bedrock_server_manager.web import get_admin_user
@@ -22,6 +22,7 @@ class DownloadPagePlugin(PluginBase):
     author = "dmedina559"
     name = "Download Page"
 
+    @plugin_event("on_load")
     def on_load(self, **kwargs):
         self.router = APIRouter(tags=["Download Page Plugin"])
         self._define_routes()
@@ -367,6 +368,7 @@ class DownloadPagePlugin(PluginBase):
             },
         }
 
+    @plugin_event("on_unload")
     def on_unload(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 

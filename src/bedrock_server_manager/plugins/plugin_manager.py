@@ -77,7 +77,7 @@ class PluginManager:
 
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
-        self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
+        self._event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
         self.native_ui_render_tag = (
             "plugin-ui-native"  # Tag for Native UI rendering in FastAPI
@@ -736,7 +736,7 @@ class PluginManager:
             1.  Dispatching the ``on_unload`` event to all currently loaded plugins
                 (via :meth:`.dispatch_event`).
             2.  Clearing all registered custom event listeners from
-                ``self.custom_event_listeners`` (as the plugins that registered
+                ``self._event_listeners`` (as the plugins that registered
                 them are being unloaded).
         """
         logger.info("--- Unloading all plugins ---")
@@ -755,11 +755,11 @@ class PluginManager:
         else:
             logger.info("No plugins were active to unload.")
 
-        if self.custom_event_listeners:
+        if self._event_listeners:
             logger.info(
-                f"Clearing {sum(len(v) for v in self.custom_event_listeners.values())} custom plugin event listeners from {len(self.custom_event_listeners)} event types."
+                f"Clearing {sum(len(v) for v in self._event_listeners.values())} custom plugin event listeners from {len(self._event_listeners)} event types."
             )
-            self.custom_event_listeners.clear()
+            self._event_listeners.clear()
         else:
             logger.info("No custom plugin event listeners to clear.")
 
@@ -814,116 +814,31 @@ class PluginManager:
     def register_plugin_event_listener(
         self, event_name: str, callback: Callable, listening_plugin_name: str
     ):
-        """Registers a callback function from a plugin to listen for a custom event.
+        """Registers a callback function from a plugin to listen for an event.
 
         Args:
-            event_name (str): The name of the custom event to listen for.
-                Must be in the format 'namespace:event_name' (e.g., ``myplugin:custom_signal``).
-                Validation is performed by :meth:`._is_valid_custom_event_name`.
+            event_name (str): The name of the event to listen for.
             callback (Callable): The function/method in the listening plugin
                 that will be called when the specified event is triggered.
             listening_plugin_name (str): The name of the plugin registering
                 the listener. Used for logging and context.
         """
-        if not self._is_valid_custom_event_name(event_name):
-            logger.error(
-                f"Plugin '{listening_plugin_name}' attempted to register listener for custom event "
-                f"'{event_name}' which does not follow the 'namespace:event_name' format. "
-                f"Registration failed."
-            )
-            return
-
         if not callable(callback):
             logger.error(
                 f"Plugin '{listening_plugin_name}' attempted to register a non-callable object "
-                f"as a listener for custom event '{event_name}'. Registration failed."
+                f"as a listener for event '{event_name}'. Registration failed."
             )
             return
 
-        self.custom_event_listeners.setdefault(event_name, [])
-        self.custom_event_listeners[event_name].append(
-            (listening_plugin_name, callback)
-        )
+        self._event_listeners.setdefault(event_name, [])
+        self._event_listeners[event_name].append((listening_plugin_name, callback))
         logger.info(
             f"Plugin '{listening_plugin_name}' successfully registered a listener "
-            f"for custom event '{event_name}' with callback '{callback.__name__}'."
+            f"for event '{event_name}' with callback '{callback.__name__}'."
         )
         logger.debug(
-            f"Current listeners for '{event_name}': {len(self.custom_event_listeners[event_name])}"
+            f"Current listeners for '{event_name}': {len(self._event_listeners[event_name])}"
         )
-
-    def trigger_custom_plugin_event(
-        self, event_name: str, triggering_plugin_name: str, *args, **kwargs
-    ):
-        """Triggers a custom event, invoking all registered listener callbacks.
-
-        This method manages the dispatch of custom events sent by plugins (or via
-        the external API trigger). It includes re-entrancy protection using
-        ``_custom_event_context`` (a :class:`threading.local` stack) to prevent
-        infinite loops if a listener, in turn, triggers the same event.
-
-        The ``_triggering_plugin`` keyword argument, containing the name of the
-        plugin (or "external_api_trigger") that initiated the event, is automatically
-        added to the `kwargs` passed to listener callbacks.
-
-        Args:
-            event_name (str): The name of the custom event being triggered.
-                Must be in the format 'namespace:event_name' (e.g., ``myplugin:data_updated``).
-                Validated by :meth:`._is_valid_custom_event_name`.
-            triggering_plugin_name (str): The name of the plugin that initiated
-                this event.
-            *args (Any): Positional arguments to pass to the listener callbacks.
-            **kwargs (Any): Keyword arguments to pass to the listener callbacks.
-        """
-        if not self._is_valid_custom_event_name(event_name):
-            logger.error(
-                f"Plugin '{triggering_plugin_name}' attempted to trigger custom event "
-                f"'{event_name}' which does not follow the 'namespace:event_name' format. "
-                f"Event trigger aborted."
-            )
-            return
-
-        if not hasattr(_custom_event_context, "stack"):
-            _custom_event_context.stack = []
-
-        if event_name in _custom_event_context.stack:
-            logger.debug(
-                f"Skipping recursive trigger of custom event '{event_name}' by plugin "
-                f"'{triggering_plugin_name}'. Event is already in the processing stack: {_custom_event_context.stack}"
-            )
-            return
-
-        _custom_event_context.stack.append(event_name)
-        logger.info(
-            f"Plugin '{triggering_plugin_name}' is triggering custom event '{event_name}'. "
-            f"Args: {args}, Kwargs: {kwargs}. Current stack: {_custom_event_context.stack}"
-        )
-
-        try:
-            listeners_for_event = self.custom_event_listeners.get(event_name, [])
-            logger.debug(
-                f"Found {len(listeners_for_event)} registered listeners for custom event '{event_name}'."
-            )
-            for listener_plugin_name, callback in listeners_for_event:
-                logger.debug(
-                    f"Dispatching custom event '{event_name}' (triggered by '{triggering_plugin_name}') "
-                    f"to listener in plugin '{listener_plugin_name}' (callback: '{callback.__name__}')."
-                )
-                try:
-                    callback(*args, **kwargs, _triggering_plugin=triggering_plugin_name)
-                except Exception as e:
-                    logger.error(
-                        f"Error encountered in plugin '{listener_plugin_name}' while handling custom event "
-                        f"'{event_name}' (triggered by '{triggering_plugin_name}'). Callback: '{callback.__name__}'. Error: {e}",
-                        exc_info=True,
-                    )
-        finally:
-            if hasattr(_custom_event_context, "stack") and _custom_event_context.stack:
-                _custom_event_context.stack.pop()
-            logger.debug(
-                f"Finished processing custom event '{event_name}'. "
-                f"Stack after pop: {getattr(_custom_event_context, 'stack', [])}"
-            )
 
     def reload(self):
         """Unloads all currently active plugins and then reloads all plugins.
@@ -934,7 +849,7 @@ class PluginManager:
             1.  Dispatching the ``on_unload`` event to all currently loaded plugins
                 (via :meth:`.dispatch_event`).
             2.  Clearing all registered custom event listeners from
-                ``self.custom_event_listeners`` (as the plugins that registered
+                ``self._event_listeners`` (as the plugins that registered
                 them are being unloaded).
             3.  Calling :meth:`.load_plugins` to re-run the discovery, synchronization,
                 and loading process for all plugins based on the current disk state
@@ -956,11 +871,11 @@ class PluginManager:
         else:
             logger.info("No plugins were active to unload.")
 
-        if self.custom_event_listeners:
+        if self._event_listeners:
             logger.info(
-                f"Clearing {sum(len(v) for v in self.custom_event_listeners.values())} custom plugin event listeners from {len(self.custom_event_listeners)} event types."
+                f"Clearing {sum(len(v) for v in self._event_listeners.values())} custom plugin event listeners from {len(self._event_listeners)} event types."
             )
-            self.custom_event_listeners.clear()
+            self._event_listeners.clear()
         else:
             logger.info("No custom plugin event listeners to clear.")
 
@@ -978,34 +893,62 @@ class PluginManager:
         logger.info("--- Plugin Reload Process Complete ---")
 
     def dispatch_event(self, target_plugin: PluginBase, event: str, *args, **kwargs):
-        """Dispatches a single standard application event to a specific plugin instance.
+        """Dispatches an event to a specific plugin instance.
 
-        This method attempts to call the method corresponding to `event` on the
-        `target_plugin` instance, passing ``*args`` and ``**kwargs``.
-        If the `target_plugin` does not have a method for the specified `event`,
-        it is logged at DEBUG level and skipped. Any exceptions raised by the
-        plugin's event handler are caught and logged as errors.
+        Executes listeners registered via `@plugin_event` for this specific event
+        and the wildcard `*` event. It also includes backwards compatibility for
+        legacy plugins that override `before_...`, `after_...` or `on_any_event`
+        methods directly.
 
         Args:
-            target_plugin (:class:`.PluginBase`): The plugin instance to which the event
-                should be dispatched.
-            event (str): The name of the event method to call on the plugin
-                (e.g., "on_load", "before_server_start").
-            *args (Any): Positional arguments to pass to the event handler method.
-            **kwargs (Any): Keyword arguments to pass to the event handler method.
+            target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
+            event (str): The name of the event.
+            *args (Any): Positional arguments to pass to the event handlers.
+            **kwargs (Any): Keyword arguments to pass to the event handlers.
         """
-        plugin_class = type(target_plugin)
+        # 1. Execute @plugin_event listeners for this event name and wildcard
+        for event_name_to_check in (event, "*"):
+            listeners = self._event_listeners.get(event_name_to_check, [])
+            for listener_plugin_name, callback in listeners:
+                if listener_plugin_name == target_plugin.name:
+                    logger.debug(
+                        f"Dispatching event '{event}' to plugin '{target_plugin.name}' "
+                        f"(callback: '{callback.__name__}'). Args: {args}, Kwargs: {kwargs}"
+                    )
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            if (
+                                self.app_context.loop
+                                and self.app_context.loop.is_running()
+                            ):
+                                import asyncio
 
+                                asyncio.run_coroutine_threadsafe(
+                                    callback(*args, **kwargs), self.app_context.loop
+                                )
+                            else:
+                                logger.warning(
+                                    f"Event '{event}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
+                                )
+                        else:
+                            callback(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{target_plugin.name}' handling event '{event}': {e}",
+                            exc_info=True,
+                        )
+
+        # 2. Legacy backwards compatibility: check if method exists directly on plugin
+        plugin_class = type(target_plugin)
         if hasattr(target_plugin, event):
-            # Check if the method is actually overridden from the base class
             class_method = getattr(plugin_class, event, None)
             base_method = getattr(PluginBase, event, None)
 
             if class_method is not base_method:
                 handler_method = getattr(target_plugin, event)
                 logger.debug(
-                    f"Dispatching standard event '{event}' to plugin '{target_plugin.name}' "
-                    f"(handler: '{handler_method.__name__}'). Args: {args}, Kwargs: {kwargs}"
+                    f"Dispatching legacy event '{event}' to plugin '{target_plugin.name}' "
+                    f"(handler: '{handler_method.__name__}')."
                 )
                 try:
                     if inspect.iscoroutinefunction(handler_method):
@@ -1017,22 +960,18 @@ class PluginManager:
                             )
                         else:
                             logger.warning(
-                                f"Event '{event}' on plugin '{target_plugin.name}' is an async function, but no event loop is running. "
-                                f"Consider using an asynchronous trigger instead."
+                                f"Legacy event '{event}' is async but no loop running."
                             )
                     else:
                         handler_method(*args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error encountered in plugin '{target_plugin.name}' during event handler "
-                        f"'{event}': {e}",
+                        f"Error in legacy event handler '{event}' on '{target_plugin.name}': {e}",
                         exc_info=True,
                     )
 
-        # Dispatch to the wildcard 'on_any_event' handler, if implemented (default in base is pass)
-        if getattr(plugin_class, "on_any_event", None) is not getattr(
-            PluginBase, "on_any_event", None
-        ):
+        # Legacy backwards compatibility for on_any_event
+        if hasattr(target_plugin, "on_any_event"):
             try:
                 if inspect.iscoroutinefunction(target_plugin.on_any_event):
                     if self.app_context.loop and self.app_context.loop.is_running():
@@ -1042,37 +981,51 @@ class PluginManager:
                             target_plugin.on_any_event(event, *args, **kwargs),
                             self.app_context.loop,
                         )
-                    else:
-                        logger.warning(
-                            f"Wildcard event 'on_any_event' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
-                        )
                 else:
                     target_plugin.on_any_event(event, *args, **kwargs)
             except Exception as e:
                 logger.error(
-                    f"Error encountered in plugin '{target_plugin.name}' during wildcard event handler "
-                    f"'on_any_event' for event '{event}': {e}",
+                    f"Error in legacy on_any_event handler on '{target_plugin.name}': {e}",
                     exc_info=True,
                 )
 
     async def dispatch_event_async(
         self, target_plugin: PluginBase, event: str, *args, **kwargs
     ):
-        """Asynchronously dispatches a single standard application event to a specific plugin instance.
+        """Asynchronously dispatches an event to a specific plugin instance.
 
-        This method attempts to call the method corresponding to `event` on the
-        `target_plugin` instance, passing ``*args`` and ``**kwargs``. It correctly awaits
-        asynchronous handlers and executes synchronous handlers normally.
+        Executes listeners registered via `@plugin_event` for this specific event
+        and the wildcard `*` event. It also includes backwards compatibility for
+        legacy plugins.
 
         Args:
-            target_plugin (:class:`.PluginBase`): The plugin instance to which the event
-                should be dispatched.
-            event (str): The name of the event method to call on the plugin.
-            *args (Any): Positional arguments to pass to the event handler method.
-            **kwargs (Any): Keyword arguments to pass to the event handler method.
+            target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
+            event (str): The name of the event.
+            *args (Any): Positional arguments to pass.
+            **kwargs (Any): Keyword arguments to pass.
         """
-        plugin_class = type(target_plugin)
+        # 1. Execute @plugin_event listeners
+        for event_name_to_check in (event, "*"):
+            listeners = self._event_listeners.get(event_name_to_check, [])
+            for listener_plugin_name, callback in listeners:
+                if listener_plugin_name == target_plugin.name:
+                    logger.debug(
+                        f"Async dispatching event '{event}' to plugin '{target_plugin.name}' "
+                        f"(callback: '{callback.__name__}')."
+                    )
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            await callback(*args, **kwargs)
+                        else:
+                            callback(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{target_plugin.name}' handling async event '{event}': {e}",
+                            exc_info=True,
+                        )
 
+        # 2. Legacy backwards compatibility
+        plugin_class = type(target_plugin)
         if hasattr(target_plugin, event):
             class_method = getattr(plugin_class, event, None)
             base_method = getattr(PluginBase, event, None)
@@ -1080,8 +1033,7 @@ class PluginManager:
             if class_method is not base_method:
                 handler_method = getattr(target_plugin, event)
                 logger.debug(
-                    f"Async dispatching standard event '{event}' to plugin '{target_plugin.name}' "
-                    f"(handler: '{handler_method.__name__}'). Args: {args}, Kwargs: {kwargs}"
+                    f"Async dispatching legacy event '{event}' to plugin '{target_plugin.name}'."
                 )
                 try:
                     if inspect.iscoroutinefunction(handler_method):
@@ -1090,15 +1042,11 @@ class PluginManager:
                         handler_method(*args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error encountered in plugin '{target_plugin.name}' during async event handler "
-                        f"'{event}': {e}",
+                        f"Error in legacy async event '{event}' on '{target_plugin.name}': {e}",
                         exc_info=True,
                     )
 
-        # Dispatch to the wildcard 'on_any_event' handler, if implemented
-        if getattr(plugin_class, "on_any_event", None) is not getattr(
-            PluginBase, "on_any_event", None
-        ):
+        if hasattr(target_plugin, "on_any_event"):
             try:
                 if inspect.iscoroutinefunction(target_plugin.on_any_event):
                     await target_plugin.on_any_event(event, *args, **kwargs)
@@ -1106,8 +1054,7 @@ class PluginManager:
                     target_plugin.on_any_event(event, *args, **kwargs)
             except Exception as e:
                 logger.error(
-                    f"Error encountered in plugin '{target_plugin.name}' during async wildcard event handler "
-                    f"'on_any_event' for event '{event}': {e}",
+                    f"Error in legacy async on_any_event on '{target_plugin.name}': {e}",
                     exc_info=True,
                 )
 

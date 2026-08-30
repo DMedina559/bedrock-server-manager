@@ -177,7 +177,7 @@ def trigger_external_plugin_event_api(
     """
     Allows an external source (like a web route or CLI) to trigger a custom plugin event.
 
-    This function calls the `trigger_custom_plugin_event` method of the
+    This function calls the `trigger_event` method of the
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager` instance.
     The `triggering_plugin_name` argument for the core method is set to
     ``"external_api_trigger"`` to identify the source of this event.
@@ -209,8 +209,8 @@ def trigger_external_plugin_event_api(
     try:
         pm = app_context.plugin_manager
         actual_payload = payload if payload is not None else {}
-        pm.trigger_custom_plugin_event(
-            event_name, "external_api_trigger", **actual_payload
+        pm.trigger_event(
+            event_name, **actual_payload, _triggering_plugin="external_api_trigger"
         )
         logger.info(
             f"API: Custom plugin event '{event_name}' triggered successfully via external API."
