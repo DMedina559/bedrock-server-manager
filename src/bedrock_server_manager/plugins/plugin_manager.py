@@ -626,7 +626,7 @@ class PluginManager:
                             event_name = getattr(method, "_plugin_event_name", None)
                             if event_name:
                                 logger.debug(
-                                    f"Auto-registering listener for custom event '{event_name}' on plugin '{plugin_name}'."
+                                    f"Auto-registering listener for event '{event_name}' on plugin '{plugin_name}'."
                                 )
                                 instance.api.listen_for_event(event_name, method)
                     except Exception as e_event:
@@ -790,26 +790,6 @@ class PluginManager:
                     )
         logger.debug(f"Collected {len(ui_routes)} Native UI rendering plugin routes.")
         return ui_routes
-
-    def _is_valid_custom_event_name(self, event_name: str) -> bool:
-        """Checks if a custom event name follows the 'namespace:event_name' format.
-
-        Args:
-            event_name (str): The custom event name to validate.
-
-        Returns:
-            bool: ``True`` if the `event_name` is a string and matches the
-            "namespace:event_name" pattern (where both parts are non-empty),
-            ``False`` otherwise.
-        """
-        if not isinstance(event_name, str):
-            return False
-        parts = event_name.split(":", 1)
-        if len(parts) == 2:
-            namespace, name = parts[0].strip(), parts[1].strip()
-            if namespace and name:
-                return True
-        return False
 
     def register_plugin_event_listener(
         self, event_name: str, callback: Callable, listening_plugin_name: str
