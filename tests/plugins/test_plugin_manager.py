@@ -80,7 +80,7 @@ def test_custom_event_system(app_context):
     # Actually pm.plugins might be a list
     pm.plugins = [mock_plugin]
 
-    pm.register_plugin_event_listener("test:event", callback, "listen_plugin")
+    pm.register_app_event_listener("test:event", callback, "listen_plugin")
 
     pm.trigger_event("test:event", "arg1", kw="val", _triggering_plugin="sender_plugin")
 

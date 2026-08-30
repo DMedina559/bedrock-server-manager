@@ -6,7 +6,7 @@ Plugin that automatically reloads server configurations after changes.
 import asyncio
 from typing import Any
 
-from bedrock_server_manager import PluginBase, plugin_event
+from bedrock_server_manager import PluginBase, app_event
 
 
 class AutoReloadPlugin(PluginBase):
@@ -21,7 +21,7 @@ class AutoReloadPlugin(PluginBase):
     author = "dmedina559"
     name = "Auto Reload Config"
 
-    @plugin_event("on_load")
+    @app_event("on_load")
     def on_load(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
@@ -69,7 +69,7 @@ class AutoReloadPlugin(PluginBase):
                 f"Server '{server_name}' is not running, skipping reload after {context} change."
             )
 
-    @plugin_event("after_allowlist_change")
+    @app_event("after_allowlist_change")
     async def after_allowlist_change(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
 
@@ -98,7 +98,7 @@ class AutoReloadPlugin(PluginBase):
                 f"Allowlist change for '{server_name}' was not successful, skipping reload."
             )
 
-    @plugin_event("after_permission_change")
+    @app_event("after_permission_change")
     async def after_permission_change(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
 

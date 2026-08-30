@@ -46,7 +46,7 @@ What to Look For in the Logs:
 """
 
 from bedrock_server_manager import PluginBase
-from bedrock_server_manager.plugins import plugin_event
+from bedrock_server_manager.plugins import app_event
 
 EVENT_X_NAME = "custom_loop:event_X"
 EVENT_Y_NAME = "custom_loop:event_Y"
@@ -96,7 +96,7 @@ class CustomEventLoopTestPlugin(PluginBase):
                 exc_info=True,
             )
 
-    @plugin_event(EVENT_X_NAME)
+    @app_event(EVENT_X_NAME)
     def handle_event_x(self, *args, **kwargs):
         """
         Handler for EVENT_X_NAME ('custom_loop:event_X').
@@ -125,7 +125,7 @@ class CustomEventLoopTestPlugin(PluginBase):
             f"--- CUSTOM LOOP TEST (HANDLER X): Finished handling '{EVENT_X_NAME}' (Source: {source_method})."
         )
 
-    @plugin_event(EVENT_Y_NAME)
+    @app_event(EVENT_Y_NAME)
     def handle_event_y(self, *args, **kwargs):
         """
         Handler for EVENT_Y_NAME ('custom_loop:event_Y').

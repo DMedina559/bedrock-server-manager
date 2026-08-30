@@ -46,7 +46,7 @@ _event_context = threading.local()
 
 # Thread-local storage for tracking the call stack of custom inter-plugin events.
 # Similar to `_event_context`, but specifically for events sent via `send_event()`
-# and handled by `trigger_custom_plugin_event()`.
+# and handled by `trigger_custom_app_event()`.
 _custom_event_context = threading.local()
 
 
@@ -618,12 +618,12 @@ class PluginManager:
                     )
                     self.dispatch_event(instance, "on_load")
 
-                    # Register methods decorated with @plugin_event
+                    # Register methods decorated with @app_event
                     try:
                         for method_name, method in inspect.getmembers(
                             instance, predicate=inspect.ismethod
                         ):
-                            event_name = getattr(method, "_plugin_event_name", None)
+                            event_name = getattr(method, "_app_event_name", None)
                             if event_name:
                                 logger.debug(
                                     f"Auto-registering listener for event '{event_name}' on plugin '{plugin_name}'."
@@ -631,7 +631,7 @@ class PluginManager:
                                 instance.api.listen_for_event(event_name, method)
                     except Exception as e_event:
                         logger.error(
-                            f"Error auto-registering @plugin_event listeners for plugin '{plugin_name}': {e_event}",
+                            f"Error auto-registering @app_event listeners for plugin '{plugin_name}': {e_event}",
                             exc_info=True,
                         )
 
@@ -791,7 +791,7 @@ class PluginManager:
         logger.debug(f"Collected {len(ui_routes)} Native UI rendering plugin routes.")
         return ui_routes
 
-    def register_plugin_event_listener(
+    def register_app_event_listener(
         self, event_name: str, callback: Callable, listening_plugin_name: str
     ):
         """Registers a callback function from a plugin to listen for an event.
@@ -875,7 +875,7 @@ class PluginManager:
     def dispatch_event(self, target_plugin: PluginBase, event: str, *args, **kwargs):
         """Dispatches an event to a specific plugin instance.
 
-        Executes listeners registered via `@plugin_event` for this specific event
+        Executes listeners registered via `@app_event` for this specific event
         and the wildcard `*` event. It also includes backwards compatibility for
         legacy plugins that override `before_...`, `after_...` or `on_any_event`
         methods directly.
@@ -886,7 +886,7 @@ class PluginManager:
             *args (Any): Positional arguments to pass to the event handlers.
             **kwargs (Any): Keyword arguments to pass to the event handlers.
         """
-        # 1. Execute @plugin_event listeners for this event name and wildcard
+        # 1. Execute @app_event listeners for this event name and wildcard
         for event_name_to_check in (event, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:
@@ -974,7 +974,7 @@ class PluginManager:
     ):
         """Asynchronously dispatches an event to a specific plugin instance.
 
-        Executes listeners registered via `@plugin_event` for this specific event
+        Executes listeners registered via `@app_event` for this specific event
         and the wildcard `*` event. It also includes backwards compatibility for
         legacy plugins.
 
@@ -984,7 +984,7 @@ class PluginManager:
             *args (Any): Positional arguments to pass.
             **kwargs (Any): Keyword arguments to pass.
         """
-        # 1. Execute @plugin_event listeners
+        # 1. Execute @app_event listeners
         for event_name_to_check in (event, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:

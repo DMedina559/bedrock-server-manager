@@ -359,7 +359,7 @@ class AppAPI:
             self._plugin_manager is not None
         ), "PluginManager was not found in AppContext!"
         # Delegate the actual registration to the PluginManager
-        self._plugin_manager.register_plugin_event_listener(
+        self._plugin_manager.register_app_event_listener(
             event_name, callback, self._plugin_name
         )
         # Note: The PluginManager's method will log the success/failure of registration.
@@ -368,7 +368,7 @@ class AppAPI:
         """Triggers an event, notifying all registered listeners and broadcasting to WebSockets.
 
         This method allows a plugin to trigger an event that other plugins
-        can listen for using `@plugin_event("event_name")`. It routes directly
+        can listen for using `@app_event("event_name")`. It routes directly
         through the core application's event dispatcher.
 
         Args:

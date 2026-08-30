@@ -137,7 +137,7 @@ class MyAsyncPlugin(PluginBase):
 Plugins can define, send, and listen to their own custom events for complex interactions.
 
 *   **Sending Events:** Use `self.api.send_event("myplugin:custom_action", arg1, kwarg1="value")`.
-*   **Listening for Events:** Decorate a method with `@plugin_event("some:event")`.
+*   **Listening for Events:** Decorate a method with `@app_event("some:event")`.
 *   **Callback Arguments:** Your callback function will receive any `*args` and `**kwargs` from the sender.
 
 ### Example: "I'm Home" Automation (Triggered via HTTP API)
@@ -150,16 +150,16 @@ from bedrock_server_manager import PluginBase
 
 TARGET_SERVER_NAME = "main_survival"
 
-from bedrock_server_manager import plugin_event
+from bedrock_server_manager import app_event
 
 class HomeAutomationStarterPlugin(PluginBase):
     version = "1.0.0"
 
-    @plugin_event("on_load")
+    @app_event("on_load")
     def on_load(self):
         self.logger.info(f"Listening for 'automation:user_arrived_home' to start '{TARGET_SERVER_NAME}'.")
 
-    @plugin_event("automation:user_arrived_home")
+    @app_event("automation:user_arrived_home")
     def handle_user_arrival(self, **kwargs):
         user_id = kwargs.get('user_id', 'UnknownUser')
         self.logger.info(f"Received arrival event for user '{user_id}'.")
@@ -177,12 +177,12 @@ class HomeAutomationStarterPlugin(PluginBase):
 You can use `before_*` hooks to intercept actions and potentially prevent them from happening or run prerequisites.
 
 ```python
-from bedrock_server_manager import plugin_event
+from bedrock_server_manager import app_event
 
 class BackupBeforeStartPlugin(PluginBase):
     version = "1.0.0"
 
-    @plugin_event("before_start_server")
+    @app_event("before_start_server")
     def before_start_server(self, server_name: str, **kwargs):
         """Runs automatically before a server is started."""
         self.logger.info(f"Intercepted start request for {server_name}. Running quick backup...")
@@ -204,12 +204,12 @@ Plugins often need to store configuration data persistently. Bedrock Server Mana
 *   **Loading Data:** `self.api.get_global_setting(key="custom.my_plugin_key")`
 
 ```python
-from bedrock_server_manager import plugin_event
+from bedrock_server_manager import app_event
 
 class MyConfigurablePlugin(PluginBase):
     version = "1.0.0"
 
-    @plugin_event("on_load")
+    @app_event("on_load")
     def on_load(self):
         # Load existing settings or set defaults
         self.plugin_config = self.api.get_global_setting("custom.my_configurable_plugin")
@@ -300,12 +300,12 @@ async def get_plugin_ui():
         ]
     })
 
-from bedrock_server_manager import plugin_event
+from bedrock_server_manager import app_event
 
 class MyWebAPIPlugin(PluginBase):
     version = "1.2.0" # Mandatory
 
-    @plugin_event("on_load")
+    @app_event("on_load")
     def on_load(self):
         self.logger.info(f"{self.name} v{self.version} loaded.")
         if not HAS_AUTH_DEP:

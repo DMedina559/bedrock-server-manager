@@ -6,7 +6,7 @@ Plugin that automatically updates a Bedrock server to the latest version.
 import asyncio
 from typing import Any
 
-from bedrock_server_manager import PluginBase, plugin_event
+from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.error import BSMError
 
 
@@ -22,14 +22,14 @@ class AutoupdatePlugin(PluginBase):
     author = "dmedina559"
     name = "Auto Update on Start"
 
-    @plugin_event("on_load")
+    @app_event("on_load")
     def on_load(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will check for updates before server starts if enabled."
         )
 
-    @plugin_event("before_server_start")
+    @app_event("before_server_start")
     async def before_server_start(self, **kwargs: Any):
         """
         Checks for the 'autoupdate' flag before a server starts and runs

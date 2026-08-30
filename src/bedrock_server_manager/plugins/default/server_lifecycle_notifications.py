@@ -6,7 +6,7 @@ Plugin to send in-game messages and manage delays during server lifecycle events
 import asyncio
 from typing import Any
 
-from bedrock_server_manager import PluginBase, plugin_event
+from bedrock_server_manager import PluginBase, app_event
 
 
 class ServerLifecycleNotificationsPlugin(PluginBase):
@@ -21,7 +21,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     author = "dmedina559"
     name = "Server Lifecycle Notifications"
 
-    @plugin_event("on_load")
+    @app_event("on_load")
     def on_load(self) -> None:
         """Initializes default delays and logs plugin activation."""
         # Default delays in seconds. These could be made configurable in the future.
@@ -78,7 +78,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} message."
             )
 
-    @plugin_event("before_server_stop")
+    @app_event("before_server_stop")
     async def before_server_stop(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
         server_name = str(kwargs.get("server_name"))
@@ -110,7 +110,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     )
                     await asyncio.sleep(self.stop_warning_delay)
 
-    @plugin_event("after_server_stop")
+    @app_event("after_server_stop")
     async def after_server_stop(self, **kwargs: Any) -> None:
         """Waits for a short period after a server stops, e.g., for port release."""
 
@@ -123,7 +123,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
             await asyncio.sleep(self.post_stop_settle_delay)
 
-    @plugin_event("before_delete_server_data")
+    @app_event("before_delete_server_data")
     async def before_delete_server_data(self, **kwargs: Any) -> None:
         """Sends a final warning before server data is deleted if the server is running."""
 
@@ -141,7 +141,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     "data deletion warning",
                 )
 
-    @plugin_event("before_server_update")
+    @app_event("before_server_update")
     async def before_server_update(self, **kwargs: Any) -> None:
         """Notifies players before a server update begins."""
 
@@ -162,7 +162,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     "update notification",
                 )
 
-    @plugin_event("after_server_start")
+    @app_event("after_server_start")
     async def after_server_start(self, **kwargs: Any) -> None:
         """Waits for a short period after a server starts to allow initialization."""
 

@@ -6,7 +6,7 @@ foundational template for all plugins within the Bedrock Server Manager
 ecosystem. Plugins must inherit from this class to be recognized and loaded
 by the :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
 
-By using the ``@plugin_event("event_name")`` decorator on their methods, plugins can subscribe to and
+By using the ``@app_event("event_name")`` decorator on their methods, plugins can subscribe to and
 react to specific events triggered by the core application or other parts
 of the server manager.
 """
@@ -40,7 +40,7 @@ class PluginBase(ABC):
             to this plugin. Log messages will automatically include the plugin's name.
         version (str): The plugin's own version string, copied from its class attribute.
 
-    Plugins implement their functionality by using the ``@plugin_event("event_name")``
+    Plugins implement their functionality by using the ``@app_event("event_name")``
     decorator on their methods to listen for specific application events. These
     methods are called by the
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`

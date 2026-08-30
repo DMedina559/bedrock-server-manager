@@ -10,7 +10,7 @@ from bedrock_server_manager.api.plugins import (
     get_plugin_statuses,
     reload_plugins,
     set_plugin_status,
-    trigger_external_plugin_event_api,
+    trigger_external_app_event_api,
 )
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import UserInputError
@@ -77,10 +77,10 @@ def test_reload_plugins_success(app_context: AppContext):
         mock_reload.assert_called_once()
 
 
-def test_trigger_external_plugin_event_api_success(app_context: AppContext):
+def test_trigger_external_app_event_api_success(app_context: AppContext):
     """Test triggering external plugin event successfully."""
     with patch.object(app_context.plugin_manager, "trigger_event") as mock_trigger:
-        result = trigger_external_plugin_event_api(
+        result = trigger_external_app_event_api(
             "test:event", app_context, {"data": 123}
         )
 
@@ -91,7 +91,7 @@ def test_trigger_external_plugin_event_api_success(app_context: AppContext):
         )
 
 
-def test_trigger_external_plugin_event_api_empty_name(app_context: AppContext):
+def test_trigger_external_app_event_api_empty_name(app_context: AppContext):
     """Test triggering event with empty name raises UserInputError."""
     with pytest.raises(UserInputError):
-        trigger_external_plugin_event_api("", app_context)
+        trigger_external_app_event_api("", app_context)

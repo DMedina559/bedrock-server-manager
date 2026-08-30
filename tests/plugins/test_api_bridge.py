@@ -90,7 +90,7 @@ def test_listen_for_event(app_context, monkeypatch):
         pass
 
     plugin_api.listen_for_event("my_event", my_callback)
-    mock_plugin_manager.register_plugin_event_listener.assert_called_once_with(
+    mock_plugin_manager.register_app_event_listener.assert_called_once_with(
         "my_event", my_callback, "test_plugin"
     )
 
