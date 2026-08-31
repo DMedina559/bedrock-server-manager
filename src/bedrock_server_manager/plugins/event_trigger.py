@@ -33,13 +33,13 @@ R = TypeVar("R")
 
 
 @overload
-def trigger_app_event(
+def trigger_event(
     _func: Callable[P, R],
 ) -> Callable[P, R]: ...
 
 
 @overload
-def trigger_app_event(
+def trigger_event(
     _func: None = None,
     *,
     before: Optional[str] = None,
@@ -48,7 +48,7 @@ def trigger_app_event(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
-def trigger_app_event(  # noqa: C901
+def trigger_event(  # noqa: C901
     _func: Optional[Callable[P, R]] = None,
     *,
     before: Optional[str] = None,

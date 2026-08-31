@@ -74,7 +74,7 @@ class APIDocsGenerator(PluginBase):
 
     def _gather_event_details(self) -> List[Dict[str, Any]]:
         """
-        Introspects the _api_registry and AST to find all events triggered by @trigger_app_event.
+        Introspects the _api_registry and AST to find all events triggered by @trigger_event.
         """
         from bedrock_server_manager.plugins.api_bridge import _api_registry
 
@@ -93,14 +93,14 @@ class APIDocsGenerator(PluginBase):
                 ):
                     docstring = ast.get_docstring(tree.body[0]) or "No description."
 
-                # Find @trigger_app_event decorator
+                # Find @trigger_event decorator
                 for node in ast.walk(tree):
                     if isinstance(node, ast.FunctionDef):
                         for decorator in node.decorator_list:
                             if (
                                 isinstance(decorator, ast.Call)
                                 and isinstance(decorator.func, ast.Name)
-                                and decorator.func.id == "trigger_app_event"
+                                and decorator.func.id == "trigger_event"
                             ):
                                 before_name = None
                                 after_name = None

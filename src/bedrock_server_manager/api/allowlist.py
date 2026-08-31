@@ -4,13 +4,13 @@ from typing import Any, Dict, List
 from ..context import AppContext
 from ..error import BSMError, FileOperationError, MissingArgumentError
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("add_to_allowlist")
-@trigger_app_event(
+@trigger_event(
     before="before_allowlist_change",
     after="after_allowlist_change",
     identity_keys=("server_name",),
@@ -102,7 +102,7 @@ def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("remove_from_allowlist")
-@trigger_app_event(
+@trigger_event(
     before="before_allowlist_change",
     after="after_allowlist_change",
     identity_keys=("server_name",),

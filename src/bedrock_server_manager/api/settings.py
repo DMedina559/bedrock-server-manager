@@ -18,7 +18,7 @@ from typing import Any, Dict
 from ..context import AppContext
 from ..error import BSMError, MissingArgumentError
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def get_all_global_settings(
         }
 
 
-@trigger_app_event(
+@trigger_event(
     before="before_setting_update", after="after_setting_update", identity_keys=("key",)
 )
 def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:

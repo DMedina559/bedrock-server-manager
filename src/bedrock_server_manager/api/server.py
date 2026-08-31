@@ -33,7 +33,7 @@ from ..error import (
     ServerStartError,
 )
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def get_server_setting(
         return generic_error
 
 
-@trigger_app_event(
+@trigger_event(
     before="before_set_server_setting",
     after="after_set_server_setting",
     identity_keys=("server_name", "key"),
@@ -301,7 +301,7 @@ def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, A
 
 
 @api_method("start_server")
-@trigger_app_event(
+@trigger_event(
     before="before_server_start",
     after="after_server_start",
     identity_keys=("server_name",),
@@ -349,7 +349,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("stop_server")
-@trigger_app_event(
+@trigger_event(
     before="before_server_stop",
     after="after_server_stop",
     identity_keys=("server_name",),
@@ -534,7 +534,7 @@ def restart_server(  # noqa: C901
 
 
 @api_method("send_command")
-@trigger_app_event(
+@trigger_event(
     before="before_command_send",
     after="after_command_send",
     identity_keys=("server_name", "command"),
@@ -618,7 +618,7 @@ def send_command(
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
 
-@trigger_app_event(
+@trigger_event(
     before="before_delete_server_data",
     after="after_delete_server_data",
     identity_keys=("server_name",),
@@ -802,7 +802,7 @@ def server_lifecycle_manager(
 
 
 @api_method("set_server_status_api", expose_to_plugins=False)
-@trigger_app_event(
+@trigger_event(
     before="before_server_status_change",
     after="after_server_status_change",
     identity_keys=("server_name", "status"),
@@ -831,7 +831,7 @@ def set_server_status_api(
 
 
 @api_method("update_server_player_stats_api", expose_to_plugins=False)
-@trigger_app_event(
+@trigger_event(
     before="before_server_players_change", after="after_server_players_change"
 )
 def update_server_player_stats_api(

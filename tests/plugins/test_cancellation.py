@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bedrock_server_manager.plugins.event_trigger import trigger_app_event
+from bedrock_server_manager.plugins.event_trigger import trigger_event
 
 
 def test_cancellable_event_sync(monkeypatch):
@@ -22,7 +22,7 @@ def test_cancellable_event_sync(monkeypatch):
 
     mock_context.plugin_manager.trigger_event.side_effect = mock_trigger_event
 
-    @trigger_app_event(before="before_event")
+    @trigger_event(before="before_event")
     def sync_target(app_context):
         return {"status": "success", "message": "should not reach"}
 
@@ -52,7 +52,7 @@ async def test_cancellable_event_async(monkeypatch):
         mock_trigger_event_async
     )
 
-    @trigger_app_event(before="before_event")
+    @trigger_event(before="before_event")
     async def async_target(app_context):
         return {"status": "success", "message": "should not reach"}
 

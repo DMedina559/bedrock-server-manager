@@ -37,7 +37,7 @@ from ..error import (
     MissingArgumentError,
 )
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ def list_backup_files(
 
 
 @api_method("backup_world")
-@trigger_app_event(
+@trigger_event(
     before="before_backup",
     after="after_backup",
     identity_keys=("server_name", "backup_type"),
@@ -186,7 +186,7 @@ def backup_world(
 
 
 @api_method("backup_config_file")
-@trigger_app_event(
+@trigger_event(
     before="before_backup",
     after="after_backup",
     identity_keys=("server_name", "backup_type"),
@@ -286,7 +286,7 @@ def backup_config_file(
 
 
 @api_method("backup_all")
-@trigger_app_event(
+@trigger_event(
     before="before_backup",
     after="after_backup",
     identity_keys=("server_name", "backup_type"),
@@ -378,7 +378,7 @@ def backup_all(
 
 
 @api_method("restore_all")
-@trigger_app_event(
+@trigger_event(
     before="before_restore",
     after="after_restore",
     identity_keys=("server_name", "restore_type"),
@@ -483,7 +483,7 @@ def restore_all(
 
 
 @api_method("restore_world")
-@trigger_app_event(
+@trigger_event(
     before="before_restore",
     after="after_restore",
     identity_keys=("server_name", "restore_type"),
@@ -588,7 +588,7 @@ def restore_world(
 
 
 @api_method("restore_config_file")
-@trigger_app_event(
+@trigger_event(
     before="before_restore",
     after="after_restore",
     identity_keys=("server_name", "restore_type"),
@@ -695,7 +695,7 @@ def restore_config_file(
 
 
 @api_method("prune_old_backups")
-@trigger_app_event(
+@trigger_event(
     before="before_prune_backups",
     after="after_prune_backups",
     identity_keys=("server_name",),

@@ -5,13 +5,13 @@ from ..context import AppContext
 from ..db.models import Server, ServerBan
 from ..error import UserInputError
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("add_server_ban_api")
-@trigger_app_event(
+@trigger_event(
     before="before_add_server_ban",
     after="after_add_server_ban",
     identity_keys=("server_name", "xuid"),
@@ -68,7 +68,7 @@ def add_server_ban_api(
         }
 
 
-@trigger_app_event(
+@trigger_event(
     before="before_remove_server_ban",
     after="after_remove_server_ban",
     identity_keys=("server_name", "xuid"),
