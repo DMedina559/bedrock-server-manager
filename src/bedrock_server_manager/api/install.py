@@ -21,7 +21,11 @@ _install_update_lock = threading.RLock()
 
 
 @api_method("install_new_server")
-@trigger_app_event(before="before_server_install", after="after_server_install")
+@trigger_app_event(
+    before="before_server_install",
+    after="after_server_install",
+    identity_keys=("server_name", "target_version"),
+)
 def install_new_server(
     server_name: str,
     app_context: AppContext,
@@ -81,7 +85,11 @@ def install_new_server(
 
 
 @api_method("update_server")
-@trigger_app_event(before="before_server_update", after="after_server_update")
+@trigger_app_event(
+    before="before_server_update",
+    after="after_server_update",
+    identity_keys=("server_name", "target_version"),
+)
 def update_server(
     server_name: str,
     app_context: AppContext,

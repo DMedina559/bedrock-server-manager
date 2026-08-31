@@ -63,7 +63,11 @@ def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Failed to get plugin statuses: {e}"}
 
 
-@trigger_app_event(before="before_set_plugin_status", after="after_set_plugin_status")
+@trigger_app_event(
+    before="before_set_plugin_status",
+    after="after_set_plugin_status",
+    identity_keys=("plugin_name", "new_status"),
+)
 def set_plugin_status(
     plugin_name: str,
     enabled: bool,

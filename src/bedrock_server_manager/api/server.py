@@ -91,7 +91,11 @@ def get_server_setting(
         return generic_error
 
 
-@trigger_app_event(before="before_set_server_setting", after="after_set_server_setting")
+@trigger_app_event(
+    before="before_set_server_setting",
+    after="after_set_server_setting",
+    identity_keys=("server_name", "key"),
+)
 def set_server_setting(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
@@ -297,7 +301,11 @@ def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, A
 
 
 @api_method("start_server")
-@trigger_app_event(before="before_server_start", after="after_server_start")
+@trigger_app_event(
+    before="before_server_start",
+    after="after_server_start",
+    identity_keys=("server_name",),
+)
 def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Starts the specified Bedrock server."""
     if not server_name:
@@ -341,7 +349,11 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("stop_server")
-@trigger_app_event(before="before_server_stop", after="after_server_stop")
+@trigger_app_event(
+    before="before_server_stop",
+    after="after_server_stop",
+    identity_keys=("server_name",),
+)
 def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Stops the specified Bedrock server.
 
@@ -522,7 +534,11 @@ def restart_server(  # noqa: C901
 
 
 @api_method("send_command")
-@trigger_app_event(before="before_command_send", after="after_command_send")
+@trigger_app_event(
+    before="before_command_send",
+    after="after_command_send",
+    identity_keys=("server_name", "command"),
+)
 def send_command(
     server_name: str, command: str, app_context: AppContext
 ) -> Dict[str, str]:
@@ -602,7 +618,11 @@ def send_command(
         raise ServerError(f"Unexpected error sending command: {e}") from e
 
 
-@trigger_app_event(before="before_delete_server_data", after="after_delete_server_data")
+@trigger_app_event(
+    before="before_delete_server_data",
+    after="after_delete_server_data",
+    identity_keys=("server_name",),
+)
 def delete_server_data(
     server_name: str,
     app_context: AppContext,
@@ -783,7 +803,9 @@ def server_lifecycle_manager(
 
 @api_method("set_server_status_api", expose_to_plugins=False)
 @trigger_app_event(
-    before="before_server_status_change", after="after_server_status_change"
+    before="before_server_status_change",
+    after="after_server_status_change",
+    identity_keys=("server_name", "status"),
 )
 def set_server_status_api(
     server_name: str, status: str, app_context: "AppContext"

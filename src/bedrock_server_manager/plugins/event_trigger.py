@@ -10,8 +10,10 @@ from typing import (
     Any,
     Awaitable,
     Callable,
+    Dict,
     Optional,
     ParamSpec,
+    Tuple,
     TypeVar,
     cast,
     overload,
@@ -21,6 +23,9 @@ from .cancellable_event import CancellableEvent
 from .util import async_broadcast_event, broadcast_event
 
 logger = logging.getLogger(__name__)
+
+# Global registry for event identity keys
+_event_registry: Dict[str, Tuple[str, ...]] = {}
 
 
 P = ParamSpec("P")
@@ -39,6 +44,7 @@ def trigger_app_event(
     *,
     before: Optional[str] = None,
     after: Optional[str] = None,
+    identity_keys: Optional[Tuple[str, ...]] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -47,10 +53,17 @@ def trigger_app_event(  # noqa: C901
     *,
     before: Optional[str] = None,
     after: Optional[str] = None,
+    identity_keys: Optional[Tuple[str, ...]] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]] | Callable[P, R]:
     """
     A decorator to trigger plugin events and broadcast them to WebSockets.
     """
+
+    if identity_keys is not None:
+        if before:
+            _event_registry[before] = identity_keys
+        if after:
+            _event_registry[after] = identity_keys
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         sig = inspect.signature(func)

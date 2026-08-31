@@ -283,7 +283,11 @@ def validate_property_value(  # noqa: C901
 
 
 @api_method("set_properties")
-@trigger_app_event(before="before_properties_change", after="after_properties_change")
+@trigger_app_event(
+    before="before_properties_change",
+    after="after_properties_change",
+    identity_keys=("server_name",),
+)
 def set_properties(
     server_name: str,
     properties_to_update: Dict[str, str],

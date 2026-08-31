@@ -10,7 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("add_to_allowlist")
-@trigger_app_event(before="before_allowlist_change", after="after_allowlist_change")
+@trigger_app_event(
+    before="before_allowlist_change",
+    after="after_allowlist_change",
+    identity_keys=("server_name",),
+)
 def add_to_allowlist(
     server_name: str,
     new_players_data: List[Dict[str, Any]],
@@ -98,7 +102,11 @@ def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("remove_from_allowlist")
-@trigger_app_event(before="before_allowlist_change", after="after_allowlist_change")
+@trigger_app_event(
+    before="before_allowlist_change",
+    after="after_allowlist_change",
+    identity_keys=("server_name",),
+)
 def remove_from_allowlist(
     server_name: str,
     player_names: List[str],

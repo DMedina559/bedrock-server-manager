@@ -11,7 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("set_permissions")
-@trigger_app_event(before="before_permission_change", after="after_permission_change")
+@trigger_app_event(
+    before="before_permission_change",
+    after="after_permission_change",
+    identity_keys=("server_name", "xuid"),
+)
 def set_permissions(
     server_name: str,
     xuid: str,

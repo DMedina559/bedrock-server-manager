@@ -58,6 +58,12 @@ class PluginBase(ABC):
     version: str = "N/A"  # Default placeholder, should be overridden.
     author: str = "N/A"  # Optional class attribute for plugin author information.
     description: str = ""  # Optional class attribute for plugin description.
+    dependencies: List[str] = (
+        []
+    )  # Optional list of required plugin names (strings) to load before this plugin.
+    optional_dependencies: List[str] = (
+        []
+    )  # Optional list of optional plugin names (strings) to load before this plugin, if they are enabled.
 
     def __init__(self, plugin_name: str, api: AppAPI, logger: Logger):
         """Initializes the plugin instance.

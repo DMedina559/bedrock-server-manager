@@ -360,7 +360,11 @@ def get_web_server_status_api(  # noqa: C901
         }
 
 
-@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
+@trigger_app_event(
+    before="before_web_service_change",
+    after="after_web_service_change",
+    identity_keys=("action",),
+)
 def create_web_ui_service(
     app_context: AppContext,
     autostart: bool = False,
@@ -440,7 +444,11 @@ def create_web_ui_service(
         }
 
 
-@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
+@trigger_app_event(
+    before="before_web_service_change",
+    after="after_web_service_change",
+    identity_keys=("action",),
+)
 def enable_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -492,7 +500,11 @@ def enable_web_ui_service(
         }
 
 
-@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
+@trigger_app_event(
+    before="before_web_service_change",
+    after="after_web_service_change",
+    identity_keys=("action",),
+)
 def disable_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -549,7 +561,11 @@ def disable_web_ui_service(
         }
 
 
-@trigger_app_event(before="before_web_service_change", after="after_web_service_change")
+@trigger_app_event(
+    before="before_web_service_change",
+    after="after_web_service_change",
+    identity_keys=("action",),
+)
 def remove_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:

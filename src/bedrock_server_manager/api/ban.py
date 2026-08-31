@@ -11,7 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("add_server_ban_api")
-@trigger_app_event(before="before_add_server_ban", after="after_add_server_ban")
+@trigger_app_event(
+    before="before_add_server_ban",
+    after="after_add_server_ban",
+    identity_keys=("server_name", "xuid"),
+)
 def add_server_ban_api(
     app_context: AppContext,
     server_name: str,
@@ -64,7 +68,11 @@ def add_server_ban_api(
         }
 
 
-@trigger_app_event(before="before_remove_server_ban", after="after_remove_server_ban")
+@trigger_app_event(
+    before="before_remove_server_ban",
+    after="after_remove_server_ban",
+    identity_keys=("server_name", "xuid"),
+)
 def remove_server_ban_api(
     app_context: AppContext, server_name: str, xuid: str
 ) -> Dict[str, Any]:

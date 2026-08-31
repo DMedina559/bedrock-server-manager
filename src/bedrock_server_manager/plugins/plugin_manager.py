@@ -29,10 +29,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Ty
 if TYPE_CHECKING:
     from ..context import AppContext
 
-from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABLE
+from ..config import DEFAULT_ENABLED_PLUGINS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
 from ..db.models import Plugin
 from .api_bridge import AppAPI
+from .event_trigger import _event_registry
 from .plugin_base import PluginBase
 
 # Standard logger for this module.
@@ -564,6 +565,9 @@ class PluginManager:
         logger.debug("Cleared previously collected plugin static mounts.")
 
         loaded_plugin_count = 0
+
+        # 1. Collect all enabled plugins and their classes
+        enabled_plugins_data: Dict[str, Type[PluginBase]] = {}
         for plugin_name, config_data in self.plugin_config.items():
             if not isinstance(config_data, dict):
                 logger.error(
@@ -586,7 +590,7 @@ class PluginManager:
                 continue
 
             logger.debug(
-                f"Attempting to load enabled plugin: '{plugin_name}' v{plugin_version}."
+                f"Attempting to prepare enabled plugin: '{plugin_name}' v{plugin_version}."
             )
             path = self._find_plugin_path(plugin_name)
             if not path:
@@ -599,119 +603,169 @@ class PluginManager:
                 path, plugin_name_override=plugin_name
             )
             if plugin_class:
-                try:
-                    plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                    api_instance = AppAPI(
-                        plugin_name=plugin_name,
-                        app_context=self.app_context,
-                    )
-                    logger.debug(
-                        f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
-                    )
-                    instance = plugin_class(plugin_name, api_instance, plugin_logger)
-                    self.plugins.append(instance)
-                    loaded_plugin_count += 1
-                    logger.info(
-                        f"Successfully loaded and initialized plugin: '{plugin_name}' v{plugin_version}."
-                    )
-                    logger.debug(
-                        f"Dispatching 'on_load' event to plugin '{plugin_name}'."
-                    )
-                    self.dispatch_event(instance, "on_load")
+                enabled_plugins_data[plugin_name] = plugin_class
 
-                    # Register methods decorated with @app_event
-                    try:
-                        for method_name, method in inspect.getmembers(
-                            instance, predicate=inspect.ismethod
-                        ):
-                            event_name = getattr(method, "_app_event_name", None)
-                            if event_name:
-                                logger.debug(
-                                    f"Auto-registering listener for event '{event_name}' on plugin '{plugin_name}'."
-                                )
-                                instance.api.listen_for_event(event_name, method)
-                    except Exception as e_event:
-                        logger.error(
-                            f"Error auto-registering @app_event listeners for plugin '{plugin_name}': {e_event}",
-                            exc_info=True,
-                        )
+        # 2. Perform Topological Sort based on dependencies
+        def topological_sort(plugin_classes: Dict[str, Type[PluginBase]]) -> List[str]:
+            visited = set()
+            temp_mark = set()
+            sorted_plugins = []
 
-                    # Collect FastAPI routers
-                    try:
-                        if hasattr(instance, "get_fastapi_routers") and callable(
-                            getattr(instance, "get_fastapi_routers")
-                        ):
-                            routers = instance.get_fastapi_routers()
-                            if isinstance(routers, list) and routers:
-                                self.plugin_fastapi_routers.extend(routers)
-                                logger.info(
-                                    f"Collected {len(routers)} FastAPI router(s) from plugin '{plugin_name}'."
-                                )
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
-                                    "Ensure you trust this plugin as it can expose new web endpoints."
-                                )
-                            elif routers:  # Not a list or empty
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list."
-                                )
-                    except Exception as e_api:
-                        logger.error(
-                            f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",
-                            exc_info=True,
-                        )
-
-                    # Collect static mounts
-                    try:
-                        if hasattr(instance, "get_static_mounts") and callable(
-                            getattr(instance, "get_static_mounts")
-                        ):
-                            static_mounts_configs = instance.get_static_mounts()
-                            if (
-                                isinstance(static_mounts_configs, list)
-                                and static_mounts_configs
-                            ):
-                                valid_mounts = []
-                                for mount_config in static_mounts_configs:
-                                    if (
-                                        isinstance(mount_config, tuple)
-                                        and len(mount_config) == 3
-                                        and isinstance(
-                                            mount_config[0], str
-                                        )  # mount_path
-                                        and isinstance(mount_config[1], Path)
-                                        and mount_config[1].is_dir()  # dir_path
-                                        and isinstance(mount_config[2], str)
-                                    ):  # name
-                                        valid_mounts.append(mount_config)
-                                    else:
-                                        logger.warning(
-                                            f"Plugin '{plugin_name}' provided an invalid static mount configuration: {mount_config}. Expected (str, Path, str) with valid directory."
-                                        )
-
-                                self.plugin_static_mounts.extend(valid_mounts)
-                                if valid_mounts:
-                                    logger.info(
-                                        f"Collected {len(valid_mounts)} static mount configuration(s) from plugin '{plugin_name}'."
-                                    )
-                                    logger.warning(
-                                        f"Plugin '{plugin_name}' added {len(valid_mounts)} static file director(y/ies). Ensure these paths are safe and intended."
-                                    )
-                            elif static_mounts_configs:  # Not a list or empty
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' get_static_mounts() did not return a list or returned an empty list."
-                                )
-                    except Exception as e_static:
-                        logger.error(
-                            f"Error collecting static mounts from plugin '{plugin_name}': {e_static}",
-                            exc_info=True,
-                        )
-
-                except Exception as e:
+            def visit(node: str):
+                if node in temp_mark:
                     logger.error(
-                        f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
+                        f"Circular dependency detected involving plugin '{node}'. It will not be loaded."
+                    )
+                    return False
+                if node not in visited:
+                    temp_mark.add(node)
+                    p_class = plugin_classes.get(node)
+                    if p_class:
+                        dependencies = getattr(p_class, "dependencies", [])
+                        for dep in dependencies:
+                            if dep not in plugin_classes:
+                                logger.error(
+                                    f"Plugin '{node}' requires missing or disabled dependency '{dep}'. It will not be loaded."
+                                )
+                                return False
+                            if visit(dep) is False:
+                                return False
+
+                        optional_deps = getattr(p_class, "optional_dependencies", [])
+                        for opt_dep in optional_deps:
+                            if opt_dep in plugin_classes:
+                                if visit(opt_dep) is False:
+                                    return False
+
+                    temp_mark.remove(node)
+                    visited.add(node)
+                    if node in plugin_classes:
+                        sorted_plugins.append(node)
+                return True
+
+            for p_name in list(plugin_classes.keys()):
+                if p_name not in visited:
+                    if visit(p_name) is False:
+                        plugin_classes.pop(p_name, None)
+
+            return sorted_plugins
+
+        sorted_plugin_names = topological_sort(enabled_plugins_data)
+
+        # 3. Instantiate and load plugins in the sorted order
+        for plugin_name in sorted_plugin_names:
+            plugin_class = enabled_plugins_data[plugin_name]
+            config_data = self.plugin_config[plugin_name]
+            plugin_version = config_data.get("version")
+            try:
+                plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
+                api_instance = AppAPI(
+                    plugin_name=plugin_name,
+                    app_context=self.app_context,
+                )
+                logger.debug(
+                    f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
+                )
+                instance = plugin_class(plugin_name, api_instance, plugin_logger)
+                self.plugins.append(instance)
+                loaded_plugin_count += 1
+                logger.info(
+                    f"Successfully loaded and initialized plugin: '{plugin_name}' v{plugin_version}."
+                )
+                logger.debug(f"Dispatching 'on_load' event to plugin '{plugin_name}'.")
+                self.dispatch_event(instance, "on_load")
+
+                # Register methods decorated with @app_event
+                try:
+                    for method_name, method in inspect.getmembers(
+                        instance, predicate=inspect.ismethod
+                    ):
+                        event_name = getattr(method, "_app_event_name", None)
+                        if event_name:
+                            logger.debug(
+                                f"Auto-registering listener for event '{event_name}' on plugin '{plugin_name}'."
+                            )
+                            instance.api.listen_for_event(event_name, method)
+                except Exception as e_event:
+                    logger.error(
+                        f"Error auto-registering @app_event listeners for plugin '{plugin_name}': {e_event}",
                         exc_info=True,
                     )
+
+                # Collect FastAPI routers
+                try:
+                    if hasattr(instance, "get_fastapi_routers") and callable(
+                        getattr(instance, "get_fastapi_routers")
+                    ):
+                        routers = instance.get_fastapi_routers()
+                        if isinstance(routers, list) and routers:
+                            self.plugin_fastapi_routers.extend(routers)
+                            logger.info(
+                                f"Collected {len(routers)} FastAPI router(s) from plugin '{plugin_name}'."
+                            )
+                            logger.warning(
+                                f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
+                                "Ensure you trust this plugin as it can expose new web endpoints."
+                            )
+                        elif routers:  # Not a list or empty
+                            logger.warning(
+                                f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list."
+                            )
+                except Exception as e_api:
+                    logger.error(
+                        f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",
+                        exc_info=True,
+                    )
+
+                # Collect static mounts
+                try:
+                    if hasattr(instance, "get_static_mounts") and callable(
+                        getattr(instance, "get_static_mounts")
+                    ):
+                        static_mounts_configs = instance.get_static_mounts()
+                        if (
+                            isinstance(static_mounts_configs, list)
+                            and static_mounts_configs
+                        ):
+                            valid_mounts = []
+                            for mount_config in static_mounts_configs:
+                                if (
+                                    isinstance(mount_config, tuple)
+                                    and len(mount_config) == 3
+                                    and isinstance(mount_config[0], str)  # mount_path
+                                    and isinstance(mount_config[1], Path)
+                                    and mount_config[1].is_dir()  # dir_path
+                                    and isinstance(mount_config[2], str)
+                                ):  # name
+                                    valid_mounts.append(mount_config)
+                                else:
+                                    logger.warning(
+                                        f"Plugin '{plugin_name}' provided an invalid static mount configuration: {mount_config}. Expected (str, Path, str) with valid directory."
+                                    )
+
+                            self.plugin_static_mounts.extend(valid_mounts)
+                            if valid_mounts:
+                                logger.info(
+                                    f"Collected {len(valid_mounts)} static mount(s) from plugin '{plugin_name}'."
+                                )
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' added {len(valid_mounts)} static file director(y/ies). Ensure these paths are safe and intended."
+                                )
+                        elif static_mounts_configs:  # Not a list or empty
+                            logger.warning(
+                                f"Plugin '{plugin_name}' get_static_mounts() did not return a list or returned an empty list."
+                            )
+                except Exception as e_static:
+                    logger.error(
+                        f"Error collecting static mounts from plugin '{plugin_name}': {e_static}",
+                        exc_info=True,
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
+                    exc_info=True,
+                )
             else:
                 logger.error(
                     f"Could not retrieve class for plugin '{plugin_name}' from path '{path}' during load phase. Skipping."
@@ -908,28 +962,25 @@ class PluginManager:
                         f"Dispatching event '{event_name}' to plugin '{target_plugin.name}' "
                         f"(callback: '{callback.__name__}'). Args: {args}, Kwargs: {kwargs}"
                     )
-                    try:
-                        if inspect.iscoroutinefunction(callback):
-                            if (
-                                self.app_context.loop
-                                and self.app_context.loop.is_running()
-                            ):
-                                import asyncio
+                try:
+                    if inspect.iscoroutinefunction(callback):
+                        if self.app_context.loop and self.app_context.loop.is_running():
+                            import asyncio
 
-                                asyncio.run_coroutine_threadsafe(
-                                    callback(*args, **kwargs), self.app_context.loop
-                                )
-                            else:
-                                logger.warning(
-                                    f"Event '{event_name}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
-                                )
+                            asyncio.run_coroutine_threadsafe(
+                                callback(*args, **kwargs), self.app_context.loop
+                            )
                         else:
-                            callback(*args, **kwargs)
-                    except Exception as e:
-                        logger.error(
-                            f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
-                            exc_info=True,
-                        )
+                            logger.warning(
+                                f"Event '{event_name}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
+                            )
+                    else:
+                        callback(*args, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
+                        exc_info=True,
+                    )
 
         # 2. Legacy backwards compatibility: check if method exists directly on plugin
         plugin_class = type(target_plugin)
@@ -1006,16 +1057,16 @@ class PluginManager:
                         f"Async dispatching event '{event_name}' to plugin '{target_plugin.name}' "
                         f"(callback: '{callback.__name__}')."
                     )
-                    try:
-                        if inspect.iscoroutinefunction(callback):
-                            await callback(*args, **kwargs)
-                        else:
-                            callback(*args, **kwargs)
-                    except Exception as e:
-                        logger.error(
-                            f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
-                            exc_info=True,
-                        )
+                try:
+                    if inspect.iscoroutinefunction(callback):
+                        await callback(*args, **kwargs)
+                    else:
+                        callback(*args, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
+                        exc_info=True,
+                    )
 
         # 2. Legacy backwards compatibility
         plugin_class = type(target_plugin)
@@ -1056,7 +1107,7 @@ class PluginManager:
 
         The key is based on the event's name and specific identifying keyword
         arguments defined in the
-        :const:`~bedrock_server_manager.config.const.EVENT_IDENTITY_KEYS`
+        `_event_registry`
         mapping. If an event is not in this mapping or has no identity keys
         defined, the event name itself is used as the key.
 
@@ -1068,10 +1119,10 @@ class PluginManager:
         Returns:
             str: A string key representing this specific event instance.
         """
-        identity_key_names = EVENT_IDENTITY_KEYS.get(event_name)
+        identity_key_names = _event_registry.get(event_name)
 
         if identity_key_names is None:
-            # Event name not in EVENT_IDENTITY_KEYS, use event name as key
+            # Event name not in _event_registry, use event name as key
             return event_name
 
         if not identity_key_names:  # Empty tuple means event name itself is the key
@@ -1122,9 +1173,11 @@ class PluginManager:
             return
 
         _event_context.stack.append(current_event_key)
+
+        triggering_plugin = kwargs.get("_triggering_plugin", "core")
         logger.debug(
-            f"Dispatching standard event '{event_name}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
-            f"Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
+            f"Dispatching standard event '{event_name}' (key: '{current_event_key}', triggered by: '{triggering_plugin}') "
+            f"to {len(self.plugins)} loaded plugins. Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
         )
 
         try:
@@ -1184,9 +1237,11 @@ class PluginManager:
             return
 
         _event_context.stack.append(current_event_key)
+
+        triggering_plugin = kwargs.get("_triggering_plugin", "core")
         logger.debug(
-            f"Dispatching standard async event '{event_name}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
-            f"Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
+            f"Dispatching standard async event '{event_name}' (key: '{current_event_key}', triggered by: '{triggering_plugin}') "
+            f"to {len(self.plugins)} loaded plugins. Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
         )
 
         try:

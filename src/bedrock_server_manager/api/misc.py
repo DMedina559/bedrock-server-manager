@@ -24,7 +24,9 @@ _misc_lock = threading.RLock()
 
 @api_method("prune_download_cache")
 @trigger_app_event(
-    before="before_prune_download_cache", after="after_prune_download_cache"
+    before="before_prune_download_cache",
+    after="after_prune_download_cache",
+    identity_keys=("download_dir", "keep_count"),
 )
 def prune_download_cache(  # noqa: C901
     download_dir: str,

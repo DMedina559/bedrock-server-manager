@@ -101,7 +101,9 @@ def get_all_global_settings(
         }
 
 
-@trigger_app_event(before="before_setting_update", after="after_setting_update")
+@trigger_app_event(
+    before="before_setting_update", after="after_setting_update", identity_keys=("key",)
+)
 def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
