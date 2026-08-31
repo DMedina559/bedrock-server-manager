@@ -872,7 +872,9 @@ class PluginManager:
 
         logger.info("--- Plugin Reload Process Complete ---")
 
-    def dispatch_event(self, target_plugin: PluginBase, event: str, *args, **kwargs):
+    def dispatch_event(
+        self, target_plugin: PluginBase, event_name: str, *args, **kwargs
+    ):
         """Dispatches an event to a specific plugin instance.
 
         Executes listeners registered via `@app_event` for this specific event
@@ -882,17 +884,17 @@ class PluginManager:
 
         Args:
             target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
-            event (str): The name of the event.
+            event_name (str): The name of the event.
             *args (Any): Positional arguments to pass to the event handlers.
             **kwargs (Any): Keyword arguments to pass to the event handlers.
         """
         # 1. Execute @app_event listeners for this event name and wildcard
-        for event_name_to_check in (event, "*"):
+        for event_name_to_check in (event_name, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:
                 if listener_plugin_name == target_plugin.name:
                     logger.debug(
-                        f"Dispatching event '{event}' to plugin '{target_plugin.name}' "
+                        f"Dispatching event '{event_name}' to plugin '{target_plugin.name}' "
                         f"(callback: '{callback.__name__}'). Args: {args}, Kwargs: {kwargs}"
                     )
                     try:
@@ -908,26 +910,26 @@ class PluginManager:
                                 )
                             else:
                                 logger.warning(
-                                    f"Event '{event}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
+                                    f"Event '{event_name}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
                                 )
                         else:
                             callback(*args, **kwargs)
                     except Exception as e:
                         logger.error(
-                            f"Error in plugin '{target_plugin.name}' handling event '{event}': {e}",
+                            f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
                             exc_info=True,
                         )
 
         # 2. Legacy backwards compatibility: check if method exists directly on plugin
         plugin_class = type(target_plugin)
-        if hasattr(target_plugin, event):
-            class_method = getattr(plugin_class, event, None)
-            base_method = getattr(PluginBase, event, None)
+        if hasattr(target_plugin, event_name):
+            class_method = getattr(plugin_class, event_name, None)
+            base_method = getattr(PluginBase, event_name, None)
 
             if class_method is not base_method:
-                handler_method = getattr(target_plugin, event)
+                handler_method = getattr(target_plugin, event_name)
                 logger.debug(
-                    f"Dispatching legacy event '{event}' to plugin '{target_plugin.name}' "
+                    f"Dispatching legacy event '{event_name}' to plugin '{target_plugin.name}' "
                     f"(handler: '{handler_method.__name__}')."
                 )
                 try:
@@ -940,13 +942,13 @@ class PluginManager:
                             )
                         else:
                             logger.warning(
-                                f"Legacy event '{event}' is async but no loop running."
+                                f"Legacy event '{event_name}' is async but no loop running."
                             )
                     else:
                         handler_method(*args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error in legacy event handler '{event}' on '{target_plugin.name}': {e}",
+                        f"Error in legacy event handler '{event_name}' on '{target_plugin.name}': {e}",
                         exc_info=True,
                     )
 
@@ -958,11 +960,11 @@ class PluginManager:
                         import asyncio
 
                         asyncio.run_coroutine_threadsafe(
-                            target_plugin.on_any_event(event, *args, **kwargs),
+                            target_plugin.on_any_event(event_name, *args, **kwargs),
                             self.app_context.loop,
                         )
                 else:
-                    target_plugin.on_any_event(event, *args, **kwargs)
+                    target_plugin.on_any_event(event_name, *args, **kwargs)
             except Exception as e:
                 logger.error(
                     f"Error in legacy on_any_event handler on '{target_plugin.name}': {e}",
@@ -970,7 +972,7 @@ class PluginManager:
                 )
 
     async def dispatch_event_async(
-        self, target_plugin: PluginBase, event: str, *args, **kwargs
+        self, target_plugin: PluginBase, event_name: str, *args, **kwargs
     ):
         """Asynchronously dispatches an event to a specific plugin instance.
 
@@ -980,17 +982,17 @@ class PluginManager:
 
         Args:
             target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
-            event (str): The name of the event.
+            event_name (str): The name of the event.
             *args (Any): Positional arguments to pass.
             **kwargs (Any): Keyword arguments to pass.
         """
         # 1. Execute @app_event listeners
-        for event_name_to_check in (event, "*"):
+        for event_name_to_check in (event_name, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:
                 if listener_plugin_name == target_plugin.name:
                     logger.debug(
-                        f"Async dispatching event '{event}' to plugin '{target_plugin.name}' "
+                        f"Async dispatching event '{event_name}' to plugin '{target_plugin.name}' "
                         f"(callback: '{callback.__name__}')."
                     )
                     try:
@@ -1000,20 +1002,20 @@ class PluginManager:
                             callback(*args, **kwargs)
                     except Exception as e:
                         logger.error(
-                            f"Error in plugin '{target_plugin.name}' handling async event '{event}': {e}",
+                            f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
                             exc_info=True,
                         )
 
         # 2. Legacy backwards compatibility
         plugin_class = type(target_plugin)
-        if hasattr(target_plugin, event):
-            class_method = getattr(plugin_class, event, None)
-            base_method = getattr(PluginBase, event, None)
+        if hasattr(target_plugin, event_name):
+            class_method = getattr(plugin_class, event_name, None)
+            base_method = getattr(PluginBase, event_name, None)
 
             if class_method is not base_method:
-                handler_method = getattr(target_plugin, event)
+                handler_method = getattr(target_plugin, event_name)
                 logger.debug(
-                    f"Async dispatching legacy event '{event}' to plugin '{target_plugin.name}'."
+                    f"Async dispatching legacy event '{event_name}' to plugin '{target_plugin.name}'."
                 )
                 try:
                     if inspect.iscoroutinefunction(handler_method):
@@ -1022,16 +1024,16 @@ class PluginManager:
                         handler_method(*args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error in legacy async event '{event}' on '{target_plugin.name}': {e}",
+                        f"Error in legacy async event '{event_name}' on '{target_plugin.name}': {e}",
                         exc_info=True,
                     )
 
         if hasattr(target_plugin, "on_any_event"):
             try:
                 if inspect.iscoroutinefunction(target_plugin.on_any_event):
-                    await target_plugin.on_any_event(event, *args, **kwargs)
+                    await target_plugin.on_any_event(event_name, *args, **kwargs)
                 else:
-                    target_plugin.on_any_event(event, *args, **kwargs)
+                    target_plugin.on_any_event(event_name, *args, **kwargs)
             except Exception as e:
                 logger.error(
                     f"Error in legacy async on_any_event on '{target_plugin.name}': {e}",
@@ -1216,7 +1218,7 @@ class PluginManager:
         :meth:`.trigger_event`.
 
         Args:
-            event (str): The name of the event to trigger.
+            event_name (str): The name of the event to trigger.
             *args (Any): Positional arguments for the event handler.
             **kwargs (Any): Keyword arguments for the event handler.
         """
