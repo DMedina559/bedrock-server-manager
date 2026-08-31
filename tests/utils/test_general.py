@@ -113,7 +113,7 @@ def test_list_content_files_os_error(tmp_path, monkeypatch):
         raise OSError("Permission denied")
 
     monkeypatch.setattr(
-        "bedrock_server_manager.utils.general.find_files", mock_find_files
+        "bedrock_server_manager.core.system.find_files", mock_find_files
     )
 
     with pytest.raises(FileOperationError) as exc_info:

@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import List
 
 from ..context import AppContext
-from ..core.system import find_files
 from ..error import AppFileNotFoundError, FileOperationError
 
 logger = logging.getLogger(__name__)
@@ -100,6 +99,8 @@ def list_content_files(
     Internal helper to list files with specified extensions from a sub-folder
     within the global content directory.
     """
+    from ..core.system import find_files
+
     if not content_dir or not os.path.isdir(content_dir):
         raise AppFileNotFoundError(str(content_dir), "Content directory")
 
