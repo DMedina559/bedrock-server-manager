@@ -10,7 +10,7 @@ This guide will walk you through creating your own plugins to extend and customi
 
 This guide assumes you have a basic understanding of Python programming.
 
-For a complete list of all available event hooks, see the [Plugin Base](./plugin_base.rst).
+For a complete list of all available event, see the [Available Events](../../plugins/plugin_events.rst).
 For a complete list of all available APIs, see the [Available APIs](../../plugins/plugin_apis.md).
 
 ---
