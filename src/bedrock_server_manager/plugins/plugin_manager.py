@@ -85,6 +85,7 @@ class PluginManager:
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
+        self.plugin_tasks: Dict[str, List[Any]] = {}
 
         for directory in self.plugin_dirs:
             try:
@@ -748,6 +749,16 @@ class PluginManager:
                     f"Dispatching 'on_unload' event to plugin '{plugin_instance.name}'."
                 )
                 self.dispatch_event(plugin_instance, "on_unload")
+
+                # Cancel plugin tasks
+                if plugin_instance.name in self.plugin_tasks:
+                    tasks = self.plugin_tasks.pop(plugin_instance.name)
+                    logger.debug(
+                        f"Cancelling {len(tasks)} tasks for plugin '{plugin_instance.name}'."
+                    )
+                    for task in tasks:
+                        task.cancel()
+
             logger.info(
                 f"Finished dispatching 'on_unload' to {len(self.plugins)} plugins."
             )
@@ -1229,3 +1240,65 @@ class PluginManager:
             return
         logger.debug(f"GUARD_VARIABLE not set. Proceeding to trigger event '{event}'.")
         self.trigger_event(event, *args, **kwargs)
+
+    def start_plugin_tasks(self):
+        """Starts background tasks decorated with @task_loop for all loaded plugins."""
+        import asyncio
+
+        logger.info("Starting background tasks for plugins.")
+        for plugin_instance in self.plugins:
+            try:
+                for method_name, method in inspect.getmembers(
+                    plugin_instance, predicate=inspect.ismethod
+                ):
+                    interval_raw = getattr(method, "_task_loop_interval", None)
+                    if interval_raw is not None:
+                        # Ensure interval is a number (float or int) in seconds
+                        # In the updated task_loop we restricted it to int or float.
+                        try:
+                            interval = float(interval_raw)
+                        except (ValueError, TypeError):
+                            logger.error(
+                                f"Invalid interval '{interval_raw}' for @task_loop on {plugin_instance.name}.{method_name}"
+                            )
+                            continue
+
+                        async def run_task_loop(
+                            m=method,
+                            intv=interval,
+                            p_name=plugin_instance.name,
+                            m_name=method_name,
+                        ):
+                            logger.debug(
+                                f"Starting task loop for {p_name}.{m_name} every {intv} seconds."
+                            )
+                            while True:
+                                try:
+                                    await asyncio.sleep(intv)
+                                    if inspect.iscoroutinefunction(m):
+                                        await m()
+                                    else:
+                                        await asyncio.to_thread(m)
+                                except asyncio.CancelledError:
+                                    logger.debug(
+                                        f"Task loop for {p_name}.{m_name} was cancelled."
+                                    )
+                                    break
+                                except Exception as e:
+                                    logger.error(
+                                        f"Error in task loop {p_name}.{m_name}: {e}",
+                                        exc_info=True,
+                                    )
+
+                        task = asyncio.create_task(run_task_loop())
+                        if plugin_instance.name not in self.plugin_tasks:
+                            self.plugin_tasks[plugin_instance.name] = []
+                        self.plugin_tasks[plugin_instance.name].append(task)
+                        logger.info(
+                            f"Scheduled @task_loop for {plugin_instance.name}.{method_name} (interval: {interval}s)"
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Error auto-registering @task_loop for plugin '{plugin_instance.name}': {e}",
+                    exc_info=True,
+                )

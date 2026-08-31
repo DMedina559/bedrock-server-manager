@@ -36,6 +36,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         await asyncio.to_thread(app_context.api.update_server_statuses)
 
         app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+        app_context.plugin_manager.start_plugin_tasks()
 
         # Initialize and start LogStreamer
         from .log_streamer import LogStreamer
