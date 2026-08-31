@@ -52,7 +52,7 @@ _custom_event_context = threading.local()
 
 
 class PluginManager:
-    """Manages the discovery, loading, aconfiguration, and lifecycle of all plugins.
+    """Manages the discovery, loading, configuration, and lifecycle of all plugins.
 
     This class is the core of the plugin system. It scans for plugins,
     manages their configuration in the database, loads enabled plugins,

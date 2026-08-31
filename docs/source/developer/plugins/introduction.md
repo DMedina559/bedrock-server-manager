@@ -85,6 +85,36 @@ plugins/
 
 This package structure allows for better organization. Python's standard import mechanisms (e.g., `from . import internal_logic`) will work within your plugin package.
 
+## 2.3. Plugin Dependencies
+
+If your plugin relies on another plugin being loaded first, you can define dependencies using class attributes:
+
+```python
+from bedrock_server_manager import PluginBase
+
+class MyDependentPlugin(PluginBase):
+    name = "My Dependent Plugin"
+    version = "1.0.0"
+    author = "Your Name"
+    description = "This plugin depends on 'some_core_plugin' being loaded first."
+    dependencies = ["some_core_plugin"]          # Must be loaded before this plugin
+    optional_dependencies = ["some_extra_ui"]    # Will be loaded first if present
+
+    def on_load(self):
+        self.logger.info("I am loaded after 'some_core_plugin'!")
+```
+
+## 2.4. Plugin Metadata Attributes
+
+To help the Plugin Manager identify and display your plugin correctly, your `PluginBase` subclass should define several metadata attributes:
+
+*   **`version`** (str) - *Required*. Used for versioning and updates.
+*   **`name`** (str) - Optional. The display name of the plugin (defaults to the module's file name).
+*   **`description`** (str) - Optional. A short sentence describing what your plugin does.
+*   **`author`** (str) - Optional. The creator of the plugin.
+*   **`dependencies`** (List[str]) - Optional. A list of plugin names that **must** load before this one.
+*   **`optional_dependencies`** (List[str]) - Optional. Plugins to load first *if* they are present.
+
 ---
 
 ## 3. The `PluginBase` Class
@@ -94,13 +124,6 @@ Every plugin **must** inherit from `bedrock_server_manager.PluginBase` (typicall
 *   `self.name` (str): The name of your plugin, derived from its filename.
 *   `self.logger` (logging.Logger): A pre-configured Python logger. **Always use this for logging.**
 *   `self.api` (AppAPI): Your gateway to interacting with the main application. It dynamically exposes core application APIs to plugins safely and with robust type hints available in most modern IDEs.
-
-```{important}
-**Important Plugin Class Requirements:**
-
-*   **`version` Attribute (Mandatory):** Your plugin class **must** define a class-level attribute named `version` as a string (e.g., `version = "1.0.0"`). Plugins without a valid `version` attribute will not be loaded.
-*   **Description (from Docstring):** The description for your plugin is automatically extracted from the main docstring of your plugin class.
-```
 
 ## 3. Understanding Event Hooks
 
@@ -172,18 +195,18 @@ class HomeAutomationStarterPlugin(PluginBase):
         self.api.start_server(server_name=TARGET_SERVER_NAME, mode="detached")
 ```
 
-### Advanced Event Hooks (Interception)
+### Advanced Event Hooks (Cancellation & Interception)
 
-You can use `before_*` hooks to intercept actions and potentially prevent them from happening or run prerequisites.
+You can use `before_*` hooks to intercept actions. If an event is marked as **Cancellable**, the event payload will include a `CancellableEvent` object named `event`. You can call `event.cancel(reason)` to completely halt the core application operation!
 
 ```python
-from bedrock_server_manager import app_event
+from bedrock_server_manager import app_event, PluginBase
 
 class BackupBeforeStartPlugin(PluginBase):
     version = "1.0.0"
 
-    @app_event("before_start_server")
-    def before_start_server(self, server_name: str, **kwargs):
+    @app_event("before_server_start")
+    def before_server_start(self, server_name: str, event, **kwargs):
         """Runs automatically before a server is started."""
         self.logger.info(f"Intercepted start request for {server_name}. Running quick backup...")
 
@@ -193,18 +216,19 @@ class BackupBeforeStartPlugin(PluginBase):
         if result.get("status") == "success":
             self.logger.info("Backup completed. Allowing server to start.")
         else:
-            self.logger.error("Backup failed! The server will still attempt to start, but check logs.")
+            self.logger.error("Backup failed! Halting server start.")
+            event.cancel("Pre-start backup failed, aborting start for safety.")
 ```
 
 ## 5. Plugin Settings and Storage
 
-Plugins often need to store configuration data persistently. Bedrock Server Manager provides methods to read and write to the global `bedrock-server-manager.db` file under a special `custom` section.
+Plugins often need to store configuration data persistently. Bedrock Server Manager provides built-in methods on `PluginBase` to safely read and write your plugin's configuration to the database without conflicting with other plugins or core settings.
 
-*   **Saving Data:** `self.api.set_custom_global_setting(key="my_plugin_key", value="my_value")`
-*   **Loading Data:** `self.api.get_global_setting(key="custom.my_plugin_key")`
+*   **Saving Data:** `self.set_plugin_setting(key="my_setting", value="my_value")`
+*   **Loading Data:** `self.get_plugin_setting(key="my_setting", default="default_value")`
 
 ```python
-from bedrock_server_manager import app_event
+from bedrock_server_manager import app_event, PluginBase
 
 class MyConfigurablePlugin(PluginBase):
     version = "1.0.0"
@@ -212,15 +236,14 @@ class MyConfigurablePlugin(PluginBase):
     @app_event("on_load")
     def on_load(self):
         # Load existing settings or set defaults
-        self.plugin_config = self.api.get_global_setting("custom.my_configurable_plugin")
+        self.plugin_config = self.get_plugin_setting("config", default={"enable_feature_x": True})
 
-        if not self.plugin_config:
-            self.logger.info("No configuration found. Initializing defaults.")
-            default_config = {"enable_feature_x": True, "api_key": "YOUR_KEY_HERE"}
+        if "api_key" not in self.plugin_config:
+            self.logger.info("Initializing defaults.")
+            self.plugin_config["api_key"] = "YOUR_KEY_HERE"
 
-            # Save the default configuration
-            self.api.set_custom_global_setting("my_configurable_plugin", default_config)
-            self.plugin_config = default_config
+            # Save the updated configuration
+            self.set_plugin_setting("config", self.plugin_config)
 
         self.logger.info(f"Loaded config: {self.plugin_config}")
 ```
@@ -348,4 +371,22 @@ For more information and available components, refer to the [Native JSON UI](./n
 *   **Check the `result` dictionary:** After an `after_*` event, inspect the `result['status']` to confirm the outcome.
 *   **Avoid blocking operations:** Long-running tasks in your event handlers or FastAPI endpoints can freeze the application. Use the [Task Manager](./task_manager.md) to offload them to background threads.
 *   **Use the API for operations:** Do not directly manipulate server files or directories. Use the provided `self.api` functions to ensure thread-safety and consistency.
+```
+
+
+## 8. Background Task Loops
+
+Plugins can easily schedule recurring background tasks using the `@task_loop` decorator. The Plugin Manager will automatically start these loops when the plugin loads and gracefully cancel them when it unloads.
+
+```python
+from bedrock_server_manager import PluginBase
+from bedrock_server_manager.plugins.task_loop import task_loop
+
+class MyMonitorPlugin(PluginBase):
+    version = "1.0.0"
+
+    @task_loop(interval=60)  # Runs every 60 seconds
+    async def check_something_periodically(self):
+        self.logger.info("Performing my background check...")
+        # Await async operations safely here
 ```
