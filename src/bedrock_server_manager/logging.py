@@ -8,6 +8,7 @@ import logging
 import os
 import platform
 import sys
+import warnings
 from datetime import datetime
 from typing import Optional
 
@@ -155,6 +156,22 @@ def setup_logging(  # noqa: C901
             f"Logging has been {'re' if force_reconfigure else ''}configured. "
             f"Level: '{logging.getLevelName(log_level)}'"
         )
+
+        # Ensure Python warnings (including DeprecationWarning) are visible
+        # and forwarded into the logging system so they appear in both
+        # console and file handlers. DeprecationWarning is ignored by
+        # default for user code, so set it to 'default' here and capture
+        # warnings via the logging subsystem.
+        try:
+            warnings.simplefilter("default", DeprecationWarning)
+            logging.captureWarnings(True)
+            root_logger.debug(
+                "Configured warnings: DeprecationWarning set to 'default' and captured by logging."
+            )
+        except Exception:
+            root_logger.debug(
+                "Failed to configure warnings capture; continuing without it."
+            )
 
     except Exception as e:
         print(f"CRITICAL: Failed to configure log handlers: {e}", file=sys.stderr)
