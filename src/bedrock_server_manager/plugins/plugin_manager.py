@@ -671,8 +671,6 @@ class PluginManager:
                 logger.info(
                     f"Successfully loaded and initialized plugin: '{plugin_name}' v{plugin_version}."
                 )
-                logger.debug(f"Dispatching 'on_load' event to plugin '{plugin_name}'.")
-                self.dispatch_event(instance, "on_load")
 
                 # Register methods decorated with @app_event
                 try:
@@ -690,6 +688,9 @@ class PluginManager:
                         f"Error auto-registering @app_event listeners for plugin '{plugin_name}': {e_event}",
                         exc_info=True,
                     )
+
+                logger.debug(f"Dispatching 'on_load' event to plugin '{plugin_name}'.")
+                self.dispatch_event(instance, "on_load")
 
                 # Collect FastAPI routers
                 try:
