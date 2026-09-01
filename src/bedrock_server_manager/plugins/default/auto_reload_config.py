@@ -3,7 +3,6 @@
 Plugin that automatically reloads server configurations after changes.
 """
 
-import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
@@ -70,7 +69,7 @@ class AutoReloadPlugin(PluginBase):
             )
 
     @app_event("after_allowlist_change")
-    async def send_allowlist_reload_command(self, **kwargs: Any):
+    def send_allowlist_reload_command(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
@@ -83,8 +82,7 @@ class AutoReloadPlugin(PluginBase):
             removed_players = result.get("details", {}).get("removed", [])
 
             if added_count > 0 or len(removed_players) > 0:
-                await asyncio.to_thread(
-                    self._send_reload_command,
+                self._send_reload_command(
                     server_name,
                     "allowlist reload",
                     "allowlist",
@@ -99,7 +97,7 @@ class AutoReloadPlugin(PluginBase):
             )
 
     @app_event("after_permission_change")
-    async def send_permission_reload_command(self, **kwargs: Any):
+    def send_permission_reload_command(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
@@ -107,8 +105,7 @@ class AutoReloadPlugin(PluginBase):
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
         if result.get("status") == "success":
-            await asyncio.to_thread(
-                self._send_reload_command,
+            self._send_reload_command(
                 server_name,
                 "permission reload",
                 "permission",

@@ -1,5 +1,4 @@
 # <PLUGIN_DIR>/lifecycle_test_plugin.py
-import asyncio
 from typing import Any, Dict
 
 from bedrock_server_manager import PluginBase, app_event
@@ -16,7 +15,7 @@ class LifecycleTestPlugin(PluginBase):
         self.logger.info("Lifecycle Test Plugin loaded.")
 
     @app_event("after_server_start")
-    async def run_lifecycle_test(self, **kwargs: Any):
+    def run_lifecycle_test(self, **kwargs: Any):
 
         server_name = str(kwargs.get("server_name"))
         result: Dict[str, Any] = kwargs.get("result", {})
@@ -44,4 +43,4 @@ class LifecycleTestPlugin(PluginBase):
                         exc_info=True,
                     )
 
-            await asyncio.to_thread(lifecycle_task)
+            lifecycle_task()

@@ -3,7 +3,6 @@
 Plugin that automatically updates a Bedrock server to the latest version.
 """
 
-import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
@@ -30,7 +29,7 @@ class AutoupdatePlugin(PluginBase):
         )
 
     @app_event("before_server_start")
-    async def update_before_start(self, **kwargs: Any):
+    def update_before_start(self, **kwargs: Any):
         """
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.
@@ -57,8 +56,8 @@ class AutoupdatePlugin(PluginBase):
             )
 
             # Call the main API to perform the update. We run it in a thread so it doesn't block the async loop.
-            update_result = await asyncio.to_thread(
-                self.api.update_server, server_name=server_name, send_message=False
+            update_result = self.api.update_server(
+                server_name=server_name, send_message=False
             )
 
             if update_result.get("status") == "success":

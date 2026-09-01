@@ -3,7 +3,6 @@
 Plugin to send in-game notifications before world operations like export, import, or reset.
 """
 
-import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
@@ -68,7 +67,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             )
 
     @app_event("before_world_export")
-    async def send_export_warning(self, **kwargs: Any):
+    def send_export_warning(self, **kwargs: Any):
         """Notifies players before a world export begins."""
 
         server_name = str(kwargs.get("server_name"))
@@ -80,15 +79,14 @@ class WorldOperationNotificationsPlugin(PluginBase):
         if app_context:
             server = app_context.get_server(server_name)
             if getattr(server, "player_count", 0) > 0:
-                await asyncio.to_thread(
-                    self._send_ingame_warning,
+                self._send_ingame_warning(
                     server_name,
                     "World export starting...",
                     "world export",
                 )
 
     @app_event("before_world_import")
-    async def send_import_warning(self, **kwargs: Any):
+    def send_import_warning(self, **kwargs: Any):
         """Notifies players before a world import begins."""
 
         server_name = str(kwargs.get("server_name"))
@@ -100,15 +98,14 @@ class WorldOperationNotificationsPlugin(PluginBase):
         if app_context:
             server = app_context.get_server(server_name)
             if getattr(server, "player_count", 0) > 0:
-                await asyncio.to_thread(
-                    self._send_ingame_warning,
+                self._send_ingame_warning(
                     server_name,
                     "World import starting... Current world will be replaced.",
                     "world import",
                 )
 
     @app_event("before_world_reset")
-    async def send_reset_warning(self, **kwargs: Any):
+    def send_reset_warning(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
 
         server_name = str(kwargs.get("server_name"))
@@ -120,8 +117,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
         if app_context:
             server = app_context.get_server(server_name)
             if getattr(server, "player_count", 0) > 0:
-                await asyncio.to_thread(
-                    self._send_ingame_warning,
+                self._send_ingame_warning(
                     server_name,
                     "CRITICAL WARNING: Server world is being reset NOW!",
                     "world reset",

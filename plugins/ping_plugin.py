@@ -34,7 +34,7 @@ class PingPlugin(PluginBase):
         )
 
     @app_event("after_server_start")
-    async def send_ping_event(self, **kwargs: Any):
+    def send_ping_event(self, **kwargs: Any):
         """
         An application event hook, called by the PluginManager after a server
         start attempt.

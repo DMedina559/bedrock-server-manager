@@ -1,5 +1,4 @@
 import ast
-import asyncio
 import datetime
 import inspect
 import os
@@ -27,7 +26,7 @@ class APIDocsGenerator(PluginBase):
         )
 
     @app_event("on_manager_startup")
-    async def generate_docs(self, **kwargs: Any):
+    def generate_docs(self, **kwargs: Any):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API and events.
@@ -49,13 +48,13 @@ class APIDocsGenerator(PluginBase):
                 with open(api_output_path, "w", encoding="utf-8") as f:
                     f.write(api_markdown_content)
 
-            await asyncio.to_thread(write_api_file)
+            write_api_file()
             self.logger.info(
                 f"Successfully generated API documentation at: {api_output_path}"
             )
 
             # --- Event Docs ---
-            event_list = await asyncio.to_thread(self._scan_codebase_for_events)
+            event_list = self._scan_codebase_for_events()
             event_markdown_content = self._format_event_markdown(event_list)
 
             event_output_path = os.path.join(
@@ -66,7 +65,7 @@ class APIDocsGenerator(PluginBase):
                 with open(event_output_path, "w", encoding="utf-8") as f:
                     f.write(event_markdown_content)
 
-            await asyncio.to_thread(write_event_file)
+            write_event_file()
             self.logger.info(
                 f"Successfully generated Event documentation at: {event_output_path}"
             )
