@@ -23,6 +23,7 @@ import inspect
 import logging
 import os
 import threading
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
@@ -994,6 +995,13 @@ class PluginManager:
                     f"Dispatching legacy event '{event_name}' to plugin '{target_plugin.name}' "
                     f"(handler: '{handler_method.__name__}')."
                 )
+                warnings.warn(
+                    f"Plugin '{target_plugin.name}' is using legacy method overriding for event '{event_name}'. "
+                    f"Please migrate to the @app_event decorator.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
                 try:
                     if inspect.iscoroutinefunction(handler_method):
                         if self.app_context.loop and self.app_context.loop.is_running():
@@ -1016,7 +1024,14 @@ class PluginManager:
 
         # Legacy backwards compatibility for on_any_event
         if hasattr(target_plugin, "on_any_event"):
+            warnings.warn(
+                f"Plugin '{target_plugin.name}' is using legacy 'on_any_event' method. "
+                f"Please migrate to the @app_event('*') decorator.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             try:
+
                 if inspect.iscoroutinefunction(target_plugin.on_any_event):
                     if self.app_context.loop and self.app_context.loop.is_running():
                         import asyncio
@@ -1079,6 +1094,13 @@ class PluginManager:
                 logger.debug(
                     f"Async dispatching legacy event '{event_name}' to plugin '{target_plugin.name}'."
                 )
+                warnings.warn(
+                    f"Plugin '{target_plugin.name}' is using legacy async method overriding for event '{event_name}'. "
+                    f"Please migrate to the @app_event decorator.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
                 try:
                     if inspect.iscoroutinefunction(handler_method):
                         await handler_method(*args, **kwargs)
@@ -1091,7 +1113,14 @@ class PluginManager:
                     )
 
         if hasattr(target_plugin, "on_any_event"):
+            warnings.warn(
+                f"Plugin '{target_plugin.name}' is using legacy async 'on_any_event' method. "
+                f"Please migrate to the @app_event('*') decorator.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             try:
+
                 if inspect.iscoroutinefunction(target_plugin.on_any_event):
                     await target_plugin.on_any_event(event_name, *args, **kwargs)
                 else:
