@@ -22,13 +22,13 @@ MODULE_CONTENT_DIR_PATH: Optional[Path] = None
 class ContentUploaderPlugin(PluginBase):
     """Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."""
 
-    version = "2.0.0"
+    version = "2.1.0"
     description = "Adds a web interface for uploading Minecraft content files (.mcworld, .mcpack, .mcaddon)."
     author = "dmedina559"
     name = "Content Uploader"
 
     @app_event("on_load")
-    def on_load(self, **kwargs):
+    def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
         self._define_routes()
         self.logger.info(
@@ -86,13 +86,13 @@ class ContentUploaderPlugin(PluginBase):
 
     def _define_routes(self):  # noqa: C901
         @self.router.get(
-            "/content/upload/native",
+            "/content/upload/ui",
             response_class=JSONResponse,
-            name="Content Upload Native UI",
-            summary="Upload Content (Native)",
-            tags=["plugin-ui-native"],
+            name="Content Upload UI",
+            summary="Upload Content UI",
+            tags=["plugin-json-ui"],
         )
-        async def get_upload_native_ui(
+        async def get_upload_json_ui(
             request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
         ):
             return JSONResponse(
@@ -244,7 +244,7 @@ class ContentUploaderPlugin(PluginBase):
             )
 
     @app_event("on_unload")
-    def on_unload(self, **kwargs):
+    def plugin_unloaded(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
     def get_fastapi_routers(self, **kwargs):

@@ -2,19 +2,21 @@
 import asyncio
 from typing import Any, Dict
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class LifecycleTestPlugin(PluginBase):
-    version = "1.0.0"
+    version = "1.1.0"
     author = "dmedina559"
     description = "A custom Bedrock Server Manager plugin."
     name = "Lifecycle Test"
 
-    def on_load(self, **kwargs):
+    @app_event("on_load")
+    def plugin_loaded(self, **kwargs):
         self.logger.info("Lifecycle Test Plugin loaded.")
 
-    async def after_server_start(self, **kwargs: Any):
+    @app_event("after_server_start")
+    async def run_lifecycle_test(self, **kwargs: Any):
 
         server_name = str(kwargs.get("server_name"))
         result: Dict[str, Any] = kwargs.get("result", {})

@@ -10,7 +10,7 @@ class AutostartServers(PluginBase):
     Starts all servers with the autostart setting set to true on manager startup.
     """
 
-    version = "1.0.2"
+    version = "1.1.0"
     description = (
         "Starts all servers with the autostart setting set to true on manager startup."
     )
@@ -18,7 +18,7 @@ class AutostartServers(PluginBase):
     name = "Auto Start Servers"
 
     @app_event("on_load")
-    def on_load(self):
+    def plugin_loaded(self):
         """
         This event is called when the plugin is loaded by the manager.
         """
@@ -27,7 +27,7 @@ class AutostartServers(PluginBase):
         )
 
     @app_event("on_manager_startup")
-    async def on_manager_startup(self, **kwargs: Any):
+    async def autostart_servers(self, **kwargs: Any):
 
         # Run API calls in thread to not block startup loop
         result = await asyncio.to_thread(self.api.get_all_servers_data)

@@ -15,12 +15,12 @@ class WorldOperationNotificationsPlugin(PluginBase):
     are performed on a running server, providing a heads-up for potential disruptions.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
     description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
     author = "dmedina559"
 
     @app_event("on_load")
-    def on_load(self):
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info("Plugin loaded. Will send notifications for world operations.")
 
@@ -68,7 +68,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
             )
 
     @app_event("before_world_export")
-    async def before_world_export(self, **kwargs: Any):
+    async def send_export_warning(self, **kwargs: Any):
         """Notifies players before a world export begins."""
 
         server_name = str(kwargs.get("server_name"))
@@ -88,7 +88,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 )
 
     @app_event("before_world_import")
-    async def before_world_import(self, **kwargs: Any):
+    async def send_import_warning(self, **kwargs: Any):
         """Notifies players before a world import begins."""
 
         server_name = str(kwargs.get("server_name"))
@@ -108,7 +108,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 )
 
     @app_event("before_world_reset")
-    async def before_world_reset(self, **kwargs: Any):
+    async def send_reset_warning(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
 
         server_name = str(kwargs.get("server_name"))

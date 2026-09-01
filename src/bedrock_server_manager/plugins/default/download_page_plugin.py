@@ -15,7 +15,7 @@ from bedrock_server_manager.web import get_admin_user
 class DownloadPagePlugin(PluginBase):
     """Adds a download page to the web interface for server backups and content."""
 
-    version = "1.0.0"
+    version = "1.1.0"
     description = (
         "Adds a download page to the web interface for server backups and content."
     )
@@ -23,7 +23,7 @@ class DownloadPagePlugin(PluginBase):
     name = "Download Page"
 
     @app_event("on_load")
-    def on_load(self, **kwargs):
+    def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Download Page Plugin"])
         self._define_routes()
         self.logger.info(f"Plugin '{self.name}' v{self.version} initialized.")
@@ -34,7 +34,7 @@ class DownloadPagePlugin(PluginBase):
             response_class=JSONResponse,
             name="Download Page UI",
             summary="Download Page UI",
-            tags=["plugin-ui-native"],
+            tags=["plugin-json-ui"],
         )
         async def get_download_page_ui(
             server: Optional[str] = Query(None),
@@ -369,7 +369,7 @@ class DownloadPagePlugin(PluginBase):
         }
 
     @app_event("on_unload")
-    def on_unload(self, **kwargs):
+    def plugin_unloaded(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
     def get_fastapi_routers(self, **kwargs):

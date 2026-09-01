@@ -18,7 +18,7 @@ def define_routes(router: APIRouter, plugin_instance):
         "/ui",
         response_class=JSONResponse,
         name="Event Sender",
-        tags=["plugin-ui-native"],
+        tags=["plugin-json-ui"],
     )
     async def get_ui(request: Request):
         return JSONResponse(

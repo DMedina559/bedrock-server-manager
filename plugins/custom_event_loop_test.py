@@ -45,8 +45,7 @@ What to Look For in the Logs:
   This indicates the API call itself returned and didn't cause a stack overflow.
 """
 
-from bedrock_server_manager import PluginBase
-from bedrock_server_manager.plugins import app_event
+from bedrock_server_manager import PluginBase, app_event
 
 EVENT_X_NAME = "custom_loop:event_X"
 EVENT_Y_NAME = "custom_loop:event_Y"
@@ -58,12 +57,13 @@ class CustomEventLoopTestPlugin(PluginBase):
     using a chained custom event sequence: Event X -> Event Y -> Event X (recursive).
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
     author = "dmedina559"
     description = "Tests the PluginManager's stack-based re-entrancy guard for custom events using a chained custom event sequence."
     name = "Custom Event Loop Test"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
         self.logger.warning(
             f"'{self.name}': This plugin will intentionally attempt to create a "

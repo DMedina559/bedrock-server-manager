@@ -17,20 +17,20 @@ class AutoupdatePlugin(PluginBase):
     configuration. If enabled, it triggers the update process before launch.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
     description = "Automatically updates a server to the latest version before it starts. This plugin checks for a server-specific `autoupdate: true` setting in its configuration."
     author = "dmedina559"
     name = "Auto Update on Start"
 
     @app_event("on_load")
-    def on_load(self):
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will check for updates before server starts if enabled."
         )
 
     @app_event("before_server_start")
-    async def before_server_start(self, **kwargs: Any):
+    async def update_before_start(self, **kwargs: Any):
         """
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.

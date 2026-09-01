@@ -16,20 +16,20 @@ class AutoBackupOnStart(PluginBase):
     backup exists before the server goes online.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
     description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
     name = "Auto Backup On Start"
 
     @app_event("on_load")
-    def on_load(self):
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will perform a full backup before any server starts."
         )
 
     @app_event("before_server_start")
-    async def before_server_start(self, **kwargs: Any):
+    async def backup_on_start(self, **kwargs: Any):
         """
         Triggers a full backup of the server before it starts.
         """

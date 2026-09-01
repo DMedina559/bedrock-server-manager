@@ -16,18 +16,18 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     This gives players warnings and can help ensure smoother transitions.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
     description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
     name = "Server Lifecycle Notifications"
 
     @app_event("on_load")
-    def on_load(self) -> None:
+    def plugin_loaded(self) -> None:
         """Initializes default delays and logs plugin activation."""
         # Default delays in seconds. These could be made configurable in the future.
-        self.stop_warning_delay: int = 10
+        self.stop_warning_delay: int = 3
         self.post_stop_settle_delay: int = 1
-        self.post_start_settle_delay: int = 3
+        self.post_start_settle_delay: int = 1
 
         self.logger.info(
             "Plugin loaded. Will manage server lifecycle notifications and delays."
@@ -79,7 +79,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
 
     @app_event("before_server_stop")
-    async def before_server_stop(self, **kwargs: Any) -> None:
+    async def send_shutdown_warning(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
@@ -111,7 +111,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     await asyncio.sleep(self.stop_warning_delay)
 
     @app_event("after_server_stop")
-    async def after_server_stop(self, **kwargs: Any) -> None:
+    async def wait_after_stop(self, **kwargs: Any) -> None:
         """Waits for a short period after a server stops, e.g., for port release."""
 
         server_name = kwargs.get("server_name")
@@ -124,7 +124,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             await asyncio.sleep(self.post_stop_settle_delay)
 
     @app_event("before_delete_server_data")
-    async def before_delete_server_data(self, **kwargs: Any) -> None:
+    async def send_delete_warning(self, **kwargs: Any) -> None:
         """Sends a final warning before server data is deleted if the server is running."""
 
         server_name = str(kwargs.get("server_name"))
@@ -142,7 +142,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 )
 
     @app_event("before_server_update")
-    async def before_server_update(self, **kwargs: Any) -> None:
+    async def send_update_notification(self, **kwargs: Any) -> None:
         """Notifies players before a server update begins."""
 
         server_name = str(kwargs.get("server_name"))
@@ -163,7 +163,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 )
 
     @app_event("after_server_start")
-    async def after_server_start(self, **kwargs: Any) -> None:
+    async def wait_after_start(self, **kwargs: Any) -> None:
         """Waits for a short period after a server starts to allow initialization."""
 
         server_name = kwargs.get("server_name")

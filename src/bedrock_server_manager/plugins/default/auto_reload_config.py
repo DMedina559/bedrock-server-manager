@@ -16,13 +16,13 @@ class AutoReloadPlugin(PluginBase):
     ensuring changes take effect immediately without manual intervention.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
     description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."
     author = "dmedina559"
     name = "Auto Reload Config"
 
     @app_event("on_load")
-    def on_load(self):
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will send reload commands after config changes if server is running."
@@ -70,7 +70,7 @@ class AutoReloadPlugin(PluginBase):
             )
 
     @app_event("after_allowlist_change")
-    async def after_allowlist_change(self, **kwargs: Any):
+    async def send_allowlist_reload_command(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
@@ -99,7 +99,7 @@ class AutoReloadPlugin(PluginBase):
             )
 
     @app_event("after_permission_change")
-    async def after_permission_change(self, **kwargs: Any):
+    async def send_permission_reload_command(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
 
         server_name = str(kwargs.get("server_name"))

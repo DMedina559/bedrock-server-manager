@@ -6,7 +6,7 @@ import os
 from typing import Any, Dict, List
 
 import bedrock_server_manager
-from bedrock_server_manager import PluginBase, __version__
+from bedrock_server_manager import PluginBase, __version__, app_event
 
 
 class APIDocsGenerator(PluginBase):
@@ -20,12 +20,14 @@ class APIDocsGenerator(PluginBase):
     description = "A utility plugin that automatically generates Markdown documentation for all registered plugin API functions and application events."
     name = "API Docs Generator"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         self.logger.info(
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
-    async def on_manager_startup(self, **kwargs: Any):
+    @app_event("on_manager_startup")
+    async def generate_docs(self, **kwargs: Any):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API and events.

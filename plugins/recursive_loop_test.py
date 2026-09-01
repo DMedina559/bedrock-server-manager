@@ -38,7 +38,7 @@ What to look for in the logs:
 import asyncio
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class RecursiveLoopPlugin(PluginBase):
@@ -47,12 +47,13 @@ class RecursiveLoopPlugin(PluginBase):
     'before_server_start' -> 'before_backup' -> 'before_server_start' event chain.
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
     author = "dmedina559"
     description = "Tests the PluginManager's stack-based re-entrancy guard using a 'before_server_start' -> 'before_backup' -> 'before_server_start' event chain."
     name = "Recursive Loop Test"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self, **kwargs):
         self.logger.info(
             f"Plugin '{self.name}' v{self.version} loaded. "
             "This plugin tests event loop protection. To run the test, start any server "
@@ -64,7 +65,8 @@ class RecursiveLoopPlugin(PluginBase):
             "A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop."
         )
 
-    async def before_server_start(self, **kwargs: Any):
+    @app_event("before_server_start")
+    async def trigger_recursive_loop_a(self, **kwargs: Any):
         """This is EVENT A in the A -> B -> A' loop."""
 
         server_name = kwargs.get("server_name")
@@ -89,7 +91,8 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (EVENT A - Handler Call): Finished 'before_server_start' handler execution."
         )
 
-    async def before_backup(self, **kwargs: Any):
+    @app_event("before_backup")
+    async def trigger_recursive_loop_b(self, **kwargs: Any):
         """This is EVENT B in the A -> B -> A' loop."""
 
         server_name = kwargs.get("server_name")
