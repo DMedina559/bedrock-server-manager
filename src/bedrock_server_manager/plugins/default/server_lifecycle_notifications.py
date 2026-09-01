@@ -88,7 +88,6 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         if app_context:
             server = app_context.get_server(server_name)
             if getattr(server, "player_count", 0) > 0:
-                import time
 
                 # Run the check in a separate thread so it doesn't block the loop
                 is_running = self._is_server_running(server_name)
