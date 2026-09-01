@@ -21,7 +21,7 @@ import datetime
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -44,6 +44,7 @@ router = APIRouter(
 # --- API Login Route ---
 @router.post("/token", response_model=TokenResponse, tags=["Login"])
 async def api_login_for_access_token(
+    request: Request,
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     remember_me: Annotated[bool, Form()] = False,
@@ -88,12 +89,18 @@ async def api_login_for_access_token(
     )
 
     logger.info(f"API login successful for '{form_data.username}'. JWT created.")
+    is_secure = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "") == "https"
+    )
+
     response.set_cookie(
         key="access_token_cookie",
         value=access_token,
         httponly=True,
         max_age=int(expires_delta.total_seconds()),
         samesite="lax",
+        secure=is_secure,
         path="/",
     )
     return TokenResponse(
@@ -105,6 +112,7 @@ async def api_login_for_access_token(
 
 @router.post("/reauth", response_model=TokenResponse, tags=["Login"])
 async def reauth(
+    request: Request,
     response: Response,
     remember_me: Annotated[bool, Form()] = False,
     current_user: UserResponse = Depends(get_current_user),
@@ -131,12 +139,18 @@ async def reauth(
     )
 
     logger.info(f"Token refreshed for '{current_user.username}'.")
+    is_secure = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "") == "https"
+    )
+
     response.set_cookie(
         key="access_token_cookie",
         value=access_token,
         httponly=True,
         max_age=int(expires_delta.total_seconds()),
         samesite="lax",
+        secure=is_secure,
         path="/",
     )
     return TokenResponse(
@@ -149,6 +163,7 @@ async def reauth(
 # --- Logout Route ---
 @router.get("/logout")
 async def logout(
+    request: Request,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
@@ -163,10 +178,16 @@ async def logout(
         content={"status": "success", "message": "Successfully logged out."},
         status_code=status.HTTP_200_OK,
     )
+    is_secure = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "") == "https"
+    )
+
     response.delete_cookie(
         key="access_token_cookie",
         httponly=True,
         samesite="lax",
+        secure=is_secure,
         path="/",
     )
     return response

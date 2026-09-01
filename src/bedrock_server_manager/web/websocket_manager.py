@@ -1,4 +1,5 @@
 # bedrock_server_manager/web/websocket_manager.py
+import asyncio
 import json
 import logging
 import uuid
@@ -116,8 +117,10 @@ class ConnectionManager:
 
         # Create a copy of the list to avoid issues if a client disconnects mid-broadcast
         client_ids = list(clients_to_notify)
-        for client_id in client_ids:
-            await self.send_to_client(data, client_id)
+
+        coroutines = [self.send_to_client(data, client_id) for client_id in client_ids]
+        if coroutines:
+            await asyncio.gather(*coroutines)
 
     async def send_to_user(self, username: str, data: Any):
         """Sends a JSON message to all active connections for a specific user."""
@@ -127,5 +130,9 @@ class ConnectionManager:
             for client in self.active_connections.values()
             if client.user.username == username
         ]
-        for client_id in client_ids_for_user:
-            await self.send_to_client(data, client_id)
+
+        coroutines = [
+            self.send_to_client(data, client_id) for client_id in client_ids_for_user
+        ]
+        if coroutines:
+            await asyncio.gather(*coroutines)
