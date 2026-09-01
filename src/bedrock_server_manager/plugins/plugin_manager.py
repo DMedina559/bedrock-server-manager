@@ -510,7 +510,7 @@ class PluginManager:
                 "Plugin configuration synchronization complete. No changes detected."
             )
 
-    def load_plugins(self):  # noqa: C901
+    def load_plugins(self) -> None:  # noqa: C901
         """Discovers, validates, and loads all enabled plugins.
 
         This method orchestrates the entire plugin loading process:
