@@ -81,9 +81,7 @@ class PluginManager:
         self.plugins: List[PluginBase] = []
         self._event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
-        self.native_ui_render_tag = (
-            "plugin-ui-native"  # Tag for Native UI rendering in FastAPI
-        )
+        self.ui_render_tags = {"json": "plugin-json-ui", "legacy": "plugin-ui-native"}
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
@@ -767,10 +765,6 @@ class PluginManager:
                     f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
                     exc_info=True,
                 )
-            else:
-                logger.error(
-                    f"Could not retrieve class for plugin '{plugin_name}' from path '{path}' during load phase. Skipping."
-                )
         logger.info(
             f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
             f"{len(self.plugin_fastapi_routers)} total FastAPI router(s), "
@@ -843,8 +837,20 @@ class PluginManager:
                 if not hasattr(route, "tags"):
                     continue
 
-                if self.native_ui_render_tag in route.tags:
+                if self.ui_render_tags["legacy"] in route.tags:
+                    warnings.warn(
+                        f"Route '{route.path}' uses legacy UI tag '{self.ui_render_tags['legacy']}'. "
+                        f"Please migrate to use the '{self.ui_render_tags['json']}' tag.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+
+                if (
+                    self.ui_render_tags["json"] in route.tags
+                    or self.ui_render_tags["legacy"] in route.tags
+                ):
                     # Use route name or summary if available, otherwise path
+
                     route_name = route.name
                     if hasattr(route, "summary") and route.summary:
                         route_name = route.summary
@@ -852,7 +858,7 @@ class PluginManager:
                         route_name = route.path
 
                     ui_routes.append(
-                        {"name": route_name, "path": route.path, "type": "native"}
+                        {"name": route_name, "path": route.path, "type": "json"}
                     )
         logger.debug(f"Collected {len(ui_routes)} Native UI rendering plugin routes.")
         return ui_routes

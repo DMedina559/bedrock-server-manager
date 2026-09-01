@@ -4,7 +4,7 @@ Bedrock Server Manager allows plugins to define native UI pages using a simple J
 
 ## How it Works
 
-Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-ui-native`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
+Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-json-ui`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
 
 ### Global Server Context
 
@@ -14,7 +14,7 @@ Your FastAPI route should accept this `server` query parameter to dynamically fe
 
 **Example:**
 ```python
-@self.router.get("/my_plugin/ui", response_class=JSONResponse, tags=["plugin-ui-native"])
+@self.router.get("/my_plugin/ui", response_class=JSONResponse, tags=["plugin-json-ui"])
 async def get_ui(server: str = "default_server"): # Accept the server query param
     # Fetch data specific to the selected server using the Core API
     status = self.api.get_server_running_status(server)
@@ -52,7 +52,7 @@ class MyPlugin(PluginBase):
             "/my_plugin/ui",
             response_class=JSONResponse,
             name="My Plugin UI",
-            tags=["plugin-ui-native"]  # <--- This tag enables the Native UI renderer
+            tags=["plugin-json-ui"]  # <--- This tag enables the Native UI renderer
         )
         async def get_ui(request: Request):
             return JSONResponse(content={

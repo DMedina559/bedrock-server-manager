@@ -61,7 +61,7 @@ async def submit_data_to_plugin(data: dict):
     "/ui",
     response_class=JSONResponse,
     name="My Plugin UI",
-    tags=["plugin-ui-native"]  # <--- This tag enables the Native UI renderer
+    tags=["plugin-json-ui"]  # <--- This tag enables the Native UI renderer
 )
 async def get_plugin_ui():
     """Serves a custom JSON UI page from the plugin."""
@@ -103,7 +103,7 @@ These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api
 
 Bedrock Server Manager allows plugins to define native UI pages using a simple JSON schema. This eliminates the need for plugin developers to write frontend code (React, HTML, CSS) while still providing a rich, interactive user interface that matches the application's look and feel.
 
-Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-ui-native`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
+Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-json-ui`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
 
 For more information and available components, refer to the [Native JSON UI](./native_json_ui.md) documentation.
 
@@ -112,5 +112,5 @@ For more information and available components, refer to the [Native JSON UI](./n
 
 *   **Unique Prefixes & Mount Names:** Essential for routers and static mounts to avoid conflicts.
 *   **Authentication:** Apply as needed to your plugin's routers or individual routes.
-*  **Native JSON UI:** Tag your JSON UI routers with `plugin-ui-native` to have it added to the Web UI.
+*  **Native JSON UI:** Tag your JSON UI routers with `plugin-ui` to have it added to the Web UI.
 ```
