@@ -5,7 +5,7 @@ Plugin to automatically back up a server before it starts.
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class AutoBackupOnStart(PluginBase):
@@ -15,25 +15,38 @@ class AutoBackupOnStart(PluginBase):
     backup exists before the server goes online.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
+    description = "Performs a full backup of a server each time a start command is initiated. This plugin hooks into the `before_server_start` event."
     author = "dmedina559"
+    name = "Auto Backup On Start"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will perform a full backup before any server starts."
         )
 
-    def before_server_start(self, **kwargs: Any):
+    @app_event("before_server_start")
+    def backup_on_start(self, **kwargs: Any):
         """
         Triggers a full backup of the server before it starts.
         """
+        if not self.get_plugin_setting("enable_backup_on_start", default=True):
+            self.logger.info("Backup on start is disabled in plugin settings.")
+            return
+
         server_name = kwargs.get("server_name")
+        if not server_name:
+            return
+
         self.logger.info(f"Performing pre-start backup for server '{server_name}'...")
 
         try:
             # The server is guaranteed to be offline at this point, so it is safe
             # to run a backup without stopping it first.
+
+            # Run the backup in a separate thread so it doesn't block the main asyncio event loop
             result = self.api.backup_all(
                 server_name=server_name, stop_start_server=False
             )

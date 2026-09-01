@@ -6,7 +6,7 @@ The :class:`.PluginManager` class handles all aspects of plugin interaction, inc
 
     - Locating plugin files in designated directories.
     - Reading and writing plugin configurations (e.g., enabled status, metadata)
-      from/to a JSON file (typically ``plugins.json``).
+      from/to the application database.
     - Validating plugins (e.g., ensuring they subclass
       :class:`~.plugin_base.PluginBase` and have a ``version`` attribute).
     - Dynamically loading valid and enabled plugins.
@@ -23,16 +23,18 @@ import inspect
 import logging
 import os
 import threading
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
 if TYPE_CHECKING:
     from ..context import AppContext
 
-from ..config import DEFAULT_ENABLED_PLUGINS, EVENT_IDENTITY_KEYS, GUARD_VARIABLE
+from ..config import DEFAULT_ENABLED_PLUGINS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
 from ..db.models import Plugin
 from .api_bridge import AppAPI
+from .event_trigger import _event_registry
 from .plugin_base import PluginBase
 
 # Standard logger for this module.
@@ -46,15 +48,15 @@ _event_context = threading.local()
 
 # Thread-local storage for tracking the call stack of custom inter-plugin events.
 # Similar to `_event_context`, but specifically for events sent via `send_event()`
-# and handled by `trigger_custom_plugin_event()`.
+# and handled by `trigger_custom_app_event()`.
 _custom_event_context = threading.local()
 
 
 class PluginManager:
-    """Manages the discovery, loading, aconfiguration, and lifecycle of all plugins.
+    """Manages the discovery, loading, configuration, and lifecycle of all plugins.
 
     This class is the core of the plugin system. It scans for plugins,
-    manages their configuration in ``plugins.json``, loads enabled plugins,
+    manages their configuration in the database, loads enabled plugins,
     and dispatches various events to them.
     """
 
@@ -62,10 +64,9 @@ class PluginManager:
         """
         Initializes the PluginManager.
 
-        Sets up plugin directories (user and default), determines the path for
-        ``plugins.json``, initializes internal state for plugin configurations,
-        loaded plugin instances, and custom event listeners. It also ensures
-        that the configured plugin directories exist on the filesystem.
+        Sets up plugin directories (user and default), initializes internal state
+        for plugin configurations, loaded plugin instances, and custom event listeners.
+        It also ensures that the configured plugin directories exist on the filesystem.
         """
 
         self.app_context = app_context
@@ -76,19 +77,15 @@ class PluginManager:
         self.plugin_dirs: List[Path] = [user_plugin_dir, default_plugin_dir]
         logger.debug(f"Plugin directories configured: {self.plugin_dirs}")
 
-        self.config_path: Path = Path(self.settings.config_dir) / "plugins.json"
-        logger.debug(f"Plugin configuration file path: {self.config_path}")
-
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
-        self.custom_event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
+        self._event_listeners: Dict[str, List[Tuple[str, Callable]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
-        self.native_ui_render_tag = (
-            "plugin-ui-native"  # Tag for Native UI rendering in FastAPI
-        )
+        self.ui_render_tags = {"json": "plugin-json-ui", "legacy": "plugin-ui-native"}
         self.plugin_static_mounts: List[tuple[str, Path, str]] = (
             []
         )  # For FastAPI app.mount()
+        self.plugin_tasks: Dict[str, List[Any]] = {}
 
         for directory in self.plugin_dirs:
             try:
@@ -106,7 +103,7 @@ class PluginManager:
         Returns:
             Dict[str, Dict[str, Any]]: The loaded plugin configuration data,
             mapping plugin names to their configuration dictionaries.
-            Returns an empty dict if loading fails or the file is not found.
+            Returns an empty dict if loading fails or no configuration is found.
         """
         with self.app_context.db.session_manager() as db:  # type: ignore
             plugins = db.query(Plugin).all()
@@ -284,13 +281,13 @@ class PluginManager:
         return None
 
     def _synchronize_config_with_disk(self) -> None:  # noqa: C901
-        """Scans plugin directories, validates plugins, extracts metadata, and updates ``plugins.json``.
+        """Scans plugin directories, validates plugins, extracts metadata, and updates the database.
 
-        This crucial method ensures the ``plugins.json`` configuration file is
+        This crucial method ensures the plugin configuration database is
         consistent with the actual plugin files found on disk. It performs the
         following steps:
 
-            1.  Loads the existing ``plugins.json`` (via :meth:`._load_config`).
+            1.  Loads the existing plugin configuration (via :meth:`._load_config`).
             2.  Scans all directories in ``self.plugin_dirs`` for potential plugin
                 files (``.py`` files not starting with an underscore).
             3.  For each potential plugin file:
@@ -421,7 +418,11 @@ class PluginManager:
             valid_plugins_found_on_disk.add(plugin_name)
             version = str(version_attr).strip()
             author = str(author_attr).strip()
-            description = inspect.getdoc(plugin_class) or "No description available."
+            description = (
+                getattr(plugin_class, "description", "")
+                or inspect.getdoc(plugin_class)
+                or "No description available."
+            )
             description = " ".join(description.strip().split())
 
             current_config_entry = self.plugin_config.get(plugin_name)
@@ -509,7 +510,7 @@ class PluginManager:
                 "Plugin configuration synchronization complete. No changes detected."
             )
 
-    def load_plugins(self):  # noqa: C901
+    def load_plugins(self) -> None:  # noqa: C901
         """Discovers, validates, and loads all enabled plugins.
 
         This method orchestrates the entire plugin loading process:
@@ -563,6 +564,9 @@ class PluginManager:
         logger.debug("Cleared previously collected plugin static mounts.")
 
         loaded_plugin_count = 0
+
+        # 1. Collect all enabled plugins and their classes
+        enabled_plugins_data: Dict[str, Type[PluginBase]] = {}
         for plugin_name, config_data in self.plugin_config.items():
             if not isinstance(config_data, dict):
                 logger.error(
@@ -585,7 +589,7 @@ class PluginManager:
                 continue
 
             logger.debug(
-                f"Attempting to load enabled plugin: '{plugin_name}' v{plugin_version}."
+                f"Attempting to prepare enabled plugin: '{plugin_name}' v{plugin_version}."
             )
             path = self._find_plugin_path(plugin_name)
             if not path:
@@ -598,105 +602,169 @@ class PluginManager:
                 path, plugin_name_override=plugin_name
             )
             if plugin_class:
-                try:
-                    plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                    api_instance = AppAPI(
-                        plugin_name=plugin_name,
-                        app_context=self.app_context,
-                    )
-                    logger.debug(
-                        f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
-                    )
-                    instance = plugin_class(plugin_name, api_instance, plugin_logger)
-                    self.plugins.append(instance)
-                    loaded_plugin_count += 1
-                    logger.info(
-                        f"Successfully loaded and initialized plugin: '{plugin_name}' v{plugin_version}."
-                    )
-                    logger.debug(
-                        f"Dispatching 'on_load' event to plugin '{plugin_name}'."
-                    )
-                    self.dispatch_event(instance, "on_load")
+                enabled_plugins_data[plugin_name] = plugin_class
 
-                    # Collect FastAPI routers
-                    try:
-                        if hasattr(instance, "get_fastapi_routers") and callable(
-                            getattr(instance, "get_fastapi_routers")
-                        ):
-                            routers = instance.get_fastapi_routers()
-                            if isinstance(routers, list) and routers:
-                                self.plugin_fastapi_routers.extend(routers)
-                                logger.info(
-                                    f"Collected {len(routers)} FastAPI router(s) from plugin '{plugin_name}'."
-                                )
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
-                                    "Ensure you trust this plugin as it can expose new web endpoints."
-                                )
-                            elif routers:  # Not a list or empty
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list."
-                                )
-                    except Exception as e_api:
-                        logger.error(
-                            f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",
-                            exc_info=True,
-                        )
+        # 2. Perform Topological Sort based on dependencies
+        def topological_sort(plugin_classes: Dict[str, Type[PluginBase]]) -> List[str]:
+            visited = set()
+            temp_mark = set()
+            sorted_plugins = []
 
-                    # Collect static mounts
-                    try:
-                        if hasattr(instance, "get_static_mounts") and callable(
-                            getattr(instance, "get_static_mounts")
-                        ):
-                            static_mounts_configs = instance.get_static_mounts()
-                            if (
-                                isinstance(static_mounts_configs, list)
-                                and static_mounts_configs
-                            ):
-                                valid_mounts = []
-                                for mount_config in static_mounts_configs:
-                                    if (
-                                        isinstance(mount_config, tuple)
-                                        and len(mount_config) == 3
-                                        and isinstance(
-                                            mount_config[0], str
-                                        )  # mount_path
-                                        and isinstance(mount_config[1], Path)
-                                        and mount_config[1].is_dir()  # dir_path
-                                        and isinstance(mount_config[2], str)
-                                    ):  # name
-                                        valid_mounts.append(mount_config)
-                                    else:
-                                        logger.warning(
-                                            f"Plugin '{plugin_name}' provided an invalid static mount configuration: {mount_config}. Expected (str, Path, str) with valid directory."
-                                        )
-
-                                self.plugin_static_mounts.extend(valid_mounts)
-                                if valid_mounts:
-                                    logger.info(
-                                        f"Collected {len(valid_mounts)} static mount configuration(s) from plugin '{plugin_name}'."
-                                    )
-                                    logger.warning(
-                                        f"Plugin '{plugin_name}' added {len(valid_mounts)} static file director(y/ies). Ensure these paths are safe and intended."
-                                    )
-                            elif static_mounts_configs:  # Not a list or empty
-                                logger.warning(
-                                    f"Plugin '{plugin_name}' get_static_mounts() did not return a list or returned an empty list."
-                                )
-                    except Exception as e_static:
-                        logger.error(
-                            f"Error collecting static mounts from plugin '{plugin_name}': {e_static}",
-                            exc_info=True,
-                        )
-
-                except Exception as e:
+            def visit(node: str):
+                if node in temp_mark:
                     logger.error(
-                        f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
+                        f"Circular dependency detected involving plugin '{node}'. It will not be loaded."
+                    )
+                    return False
+                if node not in visited:
+                    temp_mark.add(node)
+                    p_class = plugin_classes.get(node)
+                    if p_class:
+                        dependencies = getattr(p_class, "dependencies", [])
+                        for dep in dependencies:
+                            if dep not in plugin_classes:
+                                logger.error(
+                                    f"Plugin '{node}' requires missing or disabled dependency '{dep}'. It will not be loaded."
+                                )
+                                return False
+                            if visit(dep) is False:
+                                return False
+
+                        optional_deps = getattr(p_class, "optional_dependencies", [])
+                        for opt_dep in optional_deps:
+                            if opt_dep in plugin_classes:
+                                if visit(opt_dep) is False:
+                                    return False
+
+                    temp_mark.remove(node)
+                    visited.add(node)
+                    if node in plugin_classes:
+                        sorted_plugins.append(node)
+                return True
+
+            for p_name in list(plugin_classes.keys()):
+                if p_name not in visited:
+                    if visit(p_name) is False:
+                        plugin_classes.pop(p_name, None)
+
+            return sorted_plugins
+
+        sorted_plugin_names = topological_sort(enabled_plugins_data)
+
+        # 3. Instantiate and load plugins in the sorted order
+        for plugin_name in sorted_plugin_names:
+            plugin_class = enabled_plugins_data[plugin_name]
+            config_data = self.plugin_config[plugin_name]
+            plugin_version = config_data.get("version")
+            try:
+                plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
+                api_instance = AppAPI(
+                    plugin_name=plugin_name,
+                    app_context=self.app_context,
+                )
+                logger.debug(
+                    f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
+                )
+                instance = plugin_class(plugin_name, api_instance, plugin_logger)
+                self.plugins.append(instance)
+                loaded_plugin_count += 1
+                logger.info(
+                    f"Successfully loaded and initialized plugin: '{plugin_name}' v{plugin_version}."
+                )
+
+                # Register methods decorated with @app_event
+                try:
+                    for method_name, method in inspect.getmembers(
+                        instance, predicate=inspect.ismethod
+                    ):
+                        event_name = getattr(method, "_app_event_name", None)
+                        if event_name:
+                            logger.debug(
+                                f"Auto-registering listener for event '{event_name}' on plugin '{plugin_name}'."
+                            )
+                            instance.api.listen_for_event(event_name, method)
+                except Exception as e_event:
+                    logger.error(
+                        f"Error auto-registering @app_event listeners for plugin '{plugin_name}': {e_event}",
                         exc_info=True,
                     )
-            else:
+
+                logger.debug(f"Dispatching 'on_load' event to plugin '{plugin_name}'.")
+                self.dispatch_event(instance, "on_load")
+
+                # Collect FastAPI routers
+                try:
+                    if hasattr(instance, "get_fastapi_routers") and callable(
+                        getattr(instance, "get_fastapi_routers")
+                    ):
+                        routers = instance.get_fastapi_routers()
+                        if isinstance(routers, list) and routers:
+                            self.plugin_fastapi_routers.extend(routers)
+                            logger.info(
+                                f"Collected {len(routers)} FastAPI router(s) from plugin '{plugin_name}'."
+                            )
+                            logger.warning(
+                                f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
+                                "Ensure you trust this plugin as it can expose new web endpoints."
+                            )
+                        elif routers:  # Not a list or empty
+                            logger.warning(
+                                f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list."
+                            )
+                except Exception as e_api:
+                    logger.error(
+                        f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",
+                        exc_info=True,
+                    )
+
+                # Collect static mounts
+                try:
+                    if hasattr(instance, "get_static_mounts") and callable(
+                        getattr(instance, "get_static_mounts")
+                    ):
+                        static_mounts_configs = instance.get_static_mounts()
+                        if (
+                            isinstance(static_mounts_configs, list)
+                            and static_mounts_configs
+                        ):
+                            valid_mounts = []
+                            for mount_config in static_mounts_configs:
+                                if (
+                                    isinstance(mount_config, tuple)
+                                    and len(mount_config) == 3
+                                    and isinstance(mount_config[0], str)  # mount_path
+                                    and isinstance(mount_config[1], Path)
+                                    and mount_config[1].is_dir()  # dir_path
+                                    and isinstance(mount_config[2], str)
+                                ):  # name
+                                    valid_mounts.append(mount_config)
+                                else:
+                                    logger.warning(
+                                        f"Plugin '{plugin_name}' provided an invalid static mount configuration: {mount_config}. Expected (str, Path, str) with valid directory."
+                                    )
+
+                            self.plugin_static_mounts.extend(valid_mounts)
+                            if valid_mounts:
+                                logger.info(
+                                    f"Collected {len(valid_mounts)} static mount(s) from plugin '{plugin_name}'."
+                                )
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' added {len(valid_mounts)} static file director(y/ies). Ensure these paths are safe and intended."
+                                )
+                        elif static_mounts_configs:  # Not a list or empty
+                            logger.warning(
+                                f"Plugin '{plugin_name}' get_static_mounts() did not return a list or returned an empty list."
+                            )
+                except Exception as e_static:
+                    logger.error(
+                        f"Error collecting static mounts from plugin '{plugin_name}': {e_static}",
+                        exc_info=True,
+                    )
+
+            except Exception as e:
                 logger.error(
-                    f"Could not retrieve class for plugin '{plugin_name}' from path '{path}' during load phase. Skipping."
+                    f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
+                    exc_info=True,
                 )
         logger.info(
             f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
@@ -719,7 +787,7 @@ class PluginManager:
             1.  Dispatching the ``on_unload`` event to all currently loaded plugins
                 (via :meth:`.dispatch_event`).
             2.  Clearing all registered custom event listeners from
-                ``self.custom_event_listeners`` (as the plugins that registered
+                ``self._event_listeners`` (as the plugins that registered
                 them are being unloaded).
         """
         logger.info("--- Unloading all plugins ---")
@@ -731,6 +799,16 @@ class PluginManager:
                     f"Dispatching 'on_unload' event to plugin '{plugin_instance.name}'."
                 )
                 self.dispatch_event(plugin_instance, "on_unload")
+
+                # Cancel plugin tasks
+                if plugin_instance.name in self.plugin_tasks:
+                    tasks = self.plugin_tasks.pop(plugin_instance.name)
+                    logger.debug(
+                        f"Cancelling {len(tasks)} tasks for plugin '{plugin_instance.name}'."
+                    )
+                    for task in tasks:
+                        task.cancel()
+
             logger.info(
                 f"Finished dispatching 'on_unload' to {len(self.plugins)} plugins."
             )
@@ -738,11 +816,11 @@ class PluginManager:
         else:
             logger.info("No plugins were active to unload.")
 
-        if self.custom_event_listeners:
+        if self._event_listeners:
             logger.info(
-                f"Clearing {sum(len(v) for v in self.custom_event_listeners.values())} custom plugin event listeners from {len(self.custom_event_listeners)} event types."
+                f"Clearing {sum(len(v) for v in self._event_listeners.values())} custom plugin event listeners from {len(self._event_listeners)} event types."
             )
-            self.custom_event_listeners.clear()
+            self._event_listeners.clear()
         else:
             logger.info("No custom plugin event listeners to clear.")
 
@@ -760,8 +838,20 @@ class PluginManager:
                 if not hasattr(route, "tags"):
                     continue
 
-                if self.native_ui_render_tag in route.tags:
+                if self.ui_render_tags["legacy"] in route.tags:
+                    warnings.warn(
+                        f"Route '{route.path}' uses legacy UI tag '{self.ui_render_tags['legacy']}'. "
+                        f"Please migrate to use the '{self.ui_render_tags['json']}' tag.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+
+                if (
+                    self.ui_render_tags["json"] in route.tags
+                    or self.ui_render_tags["legacy"] in route.tags
+                ):
                     # Use route name or summary if available, otherwise path
+
                     route_name = route.name
                     if hasattr(route, "summary") and route.summary:
                         route_name = route.summary
@@ -769,144 +859,39 @@ class PluginManager:
                         route_name = route.path
 
                     ui_routes.append(
-                        {"name": route_name, "path": route.path, "type": "native"}
+                        {"name": route_name, "path": route.path, "type": "json"}
                     )
         logger.debug(f"Collected {len(ui_routes)} Native UI rendering plugin routes.")
         return ui_routes
 
-    def _is_valid_custom_event_name(self, event_name: str) -> bool:
-        """Checks if a custom event name follows the 'namespace:event_name' format.
-
-        Args:
-            event_name (str): The custom event name to validate.
-
-        Returns:
-            bool: ``True`` if the `event_name` is a string and matches the
-            "namespace:event_name" pattern (where both parts are non-empty),
-            ``False`` otherwise.
-        """
-        if not isinstance(event_name, str):
-            return False
-        parts = event_name.split(":", 1)
-        if len(parts) == 2:
-            namespace, name = parts[0].strip(), parts[1].strip()
-            if namespace and name:
-                return True
-        return False
-
-    def register_plugin_event_listener(
+    def register_app_event_listener(
         self, event_name: str, callback: Callable, listening_plugin_name: str
     ):
-        """Registers a callback function from a plugin to listen for a custom event.
+        """Registers a callback function from a plugin to listen for an event.
 
         Args:
-            event_name (str): The name of the custom event to listen for.
-                Must be in the format 'namespace:event_name' (e.g., ``myplugin:custom_signal``).
-                Validation is performed by :meth:`._is_valid_custom_event_name`.
+            event_name (str): The name of the event to listen for.
             callback (Callable): The function/method in the listening plugin
                 that will be called when the specified event is triggered.
             listening_plugin_name (str): The name of the plugin registering
                 the listener. Used for logging and context.
         """
-        if not self._is_valid_custom_event_name(event_name):
-            logger.error(
-                f"Plugin '{listening_plugin_name}' attempted to register listener for custom event "
-                f"'{event_name}' which does not follow the 'namespace:event_name' format. "
-                f"Registration failed."
-            )
-            return
-
         if not callable(callback):
             logger.error(
                 f"Plugin '{listening_plugin_name}' attempted to register a non-callable object "
-                f"as a listener for custom event '{event_name}'. Registration failed."
+                f"as a listener for event '{event_name}'. Registration failed."
             )
             return
 
-        self.custom_event_listeners.setdefault(event_name, [])
-        self.custom_event_listeners[event_name].append(
-            (listening_plugin_name, callback)
-        )
+        self._event_listeners.setdefault(event_name, [])
+        self._event_listeners[event_name].append((listening_plugin_name, callback))
         logger.info(
             f"Plugin '{listening_plugin_name}' successfully registered a listener "
-            f"for custom event '{event_name}' with callback '{callback.__name__}'."
+            f"for event '{event_name}' with callback '{callback.__name__}'."
         )
         logger.debug(
-            f"Current listeners for '{event_name}': {len(self.custom_event_listeners[event_name])}"
+            f"Current listeners for '{event_name}': {len(self._event_listeners[event_name])}"
         )
-
-    def trigger_custom_plugin_event(
-        self, event_name: str, triggering_plugin_name: str, *args, **kwargs
-    ):
-        """Triggers a custom event, invoking all registered listener callbacks.
-
-        This method manages the dispatch of custom events sent by plugins (or via
-        the external API trigger). It includes re-entrancy protection using
-        ``_custom_event_context`` (a :class:`threading.local` stack) to prevent
-        infinite loops if a listener, in turn, triggers the same event.
-
-        The ``_triggering_plugin`` keyword argument, containing the name of the
-        plugin (or "external_api_trigger") that initiated the event, is automatically
-        added to the `kwargs` passed to listener callbacks.
-
-        Args:
-            event_name (str): The name of the custom event being triggered.
-                Must be in the format 'namespace:event_name' (e.g., ``myplugin:data_updated``).
-                Validated by :meth:`._is_valid_custom_event_name`.
-            triggering_plugin_name (str): The name of the plugin that initiated
-                this event.
-            *args (Any): Positional arguments to pass to the listener callbacks.
-            **kwargs (Any): Keyword arguments to pass to the listener callbacks.
-        """
-        if not self._is_valid_custom_event_name(event_name):
-            logger.error(
-                f"Plugin '{triggering_plugin_name}' attempted to trigger custom event "
-                f"'{event_name}' which does not follow the 'namespace:event_name' format. "
-                f"Event trigger aborted."
-            )
-            return
-
-        if not hasattr(_custom_event_context, "stack"):
-            _custom_event_context.stack = []
-
-        if event_name in _custom_event_context.stack:
-            logger.debug(
-                f"Skipping recursive trigger of custom event '{event_name}' by plugin "
-                f"'{triggering_plugin_name}'. Event is already in the processing stack: {_custom_event_context.stack}"
-            )
-            return
-
-        _custom_event_context.stack.append(event_name)
-        logger.info(
-            f"Plugin '{triggering_plugin_name}' is triggering custom event '{event_name}'. "
-            f"Args: {args}, Kwargs: {kwargs}. Current stack: {_custom_event_context.stack}"
-        )
-
-        try:
-            listeners_for_event = self.custom_event_listeners.get(event_name, [])
-            logger.debug(
-                f"Found {len(listeners_for_event)} registered listeners for custom event '{event_name}'."
-            )
-            for listener_plugin_name, callback in listeners_for_event:
-                logger.debug(
-                    f"Dispatching custom event '{event_name}' (triggered by '{triggering_plugin_name}') "
-                    f"to listener in plugin '{listener_plugin_name}' (callback: '{callback.__name__}')."
-                )
-                try:
-                    callback(*args, **kwargs, _triggering_plugin=triggering_plugin_name)
-                except Exception as e:
-                    logger.error(
-                        f"Error encountered in plugin '{listener_plugin_name}' while handling custom event "
-                        f"'{event_name}' (triggered by '{triggering_plugin_name}'). Callback: '{callback.__name__}'. Error: {e}",
-                        exc_info=True,
-                    )
-        finally:
-            if hasattr(_custom_event_context, "stack") and _custom_event_context.stack:
-                _custom_event_context.stack.pop()
-            logger.debug(
-                f"Finished processing custom event '{event_name}'. "
-                f"Stack after pop: {getattr(_custom_event_context, 'stack', [])}"
-            )
 
     def reload(self):
         """Unloads all currently active plugins and then reloads all plugins.
@@ -917,7 +902,7 @@ class PluginManager:
             1.  Dispatching the ``on_unload`` event to all currently loaded plugins
                 (via :meth:`.dispatch_event`).
             2.  Clearing all registered custom event listeners from
-                ``self.custom_event_listeners`` (as the plugins that registered
+                ``self._event_listeners`` (as the plugins that registered
                 them are being unloaded).
             3.  Calling :meth:`.load_plugins` to re-run the discovery, synchronization,
                 and loading process for all plugins based on the current disk state
@@ -939,11 +924,11 @@ class PluginManager:
         else:
             logger.info("No plugins were active to unload.")
 
-        if self.custom_event_listeners:
+        if self._event_listeners:
             logger.info(
-                f"Clearing {sum(len(v) for v in self.custom_event_listeners.values())} custom plugin event listeners from {len(self.custom_event_listeners)} event types."
+                f"Clearing {sum(len(v) for v in self._event_listeners.values())} custom plugin event listeners from {len(self._event_listeners)} event types."
             )
-            self.custom_event_listeners.clear()
+            self._event_listeners.clear()
         else:
             logger.info("No custom plugin event listeners to clear.")
 
@@ -960,58 +945,209 @@ class PluginManager:
 
         logger.info("--- Plugin Reload Process Complete ---")
 
-    def dispatch_event(self, target_plugin: PluginBase, event: str, *args, **kwargs):
-        """Dispatches a single standard application event to a specific plugin instance.
+    def dispatch_event(
+        self, target_plugin: PluginBase, event_name: str, *args, **kwargs
+    ):
+        """Dispatches an event to a specific plugin instance.
 
-        This method attempts to call the method corresponding to `event` on the
-        `target_plugin` instance, passing ``*args`` and ``**kwargs``.
-        If the `target_plugin` does not have a method for the specified `event`,
-        it is logged at DEBUG level and skipped. Any exceptions raised by the
-        plugin's event handler are caught and logged as errors.
+        Executes listeners registered via `@app_event` for this specific event
+        and the wildcard `*` event. It also includes backwards compatibility for
+        legacy plugins that override `before_...`, `after_...` or `on_any_event`
+        methods directly.
 
         Args:
-            target_plugin (:class:`.PluginBase`): The plugin instance to which the event
-                should be dispatched.
-            event (str): The name of the event method to call on the plugin
-                (e.g., "on_load", "before_server_start").
-            *args (Any): Positional arguments to pass to the event handler method.
-            **kwargs (Any): Keyword arguments to pass to the event handler method.
+            target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
+            event_name (str): The name of the event.
+            *args (Any): Positional arguments to pass to the event handlers.
+            **kwargs (Any): Keyword arguments to pass to the event handlers.
         """
-        if hasattr(target_plugin, event):
-            handler_method = getattr(target_plugin, event)
-            logger.debug(
-                f"Dispatching standard event '{event}' to plugin '{target_plugin.name}' "
-                f"(handler: '{handler_method.__name__}'). Args: {args}, Kwargs: {kwargs}"
+        # 1. Execute @app_event listeners for this event name and wildcard
+        for event_name_to_check in (event_name, "*"):
+            listeners = self._event_listeners.get(event_name_to_check, [])
+            for listener_plugin_name, callback in listeners:
+                if listener_plugin_name == getattr(
+                    target_plugin, "name", None
+                ) or listener_plugin_name == getattr(
+                    getattr(target_plugin, "api", None), "_plugin_name", None
+                ):
+                    logger.debug(
+                        f"Dispatching event '{event_name}' to plugin '{target_plugin.name}' "
+                        f"(callback: '{callback.__name__}'). Args: {args}, Kwargs: {kwargs}"
+                    )
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            if (
+                                self.app_context.loop
+                                and self.app_context.loop.is_running()
+                            ):
+                                import asyncio
+
+                                asyncio.run_coroutine_threadsafe(
+                                    callback(*args, **kwargs), self.app_context.loop
+                                )
+                            else:
+                                logger.warning(
+                                    f"Event '{event_name}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
+                                )
+                        else:
+                            callback(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
+                            exc_info=True,
+                        )
+
+        # 2. Legacy backwards compatibility: check if method exists directly on plugin
+        plugin_class = type(target_plugin)
+        if hasattr(target_plugin, event_name):
+            class_method = getattr(plugin_class, event_name, None)
+            base_method = getattr(PluginBase, event_name, None)
+
+            if class_method is not base_method:
+                handler_method = getattr(target_plugin, event_name)
+                warnings.warn(
+                    f"Plugin '{target_plugin.name}' is using legacy method overriding for event '{event_name}'. "
+                    f"Please migrate to the @app_event decorator.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
+                try:
+                    if inspect.iscoroutinefunction(handler_method):
+                        if self.app_context.loop and self.app_context.loop.is_running():
+                            import asyncio
+
+                            asyncio.run_coroutine_threadsafe(
+                                handler_method(*args, **kwargs), self.app_context.loop
+                            )
+                        else:
+                            logger.warning(
+                                f"Legacy event '{event_name}' is async but no loop running."
+                            )
+                    else:
+                        handler_method(*args, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Error in legacy event handler '{event_name}' on '{target_plugin.name}': {e}",
+                        exc_info=True,
+                    )
+
+        # Legacy backwards compatibility for on_any_event
+        if hasattr(target_plugin, "on_any_event"):
+            warnings.warn(
+                f"Plugin '{target_plugin.name}' is using legacy 'on_any_event' method. "
+                f"Please migrate to the @app_event('*') decorator.",
+                DeprecationWarning,
+                stacklevel=2,
             )
             try:
-                handler_method(*args, **kwargs)
+
+                if inspect.iscoroutinefunction(target_plugin.on_any_event):
+                    if self.app_context.loop and self.app_context.loop.is_running():
+                        import asyncio
+
+                        asyncio.run_coroutine_threadsafe(
+                            target_plugin.on_any_event(event_name, *args, **kwargs),
+                            self.app_context.loop,
+                        )
+                else:
+                    target_plugin.on_any_event(event_name, *args, **kwargs)
             except Exception as e:
                 logger.error(
-                    f"Error encountered in plugin '{target_plugin.name}' during event handler "
-                    f"'{event}': {e}",
+                    f"Error in legacy on_any_event handler on '{target_plugin.name}': {e}",
                     exc_info=True,
                 )
-        else:
-            logger.debug(
-                f"Plugin '{target_plugin.name}' does not have a handler method for event '{event}'. Skipping."
-            )
 
-        # Dispatch to the wildcard 'on_any_event' handler, if implemented (default in base is pass)
-        try:
-            target_plugin.on_any_event(event, *args, **kwargs)
-        except Exception as e:
-            logger.error(
-                f"Error encountered in plugin '{target_plugin.name}' during wildcard event handler "
-                f"'on_any_event' for event '{event}': {e}",
-                exc_info=True,
+    async def dispatch_event_async(
+        self, target_plugin: PluginBase, event_name: str, *args, **kwargs
+    ):
+        """Asynchronously dispatches an event to a specific plugin instance.
+
+        Executes listeners registered via `@app_event` for this specific event
+        and the wildcard `*` event. It also includes backwards compatibility for
+        legacy plugins.
+
+        Args:
+            target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
+            event_name (str): The name of the event.
+            *args (Any): Positional arguments to pass.
+            **kwargs (Any): Keyword arguments to pass.
+        """
+        # 1. Execute @app_event listeners
+        for event_name_to_check in (event_name, "*"):
+            listeners = self._event_listeners.get(event_name_to_check, [])
+            for listener_plugin_name, callback in listeners:
+                if listener_plugin_name == getattr(
+                    target_plugin, "name", None
+                ) or listener_plugin_name == getattr(
+                    getattr(target_plugin, "api", None), "_plugin_name", None
+                ):
+                    logger.debug(
+                        f"Async dispatching event '{event_name}' to plugin '{target_plugin.name}' "
+                        f"(callback: '{callback.__name__}')."
+                    )
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            await callback(*args, **kwargs)
+                        else:
+                            callback(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
+                            exc_info=True,
+                        )
+
+        # 2. Legacy backwards compatibility
+        plugin_class = type(target_plugin)
+        if hasattr(target_plugin, event_name):
+            class_method = getattr(plugin_class, event_name, None)
+            base_method = getattr(PluginBase, event_name, None)
+
+            if class_method is not base_method:
+                handler_method = getattr(target_plugin, event_name)
+                warnings.warn(
+                    f"Plugin '{target_plugin.name}' is using legacy async method overriding for event '{event_name}'. "
+                    f"Please migrate to the @app_event decorator.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
+                try:
+                    if inspect.iscoroutinefunction(handler_method):
+                        await handler_method(*args, **kwargs)
+                    else:
+                        handler_method(*args, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Error in legacy async event '{event_name}' on '{target_plugin.name}': {e}",
+                        exc_info=True,
+                    )
+
+        if hasattr(target_plugin, "on_any_event"):
+            warnings.warn(
+                f"Plugin '{target_plugin.name}' is using legacy async 'on_any_event' method. "
+                f"Please migrate to the @app_event('*') decorator.",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            try:
+
+                if inspect.iscoroutinefunction(target_plugin.on_any_event):
+                    await target_plugin.on_any_event(event_name, *args, **kwargs)
+                else:
+                    target_plugin.on_any_event(event_name, *args, **kwargs)
+            except Exception as e:
+                logger.error(
+                    f"Error in legacy async on_any_event on '{target_plugin.name}': {e}",
+                    exc_info=True,
+                )
 
     def _generate_event_key(self, event_name: str, **kwargs) -> str:
         """Generates a unique key for an event instance for re-entrancy checking.
 
         The key is based on the event's name and specific identifying keyword
         arguments defined in the
-        :const:`~bedrock_server_manager.config.const.EVENT_IDENTITY_KEYS`
+        `_event_registry`
         mapping. If an event is not in this mapping or has no identity keys
         defined, the event name itself is used as the key.
 
@@ -1023,10 +1159,10 @@ class PluginManager:
         Returns:
             str: A string key representing this specific event instance.
         """
-        identity_key_names = EVENT_IDENTITY_KEYS.get(event_name)
+        identity_key_names = _event_registry.get(event_name)
 
         if identity_key_names is None:
-            # Event name not in EVENT_IDENTITY_KEYS, use event name as key
+            # Event name not in _event_registry, use event name as key
             return event_name
 
         if not identity_key_names:  # Empty tuple means event name itself is the key
@@ -1044,7 +1180,7 @@ class PluginManager:
             )
         )
 
-    def trigger_event(self, event: str, *args: Any, **kwargs: Any):
+    def trigger_event(self, event_name: str, *args: Any, **kwargs: Any):
         """Triggers a standard application event on all loaded plugins.
 
         This method iterates through all currently loaded and active plugins
@@ -1058,7 +1194,7 @@ class PluginManager:
         same call stack.
 
         Args:
-            event (str): The name of the event to trigger (e.g., "before_server_start").
+            event_name (str): The name of the event to trigger (e.g., "before_server_start").
             *args (Any): Positional arguments to pass to each plugin's event handler.
             **kwargs (Any): Keyword arguments to pass to each plugin's event handler.
                        Some of these may be used by :meth:`._generate_event_key`
@@ -1067,24 +1203,26 @@ class PluginManager:
         if not hasattr(_event_context, "stack"):
             _event_context.stack = []
 
-        current_event_key = self._generate_event_key(event, **kwargs)
+        current_event_key = self._generate_event_key(event_name, **kwargs)
 
         if current_event_key in _event_context.stack:
             logger.debug(
-                f"Skipping recursive trigger of standard event '{event}' (key: '{current_event_key}'). "
+                f"Skipping recursive trigger of standard event '{event_name}' (key: '{current_event_key}'). "
                 f"Event key is already in the processing stack: {_event_context.stack}"
             )
             return
 
         _event_context.stack.append(current_event_key)
+
+        triggering_plugin = kwargs.get("_triggering_plugin", "core")
         logger.debug(
-            f"Dispatching standard event '{event}' (key: '{current_event_key}') to {len(self.plugins)} loaded plugins. "
-            f"Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
+            f"Dispatching standard event '{event_name}' (key: '{current_event_key}', triggered by: '{triggering_plugin}') "
+            f"to {len(self.plugins)} loaded plugins. Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
         )
 
         try:
             for plugin_instance in list(self.plugins):  # Iterate over a copy
-                self.dispatch_event(plugin_instance, event, *args, **kwargs)
+                self.dispatch_event(plugin_instance, event_name, *args, **kwargs)
         finally:
             if hasattr(_event_context, "stack") and _event_context.stack:
                 # Ensure we pop the exact key we added, in case of complex scenarios,
@@ -1111,7 +1249,66 @@ class PluginManager:
                         )
 
             logger.debug(
-                f"Finished dispatching standard event '{event}' (key: '{current_event_key}'). "
+                f"Finished dispatching standard event '{event_name}' (key: '{current_event_key}'). "
+                f"Stack after pop: {getattr(_event_context, 'stack', [])}"
+            )
+
+    async def trigger_event_async(self, event_name: str, *args: Any, **kwargs: Any):
+        """Asynchronously triggers a standard application event on all loaded plugins.
+
+        This method works identically to `trigger_event`, but correctly handles and awaits
+        asynchronous event handlers in plugins using `dispatch_event_async`.
+
+        Args:
+            event_name (str): The name of the event to trigger.
+            *args (Any): Positional arguments to pass to each plugin's event handler.
+            **kwargs (Any): Keyword arguments to pass to each plugin's event handler.
+        """
+        if not hasattr(_event_context, "stack"):
+            _event_context.stack = []
+
+        current_event_key = self._generate_event_key(event_name, **kwargs)
+
+        if current_event_key in _event_context.stack:
+            logger.debug(
+                f"Skipping recursive trigger of standard async event '{event_name}' (key: '{current_event_key}'). "
+                f"Event key is already in the processing stack: {_event_context.stack}"
+            )
+            return
+
+        _event_context.stack.append(current_event_key)
+
+        triggering_plugin = kwargs.get("_triggering_plugin", "core")
+        logger.debug(
+            f"Dispatching standard async event '{event_name}' (key: '{current_event_key}', triggered by: '{triggering_plugin}') "
+            f"to {len(self.plugins)} loaded plugins. Args: {args}, Kwargs: {kwargs}. Current stack: {_event_context.stack}"
+        )
+
+        try:
+            for plugin_instance in list(self.plugins):  # Iterate over a copy
+                await self.dispatch_event_async(
+                    plugin_instance, event_name, *args, **kwargs
+                )
+        finally:
+            if hasattr(_event_context, "stack") and _event_context.stack:
+                if _event_context.stack[-1] == current_event_key:
+                    _event_context.stack.pop()
+                else:
+                    logger.warning(
+                        f"Event key '{current_event_key}' was expected at the top of the stack "
+                        f"but found '{_event_context.stack[-1]}'. Stack: {_event_context.stack}. "
+                        f"Attempting to remove '{current_event_key}' by value."
+                    )
+                    try:
+                        _event_context.stack.remove(current_event_key)
+                    except ValueError:
+                        logger.error(
+                            f"Failed to remove event key '{current_event_key}' from stack by value. "
+                            f"Stack corruption may have occurred. Stack: {_event_context.stack}"
+                        )
+
+            logger.debug(
+                f"Finished dispatching standard async event '{event_name}' (key: '{current_event_key}'). "
                 f"Stack after pop: {getattr(_event_context, 'stack', [])}"
             )
 
@@ -1127,7 +1324,7 @@ class PluginManager:
         :meth:`.trigger_event`.
 
         Args:
-            event (str): The name of the event to trigger.
+            event_name (str): The name of the event to trigger.
             *args (Any): Positional arguments for the event handler.
             **kwargs (Any): Keyword arguments for the event handler.
         """
@@ -1138,3 +1335,65 @@ class PluginManager:
             return
         logger.debug(f"GUARD_VARIABLE not set. Proceeding to trigger event '{event}'.")
         self.trigger_event(event, *args, **kwargs)
+
+    def start_plugin_tasks(self):
+        """Starts background tasks decorated with @task_loop for all loaded plugins."""
+        import asyncio
+
+        logger.info("Starting background tasks for plugins.")
+        for plugin_instance in self.plugins:
+            try:
+                for method_name, method in inspect.getmembers(
+                    plugin_instance, predicate=inspect.ismethod
+                ):
+                    interval_raw = getattr(method, "_task_loop_interval", None)
+                    if interval_raw is not None:
+                        # Ensure interval is a number (float or int) in seconds
+                        # In the updated task_loop we restricted it to int or float.
+                        try:
+                            interval = float(interval_raw)
+                        except (ValueError, TypeError):
+                            logger.error(
+                                f"Invalid interval '{interval_raw}' for @task_loop on {plugin_instance.name}.{method_name}"
+                            )
+                            continue
+
+                        async def run_task_loop(
+                            m=method,
+                            intv=interval,
+                            p_name=plugin_instance.name,
+                            m_name=method_name,
+                        ):
+                            logger.debug(
+                                f"Starting task loop for {p_name}.{m_name} every {intv} seconds."
+                            )
+                            while True:
+                                try:
+                                    await asyncio.sleep(intv)
+                                    if inspect.iscoroutinefunction(m):
+                                        await m()
+                                    else:
+                                        await asyncio.to_thread(m)
+                                except asyncio.CancelledError:
+                                    logger.debug(
+                                        f"Task loop for {p_name}.{m_name} was cancelled."
+                                    )
+                                    break
+                                except Exception as e:
+                                    logger.error(
+                                        f"Error in task loop {p_name}.{m_name}: {e}",
+                                        exc_info=True,
+                                    )
+
+                        task = asyncio.create_task(run_task_loop())
+                        if plugin_instance.name not in self.plugin_tasks:
+                            self.plugin_tasks[plugin_instance.name] = []
+                        self.plugin_tasks[plugin_instance.name].append(task)
+                        logger.info(
+                            f"Scheduled @task_loop for {plugin_instance.name}.{method_name} (interval: {interval}s)"
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Error auto-registering @task_loop for plugin '{plugin_instance.name}': {e}",
+                    exc_info=True,
+                )

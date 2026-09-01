@@ -10,7 +10,7 @@ This guide will walk you through creating your own plugins to extend and customi
 
 This guide assumes you have a basic understanding of Python programming.
 
-For a complete list of all available event hooks, see the [Plugin Base](./plugin_base.rst).
+For a complete list of all available event, see the [Available Events](../../plugins/plugin_events.rst).
 For a complete list of all available APIs, see the [Available APIs](../../plugins/plugin_apis.md).
 
 ---
@@ -32,7 +32,7 @@ from bedrock_server_manager import PluginBase
 
 class MyFirstPlugin(PluginBase):
     """
-    This is an example description that will be saved in plugins.json
+    This is an example description that will be saved in the database
     """
     version = "1.0.0"  # Mandatory version attribute
 
@@ -83,6 +83,34 @@ plugins/
     └── internal_logic.py     # Optional: other Python modules for your plugin
 ```
 
+
+## 2.3. Plugin Metadata Attributes
+
+To help the Plugin Manager identify and display your plugin correctly, your `PluginBase` subclass should define several metadata attributes:
+
+*   **`version`** (str) - *Required*. Used for versioning and updates.
+*   **`name`** (str) - Optional. The display name of the plugin (defaults to the module's file name).
+*   **`description`** (str) - Optional. A short sentence describing what your plugin does.
+*   **`author`** (str) - Optional. The creator of the plugin.
+*   **`dependencies`** (List[str]) - Optional. A list of plugin names that **must** load before this one.
+*   **`optional_dependencies`** (List[str]) - Optional. Plugins to load first *if* they are present.
+
+```python
+from bedrock_server_manager import PluginBase
+
+class MyAwesomePlugin(PluginBase):
+    name = "My Awesome Automation Plugin"
+    version = "1.0.0"
+    author = "Jane Doe"
+    description = "Automatically performs server backups and chat translations."
+    dependencies = ["core_backup_plugin"]
+
+    def on_load(self):
+        self.logger.info(f"{self.name} v{self.version} by {self.author} loaded!")
+```
+
+
+
 This package structure allows for better organization. Python's standard import mechanisms (e.g., `from . import internal_logic`) will work within your plugin package.
 
 ---
@@ -93,7 +121,7 @@ Every plugin **must** inherit from `bedrock_server_manager.PluginBase` (typicall
 
 *   `self.name` (str): The name of your plugin, derived from its filename.
 *   `self.logger` (logging.Logger): A pre-configured Python logger. **Always use this for logging.**
-*   `self.api` (PluginAPI): Your gateway to interacting with the main application.
+*   `self.api` (AppAPI): Your gateway to interacting with the main application. It dynamically exposes core application APIs to plugins safely and with robust type hints available in most modern IDEs.
 
 ```{important}
 **Important Plugin Class Requirements:**
@@ -109,203 +137,39 @@ Event hooks are methods from `PluginBase` that you can override. The Plugin Mana
 *   **`before_*` events:** Called *before* an action is attempted.
 *   **`after_*` events:** Called *after* an action has been attempted. They are always passed a `result` dictionary that you can inspect to see if the action succeeded or failed.
 
-## 4. Custom Plugin Events (Inter-Plugin Communication)
+### Asynchronous Event Hooks (New in 3.x)
 
-Plugins can define, send, and listen to their own custom events for complex interactions.
+To prevent plugins from blocking the main event loop (e.g., during long network requests or heavy I/O), BSM supports fully asynchronous event hooks.
 
-*   **Sending Events:** Use `self.api.send_event("myplugin:custom_action", arg1, kwarg1="value")`.
-*   **Listening for Events:** Use `self.api.listen_for_event("some:event", self.my_callback)` in your plugin's `on_load` method.
-*   **Callback Arguments:** Your callback function will receive any `*args` and `**kwargs` from the sender.
-
-### Example: "I'm Home" Automation (Triggered via HTTP API)
-
-An external system can trigger a plugin to start a server by sending a `POST` request to `/api/plugins/trigger_event` with a JSON body. The corresponding plugin would listen for this event:
+You can define any of your event handlers as an `async def` instead of a standard synchronous `def`. The plugin manager will detect this and safely `await` your hook without freezing the rest of the application!
 
 ```python
-# home_automation_starter_plugin.py
+import asyncio
 from bedrock_server_manager import PluginBase
 
-TARGET_SERVER_NAME = "main_survival"
+class MyAsyncPlugin(PluginBase):
+    version = "1.1.0"
 
-class HomeAutomationStarterPlugin(PluginBase):
-    version = "1.0.0"
+    async def before_start_server(self, server_name: str, **kwargs):
+        """This hook will be awaited by the core application asynchronously!"""
+        self.logger.info(f"Preparing to start {server_name} in 3 seconds...")
 
-    def on_load(self):
-        self.logger.info(f"Listening for 'automation:user_arrived_home' to start '{TARGET_SERVER_NAME}'.")
-        self.api.listen_for_event("automation:user_arrived_home", self.handle_user_arrival)
+        # We can perform non-blocking waits, HTTP requests, or file I/O here
+        await asyncio.sleep(3)
 
-    def handle_user_arrival(self, **kwargs):
-        user_id = kwargs.get('user_id', 'UnknownUser')
-        self.logger.info(f"Received arrival event for user '{user_id}'.")
-
-        status = self.api.get_server_running_status(server_name=TARGET_SERVER_NAME)
-        if status.get("running"):
-             self.logger.info(f"Server '{TARGET_SERVER_NAME}' is already running.")
-             return
-
-        self.api.start_server(server_name=TARGET_SERVER_NAME, mode="detached")
+        self.logger.info(f"Done waiting. Let the server start!")
 ```
 
-### Advanced Event Hooks (Interception)
+## 4. Advanced Topics
 
-You can use `before_*` hooks to intercept actions and potentially prevent them from happening or run prerequisites.
+The plugin system offers many advanced features for deep integration:
 
-```python
-class BackupBeforeStartPlugin(PluginBase):
-    version = "1.0.0"
+*   **[Custom Events & Interception](./custom_events.md):** Learn how to send inter-plugin messages, trigger actions externally, and intercept/cancel core application operations before they happen.
+*   **[Plugin Settings & Storage](./settings.md):** Discover how to persistently save and load configurations specific to your plugin within the application's database.
+*   **[Custom FastAPI Endpoints](./fastapi_endpoints.md):** Extend the web server itself by registering your own web routes, APIs, and Native JSON UI pages.
+*   **[Background Task Loops](./task_manager.md):** Use the `@task_loop` decorator to easily schedule asynchronous or synchronous repeating background jobs without blocking the main event loop.
 
-    def before_start_server(self, server_name: str, **kwargs):
-        """Runs automatically before a server is started."""
-        self.logger.info(f"Intercepted start request for {server_name}. Running quick backup...")
-
-        # We can call another core API method synchronously
-        result = self.api.backup_world(server_name=server_name)
-
-        if result.get("status") == "success":
-            self.logger.info("Backup completed. Allowing server to start.")
-        else:
-            self.logger.error("Backup failed! The server will still attempt to start, but check logs.")
-```
-
-## 5. Plugin Settings and Storage
-
-Plugins often need to store configuration data persistently. Bedrock Server Manager provides methods to read and write to the global `bedrock-server-manager.db` file under a special `custom` section.
-
-*   **Saving Data:** `self.api.set_custom_global_setting(key="my_plugin_key", value="my_value")`
-*   **Loading Data:** `self.api.get_global_setting(key="custom.my_plugin_key")`
-
-```python
-class MyConfigurablePlugin(PluginBase):
-    version = "1.0.0"
-
-    def on_load(self):
-        # Load existing settings or set defaults
-        self.plugin_config = self.api.get_global_setting("custom.my_configurable_plugin")
-
-        if not self.plugin_config:
-            self.logger.info("No configuration found. Initializing defaults.")
-            default_config = {"enable_feature_x": True, "api_key": "YOUR_KEY_HERE"}
-
-            # Save the default configuration
-            self.api.set_custom_global_setting("my_configurable_plugin", default_config)
-            self.plugin_config = default_config
-
-        self.logger.info(f"Loaded config: {self.plugin_config}")
-```
-
-## 6. Extending Functionality: Custom FastAPI Endpoints
-
-Plugins can significantly extend Bedrock Server Manager by adding their own custom FastAPI web endpoints. This allows for deep integration and tailored functionality.
-
-To enable this, your plugin class (derived from `PluginBase`) needs to override one or both of the following methods:
-
-*   **`get_fastapi_routers(self) -> List[fastapi.APIRouter]`**:
-    This method should return a list of FastAPI `APIRouter` instances that your plugin wants to add to the main web application.
-
-The Plugin Manager will call these methods on your plugin instance after it's loaded. The collected commands and routers are then integrated into the main application.
-
-### 6.1. Adding Custom FastAPI Endpoints (Web APIs and Pages)
-
-To add web endpoints, define your FastAPI `APIRouter` instances and return them in a list from `get_fastapi_routers()`. These routers will be included in the main FastAPI application.
-
-**Example:**
-
-```python
-# my_web_api_plugin.py
-from bedrock_server_manager import PluginBase
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
-
-# Attempt to import authentication dependency; provide a fallback for isolated testing/robustness
-# There are three access roles admin, moderator, and user.
-
-# - get_current_user: User, read only access APIs
-# - get_moderator_user: Moderator, basic server management APIs, not including installs, updates, or content management
-# - get_admin_user: Admin, full access to all APIs
-
-try:
-    from bedrock_server_manager.web import get_current_user
-    HAS_AUTH_DEP = True
-except ImportError:
-    HAS_AUTH_DEP = False
-    async def get_current_active_user(): return {"username": "anonymous_plugin_user"} # Dummy
-
-# Create an APIRouter instance
-plugin_web_router = APIRouter(
-    prefix="/my_web_plugin",  # URL prefix for all routes in this router
-    tags=["My Web Plugin"],   # Tag for OpenAPI documentation (e.g., /docs)
-    dependencies=[Depends(get_current_user)] if HAS_AUTH_DEP else [] # Secure all routes
-)
-
-@plugin_web_router.get("/info")
-async def get_plugin_web_info():
-    """Returns some information via the plugin's web API."""
-    return {"plugin_name": "My Web API Plugin", "message": "API is active!"}
-
-@plugin_web_router.post("/submit_data")
-async def submit_data_to_plugin(data: dict):
-    """A sample POST endpoint for the plugin."""
-    # In a real plugin, you might use self.api here if you had access to it from the router
-    # or if the router was created within the plugin instance method that has `self`.
-    # This example keeps the router definition self-contained for clarity.
-    return {"status": "success", "received_data": data, "plugin_response": "Data processed by My Web API Plugin."}
-
-@plugin_web_router.get(
-    "/ui",
-    response_class=JSONResponse,
-    name="My Plugin UI",
-    tags=["plugin-ui-native"]  # <--- This tag enables the Native UI renderer
-)
-async def get_plugin_ui():
-    """Serves a custom JSON UI page from the plugin."""
-    return JSONResponse(content={
-        "type": "Container",
-        "children": [
-            {
-                "type": "Text",
-                "props": {"content": "Hello from My Web Plugin's Custom JSON UI Page!", "variant": "h1"}
-            }
-        ]
-    })
-
-class MyWebAPIPlugin(PluginBase):
-    version = "1.2.0" # Mandatory
-
-    def on_load(self):
-        self.logger.info(f"{self.name} v{self.version} loaded.")
-        if not HAS_AUTH_DEP:
-            self.logger.warning("Auth dependency 'get_current_active_user' not found. Plugin API endpoints might be unsecured.")
-
-    def get_fastapi_routers(self):
-        self.logger.info(f"Providing FastAPI router for '/my_web_plugin'.")
-        return [plugin_web_router] # Return a list containing your router(s)
-```
-
-After enabling `my_web_api_plugin.py` and restarting the Bedrock Server Manager web server, you could access:
-
-*   `GET /my_web_plugin/info` (API endpoint)
-*   `POST /my_web_plugin/submit_data` (API endpoint, with a JSON body)
-*   `GET /my_web_plugin/ui` (Native JSON UI Page - visible in the Web Sidebar under Plugins)
-
-These endpoints will also be listed in the OpenAPI documentation (e.g., at `/api/openapi.json` or `/docs`).
-
-#### 6.1.1. Native JSON UI
-
-Bedrock Server Manager allows plugins to define native UI pages using a simple JSON schema. This eliminates the need for plugin developers to write frontend code (React, HTML, CSS) while still providing a rich, interactive user interface that matches the application's look and feel.
-
-Instead of serving HTML or Jinja2 templates, your plugin defines a FastAPI route that returns a JSON response. This route is tagged with `plugin-ui-native`. The frontend detects this tag and renders the JSON using a dynamic component renderer.
-
-For more information and available components, refer to the [Native JSON UI](./native_json_ui.md) documentation.
-
-```{tip}
-**Tips for Plugin Web Endpoints:**
-
-*   **Unique Prefixes & Mount Names:** Essential for routers and static mounts to avoid conflicts.
-*   **Authentication:** Apply as needed to your plugin's routers or individual routes.
-*  **Native JSON UI:** Tag your JSON UI routers with `plugin-ui-native` to have it added to the Web UI.
-```
-
-## 7. Best Practices
+## 5. Best Practices
 
 ```{tip}
 *   **Always use `self.logger`:** Do not use `print()`. The provided logger is integrated with the application's logging system.

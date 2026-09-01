@@ -135,3 +135,31 @@ def test_reauth_unauthorized(unauth_client: TestClient):
         response = unauth_client.post("/auth/reauth")
         assert response.status_code == 401
         assert "Not authenticated" in response.json()["detail"]
+
+
+def test_api_login_secure_cookie(
+    unauth_client: TestClient, test_user: UserModel, app_context: AppContext
+):
+    """Test successful login returns a secure cookie if X-Forwarded-Proto is https."""
+    response = unauth_client.post(
+        "/auth/token",
+        data={"username": "testuser", "password": "testpassword"},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+
+    assert response.status_code == 200
+    set_cookie_header = response.headers.get("set-cookie", "")
+    assert "Secure" in set_cookie_header
+
+
+def test_api_login_insecure_cookie(
+    unauth_client: TestClient, test_user: UserModel, app_context: AppContext
+):
+    """Test successful login returns an insecure cookie if not https."""
+    response = unauth_client.post(
+        "/auth/token", data={"username": "testuser", "password": "testpassword"}
+    )
+
+    assert response.status_code == 200
+    set_cookie_header = response.headers.get("set-cookie", "")
+    assert "Secure" not in set_cookie_header

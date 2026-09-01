@@ -36,7 +36,7 @@ from ..error import (
     MissingArgumentError,
 )
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 from ..utils import get_timestamp
 from .server import server_lifecycle_manager
 
@@ -99,7 +99,11 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("export_world")
-@trigger_app_event(before="before_world_export", after="after_world_export")
+@trigger_event(
+    before="before_world_export",
+    after="after_world_export",
+    identity_keys=("server_name", "export_dir"),
+)
 def export_world(
     server_name: str,
     app_context: AppContext,
@@ -216,7 +220,11 @@ def export_world(
 
 
 @api_method("import_world")
-@trigger_app_event(before="before_world_import", after="after_world_import")
+@trigger_event(
+    before="before_world_import",
+    after="after_world_import",
+    identity_keys=("server_name", "file_path"),
+)
 def import_world(
     server_name: str,
     selected_file_path: str,
@@ -322,7 +330,11 @@ def import_world(
         _world_lock.release()
 
 
-@trigger_app_event(before="before_world_reset", after="after_world_reset")
+@trigger_event(
+    before="before_world_reset",
+    after="after_world_reset",
+    identity_keys=("server_name",),
+)
 def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 

@@ -122,7 +122,7 @@ def run_web_server(  # noqa: C901
             workers=1,  # workers if not reload_enabled and workers > 1 else None,
             forwarded_allow_ips="*",
             proxy_headers=True,
-            timeout_graceful_shutdown=5,
+            timeout_graceful_shutdown=90,
         )
         server = uvicorn.Server(config)
         app_context._web_server = server

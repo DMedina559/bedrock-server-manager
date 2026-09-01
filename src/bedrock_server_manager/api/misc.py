@@ -14,7 +14,7 @@ from ..context import AppContext
 from ..core import prune_old_downloads
 from ..error import BSMError, MissingArgumentError, UserInputError
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,10 @@ _misc_lock = threading.RLock()
 
 
 @api_method("prune_download_cache")
-@trigger_app_event(
-    before="before_prune_download_cache", after="after_prune_download_cache"
+@trigger_event(
+    before="before_prune_download_cache",
+    after="after_prune_download_cache",
+    identity_keys=("download_dir", "keep_count"),
 )
 def prune_download_cache(  # noqa: C901
     download_dir: str,

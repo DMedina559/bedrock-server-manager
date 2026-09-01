@@ -35,11 +35,13 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context.resource_monitor.start()
         await asyncio.to_thread(app_context.api.update_server_statuses)
 
+        app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+        app_context.plugin_manager.start_plugin_tasks()
+
         # Initialize and start LogStreamer
         from .log_streamer import LogStreamer
 
         log_streamer = LogStreamer(app_context)
-        # We store it in app_context to keep it alive and accessible if needed
         app_context.log_streamer = log_streamer
         log_streamer.start()
 
@@ -125,8 +127,6 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     allow_all_origins = "*" in allowed_origins
 
     logger.info(f"CORS Allowed Origins: {allowed_origins}")
-
-    app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
 
     from .middleware.static import IngressAwareStaticFiles
 

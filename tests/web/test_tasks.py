@@ -36,6 +36,49 @@ async def test_run_task_success(task_manager):
 
 
 @pytest.mark.asyncio
+async def test_run_async_task_success(task_manager, app_context):
+    app_context.loop = asyncio.get_running_loop()
+
+    async def my_async_task(a, b):
+        await asyncio.sleep(0.1)
+        return a * b
+
+    task_id = task_manager.run_task(my_async_task, None, 5, 10)
+    assert task_id in task_manager.tasks
+
+    # Wait for the task to complete
+    for _ in range(20):
+        if task_manager.tasks[task_id]["status"] == "success":
+            break
+        await asyncio.sleep(0.05)
+
+    assert task_manager.tasks[task_id]["status"] == "success"
+    assert task_manager.tasks[task_id]["result"] == 50
+
+
+@pytest.mark.asyncio
+async def test_cancel_task(task_manager, app_context):
+    app_context.loop = asyncio.get_running_loop()
+
+    async def infinite_task():
+        while True:
+            await asyncio.sleep(0.1)
+
+    task_id = task_manager.run_task(infinite_task)
+    assert task_id in task_manager.tasks
+
+    # Give it a tiny bit of time to start
+    await asyncio.sleep(0.1)
+
+    # Cancel it
+    assert task_manager.cancel_task(task_id) is True
+
+    # Check that status was updated to error (cancelled)
+    assert task_manager.tasks[task_id]["status"] == "error"
+    assert "cancelled" in task_manager.tasks[task_id]["message"].lower()
+
+
+@pytest.mark.asyncio
 async def test_run_task_failure(task_manager):
     def failing_task():
         raise ValueError("Something went wrong")

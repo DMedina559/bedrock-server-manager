@@ -10,7 +10,7 @@ from ..error import (
     UserInputError,
 )
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
@@ -283,7 +283,11 @@ def validate_property_value(  # noqa: C901
 
 
 @api_method("set_properties")
-@trigger_app_event(before="before_properties_change", after="after_properties_change")
+@trigger_event(
+    before="before_properties_change",
+    after="after_properties_change",
+    identity_keys=("server_name",),
+)
 def set_properties(
     server_name: str,
     properties_to_update: Dict[str, str],

@@ -38,11 +38,11 @@ def test_list_audit_logs_success(
     import time
 
     create_audit_log(
-        app_context, test_admin_user.id, "TEST_ACTION_1", {"key": "value1"}
+        app_context, int(test_admin_user.id), "TEST_ACTION_1", {"key": "value1"}
     )
     time.sleep(0.1)  # ensure timestamps are different
     create_audit_log(
-        app_context, test_admin_user.id, "TEST_ACTION_2", {"key": "value2"}
+        app_context, int(test_admin_user.id), "TEST_ACTION_2", {"key": "value2"}
     )
 
     response = admin_auth_client.get("/audit-log/list")

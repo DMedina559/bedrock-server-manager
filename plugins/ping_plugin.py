@@ -10,7 +10,7 @@ It's designed to work in conjunction with PongPlugin, which listens for this eve
 import time
 from typing import Any, Dict
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class PingPlugin(PluginBase):
@@ -19,9 +19,13 @@ class PingPlugin(PluginBase):
     It sends a 'pingplugin:ping' event after a server successfully starts.
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
+    author = "dmedina559"
+    description = "A plugin that demonstrates how to send custom events to other plugins. It sends a 'pingplugin:ping' event after a server successfully starts."
+    name = "Ping Test"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self, **kwargs):
         """
         Called by the PluginManager when this plugin is loaded.
         """
@@ -29,7 +33,8 @@ class PingPlugin(PluginBase):
             f"'{self.name}' v{self.version} loaded. Will send 'pingplugin:ping' events after successful server starts."
         )
 
-    def after_server_start(self, **kwargs: Any):
+    @app_event("after_server_start")
+    def send_ping_event(self, **kwargs: Any):
         """
         An application event hook, called by the PluginManager after a server
         start attempt.
@@ -83,7 +88,8 @@ class PingPlugin(PluginBase):
                 f"'{self.name}' will not send a ping event."
             )
 
-    def on_unload(self):
+    @app_event("on_unload")
+    def plugin_unloaded(self, **kwargs):
         """
         Called by the PluginManager when this plugin is being unloaded.
         """

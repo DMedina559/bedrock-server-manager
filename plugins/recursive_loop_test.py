@@ -37,7 +37,7 @@ What to look for in the logs:
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class RecursiveLoopPlugin(PluginBase):
@@ -46,9 +46,13 @@ class RecursiveLoopPlugin(PluginBase):
     'before_server_start' -> 'before_backup' -> 'before_server_start' event chain.
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
+    author = "dmedina559"
+    description = "Tests the PluginManager's stack-based re-entrancy guard using a 'before_server_start' -> 'before_backup' -> 'before_server_start' event chain."
+    name = "Recursive Loop Test"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self, **kwargs):
         self.logger.info(
             f"Plugin '{self.name}' v{self.version} loaded. "
             "This plugin tests event loop protection. To run the test, start any server "
@@ -60,8 +64,10 @@ class RecursiveLoopPlugin(PluginBase):
             "A ('before_server_start') -> B ('before_backup') -> A' ('before_server_start') event dispatch loop."
         )
 
-    def before_server_start(self, **kwargs: Any):
+    @app_event("before_server_start")
+    def trigger_recursive_loop_a(self, **kwargs: Any):
         """This is EVENT A in the A -> B -> A' loop."""
+
         server_name = kwargs.get("server_name")
         self.logger.info(
             f"--- LOOP TEST (EVENT A - Handler Call): 'before_server_start' entered for server '{server_name}'."
@@ -82,8 +88,10 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (EVENT A - Handler Call): Finished 'before_server_start' handler execution."
         )
 
-    def before_backup(self, **kwargs: Any):
+    @app_event("before_backup")
+    def trigger_recursive_loop_b(self, **kwargs: Any):
         """This is EVENT B in the A -> B -> A' loop."""
+
         server_name = kwargs.get("server_name")
         self.logger.info(
             f"--- LOOP TEST (EVENT B - Handler Call): 'before_backup' entered for server '{server_name}'."
@@ -97,9 +105,7 @@ class RecursiveLoopPlugin(PluginBase):
             # The PluginManager's event stack guard should prevent the *handlers* for this
             # recursive 'before_server_start' from executing.
             # The api.start_server() function itself will still run its internal logic.
-            self.api.start_server(
-                server_name=server_name
-            )  # Using "detached" for the API call
+            self.api.start_server(server_name=server_name)
 
             self.logger.info(
                 "--- LOOP TEST (EVENT B): Recursive self.api.start_server() call completed. "

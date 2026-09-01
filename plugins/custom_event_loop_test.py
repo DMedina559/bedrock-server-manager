@@ -45,7 +45,7 @@ What to Look For in the Logs:
   This indicates the API call itself returned and didn't cause a stack overflow.
 """
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 EVENT_X_NAME = "custom_loop:event_X"
 EVENT_Y_NAME = "custom_loop:event_Y"
@@ -57,9 +57,13 @@ class CustomEventLoopTestPlugin(PluginBase):
     using a chained custom event sequence: Event X -> Event Y -> Event X (recursive).
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
+    author = "dmedina559"
+    description = "Tests the PluginManager's stack-based re-entrancy guard for custom events using a chained custom event sequence."
+    name = "Custom Event Loop Test"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
         self.logger.warning(
             f"'{self.name}': This plugin will intentionally attempt to create a "
@@ -76,8 +80,6 @@ class CustomEventLoopTestPlugin(PluginBase):
         )
 
         # Register listeners
-        self.api.listen_for_event(EVENT_X_NAME, self.handle_event_x)
-        self.api.listen_for_event(EVENT_Y_NAME, self.handle_event_y)
 
         # Initial trigger for the event chain
         self.logger.info(
@@ -94,6 +96,7 @@ class CustomEventLoopTestPlugin(PluginBase):
                 exc_info=True,
             )
 
+    @app_event(EVENT_X_NAME)
     def handle_event_x(self, *args, **kwargs):
         """
         Handler for EVENT_X_NAME ('custom_loop:event_X').
@@ -122,6 +125,7 @@ class CustomEventLoopTestPlugin(PluginBase):
             f"--- CUSTOM LOOP TEST (HANDLER X): Finished handling '{EVENT_X_NAME}' (Source: {source_method})."
         )
 
+    @app_event(EVENT_Y_NAME)
     def handle_event_y(self, *args, **kwargs):
         """
         Handler for EVENT_Y_NAME ('custom_loop:event_Y').

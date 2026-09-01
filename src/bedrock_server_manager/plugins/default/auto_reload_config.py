@@ -5,7 +5,7 @@ Plugin that automatically reloads server configurations after changes.
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class AutoReloadPlugin(PluginBase):
@@ -15,10 +15,13 @@ class AutoReloadPlugin(PluginBase):
     ensuring changes take effect immediately without manual intervention.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
+    description = "Automatically sends a `reload` command to a running server after its configuration files (e.g., allowlist.json, permissions.json) are modified."
     author = "dmedina559"
+    name = "Auto Reload Config"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will send reload commands after config changes if server is running."
@@ -46,6 +49,9 @@ class AutoReloadPlugin(PluginBase):
 
     def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""
+        if not self.get_plugin_setting("enable_auto_reload", default=True):
+            self.logger.info("Auto reload is disabled in plugin settings.")
+            return
         if self._is_server_running(server_name):
             try:
                 self.logger.info(
@@ -62,8 +68,10 @@ class AutoReloadPlugin(PluginBase):
                 f"Server '{server_name}' is not running, skipping reload after {context} change."
             )
 
-    def after_allowlist_change(self, **kwargs: Any):
+    @app_event("after_allowlist_change")
+    def send_allowlist_reload_command(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
+
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
@@ -74,7 +82,11 @@ class AutoReloadPlugin(PluginBase):
             removed_players = result.get("details", {}).get("removed", [])
 
             if added_count > 0 or len(removed_players) > 0:
-                self._send_reload_command(server_name, "allowlist reload", "allowlist")
+                self._send_reload_command(
+                    server_name,
+                    "allowlist reload",
+                    "allowlist",
+                )
             else:
                 self.logger.info(
                     f"Allowlist operation for '{server_name}' reported no changes, skipping reload."
@@ -84,14 +96,20 @@ class AutoReloadPlugin(PluginBase):
                 f"Allowlist change for '{server_name}' was not successful, skipping reload."
             )
 
-    def after_permission_change(self, **kwargs: Any):
+    @app_event("after_permission_change")
+    def send_permission_reload_command(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
+
         server_name = str(kwargs.get("server_name"))
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
         if result.get("status") == "success":
-            self._send_reload_command(server_name, "permission reload", "permission")
+            self._send_reload_command(
+                server_name,
+                "permission reload",
+                "permission",
+            )
         else:
             self.logger.debug(
                 f"Permission change for '{server_name}' was not successful, skipping reload."

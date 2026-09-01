@@ -33,7 +33,7 @@ from ..error import (
     ServerNotRunningError,
 )
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 from ..utils import list_content_files
 from .server import server_lifecycle_manager
 
@@ -74,7 +74,11 @@ def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("import_addon")
-@trigger_app_event(before="before_addon_import", after="after_addon_import")
+@trigger_event(
+    before="before_addon_import",
+    after="after_addon_import",
+    identity_keys=("server_name", "addon_file_path"),
+)
 def import_addon(  # noqa: C901
     server_name: str,
     addon_file_path: str,
@@ -224,7 +228,11 @@ def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str
 
 
 @api_method("enable_addon")
-@trigger_app_event(before="before_addon_enable", after="after_addon_enable")
+@trigger_event(
+    before="before_addon_enable",
+    after="after_addon_enable",
+    identity_keys=("server_name", "pack_uuid"),
+)
 def enable_addon(
     server_name: str,
     pack_uuid: str,
@@ -279,7 +287,11 @@ def enable_addon(
 
 
 @api_method("disable_addon")
-@trigger_app_event(before="before_addon_disable", after="after_addon_disable")
+@trigger_event(
+    before="before_addon_disable",
+    after="after_addon_disable",
+    identity_keys=("server_name", "pack_uuid"),
+)
 def disable_addon(
     server_name: str,
     pack_uuid: str,
@@ -333,8 +345,10 @@ def disable_addon(
         _addon_lock.release()
 
 
-@trigger_app_event(
-    before="before_addon_subpack_update", after="after_addon_subpack_update"
+@trigger_event(
+    before="before_addon_subpack_update",
+    after="after_addon_subpack_update",
+    identity_keys=("server_name", "pack_uuid"),
 )
 def update_subpack(
     server_name: str,
@@ -393,7 +407,11 @@ def update_subpack(
         _addon_lock.release()
 
 
-@trigger_app_event(before="before_addon_uninstall", after="after_addon_uninstall")
+@trigger_event(
+    before="before_addon_uninstall",
+    after="after_addon_uninstall",
+    identity_keys=("server_name", "pack_uuid"),
+)
 def uninstall_addon(
     server_name: str,
     pack_uuid: str,
@@ -448,7 +466,11 @@ def uninstall_addon(
 
 
 @api_method("reorder_addons")
-@trigger_app_event(before="before_addon_reorder", after="after_addon_reorder")
+@trigger_event(
+    before="before_addon_reorder",
+    after="after_addon_reorder",
+    identity_keys=("server_name",),
+)
 def reorder_addons(
     server_name: str,
     uuids: list[str],
