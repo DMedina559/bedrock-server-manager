@@ -965,30 +965,37 @@ class PluginManager:
         for event_name_to_check in (event_name, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:
-                if listener_plugin_name == target_plugin.name:
+                if listener_plugin_name == getattr(
+                    target_plugin, "name", None
+                ) or listener_plugin_name == getattr(
+                    getattr(target_plugin, "api", None), "_plugin_name", None
+                ):
                     logger.debug(
                         f"Dispatching event '{event_name}' to plugin '{target_plugin.name}' "
                         f"(callback: '{callback.__name__}'). Args: {args}, Kwargs: {kwargs}"
                     )
-                try:
-                    if inspect.iscoroutinefunction(callback):
-                        if self.app_context.loop and self.app_context.loop.is_running():
-                            import asyncio
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            if (
+                                self.app_context.loop
+                                and self.app_context.loop.is_running()
+                            ):
+                                import asyncio
 
-                            asyncio.run_coroutine_threadsafe(
-                                callback(*args, **kwargs), self.app_context.loop
-                            )
+                                asyncio.run_coroutine_threadsafe(
+                                    callback(*args, **kwargs), self.app_context.loop
+                                )
+                            else:
+                                logger.warning(
+                                    f"Event '{event_name}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
+                                )
                         else:
-                            logger.warning(
-                                f"Event '{event_name}' on plugin '{target_plugin.name}' is an async function, but no event loop is running."
-                            )
-                    else:
-                        callback(*args, **kwargs)
-                except Exception as e:
-                    logger.error(
-                        f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
-                        exc_info=True,
-                    )
+                            callback(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
+                            exc_info=True,
+                        )
 
         # 2. Legacy backwards compatibility: check if method exists directly on plugin
         plugin_class = type(target_plugin)
@@ -1070,21 +1077,25 @@ class PluginManager:
         for event_name_to_check in (event_name, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:
-                if listener_plugin_name == target_plugin.name:
+                if listener_plugin_name == getattr(
+                    target_plugin, "name", None
+                ) or listener_plugin_name == getattr(
+                    getattr(target_plugin, "api", None), "_plugin_name", None
+                ):
                     logger.debug(
                         f"Async dispatching event '{event_name}' to plugin '{target_plugin.name}' "
                         f"(callback: '{callback.__name__}')."
                     )
-                try:
-                    if inspect.iscoroutinefunction(callback):
-                        await callback(*args, **kwargs)
-                    else:
-                        callback(*args, **kwargs)
-                except Exception as e:
-                    logger.error(
-                        f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
-                        exc_info=True,
-                    )
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            await callback(*args, **kwargs)
+                        else:
+                            callback(*args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
+                            exc_info=True,
+                        )
 
         # 2. Legacy backwards compatibility
         plugin_class = type(target_plugin)
