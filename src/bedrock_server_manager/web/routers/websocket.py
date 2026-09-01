@@ -124,6 +124,8 @@ async def websocket_endpoint(  # noqa: C901
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected: {client_id}")
+    except ConnectionResetError:
+        logger.info(f"WebSocket client connection reset: {client_id}")
     except RuntimeError as e:
         if "WebSocket is not connected" in str(e):
             logger.info(f"WebSocket client disconnected (RuntimeError): {client_id}")
