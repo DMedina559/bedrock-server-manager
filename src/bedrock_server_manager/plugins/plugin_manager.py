@@ -991,10 +991,6 @@ class PluginManager:
 
             if class_method is not base_method:
                 handler_method = getattr(target_plugin, event_name)
-                logger.debug(
-                    f"Dispatching legacy event '{event_name}' to plugin '{target_plugin.name}' "
-                    f"(handler: '{handler_method.__name__}')."
-                )
                 warnings.warn(
                     f"Plugin '{target_plugin.name}' is using legacy method overriding for event '{event_name}'. "
                     f"Please migrate to the @app_event decorator.",
@@ -1091,9 +1087,6 @@ class PluginManager:
 
             if class_method is not base_method:
                 handler_method = getattr(target_plugin, event_name)
-                logger.debug(
-                    f"Async dispatching legacy event '{event_name}' to plugin '{target_plugin.name}'."
-                )
                 warnings.warn(
                     f"Plugin '{target_plugin.name}' is using legacy async method overriding for event '{event_name}'. "
                     f"Please migrate to the @app_event decorator.",
