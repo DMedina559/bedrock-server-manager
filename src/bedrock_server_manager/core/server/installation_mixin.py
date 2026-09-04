@@ -20,6 +20,7 @@ Key responsibilities include:
 lead to irreversible data loss if not used carefully.
 """
 
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
@@ -372,3 +373,19 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                         self.logger.info(
                             f"Successfully deleted server '{self.server_name}' and its associated data from the database."
                         )
+
+    async def validate_installation_async(self, *args, **kwargs):
+        """Asynchronous version of validate_installation."""
+        return await asyncio.to_thread(self.validate_installation, *args, **kwargs)
+
+    async def is_installed_async(self, *args, **kwargs):
+        """Asynchronous version of is_installed."""
+        return await asyncio.to_thread(self.is_installed, *args, **kwargs)
+
+    async def set_filesystem_permissions_async(self, *args, **kwargs):
+        """Asynchronous version of set_filesystem_permissions."""
+        return await asyncio.to_thread(self.set_filesystem_permissions, *args, **kwargs)
+
+    async def delete_all_data_async(self, *args, **kwargs):
+        """Asynchronous version of delete_all_data."""
+        return await asyncio.to_thread(self.delete_all_data, *args, **kwargs)

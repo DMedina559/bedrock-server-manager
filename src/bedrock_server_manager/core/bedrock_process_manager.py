@@ -8,6 +8,7 @@ shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
 
+import asyncio
 import logging
 import struct
 import threading
@@ -316,3 +317,15 @@ class BedrockProcessManager:
             raise FileOperationError(
                 f"Failed to write status for server '{server_name}'."
             )
+
+    async def add_server_async(self, server: "BedrockServer"):
+        """Asynchronous version of add_server."""
+        return await asyncio.to_thread(self.add_server, server)
+
+    async def remove_server_async(self, server_name: str):
+        """Asynchronous version of remove_server."""
+        return await asyncio.to_thread(self.remove_server, server_name)
+
+    async def write_error_status_async(self, server_name: str):
+        """Asynchronous version of write_error_status."""
+        return await asyncio.to_thread(self.write_error_status, server_name)

@@ -27,6 +27,7 @@ Note:
     where appropriate.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -127,6 +128,11 @@ def check_service_exists(service_name: str) -> bool:
             win32service.CloseServiceHandle(service_handle)
         if scm_handle:
             win32service.CloseServiceHandle(scm_handle)
+
+
+async def check_service_exists_async(service_name: str) -> bool:
+    """Asynchronous version of check_service_exists."""
+    return await asyncio.to_thread(check_service_exists, service_name)
 
 
 def create_windows_service(
@@ -254,6 +260,26 @@ def create_windows_service(
             win32service.CloseServiceHandle(scm_handle)
 
 
+async def create_windows_service_async(
+    service_name: str,
+    display_name: str,
+    description: str,
+    command: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+) -> None:
+    """Asynchronous version of create_windows_service."""
+    return await asyncio.to_thread(
+        create_windows_service,
+        service_name,
+        display_name,
+        description,
+        command,
+        username,
+        password,
+    )
+
+
 def enable_windows_service(service_name: str) -> None:
     """Enables a Windows service by setting its start type to 'Automatic'.
 
@@ -319,6 +345,11 @@ def enable_windows_service(service_name: str) -> None:
             win32service.CloseServiceHandle(service_handle)
         if scm_handle:
             win32service.CloseServiceHandle(scm_handle)
+
+
+async def enable_windows_service_async(service_name: str) -> None:
+    """Asynchronous version of enable_windows_service."""
+    return await asyncio.to_thread(enable_windows_service, service_name)
 
 
 def disable_windows_service(service_name: str) -> None:
@@ -389,6 +420,11 @@ def disable_windows_service(service_name: str) -> None:
             win32service.CloseServiceHandle(service_handle)
         if scm_handle:
             win32service.CloseServiceHandle(scm_handle)
+
+
+async def disable_windows_service_async(service_name: str) -> None:
+    """Asynchronous version of disable_windows_service."""
+    return await asyncio.to_thread(disable_windows_service, service_name)
 
 
 def delete_windows_service(service_name: str) -> None:  # noqa: C901
@@ -506,3 +542,8 @@ def delete_windows_service(service_name: str) -> None:  # noqa: C901
         logger.info(
             "Skipping event log source cleanup (optional pywin32 modules not found)."
         )
+
+
+async def delete_windows_service_async(service_name: str) -> None:
+    """Asynchronous version of delete_windows_service."""
+    return await asyncio.to_thread(delete_windows_service, service_name)

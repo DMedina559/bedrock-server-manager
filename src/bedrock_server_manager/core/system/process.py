@@ -37,6 +37,7 @@ Constants:
     - :const:`PSUTIL_AVAILABLE`: Boolean indicating if ``psutil`` was imported.
 """
 
+import asyncio
 import logging
 import os
 import platform
@@ -140,6 +141,10 @@ class GuardedProcess:
         kwargs["env"] = self.guard_env
         return subprocess.run(self.command, **kwargs)
 
+    async def run_async(self, **kwargs: Any) -> subprocess.CompletedProcess:
+        """Asynchronous version of run."""
+        return await asyncio.to_thread(self.run, **kwargs)
+
     def popen(self, **kwargs: Any) -> subprocess.Popen:
         """Wraps ``subprocess.Popen``, injecting the guarded environment.
 
@@ -157,6 +162,10 @@ class GuardedProcess:
         """
         kwargs["env"] = self.guard_env
         return subprocess.Popen(self.command, **kwargs)
+
+    async def popen_async(self, **kwargs: Any) -> subprocess.Popen:
+        """Asynchronous version of popen."""
+        return await asyncio.to_thread(self.popen, **kwargs)
 
 
 def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
@@ -188,6 +197,11 @@ def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
     if not pid_filename:
         raise MissingArgumentError("PID filename cannot be empty.")
     return os.path.join(config_dir, pid_filename)
+
+
+async def get_pid_file_path_async(config_dir: str, pid_filename: str) -> str:
+    """Asynchronous version of get_pid_file_path."""
+    return await asyncio.to_thread(get_pid_file_path, config_dir, pid_filename)
 
 
 def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) -> str:
@@ -239,6 +253,15 @@ def get_bedrock_server_pid_file_path(server_name: str, config_dir: str) -> str:
     return os.path.join(server_config_path, pid_filename)
 
 
+async def get_bedrock_server_pid_file_path_async(
+    server_name: str, config_dir: str
+) -> str:
+    """Asynchronous version of get_bedrock_server_pid_file_path."""
+    return await asyncio.to_thread(
+        get_bedrock_server_pid_file_path, server_name, config_dir
+    )
+
+
 def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) -> str:
     """Constructs the path for a Bedrock server's LAUNCHER process PID file.
 
@@ -288,6 +311,15 @@ def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) -> str
     return os.path.join(config_dir, pid_filename)
 
 
+async def get_bedrock_launcher_pid_file_path_async(
+    server_name: str, config_dir: str
+) -> str:
+    """Asynchronous version of get_bedrock_launcher_pid_file_path."""
+    return await asyncio.to_thread(
+        get_bedrock_launcher_pid_file_path, server_name, config_dir
+    )
+
+
 def read_pid_from_file(pid_file_path: str) -> Optional[int]:
     """Reads and validates a Process ID (PID) from a specified file.
 
@@ -325,6 +357,11 @@ def read_pid_from_file(pid_file_path: str) -> Optional[int]:
         raise FileOperationError(
             f"Error reading or parsing PID file '{pid_file_path}': {e}"
         ) from e
+
+
+async def read_pid_from_file_async(pid_file_path: str) -> Optional[int]:
+    """Asynchronous version of read_pid_from_file."""
+    return await asyncio.to_thread(read_pid_from_file, pid_file_path)
 
 
 def write_pid_to_file(pid_file_path: str, pid: int):
@@ -366,6 +403,11 @@ def write_pid_to_file(pid_file_path: str, pid: int):
         ) from e
 
 
+async def write_pid_to_file_async(pid_file_path: str, pid: int):
+    """Asynchronous version of write_pid_to_file."""
+    return await asyncio.to_thread(write_pid_to_file, pid_file_path, pid)
+
+
 def is_process_running(pid: int) -> bool:
     """Checks if a process with the given PID is currently running.
 
@@ -391,6 +433,11 @@ def is_process_running(pid: int) -> bool:
     if not isinstance(pid, int):
         raise MissingArgumentError("PID must be an integer.")
     return bool(psutil.pid_exists(pid))
+
+
+async def is_process_running_async(pid: int) -> bool:
+    """Asynchronous version of is_process_running."""
+    return await asyncio.to_thread(is_process_running, pid)
 
 
 def launch_detached_process(command: List[str], launcher_pid_file_path: str) -> int:
@@ -470,6 +517,15 @@ def launch_detached_process(command: List[str], launcher_pid_file_path: str) -> 
     logger.info(f"Successfully started guarded process with PID: {pid}")
     write_pid_to_file(launcher_pid_file_path, pid)
     return pid
+
+
+async def launch_detached_process_async(
+    command: List[str], launcher_pid_file_path: str
+) -> int:
+    """Asynchronous version of launch_detached_process."""
+    return await asyncio.to_thread(
+        launch_detached_process, command, launcher_pid_file_path
+    )
 
 
 def verify_process_identity(  # noqa: C901
@@ -577,6 +633,22 @@ def verify_process_identity(  # noqa: C901
 
     logger.debug(
         f"Process {pid} (Name: {proc_name}) verified successfully against signature."
+    )
+
+
+async def verify_process_identity_async(
+    pid: int,
+    expected_executable_path: Optional[str] = None,
+    expected_cwd: Optional[str] = None,
+    expected_command_args: Optional[Union[str, List[str]]] = None,
+):
+    """Asynchronous version of verify_process_identity."""
+    return await asyncio.to_thread(
+        verify_process_identity,
+        pid,
+        expected_executable_path,
+        expected_cwd,
+        expected_command_args,
     )
 
 
@@ -708,6 +780,15 @@ def get_verified_bedrock_process(  # noqa: C901
         return None
 
 
+async def get_verified_bedrock_process_async(
+    server_name: str, server_dir: str, config_dir: str
+) -> Optional["psutil.Process"]:
+    """Asynchronous version of get_verified_bedrock_process."""
+    return await asyncio.to_thread(
+        get_verified_bedrock_process, server_name, server_dir, config_dir
+    )
+
+
 def terminate_process_by_pid(  # noqa: C901
     pid: int, terminate_timeout: int = 5, kill_timeout: int = 2
 ):
@@ -782,6 +863,15 @@ def terminate_process_by_pid(  # noqa: C901
         ) from e
 
 
+async def terminate_process_by_pid_async(
+    pid: int, terminate_timeout: int = 5, kill_timeout: int = 2
+):
+    """Asynchronous version of terminate_process_by_pid."""
+    return await asyncio.to_thread(
+        terminate_process_by_pid, pid, terminate_timeout, kill_timeout
+    )
+
+
 def remove_pid_file_if_exists(pid_file_path: str) -> bool:
     """Removes the specified PID file if it exists, logging outcomes.
 
@@ -813,3 +903,8 @@ def remove_pid_file_if_exists(pid_file_path: str) -> bool:
             logger.warning(f"Could not remove PID file '{pid_file_path}': {e}")
             return False
     return True
+
+
+async def remove_pid_file_if_exists_async(pid_file_path: str) -> bool:
+    """Asynchronous version of remove_pid_file_if_exists."""
+    return await asyncio.to_thread(remove_pid_file_if_exists, pid_file_path)

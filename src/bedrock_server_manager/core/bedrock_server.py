@@ -9,6 +9,7 @@ each contributing a distinct set of features. This compositional approach promot
 code organization and modularity, allowing for clear separation of concerns.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
@@ -191,3 +192,7 @@ class BedrockServer(
         }
 
         return summary
+
+    async def get_summary_info_async(self) -> Dict[str, Any]:
+        """Asynchronous version of get_summary_info."""
+        return await asyncio.to_thread(self.get_summary_info)

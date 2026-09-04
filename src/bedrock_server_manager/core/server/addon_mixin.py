@@ -21,6 +21,7 @@ It is designed to work in conjunction with other mixins of the
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 
+import asyncio
 import glob
 import json
 import os
@@ -1564,3 +1565,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise FileOperationError(
                 f"Failed to write updated activation file '{json_filename}': {e}"
             ) from e
+
+    async def process_addon_file_async(self, *args, **kwargs):
+        """Asynchronous version of process_addon_file."""
+        return await asyncio.to_thread(self.process_addon_file, *args, **kwargs)

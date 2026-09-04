@@ -20,6 +20,7 @@ world, and :class:`~.core.server.world_mixin.ServerWorldMixin` methods for world
 export and import operations.
 """
 
+import asyncio
 import os
 import re
 import shutil
@@ -891,3 +892,13 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"Restore process from latest backups completed for server '{self.server_name}'."
         )
         return restore_results
+
+    async def backup_all_data_async(self, *args, **kwargs):
+        """Asynchronous version of backup_all_data."""
+        return await asyncio.to_thread(self.backup_all_data, *args, **kwargs)
+
+    async def restore_all_data_from_latest_async(self, *args, **kwargs):
+        """Asynchronous version of restore_all_data_from_latest."""
+        return await asyncio.to_thread(
+            self.restore_all_data_from_latest, *args, **kwargs
+        )

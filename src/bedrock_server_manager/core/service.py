@@ -5,6 +5,7 @@ This module provides functions to interface with the operating system's service
 manager (systemd, Windows Services) to control the Bedrock Server Manager Web UI service.
 """
 
+import asyncio
 import logging
 import os
 import platform
@@ -428,3 +429,49 @@ def is_web_service_enabled(system: bool = False) -> bool:  # noqa: C901
     else:
         logger.debug(f"Web UI service enabled check not supported on OS: {os_type}")
         return False
+
+
+async def create_web_service_file_async(  # noqa: C901
+    app_data_dir: str,
+    system: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+) -> None:
+    """Asynchronous version of create_web_service_file."""
+    return await asyncio.to_thread(
+        create_web_service_file,
+        app_data_dir,
+        system,
+        username,
+        password,
+    )
+
+
+async def check_web_service_exists_async(system: bool = False) -> bool:
+    """Asynchronous version of check_web_service_exists."""
+    return await asyncio.to_thread(check_web_service_exists, system)
+
+
+async def enable_web_service_async(system: bool = False) -> None:
+    """Asynchronous version of enable_web_service."""
+    return await asyncio.to_thread(enable_web_service, system)
+
+
+async def disable_web_service_async(system: bool = False) -> None:
+    """Asynchronous version of disable_web_service."""
+    return await asyncio.to_thread(disable_web_service, system)
+
+
+async def remove_web_service_file_async(system: bool = False) -> bool:
+    """Asynchronous version of remove_web_service_file."""
+    return await asyncio.to_thread(remove_web_service_file, system)
+
+
+async def is_web_service_active_async(system: bool = False) -> bool:  # noqa: C901
+    """Asynchronous version of is_web_service_active."""
+    return await asyncio.to_thread(is_web_service_active, system)
+
+
+async def is_web_service_enabled_async(system: bool = False) -> bool:  # noqa: C901
+    """Asynchronous version of is_web_service_enabled."""
+    return await asyncio.to_thread(is_web_service_enabled, system)

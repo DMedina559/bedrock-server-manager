@@ -9,6 +9,7 @@ the logger. All other mixins should inherit from this class to ensure these
 fundamental attributes are available.
 """
 
+import asyncio
 import logging
 import os
 import platform
@@ -199,3 +200,7 @@ class BedrockServerBaseMixin:
         # The actual creation of this dir is handled by functions that write the PID file.
         current_server_config_dir = self.server_config_dir
         return os.path.join(current_server_config_dir, pid_filename)
+
+    async def get_pid_file_path_async(self, *args, **kwargs):
+        """Asynchronous version of get_pid_file_path."""
+        return await asyncio.to_thread(self.get_pid_file_path, *args, **kwargs)

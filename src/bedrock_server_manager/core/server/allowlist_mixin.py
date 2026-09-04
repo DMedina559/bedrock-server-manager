@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from typing import Any, Dict, List
@@ -152,3 +153,15 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                 f"Player '{player_name_to_remove}' not found in allowlist for '{self.server_name}'."
             )
             return False
+
+    async def get_allowlist_async(self, *args, **kwargs):
+        """Asynchronous version of get_allowlist."""
+        return await asyncio.to_thread(self.get_allowlist, *args, **kwargs)
+
+    async def add_to_allowlist_async(self, *args, **kwargs):
+        """Asynchronous version of add_to_allowlist."""
+        return await asyncio.to_thread(self.add_to_allowlist, *args, **kwargs)
+
+    async def remove_from_allowlist_async(self, *args, **kwargs):
+        """Asynchronous version of remove_from_allowlist."""
+        return await asyncio.to_thread(self.remove_from_allowlist, *args, **kwargs)

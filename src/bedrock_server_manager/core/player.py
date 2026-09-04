@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from typing import Any, Dict, List
@@ -178,3 +179,26 @@ def discover_and_store_players(  # noqa: C901
         "actually_saved_or_updated_in_db": saved_count,
         "scan_errors": scan_errors_details,
     }
+
+
+async def save_player_data_async(
+    db_session_manager, players_data: List[Dict[str, str]]
+) -> int:
+    """Asynchronous version of save_player_data."""
+    return await asyncio.to_thread(save_player_data, db_session_manager, players_data)
+
+
+async def get_known_players_async(db_session_manager) -> List[Dict[str, str]]:
+    """Asynchronous version of get_known_players."""
+    return await asyncio.to_thread(get_known_players, db_session_manager)
+
+
+async def discover_and_store_players_async(  # noqa: C901
+    base_dir: str, app_context: AppContext
+) -> Dict[str, Any]:
+    """Asynchronous version of discover_and_store_players."""
+    return await asyncio.to_thread(
+        discover_and_store_players,
+        base_dir,
+        app_context,
+    )

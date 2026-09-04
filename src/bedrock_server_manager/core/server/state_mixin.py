@@ -23,6 +23,7 @@ Key functionalities:
 
 """
 
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
@@ -751,3 +752,59 @@ class ServerStateMixin(BedrockServerBaseMixin):
             f"Final determined status for '{self.server_name}': {final_status}"
         )
         return final_status
+
+    async def get_version_async(self, *args, **kwargs):
+        """Asynchronous version of get_version."""
+        return await asyncio.to_thread(self.get_version, *args, **kwargs)
+
+    async def set_version_async(self, *args, **kwargs):
+        """Asynchronous version of set_version."""
+        return await asyncio.to_thread(self.set_version, *args, **kwargs)
+
+    async def get_autoupdate_async(self, *args, **kwargs):
+        """Asynchronous version of get_autoupdate."""
+        return await asyncio.to_thread(self.get_autoupdate, *args, **kwargs)
+
+    async def set_autoupdate_async(self, *args, **kwargs):
+        """Asynchronous version of set_autoupdate."""
+        return await asyncio.to_thread(self.set_autoupdate, *args, **kwargs)
+
+    async def get_autostart_async(self, *args, **kwargs):
+        """Asynchronous version of get_autostart."""
+        return await asyncio.to_thread(self.get_autostart, *args, **kwargs)
+
+    async def set_autostart_async(self, *args, **kwargs):
+        """Asynchronous version of set_autostart."""
+        return await asyncio.to_thread(self.set_autostart, *args, **kwargs)
+
+    async def get_status_from_config_async(self, *args, **kwargs):
+        """Asynchronous version of get_status_from_config."""
+        return await asyncio.to_thread(self.get_status_from_config, *args, **kwargs)
+
+    async def set_status_in_config_async(self, *args, **kwargs):
+        """Asynchronous version of set_status_in_config."""
+        return await asyncio.to_thread(self.set_status_in_config, *args, **kwargs)
+
+    async def get_target_version_async(self, *args, **kwargs):
+        """Asynchronous version of get_target_version."""
+        return await asyncio.to_thread(self.get_target_version, *args, **kwargs)
+
+    async def set_target_version_async(self, *args, **kwargs):
+        """Asynchronous version of set_target_version."""
+        return await asyncio.to_thread(self.set_target_version, *args, **kwargs)
+
+    async def get_custom_config_value_async(self, *args, **kwargs):
+        """Asynchronous version of get_custom_config_value."""
+        return await asyncio.to_thread(self.get_custom_config_value, *args, **kwargs)
+
+    async def set_custom_config_value_async(self, *args, **kwargs):
+        """Asynchronous version of set_custom_config_value."""
+        return await asyncio.to_thread(self.set_custom_config_value, *args, **kwargs)
+
+    async def get_world_name_async(self, *args, **kwargs):
+        """Asynchronous version of get_world_name."""
+        return await asyncio.to_thread(self.get_world_name, *args, **kwargs)
+
+    async def get_status_async(self, *args, **kwargs):
+        """Asynchronous version of get_status."""
+        return await asyncio.to_thread(self.get_status, *args, **kwargs)

@@ -30,6 +30,7 @@ Internal Helpers:
     - :func:`._handle_remove_readonly_onerror`: An error handler for ``shutil.rmtree``.
 """
 
+import asyncio
 import logging
 import os
 import platform
@@ -114,6 +115,19 @@ def find_files(
         return [str(p) for p in files]
 
 
+async def find_files_async(
+    directory: str,
+    pattern: str = "*",
+    sort_by: str = "name",
+    reverse: bool = False,
+    include_metadata: bool = False,
+) -> Union[List[str], List[Dict[str, Any]]]:
+    """Asynchronous version of find_files."""
+    return await asyncio.to_thread(
+        find_files, directory, pattern, sort_by, reverse, include_metadata
+    )
+
+
 def can_manage_services() -> bool:
     """Indicates if a system service manager (``systemctl`` or ``sc.exe``) is available.
 
@@ -126,6 +140,11 @@ def can_manage_services() -> bool:
     elif os_name == "Windows":
         return shutil.which("sc.exe") is not None
     return False
+
+
+async def can_manage_services_async() -> bool:
+    """Asynchronous version of can_manage_services."""
+    return await asyncio.to_thread(can_manage_services)
 
 
 def check_internet_connectivity(
@@ -172,6 +191,13 @@ def check_internet_connectivity(
         error_msg = f"An unexpected error occurred during connectivity check: {e}"
         logger.error(error_msg, exc_info=True)
         raise InternetConnectivityError(error_msg) from e
+
+
+async def check_internet_connectivity_async(
+    host: str = "8.8.8.8", port: int = 53, timeout: int = 3
+) -> None:
+    """Asynchronous version of check_internet_connectivity."""
+    return await asyncio.to_thread(check_internet_connectivity, host, port, timeout)
 
 
 def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
@@ -271,6 +297,11 @@ def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
         raise PermissionsError(f"Unexpected error during permission setup: {e}") from e
 
 
+async def set_server_folder_permissions_async(server_dir: str) -> None:
+    """Asynchronous version of set_server_folder_permissions."""
+    return await asyncio.to_thread(set_server_folder_permissions, server_dir)
+
+
 def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
     """Checks if a specific Bedrock server process is running and verified.
 
@@ -308,6 +339,17 @@ def is_server_running(server_name: str, server_dir: str, config_dir: str) -> boo
     return (
         core_process.get_verified_bedrock_process(server_name, server_dir, config_dir)
         is not None
+    )
+
+
+async def is_server_running_async(
+    server_name: str, server_dir: str, config_dir: str
+) -> bool:
+    """Asynchronous version of is_server_running."""
+    # This also uses asyncio.to_thread internally if it were to call the sync version,
+    # but we can rely on to_thread for this wrapper.
+    return await asyncio.to_thread(
+        is_server_running, server_name, server_dir, config_dir
     )
 
 
@@ -427,6 +469,15 @@ def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
             exc_info=True,
         )
         return False
+
+
+async def delete_path_robustly_async(
+    path_to_delete: str, item_description: str
+) -> bool:
+    """Asynchronous version of delete_path_robustly."""
+    return await asyncio.to_thread(
+        delete_path_robustly, path_to_delete, item_description
+    )
 
 
 # --- RESOURCE MONITOR ---
@@ -579,3 +630,9 @@ class ResourceMonitor:
         except Exception as e:
             # Catch any other psutil errors or unexpected issues
             raise SystemError(f"Failed to get stats for PID {pid}: {e}") from e
+
+    async def get_stats_async(
+        self, process: "psutil.Process"
+    ) -> Optional[Dict[str, Any]]:
+        """Asynchronous version of get_stats."""
+        return await asyncio.to_thread(self.get_stats, process)

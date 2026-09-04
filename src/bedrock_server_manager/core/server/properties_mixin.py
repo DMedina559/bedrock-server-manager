@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Any, Dict, Optional
 
@@ -121,3 +122,7 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
             return props.get(property_key, default)
         except AppFileNotFoundError:
             return default
+
+    async def get_server_properties_async(self, *args, **kwargs):
+        """Asynchronous version of get_server_properties."""
+        return await asyncio.to_thread(self.get_server_properties, *args, **kwargs)

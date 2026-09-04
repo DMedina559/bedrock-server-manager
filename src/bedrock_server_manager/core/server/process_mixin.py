@@ -20,6 +20,7 @@ The availability of ``psutil`` (for :meth:`.ServerProcessMixin.get_process_info`
 is indicated by the :const:`.PSUTIL_AVAILABLE` flag defined in this module.
 """
 
+import asyncio
 import os
 import platform
 import subprocess
@@ -360,3 +361,23 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 exc_info=True,
             )
             return None
+
+    async def is_running_async(self, *args, **kwargs):
+        """Asynchronous version of is_running."""
+        return await asyncio.to_thread(self.is_running, *args, **kwargs)
+
+    async def send_command_async(self, *args, **kwargs):
+        """Asynchronous version of send_command."""
+        return await asyncio.to_thread(self.send_command, *args, **kwargs)
+
+    async def start_async(self, *args, **kwargs):
+        """Asynchronous version of start."""
+        return await asyncio.to_thread(self.start, *args, **kwargs)
+
+    async def stop_async(self, *args, **kwargs):
+        """Asynchronous version of stop."""
+        return await asyncio.to_thread(self.stop, *args, **kwargs)
+
+    async def get_process_info_async(self, *args, **kwargs):
+        """Asynchronous version of get_process_info."""
+        return await asyncio.to_thread(self.get_process_info, *args, **kwargs)

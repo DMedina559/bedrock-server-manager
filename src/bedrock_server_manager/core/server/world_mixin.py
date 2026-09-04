@@ -21,6 +21,7 @@ with the filesystem within the server's ``worlds`` subdirectory.
     are **DESTRUCTIVE** and can lead to data loss if not used carefully.
 """
 
+import asyncio
 import os
 import shutil
 import zipfile
@@ -550,3 +551,15 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         # If icon_path is None, _get_active_world_directory_path (via world_icon_filesystem_path)
         # would have already logged a warning if get_world_name failed.
         return False
+
+    async def import_world_async(self, *args, **kwargs):
+        """Asynchronous version of import_world."""
+        return await asyncio.to_thread(self.import_world, *args, **kwargs)
+
+    async def delete_world_async(self, *args, **kwargs):
+        """Asynchronous version of delete_world."""
+        return await asyncio.to_thread(self.delete_world, *args, **kwargs)
+
+    async def has_world_icon_async(self, *args, **kwargs):
+        """Asynchronous version of has_world_icon."""
+        return await asyncio.to_thread(self.has_world_icon, *args, **kwargs)

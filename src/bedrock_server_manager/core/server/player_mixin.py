@@ -10,6 +10,7 @@ player gamertags and their corresponding XUIDs. This information can be used,
 for example, to populate a player database or track server activity.
 """
 
+import asyncio
 import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
@@ -234,3 +235,11 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             {"name": name, "uuid": xuid} for xuid, name in online_players.items()
         ]
         return self.players
+
+    async def scan_log_for_players_async(self, *args, **kwargs):
+        """Asynchronous version of scan_log_for_players."""
+        return await asyncio.to_thread(self.scan_log_for_players, *args, **kwargs)
+
+    async def update_online_players_async(self, *args, **kwargs):
+        """Asynchronous version of update_online_players."""
+        return await asyncio.to_thread(self.update_online_players, *args, **kwargs)

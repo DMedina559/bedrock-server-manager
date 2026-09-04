@@ -26,6 +26,7 @@ Note:
     early or behave differently if not run on a Linux system.
 """
 
+import asyncio
 import logging
 import os
 import platform
@@ -87,6 +88,15 @@ def get_systemd_service_file_path(service_name_full: str, system: bool = False) 
         )
 
 
+async def get_systemd_service_file_path_async(
+    service_name_full: str, system: bool = False
+) -> str:
+    """Asynchronous version of get_systemd_service_file_path."""
+    return await asyncio.to_thread(
+        get_systemd_service_file_path, service_name_full, system
+    )
+
+
 def check_service_exists(service_name_full: str, system: bool = False) -> bool:
     """Checks if a systemd user service file exists on Linux.
 
@@ -122,6 +132,13 @@ def check_service_exists(service_name_full: str, system: bool = False) -> bool:
     exists = os.path.isfile(service_file_path)
     logger.debug(f"Service file '{service_file_path}' exists: {exists}")
     return exists
+
+
+async def check_service_exists_async(
+    service_name_full: str, system: bool = False
+) -> bool:
+    """Asynchronous version of check_service_exists."""
+    return await asyncio.to_thread(check_service_exists, service_name_full, system)
 
 
 def create_systemd_service_file(  # noqa: C901
@@ -274,6 +291,36 @@ WantedBy=default.target
         raise SystemError(f"Failed to reload systemd daemon. Error: {e.stderr}") from e
 
 
+async def create_systemd_service_file_async(
+    service_name_full: str,
+    description: str,
+    working_directory: str,
+    exec_start_command: str,
+    exec_stop_command: Optional[str] = None,
+    exec_start_pre_command: Optional[str] = None,
+    service_type: str = "forking",
+    restart_policy: str = "on-failure",
+    restart_sec: int = 10,
+    after_targets: str = "network.target",
+    system: bool = False,
+) -> None:
+    """Asynchronous version of create_systemd_service_file."""
+    return await asyncio.to_thread(
+        create_systemd_service_file,
+        service_name_full,
+        description,
+        working_directory,
+        exec_start_command,
+        exec_stop_command,
+        exec_start_pre_command,
+        service_type,
+        restart_policy,
+        restart_sec,
+        after_targets,
+        system,
+    )
+
+
 def enable_systemd_service(  # noqa: C901
     service_name_full: str, system: bool = False
 ) -> None:
@@ -368,6 +415,13 @@ def enable_systemd_service(  # noqa: C901
         raise SystemError(
             f"Failed to enable systemd service '{name_to_use}'. Error: {e.stderr.strip()}"
         ) from e
+
+
+async def enable_systemd_service_async(
+    service_name_full: str, system: bool = False
+) -> None:
+    """Asynchronous version of enable_systemd_service."""
+    return await asyncio.to_thread(enable_systemd_service, service_name_full, system)
 
 
 def disable_systemd_service(  # noqa: C901
@@ -476,3 +530,10 @@ def disable_systemd_service(  # noqa: C901
         raise SystemError(
             f"Failed to disable systemd service '{name_to_use}'. Error: {e.stderr.strip()}"
         ) from e
+
+
+async def disable_systemd_service_async(
+    service_name_full: str, system: bool = False
+) -> None:
+    """Asynchronous version of disable_systemd_service."""
+    return await asyncio.to_thread(disable_systemd_service, service_name_full, system)

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -148,3 +149,11 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
 
         processed_list.sort(key=lambda p: p.get("name", "").lower())
         return processed_list
+
+    async def set_player_permission_async(self, *args, **kwargs):
+        """Asynchronous version of set_player_permission."""
+        return await asyncio.to_thread(self.set_player_permission, *args, **kwargs)
+
+    async def get_formatted_permissions_async(self, *args, **kwargs):
+        """Asynchronous version of get_formatted_permissions."""
+        return await asyncio.to_thread(self.get_formatted_permissions, *args, **kwargs)

@@ -27,6 +27,7 @@ dealing with potential network issues, file system operations, and changes in
 download URLs or API responses.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -164,6 +165,11 @@ def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
             f"Unexpected error during pruning operation for '{download_dir}': {e_generic}",
             exc_info=True,
         )
+
+
+async def prune_old_downloads_async(download_dir: str, download_keep: int):
+    """Asynchronous version of prune_old_downloads."""
+    return await asyncio.to_thread(prune_old_downloads, download_dir, download_keep)
 
 
 class BedrockDownloader:
@@ -1071,3 +1077,97 @@ class BedrockDownloader:
             Optional[str]: The complete download URL, or ``None`` if not yet resolved.
         """
         return self.resolved_download_url
+
+    async def _lookup_bedrock_download_url_async(self) -> Optional[str]:
+        """Asynchronous version of _get_os_version_url."""
+        return await asyncio.to_thread(self._lookup_bedrock_download_url)
+
+    async def get_version_for_target_spec_async(self) -> str:
+        """Asynchronous version of get_version_for_target_spec."""
+        return await asyncio.to_thread(self.get_version_for_target_spec)
+
+    async def prepare_download_assets_async(self) -> Tuple[str, str, str]:
+        """Asynchronous version of prepare_download_assets."""
+        return await asyncio.to_thread(self.prepare_download_assets)
+
+    async def extract_server_files_async(self, is_update: bool):
+        """Asynchronous version of extract_server_files."""
+        return await asyncio.to_thread(self.extract_server_files, is_update)
+
+    async def full_server_setup_async(self, is_update: bool) -> str:
+        """Asynchronous version of full_server_setup."""
+        return await asyncio.to_thread(self.full_server_setup, is_update)
+
+    async def _download_server_zip_file_async(self):  # noqa: C901
+        """Downloads the server ZIP file asynchronously using httpx."""
+        if not self.resolved_download_url or not self.zip_file_path:
+            raise MissingArgumentError(
+                "Download URL or ZIP file path not set. Cannot download."
+            )
+
+        self.logger.info(
+            f"Attempting to download server from: {self.resolved_download_url}"
+        )
+        self.logger.debug(f"Saving downloaded file to: {self.zip_file_path}")
+
+        target_dir = os.path.dirname(self.zip_file_path)
+        try:
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Cannot create directory '{target_dir}' for download: {e}"
+            ) from e
+
+        import httpx
+
+        try:
+            from ..config.const import app_name_title
+
+            app_name = self.settings.get("_app_name", app_name_title)
+            headers = {"User-Agent": f"Python HTTPX/{httpx.__version__} ({app_name})"}
+
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=120.0
+            ) as client:
+                async with client.stream(
+                    "GET", self.resolved_download_url, headers=headers
+                ) as response:
+                    response.raise_for_status()
+                    self.logger.debug(
+                        f"Download request successful (status {response.status_code}). Writing to file."
+                    )
+                    total_size = int(response.headers.get("content-length", 0))
+                    bytes_written = 0
+
+                    import aiofiles
+
+                    async with aiofiles.open(self.zip_file_path, "wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192 * 4):
+                            await f.write(chunk)
+                            bytes_written += len(chunk)
+
+                    self.logger.info(
+                        f"Successfully downloaded {bytes_written} bytes to: {self.zip_file_path}"
+                    )
+                    if total_size != 0 and bytes_written != total_size:
+                        self.logger.warning(
+                            f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
+                        )
+        except httpx.RequestError as e:
+            if os.path.exists(self.zip_file_path):
+                try:
+                    os.remove(self.zip_file_path)
+                except OSError as rm_err:
+                    self.logger.warning(
+                        f"Could not remove incomplete file '{self.zip_file_path}': {rm_err}"
+                    )
+            raise InternetConnectivityError(
+                f"Download failed for '{self.resolved_download_url}': {e}"
+            ) from e
+        except OSError as e:
+            raise FileOperationError(
+                f"Cannot write to file '{self.zip_file_path}': {e}"
+            ) from e
+        except Exception as e:
+            raise FileOperationError(f"Unexpected error during download: {e}") from e

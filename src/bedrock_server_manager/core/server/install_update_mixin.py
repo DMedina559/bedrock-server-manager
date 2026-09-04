@@ -21,6 +21,7 @@ Key functionalities include:
 
 """
 
+import asyncio
 import os
 from typing import Any, Optional
 
@@ -497,3 +498,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             raise FileOperationError(
                 f"Unexpected failure during install/update for '{self.server_name}': {e_unexp_install}"
             ) from e_unexp_install
+
+    async def is_update_needed_async(self, *args, **kwargs):
+        """Asynchronous version of is_update_needed."""
+        return await asyncio.to_thread(self.is_update_needed, *args, **kwargs)
