@@ -39,6 +39,8 @@ dependencies = [
     "platformdirs >=4.3.0,<4.12",
     "alembic >=1.16,<1.20",
     "mcstatus >=12.0,<14.2",
+    "aiohttp >=3.10.0,<3.12",
+    "aiofiles >=24.1.0,<24.2",
 ]
 
 keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "fastapi"]
@@ -57,6 +59,7 @@ dev = [
     "httpx2 >=2.5.0,<2.13",
     "pytest-asyncio >=1.1.0,<1.5",
     "types-requests >=2.32.0,<2.34",
+    "types-aiofiles >=24.1.0,<24.2",
     "black >=25.1.0,<26.6",
     "flake8 >=7.3.0,<7.4",
     "isort >=5.13.0,<9.1",

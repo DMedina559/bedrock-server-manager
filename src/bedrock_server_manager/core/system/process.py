@@ -43,6 +43,10 @@ import platform
 import subprocess
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
+
 try:
     import psutil
 
@@ -288,6 +292,51 @@ def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) -> str
     return os.path.join(config_dir, pid_filename)
 
 
+async def async_read_pid_from_file(pid_file_path: str) -> Optional[int]:
+    """Asynchronously reads a Process ID (PID) from the specified file.
+
+    This function attempts to open and read the contents of the file at
+    `pid_file_path`. It expects the file to contain a single integer
+    representing a PID.
+
+    Args:
+        pid_file_path (str): The absolute path to the PID file.
+
+    Returns:
+        Optional[int]: The PID as an integer if the file exists, is readable,
+        and contains a valid integer. Returns ``None`` otherwise (e.g., file not
+        found, permission denied, invalid content).
+
+    Raises:
+        MissingArgumentError: If `pid_file_path` is not provided or is empty.
+        FileOperationError: If there's an error reading or parsing the file
+            content that is not handled (though most are caught and logged).
+    """
+    if not isinstance(pid_file_path, str) or not pid_file_path:
+        raise MissingArgumentError("PID file path cannot be empty.")
+
+    if not await aiofiles.ospath.exists(pid_file_path):
+        logger.debug(f"PID file not found: {pid_file_path}")
+        return None
+
+    try:
+        async with aiofiles.open(pid_file_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+            pid_str = content.strip()
+            if not pid_str:
+                logger.warning(f"PID file is empty: {pid_file_path}")
+                return None
+            return int(pid_str)
+    except ValueError:
+        logger.warning(
+            f"Invalid content in PID file '{pid_file_path}'. Expected an integer."
+        )
+        return None
+    except OSError as e:
+        logger.error(f"Error reading PID file '{pid_file_path}': {e}", exc_info=True)
+        return None
+
+
 def read_pid_from_file(pid_file_path: str) -> Optional[int]:
     """Reads and validates a Process ID (PID) from a specified file.
 
@@ -324,6 +373,48 @@ def read_pid_from_file(pid_file_path: str) -> Optional[int]:
     except (OSError, ValueError) as e:
         raise FileOperationError(
             f"Error reading or parsing PID file '{pid_file_path}': {e}"
+        ) from e
+
+
+async def async_write_pid_to_file(pid_file_path: str, pid: int):
+    """Asynchronously writes a Process ID (PID) to the specified file.
+
+    This function ensures the directory containing the `pid_file_path` exists
+    (creating it if necessary) and then writes the `pid` to the file as a string.
+
+    Args:
+        pid_file_path (str): The absolute path to the file where the PID should
+            be written.
+        pid (int): The Process ID to write.
+
+    Raises:
+        MissingArgumentError: If `pid_file_path` is empty or not a string, or
+            if `pid` is not an integer.
+        FileOperationError: If there is an error creating the directory or
+            writing to the file (e.g., permission issues).
+    """
+    if not isinstance(pid_file_path, str) or not pid_file_path:
+        raise MissingArgumentError("PID file path cannot be empty.")
+    if not isinstance(pid, int):
+        raise MissingArgumentError("PID must be an integer.")
+
+    directory = os.path.dirname(pid_file_path)
+    if directory and not await aiofiles.ospath.exists(directory):
+        try:
+            os.makedirs(directory, exist_ok=True)
+            logger.debug(f"Created directory for PID file: {directory}")
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to create directory '{directory}' for PID file: {e}"
+            ) from e
+
+    try:
+        async with aiofiles.open(pid_file_path, "w", encoding="utf-8") as f:
+            await f.write(str(pid))
+        logger.debug(f"Wrote PID {pid} to '{pid_file_path}'")
+    except OSError as e:
+        raise FileOperationError(
+            f"Failed to write PID {pid} to '{pid_file_path}': {e}"
         ) from e
 
 
@@ -780,6 +871,39 @@ def terminate_process_by_pid(  # noqa: C901
         raise ServerStopError(
             f"Unexpected error terminating process PID {pid}: {e}"
         ) from e
+
+
+async def async_remove_pid_file_if_exists(pid_file_path: str) -> bool:
+    """Asynchronously removes the specified PID file if it exists, logging outcomes.
+
+    This function checks for the existence of a file at `pid_file_path`.
+    If it exists, an attempt is made to delete it. Deletion failures due to
+    ``OSError`` (e.g., permission issues) are logged as warnings but do not
+    propagate the exception.
+
+    Args:
+        pid_file_path (str): The absolute path to the PID file to remove.
+
+    Returns:
+        bool: ``True`` if the file was successfully removed or if it did not
+        exist initially. ``False`` if an ``OSError`` occurred during an
+        attempted removal.
+
+    Raises:
+        MissingArgumentError: If `pid_file_path` is not provided or is empty.
+    """
+    if not isinstance(pid_file_path, str) or not pid_file_path:
+        raise MissingArgumentError("PID file path cannot be empty.")
+
+    if await aiofiles.ospath.exists(pid_file_path):
+        try:
+            await aiofiles.os.remove(pid_file_path)
+            logger.info(f"Removed PID file '{pid_file_path}'.")
+            return True
+        except OSError as e:
+            logger.warning(f"Could not remove PID file '{pid_file_path}': {e}")
+            return False
+    return True
 
 
 def remove_pid_file_if_exists(pid_file_path: str) -> bool:

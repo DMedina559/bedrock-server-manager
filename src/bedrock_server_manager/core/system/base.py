@@ -30,6 +30,7 @@ Internal Helpers:
     - :func:`._handle_remove_readonly_onerror`: An error handler for ``shutil.rmtree``.
 """
 
+import asyncio
 import logging
 import os
 import platform
@@ -41,6 +42,11 @@ import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
+import aiohttp
 
 try:
     import psutil
@@ -126,6 +132,49 @@ def can_manage_services() -> bool:
     elif os_name == "Windows":
         return shutil.which("sc.exe") is not None
     return False
+
+
+async def async_check_internet_connectivity(
+    url: str = "http://clients3.google.com/generate_204", timeout: int = 3
+) -> None:
+    """Asynchronously checks for basic internet connectivity by attempting an HTTP GET request.
+
+    This function tries to establish an HTTP connection to a specified `url`
+    with a given `timeout`. Success indicates likely internet access.
+    Failure (timeout or other ``ClientError``) raises an
+    :class:`~bedrock_server_manager.error.InternetConnectivityError`.
+
+    Args:
+        url (str, optional): The URL to connect to.
+            Defaults to "http://clients3.google.com/generate_204".
+        timeout (int, optional): The connection timeout in seconds.
+            Defaults to 3.
+
+    Raises:
+        InternetConnectivityError: If the HTTP connection fails due to a
+            timeout, network error, or any other unexpected exception during the check.
+    """
+    logger.debug(
+        f"Checking internet connectivity asynchronously by attempting HTTP GET to {url}..."
+    )
+    try:
+        timeout_client = aiohttp.ClientTimeout(total=timeout)
+        async with aiohttp.ClientSession(timeout=timeout_client) as session:
+            async with session.get(url) as response:
+                if 200 <= response.status < 300:
+                    logger.debug("Asynchronous internet connectivity check successful.")
+                else:
+                    error_msg = f"Connectivity check failed: HTTP status {response.status} from {url}."
+                    logger.error(error_msg)
+                    raise InternetConnectivityError(error_msg)
+    except asyncio.TimeoutError:
+        error_msg = f"Connectivity check failed: Connection to {url} timed out after {timeout} seconds."
+        logger.error(error_msg)
+        raise InternetConnectivityError(error_msg) from None
+    except aiohttp.ClientError as ex:
+        error_msg = f"Connectivity check failed: Cannot connect to {url}. Error: {ex}"
+        logger.error(error_msg)
+        raise InternetConnectivityError(error_msg) from ex
 
 
 def check_internet_connectivity(
@@ -356,6 +405,66 @@ def _handle_remove_readonly_onerror(func, path, exc_info):
             f"Unhandled error during rmtree: {exc_info[1]} on path {path}. Re-raising."
         )
         raise exc_info[1]
+
+
+async def async_delete_path_robustly(
+    path_to_delete: str, item_description: str
+) -> bool:
+    """Asynchronously deletes a file robustly, attempting to handle read-only attributes.
+
+    This function attempts to delete the specified `path_to_delete` using native async functions.
+    It will handle read only file attributes if needed. Note: Directory removals are skipped and left to
+    the standard sync `delete_path_robustly` wrapped in threads by callers since there is no native
+    async `rmtree`. We only process files here to adhere to native async requirements.
+
+    Args:
+        path_to_delete (str): The absolute path to the file to delete.
+        item_description (str): A human-readable description of the item being
+            deleted.
+
+    Returns:
+        bool: ``True`` if the deletion was successful or if the path did not
+        exist initially. ``False`` if an error occurred during deletion or if
+        the path was a directory (directories are not supported here).
+
+    Raises:
+        MissingArgumentError: If `path_to_delete` or `item_description` are
+            empty or not strings.
+    """
+    if not isinstance(path_to_delete, str) or not path_to_delete:
+        raise MissingArgumentError("path_to_delete cannot be empty.")
+    if not isinstance(item_description, str) or not item_description:
+        raise MissingArgumentError("item_description cannot be empty.")
+
+    if not await aiofiles.ospath.exists(path_to_delete):
+        logger.debug(
+            f"{item_description.capitalize()} at '{path_to_delete}' not found, skipping."
+        )
+        return True
+
+    if await aiofiles.ospath.isfile(path_to_delete):
+        logger.info(
+            f"Preparing to asynchronously delete {item_description} file: {path_to_delete}"
+        )
+        try:
+            if not os.access(path_to_delete, os.W_OK):
+                os.chmod(path_to_delete, stat.S_IWRITE | stat.S_IWUSR)
+            await aiofiles.os.remove(path_to_delete)
+            logger.info(
+                f"Successfully deleted {item_description} file: {path_to_delete}"
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to delete {item_description} file at '{path_to_delete}': {e}",
+                exc_info=True,
+            )
+            return False
+
+    logger.warning(
+        f"Path '{path_to_delete}' is a directory. async_delete_path_robustly only supports files. Use delete_path_robustly via threads for directories."
+    )
+    return False
 
 
 def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
