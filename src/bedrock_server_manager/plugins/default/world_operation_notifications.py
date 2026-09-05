@@ -5,7 +5,7 @@ Plugin to send in-game notifications before world operations like export, import
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class WorldOperationNotificationsPlugin(PluginBase):
@@ -14,10 +14,12 @@ class WorldOperationNotificationsPlugin(PluginBase):
     are performed on a running server, providing a heads-up for potential disruptions.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
+    description = "Notifies in-game players before significant world operations (export, import, reset) are performe..."
     author = "dmedina559"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info("Plugin loaded. Will send notifications for world operations.")
 
@@ -64,8 +66,10 @@ class WorldOperationNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} warning."
             )
 
-    def before_world_export(self, **kwargs: Any):
+    @app_event("before_world_export")
+    def send_export_warning(self, **kwargs: Any):
         """Notifies players before a world export begins."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         export_dir = kwargs.get("export_dir")
@@ -74,13 +78,17 @@ class WorldOperationNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
+            if getattr(server, "player_count", 0) > 0:
                 self._send_ingame_warning(
-                    server_name, "World export starting...", "world export"
+                    server_name,
+                    "World export starting...",
+                    "world export",
                 )
 
-    def before_world_import(self, **kwargs: Any):
+    @app_event("before_world_import")
+    def send_import_warning(self, **kwargs: Any):
         """Notifies players before a world import begins."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         file_path = kwargs.get("file_path")
@@ -89,15 +97,17 @@ class WorldOperationNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
+            if getattr(server, "player_count", 0) > 0:
                 self._send_ingame_warning(
                     server_name,
                     "World import starting... Current world will be replaced.",
                     "world import",
                 )
 
-    def before_world_reset(self, **kwargs: Any):
+    @app_event("before_world_reset")
+    def send_reset_warning(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
@@ -106,7 +116,7 @@ class WorldOperationNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
+            if getattr(server, "player_count", 0) > 0:
                 self._send_ingame_warning(
                     server_name,
                     "CRITICAL WARNING: Server world is being reset NOW!",

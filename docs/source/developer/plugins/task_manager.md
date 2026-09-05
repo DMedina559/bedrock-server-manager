@@ -139,3 +139,40 @@ The frontend can listen for these notifications on the `task:{task_id}` topic to
 ### Handling Exceptions
 
 If your background function raises an exception, the task manager will catch it, log the error using the main application logger, and update the task's status to `error`. The exception message will be stored in the task's `message` field.
+
+
+
+## Using `@task_loop` for Periodic Tasks
+
+If you need a task to run continuously in the background on a fixed interval (e.g., polling an external API, performing cleanups), you don't need to manually interact with the `TaskManager`.
+
+Instead, use the `@task_loop(interval)` decorator provided by the plugin system. The `PluginManager` will automatically schedule these methods as background tasks when your plugin is loaded and cancel them when it is unloaded.
+
+Both synchronous and asynchronous methods are supported.
+
+```python
+import asyncio
+import time
+from bedrock_server_manager import PluginBase
+from bedrock_server_manager.plugins.task_loop import task_loop
+
+class MyPollingPlugin(PluginBase):
+    version = "1.0.0"
+
+    # Async example
+    @task_loop(interval=300) # Runs every 5 minutes (300 seconds)
+    async def poll_remote_service_async(self):
+        self.logger.info("Polling remote service asynchronously...")
+        # Simulate an I/O bound request safely without blocking the event loop
+        await asyncio.sleep(2)
+        self.logger.info("Async polling complete.")
+
+    # Sync example
+    @task_loop(interval=60) # Runs every 1 minute
+    def clean_up_local_files_sync(self):
+        self.logger.info("Cleaning up files synchronously...")
+        # The Plugin Manager automatically runs this in a thread pool
+        # so time.sleep won't freeze the main app loop.
+        time.sleep(1)
+        self.logger.info("Sync cleanup complete.")
+```

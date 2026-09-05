@@ -5,7 +5,6 @@ from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
 from starlette.authentication import AuthCredentials, AuthenticationBackend, SimpleUser
 
-from ...config import bcm_config
 from ...utils import auth as auth_utils
 from ..schemas import UserResponse
 
@@ -99,7 +98,7 @@ async def get_current_user(
 
 class CustomAuthBackend(AuthenticationBackend):
     async def authenticate(self, conn):
-        if bcm_config.needs_setup(conn.app.state.app_context):
+        if conn.app.state.app_context.needs_setup:
             return AuthCredentials(["unauthenticated"]), SimpleUser("guest")
 
         user = await get_current_user_optional(conn)

@@ -7,16 +7,22 @@ from bedrock_server_manager.db.models import Setting
 from bedrock_server_manager.error import ConfigurationError
 
 
-def test_settings_initialization(db):
+def test_settings_initialization(db, isolated_bcm_config):
     """Test Settings initializes properties correctly without loading."""
-    settings = Settings(db=db)
+    base_dir = isolated_bcm_config
+    test_config_dir = base_dir / "test_config"
+    test_data_dir = base_dir / "test_data"
+    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
     assert settings.db == db
     assert settings._settings == {}
 
 
-def test_settings_load_populates_defaults(db):
+def test_settings_load_populates_defaults(db, isolated_bcm_config):
     """Test loading on an empty database populates default settings."""
-    settings = Settings(db=db)
+    base_dir = isolated_bcm_config
+    test_config_dir = base_dir / "test_config"
+    test_data_dir = base_dir / "test_data"
+    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
     settings.load()
 
     # Check that settings were populated from default_config
@@ -29,8 +35,11 @@ def test_settings_load_populates_defaults(db):
         assert count > 0
 
 
-def test_settings_load_merges_existing_db(db):
+def test_settings_load_merges_existing_db(db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
+    base_dir = isolated_bcm_config
+    test_config_dir = base_dir / "test_config"
+    test_data_dir = base_dir / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
     with db.session_manager() as session:
         session.add(
@@ -42,7 +51,7 @@ def test_settings_load_merges_existing_db(db):
         session.add(Setting(key="custom", value={"my_setting": "val"}))
         session.commit()
 
-    settings = Settings(db=db)
+    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
     settings.load()
 
     assert settings.get("web.port") == 9999
@@ -117,31 +126,7 @@ def test_settings_reload(settings, db):
     assert settings.get("web.port") == 5555  # After reload
 
 
-def test_settings_ensure_dirs_exist(settings, tmp_path):
-    """Test _ensure_dirs_exist creates critical directories."""
-    # Change a path to a new location
-    new_dir = tmp_path / "new_servers_dir"
-    settings.set("paths.servers", str(new_dir))
-
-    assert not new_dir.exists()
-    settings._ensure_dirs_exist()
-    assert new_dir.exists()
-
-
-def test_settings_ensure_dirs_raises_error_on_failure(settings, monkeypatch):
-    """Test _ensure_dirs_exist raises ConfigurationError on OSError."""
-
-    def mock_makedirs(*args, **kwargs):
-        raise OSError("Permission denied")
-
-    monkeypatch.setattr("os.makedirs", mock_makedirs)
-
-    with pytest.raises(ConfigurationError, match="Could not create critical directory"):
-        settings._ensure_dirs_exist()
-
-
 def test_settings_properties(settings):
-    """Test property getters like config_dir and app_data_dir."""
+    """Test property getters like config_dir and data_dir."""
     assert settings.config_dir is not None
-    assert settings.app_data_dir is not None
-    assert isinstance(settings.version, str)
+    assert settings.data_dir is not None

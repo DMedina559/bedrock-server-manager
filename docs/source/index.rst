@@ -63,8 +63,12 @@ Browse through the sections below to find various information about Bedrock Serv
    plugins/introduction.md
    developer/plugins/introduction.md
    plugins/plugin_apis.md
+   plugins/plugin_events.md
    developer/plugins/plugin_base
    developer/plugins/plugin_manager
+   developer/plugins/custom_events.md
+   developer/plugins/settings.md
+   developer/plugins/fastapi_endpoints.md
    developer/plugins/native_json_ui.md
    developer/plugins/task_manager.md
 

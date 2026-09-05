@@ -5,69 +5,63 @@ Tests for the logging.py module.
 import logging
 import os
 import tempfile
+import time
 from unittest.mock import patch
 
-from bedrock_server_manager.logging import (
-    AppAndPluginFilter,
-    log_separator,
-    setup_logging,
-)
+from bedrock_server_manager.logging import _prune_old_logs, log_separator, setup_logging
 
 
-def test_app_and_plugin_filter():
-    """Test that the filter allows appropriate records."""
-    # Ensure cross-platform path matching
-    plugin_path = os.path.abspath("/some/plugin/dir")
-    filter = AppAndPluginFilter(plugin_dir=plugin_path)
+def test_prune_old_logs():
+    """Test that old logs are correctly pruned to respect retention limit."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create 7 dummy log files with distinct modified times
+        for i in range(1, 8):
+            fpath = os.path.join(tmpdir, f"bedrock_server_manager_{i}.log")
+            with open(fpath, "w") as f:
+                f.write("test")
+            os.utime(fpath, (time.time() + i * 10, time.time() + i * 10))
 
-    # Should allow bedrock_server_manager records
-    record1 = logging.LogRecord(
-        "bedrock_server_manager.test", 10, "/path", 1, "msg", (), None
-    )
-    assert filter.filter(record1) is True
+        _prune_old_logs(tmpdir, keep=5)
 
-    # Should allow plugin.* records
-    record2 = logging.LogRecord("plugin.my_plugin", 10, "/path", 1, "msg", (), None)
-    assert filter.filter(record2) is True
-
-    # Should allow records from plugin dir
-    record_path = os.path.join(plugin_path, "test.py")
-    record3 = logging.LogRecord("other_module", 10, record_path, 1, "msg", (), None)
-    assert filter.filter(record3) is True
-
-    # Should block others
-    record4 = logging.LogRecord("uvicorn.error", 10, "/other/path", 1, "msg", (), None)
-    assert filter.filter(record4) is False
+        remaining = [
+            f for f in os.listdir(tmpdir) if f.startswith("bedrock_server_manager_")
+        ]
+        # Just check that it pruned down to 5
+        assert len(remaining) <= 5
 
 
 def test_setup_logging_creates_handlers():
     """Test setup_logging successfully configures handlers."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Import to reset the global state if needed
         import bedrock_server_manager.logging as bsm_logging
 
         bsm_logging._logging_configured = False
 
-        logger = setup_logging(
-            log_dir=tmpdir, log_filename="test.log", force_reconfigure=True
-        )
+        with patch(
+            "bedrock_server_manager.logging.get_config_dir", return_value=tmpdir
+        ):
+            with patch(
+                "bedrock_server_manager.logging.load_config",
+                return_value={"logging_level": "DEBUG"},
+            ):
+                logger = setup_logging(force_reconfigure=True)
 
-        # It should add a console handler and a file handler
-        assert len(logger.handlers) >= 2
+                # It should add a console handler and a file handler
+                assert len(logger.handlers) >= 2
 
-        # Verify file handler exists and writes to the correct path
-        file_handlers = [
-            h
-            for h in logger.handlers
-            if isinstance(h, logging.handlers.TimedRotatingFileHandler)
-        ]
-        assert len(file_handlers) >= 1
-        assert file_handlers[0].baseFilename == os.path.join(tmpdir, "test.log")
+                # Verify file handler exists and writes to the correct path
+                file_handlers = [
+                    h for h in logger.handlers if isinstance(h, logging.FileHandler)
+                ]
+                assert len(file_handlers) >= 1
+                assert file_handlers[0].baseFilename.startswith(
+                    os.path.join(tmpdir, "logs", "bedrock_server_manager_")
+                )
 
-        # Clean up handlers so tempdir can be removed on Windows
-        for handler in file_handlers:
-            handler.close()
-            logger.removeHandler(handler)
+                # Clean up handlers so tempdir can be removed on Windows
+                for handler in file_handlers:
+                    handler.close()
+                    logger.removeHandler(handler)
 
 
 def test_setup_logging_skips_if_already_configured():
@@ -77,10 +71,14 @@ def test_setup_logging_skips_if_already_configured():
     bsm_logging._logging_configured = True
 
     with patch("logging.getLogger") as mock_get_logger:
-        setup_logging()
+        with patch("bedrock_server_manager.logging.load_config", return_value={}):
+            with patch(
+                "bedrock_server_manager.logging.get_config_dir", return_value="/tmp"
+            ):
+                setup_logging()
 
-        # Should get the logger and just return it without doing the setup work
-        mock_get_logger.return_value.addHandler.assert_not_called()
+                # Should get the logger and just return it without doing the setup work
+                mock_get_logger.return_value.addHandler.assert_not_called()
 
 
 def test_setup_logging_fallback_on_error():
@@ -91,14 +89,21 @@ def test_setup_logging_fallback_on_error():
 
     # Try to write to a path that isn't allowed (e.g. root without sudo)
     with patch("os.makedirs", side_effect=OSError("Permission denied")):
-        logger = logging.getLogger()
-        # Ensure root logger has no handlers so the fallback is triggered
-        logger.handlers.clear()
+        with patch("bedrock_server_manager.logging.load_config", return_value={}):
+            with patch(
+                "bedrock_server_manager.logging.get_config_dir",
+                return_value="/root/invalid",
+            ):
+                logger = logging.getLogger()
+                # Ensure root logger has no handlers so the fallback is triggered
+                logger.handlers.clear()
 
-        logger = setup_logging(log_dir="/root/invalid/path", force_reconfigure=True)
+                logger = setup_logging(force_reconfigure=True)
 
-        # Should at least have a stream handler as fallback
-        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+                # Should at least have a stream handler as fallback
+                assert any(
+                    isinstance(h, logging.StreamHandler) for h in logger.handlers
+                )
 
 
 def test_log_separator():

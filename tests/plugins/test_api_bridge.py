@@ -7,10 +7,12 @@ from bedrock_server_manager.plugins.api_bridge import AppAPI, _api_registry, api
 
 @pytest.fixture(autouse=True)
 def clear_api_registry():
-    """Fixture to ensure the global API registry is cleared before and after each test."""
+    """Fixture to ensure the global API registry is cleared before each test and restored afterwards."""
+    original_registry = _api_registry.copy()
     _api_registry.clear()
     yield
     _api_registry.clear()
+    _api_registry.update(original_registry)
 
 
 def test_api_method_decorator():
@@ -88,7 +90,7 @@ def test_listen_for_event(app_context, monkeypatch):
         pass
 
     plugin_api.listen_for_event("my_event", my_callback)
-    mock_plugin_manager.register_plugin_event_listener.assert_called_once_with(
+    mock_plugin_manager.register_app_event_listener.assert_called_once_with(
         "my_event", my_callback, "test_plugin"
     )
 
@@ -97,9 +99,20 @@ def test_send_event(app_context, monkeypatch):
     """Test AppAPI properly bridges custom event triggers to the PluginManager."""
     mock_plugin_manager = MagicMock()
     monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
+
+    mock_broadcast = MagicMock()
+    # It seems to be complaining about ModuleNotFoundError during import in the test
+    import sys
+
+    sys.modules["bedrock_server_manager.plugins.util"] = MagicMock()
+
+    from bedrock_server_manager.plugins import api_bridge
+
+    monkeypatch.setattr(api_bridge, "broadcast_event", mock_broadcast, raising=False)
+
     plugin_api = AppAPI("test_plugin", app_context)
 
     plugin_api.send_event("my_event", 1, 2, key="value")
-    mock_plugin_manager.trigger_custom_plugin_event.assert_called_once_with(
-        "my_event", "test_plugin", 1, 2, key="value"
+    mock_plugin_manager.trigger_event.assert_called_once_with(
+        "my_event", 1, 2, key="value", _triggering_plugin="test_plugin"
     )

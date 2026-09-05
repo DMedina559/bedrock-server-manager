@@ -6,7 +6,7 @@ Plugin to send in-game messages and manage delays during server lifecycle events
 import time
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class ServerLifecycleNotificationsPlugin(PluginBase):
@@ -16,15 +16,18 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     This gives players warnings and can help ensure smoother transitions.
     """
 
-    version = "1.1.1"
+    version = "1.2.0"
+    description = "Enhances server management by sending in-game notifications and introducing delays at critical server lifecycle points."
     author = "dmedina559"
+    name = "Server Lifecycle Notifications"
 
-    def on_load(self) -> None:
+    @app_event("on_load")
+    def plugin_loaded(self) -> None:
         """Initializes default delays and logs plugin activation."""
         # Default delays in seconds. These could be made configurable in the future.
-        self.stop_warning_delay: int = 10
+        self.stop_warning_delay: int = 3
         self.post_stop_settle_delay: int = 1
-        self.post_start_settle_delay: int = 3
+        self.post_start_settle_delay: int = 1
 
         self.logger.info(
             "Plugin loaded. Will manage server lifecycle notifications and delays."
@@ -75,7 +78,8 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 f"Server '{server_name}' not running, skipping {context} message."
             )
 
-    def before_server_stop(self, **kwargs: Any) -> None:
+    @app_event("before_server_stop")
+    def send_shutdown_warning(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
@@ -83,8 +87,11 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
-                if self._is_server_running(server_name):
+            if getattr(server, "player_count", 0) > 0:
+
+                # Run the check in a separate thread so it doesn't block the loop
+                is_running = self._is_server_running(server_name)
+                if is_running:
                     warning_message = (
                         f"Server is stopping in {self.stop_warning_delay} seconds..."
                     )
@@ -97,8 +104,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                     )
                     time.sleep(self.stop_warning_delay)
 
-    def after_server_stop(self, **kwargs: Any) -> None:
+    @app_event("after_server_stop")
+    def wait_after_stop(self, **kwargs: Any) -> None:
         """Waits for a short period after a server stops, e.g., for port release."""
+
         server_name = kwargs.get("server_name")
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_server_stop for '{server_name}'.")
@@ -108,23 +117,27 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
             time.sleep(self.post_stop_settle_delay)
 
-    def before_delete_server_data(self, **kwargs: Any) -> None:
+    @app_event("before_delete_server_data")
+    def send_delete_warning(self, **kwargs: Any) -> None:
         """Sends a final warning before server data is deleted if the server is running."""
+
         server_name = str(kwargs.get("server_name"))
         app_context = kwargs.get("app_context")
 
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
+            if getattr(server, "player_count", 0) > 0:
                 self._send_ingame_message(
                     server_name,
                     "WARNING: Server data is being deleted permanently!",
                     "data deletion warning",
                 )
 
-    def before_server_update(self, **kwargs: Any) -> None:
+    @app_event("before_server_update")
+    def send_update_notification(self, **kwargs: Any) -> None:
         """Notifies players before a server update begins."""
+
         server_name = str(kwargs.get("server_name"))
         target_version = kwargs.get("target_version")
         app_context = kwargs.get("app_context")
@@ -134,15 +147,17 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         )
         if app_context:
             server = app_context.get_server(server_name)
-            if server.player_count > 0:
+            if getattr(server, "player_count", 0) > 0:
                 self._send_ingame_message(
                     server_name,
                     "Server is updating now, please wait...",
                     "update notification",
                 )
 
-    def after_server_start(self, **kwargs: Any) -> None:
+    @app_event("after_server_start")
+    def wait_after_start(self, **kwargs: Any) -> None:
         """Waits for a short period after a server starts to allow initialization."""
+
         server_name = kwargs.get("server_name")
         result = kwargs.get("result", {})
         self.logger.debug(f"Handling after_server_start for '{server_name}'.")

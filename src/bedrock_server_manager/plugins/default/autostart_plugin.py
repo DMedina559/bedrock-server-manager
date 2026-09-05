@@ -1,7 +1,7 @@
 # autostart_servers.py
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 
 class AutostartServers(PluginBase):
@@ -9,10 +9,15 @@ class AutostartServers(PluginBase):
     Starts all servers with the autostart setting set to true on manager startup.
     """
 
-    version = "1.0.2"
+    version = "1.1.0"
+    description = (
+        "Starts all servers with the autostart setting set to true on manager startup."
+    )
     author = "dmedina559"
+    name = "Auto Start Servers"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self):
         """
         This event is called when the plugin is loaded by the manager.
         """
@@ -20,13 +25,22 @@ class AutostartServers(PluginBase):
             "Autostart Servers plugin loaded, checking for servers to start."
         )
 
-    def on_manager_startup(self, **kwargs: Any):
+    @app_event("on_manager_startup")
+    def autostart_servers(self, **kwargs: Any):
+
+        # Run API calls in thread to not block startup loop
         result = self.api.get_all_servers_data()
-        servers = result["servers"]
+        servers = result.get("servers", [])
+
         for server in servers:
-            server_name = server["name"]
-            result = self.api.get_server_setting(server_name, "settings.autostart")
-            server_settings = result["value"]
+            server_name = server.get("name")
+            if not server_name:
+                continue
+
+            setting_result = self.api.get_server_setting(
+                server_name, "settings.autostart"
+            )
+            server_settings = setting_result.get("value")
 
             if server_settings:
                 self.logger.info(

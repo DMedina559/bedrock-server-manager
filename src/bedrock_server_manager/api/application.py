@@ -154,7 +154,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
-# Handled internally by core APIs so we don't duplicate the event.
+@api_method("update_server_statuses", expose_to_plugins=False)
 def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 

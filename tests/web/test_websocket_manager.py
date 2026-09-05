@@ -60,12 +60,12 @@ async def test_websocket_subscribe_unsubscribe(
     assert client_id in connection_manager.subscriptions["topicB"]
 
     connection_manager.unsubscribe(client_id, "topicA")
-    assert client_id not in connection_manager.subscriptions["topicA"]
+    assert "topicA" not in connection_manager.subscriptions
     assert client_id in connection_manager.subscriptions["topicB"]
 
     # Disconnecting should also unsubscribe from all topics
     connection_manager.disconnect(client_id)
-    assert client_id not in connection_manager.subscriptions["topicB"]
+    assert "topicB" not in connection_manager.subscriptions
 
 
 @pytest.mark.asyncio

@@ -36,7 +36,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     alembic_cfg.set_main_option("skip_logging_config", "true")
 
     # --- Backup Database ---
-    db_url = app_context.db.get_database_url()
+    db_url = app_context.db.db_url
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
     click.echo("Creating database backup before upgrading...")
@@ -182,7 +182,7 @@ def downgrade(ctx: click.Context, revision: str):
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("skip_logging_config", "true")
 
-    db_url = app_context.db.get_database_url()
+    db_url = app_context.db.db_url
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
     click.secho(

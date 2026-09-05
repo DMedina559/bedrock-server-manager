@@ -26,7 +26,34 @@ from .util import router as util_router
 from .websocket import router as websocket_router
 from .world import router as world_router
 
+all_routers = [
+    setup_router,
+    auth_router,
+    users_router,
+    register_router,
+    server_actions_router,
+    allowlist_router,
+    permissions_router,
+    properties_router,
+    install_router,
+    backup_restore_router,
+    addon_router,
+    settings_router,
+    api_info_router,
+    bans_router,
+    plugin_router,
+    tasks_router,
+    main_router,
+    account_router,
+    audit_log_router,
+    server_settings_router,
+    websocket_router,
+    world_router,
+    util_router,
+]
+
 __all__ = [
+    "all_routers",
     "account_router",
     "addon_router",
     "api_info_router",

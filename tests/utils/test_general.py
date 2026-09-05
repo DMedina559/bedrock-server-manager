@@ -17,11 +17,6 @@ def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
     app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     app_context.settings.set("paths.plugins", str(tmp_path / "plugins"))
     app_context.settings.set("paths.backups", str(tmp_path / "backups"))
-    monkeypatch.setattr(
-        "bedrock_server_manager.context.AppContext.log_dir",
-        str(tmp_path / "logs"),
-        raising=False,
-    )
 
     startup_checks(app_context)
 
@@ -32,7 +27,6 @@ def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
     assert os.path.isdir(tmp_path / "downloads")
     assert os.path.isdir(tmp_path / "plugins")
     assert os.path.isdir(tmp_path / "backups")
-    assert os.path.isdir(tmp_path / "logs")
 
 
 def test_startup_checks_handles_existing_dirs(app_context, tmp_path):
@@ -119,7 +113,7 @@ def test_list_content_files_os_error(tmp_path, monkeypatch):
         raise OSError("Permission denied")
 
     monkeypatch.setattr(
-        "bedrock_server_manager.utils.general.find_files", mock_find_files
+        "bedrock_server_manager.core.system.find_files", mock_find_files
     )
 
     with pytest.raises(FileOperationError) as exc_info:

@@ -92,7 +92,7 @@ class BedrockServerBaseMixin:
             raise ConfigurationError("Settings instance is not available.")
 
         self.logger.debug(
-            f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from: {self.settings.config_path}"
+            f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from database"
         )
 
         # Resolve critical paths from settings.

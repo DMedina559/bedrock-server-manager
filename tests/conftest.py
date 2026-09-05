@@ -18,6 +18,7 @@ from bedrock_server_manager.utils.auth import (  # noqa: E402
     create_access_token,
     get_password_hash,
 )
+from bedrock_server_manager.utils.general import startup_checks  # noqa: E402
 from bedrock_server_manager.web.app import create_web_app  # noqa: E402
 
 
@@ -41,7 +42,11 @@ def isolated_bcm_config(monkeypatch, tmp_path):
 
     db_path = test_data_dir / "test.db"
     config_file = test_config_dir / "bedrock_server_manager.json"
-    config_data = {"data_dir": str(test_data_dir), "db_url": f"sqlite:///{db_path}"}
+    config_data = {
+        "data_dir": str(test_data_dir),
+        "db_url": f"sqlite:///{db_path}",
+        "log_level": "DEBUG",
+    }
 
     with open(config_file, "w") as f:
         json.dump(config_data, f)
@@ -77,9 +82,17 @@ def db(isolated_bcm_config, tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def settings(db):
+def settings(db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
-    settings_instance = Settings(db=db)
+
+    base_dir = isolated_bcm_config
+    print(f"Base dir for settings fixture: {base_dir}")
+    test_config_dir = base_dir / "test_config"
+    test_data_dir = base_dir / "test_data"
+
+    settings_instance = Settings(
+        db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
+    )
     settings_instance.load()
     return settings_instance
 
@@ -87,8 +100,12 @@ def settings(db):
 @pytest.fixture
 def app_context(settings, db, tmp_path):
     """Provides a real AppContext instance."""
-    context = AppContext(settings=settings, db=db)
+    context = AppContext()
+    context._settings = settings
+    context._db = db
     context.load()
+
+    startup_checks(context)
 
     # Create dummy plugin dir so plugin manager can load
     plugins_dir = tmp_path / "plugins"
@@ -156,8 +173,8 @@ def unauth_client(test_app):
 
 
 @pytest.fixture
-def test_user(db_session):
-    """Creates a test user in the database."""
+def test_user(db_session, test_admin_user):
+    """Creates a test user in the database, also ensuring an admin user exists."""
     user = UserModel(
         username="testuser",
         hashed_password=get_password_hash("testpassword"),

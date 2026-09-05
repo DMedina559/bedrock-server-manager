@@ -49,7 +49,7 @@ What to Look For in the Logs:
 
 from typing import Any
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 # --- Configuration for the test ---
 # These should be names of actual, configured servers in your BSM setup.
@@ -71,9 +71,13 @@ class NestedDifferentServerStartPlugin(PluginBase):
     for the same event type but different identifying parameters (e.g., different server names).
     """
 
-    version = "1.1.0"
+    version = "1.2.0"
+    author = "dmedina559"
+    description = "Tests that the granular re-entrancy guard allows nested event dispatches for the same event type but different identifying parameters (e.g., different server names)."
+    name = "Nested Different Server Start"
 
-    def on_load(self):
+    @app_event("on_load")
+    def plugin_loaded(self, **kwargs):
         global _server_b_triggered_by_this_plugin
         _server_b_triggered_by_this_plugin = False  # Reset state on load/reload
 
@@ -95,8 +99,10 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"  5. Expect to see 'before_server_start' logs from this plugin for BOTH '{SERVER_A_NAME_TRIGGER}' AND '{SERVER_B_NAME_NESTED}'."
         )
 
-    def before_server_start(self, **kwargs: Any):
+    @app_event("before_server_start")
+    def trigger_nested_server_start(self, **kwargs: Any):
         global _server_b_triggered_by_this_plugin
+
         server_name = kwargs.get("server_name")
 
         self.logger.info(
@@ -143,5 +149,6 @@ class NestedDifferentServerStartPlugin(PluginBase):
             f"--- NESTED TEST: Finished 'before_server_start' for server '{server_name}'."
         )
 
-    def on_unload(self):
+    @app_event("on_unload")
+    def plugin_unloaded(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} is unloading.")

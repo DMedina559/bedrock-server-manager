@@ -19,22 +19,15 @@ Key components:
 import collections.abc
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     from ..db.database import Database
 
 from ..db.models import Setting
 from ..error import ConfigurationError
-from . import bcm_config
-from .const import get_installed_version
 
 logger = logging.getLogger(__name__)
-
-# The schema version for the configuration file. Used for migrations.
-CONFIG_SCHEMA_VERSION = 2
-NEW_CONFIG_FILE_NAME = "bedrock_server_manager.json"
-OLD_CONFIG_FILE_NAME = "script_config.json"
 
 
 def deep_merge(
@@ -85,7 +78,7 @@ class Settings:
           based on the environment (respecting ``BSM_DATA_DIR``).
         - Loading settings from a database.
         - Providing sensible default values for missing settings.
-        - Migrating settings from older formats (e.g., ``script_config.json`` or schema v1).
+
         - Saving changes back to the database.
         - Ensuring critical directories (e.g., for servers, backups, logs) exist.
 
@@ -97,62 +90,31 @@ class Settings:
     the application.
 
     Attributes:
-        config_file_name (str): The name of the configuration file.
-        config_path (str): The full path to the configuration file.
     """
 
-    def __init__(self, db: Optional["Database"] = None):
+    def __init__(
+        self,
+        db: "Database",
+        config_dir: str,
+        data_dir: str,
+    ):
         """Initializes the Settings object.
 
         This constructor performs the following actions:
 
             1. Determines the application's primary data and configuration directories.
-            2. Handles migration of the configuration file name from the old
-               `script_config.json` to `bedrock_server_manager.json` if necessary.
-            3. Retrieves the installed package version.
-            4. Loads settings from the database. If the database is empty,
-               it's created with default settings. If an old configuration schema is
-               detected, it's migrated.
-            5. Ensures all necessary application directories (e.g., for servers,
+            2. Retrieves the installed package version.
+            3. Loads settings from the database. If the database is empty,
+               it's created with default settings.
+            4. Ensures all necessary application directories (e.g., for servers,
                backups, logs) exist on the filesystem.
 
         """
         logger.debug("Initializing Settings")
-        self._app_data_dir_path: Optional[str] = None
-        self._config_dir_path: Optional[str] = None
-        self.config_file_name = NEW_CONFIG_FILE_NAME
-        self.config_path: Optional[str] = None
-        self._version_val = get_installed_version()
-        self._settings: Dict[str, Any] = {}
         self.db = db
-
-    def _determine_app_data_dir(self) -> str:
-        """Determines the main application data directory.
-
-        It prioritizes the ``data_dir`` from bcm_config if set.
-        Otherwise, it defaults to a ``bedrock-server-manager`` directory in the
-        user's home folder (e.g., ``~/.bedrock-server-manager`` on Linux/macOS or
-        ``%USERPROFILE%\\bedrock-server-manager`` on Windows).
-        The directory is created if it doesn't exist.
-
-        Returns:
-            str: The absolute path to the application data directory.
-        """
-        # 1. Check config file
-        config = bcm_config.load_config()
-        data_dir = config["data_dir"]
-
-        os.makedirs(data_dir, exist_ok=True)
-        return str(data_dir)
-
-    def _determine_app_config_dir(self) -> str:
-        """Determines the application's configuration directory.
-
-        This relies on bcm_config to determine the correct path.
-        """
-        config_dir = bcm_config.get_config_dir()
-        os.makedirs(config_dir, exist_ok=True)
-        return config_dir
+        self.data_dir = data_dir
+        self.config_dir = config_dir
+        self._settings: Dict[str, Any] = {}
 
     @property
     def default_config(self) -> dict:
@@ -168,7 +130,6 @@ class Settings:
         .. code-block:: text
 
             {
-                "config_version": CONFIG_SCHEMA_VERSION,
                 "paths": {
                     "servers": "<app_data_dir>/servers",
                     "content": "<app_data_dir>/content",
@@ -179,7 +140,6 @@ class Settings:
                 "retention": {
                     "backups": 3,
                     "downloads": 3,
-                    "logs": 3,
                 },
                 "web": {
                     "host": "127.0.0.1",
@@ -198,26 +158,19 @@ class Settings:
         Returns:
             dict: A dictionary of default settings with a nested structure.
         """
-        app_data_dir_val = self._app_data_dir_path
-        if app_data_dir_val is None:
-            # Should technically be set by _determine_app_data_dir call in __init__
-            # or lazy access. But mypy doesn't know.
-            app_data_dir_val = self._determine_app_data_dir()
 
         return {
-            "config_version": CONFIG_SCHEMA_VERSION,
             "paths": {
-                "servers": os.path.join(app_data_dir_val, "servers"),
-                "content": os.path.join(app_data_dir_val, "content"),
-                "downloads": os.path.join(app_data_dir_val, ".downloads"),
-                "backups": os.path.join(app_data_dir_val, "backups"),
-                "plugins": os.path.join(app_data_dir_val, "plugins"),
-                "themes": os.path.join(app_data_dir_val, "themes"),
+                "servers": os.path.join(self.data_dir, "servers"),
+                "content": os.path.join(self.data_dir, "content"),
+                "downloads": os.path.join(self.data_dir, ".downloads"),
+                "backups": os.path.join(self.data_dir, "backups"),
+                "plugins": os.path.join(self.data_dir, "plugins"),
+                "themes": os.path.join(self.data_dir, "themes"),
             },
             "retention": {
                 "backups": 3,
                 "downloads": 3,
-                "logs": 3,
             },
             "monitoring": {
                 "max_retiries": 3,
@@ -240,14 +193,9 @@ class Settings:
             1. Starts with a fresh copy of the default settings (see :meth:`default_config`).
             2. If the database is empty, it's populated with these default settings.
             3. If the database has settings, they are loaded:
-                a. If the loaded configuration does not contain a ``config_version`` key,
-                   it's assumed to be an old (v1) flat format and is migrated to the
-                   current nested (v2) structure via :meth:`_migrate_v1_to_v2`. The
-                   migrated config is then reloaded.
-                b. The loaded user settings (either original v2 or migrated v1) are
-                   deeply merged on top of the default settings. This ensures that
-                   any new settings added in later application versions are present,
-                   while user-defined values are preserved.
+                The loaded user settings are deeply merged on top of the default settings.
+                This ensures that any new settings added in later application versions are present,
+                while user-defined values are preserved.
             4. If any error occurs during loading (e.g., JSON decoding error, OS error),
                a warning is logged, and the application proceeds with default settings.
                The configuration will be saved with current (potentially default) settings
@@ -256,10 +204,6 @@ class Settings:
                critical application directories.
 
         """
-        # Determine the primary application data and config directories.
-        self._app_data_dir_path = self._determine_app_data_dir()
-        self._config_dir_path = self._determine_app_config_dir()
-        self.config_path = os.path.join(self._config_dir_path, self.config_file_name)
 
         # Always start with a fresh copy of the defaults to build upon.
         self._settings = self.default_config
@@ -286,41 +230,6 @@ class Settings:
                         f"Could not load config from database: {e}. "
                         "Using default settings. A new config will be saved on the next settings change."
                     )
-
-        self._ensure_dirs_exist()
-
-    def _ensure_dirs_exist(self) -> None:
-        """Ensures that all critical directories specified in the settings exist.
-
-        Iterates through the directory paths defined in ``paths`` section of the
-        configuration (e.g., ``paths.servers``) and creates them
-        if they do not already exist. It also ensures the primary logs directory exists.
-
-        Raises:
-            ConfigurationError: If a directory cannot be created (e.g., due to
-                permission issues).
-        """
-        dirs_to_check: list[Any] = [
-            self.get("paths.servers"),
-            self.get("paths.content"),
-            self.get("paths.downloads"),
-            self.get("paths.backups"),
-            self.get("paths.plugins"),
-            self.get("paths.themes"),
-        ]
-
-        # Ensure base logs directory exists
-        logs_dir = os.path.join(self.config_dir, "logs")
-        dirs_to_check.append(logs_dir)
-
-        for dir_path in dirs_to_check:
-            if dir_path and isinstance(dir_path, str):
-                try:
-                    os.makedirs(dir_path, exist_ok=True)
-                except OSError as e:
-                    raise ConfigurationError(
-                        f"Could not create critical directory: {dir_path}"
-                    ) from e
 
     def _write_config(self, db: Any) -> None:
         """Writes the current settings dictionary to the database.
@@ -405,9 +314,9 @@ class Settings:
         if isinstance(d, dict):
             d[keys[-1]] = value
         if key != "web.jwt_token_secret":
-            logger.info(f"Setting '{key}' updated to '{value}'. Saving configuration.")
+            logger.debug(f"Setting '{key}' updated to '{value}'. Saving configuration.")
         else:
-            logger.info(f"Setting '{key}' updated. Saving configuration.")
+            logger.debug(f"Setting '{key}' updated. Saving configuration.")
         assert self.db is not None
         with self.db.session_manager() as db:  # type: ignore
             self._write_config(db)
@@ -423,38 +332,3 @@ class Settings:
         logger.info("Reloading configuration from database")
         self.load()
         logger.info("Configuration reloaded successfully.")
-
-    @property
-    def config_dir(self) -> str:
-        """str: The absolute path to the application's configuration directory.
-
-        This is determined by :meth:`_determine_app_config_dir`.
-        Example: ``~/.bedrock-server-manager/.config``
-        """
-        if self._config_dir_path is None:
-            self._config_dir_path = self._determine_app_config_dir()
-        # Mypy might still see _config_dir_path as Optional[str]
-        assert self._config_dir_path is not None
-        return self._config_dir_path
-
-    @property
-    def app_data_dir(self) -> str:
-        """str: The absolute path to the application's main data directory.
-
-        This is determined by :meth:`_determine_app_data_dir`.
-        Example: ``~/.bedrock-server-manager``
-        """
-        if self._app_data_dir_path is None:
-            self._app_data_dir_path = self._determine_app_data_dir()
-        # Mypy might still see _app_data_dir_path as Optional[str]
-        assert self._app_data_dir_path is not None
-        return self._app_data_dir_path
-
-    @property
-    def version(self) -> str:
-        """str: The installed version of the ``bedrock_server_manager`` package.
-
-        This is retrieved using ``get_installed_version()`` from
-        ``bedrock_server_manager.config.const``.
-        """
-        return self._version_val

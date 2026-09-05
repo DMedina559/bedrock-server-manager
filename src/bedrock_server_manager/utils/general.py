@@ -9,10 +9,9 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from ..context import AppContext
-from ..core.system import find_files
 from ..error import AppFileNotFoundError, FileOperationError
 
 logger = logging.getLogger(__name__)
@@ -20,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 def startup_checks(
     app_context: AppContext,
-    app_name: Optional[str] = None,
-    version: Optional[str] = "0.0.0",
 ) -> None:
     """
     Performs initial checks and setup when the application starts.
@@ -47,7 +44,7 @@ def startup_checks(
 
     # Ensure essential directories exist
     dirs_to_create = {
-        "BASE_DIR": settings.get("paths.servers"),
+        "SERVERS_DIR": settings.get("paths.servers"),
         "CONTENT_DIR": settings.get("paths.content"),
         "WORLDS_SUBDIR": (
             os.path.join(str(settings.get("paths.content")), "worlds")
@@ -62,7 +59,6 @@ def startup_checks(
         "DOWNLOAD_DIR": settings.get("paths.downloads"),
         "PLUGIN_DIR": settings.get("paths.plugins"),
         "BACKUP_DIR": settings.get("paths.backups"),
-        "LOG_DIR": app_context.log_dir,
     }
 
     logger.debug("Insuring essential directories exist...")
@@ -103,6 +99,8 @@ def list_content_files(
     Internal helper to list files with specified extensions from a sub-folder
     within the global content directory.
     """
+    from ..core.system import find_files
+
     if not content_dir or not os.path.isdir(content_dir):
         raise AppFileNotFoundError(str(content_dir), "Content directory")
 

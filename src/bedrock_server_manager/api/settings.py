@@ -17,9 +17,8 @@ from typing import Any, Dict
 
 from ..context import AppContext
 from ..error import BSMError, MissingArgumentError
-from ..logging import setup_logging
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +101,9 @@ def get_all_global_settings(
         }
 
 
-@trigger_app_event(before="before_setting_update", after="after_setting_update")
+@trigger_event(
+    before="before_setting_update", after="after_setting_update", identity_keys=("key",)
+)
 def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
@@ -244,30 +245,18 @@ def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
         settings.reload()
         logger.info("API: Global settings successfully reloaded.")
 
-        # Step 2: Re-apply logging configuration with the new settings
-        logger.info("API: Re-applying logging configuration...")
-        setup_logging(
-            log_dir=app_context.log_dir,
-            log_keep=settings.get("retention.logs"),
-            log_level=app_context.log_level,
-            force_reconfigure=True,  # Crucial flag to force removal of old handlers
-        )
-        logger.info("API: Logging configuration successfully re-applied.")
-
         return {
             "status": "success",
-            "message": "Global settings and logging configuration have been reloaded.",
+            "message": "Global settings have been reloaded.",
         }
     except BSMError as e:
-        logger.error(f"API: Error reloading settings/logging: {e}", exc_info=True)
+        logger.error(f"API: Error reloading settings: {e}", exc_info=True)
         return {
             "status": "error",
             "message": f"A configuration error occurred during reload: {e}",
         }
     except Exception as e:
-        logger.error(
-            f"API: Unexpected error reloading settings/logging: {e}", exc_info=True
-        )
+        logger.error(f"API: Unexpected error reloading settings: {e}", exc_info=True)
         return {
             "status": "error",
             "message": f"An unexpected error occurred during reload: {e}",

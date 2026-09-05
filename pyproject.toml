@@ -28,7 +28,7 @@ dependencies = [
     "requests >=2.32.3,<2.35",
     "psutil >=7.0.0,<7.3",
     'pywin32 >=310,<313; sys_platform == "win32"',
-    "click >=8.2.0,<8.5",
+    "click >=8.2.0,<8.6",
     "questionary >=2.1.0,<2.2",
     "fastapi >=0.115.0,<0.142",
     "uvicorn[standard] >=0.35.0,<0.53",
@@ -38,7 +38,7 @@ dependencies = [
     "sqlalchemy >=2.0.0,<2.1",
     "platformdirs >=4.3.0,<4.12",
     "alembic >=1.16,<1.20",
-    "mcstatus >=12.0,<14.1",
+    "mcstatus >=12.0,<14.2",
 ]
 
 keywords = ["minecraft", "bedrock", "server", "manager", "bsm", "admin", "dashboard", "web", "fastapi"]
@@ -54,12 +54,12 @@ dev = [
     "pytest-subprocess >=1.5.4,<1.7.0",
     "pytest-mock >=3.14.0,<3.16",
     "pytest-cov >=6.0.0,<8.0",
-    "httpx2 >=2.5.0,<2.11",
+    "httpx2 >=2.5.0,<2.13",
     "pytest-asyncio >=1.1.0,<1.5",
     "types-requests >=2.32.0,<2.34",
     "black >=25.1.0,<26.6",
     "flake8 >=7.3.0,<7.4",
-    "isort >=5.13.0,<8.1",
+    "isort >=5.13.0,<9.1",
     "mypy >=1.10.0,<2.4",
     "pre-commit >=4.6.0,<4.7",
 ]

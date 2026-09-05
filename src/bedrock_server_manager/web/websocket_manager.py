@@ -1,4 +1,5 @@
 # bedrock_server_manager/web/websocket_manager.py
+import asyncio
 import json
 import logging
 import uuid
@@ -43,10 +44,18 @@ class ConnectionManager:
         """Removes a client's connection and all their subscriptions."""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
+
             # Remove the client from all subscription lists
-            for client_ids in self.subscriptions.values():
+            empty_topics = []
+            for topic, client_ids in self.subscriptions.items():
                 if client_id in client_ids:
                     client_ids.remove(client_id)
+                if not client_ids:
+                    empty_topics.append(topic)
+
+            for topic in empty_topics:
+                del self.subscriptions[topic]
+
             logger.info(f"Client disconnected: {client_id}")
 
     def subscribe(self, client_id: str, topic: str):
@@ -61,7 +70,23 @@ class ConnectionManager:
         """Unsubscribes a client from a given topic."""
         if topic in self.subscriptions and client_id in self.subscriptions[topic]:
             self.subscriptions[topic].remove(client_id)
+            if not self.subscriptions[topic]:
+                del self.subscriptions[topic]
             logger.info(f"Client {client_id} unsubscribed from topic '{topic}'")
+
+    async def shutdown(self):
+        """Gracefully disconnects all active WebSocket connections."""
+        logger.info(
+            f"Shutting down {len(self.active_connections)} active WebSocket connections."
+        )
+        # Create a copy of the values to avoid RuntimeError: dictionary changed size during iteration
+        for client in list(self.active_connections.values()):
+            try:
+                await client.websocket.close(code=1001, reason="Server shutting down")
+            except Exception as e:
+                logger.error(f"Error closing websocket for client {client.id}: {e}")
+        self.active_connections.clear()
+        self.subscriptions.clear()
 
     async def send_to_client(self, data: Any, client_id: str):
         """Sends a JSON message to a single client."""
@@ -92,8 +117,10 @@ class ConnectionManager:
 
         # Create a copy of the list to avoid issues if a client disconnects mid-broadcast
         client_ids = list(clients_to_notify)
-        for client_id in client_ids:
-            await self.send_to_client(data, client_id)
+
+        coroutines = [self.send_to_client(data, client_id) for client_id in client_ids]
+        if coroutines:
+            await asyncio.gather(*coroutines)
 
     async def send_to_user(self, username: str, data: Any):
         """Sends a JSON message to all active connections for a specific user."""
@@ -103,5 +130,9 @@ class ConnectionManager:
             for client in self.active_connections.values()
             if client.user.username == username
         ]
-        for client_id in client_ids_for_user:
-            await self.send_to_client(data, client_id)
+
+        coroutines = [
+            self.send_to_client(data, client_id) for client_id in client_ids_for_user
+        ]
+        if coroutines:
+            await asyncio.gather(*coroutines)

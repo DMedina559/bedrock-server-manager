@@ -4,14 +4,18 @@ from typing import Any, Dict, List, Optional
 from ..context import AppContext
 from ..error import AppFileNotFoundError, BSMError, InvalidServerNameError
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 from . import player as player_api
 
 logger = logging.getLogger(__name__)
 
 
 @api_method("set_permissions")
-@trigger_app_event(before="before_permission_change", after="after_permission_change")
+@trigger_event(
+    before="before_permission_change",
+    after="after_permission_change",
+    identity_keys=("server_name", "xuid"),
+)
 def set_permissions(
     server_name: str,
     xuid: str,

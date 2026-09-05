@@ -70,7 +70,7 @@ def test_post_change_password_success(
     from bedrock_server_manager.utils.auth import verify_password
 
     db_session.refresh(test_user)
-    assert verify_password("newpassword123", test_user.hashed_password)
+    assert verify_password("newpassword123", str(test_user.hashed_password))
 
 
 def test_post_change_password_incorrect_current(

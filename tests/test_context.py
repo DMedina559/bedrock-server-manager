@@ -24,13 +24,14 @@ def test_app_context_initialization(app_context):
 
 def test_app_context_load_without_prior_settings(db, isolated_bcm_config):
     """Test load() creates settings if not provided."""
-    context = AppContext(db=db)
+    context = AppContext()
+    context._db = db
     context.load()
     assert context.settings is not None
 
 
 def test_app_context_reload(app_context, monkeypatch):
-    """Test reload() calls reload on sub-components."""
+    """Test reload() clears caches and calls reload on sub-components."""
     settings_reload_mock = MagicMock()
     plugin_manager_reload_mock = MagicMock()
 
@@ -39,10 +40,39 @@ def test_app_context_reload(app_context, monkeypatch):
         app_context.plugin_manager, "reload", plugin_manager_reload_mock
     )
 
+    # Set dummy cached values
+    app_context._pre_app_config_cache = {"some": "config"}
+    app_context._needs_setup = False
+    app_context._config_dir = "/dummy/config"
+    app_context._data_dir = "/dummy/data"
+    app_context._db_url = "sqlite:///dummy.db"
+    app_context._log_level = "DEBUG"
+    app_context._log_dir = "/dummy/log"
+
+    # Setup mocks for resource_monitor and log_streamer
+    app_context._resource_monitor = MagicMock()
+    app_context.log_streamer = MagicMock()
+
     app_context.reload()
 
+    # Verify caches are cleared
+    assert app_context._pre_app_config_cache is None
+    assert app_context._needs_setup is None
+    assert app_context._config_dir is None
+    assert app_context._data_dir is None
+    assert app_context._db_url is None
+    assert app_context._log_level is None
+    assert app_context._log_dir is None
+
+    # Verify reload called
     settings_reload_mock.assert_called_once()
     plugin_manager_reload_mock.assert_called_once()
+
+    # Verify monitors are stopped and started
+    app_context._resource_monitor.stop.assert_called_once()
+    app_context._resource_monitor.start.assert_called_once()
+    app_context.log_streamer.stop.assert_called_once()
+    app_context.log_streamer.start.assert_called_once()
 
 
 def test_get_server_creates_and_caches(app_context):
@@ -99,36 +129,3 @@ def test_remove_server_non_existent(app_context):
     """Test remove_server handles non-existent servers gracefully."""
     # Should not raise an error
     app_context.remove_server("does_not_exist")
-
-
-def test_stop_all_servers(app_context, monkeypatch):
-    """Test stop_all_servers stops all running cached servers."""
-    server1 = app_context.get_server("server1")
-    server2 = app_context.get_server("server2")
-
-    mock_api = MagicMock()
-    monkeypatch.setattr(app_context, "_api", mock_api)
-
-    monkeypatch.setattr(server1, "is_running", MagicMock(return_value=True))
-    monkeypatch.setattr(server2, "is_running", MagicMock(return_value=False))
-
-    app_context.stop_all_servers()
-
-    mock_api.stop_server.assert_called_once_with("server1")
-
-
-def test_stop_all_servers_no_api(app_context, monkeypatch):
-    """Test stop_all_servers stops servers directly if API is not loaded."""
-    server1 = app_context.get_server("server1")
-
-    # Ensure api is not loaded
-    if hasattr(app_context, "_api"):
-        delattr(app_context, "_api")
-
-    monkeypatch.setattr(server1, "is_running", MagicMock(return_value=True))
-    mock_stop = MagicMock()
-    monkeypatch.setattr(server1, "stop", mock_stop)
-
-    app_context.stop_all_servers()
-
-    mock_stop.assert_called_once()

@@ -12,9 +12,6 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from ..config import bcm_config
-from ..config.const import package_name
-
 Base = declarative_base()
 
 
@@ -29,7 +26,7 @@ class Database:
         _tables_created (bool): Flag indicating if tables have been created.
     """
 
-    def __init__(self, db_url: str | None = None):
+    def __init__(self, db_url: str):
         """
         Initializes the Database instance.
 
@@ -42,29 +39,6 @@ class Database:
         self.SessionLocal = None
         self._tables_created = False
 
-    def get_database_url(self):
-        """
-        Gets the database url from config.
-
-        Returns:
-            str: The database URL.
-
-        Raises:
-            RuntimeError: If 'db_url' is missing from the configuration.
-        """
-        if self.db_url:
-            return self.db_url
-
-        config = bcm_config.load_config()
-        db_url = config.get("db_url")
-
-        if not db_url:
-            raise RuntimeError(
-                f"Database URL not found in config. Please set 'db_url' in {package_name} config."
-            )
-
-        return db_url
-
     def initialize(self):
         """
         Initializes the database engine and session.
@@ -74,7 +48,7 @@ class Database:
         if self.engine:
             return
 
-        db_url = self.get_database_url()
+        db_url = self.db_url
 
         connect_args = {}
         if db_url.startswith("sqlite"):
@@ -120,7 +94,7 @@ class Database:
                 )
                 alembic_cfg = Config(str(alembic_ini_path))
                 alembic_cfg.set_main_option("skip_logging_config", "true")
-                alembic_cfg.set_main_option("sqlalchemy.url", self.get_database_url())
+                alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
 
                 with self.engine.begin() as connection:
                     alembic_cfg.attributes["connection"] = connection
@@ -150,3 +124,9 @@ class Database:
         """Closes the database connection engine."""
         if self.engine:
             self.engine.dispose()
+
+    async def shutdown(self):
+        """Gracefully closes the database connection asynchronously."""
+        import asyncio
+
+        await asyncio.to_thread(self.close)

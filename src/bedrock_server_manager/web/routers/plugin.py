@@ -114,7 +114,7 @@ async def post_trigger_event(
     )
 
     try:
-        result = plugins_api.trigger_external_plugin_event_api(
+        result = plugins_api.trigger_external_app_event_api(
             app_context=app_context,
             event_name=payload.event_name,
             payload=payload.payload,

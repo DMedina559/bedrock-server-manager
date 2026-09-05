@@ -82,7 +82,7 @@ def test_get_plugins_status_error(admin_auth_client: TestClient):
 
 def test_post_trigger_event_success(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_plugin_event_api"
+        "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_app_event_api"
     ) as mock_trigger:
         mock_trigger.return_value = {
             "status": "success",
@@ -102,7 +102,7 @@ def test_post_trigger_event_success(admin_auth_client: TestClient):
 
 def test_post_trigger_event_error(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_plugin_event_api"
+        "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_app_event_api"
     ) as mock_trigger:
         mock_trigger.return_value = {"status": "error", "message": "Event not found"}
 
@@ -116,7 +116,7 @@ def test_post_trigger_event_error(admin_auth_client: TestClient):
 
 def test_post_trigger_event_user_input_error(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_plugin_event_api"
+        "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_app_event_api"
     ) as mock_trigger:
         mock_trigger.side_effect = UserInputError("Invalid payload")
 

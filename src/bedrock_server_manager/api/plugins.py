@@ -13,7 +13,7 @@ Key functionalities include:
 - Getting statuses and metadata of all discovered plugins (:func:`~.get_plugin_statuses`).
 - Setting the enabled/disabled state of a specific plugin (:func:`~.set_plugin_status`).
 - Reloading all plugins (:func:`~.reload_plugins`).
-- Triggering custom plugin events externally (:func:`~.trigger_external_plugin_event_api`).
+- Triggering custom plugin events externally (:func:`~.trigger_external_app_event_api`).
 
 These functions facilitate management and interaction with plugins, primarily
 for use by administrative interfaces like a web UI or CLI.
@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional
 from ..context import AppContext
 from ..error import UserInputError
 from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_app_event
+from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,11 @@ def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": f"Failed to get plugin statuses: {e}"}
 
 
-@trigger_app_event(before="before_set_plugin_status", after="after_set_plugin_status")
+@trigger_event(
+    before="before_set_plugin_status",
+    after="after_set_plugin_status",
+    identity_keys=("plugin_name", "new_status"),
+)
 def set_plugin_status(
     plugin_name: str,
     enabled: bool,
@@ -76,7 +80,7 @@ def set_plugin_status(
     in the plugin configuration, which is managed by the
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager`.
     The configuration is synchronized with disk before modification, and the
-    changes are saved back to ``plugins.json``.
+    changes are saved back to the database.
 
     Note:
         For the change in enabled status to take full effect (i.e., for the
@@ -169,7 +173,7 @@ def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-def trigger_external_plugin_event_api(
+def trigger_external_app_event_api(
     event_name: str,
     app_context: AppContext,
     payload: Optional[Dict[str, Any]] = None,
@@ -177,7 +181,7 @@ def trigger_external_plugin_event_api(
     """
     Allows an external source (like a web route or CLI) to trigger a custom plugin event.
 
-    This function calls the `trigger_custom_plugin_event` method of the
+    This function calls the `trigger_event` method of the
     :class:`~bedrock_server_manager.plugins.plugin_manager.PluginManager` instance.
     The `triggering_plugin_name` argument for the core method is set to
     ``"external_api_trigger"`` to identify the source of this event.
@@ -209,8 +213,8 @@ def trigger_external_plugin_event_api(
     try:
         pm = app_context.plugin_manager
         actual_payload = payload if payload is not None else {}
-        pm.trigger_custom_plugin_event(
-            event_name, "external_api_trigger", **actual_payload
+        pm.trigger_event(
+            event_name, **actual_payload, _triggering_plugin="external_api_trigger"
         )
         logger.info(
             f"API: Custom plugin event '{event_name}' triggered successfully via external API."

@@ -4,7 +4,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 from bedrock_server_manager.web import get_admin_user
 
 
@@ -13,10 +13,13 @@ class DynamicPageTestPlugin(PluginBase):
     A plugin to test all Dynamic Page UI components.
     """
 
-    version = "1.0.0"
+    version = "1.1.0"
+    description = "A plugin to test all Dynamic Page UI components."
     author = "dmedina559"
+    name = "Dynamic Page Test"
 
-    def on_load(self, **kwargs):
+    @app_event("on_load")
+    def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Dynamic Page Test Plugin"])
         self._define_routes()
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
@@ -27,7 +30,7 @@ class DynamicPageTestPlugin(PluginBase):
             response_class=JSONResponse,
             name="Dynamic Page Test UI",
             summary="Test Dynamic Components",
-            tags=["plugin-ui-native"],
+            tags=["plugin-json-ui"],
         )
         async def get_test_ui(
             request: Request, current_user: Dict[str, Any] = Depends(get_admin_user)
@@ -362,7 +365,8 @@ class DynamicPageTestPlugin(PluginBase):
                 }
             )
 
-    def on_unload(self, **kwargs):
+    @app_event("on_unload")
+    def plugin_unloaded(self, **kwargs):
         pass
 
     def get_fastapi_routers(self, **kwargs):

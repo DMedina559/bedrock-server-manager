@@ -1,11 +1,6 @@
 # bedrock_server_manager/__main__.py
 """
 Main entry point for the Bedrock Server Manager command-line interface.
-
-This module is responsible for setting up the application environment (logging,
-settings), assembling all `click` commands and groups, and launching the
-main application logic. If no command is specified, it defaults to running
-the interactive menu system.
 """
 
 import atexit
@@ -14,35 +9,19 @@ import sys
 
 import click
 
-try:
-    from . import __version__
-    from .config import app_name_title
-    from .context import AppContext
-    from .logging import log_separator, setup_logging
-    from .utils.general import startup_checks
-except ImportError as e:
-    # Use basic logging as a fallback if our custom logger isn't available.
-    logging.basicConfig(level=logging.CRITICAL)
-    logger = logging.getLogger("bsm_critical_setup")
-    logger.critical(f"A critical module could not be imported: {e}", exc_info=True)
-    print(
-        f"CRITICAL ERROR: A required module could not be found: {e}.\n"
-        "Please ensure the package is installed correctly.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-# --- Import all Click command modules ---
-# These are grouped logically for clarity.
+from . import __version__
 from .cli import (
     cleanup,
     database,
-    migrate,
     reset_password,
     service,
     setup,
     web,
 )
+from .config import app_name_title
+from .context import AppContext
+from .logging import log_separator, setup_logging
+from .utils.general import startup_checks
 
 
 def create_cli_app():
@@ -55,7 +34,6 @@ def create_cli_app():
     @click.option(
         "--config-dir",
         type=click.Path(file_okay=False, dir_okay=True, resolve_path=True),
-        hidden=True,
         help="Override the configuration directory.",
     )
     @click.option(
@@ -86,62 +64,53 @@ def create_cli_app():
         db_url: str | None,
         log_level: str | None,
     ):
+        """A comprehensive Web Server for managing Minecraft Bedrock Dedicated Servers."""
         from .config import bcm_config
 
+        # --- Configuration Overrides ---
         bcm_config.set_custom_config_dir(config_dir)
         bcm_config.set_custom_data_dir(data_dir)
         bcm_config.set_custom_db_url(db_url)
         bcm_config.set_custom_log_level(log_level)
 
-        """A comprehensive CLI for managing Minecraft Bedrock servers.
-
-        This tool provides a full suite of commands to install, configure,
-        manage, and monitor Bedrock dedicated server instances.
-
-        If run without any arguments, it launches a user-friendly interactive
-        menu to guide you through all available actions.
-        """
+        try:
+            logger = setup_logging(force_reconfigure=True)
+            log_separator(logger, app_name=app_name_title, app_version=__version__)
+            logger.info(f"Starting {app_name_title} v{__version__} (CLI context)...")
+        except Exception as log_setup_e:
+            # If logging setup fails, we still want to inform the user.
+            print(
+                f"CRITICAL ERROR: Failed to set up logging: {log_setup_e}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         try:
             # --- Initial Application Setup ---
-            app_context = AppContext()
+            app_context = AppContext(
+                config_dir=config_dir,
+                data_dir=data_dir,
+                db_url=db_url,
+                log_level=log_level,
+                logger=logger,
+            )
 
             # --- Event Handling and Shutdown ---
             def shutdown_cli_app(app_context: AppContext):
                 """A cleanup function to be run on exit."""
-                # Use a generic logger, as the full logger may not be configured
-                # for all commands (e.g., setup, migrate).
-                shutdown_logger = logging.getLogger("bsm_shutdown")
-                shutdown_logger.info("Running CLI app shutdown hooks...")
+
+                logger.info("Running CLI app shutdown hooks...")
                 app_context.db.close()
-                shutdown_logger.info("CLI app shutdown hooks complete.")
+                logger.info("CLI app shutdown hooks complete.")
 
             atexit.register(shutdown_cli_app, app_context)
 
-            # Load the full application context only if the command is not 'setup' or 'migrate'
-            if ctx.invoked_subcommand in ["setup", "migrate"]:
-                logging.basicConfig(level=logging.INFO)
-                logger = logging.getLogger("bsm_setup")
-
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
                 app_context.load()
-
-                logger = setup_logging(
-                    log_dir=app_context.log_dir,
-                    log_keep=app_context.settings.get("retention.logs"),
-                    log_level=app_context.log_level,
-                    force_reconfigure=True,
-                    plugin_dir=app_context.settings.get("paths.plugins"),
-                )
-                log_separator(logger, app_name=app_name_title, app_version=__version__)
-                logger.info(
-                    f"Starting {app_name_title} v{__version__} (CLI context)..."
-                )
-
-                startup_checks(app_context, app_name_title, __version__)
+                startup_checks(app_context)
 
         except Exception as setup_e:
-            logging.getLogger("bsm_critical_setup").critical(
+            logger.critical(
                 f"An unrecoverable error occurred during CLI application startup: {setup_e}",
                 exc_info=True,
             )
@@ -164,7 +133,6 @@ def create_cli_app():
         cli.add_command(setup.setup)
         cli.add_command(reset_password.reset_password_command)
         cli.add_command(service.service)
-        cli.add_command(migrate.migrate)
         cli.add_command(database.database)
 
     # Call the assembly function to build the CLI with core and plugin commands
@@ -180,7 +148,7 @@ def main():
         cli()
     except Exception as e:
         # This is a last-resort catch-all for unexpected errors not handled by Click.
-        logger = logging.getLogger("bsm_critical_fatal")
+        logger = logging.getLogger(__name__)
         logger.critical("A fatal, unhandled error occurred.", exc_info=True)
         click.secho(
             f"\nFATAL UNHANDLED ERROR: {type(e).__name__}: {e}", fg="red", bold=True

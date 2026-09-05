@@ -46,12 +46,16 @@ def test_create_first_user_success(unauth_client: TestClient, app_context):
     assert "access_token_cookie" in response.cookies
 
 
-def test_create_first_user_already_exists(unauth_client: TestClient, test_user):
+def test_create_first_user_already_exists(
+    unauth_client: TestClient, test_user, app_context
+):
     """Test creating a user when one already exists."""
+    # Ensure needs_setup is evaluated to False
+    _ = app_context.needs_setup
+
     response = unauth_client.post(
         "/api/setup/create-first-user",
         json={"username": "admin2", "password": "securepassword"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["status"] == "error"
-    assert "Setup already completed" in response.json()["detail"]["message"]
+    assert response.json()["detail"] == "Application has already been set up."
