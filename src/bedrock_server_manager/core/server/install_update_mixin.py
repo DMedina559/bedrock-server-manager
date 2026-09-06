@@ -21,7 +21,6 @@ Key functionalities include:
 
 """
 
-import asyncio
 import os
 import typing
 from typing import Any, Optional
@@ -393,11 +392,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
             await downloader.async_extract_server_files(is_update_operation)
 
-            if hasattr(self, "async_set_filesystem_permissions"):
-                await self.async_set_filesystem_permissions()
-            else:
-
-                await asyncio.to_thread(self.set_filesystem_permissions)
+            await self.async_set_filesystem_permissions()
 
             self.logger.info(
                 f"Server files setup (extract & permissions) completed for '{self.server_name}'."
@@ -420,16 +415,9 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         )
 
         try:
-            if hasattr(self, "async_set_status_in_config"):
-                await self.async_set_status_in_config(
-                    "UPDATING" if is_update_op_for_extraction else "INSTALLING"
-                )
-            else:
-
-                await asyncio.to_thread(
-                    self.set_status_in_config,
-                    "UPDATING" if is_update_op_for_extraction else "INSTALLING",
-                )
+            await self.async_set_status_in_config(
+                "UPDATING" if is_update_op_for_extraction else "INSTALLING"
+            )
 
             downloader = BedrockDownloader(
                 version_type=self.version_type,
@@ -452,17 +440,9 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 downloader, is_update_op_for_extraction
             )
 
-            if hasattr(self, "async_set_version"):
-                await self.async_set_version(actual_version_downloaded)
-                await self.async_set_target_version(target_version_specification)
-                await self.async_set_status_in_config("STOPPED")
-            else:
-
-                await asyncio.to_thread(self.set_version, actual_version_downloaded)
-                await asyncio.to_thread(
-                    self.set_target_version, target_version_specification
-                )
-                await asyncio.to_thread(self.set_status_in_config, "STOPPED")
+            await self.async_set_version(actual_version_downloaded)
+            await self.async_set_target_version(target_version_specification)
+            await self.async_set_status_in_config("STOPPED")
 
             self.logger.info(
                 f"Async Install/Update successful for '{self.server_name}'. Version is now {actual_version_downloaded}."
@@ -475,11 +455,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 exc_info=True,
             )
             try:
-                if hasattr(self, "async_set_status_in_config"):
-                    await self.async_set_status_in_config("ERROR")
-                else:
-
-                    await asyncio.to_thread(self.set_status_in_config, "ERROR")
+                await self.async_set_status_in_config("ERROR")
             except Exception as set_err:
                 self.logger.error(f"Failed to set status to ERROR: {set_err}")
             raise

@@ -103,7 +103,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
                         await self.async_send_command("permission reload")
                     else:
 
-                        await asyncio.to_thread(self.send_command, "permission reload")
+                        await self.async_send_command("permission reload")
                     self.logger.info(
                         f"Reloaded permissions for running server '{self.server_name}'."
                     )

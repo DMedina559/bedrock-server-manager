@@ -26,7 +26,7 @@ Key functionalities:
 import asyncio
 import os
 import typing
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import aiofiles
 import aiofiles.ospath
@@ -77,10 +77,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
-        self.player_count = 0
-        self.players: List[Dict[str, str]] = []
-        self._log_file_cursor = 0
-        self._scan_log_cursor = 0
+        setattr(self, "player_count", 0)
+        setattr(self, "players", [])
+        setattr(self, "_log_file_cursor", 0)
+        setattr(self, "_scan_log_cursor", 0)
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.

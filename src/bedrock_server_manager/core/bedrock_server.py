@@ -184,7 +184,7 @@ class BedrockServer(
             "name": self.server_name,
             "status": status,
             "version": version,
-            "player_count": self.player_count,
+            "player_count": getattr(self, "player_count", 0),
             "players": getattr(self, "players", []),
         }
 
@@ -215,7 +215,7 @@ class BedrockServer(
             "name": self.server_name,
             "status": self.get_status(),
             "version": self.get_version(),
-            "player_count": self.player_count,
+            "player_count": getattr(self, "player_count", 0),
             "players": getattr(self, "players", []),
         }
 

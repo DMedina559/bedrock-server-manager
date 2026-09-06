@@ -108,7 +108,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                         await self.async_send_command("allowlist reload")
                     else:
 
-                        await asyncio.to_thread(self.send_command, "allowlist reload")
+                        await self.async_send_command("allowlist reload")
                     self.logger.info(
                         f"Reloaded allowlist for running server '{self.server_name}'."
                     )
@@ -161,7 +161,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                         await self.async_send_command("allowlist reload")
                     else:
 
-                        await asyncio.to_thread(self.send_command, "allowlist reload")
+                        await self.async_send_command("allowlist reload")
                     self.logger.info(
                         f"Reloaded allowlist for running server '{self.server_name}'."
                     )

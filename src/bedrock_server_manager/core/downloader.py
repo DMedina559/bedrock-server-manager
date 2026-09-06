@@ -1376,3 +1376,19 @@ class BedrockDownloader:
             Optional[str]: The complete download URL, or ``None`` if not yet resolved.
         """
         return self.resolved_download_url
+
+    async def async_extract_server_files(self, is_update: bool):
+        """Extracts server files asynchronously."""
+        await asyncio.to_thread(self.extract_server_files, is_update)
+
+    async def async_full_server_setup(self, is_update: bool) -> str:
+        """Performs the complete server setup asynchronously."""
+        return await asyncio.to_thread(self.full_server_setup, is_update)
+
+    async def async_get_version_for_target_spec(self) -> str:
+        """Resolves the target version asynchronously."""
+        return await asyncio.to_thread(self.get_version_for_target_spec)
+
+    async def async_prepare_download_assets(self) -> Tuple[str, str, str]:
+        """Prepares download assets asynchronously."""
+        return await asyncio.to_thread(self.prepare_download_assets)
