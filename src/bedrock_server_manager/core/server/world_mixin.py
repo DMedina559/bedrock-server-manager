@@ -21,10 +21,14 @@ with the filesystem within the server's ``worlds`` subdirectory.
     are **DESTRUCTIVE** and can lead to data loss if not used carefully.
 """
 
+import asyncio
 import os
 import shutil
+import typing
 import zipfile
 from typing import TYPE_CHECKING, Any, Optional
+
+import aiofiles.ospath
 
 from ...error import (
     AppFileNotFoundError,
@@ -119,6 +123,47 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Active world name ('{active_world_name}') received from get_world_name() is invalid for server '{self.server_name}'."
             )
         return os.path.join(self._worlds_base_dir_in_server, active_world_name)
+
+    @typing.no_type_check
+    async def async_extract_mcworld(
+        self, mcworld_file_path: str, is_new_install: bool = False
+    ) -> None:
+        """Extracts an `.mcworld` file asynchronously."""
+
+        await asyncio.to_thread(self.extract_mcworld, mcworld_file_path, is_new_install)
+
+    @typing.no_type_check
+    async def async_export_world(
+        self,
+        export_destination_directory: str,
+        provided_world_name: Optional[str] = None,
+    ) -> str:
+        """Exports the current active world to an `.mcworld` file asynchronously."""
+
+        return await asyncio.to_thread(
+            self.export_world, export_destination_directory, provided_world_name
+        )
+
+    @typing.no_type_check
+    async def async_import_world(self, mcworld_backup_file_path: str) -> str:
+        """Imports an `.mcworld` file asynchronously."""
+
+        return await asyncio.to_thread(self.import_world, mcworld_backup_file_path)
+
+    @typing.no_type_check
+    async def async_delete_world(self) -> bool:
+        """Deletes the current active world asynchronously."""
+
+        return await asyncio.to_thread(self.delete_world)
+
+    @typing.no_type_check
+    async def async_has_world_icon(self) -> bool:
+        """Checks if the active world has a custom icon asynchronously."""
+
+        icon_path = self.world_icon_filesystem_path()
+        if not icon_path:
+            return False
+        return await aiofiles.ospath.isfile(icon_path)
 
     def extract_mcworld(  # noqa: C901
         self, mcworld_file_path: str, target_world_dir_name: str

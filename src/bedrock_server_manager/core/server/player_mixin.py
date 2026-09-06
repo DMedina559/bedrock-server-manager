@@ -10,15 +10,22 @@ player gamertags and their corresponding XUIDs. This information can be used,
 for example, to populate a player database or track server activity.
 """
 
+import asyncio
 import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+
+import aiofiles
+import aiofiles.ospath
 
 from ...error import FileOperationError
 from .base_server_mixin import BedrockServerBaseMixin
 
 if TYPE_CHECKING:
     pass
+
+
+import typing
 
 
 class ServerPlayerMixin(BedrockServerBaseMixin):
@@ -121,6 +128,73 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                 f"Error parsing log file '{log_file}' for server '{self.server_name}': {e}",
                 exc_info=True,
             )
+
+    @typing.no_type_check
+    async def async_scan_log_for_players(
+        self, incremental: bool = False
+    ) -> List[Dict[str, str]]:  # type: ignore
+        """Scans the server log file for player connection events asynchronously."""
+
+        log_path = os.path.join(self.server_dir, "logs", "server.log")
+        if not await aiofiles.ospath.isfile(log_path):
+            self.logger.debug(
+                f"Log file not found for '{self.server_name}' at {log_path}. Skipping player scan."
+            )
+            return []
+
+        try:
+            async with aiofiles.open(
+                log_path, "r", encoding="utf-8", errors="replace"
+            ) as f:
+                if incremental:
+                    if self._last_log_file_size is not None:
+                        current_size = await aiofiles.ospath.getsize(log_path)
+                        if current_size < self._last_log_file_size:
+                            self.logger.info(
+                                f"Log file for '{self.server_name}' appears to have been rotated. Resetting scan pointer."
+                            )
+                            self._last_log_file_size = 0
+                            self._last_log_read_position = 0
+
+                        await f.seek(self._last_log_read_position)
+
+                lines = await f.readlines()
+
+                if incremental:
+                    self._last_log_read_position = await f.tell()
+                    self._last_log_file_size = await aiofiles.ospath.getsize(log_path)
+
+        except OSError as e:
+
+            raise FileOperationError(
+                f"Failed to read server log for '{self.server_name}': {e}"
+            ) from e
+
+        if not lines:
+            return []
+
+        return self._parse_player_log_events(lines)
+
+    @typing.no_type_check
+    async def async_update_online_players(self) -> List[Dict[str, str]]:  # type: ignore
+        """Updates and returns the list of currently online players asynchronously."""
+        if hasattr(self, "async_is_running"):
+            is_running = await self.async_is_running()
+        else:
+
+            is_running = await asyncio.to_thread(self.is_running)
+
+        if not is_running:
+            if self.online_players:
+                self.logger.debug(
+                    f"Server '{self.server_name}' is stopped. Clearing online players list."
+                )
+                self.online_players.clear()
+            return []
+
+        # We need an incremental scan for this logic
+        await self.async_scan_log_for_players(incremental=True)
+        return self.online_players
 
     def scan_log_for_players(self, incremental: bool = False) -> List[Dict[str, str]]:
         """Scans the server's log file for player connection entries to extract gamertags and XUIDs.

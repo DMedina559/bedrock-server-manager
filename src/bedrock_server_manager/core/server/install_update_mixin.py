@@ -21,7 +21,9 @@ Key functionalities include:
 
 """
 
+import asyncio
 import os
+import typing
 from typing import Any, Optional
 
 from ...error import (
@@ -321,6 +323,166 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 exc_info=True,
             )
             return True  # Fail-safe: assume update needed
+
+    @typing.no_type_check
+    async def async_is_update_needed(self, target_version_specification: str) -> bool:
+        """Determines if an update is needed asynchronously."""
+        self.logger.debug(
+            f"Checking if update needed for '{self.server_name}'. Target spec: '{target_version_specification}' asynchronously"
+        )
+        try:
+            current_installed_version = await self.async_get_version()
+
+            if current_installed_version == "UNKNOWN":
+                self.logger.info(
+                    f"Server '{self.server_name}' has unknown version. Assuming update needed."
+                )
+                return True
+
+            if target_version_specification == "LATEST":
+                downloader = BedrockDownloader(
+                    version_type=self.version_type,
+                    server_dir=self.server_dir,
+                    settings=self.settings,
+                    target_version="LATEST",
+                )
+                latest_available_for_spec = (
+                    await downloader.async_get_version_for_target_spec()
+                )
+
+                self.logger.debug(
+                    f"Current: '{current_installed_version}', Latest available: '{latest_available_for_spec}'"
+                )
+                needs_update = current_installed_version != latest_available_for_spec
+                self.logger.info(
+                    f"Update needed check for '{self.server_name}' (LATEST): {needs_update}"
+                )
+                return needs_update
+            elif target_version_specification.upper() == "CUSTOM":
+                return True
+            else:
+                self.logger.debug(
+                    f"Current: '{current_installed_version}', Specific Target: '{target_version_specification}'"
+                )
+                needs_update = current_installed_version != target_version_specification
+                self.logger.info(
+                    f"Update needed check for '{self.server_name}' (Specific Version): {needs_update}"
+                )
+                return needs_update
+        except Exception as e_fetch:
+            self.logger.error(
+                f"Error checking for updates for '{self.server_name}': {e_fetch}. Assuming update needed to be safe.",
+                exc_info=True,
+            )
+            return True
+
+    @typing.no_type_check
+    async def _async_perform_server_files_setup(
+        self, downloader: BedrockDownloader, is_update_operation: bool
+    ) -> None:
+        """Extracts and sets up the server files asynchronously."""
+        self.logger.debug(
+            f"Performing server files setup (extract & verify) for '{self.server_name}' asynchronously."
+        )
+        try:
+            zip_file_path_str = downloader.get_zip_file_path()
+            if not zip_file_path_str:
+                raise DownloadError(
+                    "Downloader did not provide a valid ZIP file path for extraction."
+                )
+
+            await downloader.async_extract_server_files(is_update_operation)
+
+            if hasattr(self, "async_set_filesystem_permissions"):
+                await self.async_set_filesystem_permissions()
+            else:
+
+                await asyncio.to_thread(self.set_filesystem_permissions)
+
+            self.logger.info(
+                f"Server files setup (extract & permissions) completed for '{self.server_name}'."
+            )
+
+        except Exception as e_extract:
+            raise DownloadError(
+                f"Failed to setup server files for '{self.server_name}': {e_extract}"
+            ) from e_extract
+
+    @typing.no_type_check
+    async def async_install_or_update(
+        self,
+        target_version_specification: str = "LATEST",
+        is_update_op_for_extraction: bool = False,
+    ) -> str:
+        """Installs or updates the server software asynchronously."""
+        self.logger.info(
+            f"Starting async install/update for server '{self.server_name}' with target '{target_version_specification}'."
+        )
+
+        try:
+            if hasattr(self, "async_set_status_in_config"):
+                await self.async_set_status_in_config(
+                    "UPDATING" if is_update_op_for_extraction else "INSTALLING"
+                )
+            else:
+
+                await asyncio.to_thread(
+                    self.set_status_in_config,
+                    "UPDATING" if is_update_op_for_extraction else "INSTALLING",
+                )
+
+            downloader = BedrockDownloader(
+                version_type=self.version_type,
+                server_dir=self.server_dir,
+                settings=self.settings,
+                target_version=target_version_specification,
+                server_zip_path=self.server_zip_path,
+            )
+
+            actual_version_downloaded, _, _ = (
+                await downloader.async_prepare_download_assets()
+            )
+
+            if not actual_version_downloaded:
+                raise DownloadError(
+                    "Failed to determine actual version after download preparation."
+                )
+
+            await self._async_perform_server_files_setup(
+                downloader, is_update_op_for_extraction
+            )
+
+            if hasattr(self, "async_set_version"):
+                await self.async_set_version(actual_version_downloaded)
+                await self.async_set_target_version(target_version_specification)
+                await self.async_set_status_in_config("STOPPED")
+            else:
+
+                await asyncio.to_thread(self.set_version, actual_version_downloaded)
+                await asyncio.to_thread(
+                    self.set_target_version, target_version_specification
+                )
+                await asyncio.to_thread(self.set_status_in_config, "STOPPED")
+
+            self.logger.info(
+                f"Async Install/Update successful for '{self.server_name}'. Version is now {actual_version_downloaded}."
+            )
+            return actual_version_downloaded
+
+        except Exception as e_bsm_install:
+            self.logger.error(
+                f"Async Install/Update failed for '{self.server_name}': {e_bsm_install}",
+                exc_info=True,
+            )
+            try:
+                if hasattr(self, "async_set_status_in_config"):
+                    await self.async_set_status_in_config("ERROR")
+                else:
+
+                    await asyncio.to_thread(self.set_status_in_config, "ERROR")
+            except Exception as set_err:
+                self.logger.error(f"Failed to set status to ERROR: {set_err}")
+            raise
 
     def install_or_update(  # noqa: C901
         self,

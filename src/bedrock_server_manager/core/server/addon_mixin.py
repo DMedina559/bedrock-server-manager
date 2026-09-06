@@ -21,12 +21,14 @@ It is designed to work in conjunction with other mixins of the
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 
+import asyncio
 import glob
 import json
 import os
 import re
 import shutil
 import tempfile
+import typing
 import zipfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -97,6 +99,76 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         def extract_mcworld(
             self, mcworld_file_path: str, target_world_dir_name: str
         ) -> str: ...
+
+    @typing.no_type_check
+    async def async_process_addon_file(self, addon_file_path: str) -> None:
+        """Processes an addon file asynchronously."""
+
+        await asyncio.to_thread(self.process_addon_file, addon_file_path)
+
+    @typing.no_type_check
+    async def async_list_installed_addons(
+        self, pack_type_filter: str = "all", check_activation: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Lists installed addons asynchronously."""
+
+        return await asyncio.to_thread(
+            self.list_installed_addons, pack_type_filter, check_activation
+        )
+
+    @typing.no_type_check
+    async def async_enable_addon(
+        self,
+        pack_type: str,
+        uuid: str,
+        version: List[int],
+        subpack_name: Optional[str] = None,
+    ) -> bool:
+        """Enables an addon asynchronously."""
+
+        return await asyncio.to_thread(
+            self.enable_addon, pack_type, uuid, version, subpack_name
+        )
+
+    @typing.no_type_check
+    async def async_update_subpack(
+        self, pack_type: str, uuid: str, subpack_name: str
+    ) -> bool:
+        """Updates an addon's subpack asynchronously."""
+
+        return await asyncio.to_thread(
+            self.update_subpack, pack_type, uuid, subpack_name
+        )
+
+    @typing.no_type_check
+    async def async_disable_addon(self, pack_type: str, uuid: str) -> bool:
+        """Disables an addon asynchronously."""
+
+        return await asyncio.to_thread(self.disable_addon, pack_type, uuid)
+
+    @typing.no_type_check
+    async def async_reorder_addons(
+        self, pack_type: str, ordered_uuids: List[str]
+    ) -> bool:
+        """Reorders addons asynchronously."""
+
+        return await asyncio.to_thread(self.reorder_addons, pack_type, ordered_uuids)
+
+    @typing.no_type_check
+    async def async_export_addon(
+        self, pack_type: str, uuid: str, export_directory: str
+    ) -> str:
+        """Exports an addon asynchronously."""
+
+        return await asyncio.to_thread(
+            self.export_addon, pack_type, uuid, export_directory
+        )
+
+    @typing.no_type_check
+    async def async_remove_addon(self, pack_type: str, uuid: str) -> bool:
+        """Removes an addon asynchronously."""
+
+        return await asyncio.to_thread(self.remove_addon, pack_type, uuid)
 
     def process_addon_file(self, addon_file_path: str) -> None:
         """Processes a given addon file (``.mcaddon`` or ``.mcpack``).

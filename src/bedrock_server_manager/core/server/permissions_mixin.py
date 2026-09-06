@@ -1,7 +1,13 @@
+import asyncio
 import json
 import os
+import typing
 from typing import Any, Dict, List, Optional
 
+import aiofiles
+import aiofiles.ospath
+
+from ...core.player import async_get_known_players
 from ...error import (
     AppFileNotFoundError,
     ConfigParseError,
@@ -14,6 +20,146 @@ from .base_server_mixin import BedrockServerBaseMixin
 
 class ServerPermissionsMixin(BedrockServerBaseMixin):
     """Provides methods for managing the permissions.json configuration."""
+
+    @typing.no_type_check
+    async def async_set_player_permission(  # noqa: C901
+        self, target_player_xuid: str, permission_level: str
+    ) -> bool:  # type: ignore
+        """Sets the permission level for a player asynchronously."""
+
+        self.logger.debug(
+            f"Setting permission for XUID '{target_player_xuid}' to '{permission_level}' on '{self.server_name}' asynchronously."
+        )
+
+        valid_levels = ["visitor", "member", "operator"]
+        if permission_level not in valid_levels:
+            raise UserInputError(
+                f"Invalid permission level '{permission_level}'. Must be one of {valid_levels}."
+            )
+
+        if not target_player_xuid or not isinstance(target_player_xuid, str):
+            raise UserInputError(
+                "Target player XUID must be a valid, non-empty string."
+            )
+
+        if not await aiofiles.ospath.isfile(self.permissions_path):
+            self.logger.warning(
+                f"Permissions file not found at '{self.permissions_path}' for '{self.server_name}'. A new one will be created."
+            )
+            permissions_data = []
+        else:
+            try:
+                async with aiofiles.open(
+                    self.permissions_path, "r", encoding="utf-8"
+                ) as f:
+                    content = await f.read()
+                    permissions_data = json.loads(content)
+            except json.JSONDecodeError as e:
+                self.logger.error(
+                    f"JSON decode error in {self.permissions_path}: {e}. Creating a fresh permissions list."
+                )
+                permissions_data = []
+            except Exception as e:
+                self.logger.error(f"Error reading {self.permissions_path}: {e}")
+                return False
+
+        updated = False
+        for entry in permissions_data:
+            if entry.get("xuid") == target_player_xuid:
+                if entry.get("permission") != permission_level:
+                    entry["permission"] = permission_level
+                    updated = True
+                else:
+                    self.logger.debug(
+                        f"Player XUID '{target_player_xuid}' already has permission '{permission_level}'. No changes needed."
+                    )
+                    return True
+                break
+        else:
+            permissions_data.append(
+                {"xuid": target_player_xuid, "permission": permission_level}
+            )
+            updated = True
+
+        if updated:
+            try:
+                async with aiofiles.open(
+                    self.permissions_path, "w", encoding="utf-8"
+                ) as f:
+                    content = json.dumps(permissions_data, indent=4)
+                    await f.write(content)
+                self.logger.info(
+                    f"Successfully set permission for '{target_player_xuid}' to '{permission_level}'."
+                )
+
+                if hasattr(self, "async_is_running"):
+                    is_running = await self.async_is_running()
+                else:
+
+                    is_running = await asyncio.to_thread(self.is_running)
+
+                if is_running:
+                    if hasattr(self, "async_send_command"):
+                        await self.async_send_command("permission reload")
+                    else:
+
+                        await asyncio.to_thread(self.send_command, "permission reload")
+                    self.logger.info(
+                        f"Reloaded permissions for running server '{self.server_name}'."
+                    )
+
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to write to {self.permissions_path}: {e}")
+                return False
+
+        return True
+
+    @typing.no_type_check
+    async def async_get_formatted_permissions(
+        self, db_session_manager
+    ) -> List[Dict[str, str]]:  # type: ignore
+        """Retrieves permissions and maps XUIDs to known player names asynchronously."""
+
+        if not await aiofiles.ospath.isfile(self.permissions_path):
+            self.logger.debug(
+                f"Permissions file not found at '{self.permissions_path}'. Returning empty list."
+            )
+            return []
+
+        try:
+            async with aiofiles.open(self.permissions_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+                permissions_data = json.loads(content)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"JSON decode error in {self.permissions_path}: {e}")
+            return []
+        except Exception as e:
+            self.logger.error(f"Error reading {self.permissions_path}: {e}")
+            return []
+
+        try:
+            known_players = await async_get_known_players(db_session_manager)
+            player_map = {p["xuid"]: p["name"] for p in known_players}
+        except Exception as e:
+            self.logger.error(
+                f"Error retrieving known players from database: {e}. Will use XUIDs as names where needed."
+            )
+            player_map = {}
+
+        formatted_list = []
+        for p in permissions_data:
+            xuid = p.get("xuid")
+            if xuid:
+                player_name = player_map.get(xuid, "Unknown Player")
+                formatted_list.append(
+                    {
+                        "xuid": xuid,
+                        "permission": p.get("permission", "unknown"),
+                        "player_name": player_name,
+                    }
+                )
+        return formatted_list
 
     def set_player_permission(  # noqa: C901
         self, xuid: str, permission_level: str, player_name: Optional[str] = None

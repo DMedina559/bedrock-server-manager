@@ -20,9 +20,14 @@ Key responsibilities include:
 lead to irreversible data loss if not used carefully.
 """
 
+import asyncio
 import os
+import typing
 from typing import Any, Dict, List, Optional
 
+import aiofiles.ospath
+
+from ...db.models import Server, ServerBan
 from ...error import (
     AppFileNotFoundError,
     FileOperationError,
@@ -212,6 +217,68 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             )
         return success
 
+    @typing.no_type_check
+    async def async_validate_installation(self) -> bool:
+        """Validates the server installation asynchronously."""
+
+        # 1. Check if the server directory itself exists
+        if not await aiofiles.ospath.isdir(self.server_dir):
+            self.logger.warning(f"Server directory missing: {self.server_dir}")
+            return False
+
+        # 2. Check for crucial executable file depending on the OS platform
+        if system_base.is_windows():
+            executable_path = os.path.join(self.server_dir, "bedrock_server.exe")
+        elif system_base.is_linux():
+            executable_path = os.path.join(self.server_dir, "bedrock_server")
+        else:
+            self.logger.error("Unsupported OS platform for installation validation.")
+            return False
+
+        if not await aiofiles.ospath.isfile(executable_path):
+            self.logger.warning(f"Crucial executable missing: {executable_path}")
+            return False
+
+        # 3. Check for the behavior_packs directory (a standard directory)
+        behavior_packs_dir = os.path.join(self.server_dir, "behavior_packs")
+        if not await aiofiles.ospath.isdir(behavior_packs_dir):
+            self.logger.warning(
+                f"Crucial behavior_packs directory missing: {behavior_packs_dir}"
+            )
+            return False
+
+        return True
+
+    @typing.no_type_check
+    async def async_is_installed(self) -> bool:
+        """Checks if the server is installed asynchronously."""
+        installed_status = await self.async_get_status_from_config()
+        if installed_status == "UNKNOWN":
+            return False
+
+        # Further validate that the files actually exist
+        return await self.async_validate_installation()
+
+    @typing.no_type_check
+    async def async_set_filesystem_permissions(self) -> None:
+        """Sets the necessary filesystem permissions asynchronously."""
+
+        await asyncio.to_thread(self.set_filesystem_permissions)
+
+    @typing.no_type_check
+    async def async_delete_server_files(
+        self, keep_worlds: bool = False, keep_config: bool = False
+    ) -> None:
+        """Deletes server files asynchronously."""
+
+        await asyncio.to_thread(self.delete_server_files, keep_worlds, keep_config)
+
+    @typing.no_type_check
+    async def async_delete_all_data(self) -> None:
+        """Deletes all server data asynchronously."""
+
+        await asyncio.to_thread(self.delete_all_data)
+
     def delete_all_data(self) -> None:  # noqa: C901
         """Deletes **ALL** data associated with this Bedrock server instance.
 
@@ -352,7 +419,6 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
 
             # Remove server and associated bans/settings from the database
             if self.settings.db is not None:
-                from ...db.models import Server, ServerBan
 
                 with self.settings.db.session_manager() as db_session:
                     db_server = (

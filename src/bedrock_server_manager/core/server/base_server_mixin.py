@@ -5,7 +5,9 @@ This mixin is the first in the inheritance chain for the main
 :class:`~.core.bedrock_server.BedrockServer` class. Its primary responsibility
 is to initialize core attributes that are common across all server-related
 operations, such as server name, directory paths, application settings, and
-the logger. All other mixins should inherit from this class to ensure these
+the logger. All other mixins should inherit from this import typing
+
+class to ensure these
 fundamental attributes are available.
 """
 

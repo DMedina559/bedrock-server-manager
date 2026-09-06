@@ -23,8 +23,13 @@ Key functionalities:
 
 """
 
+import asyncio
 import os
+import typing
 from typing import Any, Dict, List, Optional
+
+import aiofiles
+import aiofiles.ospath
 
 from ...db.models import Server
 from ...error import (
@@ -745,6 +750,470 @@ class ServerStateMixin(BedrockServerBaseMixin):
             ):  # If actual is not running and stored is unknown
                 final_status = "STOPPED"
             else:  # Trust other stored statuses like UPDATING, ERROR, STARTING, STOPPING etc.
+                final_status = stored_status
+
+        self.logger.debug(
+            f"Final determined status for '{self.server_name}': {final_status}"
+        )
+        return final_status
+
+    async def _async_load_server_config(self) -> Dict[str, Any]:
+        """Loads the server-specific JSON configuration asynchronously."""
+        from sqlalchemy.future import select
+
+        if self.settings.db is None:
+            raise RuntimeError("Database connection not initialized.")
+
+        async with self.settings.db.async_session_manager() as db:  # type: ignore
+            result = await db.execute(
+                select(Server).filter(Server.server_name == self.server_name)
+            )
+            server = result.scalars().first()
+
+            if server:
+                return {
+                    "server_info": {
+                        "installed_version": server.installed_version,
+                        "status": server.status,
+                    },
+                    "settings": {
+                        "autoupdate": server.autoupdate,
+                        "autostart": server.autostart,
+                        "target_version": server.target_version,
+                    },
+                    "custom": dict(server.custom) if server.custom is not None else {},
+                }
+
+            # Create new server config in DB
+            self.logger.info(
+                f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
+            )
+            default_config = self._get_default_server_config()
+            server = Server(
+                server_name=self.server_name,
+                installed_version=default_config["server_info"]["installed_version"],
+                status=default_config["server_info"]["status"],
+                autoupdate=default_config["settings"]["autoupdate"],
+                autostart=default_config["settings"]["autostart"],
+                target_version=default_config["settings"]["target_version"],
+                custom=default_config["custom"],
+            )
+            db.add(server)
+            await db.commit()
+            await db.refresh(server)
+
+            return {
+                "server_info": {
+                    "installed_version": server.installed_version,
+                    "status": server.status,
+                },
+                "settings": {
+                    "autoupdate": server.autoupdate,
+                    "autostart": server.autostart,
+                    "target_version": server.target_version,
+                },
+                "custom": dict(server.custom) if server.custom is not None else {},
+            }
+
+    async def _async_save_server_config(self, config_data: Dict[str, Any]) -> None:
+        """Saves the server configuration data to the database asynchronously."""
+        from sqlalchemy.future import select
+
+        if self.settings.db is None:
+            raise RuntimeError("Database connection not initialized.")
+
+        async with self.settings.db.async_session_manager() as db:  # type: ignore
+            result = await db.execute(
+                select(Server).filter(Server.server_name == self.server_name)
+            )
+            server = result.scalars().first()
+            if server:
+                server_info = config_data.get("server_info", {})
+                settings = config_data.get("settings", {})
+
+                if "installed_version" in server_info:
+                    server.installed_version = server_info["installed_version"]
+                if "status" in server_info:
+                    server.status = server_info["status"]
+
+                if "autoupdate" in settings:
+                    server.autoupdate = settings["autoupdate"]
+                if "autostart" in settings:
+                    server.autostart = settings["autostart"]
+                if "target_version" in settings:
+                    server.target_version = settings["target_version"]
+
+                if "custom" in config_data:
+                    server.custom = config_data["custom"]
+                await db.commit()
+
+    async def _async_manage_json_config(
+        self,
+        key: str,
+        operation: str,
+        value: Any = None,
+    ) -> Optional[Any]:
+        """Centralized helper to read/write to the server's JSON config asynchronously."""
+        if not key:
+            raise MissingArgumentError("Config key cannot be empty.")
+        operation_lower = str(operation).lower()
+        if operation_lower not in ["read", "write"]:
+            raise UserInputError(
+                f"Invalid operation: '{operation}'. Must be 'read' or 'write'."
+            )
+
+        current_config = await self._async_load_server_config()
+
+        if operation_lower == "read":
+            d = current_config
+            try:
+                for k_part in key.split("."):
+                    if not isinstance(d, dict):
+                        self.logger.debug(
+                            f"Server Config Read: Key='{key}', part '{k_part}' is not a dictionary. Path invalid."
+                        )
+                        return None
+                    d = d[k_part]
+                self.logger.debug(
+                    f"Server Config Read: Key='{key}', Value='{d}' for '{self.server_name}'"
+                )
+                return d
+            except KeyError:
+                self.logger.debug(
+                    f"Server Config Read: Key='{key}' not found for '{self.server_name}'. Returning None."
+                )
+                return None
+            except TypeError:
+                self.logger.debug(
+                    f"Server Config Read: Key='{key}', path invalid (non-dict intermediate) for '{self.server_name}'. Returning None."
+                )
+                return None
+
+        # Operation is "write"
+        self.logger.debug(
+            f"Server Config Write: Key='{key}', New Value='{value}' for '{self.server_name}'"
+        )
+
+        d = current_config
+        keys_list = key.split(".")
+        for k_part in keys_list[:-1]:
+            if not isinstance(d, dict):
+                raise ConfigParseError(
+                    f"Cannot create nested key '{key}': part '{k_part}' conflicts with existing non-dictionary value in config for '{self.server_name}'."
+                )
+            d = d.setdefault(k_part, {})
+            if not isinstance(d, dict):
+                raise ConfigParseError(
+                    f"Cannot create nested key '{key}': part '{k_part}' resulted in a non-dictionary in config for '{self.server_name}'."
+                )
+
+        if not isinstance(d, dict):
+            raise ConfigParseError(
+                f"Cannot set key '{keys_list[-1]}' in path '{'.'.join(keys_list[:-1])}': parent is not a dictionary in config for '{self.server_name}'."
+            )
+        d[keys_list[-1]] = value
+
+        await self._async_save_server_config(current_config)
+        return None
+
+    @typing.no_type_check
+    async def async_get_version(self) -> str:
+        self.logger.debug(
+            f"Getting stored installed_version for '{self.server_name}' from JSON config asynchronously."
+        )
+        try:
+            version = await self._async_manage_json_config(
+                key="server_info.installed_version", operation="read"
+            )
+            return (
+                str(version)
+                if version is not None and str(version).strip()
+                else "UNKNOWN"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Error getting installed_version from config for '{self.server_name}': {e}. Defaulting to UNKNOWN.",
+                exc_info=True,
+            )
+            return "UNKNOWN"
+
+    @typing.no_type_check
+    async def async_set_version(self, version_string: str) -> None:
+        self.logger.debug(
+            f"Setting installed_version for '{self.server_name}' to '{version_string}' asynchronously."
+        )
+        if not isinstance(version_string, str):
+            raise UserInputError(
+                f"Version for '{self.server_name}' must be a string, got {type(version_string).__name__}."
+            )
+        await self._async_manage_json_config(
+            key="server_info.installed_version",
+            operation="write",
+            value=version_string,
+        )
+        self.logger.info(
+            f"installed_version for '{self.server_name}' set to '{version_string}'."
+        )
+
+    @typing.no_type_check
+    async def async_get_autoupdate(self) -> bool:
+        self.logger.debug(
+            f"Getting stored autoupdate preference for '{self.server_name}' from JSON config asynchronously."
+        )
+        try:
+            autoupdate = await self._async_manage_json_config(
+                key="settings.autoupdate", operation="read"
+            )
+            return bool(autoupdate) if autoupdate is not None else False
+        except Exception as e:
+            self.logger.error(
+                f"Error getting autoupdate from config for '{self.server_name}': {e}. Defaulting to False.",
+                exc_info=True,
+            )
+            return False
+
+    @typing.no_type_check
+    async def async_set_autoupdate(self, value: bool) -> None:
+        self.logger.debug(
+            f"Setting autoupdate for '{self.server_name}' to {value} asynchronously."
+        )
+        if not isinstance(value, bool):
+            raise UserInputError(
+                f"autoupdate for '{self.server_name}' must be a boolean, got {type(value).__name__}."
+            )
+        await self._async_manage_json_config(
+            key="settings.autoupdate", operation="write", value=value
+        )
+        self.logger.info(f"autoupdate for '{self.server_name}' set to {value}.")
+
+    @typing.no_type_check
+    async def async_get_autostart(self) -> bool:
+        self.logger.debug(
+            f"Getting stored autostart preference for '{self.server_name}' from JSON config asynchronously."
+        )
+        try:
+            autostart = await self._async_manage_json_config(
+                key="settings.autostart", operation="read"
+            )
+            return bool(autostart) if autostart is not None else False
+        except Exception as e:
+            self.logger.error(
+                f"Error getting autostart from config for '{self.server_name}': {e}. Defaulting to False.",
+                exc_info=True,
+            )
+            return False
+
+    @typing.no_type_check
+    async def async_set_autostart(self, value: bool) -> None:
+        self.logger.debug(
+            f"Setting autostart for '{self.server_name}' to {value} asynchronously."
+        )
+        if not isinstance(value, bool):
+            raise UserInputError(
+                f"autostart for '{self.server_name}' must be a boolean, got {type(value).__name__}."
+            )
+        await self._async_manage_json_config(
+            key="settings.autostart", operation="write", value=value
+        )
+        self.logger.info(f"autostart for '{self.server_name}' set to {value}.")
+
+    @typing.no_type_check
+    async def async_get_status_from_config(self) -> str:
+        self.logger.debug(
+            f"Getting stored status for '{self.server_name}' from JSON config asynchronously."
+        )
+        try:
+            status = await self._async_manage_json_config(
+                key="server_info.status", operation="read"
+            )
+            return (
+                str(status) if status is not None and str(status).strip() else "UNKNOWN"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Error getting status from config for '{self.server_name}': {e}. Defaulting to UNKNOWN.",
+                exc_info=True,
+            )
+            return "UNKNOWN"
+
+    @typing.no_type_check
+    async def async_set_status_in_config(self, status_string: str) -> None:
+        self.logger.debug(
+            f"Setting stored status for '{self.server_name}' to '{status_string}' asynchronously."
+        )
+        if not isinstance(status_string, str):
+            raise UserInputError(
+                f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
+            )
+        await self._async_manage_json_config(
+            key="server_info.status", operation="write", value=status_string
+        )
+        self.logger.debug(
+            f"Stored status for '{self.server_name}' updated to '{status_string}'."
+        )
+
+    @typing.no_type_check
+    async def async_get_target_version(self) -> str:
+        self.logger.debug(
+            f"Getting stored target_version for '{self.server_name}' from JSON config asynchronously."
+        )
+        try:
+            version = await self._async_manage_json_config(
+                key="settings.target_version", operation="read"
+            )
+            return (
+                str(version)
+                if version is not None and str(version).strip()
+                else "LATEST"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Error getting target_version from config for '{self.server_name}': {e}. Defaulting to LATEST.",
+                exc_info=True,
+            )
+            return "LATEST"
+
+    @typing.no_type_check
+    async def async_set_target_version(self, version_string: str) -> None:
+        self.logger.debug(
+            f"Setting target_version for '{self.server_name}' to '{version_string}' asynchronously."
+        )
+        if not isinstance(version_string, str):
+            raise UserInputError(
+                f"target_version for '{self.server_name}' must be a string, got {type(version_string).__name__}."
+            )
+        await self._async_manage_json_config(
+            key="settings.target_version", operation="write", value=version_string
+        )
+        self.logger.info(
+            f"target_version for '{self.server_name}' set to '{version_string}'."
+        )
+
+    @typing.no_type_check
+    async def async_get_custom_config_value(self, key: str) -> Optional[Any]:
+        self.logger.debug(
+            f"Getting custom config key '{key}' for server '{self.server_name}' asynchronously."
+        )
+        if not isinstance(key, str) or not key:
+            raise UserInputError(
+                f"Key for custom config on '{self.server_name}' must be a non-empty string."
+            )
+        full_key = f"custom.{key}"
+        value = await self._async_manage_json_config(key=full_key, operation="read")
+        self.logger.debug(
+            f"Retrieved custom config for '{self.server_name}': Key='{key}', Value='{value}'."
+        )
+        return value
+
+    @typing.no_type_check
+    async def async_set_custom_config_value(self, key: str, value: Any) -> None:
+        self.logger.debug(
+            f"Setting custom config for '{self.server_name}': Key='{key}', Value='{value}' asynchronously."
+        )
+        if not isinstance(key, str) or not key:
+            raise UserInputError(
+                f"Key for custom config on '{self.server_name}' must be a non-empty string."
+            )
+        full_key = f"custom.{key}"
+        await self._async_manage_json_config(
+            key=full_key, operation="write", value=value
+        )
+        self.logger.info(
+            f"Custom config for '{self.server_name}' set: Key='{key}', Value='{value}'."
+        )
+
+    @typing.no_type_check
+    async def async_get_world_name(self) -> str:
+
+        self.logger.debug(
+            f"Reading world name for server '{self.server_name}' from: {self.server_properties_path} asynchronously"
+        )
+        if not await aiofiles.ospath.isfile(self.server_properties_path):
+            raise AppFileNotFoundError(
+                self.server_properties_path, "server.properties file"
+            )
+
+        try:
+            async with aiofiles.open(
+                self.server_properties_path, "r", encoding="utf-8"
+            ) as f:
+                async for line in f:
+                    line = line.strip()
+                    if line.startswith("level-name="):
+                        parts = line.split("=", 1)
+                        if len(parts) == 2 and parts[1].strip():
+                            world_name = parts[1].strip()
+                            self.logger.debug(
+                                f"Found world name (level-name): '{world_name}' for '{self.server_name}'"
+                            )
+                            return world_name
+                        else:
+                            raise ConfigParseError(
+                                f"'level-name' property malformed or has empty value in {self.server_properties_path}"
+                            )
+        except OSError as e_os:
+            raise ConfigParseError(
+                f"Failed to read server.properties for '{self.server_name}': {e_os}"
+            ) from e_os
+
+        raise ConfigParseError(
+            f"'level-name' property not found in {self.server_properties_path}"
+        )
+
+    @typing.no_type_check
+    async def async_get_status(self) -> str:
+        self.logger.debug(
+            f"Determining overall status for server '{self.server_name}' asynchronously."
+        )
+
+        actual_is_running = False
+        try:
+            if hasattr(self, "async_is_running"):
+                actual_is_running = await self.async_is_running()
+            elif hasattr(self, "is_running"):
+
+                actual_is_running = await asyncio.to_thread(self.is_running)
+            else:
+                self.logger.warning(
+                    "is_running/async_is_running method not found. Falling back to stored config status."
+                )
+                return await self.async_get_status_from_config()
+        except Exception as e_is_running_check:
+            self.logger.error(
+                f"Error checking run state for '{self.server_name}': {e_is_running_check}. Fallback to stored status."
+            )
+            return await self.async_get_status_from_config()
+
+        stored_status = await self.async_get_status_from_config()
+        final_status = "UNKNOWN"
+
+        if actual_is_running:
+            final_status = "RUNNING"
+            if stored_status != "RUNNING":
+                self.logger.info(
+                    f"Server '{self.server_name}' is running. Updating stored status from '{stored_status}' to RUNNING."
+                )
+                try:
+                    await self.async_set_status_in_config("RUNNING")
+                except Exception as e_set_cfg:
+                    self.logger.warning(
+                        f"Failed to update stored status to RUNNING for '{self.server_name}': {e_set_cfg}"
+                    )
+        else:
+            if stored_status == "RUNNING":
+                self.logger.info(
+                    f"Server '{self.server_name}' not running but stored status was RUNNING. Updating to STOPPED."
+                )
+                final_status = "STOPPED"
+                try:
+                    await self.async_set_status_in_config("STOPPED")
+                except Exception as e_set_cfg:
+                    self.logger.warning(
+                        f"Failed to update stored status to STOPPED for '{self.server_name}': {e_set_cfg}"
+                    )
+            elif stored_status == "UNKNOWN":
+                final_status = "STOPPED"
+            else:
                 final_status = stored_status
 
         self.logger.debug(

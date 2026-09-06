@@ -20,9 +20,11 @@ world, and :class:`~.core.server.world_mixin.ServerWorldMixin` methods for world
 export and import operations.
 """
 
+import asyncio
 import os
 import re
 import shutil
+import typing
 from typing import Any, Dict, List, Optional, Union
 
 from ...error import (
@@ -127,6 +129,42 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         file_pattern = os.path.basename(pattern)
         res = find_files(directory, file_pattern, sort_by="mtime", reverse=True)
         return [str(p) for p in res]
+
+    @typing.no_type_check
+    async def async_list_backups(
+        self,
+        backup_type: Optional[str] = None,
+        sort_by: str = "date",
+        reverse: bool = True,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Lists server backups asynchronously."""
+
+        return await asyncio.to_thread(
+            self.list_backups, backup_type, sort_by, reverse, limit
+        )
+
+    @typing.no_type_check
+    async def async_prune_server_backups(
+        self, keep_worlds: int, keep_configs: int
+    ) -> Dict[str, int]:
+        """Prunes server backups asynchronously."""
+
+        return await asyncio.to_thread(
+            self.prune_server_backups, keep_worlds, keep_configs
+        )
+
+    @typing.no_type_check
+    async def async_backup_all_data(self) -> Dict[str, Optional[str]]:
+        """Backs up all data asynchronously."""
+
+        return await asyncio.to_thread(self.backup_all_data)
+
+    @typing.no_type_check
+    async def async_restore_all_data_from_latest(self) -> Dict[str, Optional[str]]:
+        """Restores all data from latest asynchronously."""
+
+        return await asyncio.to_thread(self.restore_all_data_from_latest)
 
     def list_backups(  # noqa: C901
         self, backup_type: str

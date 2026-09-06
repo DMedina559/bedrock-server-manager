@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 if TYPE_CHECKING:
     from ..context import AppContext
 
+import typing
+
 from . import server
 
 
@@ -160,6 +162,33 @@ class BedrockServer(
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."
         )
+
+    @typing.no_type_check
+    async def async_get_summary_info(self) -> Dict[str, Any]:
+        """Returns a generic summary of the server's current status and state asynchronously."""
+        self.logger.debug(
+            f"Gathering async summary info for server '{self.server_name}'."
+        )
+
+        if hasattr(self, "async_get_status"):
+            status = await self.async_get_status()
+        else:
+            status = self.get_status()
+
+        if hasattr(self, "async_get_version"):
+            version = await self.async_get_version()
+        else:
+            version = self.get_version()
+
+        summary = {
+            "name": self.server_name,
+            "status": status,
+            "version": version,
+            "player_count": self.player_count,
+            "players": getattr(self, "players", []),
+        }
+
+        return summary
 
     def get_summary_info(self) -> Dict[str, Any]:
         """Returns a generic summary of the server's current status and state.

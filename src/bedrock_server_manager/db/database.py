@@ -7,9 +7,11 @@ to the database (SQLite, PostgreSQL, etc.) using SQLAlchemy. It manages session
 creation and lifecycle.
 """
 
-from contextlib import contextmanager
+import asyncio
+from contextlib import asynccontextmanager, contextmanager
 
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
@@ -37,7 +39,20 @@ class Database:
         self.db_url = db_url
         self.engine = None
         self.SessionLocal = None
+        self.async_engine = None
+        self.AsyncSessionLocal = None
         self._tables_created = False
+        self._async_tables_created = False
+
+    def _get_async_db_url(self) -> str:
+        """Converts the standard database URL into an async-compatible URL."""
+        if self.db_url.startswith("sqlite://"):
+            return self.db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+        if self.db_url.startswith("postgresql://"):
+            return self.db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if self.db_url.startswith("mysql://") or self.db_url.startswith("mariadb://"):
+            return self.db_url.replace("://", "+aiomysql://", 1)
+        return self.db_url
 
     def initialize(self):
         """
@@ -60,10 +75,37 @@ class Database:
             pool_pre_ping=True,
             pool_recycle=3600,
         )
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
+        self.SessionLocal = sessionmaker(autoflush=False, bind=self.engine)
         self._tables_created = False
+
+    def async_initialize(self):
+        """
+        Initializes the async database engine and async session.
+
+        Creates the SQLAlchemy async engine and the async session factory.
+        """
+        if self.async_engine:
+            return
+
+        async_db_url = self._get_async_db_url()
+
+        connect_args = {}
+        # aiosqlite doesn't use check_same_thread like standard sqlite does,
+        # but if we needed specific aiosqlite connection args, they'd go here.
+
+        self.async_engine = create_async_engine(
+            async_db_url,
+            connect_args=connect_args,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
+        self.AsyncSessionLocal = async_sessionmaker(
+            bind=self.async_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+        self._async_tables_created = False
 
     def _ensure_tables_created(self):
         """
@@ -102,6 +144,19 @@ class Database:
 
             self._tables_created = True
 
+    async def _async_ensure_tables_created(self):
+        """
+        Ensures that the database tables are created asynchronously.
+        Since Alembic migrations are primarily synchronous, we wrap the
+        synchronous table creation logic here using `asyncio.to_thread`.
+        """
+        if not self._async_tables_created:
+            if not self.async_engine:
+                self.async_initialize()
+
+            await asyncio.to_thread(self._ensure_tables_created)
+            self._async_tables_created = True
+
     @contextmanager
     def session_manager(self):
         """
@@ -120,6 +175,21 @@ class Database:
         finally:
             db.close()
 
+    @asynccontextmanager
+    async def async_session_manager(self):
+        """
+        Async context manager for database sessions.
+
+        Yields:
+            AsyncSession: An async database session.
+        """
+        if not self.AsyncSessionLocal:
+            self.async_initialize()
+        await self._async_ensure_tables_created()
+        assert self.AsyncSessionLocal is not None
+        async with self.AsyncSessionLocal() as db:
+            yield db
+
     def close(self):
         """Closes the database connection engine."""
         if self.engine:
@@ -127,6 +197,7 @@ class Database:
 
     async def shutdown(self):
         """Gracefully closes the database connection asynchronously."""
-        import asyncio
 
+        if self.async_engine:
+            await self.async_engine.dispose()
         await asyncio.to_thread(self.close)

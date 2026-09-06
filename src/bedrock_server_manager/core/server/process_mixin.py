@@ -20,6 +20,7 @@ The availability of ``psutil`` (for :meth:`.ServerProcessMixin.get_process_info`
 is indicated by the :const:`.PSUTIL_AVAILABLE` flag defined in this module.
 """
 
+import asyncio
 import os
 import platform
 import subprocess
@@ -29,6 +30,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
     import psutil as psutil_for_types
+
+import typing
 
 from ...error import (
     BSMError,
@@ -88,6 +91,54 @@ class ServerProcessMixin(BedrockServerBaseMixin):
     if TYPE_CHECKING:
 
         def get_status_from_config(self) -> str: ...
+
+    @typing.no_type_check
+    async def async_is_running(self) -> bool:  # type: ignore
+        """Checks if the server process is currently running asynchronously."""
+
+        return await asyncio.to_thread(
+            self.process_manager.is_process_running, self.server_name
+        )
+
+    @typing.no_type_check
+    async def async_send_command(self, command: str) -> None:  # type: ignore
+        """Sends a command to the running server's standard input asynchronously."""
+
+        await asyncio.to_thread(self.send_command, command)
+
+    @typing.no_type_check
+    async def async_start(self) -> None:  # type: ignore
+        """Starts the server process asynchronously."""
+        self.logger.info(
+            f"Attempting to start server '{self.server_name}' asynchronously."
+        )
+
+        try:
+            if hasattr(self, "async_set_status_in_config"):
+                await self.async_set_status_in_config("STARTING")
+            else:
+                await asyncio.to_thread(self.set_status_in_config, "STARTING")
+
+            await asyncio.to_thread(self.start)
+
+        except Exception as e:
+            self.logger.error(f"Failed to start server asynchronously: {e}")
+            raise
+
+    @typing.no_type_check
+    async def async_stop(self) -> None:  # type: ignore
+        """Stops the server process asynchronously."""
+        self.logger.info(
+            f"Attempting to stop server '{self.server_name}' asynchronously."
+        )
+
+        await asyncio.to_thread(self.stop)
+
+    @typing.no_type_check
+    async def async_get_process_info(self) -> Optional[Dict[str, Any]]:  # type: ignore
+        """Retrieves resource usage information for the server process asynchronously."""
+
+        return await asyncio.to_thread(self.get_process_info)
 
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""
