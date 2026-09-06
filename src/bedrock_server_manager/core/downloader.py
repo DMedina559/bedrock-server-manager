@@ -27,6 +27,7 @@ dealing with potential network issues, file system operations, and changes in
 download URLs or API responses.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -36,6 +37,10 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Set, Tuple
 
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
+import aiohttp
 import requests  # type: ignore
 
 from ..error import (
@@ -56,6 +61,114 @@ if TYPE_CHECKING:
     from ..config.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+async def async_prune_old_downloads(
+    download_dir: str, download_keep: int
+):  # noqa: C901
+    """Asynchronously removes the oldest downloaded server ZIP files from a directory.
+
+    This function keeps a specified number of the most recent downloads and
+    deletes the rest to manage disk space using native async file operations.
+
+    Args:
+        download_dir: The directory containing the downloaded
+            ``bedrock-server-*.zip`` files.
+        download_keep: The number of most recent ZIP files to retain.
+
+    Raises:
+        MissingArgumentError: If `download_dir` is not provided.
+        UserInputError: If `download_keep` is not a non-negative integer.
+        AppFileNotFoundError: If `download_dir` does not exist.
+        FileOperationError: If there's an error accessing or deleting files.
+    """
+    if not download_dir:
+        raise MissingArgumentError("Download directory cannot be empty for pruning.")
+    if not isinstance(download_keep, int) or download_keep < 0:
+        raise UserInputError(
+            f"Invalid value for downloads to keep: '{download_keep}'. Must be an integer >= 0."
+        )
+
+    logger.debug(f"Configured to keep {download_keep} downloads in '{download_dir}'.")
+
+    if not await aiofiles.ospath.isdir(download_dir):
+        # Log a warning and return if the directory doesn't exist
+        logger.warning(
+            f"Download directory '{download_dir}' not found. Skipping pruning."
+        )
+        return
+
+    logger.info(
+        f"Pruning old Bedrock server downloads in '{download_dir}' (keeping {download_keep})..."
+    )
+
+    try:
+        # Find all files matching the bedrock server download pattern using thread wrap.
+        download_files_paths = await asyncio.to_thread(
+            find_files,
+            download_dir,
+            "bedrock-server-*.zip",
+            sort_by="mtime",
+            reverse=True,
+        )
+        download_files = []
+        for p in download_files_paths:
+            if isinstance(p, str):
+                download_files.append(p)
+            elif isinstance(p, dict) and "path" in p:
+                download_files.append(str(p["path"]))
+
+        logger.debug(
+            f"Found {len(download_files)} potential download files matching pattern in '{download_dir}'."
+        )
+
+        if len(download_files) > download_keep:
+            files_to_delete = download_files[download_keep:]
+            logger.info(
+                f"Found {len(download_files)} downloads in '{download_dir}'. Will delete {len(files_to_delete)} oldest file(s) to keep {download_keep}."
+            )
+
+            deleted_count = 0
+            failed_deletions = []
+            for file_path_str in files_to_delete:
+                try:
+                    await aiofiles.os.remove(file_path_str)
+                    logger.info(f"Deleted old download: {file_path_str}")
+                    deleted_count += 1
+                except OSError as e_unlink:
+                    logger.error(
+                        f"Failed to delete old server download '{file_path_str}': {e_unlink}",
+                        exc_info=True,
+                    )
+                    failed_deletions.append(file_path_str)
+
+            if failed_deletions:
+                logger.warning(
+                    f"Failed to delete {len(failed_deletions)} old download(s) in '{download_dir}': {', '.join(failed_deletions)}. Check logs."
+                )
+            if deleted_count > 0:
+                logger.info(
+                    f"Successfully deleted {deleted_count} old download(s) from '{download_dir}'."
+                )
+            elif not failed_deletions:
+                logger.info(
+                    f"No files were deleted from '{download_dir}' as part of this pruning operation."
+                )
+        else:
+            logger.info(
+                f"Found {len(download_files)} download(s) in '{download_dir}', which is not more than the {download_keep} to keep. No files deleted."
+            )
+
+    except OSError as e_os:
+        logger.warning(
+            f"Error accessing or processing files for pruning in '{download_dir}': {e_os}",
+            exc_info=True,
+        )
+    except Exception as e_generic:
+        logger.error(
+            f"Unexpected error during pruning operation for '{download_dir}': {e_generic}",
+            exc_info=True,
+        )
 
 
 def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C901
@@ -333,6 +446,120 @@ class BedrockDownloader:
                 f"Instance targeting specific STABLE version '{self._custom_version_number}' for server: {self.server_dir}"
             )
 
+    async def async_lookup_bedrock_download_url(self) -> str:  # noqa: C901
+        """Asynchronously finds the download URL by querying the official Minecraft download API.
+
+        This is the most reliable method as it does not rely on web scraping.
+
+        Returns:
+            The resolved download URL for the specified version and OS.
+
+        Raises:
+            SystemError: If the operating system is not supported.
+            InternetConnectivityError: If the API cannot be reached.
+            DownloadError: If the API response is invalid or does not contain
+                the required URL.
+        """
+        self.logger.debug(
+            f"Asynchronously looking up download URL for target: '{self.input_target_version}'"
+        )
+        API_URL = (
+            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
+        )
+
+        # 1. Determine the API identifier based on OS and version type.
+        if self.os_name == "Linux":
+            download_type = (
+                "serverBedrockPreviewLinux"
+                if self._version_type == "PREVIEW"
+                else "serverBedrockLinux"
+            )
+        elif self.os_name == "Windows":
+            download_type = (
+                "serverBedrockPreviewWindows"
+                if self._version_type == "PREVIEW"
+                else "serverBedrockWindows"
+            )
+        else:
+            raise SystemError(
+                f"Unsupported OS for Bedrock server download: {self.os_name}"
+            )
+        self.logger.debug(f"Targeting API downloadType identifier: '{download_type}'")
+
+        # 2. Fetch data from the API asynchronously.
+        try:
+            from ..config.const import app_name_title
+
+            app_name = str(self.settings.get("_app_name", app_name_title))
+            headers = {
+                "User-Agent": f"Python/{platform.python_version()} {app_name}/UnknownVersion"
+            }
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(
+                timeout=timeout, headers=headers
+            ) as session:
+                async with session.get(API_URL) as response:
+                    response.raise_for_status()
+                    api_data = await response.json()
+            self.logger.debug(f"Successfully fetched API data: {api_data}")
+        except aiohttp.ClientError as e:
+            raise InternetConnectivityError(
+                f"Could not contact the Minecraft download API: {e}"
+            ) from e
+        except json.JSONDecodeError as e:
+            raise DownloadError(
+                "The Minecraft download API returned malformed data."
+            ) from e
+
+        # 3. Find the correct download link in the response.
+        all_links = api_data.get("result", {}).get("links", [])
+        base_url = next(
+            (
+                link.get("downloadUrl")
+                for link in all_links
+                if link.get("downloadType") == download_type
+            ),
+            None,
+        )
+
+        if not base_url:
+            self.logger.error(
+                f"API response did not contain a URL for downloadType '{download_type}'."
+            )
+            raise DownloadError(
+                f"The API did not provide a download URL for your system ({download_type})."
+            )
+        self.logger.info(f"Found URL via API for '{download_type}': {base_url}")
+
+        # 4. If a specific version was requested, substitute it into the URL.
+        if self._custom_version_number:
+            try:
+                modified_url = re.sub(
+                    r"(bedrock-server-)[0-9.]+?(\.zip)",
+                    rf"\g<1>{self._custom_version_number}\g<2>",
+                    base_url,
+                    count=1,
+                )
+                if (
+                    modified_url == base_url
+                    and self._custom_version_number not in base_url
+                ):
+                    raise DownloadError(
+                        f"Failed to construct URL for specific version '{self._custom_version_number}'. The URL format may have changed."
+                    )
+                self.resolved_download_url = str(modified_url)
+                self.logger.info(
+                    f"Constructed specific version URL: {self.resolved_download_url}"
+                )
+                return str(modified_url)
+            except Exception as e:
+                raise DownloadError(
+                    f"Error modifying URL for specific version '{self._custom_version_number}': {e}"
+                ) from e
+        else:
+            self.resolved_download_url = str(base_url)
+            return str(base_url)
+
     def _lookup_bedrock_download_url(self) -> str:  # noqa: C901
         """Finds the download URL by querying the official Minecraft download API.
 
@@ -503,6 +730,84 @@ class BedrockDownloader:
         raise DownloadError(
             f"Failed to extract version number from URL format: {source_path}"
         )
+
+    async def async_download_server_zip_file(self):  # noqa: C901
+        """Asynchronously downloads the server ZIP file from the resolved URL.
+
+        Raises:
+            MissingArgumentError: If the URL or target file path are not set.
+            FileOperationError: If directories cannot be created or the file
+                cannot be written.
+            InternetConnectivityError: If the download request fails.
+        """
+        if not self.resolved_download_url or not self.zip_file_path:
+            raise MissingArgumentError(
+                "Download URL or ZIP file path not set. Cannot download."
+            )
+
+        self.logger.info(
+            f"Attempting to asynchronously download server from: {self.resolved_download_url}"
+        )
+        self.logger.debug(f"Saving downloaded file to: {self.zip_file_path}")
+
+        target_dir = os.path.dirname(self.zip_file_path)
+        try:
+            if target_dir and not await aiofiles.ospath.exists(target_dir):
+                os.makedirs(target_dir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Cannot create directory '{target_dir}' for download: {e}"
+            ) from e
+
+        try:
+            from ..config.const import app_name_title
+
+            app_name = self.settings.get("_app_name", app_name_title)
+            headers = {
+                "User-Agent": f"Python aiohttp/{aiohttp.__version__} ({app_name})"
+            }
+            # Use a streaming request to handle large files efficiently.
+            timeout = aiohttp.ClientTimeout(total=120)
+            async with aiohttp.ClientSession(
+                timeout=timeout, headers=headers
+            ) as session:
+                async with session.get(self.resolved_download_url) as response:
+                    response.raise_for_status()
+                    self.logger.debug(
+                        f"Download request successful (status {response.status}). Writing to file."
+                    )
+                    total_size = int(response.headers.get("content-length", 0))
+                    bytes_written = 0
+                    async with aiofiles.open(self.zip_file_path, "wb") as f:
+                        # Write the file in chunks to avoid high memory usage.
+                        async for chunk in response.content.iter_chunked(8192 * 4):
+                            await f.write(chunk)
+                            bytes_written += len(chunk)
+                    self.logger.info(
+                        f"Successfully downloaded {bytes_written} bytes to: {self.zip_file_path}"
+                    )
+                    if total_size != 0 and bytes_written != total_size:
+                        self.logger.warning(
+                            f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
+                        )
+        except aiohttp.ClientError as e:
+            # Clean up partial download on failure.
+            if await aiofiles.ospath.exists(self.zip_file_path):
+                try:
+                    await aiofiles.os.remove(self.zip_file_path)
+                except OSError as rm_err:
+                    self.logger.warning(
+                        f"Could not remove incomplete file '{self.zip_file_path}': {rm_err}"
+                    )
+            raise InternetConnectivityError(
+                f"Download failed for '{self.resolved_download_url}': {e}"
+            ) from e
+        except OSError as e:
+            raise FileOperationError(
+                f"Cannot write to file '{self.zip_file_path}': {e}"
+            ) from e
+        except Exception as e:
+            raise FileOperationError(f"Unexpected error during download: {e}") from e
 
     def _download_server_zip_file(self):  # noqa: C901
         """Downloads the server ZIP file from the resolved URL.
