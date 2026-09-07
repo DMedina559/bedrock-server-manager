@@ -73,6 +73,22 @@ from . import process as core_process
 logger = logging.getLogger(__name__)
 
 
+async def async_find_files(
+    directory: str,
+    pattern: str = "*",
+    sort_by: str = "name",
+    reverse: bool = False,
+    include_metadata: bool = False,
+) -> Union[List[str], List[Dict[str, Any]]]:
+    """Asynchronously finds files in a directory matching a pattern.
+
+    Delegates to :func:`find_files` via ``asyncio.to_thread``.
+    """
+    return await asyncio.to_thread(
+        find_files, directory, pattern, sort_by, reverse, include_metadata
+    )
+
+
 def find_files(
     directory: str,
     pattern: str = "*",
@@ -223,6 +239,14 @@ def check_internet_connectivity(
         raise InternetConnectivityError(error_msg) from e
 
 
+async def async_set_server_folder_permissions(server_dir: str) -> None:
+    """Asynchronously sets appropriate permissions for a Bedrock server installation directory.
+
+    Delegates to :func:`set_server_folder_permissions` via ``asyncio.to_thread``.
+    """
+    await asyncio.to_thread(set_server_folder_permissions, server_dir)
+
+
 def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
     """Sets appropriate permissions for a Bedrock server installation directory.
 
@@ -318,6 +342,34 @@ def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
         ) from e
     except Exception as e:
         raise PermissionsError(f"Unexpected error during permission setup: {e}") from e
+
+
+async def async_is_server_running(
+    server_name: str, server_dir: str, config_dir: str
+) -> bool:
+    """Asynchronously checks if a specific Bedrock server process is running and verified.
+
+    This acts as a high-level convenience wrapper around
+    :func:`~.core.system.process.async_get_verified_bedrock_process`.
+    """
+    if not isinstance(server_name, str) or not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+    if not isinstance(server_dir, str) or not server_dir:
+        raise MissingArgumentError("Server directory cannot be empty.")
+    if not isinstance(config_dir, str) or not config_dir:
+        raise MissingArgumentError("Configuration directory cannot be empty.")
+
+    try:
+        process = await core_process.async_get_verified_bedrock_process(
+            server_name, server_dir, config_dir
+        )
+        return process is not None
+    except Exception as e:
+        logger.error(
+            f"Error asynchronously checking if server '{server_name}' is running: {e}",
+            exc_info=True,
+        )
+        return False
 
 
 def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
