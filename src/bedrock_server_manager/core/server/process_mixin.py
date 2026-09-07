@@ -118,8 +118,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         ):
             # For asyncio.subprocess.Process
             return True
-        return await asyncio.to_thread(
-            system_base.is_server_running,
+        return await system_base.async_is_server_running(
             self.server_name,
             self.server_dir,
             self.app_config_dir,
@@ -293,8 +292,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             return
 
         if self._process is None:
-            verified_process = await asyncio.to_thread(
-                system_process.get_verified_bedrock_process,
+            verified_process = await system_process.async_get_verified_bedrock_process(
                 self.server_name,
                 self.server_dir,
                 self.app_config_dir,
@@ -401,8 +399,32 @@ class ServerProcessMixin(BedrockServerBaseMixin):
     @typing.no_type_check
     async def async_get_process_info(self) -> Optional[Dict[str, Any]]:  # type: ignore
         """Retrieves resource usage information for the server process asynchronously."""
+        try:
+            process_obj = await system_process.async_get_verified_bedrock_process(
+                self.server_name, self.server_dir, self.app_config_dir
+            )
 
-        return await asyncio.to_thread(self.get_process_info)
+            if process_obj is None:
+                self.logger.debug(
+                    f"No verified process found for server '{self.server_name}' to get info."
+                )
+                return None
+
+            return await asyncio.to_thread(
+                self._resource_monitor.get_stats, process_obj
+            )
+
+        except BSMError as e_bsm:
+            self.logger.warning(
+                f"Known error while trying to get process info for '{self.server_name}': {e_bsm}"
+            )
+            return None
+        except Exception as e_unexp:
+            self.logger.error(
+                f"Unexpected error getting process info for '{self.server_name}': {e_unexp}",
+                exc_info=True,
+            )
+            return None
 
     def is_running(self) -> bool:
         """Checks if the Bedrock server process is currently running and verified."""
