@@ -10,6 +10,7 @@ authors = [
 ]
 description = "A manager for Minecraft Bedrock Dedicated Servers"
 readme = "README.md"
+license = "LicenseRef-AGPL-3.0-or-later-WITH-Bedrock-Server-Manager-Plugin-Exception"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 classifiers = [
