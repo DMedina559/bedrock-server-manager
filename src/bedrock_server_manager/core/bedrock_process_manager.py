@@ -402,15 +402,11 @@ class BedrockProcessManager:
             # Wait loop utilizing shutdown event natively with timeout
             try:
                 # Use asyncio sleep but allow interrupt if shutdown happens
-                async def _wait_for_shutdown():
-                    while not self._shutdown_event.is_set():
-                        await asyncio.sleep(0.5)
+                for _ in range(int(monitoring_interval * 2)):
+                    if self._shutdown_event.is_set():
+                        break
+                    await asyncio.sleep(0.5)
 
-                done, pending = await asyncio.wait(
-                    [asyncio.create_task(_wait_for_shutdown())],
-                    timeout=monitoring_interval,
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
                 if self._shutdown_event.is_set():
                     break
             except asyncio.CancelledError:

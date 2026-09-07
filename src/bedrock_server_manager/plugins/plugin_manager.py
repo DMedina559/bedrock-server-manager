@@ -141,6 +141,53 @@ class PluginManager:
             db.commit()
             logger.info("Plugin configuration successfully saved to database.")
 
+    async def _async_load_config(self) -> Dict[str, Dict[str, Any]]:
+        """Loads plugin configurations from the database asynchronously."""
+        from sqlalchemy.future import select
+
+        from ..db.models import Plugin
+
+        async with self.app_context.db.async_session_manager() as db:
+            result = await db.execute(select(Plugin))
+            plugins = result.scalars().all()
+            return {
+                plugin.plugin_name: {
+                    "enabled": plugin.enabled,
+                    "version": plugin.version,
+                    "author": plugin.author,
+                    "description": plugin.description,
+                }
+                for plugin in plugins
+            }
+
+    async def _async_save_config(self):
+        """Saves the current in-memory plugin configuration to the database asynchronously."""
+        from sqlalchemy.future import select
+
+        from ..db.models import Plugin
+
+        async with self.app_context.db.async_session_manager() as db:
+            for plugin_name, config in self.plugin_config.items():
+                result = await db.execute(
+                    select(Plugin).filter(Plugin.plugin_name == plugin_name)
+                )
+                plugin = result.scalars().first()
+                if plugin:
+                    plugin.enabled = config.get("enabled", False)
+                    plugin.version = config.get("version")
+                    plugin.author = config.get("author")
+                    plugin.description = config.get("description")
+                else:
+                    plugin = Plugin(
+                        plugin_name=plugin_name,
+                        enabled=config.get("enabled", False),
+                        version=config.get("version"),
+                        author=config.get("author"),
+                        description=config.get("description"),
+                    )
+                    db.add(plugin)
+            await db.commit()
+
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches all configured plugin directories for a specific plugin file.
 
@@ -1397,3 +1444,237 @@ class PluginManager:
                     f"Error auto-registering @task_loop for plugin '{plugin_instance.name}': {e}",
                     exc_info=True,
                 )
+
+    async def _async_synchronize_config_with_disk(self) -> None:  # noqa: C901
+        """Asynchronously scans plugin directories, validates plugins, extracts metadata, and updates the database."""
+        import asyncio
+
+        # We must load current config from DB
+        current_config = await self._async_load_config()
+
+        valid_plugin_names = set()
+
+        # A helper for file IO ops
+        def _scan_and_load():
+            found = []
+            for directory in self.plugin_dirs:
+                if not directory.exists() or not directory.is_dir():
+                    continue
+                for item in directory.iterdir():
+                    if item.name.startswith("__"):
+                        continue
+                    if item.is_file() and item.suffix == ".py":
+                        found.append((item, None))
+                    elif item.is_dir() and (item / "__init__.py").is_file():
+                        found.append((item / "__init__.py", item.name))
+
+            validated = []
+            for path, override_name in found:
+                p_name = override_name if override_name else path.stem
+                p_class = self._get_plugin_class_from_path(path, override_name)
+                if p_class:
+                    version = getattr(p_class, "version", None)
+                    if version and version != "N/A":
+                        validated.append((p_name, p_class, version))
+                    else:
+                        logger.warning(
+                            f"Plugin class '{p_class.__name__}' in file '{path}' (for plugin '{p_name}') "
+                            "is missing a valid 'version' class attribute or the version is empty. "
+                            "It will not be loaded."
+                        )
+            return validated
+
+        validated_plugins = await asyncio.to_thread(_scan_and_load)
+
+        for plugin_name, plugin_class, version in validated_plugins:
+            valid_plugin_names.add(plugin_name)
+            description = plugin_class.__doc__.strip() if plugin_class.__doc__ else ""
+            author = getattr(plugin_class, "author", "N/A")
+
+            if plugin_name not in current_config:
+                from ..config.const import DEFAULT_ENABLED_PLUGINS
+
+                is_enabled = plugin_name in DEFAULT_ENABLED_PLUGINS
+                current_config[plugin_name] = {
+                    "enabled": is_enabled,
+                    "description": description,
+                    "version": version,
+                    "author": author,
+                }
+                logger.info(
+                    f"Found new valid plugin: '{plugin_name}'. Added to configuration (Enabled: {is_enabled})."
+                )
+            else:
+                if isinstance(current_config[plugin_name], bool):
+                    current_config[plugin_name] = {
+                        "enabled": current_config[plugin_name],
+                        "description": description,
+                        "version": version,
+                        "author": author,
+                    }
+                else:
+                    current_config[plugin_name]["description"] = description
+                    current_config[plugin_name]["version"] = version
+                    current_config[plugin_name]["author"] = author
+
+                current_config[plugin_name].setdefault("enabled", False)
+
+        plugins_to_remove = []
+        for plugin_name in current_config.keys():
+            if plugin_name not in valid_plugin_names:
+                plugins_to_remove.append(plugin_name)
+
+        for plugin_name in plugins_to_remove:
+            logger.warning(
+                f"Removed invalid plugin entry '{plugin_name}' from configuration because its class "
+                "or version attribute could not be found."
+            )
+            del current_config[plugin_name]
+
+        self.plugin_config = current_config
+        await self._async_save_config()
+
+    async def async_load_plugins(self) -> None:
+        """Asynchronously discovers, validates, and loads all enabled plugins."""
+        import asyncio
+
+        # Synchronize configuration natively asynchronously if possible
+        if hasattr(self.app_context.db, "async_session_manager"):
+            await self._async_synchronize_config_with_disk()
+        else:
+            await asyncio.to_thread(self._synchronize_config_with_disk)
+
+        # Clear existing
+        self.plugins.clear()
+
+        # Load the configuration natively asynchronously
+        if hasattr(self.app_context.db, "async_session_manager"):
+            enabled_plugins_data = {
+                name: data
+                for name, data in (await self._async_load_config()).items()
+                if data.get("enabled", False)
+            }
+        else:
+            enabled_plugins_data = {
+                name: data
+                for name, data in self._load_config().items()
+                if data.get("enabled", False)
+            }
+
+        # The class discovery from files is fundamentally synchronous (importlib). We thread it.
+        def _get_classes_and_sort():
+            plugin_classes = {}
+            for plugin_name in enabled_plugins_data:
+                plugin_path = self._find_plugin_path(plugin_name)
+                if plugin_path:
+                    plugin_class = self._get_plugin_class_from_path(
+                        plugin_path, plugin_name
+                    )
+                    if plugin_class:
+                        plugin_classes[plugin_name] = plugin_class
+
+            from collections import deque
+
+            def topological_sort(classes):
+                in_degree = {name: 0 for name in classes}
+                graph = {name: [] for name in classes}
+                for name, cls in classes.items():
+                    deps = getattr(cls, "dependencies", [])
+                    for dep in deps:
+                        if dep in classes:
+                            graph[dep].append(name)
+                            in_degree[name] += 1
+                queue = deque([name for name in classes if in_degree[name] == 0])
+                sorted_plugins = []
+                while queue:
+                    node = queue.popleft()
+                    sorted_plugins.append(node)
+                    for neighbor in graph[node]:
+                        in_degree[neighbor] -= 1
+                        if in_degree[neighbor] == 0:
+                            queue.append(neighbor)
+                if len(sorted_plugins) != len(classes):
+                    logger.error(
+                        "Circular dependency detected in plugins. Load order will be arbitrary."
+                    )
+                    return list(classes.keys())
+                return sorted_plugins
+
+            sorted_plugin_names = topological_sort(plugin_classes)
+            return sorted_plugin_names, plugin_classes
+
+        sorted_plugin_names, plugin_classes = await asyncio.to_thread(
+            _get_classes_and_sort
+        )
+
+        for plugin_name in sorted_plugin_names:
+            plugin_class = plugin_classes.get(plugin_name)
+            if plugin_class:
+                missing_deps = [
+                    dep
+                    for dep in getattr(plugin_class, "dependencies", [])
+                    if dep not in [p.name for p in self.plugins]
+                ]
+                if missing_deps:
+                    logger.warning(
+                        f"Skipping plugin '{plugin_name}' due to missing dependencies: {missing_deps}"
+                    )
+                    continue
+
+                logger.debug(
+                    f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
+                )
+                import logging
+
+                try:
+                    plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
+                    plugin_instance = plugin_class(
+                        name=plugin_name,
+                        api=self.app_context.api,
+                        logger=plugin_logger,
+                    )
+                    self.plugins.append(plugin_instance)
+
+                    await self.dispatch_event_async(plugin_instance, "on_load")
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
+                        exc_info=True,
+                    )
+
+    async def async_unload_plugins(self) -> None:
+        """Asynchronously unloads all currently active plugins."""
+        logger.info("Unloading all plugins asynchronously...")
+
+        for plugin in self.plugins:
+            try:
+                await self.dispatch_event_async(plugin, "on_unload")
+            except Exception as e:
+                logger.error(
+                    f"Error during 'on_unload' for plugin '{getattr(plugin, 'name', 'unknown')}': {e}",
+                    exc_info=True,
+                )
+
+        self.plugins.clear()
+
+        if hasattr(self, "plugin_tasks"):
+            for plugin_name, tasks in list(self.plugin_tasks.items()):
+                for task in tasks:
+                    task.cancel()
+            self.plugin_tasks.clear()
+
+        logger.info("All plugins unloaded asynchronously.")
+
+    async def async_reload(self) -> None:
+        """Asynchronously reloads the plugin manager."""
+        logger.info("Reloading PluginManager asynchronously...")
+        await self.async_unload_plugins()
+        if hasattr(self.app_context.db, "async_session_manager"):
+            self.plugin_config = await self._async_load_config()
+        else:
+            import asyncio
+
+            self.plugin_config = await asyncio.to_thread(self._load_config)
+        await self.async_load_plugins()
+        logger.info("PluginManager reload complete.")
