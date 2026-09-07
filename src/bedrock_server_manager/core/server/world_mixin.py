@@ -126,11 +126,13 @@ class ServerWorldMixin(BedrockServerBaseMixin):
 
     @typing.no_type_check
     async def async_extract_mcworld(
-        self, mcworld_file_path: str, is_new_install: bool = False
-    ) -> None:
+        self, mcworld_file_path: str, target_world_dir_name: str
+    ) -> str:
         """Extracts an `.mcworld` file asynchronously."""
 
-        await asyncio.to_thread(self.extract_mcworld, mcworld_file_path, is_new_install)
+        return await asyncio.to_thread(
+            self.extract_mcworld, mcworld_file_path, target_world_dir_name
+        )
 
     @typing.no_type_check
     async def async_export_world(

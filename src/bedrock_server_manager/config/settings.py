@@ -16,6 +16,7 @@ Key components:
 
 """
 
+import asyncio
 import collections.abc
 import logging
 import os
@@ -331,4 +332,100 @@ class Settings:
         """
         logger.info("Reloading configuration from database")
         self.load()
+        logger.info("Configuration reloaded successfully.")
+
+    async def async_load(self) -> None:
+        """Loads settings from the database asynchronously."""
+        from sqlalchemy.future import select
+
+        self._settings = self.default_config
+
+        assert self.db is not None
+        if not hasattr(self.db, "async_session_manager"):
+            # Fallback to thread if async is not available
+            await asyncio.to_thread(self.load)
+            return
+
+        async with self.db.async_session_manager() as db:
+            result = await db.execute(select(Setting))
+            settings_all = result.scalars().all()
+
+            if not settings_all:
+                logger.info(
+                    "No settings found in the database. Creating with default settings asynchronously."
+                )
+                await self._async_write_config(db)
+            else:
+                try:
+                    user_config = {}
+                    for setting in settings_all:
+                        user_config[setting.key] = setting.value
+
+                    deep_merge(user_config, self._settings)
+
+                except (ValueError, OSError) as e:
+                    logger.warning(
+                        f"Could not load config from database asynchronously: {e}. "
+                        "Using default settings."
+                    )
+
+    async def _async_write_config(self, db: Any) -> None:
+        """Writes the current settings dictionary to the database asynchronously."""
+        from sqlalchemy.future import select
+
+        try:
+            for key, value in self._settings.items():
+                result = await db.execute(select(Setting).filter_by(key=key))
+                setting = result.scalars().first()
+                if setting:
+                    setting.value = value
+                else:
+                    setting = Setting(key=key, value=value)
+                    db.add(setting)
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            raise ConfigurationError(
+                f"Failed to write configuration asynchronously: {e}"
+            ) from e
+
+    async def async_set(self, key: str, value: Any) -> None:
+        """Sets a configuration value using dot-notation and saves the change asynchronously."""
+        if self.get(key) == value:
+            return
+
+        keys = key.split(".")
+        d: Any = self._settings
+        for k in keys[:-1]:
+            if isinstance(d, dict):
+                d = d.setdefault(k, {})
+            else:
+                raise ConfigurationError(
+                    f"Cannot set key '{key}' because path conflict."
+                )
+
+        if isinstance(d, dict):
+            d[keys[-1]] = value
+
+        if key != "web.jwt_token_secret":
+            logger.debug(
+                f"Setting '{key}' updated to '{value}'. Saving configuration asynchronously."
+            )
+        else:
+            logger.debug(
+                f"Setting '{key}' updated. Saving configuration asynchronously."
+            )
+
+        assert self.db is not None
+        if not hasattr(self.db, "async_session_manager"):
+            await asyncio.to_thread(self.set, key, value)
+            return
+
+        async with self.db.async_session_manager() as db:
+            await self._async_write_config(db)
+
+    async def async_reload(self):
+        """Reloads the settings from the database asynchronously."""
+        logger.info("Reloading configuration from database asynchronously")
+        await self.async_load()
         logger.info("Configuration reloaded successfully.")
