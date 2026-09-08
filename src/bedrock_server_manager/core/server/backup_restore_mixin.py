@@ -25,7 +25,10 @@ import os
 import re
 import shutil
 import typing
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
+
+import aiofiles
+import aiofiles.ospath
 
 from ...error import (
     AppFileNotFoundError,
@@ -36,6 +39,7 @@ from ...error import (
     UserInputError,
 )
 from ...utils import get_timestamp
+from ..system import base as system_base
 from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -132,26 +136,57 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
     @typing.no_type_check
     async def async_list_backups(
-        self,
-        backup_type: Optional[str] = None,
-        sort_by: str = "date",
-        reverse: bool = True,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        self, backup_type: str
+    ) -> Union[List[str], Dict[str, List[str]]]:
         """Lists server backups asynchronously."""
-
-        return await asyncio.to_thread(
-            self.list_backups, backup_type, sort_by, reverse, limit
+        self.logger.debug(
+            f"Listing available {backup_type} backups for server '{self.server_name}' asynchronously."
         )
+
+        backup_dir = self.server_backup_directory()
+        if not backup_dir or not await aiofiles.ospath.isdir(backup_dir):
+            self.logger.info(
+                f"No backup directory found for '{self.server_name}' at expected path."
+            )
+            return (
+                []
+                if backup_type in ("worlds", "configs")
+                else {"worlds": [], "configs": []}
+            )
+
+        async def _find_and_sort_backups_async(pattern: str) -> List[str]:
+            files = await system_base.async_find_files(
+                backup_dir, pattern=pattern, sort_by="time", reverse=True
+            )
+            return cast(List[str], files)
+
+        if backup_type == "worlds":
+            return await _find_and_sort_backups_async(
+                f"{self.server_name}_world_backup_*.zip"
+            )
+        elif backup_type == "configs":
+            return await _find_and_sort_backups_async(
+                f"{self.server_name}_config_backup_*.zip"
+            )
+        elif backup_type == "all":
+            return {
+                "worlds": await _find_and_sort_backups_async(
+                    f"{self.server_name}_world_backup_*.zip"
+                ),
+                "configs": await _find_and_sort_backups_async(
+                    f"{self.server_name}_config_backup_*.zip"
+                ),
+            }
+        else:
+            raise UserInputError("backup_type must be 'worlds', 'configs', or 'all'.")
 
     @typing.no_type_check
     async def async_prune_server_backups(
-        self, keep_worlds: int, keep_configs: int
-    ) -> Dict[str, int]:
+        self, component_prefix: str, file_extension: str
+    ) -> None:
         """Prunes server backups asynchronously."""
-
-        return await asyncio.to_thread(
-            self.prune_server_backups, keep_worlds, keep_configs
+        await asyncio.to_thread(
+            self.prune_server_backups, component_prefix, file_extension
         )
 
     @typing.no_type_check

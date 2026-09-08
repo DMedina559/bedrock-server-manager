@@ -22,120 +22,120 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
     """Provides methods for managing the permissions.json configuration."""
 
     @typing.no_type_check
-    async def async_set_player_permission(  # noqa: C901
-        self, target_player_xuid: str, permission_level: str
-    ) -> bool:  # type: ignore
+    async def async_set_player_permission(
+        self, xuid: str, permission_level: str, player_name: Optional[str] = None
+    ) -> None:
         """Sets the permission level for a player asynchronously."""
+        if not await aiofiles.ospath.isdir(self.server_dir):
+            raise AppFileNotFoundError(self.server_dir, "Server directory")
+        if not xuid:
+            raise MissingArgumentError("Player XUID cannot be empty.")
+        if not permission_level:
+            raise MissingArgumentError("Permission level cannot be empty.")
 
-        self.logger.debug(
-            f"Setting permission for XUID '{target_player_xuid}' to '{permission_level}' on '{self.server_name}' asynchronously."
+        perm_level_lower = permission_level.lower()
+        valid_perms = ("operator", "member", "visitor")
+        if perm_level_lower not in valid_perms:
+            raise UserInputError(
+                f"Invalid permission '{perm_level_lower}'. Must be one of: {valid_perms}"
+            )
+
+        self.logger.info(
+            f"Server '{self.server_name}': Setting permission for XUID '{xuid}' to '{perm_level_lower}' asynchronously."
         )
 
-        valid_levels = ["visitor", "member", "operator"]
-        if permission_level not in valid_levels:
-            raise UserInputError(
-                f"Invalid permission level '{permission_level}'. Must be one of {valid_levels}."
-            )
-
-        if not target_player_xuid or not isinstance(target_player_xuid, str):
-            raise UserInputError(
-                "Target player XUID must be a valid, non-empty string."
-            )
-
-        if not await aiofiles.ospath.isfile(self.permissions_path):
-            self.logger.warning(
-                f"Permissions file not found at '{self.permissions_path}' for '{self.server_name}'. A new one will be created."
-            )
-            permissions_data = []
-        else:
+        permissions_list: List[Dict[str, Any]] = []
+        if await aiofiles.ospath.isfile(self.permissions_json_path):
             try:
                 async with aiofiles.open(
-                    self.permissions_path, "r", encoding="utf-8"
+                    self.permissions_json_path, "r", encoding="utf-8"
                 ) as f:
-                    content = await f.read()
-                    permissions_data = json.loads(content)
-            except json.JSONDecodeError as e:
-                self.logger.error(
-                    f"JSON decode error in {self.permissions_path}: {e}. Creating a fresh permissions list."
+                    file_content = await f.read()
+                    if file_content.strip():
+                        loaded_data = await asyncio.to_thread(json.loads, file_content)
+                        if isinstance(loaded_data, list):
+                            permissions_list = loaded_data
+                        else:
+                            self.logger.warning(
+                                f"Permissions file '{self.permissions_json_path}' is not a list. Overwriting."
+                            )
+            except ValueError as e:
+                self.logger.warning(
+                    f"Invalid JSON in permissions '{self.permissions_json_path}'. Overwriting. Error: {e}"
                 )
-                permissions_data = []
-            except Exception as e:
-                self.logger.error(f"Error reading {self.permissions_path}: {e}")
-                return False
+            except OSError as e:
+                raise FileOperationError(
+                    f"Failed to read permissions '{self.permissions_json_path}': {e}"
+                ) from e
 
         updated = False
-        for entry in permissions_data:
-            if entry.get("xuid") == target_player_xuid:
-                if entry.get("permission") != permission_level:
-                    entry["permission"] = permission_level
+        for perm_entry in permissions_list:
+            if isinstance(perm_entry, dict) and perm_entry.get("xuid") == xuid:
+                if perm_entry.get("permission") != perm_level_lower:
+                    perm_entry["permission"] = perm_level_lower
                     updated = True
-                else:
-                    self.logger.debug(
-                        f"Player XUID '{target_player_xuid}' already has permission '{permission_level}'. No changes needed."
-                    )
-                    return True
                 break
         else:
-            permissions_data.append(
-                {"xuid": target_player_xuid, "permission": permission_level}
-            )
+            permissions_list.append({"xuid": xuid, "permission": perm_level_lower})
             updated = True
 
         if updated:
             try:
+                json_content = await asyncio.to_thread(
+                    json.dumps, permissions_list, indent=4, sort_keys=True
+                )
                 async with aiofiles.open(
-                    self.permissions_path, "w", encoding="utf-8"
+                    self.permissions_json_path, "w", encoding="utf-8"
                 ) as f:
-                    content = json.dumps(permissions_data, indent=4)
-                    await f.write(content)
+                    await f.write(json_content)
                 self.logger.info(
-                    f"Successfully set permission for '{target_player_xuid}' to '{permission_level}'."
+                    f"Successfully updated permissions for '{self.server_name}'."
                 )
 
                 if hasattr(self, "async_is_running"):
                     is_running = await self.async_is_running()
                 else:
-
                     is_running = await asyncio.to_thread(self.is_running)
 
                 if is_running:
                     if hasattr(self, "async_send_command"):
                         await self.async_send_command("permission reload")
                     else:
-
-                        await self.async_send_command("permission reload")
+                        await asyncio.to_thread(self.send_command, "permission reload")
                     self.logger.info(
                         f"Reloaded permissions for running server '{self.server_name}'."
                     )
+            except OSError as e:
+                raise FileOperationError(
+                    f"Failed to write permissions '{self.permissions_json_path}': {e}"
+                ) from e
+        else:
+            self.logger.info(
+                f"Permission for XUID '{xuid}' is already '{perm_level_lower}'. No changes made."
+            )
 
-                return True
-            except Exception as e:
-                self.logger.error(f"Failed to write to {self.permissions_path}: {e}")
-                return False
-
-        return True
-
-    @typing.no_type_check
     async def async_get_formatted_permissions(
         self, db_session_manager
     ) -> List[Dict[str, str]]:  # type: ignore
         """Retrieves permissions and maps XUIDs to known player names asynchronously."""
 
-        if not await aiofiles.ospath.isfile(self.permissions_path):
+        if not await aiofiles.ospath.isfile(self.permissions_json_path):
             self.logger.debug(
-                f"Permissions file not found at '{self.permissions_path}'. Returning empty list."
+                f"Permissions file not found at '{self.permissions_json_path}'. Returning empty list."
             )
             return []
 
         try:
-            async with aiofiles.open(self.permissions_path, "r", encoding="utf-8") as f:
+            async with aiofiles.open(
+                self.permissions_json_path, "r", encoding="utf-8"
+            ) as f:
                 content = await f.read()
                 permissions_data = json.loads(content)
         except json.JSONDecodeError as e:
-            self.logger.error(f"JSON decode error in {self.permissions_path}: {e}")
+            self.logger.error(f"JSON decode error in {self.permissions_json_path}: {e}")
             return []
         except Exception as e:
-            self.logger.error(f"Error reading {self.permissions_path}: {e}")
+            self.logger.error(f"Error reading {self.permissions_json_path}: {e}")
             return []
 
         try:

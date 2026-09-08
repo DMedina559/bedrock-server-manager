@@ -267,11 +267,12 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
 
     @typing.no_type_check
     async def async_delete_server_files(
-        self, keep_worlds: bool = False, keep_config: bool = False
-    ) -> None:
+        self, item_description_prefix: str = "server installation files for"
+    ) -> bool:
         """Deletes server files asynchronously."""
-
-        await asyncio.to_thread(self.delete_server_files, keep_worlds, keep_config)
+        return await asyncio.to_thread(
+            self.delete_server_files, item_description_prefix
+        )
 
     @typing.no_type_check
     async def async_delete_all_data(self) -> None:
