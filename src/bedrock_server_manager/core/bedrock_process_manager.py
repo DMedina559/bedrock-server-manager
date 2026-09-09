@@ -19,7 +19,7 @@ from mcstatus import BedrockServer as mc
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError, ServerStartError
-from .player import save_player_data
+from .player import async_save_player_data, save_player_data
 
 if TYPE_CHECKING:
     from .bedrock_server import BedrockServer
@@ -76,8 +76,32 @@ class BedrockProcessManager:
         )
         self.servers[server.server_name] = server
 
+    async def async_add_server(self, server: "BedrockServer"):
+        """Adds a server to be managed by the process manager asynchronously.
+
+        Args:
+            server (BedrockServer): The server instance to monitor.
+        """
+        self.logger.info(
+            f"Adding server '{server.server_name}' to process manager for monitoring."
+        )
+        self.servers[server.server_name] = server
+
     def remove_server(self, server_name: str):
         """Removes a server from the process manager.
+
+        This stops the manager from monitoring the server, but does not stop
+        the server process itself.
+
+        Args:
+            server_name (str): The name of the server to remove.
+        """
+        if server_name in self.servers:
+            self.logger.info(f"Removing server '{server_name}' from process manager.")
+            del self.servers[server_name]
+
+    async def async_remove_server(self, server_name: str):
+        """Removes a server from the process manager asynchronously.
 
         This stops the manager from monitoring the server, but does not stop
         the server process itself.
@@ -105,22 +129,36 @@ class BedrockProcessManager:
         self.logger.info("ProcessManager: Stopping all running servers concurrently...")
 
         async def _stop_server(server_name, server):
-            if not server.is_running():
+            if hasattr(server, "async_is_running"):
+                is_running = await server.async_is_running()
+            else:
+                is_running = await asyncio.to_thread(server.is_running)
+
+            if not is_running:
                 return
 
-            def _do_stop():
-                if hasattr(self.app_context, "api"):
-                    try:
-                        self.app_context.api.stop_server(server_name)
-                    except Exception as e:
-                        self.logger.error(
-                            f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+            if hasattr(self.app_context, "api"):
+                try:
+                    if hasattr(self.app_context.api, "async_stop_server"):
+                        await self.app_context.api.async_stop_server(server_name)
+                    else:
+                        await asyncio.to_thread(
+                            self.app_context.api.stop_server, server_name
                         )
-                        server.stop()
+                except Exception as e:
+                    self.logger.error(
+                        f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                    )
+                    if hasattr(server, "async_stop"):
+                        await server.async_stop()
+                    else:
+                        await asyncio.to_thread(server.stop)
+            else:
+                if hasattr(server, "async_stop"):
+                    await server.async_stop()
                 else:
-                    server.stop()
+                    await asyncio.to_thread(server.stop)
 
-            await asyncio.to_thread(_do_stop)
             self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
 
         tasks = []
@@ -555,9 +593,8 @@ class BedrockProcessManager:
                                 )
 
                             if players:
-                                await asyncio.to_thread(
-                                    save_player_data,
-                                    self.settings.db.session_manager(),
+                                await async_save_player_data(
+                                    self.settings.db.async_session_manager(),
                                     players,
                                 )
                     except struct.error:
