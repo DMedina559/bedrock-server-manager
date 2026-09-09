@@ -71,9 +71,7 @@ async def test_async_save_json_fault_tolerance(temp_dir):
     corrupt_data = {"status": "corrupting"}
 
     # Force a failure during the open/dump phase
-    with mock.patch(
-        "bedrock_server_manager.utils.io.open", side_effect=OSError("Disk failure")
-    ):
+    with mock.patch("builtins.open", side_effect=OSError("Disk failure")):
         with pytest.raises(OSError, match="Disk failure"):
             await async_save_json(corrupt_data, filepath)
 
