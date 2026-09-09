@@ -159,7 +159,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 os.path.join(world_dir, "world_resource_packs.json")
             )
 
-            await self.async__compare_physical_and_activated(
+            all_addons = await self.async__compare_physical_and_activated(
                 all_addons, activated_bp + activated_rp
             )
         else:
@@ -263,8 +263,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             )
 
         try:
-            import json
-
             async with aiofiles.open(world_json_file_path, "w", encoding="utf-8") as f:
                 await f.write(json.dumps(packs_list, indent=2, sort_keys=True))
             self.logger.info(
@@ -354,8 +352,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             updated_packs_list.append(remaining_pack)
 
         try:
-            import json
-
             async with aiofiles.open(world_json_file_path, "w", encoding="utf-8") as f:
                 await f.write(json.dumps(updated_packs_list, indent=2, sort_keys=True))
             self.logger.info(
@@ -420,8 +416,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         def _do_export():
             try:
-                import zipfile
-
                 with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                     for root, _, files in os.walk(pack_path):
                         for file in files:
@@ -432,8 +426,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 raise FileOperationError(
                     f"Failed to create .mcpack archive at '{export_path}': {e}"
                 ) from e
-
-        import asyncio
 
         await asyncio.to_thread(_do_export)
 
@@ -480,9 +472,6 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             if await aiofiles.ospath.isdir(path_to_remove):
                 self.logger.info(f"Removing physical pack files at '{path_to_remove}'.")
                 try:
-                    import asyncio
-                    import shutil
-
                     await asyncio.to_thread(shutil.rmtree, path_to_remove)
                 except OSError as e:
                     self.logger.error(
@@ -646,8 +635,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 self.logger.info(
                     f"Extracting '{os.path.basename(mcaddon_file_path)}' to temp dir..."
                 )
-                with zipfile.ZipFile(mcaddon_file_path, "r") as zip_ref:
-                    zip_ref.extractall(temp_dir)
+
+                def _extract():
+                    with zipfile.ZipFile(mcaddon_file_path, "r") as zip_ref:
+                        zip_ref.extractall(temp_dir)
+
+                await asyncio.to_thread(_extract)
                 self.logger.debug(
                     f"Successfully extracted '{os.path.basename(mcaddon_file_path)}'."
                 )
@@ -1027,8 +1020,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         try:
             try:
                 self.logger.info(f"Extracting '{mcpack_filename}' to temp dir...")
-                with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
-                    zip_ref.extractall(temp_dir)
+
+                def _extract():
+                    with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
+                        zip_ref.extractall(temp_dir)
+
+                await asyncio.to_thread(_extract)
                 self.logger.debug(f"Successfully extracted '{mcpack_filename}'.")
             except zipfile.BadZipFile as e:
                 raise ExtractError(
