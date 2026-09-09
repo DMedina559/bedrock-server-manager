@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 from typing import Any, Dict, List
@@ -18,10 +17,10 @@ from .base_server_mixin import BedrockServerBaseMixin
 class ServerAllowlistMixin(BedrockServerBaseMixin):
     """Provides methods for managing the allowlist.json configuration."""
 
-    async def async_get_allowlist(self) -> List[Dict[str, Any]]:  # type: ignore
+    async def async_get_allowlist(self) -> List[Dict[str, Any]]:
         """Reads the `allowlist.json` file asynchronously and returns its contents."""
         self.logger.debug(
-            f"Server '{self.server_name}': Loading allowlist from {self.allowlist_json_path} asynchronously"
+            f"Server '{self.server_name}': Loading allowlist from {self.allowlist_json_path}"
         )
 
         if not await aiofiles.ospath.isdir(self.server_dir):
@@ -35,7 +34,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                 ) as f:
                     content = await f.read()
                     if content.strip():
-                        loaded_data = await asyncio.to_thread(json.loads, content)
+                        loaded_data = json.loads(content)
                         if isinstance(loaded_data, list):
                             allowlist_entries = loaded_data
                         else:
@@ -57,7 +56,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
 
         return allowlist_entries
 
-    async def async_add_to_allowlist(self, players_to_add: List[Dict[str, Any]]) -> int:  # type: ignore
+    async def async_add_to_allowlist(self, players_to_add: List[Dict[str, Any]]) -> int:
         """Adds players to the allowlist asynchronously."""
         if not isinstance(players_to_add, list):
             raise TypeError("Input 'players_to_add' must be a list of dictionaries.")
@@ -65,7 +64,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
             raise AppFileNotFoundError(self.server_dir, "Server directory")
 
         self.logger.info(
-            f"Server '{self.server_name}': Adding {len(players_to_add)} player(s) to allowlist asynchronously."
+            f"Server '{self.server_name}': Adding {len(players_to_add)} player(s) to allowlist."
         )
 
         current_allowlist = await self.async_get_allowlist()
@@ -104,9 +103,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
 
         if added_count > 0:
             try:
-                content = await asyncio.to_thread(
-                    json.dumps, current_allowlist, indent=4, sort_keys=True
-                )
+                content = json.dumps(current_allowlist, indent=4, sort_keys=True)
                 async with aiofiles.open(
                     self.allowlist_json_path, "w", encoding="utf-8"
                 ) as f:
@@ -114,20 +111,6 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                 self.logger.info(
                     f"Successfully updated allowlist for '{self.server_name}'. {added_count} players added."
                 )
-
-                if hasattr(self, "async_is_running"):
-                    is_running = await self.async_is_running()
-                else:
-                    is_running = await asyncio.to_thread(self.is_running)  # type: ignore[attr-defined]
-
-                if is_running:
-                    if hasattr(self, "async_send_command"):
-                        await self.async_send_command("allowlist reload")
-                    else:
-                        await asyncio.to_thread(self.send_command, "allowlist reload")  # type: ignore[attr-defined]
-                    self.logger.info(
-                        f"Reloaded allowlist for running server '{self.server_name}'."
-                    )
             except OSError as e:
                 raise FileOperationError(
                     f"Failed to write allowlist '{self.allowlist_json_path}': {e}"
@@ -138,7 +121,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
             )
         return added_count
 
-    async def async_remove_from_allowlist(self, player_name_to_remove: str) -> bool:  # type: ignore
+    async def async_remove_from_allowlist(self, player_name_to_remove: str) -> bool:
         """Removes a player from the allowlist asynchronously."""
         if not isinstance(player_name_to_remove, str) or not player_name_to_remove:
             raise MissingArgumentError(
@@ -148,7 +131,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
             raise AppFileNotFoundError(self.server_dir, "Server directory")
 
         self.logger.info(
-            f"Server '{self.server_name}': Removing player '{player_name_to_remove}' from allowlist asynchronously."
+            f"Server '{self.server_name}': Removing player '{player_name_to_remove}' from allowlist."
         )
 
         current_allowlist = await self.async_get_allowlist()
@@ -165,9 +148,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
 
         if len(updated_allowlist) < len(current_allowlist):
             try:
-                content = await asyncio.to_thread(
-                    json.dumps, updated_allowlist, indent=4, sort_keys=True
-                )
+                content = json.dumps(updated_allowlist, indent=4, sort_keys=True)
                 async with aiofiles.open(
                     self.allowlist_json_path, "w", encoding="utf-8"
                 ) as f:
@@ -175,21 +156,6 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                 self.logger.info(
                     f"Successfully removed '{player_name_to_remove}' from allowlist for '{self.server_name}'."
                 )
-
-                if hasattr(self, "async_is_running"):
-                    is_running = await self.async_is_running()
-                else:
-                    is_running = await asyncio.to_thread(self.is_running)  # type: ignore[attr-defined]
-
-                if is_running:
-                    if hasattr(self, "async_send_command"):
-                        await self.async_send_command("allowlist reload")
-                    else:
-                        await asyncio.to_thread(self.send_command, "allowlist reload")  # type: ignore[attr-defined]
-                    self.logger.info(
-                        f"Reloaded allowlist for running server '{self.server_name}'."
-                    )
-
                 return True
             except OSError as e:
                 raise FileOperationError(
