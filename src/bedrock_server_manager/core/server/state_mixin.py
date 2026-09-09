@@ -23,12 +23,9 @@ Key functionalities:
 
 """
 
-import asyncio
 import os
-import typing
 from typing import Any, Dict, Optional
 
-import aiofiles
 import aiofiles.ospath
 
 from ...db.models import Server
@@ -916,109 +913,172 @@ class ServerStateMixin(BedrockServerBaseMixin):
         await self._async_save_server_config(current_config)
         return None
 
-    @typing.no_type_check
     async def async_get_version(self) -> str:
+        """Retrieves the 'installed_version' from the server's config asynchronously.
+
+        Accesses ``server_info.installed_version`` via :meth:`._async_manage_json_config`.
+
+        Returns:
+            str: The installed version string, or "UNKNOWN" if not set or on error.
+        """
         self.logger.debug(
-            f"Getting stored installed_version for '{self.server_name}' from JSON config asynchronously."
+            f"Getting installed version for server '{self.server_name}' asynchronously."
         )
         try:
             version = await self._async_manage_json_config(
                 key="server_info.installed_version", operation="read"
             )
-            return (
-                str(version)
-                if version is not None and str(version).strip()
-                else "UNKNOWN"
-            )
+            return str(version) if version is not None else "UNKNOWN"
         except Exception as e:
             self.logger.error(
-                f"Error getting installed_version from config for '{self.server_name}': {e}. Defaulting to UNKNOWN.",
-                exc_info=True,
+                f"Error getting version for '{self.server_name}': {e}", exc_info=True
             )
             return "UNKNOWN"
 
-    @typing.no_type_check
     async def async_set_version(self, version_string: str) -> None:
+        """Sets the 'installed_version' in the server's config asynchronously.
+
+        Updates ``server_info.installed_version`` via :meth:`._async_manage_json_config`.
+
+        Args:
+            version_string (str): The version string to set (e.g., "1.20.30.02").
+
+        Raises:
+            UserInputError: If `version_string` is not a string.
+        """
         self.logger.debug(
-            f"Setting installed_version for '{self.server_name}' to '{version_string}' asynchronously."
+            f"Setting installed version for '{self.server_name}' to '{version_string}' asynchronously."
         )
         if not isinstance(version_string, str):
             raise UserInputError(
                 f"Version for '{self.server_name}' must be a string, got {type(version_string).__name__}."
             )
         await self._async_manage_json_config(
-            key="server_info.installed_version",
-            operation="write",
-            value=version_string,
+            key="server_info.installed_version", operation="write", value=version_string
         )
-        self.logger.info(
-            f"installed_version for '{self.server_name}' set to '{version_string}'."
-        )
+        self.logger.info(f"Version for '{self.server_name}' set to '{version_string}'.")
 
-    @typing.no_type_check
     async def async_get_autoupdate(self) -> bool:
+        """Retrieves the 'autoupdate' setting from the server's config asynchronously.
+
+        Accesses ``settings.autoupdate`` via :meth:`._async_manage_json_config`.
+
+        Returns:
+            bool: The autoupdate status (``True`` or ``False``). Defaults to ``False``
+            if the setting is not found or an error occurs during retrieval.
+        """
         self.logger.debug(
-            f"Getting stored autoupdate preference for '{self.server_name}' from JSON config asynchronously."
+            f"Getting autoupdate value for server '{self.server_name}' asynchronously."
         )
         try:
-            autoupdate = await self._async_manage_json_config(
+            autoupdate_setting = await self._async_manage_json_config(
                 key="settings.autoupdate", operation="read"
             )
-            return bool(autoupdate) if autoupdate is not None else False
+            if isinstance(autoupdate_setting, bool):
+                return autoupdate_setting
+            # Handle string "true"/"false" for robustness if manually edited or from old versions
+            if isinstance(autoupdate_setting, str):
+                return autoupdate_setting.lower() == "true"
+            self.logger.warning(
+                f"Autoupdate setting for '{self.server_name}' is not a boolean, found: {autoupdate_setting}. Defaulting to False."
+            )
+            return False  # Default if not found or invalid type
         except Exception as e:
             self.logger.error(
-                f"Error getting autoupdate from config for '{self.server_name}': {e}. Defaulting to False.",
+                f"Error getting autoupdate setting for '{self.server_name}': {e}. Defaulting to False.",
                 exc_info=True,
             )
             return False
 
-    @typing.no_type_check
     async def async_set_autoupdate(self, value: bool) -> None:
+        """Sets the 'autoupdate' setting in the server's config asynchronously.
+
+        Updates ``settings.autoupdate`` via :meth:`._async_manage_json_config`.
+
+        Args:
+            value (bool): The boolean value to set for autoupdate.
+
+        Raises:
+            UserInputError: If `value` is not a boolean.
+        """
         self.logger.debug(
-            f"Setting autoupdate for '{self.server_name}' to {value} asynchronously."
+            f"Setting autoupdate for '{self.server_name}' to '{value}' asynchronously."
         )
         if not isinstance(value, bool):
             raise UserInputError(
-                f"autoupdate for '{self.server_name}' must be a boolean, got {type(value).__name__}."
+                f"Autoupdate value for '{self.server_name}' must be a boolean, got {type(value).__name__}."
             )
         await self._async_manage_json_config(
             key="settings.autoupdate", operation="write", value=value
         )
-        self.logger.info(f"autoupdate for '{self.server_name}' set to {value}.")
+        self.logger.info(f"Autoupdate for '{self.server_name}' set to '{value}'.")
 
-    @typing.no_type_check
     async def async_get_autostart(self) -> bool:
+        """Retrieves the 'autostart' setting from the server's config asynchronously.
+
+        Accesses ``settings.autostart`` via :meth:`._async_manage_json_config`.
+
+        Returns:
+            bool: The autostart status (``True`` or ``False``). Defaults to ``False``
+            if the setting is not found or an error occurs during retrieval.
+        """
         self.logger.debug(
-            f"Getting stored autostart preference for '{self.server_name}' from JSON config asynchronously."
+            f"Getting autostart value for server '{self.server_name}' asynchronously."
         )
         try:
-            autostart = await self._async_manage_json_config(
+            autostart_setting = await self._async_manage_json_config(
                 key="settings.autostart", operation="read"
             )
-            return bool(autostart) if autostart is not None else False
+            if isinstance(autostart_setting, bool):
+                return autostart_setting
+            # Handle string "true"/"false" for robustness if manually edited or from old versions
+            if isinstance(autostart_setting, str):
+                return autostart_setting.lower() == "true"
+            self.logger.warning(
+                f"autostart setting for '{self.server_name}' is not a boolean, found: {autostart_setting}. Defaulting to False."
+            )
+            return False  # Default if not found or invalid type
         except Exception as e:
             self.logger.error(
-                f"Error getting autostart from config for '{self.server_name}': {e}. Defaulting to False.",
+                f"Error getting autostart setting for '{self.server_name}': {e}. Defaulting to False.",
                 exc_info=True,
             )
             return False
 
-    @typing.no_type_check
     async def async_set_autostart(self, value: bool) -> None:
+        """Sets the 'autostart' setting in the server's config asynchronously.
+
+        Updates ``settings.autostart`` via :meth:`._async_manage_json_config`.
+
+        Args:
+            value (bool): The boolean value to set for autostart.
+
+        Raises:
+            UserInputError: If `value` is not a boolean.
+        """
         self.logger.debug(
-            f"Setting autostart for '{self.server_name}' to {value} asynchronously."
+            f"Setting autostart for '{self.server_name}' to '{value}' asynchronously."
         )
         if not isinstance(value, bool):
             raise UserInputError(
-                f"autostart for '{self.server_name}' must be a boolean, got {type(value).__name__}."
+                f"autostart value for '{self.server_name}' must be a boolean, got {type(value).__name__}."
             )
         await self._async_manage_json_config(
             key="settings.autostart", operation="write", value=value
         )
-        self.logger.info(f"autostart for '{self.server_name}' set to {value}.")
+        self.logger.info(f"autostart for '{self.server_name}' set to '{value}'.")
 
-    @typing.no_type_check
     async def async_get_status_from_config(self) -> str:
+        """Retrieves the stored 'status' from the server's config asynchronously.
+
+        Accesses ``server_info.status`` via :meth:`._async_manage_json_config`. This
+        reflects the last known status written to the config, not necessarily
+        the live process status. For live status, use :meth:`.async_get_status`.
+
+        Returns:
+            str: The stored status string (e.g., "RUNNING", "STOPPED"), or
+            "UNKNOWN" if not set or on error.
+        """
         self.logger.debug(
             f"Getting stored status for '{self.server_name}' from JSON config asynchronously."
         )
@@ -1026,34 +1086,68 @@ class ServerStateMixin(BedrockServerBaseMixin):
             status = await self._async_manage_json_config(
                 key="server_info.status", operation="read"
             )
-            return (
-                str(status) if status is not None and str(status).strip() else "UNKNOWN"
-            )
+            return str(status) if status is not None else "UNKNOWN"
         except Exception as e:
             self.logger.error(
-                f"Error getting status from config for '{self.server_name}': {e}. Defaulting to UNKNOWN.",
+                f"Error getting status from JSON config for '{self.server_name}': {e}",
                 exc_info=True,
             )
             return "UNKNOWN"
 
-    @typing.no_type_check
     async def async_set_status_in_config(self, status_string: str) -> None:
+        """Sets the 'status' in the server's config asynchronously.
+
+        Updates ``server_info.status`` via :meth:`._async_manage_json_config`. This is
+        used to persist the server's state.
+
+        Args:
+            status_string (str): The status string to set (e.g., "RUNNING", "STOPPED").
+
+        Raises:
+            UserInputError: If `status_string` is not a string.
+        """
         self.logger.debug(
-            f"Setting stored status for '{self.server_name}' to '{status_string}' asynchronously."
+            f"Setting status in JSON config for '{self.server_name}' to '{status_string}' asynchronously."
         )
         if not isinstance(status_string, str):
             raise UserInputError(
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
+
+        if (
+            hasattr(self, "app_context")
+            and self.app_context
+            and hasattr(self.app_context, "api")
+        ):
+            try:
+                # Assuming the async equivalent doesn't strictly have a different signature,
+                # but if an async API is available we would await it. The synchronous
+                # API sets an internal memory cache and triggers a WebSocket event, which
+                # might be synchronous. We use it directly as the legacy codebase did.
+                self.app_context.api.set_server_status_api(
+                    self.server_name, status_string
+                )
+                return
+            except AttributeError:
+                pass
+
         await self._async_manage_json_config(
             key="server_info.status", operation="write", value=status_string
         )
-        self.logger.debug(
-            f"Stored status for '{self.server_name}' updated to '{status_string}'."
+        self.logger.info(
+            f"Status in JSON config for '{self.server_name}' set to '{status_string}'."
         )
 
-    @typing.no_type_check
     async def async_get_target_version(self) -> str:
+        """Retrieves the 'target_version' from the server's config asynchronously.
+
+        Accesses ``settings.target_version`` via
+        :meth:`._async_manage_json_config`. This indicates the version the server aims
+        to be on, often "LATEST" or a specific version string.
+
+        Returns:
+            str: The target version string, or "LATEST" if not set or on error.
+        """
         self.logger.debug(
             f"Getting stored target_version for '{self.server_name}' from JSON config asynchronously."
         )
@@ -1073,8 +1167,18 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             return "LATEST"
 
-    @typing.no_type_check
     async def async_set_target_version(self, version_string: str) -> None:
+        """Sets the 'target_version' in the server's config asynchronously.
+
+        Updates ``settings.target_version`` via
+        :meth:`._async_manage_json_config`.
+
+        Args:
+            version_string (str): The target version string to set (e.g., "LATEST", "1.20.30.02").
+
+        Raises:
+            UserInputError: If `version_string` is not a string.
+        """
         self.logger.debug(
             f"Setting target_version for '{self.server_name}' to '{version_string}' asynchronously."
         )
@@ -1089,8 +1193,21 @@ class ServerStateMixin(BedrockServerBaseMixin):
             f"target_version for '{self.server_name}' set to '{version_string}'."
         )
 
-    @typing.no_type_check
     async def async_get_custom_config_value(self, key: str) -> Optional[Any]:
+        """Retrieves a custom value from the 'custom' section of the server's config asynchronously.
+
+        Accesses ``custom.<key>`` via :meth:`._async_manage_json_config`.
+
+        Args:
+            key (str): The key of the custom value to retrieve.
+
+        Returns:
+            Optional[Any]: The retrieved custom value, or ``None`` if the key
+            is not found or an error occurs.
+
+        Raises:
+            UserInputError: If `key` is not a non-empty string.
+        """
         self.logger.debug(
             f"Getting custom config key '{key}' for server '{self.server_name}' asynchronously."
         )
@@ -1105,8 +1222,19 @@ class ServerStateMixin(BedrockServerBaseMixin):
         )
         return value
 
-    @typing.no_type_check
     async def async_set_custom_config_value(self, key: str, value: Any) -> None:
+        """Sets a custom key-value pair in the 'custom' section of the server's config asynchronously.
+
+        Updates ``custom.<key>`` via :meth:`._async_manage_json_config`.
+
+        Args:
+            key (str): The key for the custom value.
+            value (Any): The value to set. Must be JSON serializable.
+
+        Raises:
+            UserInputError: If `key` is not a non-empty string.
+            ConfigParseError: If `value` is not JSON serializable (from underlying save).
+        """
         self.logger.debug(
             f"Setting custom config for '{self.server_name}': Key='{key}', Value='{value}' asynchronously."
         )
@@ -1122,8 +1250,19 @@ class ServerStateMixin(BedrockServerBaseMixin):
             f"Custom config for '{self.server_name}' set: Key='{key}', Value='{value}'."
         )
 
-    @typing.no_type_check
     async def async_get_world_name(self) -> str:
+        """Reads the ``level-name`` property from the server's ``server.properties`` file asynchronously.
+
+        Returns:
+            str: The name of the world as specified in ``server.properties``.
+
+        Raises:
+            AppFileNotFoundError: If the ``server.properties`` file does not exist
+                at the expected path (:attr:`.server_properties_path`).
+            ConfigParseError: If the file cannot be read (e.g., due to permissions)
+                or if the ``level-name`` key is missing, malformed, or has an empty value.
+        """
+        from ...utils.io import async_load_lines
 
         self.logger.debug(
             f"Reading world name for server '{self.server_name}' from: {self.server_properties_path} asynchronously"
@@ -1134,23 +1273,21 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
 
         try:
-            async with aiofiles.open(
-                self.server_properties_path, "r", encoding="utf-8"
-            ) as f:
-                async for line in f:
-                    line = line.strip()
-                    if line.startswith("level-name="):
-                        parts = line.split("=", 1)
-                        if len(parts) == 2 and parts[1].strip():
-                            world_name = parts[1].strip()
-                            self.logger.debug(
-                                f"Found world name (level-name): '{world_name}' for '{self.server_name}'"
-                            )
-                            return world_name
-                        else:
-                            raise ConfigParseError(
-                                f"'level-name' property malformed or has empty value in {self.server_properties_path}"
-                            )
+            lines = await async_load_lines(self.server_properties_path)
+            for line_content in lines:
+                line = line_content.strip()
+                if line.startswith("level-name="):
+                    parts = line.split("=", 1)
+                    if len(parts) == 2 and parts[1].strip():
+                        world_name = parts[1].strip()
+                        self.logger.debug(
+                            f"Found world name (level-name): '{world_name}' for '{self.server_name}'"
+                        )
+                        return world_name
+                    else:
+                        raise ConfigParseError(
+                            f"'level-name' property malformed or has empty value in {self.server_properties_path}"
+                        )
         except OSError as e_os:
             raise ConfigParseError(
                 f"Failed to read server.properties for '{self.server_name}': {e_os}"
@@ -1160,27 +1297,39 @@ class ServerStateMixin(BedrockServerBaseMixin):
             f"'level-name' property not found in {self.server_properties_path}"
         )
 
-    @typing.no_type_check
     async def async_get_status(self) -> str:
+        """Determines and returns the current reconciled operational status of the server asynchronously.
+
+        This method attempts to determine if the server process is actually running
+        (by calling ``self.async_is_running()``, which is expected to be provided by
+        another mixin like ``ProcessMixin``). It then compares this live status
+        with the status stored in the server's configuration
+        (retrieved via :meth:`.async_get_status_from_config`).
+
+        If a discrepancy is found (e.g., process is running but config says "STOPPED",
+        or vice-versa when config said "RUNNING"), it updates the stored status in
+        the config to reflect the actual state.
+
+        Returns:
+            str: The reconciled operational status of the server as a string
+            (e.g., "RUNNING", "STOPPED"). If ``self.async_is_running()`` is not available
+            or fails, it falls back to returning the last known status from config.
+        """
         self.logger.debug(
             f"Determining overall status for server '{self.server_name}' asynchronously."
         )
 
         actual_is_running = False
         try:
-            if hasattr(self, "async_is_running"):
-                actual_is_running = await self.async_is_running()
-            elif hasattr(self, "is_running"):
-
-                actual_is_running = await asyncio.to_thread(self.is_running)
-            else:
+            if not hasattr(self, "async_is_running"):
                 self.logger.warning(
-                    "is_running/async_is_running method not found. Falling back to stored config status."
+                    "async_is_running method not found. Falling back to stored config status."
                 )
                 return await self.async_get_status_from_config()
+            actual_is_running = await self.async_is_running()  # type: ignore
         except Exception as e_is_running_check:
             self.logger.error(
-                f"Error checking run state for '{self.server_name}': {e_is_running_check}. Fallback to stored status."
+                f"Error calling self.async_is_running() for '{self.server_name}': {e_is_running_check}. Fallback to stored status."
             )
             return await self.async_get_status_from_config()
 

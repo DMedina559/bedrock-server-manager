@@ -15,17 +15,11 @@ import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
-import aiofiles
-import aiofiles.ospath
-
 from ...error import FileOperationError
 from .base_server_mixin import BedrockServerBaseMixin
 
 if TYPE_CHECKING:
     pass
-
-
-import typing
 
 
 class ServerPlayerMixin(BedrockServerBaseMixin):
@@ -129,72 +123,59 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                 exc_info=True,
             )
 
-    @typing.no_type_check
     async def async_scan_log_for_players(
         self, incremental: bool = False
-    ) -> List[Dict[str, str]]:  # type: ignore
-        """Scans the server log file for player connection events asynchronously."""
+    ) -> List[Dict[str, str]]:
+        """Scans the server's log file for player connection entries to extract gamertags and XUIDs asynchronously.
 
-        log_path = os.path.join(self.server_dir, "logs", "server.log")
-        if not await aiofiles.ospath.isfile(log_path):
-            self.logger.debug(
-                f"Log file not found for '{self.server_name}' at {log_path}. Skipping player scan."
-            )
-            return []
+        This method reads the server's primary output log file (obtained via
+        :attr:`~.BedrockServerBaseMixin.server_log_path`) to find player connections.
+        It collects unique players based on their XUID to avoid duplicates.
 
-        try:
-            async with aiofiles.open(
-                log_path, "r", encoding="utf-8", errors="replace"
-            ) as f:
-                if incremental:
-                    if self._last_log_file_size is not None:
-                        current_size = await aiofiles.ospath.getsize(log_path)
-                        if current_size < self._last_log_file_size:
-                            self.logger.info(
-                                f"Log file for '{self.server_name}' appears to have been rotated. Resetting scan pointer."
-                            )
-                            self._last_log_file_size = 0
-                            self._last_log_read_position = 0
+        Args:
+            incremental (bool): If True, starts reading from the last recorded position
+                instead of the beginning. Useful for periodic polling to save memory.
 
-                        await f.seek(self._last_log_read_position)
+        Returns:
+            List[Dict[str, str]]: A list of unique player data dictionaries found
+            in the log. Each dictionary has two keys:
 
-                lines = await f.readlines()
+                - "name" (str): The player's gamertag.
+                - "xuid" (str): The player's Xbox User ID (XUID).
 
-                if incremental:
-                    self._last_log_read_position = await f.tell()
-                    self._last_log_file_size = await aiofiles.ospath.getsize(log_path)
+            Returns an empty list if the log file doesn't exist, is empty, or if
+            no player connection entries are found.
 
-        except OSError as e:
+        Raises:
+            FileOperationError: If an OS-level error occurs while trying to read
+                the log file (e.g., permission issues).
+        """
+        return await asyncio.to_thread(self.scan_log_for_players, incremental)
 
-            raise FileOperationError(
-                f"Failed to read server log for '{self.server_name}': {e}"
-            ) from e
+    async def async_update_online_players(self) -> List[Dict[str, str]]:
+        """Incrementally parses the server log to update the list of currently online players asynchronously.
 
-        if not lines:
-            return []
+        Reads new lines from the log file starting from the last known cursor position
+        (`self._log_file_cursor`), updates the `self.players` attribute, and saves the new cursor position.
 
-        return self._parse_player_log_events(lines)
-
-    @typing.no_type_check
-    async def async_update_online_players(self) -> List[Dict[str, str]]:  # type: ignore
-        """Updates and returns the list of currently online players asynchronously."""
+        Returns:
+            List[Dict[str, str]]: The updated list of dictionaries for each currently
+            online player, containing their "name" and "uuid" (XUID).
+        """
         if hasattr(self, "async_is_running"):
-            is_running = await self.async_is_running()
+            is_running = await self.async_is_running()  # type: ignore
         else:
-
-            is_running = await asyncio.to_thread(self.is_running)
+            is_running = await asyncio.to_thread(self.is_running)  # type: ignore
 
         if not is_running:
-            if self.online_players:
+            if hasattr(self, "players") and self.players:
                 self.logger.debug(
                     f"Server '{self.server_name}' is stopped. Clearing online players list."
                 )
-                self.online_players.clear()
+                self.players.clear()
             return []
 
-        # We need an incremental scan for this logic
-        await self.async_scan_log_for_players(incremental=True)
-        return self.online_players
+        return await asyncio.to_thread(self.update_online_players)
 
     def scan_log_for_players(self, incremental: bool = False) -> List[Dict[str, str]]:
         """Scans the server's log file for player connection entries to extract gamertags and XUIDs.
