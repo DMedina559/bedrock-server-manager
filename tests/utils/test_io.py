@@ -6,7 +6,12 @@ from unittest import mock
 
 import pytest
 
-from bedrock_server_manager.utils.io import async_load_json, async_save_json
+from bedrock_server_manager.utils.io import (
+    async_load_json,
+    async_load_lines,
+    async_save_json,
+    async_save_lines,
+)
 
 
 @pytest.fixture
@@ -81,3 +86,50 @@ async def test_async_save_json_fault_tolerance(temp_dir):
 
     # Verify temp file was cleaned up (or never successfully created)
     assert not os.path.exists(filepath + ".tmp")
+
+
+@pytest.mark.asyncio
+async def test_async_save_and_load_lines(temp_dir):
+    filepath = os.path.join(temp_dir, "test.txt")
+    lines = ["line 1\n", "line 2\n", "line 3\n"]
+
+    await async_save_lines(lines, filepath)
+
+    assert os.path.exists(filepath)
+
+    loaded_lines = await async_load_lines(filepath)
+    assert loaded_lines == lines
+
+
+@pytest.mark.asyncio
+async def test_async_save_lines_concurrency(temp_dir):
+    filepath = os.path.join(temp_dir, "concurrent_lines.txt")
+
+    async def save_task(i):
+        lines = [f"line {i}\n"]
+        await async_save_lines(lines, filepath)
+
+    tasks = [save_task(i) for i in range(50)]
+    await asyncio.gather(*tasks)
+
+    assert os.path.exists(filepath)
+    loaded = await async_load_lines(filepath)
+    assert len(loaded) == 1
+    assert loaded[0].startswith("line ")
+
+
+@pytest.mark.asyncio
+async def test_async_save_lines_fault_tolerance(temp_dir):
+    filepath = os.path.join(temp_dir, "fault_test_lines.txt")
+    original_lines = ["original\n"]
+
+    await async_save_lines(original_lines, filepath)
+
+    corrupt_lines = ["corrupting\n"]
+
+    with mock.patch("builtins.open", side_effect=OSError("Disk failure")):
+        with pytest.raises(OSError, match="Disk failure"):
+            await async_save_lines(corrupt_lines, filepath)
+
+    loaded = await async_load_lines(filepath)
+    assert loaded == original_lines

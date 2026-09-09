@@ -1,8 +1,6 @@
 import os
-import typing
 from typing import Any, Dict, Optional
 
-import aiofiles
 import aiofiles.ospath
 
 from ...error import (
@@ -12,6 +10,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...utils.io import async_load_lines, async_save_lines
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -112,50 +111,40 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
 
         return properties
 
-    @typing.no_type_check
     async def async_get_server_properties(self) -> Dict[str, str]:
         """Reads the `server.properties` file asynchronously and returns its contents."""
+        server_properties_path = self.server_properties_path
+        if not await aiofiles.ospath.isfile(server_properties_path):
+            raise AppFileNotFoundError(server_properties_path, "Server properties file")
 
         self.logger.debug(
-            f"Reading properties from: {self.server_properties_path} asynchronously"
+            f"Server '{self.server_name}': Parsing {server_properties_path} asynchronously"
         )
-        if not await aiofiles.ospath.isfile(self.server_properties_path):
-            raise AppFileNotFoundError(
-                self.server_properties_path, "server.properties file"
-            )
-
         properties: Dict[str, str] = {}
         try:
-            async with aiofiles.open(
-                self.server_properties_path, "r", encoding="utf-8"
-            ) as file:
-                line_num = 1
-                async for line in file:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        line_num += 1
-                        continue
-                    parts = line.split("=", 1)
-                    if len(parts) == 2 and parts[0].strip():
-                        properties[parts[0].strip()] = parts[1].strip()
-                    else:
-                        self.logger.warning(
-                            f"Skipping malformed line {line_num} in '{self.server_properties_path}': \"{line}\""
-                        )
-                    line_num += 1
+            lines = await async_load_lines(server_properties_path)
+            for line_num, line_content in enumerate(lines, 1):
+                line = line_content.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("=", 1)
+                if len(parts) == 2 and parts[0].strip():
+                    properties[parts[0].strip()] = parts[1].strip()
+                else:
+                    self.logger.warning(
+                        f"Skipping malformed line {line_num} in '{server_properties_path}': \"{line}\""
+                    )
         except OSError as e:
             raise ConfigParseError(
-                f"Failed to read properties from {self.server_properties_path}: {e}"
+                f"Failed to read '{server_properties_path}': {e}"
             ) from e
 
         return properties
 
-    @typing.no_type_check
     async def async_set_server_property(
         self, property_key: str, property_value: Any
     ) -> None:
         """Updates a specific property in `server.properties` asynchronously."""
-
         if not isinstance(property_key, str) or not property_key:
             raise MissingArgumentError(
                 "Property key cannot be empty and must be a string."
@@ -167,23 +156,19 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
                 f"Property value for '{property_key}' contains invalid control characters."
             )
 
+        server_properties_path = self.server_properties_path
+        if not await aiofiles.ospath.isfile(server_properties_path):
+            raise AppFileNotFoundError(server_properties_path, "Server properties file")
+
         self.logger.debug(
-            f"Setting property '{property_key}' to '{str_value}' in: {self.server_properties_path} asynchronously"
+            f"Server '{self.server_name}': Setting property '{property_key}' to '{str_value}' in {server_properties_path} asynchronously"
         )
 
-        if not await aiofiles.ospath.isfile(self.server_properties_path):
-            raise AppFileNotFoundError(
-                self.server_properties_path, "server.properties file"
-            )
-
         try:
-            async with aiofiles.open(
-                self.server_properties_path, "r", encoding="utf-8"
-            ) as file:
-                lines = await file.readlines()
+            lines = await async_load_lines(server_properties_path)
         except OSError as e:
             raise FileOperationError(
-                f"Failed to read '{self.server_properties_path}': {e}"
+                f"Failed to read '{server_properties_path}': {e}"
             ) from e
 
         output_lines = []
@@ -211,19 +196,17 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
             output_lines.append(new_property_line)
 
         try:
-            async with aiofiles.open(
-                self.server_properties_path, "w", encoding="utf-8"
-            ) as file:
-                await file.writelines(output_lines)
+            lock = self.get_file_lock(server_properties_path)
+            async with lock:
+                await async_save_lines(output_lines, server_properties_path)
             self.logger.info(
                 f"Successfully set property '{property_key}' for '{self.server_name}'."
             )
         except OSError as e:
             raise FileOperationError(
-                f"Failed to write '{self.server_properties_path}': {e}"
+                f"Failed to write '{server_properties_path}': {e}"
             ) from e
 
-    @typing.no_type_check
     async def async_get_server_property(
         self, property_key: str, default: Optional[Any] = None
     ) -> Optional[Any]:
