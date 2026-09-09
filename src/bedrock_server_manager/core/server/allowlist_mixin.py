@@ -2,7 +2,6 @@ import json
 import os
 from typing import Any, Dict, List
 
-import aiofiles
 import aiofiles.ospath
 
 from ...error import (
@@ -11,6 +10,7 @@ from ...error import (
     FileOperationError,
     MissingArgumentError,
 )
+from ...utils.io import async_load_json, async_save_json
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -29,18 +29,13 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
         allowlist_entries: List[Dict[str, Any]] = []
         if await aiofiles.ospath.isfile(self.allowlist_json_path):
             try:
-                async with aiofiles.open(
-                    self.allowlist_json_path, "r", encoding="utf-8"
-                ) as f:
-                    content = await f.read()
-                    if content.strip():
-                        loaded_data = json.loads(content)
-                        if isinstance(loaded_data, list):
-                            allowlist_entries = loaded_data
-                        else:
-                            self.logger.warning(
-                                f"Allowlist file '{self.allowlist_json_path}' is not a JSON list. Treating as empty."
-                            )
+                loaded_data = await async_load_json(self.allowlist_json_path)
+                if isinstance(loaded_data, list):
+                    allowlist_entries = loaded_data
+                elif loaded_data:
+                    self.logger.warning(
+                        f"Allowlist file '{self.allowlist_json_path}' is not a JSON list. Treating as empty."
+                    )
             except ValueError as e:
                 raise ConfigParseError(
                     f"Invalid JSON in allowlist '{self.allowlist_json_path}': {e}"
@@ -103,11 +98,11 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
 
         if added_count > 0:
             try:
-                content = json.dumps(current_allowlist, indent=4, sort_keys=True)
-                async with aiofiles.open(
-                    self.allowlist_json_path, "w", encoding="utf-8"
-                ) as f:
-                    await f.write(content)
+                lock = self.get_file_lock(self.allowlist_json_path)
+                async with lock:
+                    await async_save_json(
+                        current_allowlist, self.allowlist_json_path, indent=4
+                    )
                 self.logger.info(
                     f"Successfully updated allowlist for '{self.server_name}'. {added_count} players added."
                 )
@@ -148,11 +143,11 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
 
         if len(updated_allowlist) < len(current_allowlist):
             try:
-                content = json.dumps(updated_allowlist, indent=4, sort_keys=True)
-                async with aiofiles.open(
-                    self.allowlist_json_path, "w", encoding="utf-8"
-                ) as f:
-                    await f.write(content)
+                lock = self.get_file_lock(self.allowlist_json_path)
+                async with lock:
+                    await async_save_json(
+                        updated_allowlist, self.allowlist_json_path, indent=4
+                    )
                 self.logger.info(
                     f"Successfully removed '{player_name_to_remove}' from allowlist for '{self.server_name}'."
                 )

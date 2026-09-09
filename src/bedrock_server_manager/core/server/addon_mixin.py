@@ -43,6 +43,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...utils.io import async_load_json, async_save_json
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -344,8 +345,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             )
 
         try:
-            async with aiofiles.open(world_json_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(packs_list, indent=2, sort_keys=True))
+            lock = self.get_file_lock(world_json_path)
+            async with lock:
+                await async_save_json(packs_list, world_json_path, indent=2)
             self.logger.debug(
                 f"Successfully wrote updated subpack '{subpack_name}' to '{json_filename_basename}'."
             )
@@ -431,8 +433,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         new_packs_list = [pack_map[uuid] for uuid in uuids]
 
         try:
-            async with aiofiles.open(world_json_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(new_packs_list, indent=2, sort_keys=True))
+            lock = self.get_file_lock(world_json_path)
+            async with lock:
+                await async_save_json(new_packs_list, world_json_path, indent=2)
             self.logger.info(
                 f"Successfully reordered {pack_type} packs in world '{world_name}'."
             )
@@ -2080,8 +2083,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             await aiofiles.os.makedirs(
                 os.path.dirname(world_json_file_path), exist_ok=True
             )
-            async with aiofiles.open(world_json_file_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(packs_list, indent=2, sort_keys=True))
+            lock = self.get_file_lock(world_json_file_path)
+            async with lock:
+                await async_save_json(packs_list, world_json_file_path, indent=2)
             self.logger.debug(
                 f"Successfully wrote updated packs to '{json_filename_basename}'."
             )
@@ -2585,18 +2589,16 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return []
 
         try:
-            async with aiofiles.open(world_json_file_path, "r", encoding="utf-8") as f:
-                content = await f.read()
-                if not content.strip():
-                    return []
-                data = json.loads(content)
-                if isinstance(data, list):
-                    return data
-                else:
-                    self.logger.warning(
-                        f"File '{world_json_file_path}' does not contain a JSON list. Treating as empty."
-                    )
-                    return []
+            data = await async_load_json(world_json_file_path)
+            if data is None:
+                return []
+            if isinstance(data, list):
+                return data
+            else:
+                self.logger.warning(
+                    f"File '{world_json_file_path}' does not contain a JSON list. Treating as empty."
+                )
+                return []
         except (ValueError, OSError) as e:
             self.logger.error(f"Failed to read or parse '{world_json_file_path}': {e}")
             return []
@@ -3066,8 +3068,11 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return
 
         try:
-            async with aiofiles.open(world_json_file_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(updated_packs_list, indent=2, sort_keys=True))
+            lock = self.get_file_lock(world_json_file_path)
+            async with lock:
+                await async_save_json(
+                    updated_packs_list, world_json_file_path, indent=2
+                )
             self.logger.info(
                 f"Removed pack '{pack_uuid}' from activation file '{json_filename}'."
             )
