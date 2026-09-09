@@ -24,8 +24,7 @@ import asyncio
 import os
 import re
 import shutil
-import typing
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
 import aiofiles
 import aiofiles.ospath
@@ -134,71 +133,238 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         res = find_files(directory, file_pattern, sort_by="mtime", reverse=True)
         return [str(p) for p in res]
 
-    @typing.no_type_check
     async def async_list_backups(
         self, backup_type: str
     ) -> Union[List[str], Dict[str, List[str]]]:
-        """Lists server backups asynchronously."""
-        self.logger.debug(
-            f"Listing available {backup_type} backups for server '{self.server_name}' asynchronously."
+        """Retrieves a list of available backup files for this server asynchronously, sorted newest first.
+
+        This method scans the server's specific backup directory (obtained via
+        :attr:`.server_backup_directory`) for backup files matching the
+        specified ``backup_type``. Backups are sorted by their modification time,
+        with the most recent backup appearing first.
+
+        Valid ``backup_type`` options (case-insensitive):
+
+            - ``"world"``: Lists ``*.mcworld`` files (world backups).
+            - ``"properties"``: Lists ``server_backup_*.properties`` files.
+            - ``"allowlist"``: Lists ``allowlist_backup_*.json`` files.
+            - ``"permissions"``: Lists ``permissions_backup_*.json`` files.
+            - ``"all"``: Returns a dictionary categorizing all found backup types.
+
+        Args:
+            backup_type (str): The type of backups to list. Must be one of
+                "world", "properties", "allowlist", "permissions", or "all".
+
+        Returns:
+            Union[List[str], Dict[str, List[str]]]:
+
+                - If ``backup_type`` is specific (e.g., "world"), returns a list of
+                  absolute backup file paths, sorted by modification time (newest first).
+                  An empty list is returned if no matching backups are found or if the
+                  server's backup directory doesn't exist.
+                - If ``backup_type`` is "all", returns a dictionary where keys are backup
+                  categories (e.g., "world_backups", "properties_backups") and values
+                  are the corresponding sorted lists of file paths. An empty dictionary
+                  is returned if the backup directory doesn't exist or no backups of
+                  any type are found.
+
+        Raises:
+            MissingArgumentError: If ``backup_type`` is empty or not a string.
+            UserInputError: If ``backup_type`` is not one of the valid options.
+            ConfigurationError: If the server's backup directory is not configured
+                (i.e., :attr:`.server_backup_directory` is ``None``).
+            FileOperationError: If an ``OSError`` occurs during filesystem listing
+                (e.g., permission issues).
+        """
+        if not isinstance(backup_type, str) or not backup_type:
+            raise MissingArgumentError(
+                "Backup type cannot be empty and must be a string."
+            )
+
+        server_bck_dir = self.server_backup_directory
+        if not server_bck_dir:
+            raise ConfigurationError(
+                f"Cannot list backups for '{self.server_name}': Backup directory not configured."
+            )
+
+        backup_type_norm = backup_type.lower()
+        self.logger.info(
+            f"Server '{self.server_name}': Listing '{backup_type_norm}' backups from '{server_bck_dir}' asynchronously."
         )
 
-        backup_dir = self.server_backup_directory()
-        if not backup_dir or not await aiofiles.ospath.isdir(backup_dir):
-            self.logger.info(
-                f"No backup directory found for '{self.server_name}' at expected path."
+        patterns = {
+            "world": os.path.join(server_bck_dir, "*.mcworld"),
+            "properties": os.path.join(server_bck_dir, "server_backup_*.properties"),
+            "allowlist": os.path.join(server_bck_dir, "allowlist_backup_*.json"),
+            "permissions": os.path.join(server_bck_dir, "permissions_backup_*.json"),
+        }
+
+        if backup_type_norm not in patterns and backup_type_norm != "all":
+            valid_types = list(patterns.keys()) + ["all"]
+            raise UserInputError(
+                f"Invalid backup type: '{backup_type}'. Must be one of {valid_types}."
             )
-            return (
-                []
-                if backup_type in ("worlds", "configs")
-                else {"worlds": [], "configs": []}
+
+        if not await aiofiles.ospath.isdir(server_bck_dir):
+            self.logger.warning(
+                f"Backup directory not found: '{server_bck_dir}'. Returning empty result."
             )
+            return {} if backup_type_norm == "all" else []
 
         async def _find_and_sort_backups_async(pattern: str) -> List[str]:
+            directory = os.path.dirname(pattern)
+            file_pattern = os.path.basename(pattern)
             files = await system_base.async_find_files(
-                backup_dir, pattern=pattern, sort_by="time", reverse=True
+                directory, pattern=file_pattern, sort_by="mtime", reverse=True
             )
-            return cast(List[str], files)
+            return [str(f) for f in files]
 
-        if backup_type == "worlds":
-            return await _find_and_sort_backups_async(
-                f"{self.server_name}_world_backup_*.zip"
-            )
-        elif backup_type == "configs":
-            return await _find_and_sort_backups_async(
-                f"{self.server_name}_config_backup_*.zip"
-            )
-        elif backup_type == "all":
-            return {
-                "worlds": await _find_and_sort_backups_async(
-                    f"{self.server_name}_world_backup_*.zip"
-                ),
-                "configs": await _find_and_sort_backups_async(
-                    f"{self.server_name}_config_backup_*.zip"
-                ),
-            }
-        else:
-            raise UserInputError("backup_type must be 'worlds', 'configs', or 'all'.")
+        try:
+            if backup_type_norm in patterns:
+                return await _find_and_sort_backups_async(patterns[backup_type_norm])
+            elif backup_type_norm == "all":
+                categorized_backups: Dict[str, List[str]] = {}
+                for key, pattern in patterns.items():
+                    files = await _find_and_sort_backups_async(pattern)
+                    if files:
+                        categorized_backups[f"{key}_backups"] = files
+                return categorized_backups
+            return []
+        except OSError as e:
+            raise FileOperationError(
+                f"Error listing backups for '{self.server_name}' due to a filesystem issue: {e}"
+            ) from e
 
-    @typing.no_type_check
     async def async_prune_server_backups(
         self, component_prefix: str, file_extension: str
     ) -> None:
-        """Prunes server backups asynchronously."""
+        """Removes the oldest backups for a specific component to adhere to retention policies asynchronously.
+
+        This method targets backup files within this server's specific backup directory
+
+        (see :attr:`.server_backup_directory`) that match a given ``component_prefix``
+        (e.g., ``MyActiveWorld_backup_``, ``server_backup_``) and ``file_extension``
+        (e.g., ``mcworld``, ``properties``, ``json``).
+
+        It retrieves the number of backups to keep from the application settings
+        (key: ``retention.backups``, defaulting to 3 if not set or invalid). If more
+        backups than this configured number are found (sorted by modification time),
+        the oldest ones are deleted until the retention count is met.
+
+        Args:
+            component_prefix (str): The prefix part of the backup filenames to
+                target (e.g., ``MyActiveWorld_backup_`` for world backups,
+                ``server_backup_`` for server.properties backups). Should not be empty.
+            file_extension (str): The extension of the backup files, without the
+                leading dot (e.g., "mcworld", "json", "properties"). Should not be empty.
+
+        Raises:
+            ConfigurationError: If the server's backup directory path
+                (:attr:`.server_backup_directory`) is not configured in settings.
+            MissingArgumentError: If ``component_prefix`` or ``file_extension``
+                are empty or not strings.
+            UserInputError: If the ``retention.backups`` setting value from application
+                settings is invalid (e.g., not a non-negative integer).
+            FileOperationError: If an ``OSError`` occurs during file listing or deletion
+                (e.g., permission issues), or if not all required old backups
+                could be deleted successfully.
+        """
         await asyncio.to_thread(
             self.prune_server_backups, component_prefix, file_extension
         )
 
-    @typing.no_type_check
     async def async_backup_all_data(self) -> Dict[str, Optional[str]]:
-        """Backs up all data asynchronously."""
+        """Performs a full backup of the server's active world and standard configuration files asynchronously.
 
+        This method orchestrates the backup of the following components:
+
+            - The active world: Determined by ``self.get_world_name()`` (from
+              :class:`~.core.server.state_mixin.ServerStateMixin`), then backed up to
+              a ``.mcworld`` file via :meth:`._backup_world_data_internal`.
+            - ``allowlist.json``: Backed up via :meth:`._backup_config_file_internal`.
+            - ``permissions.json``: Backed up via :meth:`._backup_config_file_internal`.
+            - ``server.properties``: Backed up via :meth:`._backup_config_file_internal`.
+
+        Each component is backed up individually. The server's specific backup
+        directory (derived from :attr:`.server_backup_directory`) is created if it
+        doesn't already exist.
+
+        If the critical world backup fails, a :class:`~.error.BackupRestoreError`
+        is raised *after* attempting to back up all configuration files. Failures
+        in backing up individual configuration files are logged as errors, and their
+        corresponding entry in the returned dictionary will be ``None``, but they
+        do not stop the backup of other components.
+
+        Returns:
+            Dict[str, Optional[str]]: A dictionary mapping component names
+            (e.g., "world", "allowlist.json") to the absolute path of their
+            backup file. If a component's backup failed or was skipped (e.g.,
+            the original file was not found), its value will be ``None``.
+
+        Raises:
+            ConfigurationError: If the server's backup directory path
+                (:attr:`.server_backup_directory`) is not configured in settings.
+            FileOperationError: If creation of the main server backup directory
+                (under the global backup path) fails.
+            BackupRestoreError: If the critical world backup operation fails.
+                                Other underlying errors from helper methods
+                                (like :class:`~.error.AppFileNotFoundError` from
+                                :meth:`._backup_world_data_internal` if the world
+                                directory is missing) can also propagate.
+            AttributeError: If required methods from other mixins (e.g.,
+                ``get_world_name()`` from :class:`~.core.server.state_mixin.ServerStateMixin`
+                or ``export_world()`` from
+                :class:`~.core.server.world_mixin.ServerWorldMixin`) are not available.
+        """
         return await asyncio.to_thread(self.backup_all_data)
 
-    @typing.no_type_check
     async def async_restore_all_data_from_latest(self) -> Dict[str, Optional[str]]:
-        """Restores all data from latest asynchronously."""
+        """Restores the server's active world and standard configuration files from their latest backups asynchronously.
 
+        This method attempts to restore the following components by finding their
+        most recent backup file (sorted by modification time) in the server's
+        specific backup directory (see :attr:`.server_backup_directory`):
+
+            - The active world: Restored using
+              :meth:`~.core.server.world_mixin.ServerWorldMixin.import_world`
+              after finding the latest ``.mcworld`` backup matching the active world's name.
+            - ``server.properties``: Restored via :meth:`._restore_config_file_internal`.
+            - ``allowlist.json``: Restored via :meth:`._restore_config_file_internal`.
+            - ``permissions.json``: Restored via :meth:`._restore_config_file_internal`.
+
+        Each component is restored individually. If a backup for a specific component
+        is not found, or if the restore operation for that component fails, the issue
+        is logged, and the process continues with other components.
+        A :class:`~.error.BackupRestoreError` is raised at the end if any component
+        failed to restore, summarizing all failures.
+
+        The server's main installation directory (:attr:`~.BedrockServerBaseMixin.server_dir`)
+        is created if it doesn't exist before attempting to restore files into it.
+
+        .. warning::
+            This operation **overwrites** current world data and configuration files
+            in the server's installation directory with content from the backups.
+            Ensure this is the desired action before proceeding.
+
+        Returns:
+            Dict[str, Optional[str]]: A dictionary mapping component names (e.g., "world",
+            "server.properties") to the absolute path where they were restored in
+            the server's installation directory. If a component's restore was skipped
+            (e.g., no backup found) or failed, its value in the dictionary will be ``None``.
+            Returns an empty dictionary if the server's backup directory itself is
+            not found or is inaccessible.
+
+        Raises:
+            ConfigurationError: If the server's backup directory path
+                (:attr:`.server_backup_directory`) is not configured in settings.
+            FileOperationError: If creation of the server's main installation directory
+                (``self.server_dir``) fails.
+            BackupRestoreError: If one or more components (world or configuration files)
+                                fail to restore. The error message will summarize all failures.
+            AttributeError: If required methods from other mixins (e.g.,
+                ``get_world_name()`` or ``import_world()``)
+                are not available on the server instance.
+        """
         return await asyncio.to_thread(self.restore_all_data_from_latest)
 
     def list_backups(  # noqa: C901

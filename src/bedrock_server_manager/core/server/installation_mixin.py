@@ -22,7 +22,6 @@ lead to irreversible data loss if not used carefully.
 
 import asyncio
 import os
-import typing
 from typing import Any, Dict, List, Optional
 
 import aiofiles.ospath
@@ -217,67 +216,157 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             )
         return success
 
-    @typing.no_type_check
     async def async_validate_installation(self) -> bool:
-        """Validates the server installation asynchronously."""
+        """Validates that the server installation directory and executable exist asynchronously.
 
-        # 1. Check if the server directory itself exists
+        This method checks for the presence of:
+
+            1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
+            2. The Bedrock server executable within that directory
+               (path from :attr:`.BedrockServerBaseMixin.bedrock_executable_path`).
+
+        Returns:
+            bool: ``True`` if both the server directory and executable file exist.
+
+        Raises:
+            AppFileNotFoundError: If the server directory or the executable
+                file does not exist at their expected locations.
+        """
+        self.logger.debug(
+            f"Validating installation for server '{self.server_name}' in directory: {self.server_dir} asynchronously"
+        )
+
         if not await aiofiles.ospath.isdir(self.server_dir):
-            self.logger.warning(f"Server directory missing: {self.server_dir}")
-            return False
+            raise AppFileNotFoundError(self.server_dir, "Server directory")
 
-        # 2. Check for crucial executable file depending on the OS platform
-        if system_base.is_windows():
-            executable_path = os.path.join(self.server_dir, "bedrock_server.exe")
-        elif system_base.is_linux():
-            executable_path = os.path.join(self.server_dir, "bedrock_server")
-        else:
-            self.logger.error("Unsupported OS platform for installation validation.")
-            return False
+        if not await aiofiles.ospath.isfile(self.bedrock_executable_path):
+            raise AppFileNotFoundError(
+                self.bedrock_executable_path, "Server executable"
+            )
 
-        if not await aiofiles.ospath.isfile(executable_path):
-            self.logger.warning(f"Crucial executable missing: {executable_path}")
-            return False
+        self.logger.debug(
+            f"Server '{self.server_name}' installation validation successful."
+        )
+        return True
 
-        # 3. Check for the behavior_packs directory (a standard directory)
-        behavior_packs_dir = os.path.join(self.server_dir, "behavior_packs")
-        if not await aiofiles.ospath.isdir(behavior_packs_dir):
-            self.logger.warning(
-                f"Crucial behavior_packs directory missing: {behavior_packs_dir}"
+    async def async_is_installed(self) -> bool:
+        """Checks if the server installation is valid asynchronously, without raising exceptions.
+
+        This is a convenience method that calls :meth:`.async_validate_installation`
+        and catches :class:`~.error.AppFileNotFoundError` if validation fails,
+        returning ``False`` in such cases.
+
+        Returns:
+            bool: ``True`` if the installation is valid (directory and executable exist),
+            ``False`` otherwise.
+        """
+        try:
+            return await self.async_validate_installation()
+        except AppFileNotFoundError:
+            self.logger.debug(
+                f"async_is_installed check: Server '{self.server_name}' not found or installation invalid (directory or executable missing)."
             )
             return False
 
-        return True
-
-    @typing.no_type_check
-    async def async_is_installed(self) -> bool:
-        """Checks if the server is installed asynchronously."""
-        installed_status = await self.async_get_status_from_config()
-        if installed_status == "UNKNOWN":
-            return False
-
-        # Further validate that the files actually exist
-        return await self.async_validate_installation()
-
-    @typing.no_type_check
     async def async_set_filesystem_permissions(self) -> None:
-        """Sets the necessary filesystem permissions asynchronously."""
+        """Sets appropriate filesystem permissions for the server's installation directory asynchronously.
 
-        await asyncio.to_thread(self.set_filesystem_permissions)
+        This method first validates the server installation using :meth:`.async_is_installed`.
+        If valid, it delegates to the platform-agnostic
+        :func:`~.core.system.base.set_server_folder_permissions` utility to
+        apply the necessary permissions recursively to :attr:`.BedrockServerBaseMixin.server_dir`.
+        This is crucial for proper server operation, especially on Linux.
 
-    @typing.no_type_check
+        Raises:
+            AppFileNotFoundError: If the server is not installed (i.e.,
+                :meth:`.async_is_installed` returns ``False``).
+            PermissionsError: If setting permissions fails (propagated from
+                :func:`~.core.system.base.set_server_folder_permissions`).
+            MissingArgumentError: If `server_dir` is somehow invalid (propagated).
+        """
+        if not await self.async_is_installed():
+            raise AppFileNotFoundError(
+                self.server_dir,
+                "Cannot set permissions: Server installation directory or executable not found",
+            )
+
+        self.logger.info(
+            f"Setting filesystem permissions for server directory: {self.server_dir} asynchronously"
+        )
+        try:
+            await asyncio.to_thread(
+                system_base.set_server_folder_permissions, self.server_dir
+            )
+            self.logger.info(
+                f"Successfully set permissions for server '{self.server_name}' at '{self.server_dir}'."
+            )
+        except (
+            MissingArgumentError,
+            AppFileNotFoundError,
+            PermissionsError,
+        ) as e_perm:
+            self.logger.error(
+                f"Failed to set permissions for '{self.server_dir}': {e_perm}"
+            )
+            raise
+        except Exception as e_unexp:
+            self.logger.error(
+                f"Unexpected error setting permissions for '{self.server_name}': {e_unexp}",
+                exc_info=True,
+            )
+            raise PermissionsError(
+                f"Unexpected error setting permissions for server '{self.server_name}': {e_unexp}"
+            ) from e_unexp
+
     async def async_delete_server_files(
         self, item_description_prefix: str = "server installation files for"
     ) -> bool:
-        """Deletes server files asynchronously."""
+        """Deletes the server's entire installation directory (:attr:`.BedrockServerBaseMixin.server_dir`) asynchronously.
+
+        .. warning::
+            This is a **DESTRUCTIVE** operation. It will permanently remove the
+            server's main directory and all its contents.
+
+        It uses the :func:`~.core.system.base.delete_path_robustly` utility,
+        which attempts to handle read-only files that might otherwise prevent deletion.
+
+        Args:
+            item_description_prefix (str, optional): A prefix for logging messages
+                to provide context. Defaults to "server installation files for".
+
+        Returns:
+            bool: ``True`` if the deletion was successful or if the directory
+            did not exist initially. ``False`` if the deletion failed.
+        """
         return await asyncio.to_thread(
             self.delete_server_files, item_description_prefix
         )
 
-    @typing.no_type_check
     async def async_delete_all_data(self) -> None:
-        """Deletes all server data asynchronously."""
+        """Deletes **ALL** data associated with this Bedrock server instance asynchronously.
 
+        .. danger::
+            This is a **HIGHLY DESTRUCTIVE** operation and is irreversible.
+
+            It removes:
+
+                1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
+                2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
+                3. The server's entire backup directory (derived from ``paths.backups`` setting).
+                4. The server's PID file.
+                5. Database entries related to the server (e.g. Server and ServerBan records).
+
+        The method will attempt to stop a running server before proceeding with deletions.
+        If any part of the deletion process fails, it raises a
+        :class:`~.error.FileOperationError` with details of the failed items.
+
+        Raises:
+            FileOperationError: If deleting one or more essential directories or
+                files fails. The error message will summarize which items failed.
+            ServerStopError: If the server is running and fails to stop prior to deletion.
+            AttributeError: If essential methods from other mixins (like `is_running` or `stop`)
+                            are not available on the instance.
+        """
         await asyncio.to_thread(self.delete_all_data)
 
     def delete_all_data(self) -> None:  # noqa: C901
