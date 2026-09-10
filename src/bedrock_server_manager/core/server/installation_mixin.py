@@ -24,6 +24,8 @@ import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
+import aiofiles
+import aiofiles.os
 import aiofiles.ospath
 
 from ...db.models import Server, ServerBan
@@ -338,8 +340,20 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             bool: ``True`` if the deletion was successful or if the directory
             did not exist initially. ``False`` if the deletion failed.
         """
+        if not await aiofiles.ospath.exists(self.server_dir):
+            self.logger.info(
+                f"Server directory '{self.server_dir}' for '{self.server_name}' does not exist. Nothing to delete."
+            )
+            return True
+
+        self.logger.warning(
+            f"Attempting to delete {item_description_prefix} server '{self.server_name}' at '{self.server_dir}' asynchronously. THIS IS DESTRUCTIVE."
+        )
+
         return await asyncio.to_thread(
-            self.delete_server_files, item_description_prefix
+            system_base.delete_path_robustly,
+            self.server_dir,
+            f"{item_description_prefix} '{self.server_name}'",
         )
 
     async def async_delete_all_data(self) -> None:
@@ -367,7 +381,114 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             AttributeError: If essential methods from other mixins (like `is_running` or `stop`)
                             are not available on the instance.
         """
-        await asyncio.to_thread(self.delete_all_data)
+        server_install_dir = self.server_dir
+        server_json_config_subdir = self.server_config_dir
+
+        backup_base_dir = self.settings.get("paths.backups")
+        server_backup_dir_path = (
+            os.path.join(backup_base_dir, self.server_name) if backup_base_dir else None
+        )
+
+        self.logger.warning(
+            f"!!! DESTRUCTIVE ACTION: Preparing to delete ALL data for server '{self.server_name}' asynchronously !!!"
+        )
+        self.logger.info(f"  - Target installation directory: {server_install_dir}")
+        if server_backup_dir_path:
+            self.logger.info(f"  - Target backup directory: {server_backup_dir_path}")
+        else:
+            self.logger.info("  - No backup directory path configured or found.")
+
+        paths_to_check_existence = [server_install_dir]
+        if server_backup_dir_path:
+            paths_to_check_existence.append(server_backup_dir_path)
+
+        any_primary_data_exists = False
+        for p in paths_to_check_existence:
+            if p and await aiofiles.ospath.exists(p):
+                any_primary_data_exists = True
+                break
+
+        if not any_primary_data_exists:
+            self.logger.info(
+                f"Server '{self.server_name}': Neither installation nor backup directories exist. Skipping deletion."
+            )
+            return
+
+        if hasattr(self, "async_is_running") and await self.async_is_running():
+            self.logger.info(
+                f"Server '{self.server_name}' is currently running. Stopping before deletion..."
+            )
+            await getattr(self, "async_stop")()
+        elif hasattr(self, "is_running") and await asyncio.to_thread(self.is_running):
+            self.logger.info(
+                f"Server '{self.server_name}' is currently running. Stopping before deletion..."
+            )
+            if hasattr(self, "async_stop"):
+                await getattr(self, "async_stop")()
+            else:
+                await asyncio.to_thread(getattr(self, "stop"))
+
+        failed_deletions = []
+
+        if await aiofiles.ospath.exists(server_install_dir):
+            if not await self.async_delete_server_files("installation files for"):
+                failed_deletions.append(server_install_dir)
+
+        if await aiofiles.ospath.exists(server_json_config_subdir):
+            success = await asyncio.to_thread(
+                system_base.delete_path_robustly,
+                server_json_config_subdir,
+                f"JSON config directory for server '{self.server_name}'",
+            )
+            if not success:
+                failed_deletions.append(server_json_config_subdir)
+
+        if server_backup_dir_path and await aiofiles.ospath.exists(
+            server_backup_dir_path
+        ):
+            success = await asyncio.to_thread(
+                system_base.delete_path_robustly,
+                server_backup_dir_path,
+                f"backup directory for server '{self.server_name}'",
+            )
+            if not success:
+                failed_deletions.append(server_backup_dir_path)
+
+        pid_file_path = getattr(self, "bedrock_pid_file_path", None)
+        if pid_file_path and await aiofiles.ospath.exists(pid_file_path):
+            try:
+                await aiofiles.os.remove(pid_file_path)
+                self.logger.info(
+                    f"Successfully deleted PID file for server '{self.server_name}': {pid_file_path}"
+                )
+            except OSError as e:
+                self.logger.error(
+                    f"Failed to delete PID file '{pid_file_path}' for server '{self.server_name}': {e}"
+                )
+                failed_deletions.append(pid_file_path)
+
+        from ..database.utils import DatabaseManager
+
+        db_manager = DatabaseManager()
+        try:
+            await db_manager.async_remove_server(self.server_name)
+            self.logger.info(
+                f"Successfully removed database entries for server '{self.server_name}'."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to remove database entries for server '{self.server_name}': {e}"
+            )
+            failed_deletions.append("Database Entries")
+
+        if failed_deletions:
+            error_msg = f"Failed to delete ALL data for '{self.server_name}'. The following paths/items could not be removed: {', '.join(failed_deletions)}"
+            self.logger.error(error_msg)
+            raise FileOperationError(error_msg)
+
+        self.logger.info(
+            f"Successfully deleted ALL data for server '{self.server_name}' asynchronously."
+        )
 
     def delete_all_data(self) -> None:  # noqa: C901
         """Deletes **ALL** data associated with this Bedrock server instance.

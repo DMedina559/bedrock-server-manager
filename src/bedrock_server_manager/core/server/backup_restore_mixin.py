@@ -27,6 +27,7 @@ import shutil
 from typing import Any, Dict, List, Optional, Union
 
 import aiofiles
+import aiofiles.os
 import aiofiles.ospath
 
 from ...error import (
@@ -316,7 +317,59 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 or ``export_world()`` from
                 :class:`~.core.server.world_mixin.ServerWorldMixin`) are not available.
         """
-        return await asyncio.to_thread(self.backup_all_data)
+        server_bck_dir = self.server_backup_directory
+        if not server_bck_dir:
+            raise ConfigurationError(
+                f"Cannot backup server '{self.server_name}': Server backup directory path is not configured."
+            )
+
+        try:
+            await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to create backup directory '{server_bck_dir}' for server '{self.server_name}': {e}"
+            ) from e
+
+        results: Dict[str, Optional[str]] = {
+            "world": None,
+            "server.properties": None,
+            "allowlist.json": None,
+            "permissions.json": None,
+        }
+        world_backup_error: Optional[Exception] = None
+
+        try:
+            results["world"] = await asyncio.to_thread(self._backup_world_data_internal)
+        except Exception as e:
+            self.logger.error(f"World backup failed for '{self.server_name}': {e}")
+            world_backup_error = e
+
+        config_files_to_backup = [
+            ("server.properties", "properties", "server_backup"),
+            ("allowlist.json", "json", "allowlist_backup"),
+            ("permissions.json", "json", "permissions_backup"),
+        ]
+
+        for filename, ext, prefix in config_files_to_backup:
+            try:
+                backup_path = await asyncio.to_thread(
+                    self._backup_config_file_internal, filename
+                )
+                results[filename] = backup_path
+            except Exception as e:
+                self.logger.error(
+                    f"Backup of '{filename}' failed for '{self.server_name}': {e}"
+                )
+
+        if world_backup_error:
+            raise BackupRestoreError(
+                f"Full backup completed with errors: World backup failed: {world_backup_error}"
+            ) from world_backup_error
+
+        self.logger.info(
+            f"Full backup completed successfully for '{self.server_name}'."
+        )
+        return results
 
     async def async_restore_all_data_from_latest(self) -> Dict[str, Optional[str]]:
         """Restores the server's active world and standard configuration files from their latest backups asynchronously.
@@ -365,7 +418,80 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 ``get_world_name()`` or ``import_world()``)
                 are not available on the server instance.
         """
-        return await asyncio.to_thread(self.restore_all_data_from_latest)
+        server_bck_dir = self.server_backup_directory
+        if not server_bck_dir:
+            raise ConfigurationError(
+                f"Cannot restore server '{self.server_name}': Server backup directory path is not configured."
+            )
+
+        self.logger.info(
+            f"Server '{self.server_name}': Starting full data restoration from latest backups asynchronously."
+        )
+
+        results: Dict[str, Optional[str]] = {
+            "world": None,
+            "server.properties": None,
+            "allowlist.json": None,
+            "permissions.json": None,
+        }
+        world_restore_error: Optional[Exception] = None
+
+        if not await aiofiles.ospath.exists(server_bck_dir):
+            self.logger.warning(
+                f"Backup directory '{server_bck_dir}' does not exist for server '{self.server_name}'. Cannot restore."
+            )
+            return {}
+
+        try:
+            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to ensure server installation directory exists before restore: {e}"
+            ) from e
+
+        try:
+            results["world"] = await asyncio.to_thread(
+                getattr(self, "_restore_world_data_internal", lambda _: None),
+                server_bck_dir,
+            )
+        except Exception as e:
+            self.logger.error(f"World restoration failed for '{self.server_name}': {e}")
+            world_restore_error = e
+
+        config_files_to_restore = [
+            ("server.properties", "properties", "server_backup"),
+            ("allowlist.json", "json", "allowlist_backup"),
+            ("permissions.json", "json", "permissions_backup"),
+        ]
+
+        config_restore_errors = []
+        for filename, ext, prefix in config_files_to_restore:
+            try:
+                restore_path = await asyncio.to_thread(
+                    self._restore_config_file_internal, filename
+                )
+                results[filename] = restore_path
+            except Exception as e:
+                self.logger.error(
+                    f"Restoration of '{filename}' failed for '{self.server_name}': {e}"
+                )
+                config_restore_errors.append(f"{filename} ({e})")
+
+        if world_restore_error or config_restore_errors:
+            error_details = []
+            if world_restore_error:
+                error_details.append(f"World: {world_restore_error}")
+            if config_restore_errors:
+                error_details.append(f"Configs: {', '.join(config_restore_errors)}")
+
+            raise BackupRestoreError(
+                f"Full restoration completed with errors: {' | '.join(error_details)}"
+            )
+
+        self.logger.info(
+            f"Full data restoration completed successfully for '{self.server_name}' asynchronously."
+        )
+        return results
 
     def list_backups(  # noqa: C901
         self, backup_type: str

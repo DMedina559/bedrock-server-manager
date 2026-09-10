@@ -27,6 +27,8 @@ import shutil
 import zipfile
 from typing import TYPE_CHECKING, Any, Optional
 
+import aiofiles
+import aiofiles.os
 import aiofiles.ospath
 
 from ...error import (
@@ -37,7 +39,7 @@ from ...error import (
     FileOperationError,
     MissingArgumentError,
 )
-from ..system import base as system_base_utils
+from ..system import base as system_base
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -157,9 +159,92 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             ExtractError: If the ``.mcworld`` file is not a valid ZIP archive or
                 if an error occurs during the extraction process itself.
         """
-        return await asyncio.to_thread(
-            self.extract_mcworld, mcworld_file_path, target_world_dir_name
+        if not isinstance(mcworld_file_path, str) or not mcworld_file_path:
+            raise MissingArgumentError(
+                "Path to the .mcworld file cannot be empty and must be a string."
+            )
+        if not target_world_dir_name:
+            raise MissingArgumentError("Target world directory name cannot be empty.")
+
+        full_target_extract_dir = os.path.join(
+            self._worlds_base_dir_in_server, target_world_dir_name
         )
+        mcworld_filename = os.path.basename(mcworld_file_path)
+
+        self.logger.info(
+            f"Server '{self.server_name}': Preparing to extract '{mcworld_filename}' into world directory '{target_world_dir_name}' asynchronously."
+        )
+
+        if not await aiofiles.ospath.isfile(mcworld_file_path):
+            raise AppFileNotFoundError(mcworld_file_path, ".mcworld file")
+
+        if await aiofiles.ospath.exists(full_target_extract_dir):
+            self.logger.warning(
+                f"Target world directory '{full_target_extract_dir}' already exists. Removing its contents."
+            )
+            try:
+                await asyncio.to_thread(shutil.rmtree, full_target_extract_dir)
+            except OSError as e:
+                raise FileOperationError(
+                    f"Failed to clear target world directory '{full_target_extract_dir}': {e}"
+                ) from e
+
+        try:
+            await asyncio.to_thread(os.makedirs, full_target_extract_dir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to create target world directory '{full_target_extract_dir}': {e}"
+            ) from e
+
+        self.logger.info(
+            f"Server '{self.server_name}': Extracting '{mcworld_filename}' asynchronously..."
+        )
+
+        def _do_extract_and_flatten():
+            with zipfile.ZipFile(mcworld_file_path, "r") as zip_ref:
+                zip_ref.extractall(full_target_extract_dir)
+
+            entries = os.listdir(full_target_extract_dir)
+            has_level_dat = any(
+                f.lower() in ("level.dat", "level.txt") for f in entries
+            )
+
+            if not has_level_dat and len(entries) == 1:
+                nested_dir_name = entries[0]
+                nested_dir_path = os.path.join(full_target_extract_dir, nested_dir_name)
+                if os.path.isdir(nested_dir_path):
+                    self.logger.info(
+                        f"Detected nested world directory '{nested_dir_name}'. flattening structure..."
+                    )
+                    for item in os.listdir(nested_dir_path):
+                        shutil.move(
+                            os.path.join(nested_dir_path, item), full_target_extract_dir
+                        )
+                    os.rmdir(nested_dir_path)
+                    self.logger.debug("Flattened nested world directory structure.")
+
+        try:
+            await asyncio.to_thread(_do_extract_and_flatten)
+            self.logger.info(
+                f"Server '{self.server_name}': Successfully extracted world to '{full_target_extract_dir}'."
+            )
+            return full_target_extract_dir
+        except zipfile.BadZipFile as e:
+            if await aiofiles.ospath.exists(full_target_extract_dir):
+                await asyncio.to_thread(
+                    shutil.rmtree, full_target_extract_dir, ignore_errors=True
+                )
+            raise ExtractError(
+                f"Invalid .mcworld file (not a valid zip): {mcworld_filename}"
+            ) from e
+        except OSError as e:
+            raise FileOperationError(
+                f"Error extracting world '{mcworld_filename}' for server '{self.server_name}': {e}"
+            ) from e
+        except Exception as e_unexp:
+            raise FileOperationError(
+                f"Unexpected error extracting world '{mcworld_filename}' for server '{self.server_name}': {e_unexp}"
+            ) from e_unexp
 
     async def async_export_world(
         self, world_dir_name: str, target_mcworld_file_path: str
@@ -194,9 +279,78 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 during the export process. This can wrap underlying ``OSError`` or
                 other exceptions.
         """
-        await asyncio.to_thread(
-            self.export_world, world_dir_name, target_mcworld_file_path
+        if not isinstance(world_dir_name, str) or not world_dir_name:
+            raise MissingArgumentError(
+                "Source world directory name cannot be empty and must be a string."
+            )
+        if not target_mcworld_file_path:
+            raise MissingArgumentError("Target .mcworld file path cannot be empty.")
+
+        full_source_world_dir = os.path.join(
+            self._worlds_base_dir_in_server, world_dir_name
         )
+        mcworld_filename = os.path.basename(target_mcworld_file_path)
+
+        self.logger.info(
+            f"Server '{self.server_name}': Exporting world '{world_dir_name}' to .mcworld file '{mcworld_filename}' asynchronously."
+        )
+
+        if not await aiofiles.ospath.isdir(full_source_world_dir):
+            raise AppFileNotFoundError(full_source_world_dir, "Source world directory")
+
+        target_parent_dir = os.path.dirname(target_mcworld_file_path)
+        if target_parent_dir:
+            try:
+                await asyncio.to_thread(os.makedirs, target_parent_dir, exist_ok=True)
+            except OSError as e:
+                raise FileOperationError(
+                    f"Cannot create target directory '{target_parent_dir}': {e}"
+                ) from e
+
+        archive_base_name_no_ext = os.path.splitext(target_mcworld_file_path)[0]
+        temp_zip_path = archive_base_name_no_ext + ".zip"
+
+        try:
+            self.logger.debug(
+                f"Creating temporary ZIP archive at '{archive_base_name_no_ext}' for world '{world_dir_name}'."
+            )
+            await asyncio.to_thread(
+                shutil.make_archive,
+                base_name=archive_base_name_no_ext,
+                format="zip",
+                root_dir=full_source_world_dir,
+                base_dir=".",
+            )
+            self.logger.debug(f"Successfully created temporary ZIP: {temp_zip_path}")
+
+            if not await aiofiles.ospath.exists(temp_zip_path):
+                raise BackupRestoreError(
+                    f"Archive process completed but temp zip '{temp_zip_path}' not found."
+                )
+
+            if await aiofiles.ospath.exists(target_mcworld_file_path):
+                self.logger.warning(
+                    f"Target file '{target_mcworld_file_path}' exists. Overwriting."
+                )
+                await aiofiles.os.remove(target_mcworld_file_path)
+
+            await asyncio.to_thread(os.rename, temp_zip_path, target_mcworld_file_path)
+            self.logger.info(
+                f"Server '{self.server_name}': World export successful. Created: {target_mcworld_file_path}"
+            )
+
+        except OSError as e:
+            if await aiofiles.ospath.exists(temp_zip_path):
+                await aiofiles.os.remove(temp_zip_path)
+            raise BackupRestoreError(
+                f"Failed to create .mcworld for server '{self.server_name}', world '{world_dir_name}': {e}"
+            ) from e
+        except Exception as e_unexp:
+            if await aiofiles.ospath.exists(temp_zip_path):
+                await aiofiles.os.remove(temp_zip_path)
+            raise BackupRestoreError(
+                f"Unexpected error during world export for server '{self.server_name}': {e_unexp}"
+            ) from e_unexp
 
     async def async_import_world(self, mcworld_backup_file_path: str) -> str:
         """Imports a ``.mcworld`` file asynchronously, replacing the server's currently active world.
@@ -229,7 +383,58 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 :class:`~.error.FileOperationError`, etc.).
             AttributeError: If ``get_world_name()`` is missing.
         """
-        return await asyncio.to_thread(self.import_world, mcworld_backup_file_path)
+        if (
+            not isinstance(mcworld_backup_file_path, str)
+            or not mcworld_backup_file_path
+        ):
+            raise MissingArgumentError(
+                ".mcworld backup file path cannot be empty and must be a string."
+            )
+
+        mcworld_filename = os.path.basename(mcworld_backup_file_path)
+        self.logger.info(
+            f"Server '{self.server_name}': Importing active world from backup '{mcworld_filename}' asynchronously."
+        )
+
+        if not await aiofiles.ospath.isfile(mcworld_backup_file_path):
+            raise AppFileNotFoundError(mcworld_backup_file_path, ".mcworld backup file")
+
+        try:
+            if hasattr(self, "async_get_world_name"):
+                active_world_dir_name = str(
+                    await getattr(self, "async_get_world_name")()
+                )
+            else:
+                active_world_dir_name = str(
+                    await asyncio.to_thread(getattr(self, "get_world_name", lambda: ""))
+                )
+
+            self.logger.info(
+                f"Target active world name for server '{self.server_name}' is '{active_world_dir_name}'."
+            )
+        except (AppFileNotFoundError, ConfigParseError, Exception) as e:
+            raise BackupRestoreError(
+                f"Cannot import world: Failed to get active world name for '{self.server_name}'."
+            ) from e
+
+        try:
+            await self.async_extract_mcworld(
+                mcworld_backup_file_path, active_world_dir_name
+            )
+            self.logger.info(
+                f"Server '{self.server_name}': Active world import from '{mcworld_filename}' completed successfully into '{active_world_dir_name}'."
+            )
+            return active_world_dir_name
+        except (
+            AppFileNotFoundError,
+            ExtractError,
+            FileOperationError,
+            MissingArgumentError,
+            Exception,
+        ) as e_extract:
+            raise BackupRestoreError(
+                f"World import for server '{self.server_name}' failed into '{active_world_dir_name}': {e_extract}"
+            ) from e_extract
 
     async def async_delete_world(self) -> bool:
         """Deletes the server's currently active world directory asynchronously.
@@ -261,7 +466,48 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             AttributeError: If ``get_world_name()`` method (from StateMixin)
                 is not available.
         """
-        return await asyncio.to_thread(self.delete_world)
+        try:
+            active_world_dir = await asyncio.to_thread(
+                self._get_active_world_directory_path
+            )
+            active_world_name = os.path.basename(active_world_dir)
+        except (AppFileNotFoundError, ConfigParseError, Exception) as e:
+            self.logger.error(
+                f"Server '{self.server_name}': Cannot delete active world, failed to determine path: {e}"
+            )
+            raise
+
+        self.logger.warning(
+            f"Server '{self.server_name}': Attempting to delete active world directory: '{active_world_dir}'. THIS IS A DESTRUCTIVE operation."
+        )
+
+        if not await aiofiles.ospath.exists(active_world_dir):
+            self.logger.info(
+                f"Server '{self.server_name}': Active world directory '{active_world_dir}' does not exist. Nothing to delete."
+            )
+            return True
+
+        if not await aiofiles.ospath.isdir(active_world_dir):
+            raise FileOperationError(
+                f"Path for active world '{active_world_name}' is not a directory: {active_world_dir}"
+            )
+
+        success = await asyncio.to_thread(
+            system_base.delete_path_robustly,
+            active_world_dir,
+            f"active world directory '{active_world_name}' for server '{self.server_name}'",
+        )
+
+        if success:
+            self.logger.info(
+                f"Server '{self.server_name}': Successfully deleted active world directory '{active_world_dir}'."
+            )
+        else:
+            raise FileOperationError(
+                f"Failed to completely delete active world directory '{active_world_name}' for server '{self.server_name}'. Check logs."
+            )
+
+        return success
 
     async def async_has_world_icon(self) -> bool:
         """Checks if the standard world icon file (``world_icon.jpeg``) exists for the active world asynchronously.
@@ -649,7 +895,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
 
         # Use the robust deletion utility from the system module.
-        success = system_base_utils.delete_path_robustly(
+        success = system_base.delete_path_robustly(
             active_world_dir,
             f"active world directory '{active_world_name}' for server '{self.server_name}'",
         )

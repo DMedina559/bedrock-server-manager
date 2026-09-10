@@ -1379,16 +1379,197 @@ class BedrockDownloader:
 
     async def async_extract_server_files(self, is_update: bool):
         """Extracts server files asynchronously."""
-        await asyncio.to_thread(self.extract_server_files, is_update)
+        if not self.zip_file_path:
+            raise MissingArgumentError(
+                "ZIP file path not set. Call async_prepare_download_assets() first."
+            )
+        if not await aiofiles.ospath.exists(self.zip_file_path):
+            raise AppFileNotFoundError(self.zip_file_path, "ZIP file to extract")
+
+        self.logger.info(
+            f"Extracting server files from '{self.zip_file_path}' to '{self.server_dir}' asynchronously..."
+        )
+        self.logger.debug(
+            f"Extraction mode: {'Update (preserving config/worlds)' if is_update else 'Fresh install'}"
+        )
+
+        try:
+            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+        except OSError as e:
+            raise FileOperationError(
+                f"Cannot create target directory '{self.server_dir}' for extraction: {e}"
+            ) from e
+
+        def _do_extract():
+            with zipfile.ZipFile(self.zip_file_path, "r") as zip_ref:
+                if is_update:
+                    self.logger.debug(
+                        f"Update mode: Excluding items matching: {self.PRESERVED_ITEMS_ON_UPDATE}"
+                    )
+                    extracted_count, skipped_count = 0, 0
+                    for member in zip_ref.infolist():
+                        member_path = member.filename.replace("\\", "/")
+                        should_extract = not any(
+                            member_path == item or member_path.startswith(item)
+                            for item in self.PRESERVED_ITEMS_ON_UPDATE
+                        )
+                        if should_extract:
+                            zip_ref.extract(member, path=self.server_dir)
+                            extracted_count += 1
+                        else:
+                            self.logger.debug(
+                                f"Skipping extraction of preserved item: {member_path}"
+                            )
+                            skipped_count += 1
+
+                    self._update_server_properties_from_zip(zip_ref)
+
+                    self.logger.info(
+                        f"Update extraction complete. Extracted {extracted_count} items, skipped {skipped_count} preserved items."
+                    )
+                else:
+                    self.logger.debug("Fresh install mode: Extracting all files...")
+                    zip_ref.extractall(self.server_dir)
+                    self.logger.info(
+                        f"Successfully extracted all files to: {self.server_dir}"
+                    )
+
+        try:
+            await asyncio.to_thread(_do_extract)
+        except zipfile.BadZipFile as e:
+            raise ExtractError(f"Invalid ZIP file: '{self.zip_file_path}'. {e}") from e
+        except (OSError, IOError) as e:
+            raise FileOperationError(f"Error during file extraction: {e}") from e
+        except Exception as e:
+            raise ExtractError(f"Unexpected error during extraction: {e}") from e
 
     async def async_full_server_setup(self, is_update: bool) -> str:
         """Performs the complete server setup asynchronously."""
-        return await asyncio.to_thread(self.full_server_setup, is_update)
+        self.logger.info(
+            f"Starting full server setup asynchronously for '{self.server_dir}', version '{self.input_target_version}', update={is_update}"
+        )
+        actual_version, _, _ = await self.async_prepare_download_assets()
+        await self.async_extract_server_files(is_update)
+        self.logger.info(
+            f"Server setup/update for version {actual_version} completed asynchronously in '{self.server_dir}'."
+        )
+        if not actual_version:
+            raise DownloadError("Actual version not determined after full setup.")
+        return actual_version
 
     async def async_get_version_for_target_spec(self) -> str:
         """Resolves the target version asynchronously."""
-        return await asyncio.to_thread(self.get_version_for_target_spec)
+        self.logger.debug(
+            f"Getting prospective version asynchronously for target spec: '{self.input_target_version}'"
+        )
+        if self._version_type == "CUSTOM":
+            self.logger.debug("Custom version specified, skipping download URL lookup.")
+            await asyncio.to_thread(self._get_version_from_url)
+        else:
+            await self.async_lookup_bedrock_download_url()
+            await asyncio.to_thread(self._get_version_from_url)
+
+        if not self.actual_version:
+            raise DownloadError("Could not determine actual version from resolved URL.")
+        return self.actual_version
 
     async def async_prepare_download_assets(self) -> Tuple[str, str, str]:
         """Prepares download assets asynchronously."""
-        return await asyncio.to_thread(self.prepare_download_assets)
+        self.logger.info(
+            f"Starting Bedrock server download preparation asynchronously for directory: '{self.server_dir}'"
+        )
+
+        if self._version_type == "CUSTOM":
+            self.logger.info(
+                f"Custom version specified. Using local ZIP: {self.server_zip_path}"
+            )
+            if not self.server_zip_path:
+                raise MissingArgumentError(
+                    "server_zip_path is required for CUSTOM version."
+                )
+
+            self.zip_file_path = self.server_zip_path
+            await asyncio.to_thread(self._get_version_from_url)
+
+            self.specific_download_dir = str(Path(self.server_zip_path).parent)
+            self.logger.debug(
+                f"Setting specific_download_dir for custom zip to: {self.specific_download_dir}"
+            )
+
+            if (
+                not self.actual_version
+                or not self.zip_file_path
+                or not self.specific_download_dir
+            ):
+                raise DownloadError(
+                    "Critical state missing after custom ZIP preparation."
+                )
+
+            return self.actual_version, self.zip_file_path, self.specific_download_dir
+
+        await system_base.async_check_internet_connectivity()
+
+        try:
+            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            if self.base_download_dir:
+                await asyncio.to_thread(
+                    os.makedirs, self.base_download_dir, exist_ok=True
+                )
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to create required directories asynchronously: {e}"
+            ) from e
+
+        await self.async_get_version_for_target_spec()
+
+        if (
+            not self.actual_version
+            or not self.resolved_download_url
+            or not self.base_download_dir
+        ):
+            raise DownloadError(
+                "Internal error: version or URL not resolved after lookup."
+            )
+
+        version_subdir_name = "preview" if self._version_type == "PREVIEW" else "stable"
+        self.specific_download_dir = os.path.join(
+            self.base_download_dir, version_subdir_name
+        )
+        self.logger.debug(
+            f"Using specific download subdirectory: {self.specific_download_dir}"
+        )
+        try:
+            await asyncio.to_thread(
+                os.makedirs, self.specific_download_dir, exist_ok=True
+            )
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to create download subdirectory '{self.specific_download_dir}': {e}"
+            ) from e
+
+        self.zip_file_path = os.path.join(
+            self.specific_download_dir, f"bedrock-server-{self.actual_version}.zip"
+        )
+
+        if not await aiofiles.ospath.exists(self.zip_file_path):
+            self.logger.info(
+                f"Server version {self.actual_version} ZIP not found locally. Downloading asynchronously..."
+            )
+            await self.async_download_server_zip_file()
+        else:
+            self.logger.info(
+                f"Server version {self.actual_version} ZIP already exists at '{self.zip_file_path}'. Skipping download."
+            )
+
+        await asyncio.to_thread(self._execute_instance_pruning)
+        self.logger.info(
+            f"Download preparation completed asynchronously for version {self.actual_version}."
+        )
+
+        if (
+            not self.actual_version
+            or not self.zip_file_path
+            or not self.specific_download_dir
+        ):
+            raise DownloadError("Critical state missing after download preparation.")
+        return self.actual_version, self.zip_file_path, self.specific_download_dir
