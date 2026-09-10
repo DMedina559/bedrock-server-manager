@@ -24,7 +24,6 @@ with the filesystem within the server's ``worlds`` subdirectory.
 import asyncio
 import os
 import shutil
-import typing
 import zipfile
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -124,48 +123,169 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
         return os.path.join(self._worlds_base_dir_in_server, active_world_name)
 
-    @typing.no_type_check
     async def async_extract_mcworld(
         self, mcworld_file_path: str, target_world_dir_name: str
     ) -> str:
-        """Extracts an `.mcworld` file asynchronously."""
+        """Extracts a ``.mcworld`` archive file into a specified world directory name asynchronously.
 
+        The extraction target is a subdirectory named `target_world_dir_name`
+        within the server's main "worlds" folder (see :attr:`._worlds_base_dir_in_server`).
+
+        .. warning::
+            If the `target_world_dir_name` directory already exists, **it will be
+            deleted** before extraction to ensure a clean import.
+
+        Args:
+            mcworld_file_path (str): The absolute path to the ``.mcworld`` file
+                to be extracted.
+            target_world_dir_name (str): The desired name for the world directory
+                that will be created inside the server's "worlds" folder to
+                contain the extracted content.
+
+        Returns:
+            str: The absolute path to the directory where the world was extracted
+            (e.g., ``<server_dir>/worlds/<target_world_dir_name>``).
+
+        Raises:
+            MissingArgumentError: If `mcworld_file_path` or `target_world_dir_name`
+                are empty or not strings.
+            AppFileNotFoundError: If the source `mcworld_file_path` does not exist
+                or is not a file.
+            FileOperationError: If creating the target directory structure or
+                clearing a pre-existing target directory fails (e.g., due to
+                permissions or other ``OSError``).
+            ExtractError: If the ``.mcworld`` file is not a valid ZIP archive or
+                if an error occurs during the extraction process itself.
+        """
         return await asyncio.to_thread(
             self.extract_mcworld, mcworld_file_path, target_world_dir_name
         )
 
-    @typing.no_type_check
     async def async_export_world(
-        self,
-        export_destination_directory: str,
-        provided_world_name: Optional[str] = None,
-    ) -> str:
-        """Exports the current active world to an `.mcworld` file asynchronously."""
+        self, world_dir_name: str, target_mcworld_file_path: str
+    ) -> None:
+        """Exports a specified world directory into a ``.mcworld`` archive file asynchronously.
 
-        return await asyncio.to_thread(
-            self.export_world, export_destination_directory, provided_world_name
+        This method takes the name of a world directory (located within the server's
+        "worlds" folder), archives its entire contents into a ZIP file, and then
+        renames this ZIP file to have a ``.mcworld`` extension, saving it to
+        `target_mcworld_file_path`.
+
+        The parent directory for `target_mcworld_file_path` will be created if
+        it does not exist. If `target_mcworld_file_path` itself already exists,
+        it will be overwritten. A temporary ``.zip`` file is created during the
+        process and is cleaned up.
+
+        Args:
+            world_dir_name (str): The name of the world directory to export,
+                relative to the server's "worlds" folder (e.g., "MyFavoriteWorld").
+            target_mcworld_file_path (str): The absolute path where the resulting
+                ``.mcworld`` archive file should be saved.
+
+        Raises:
+            MissingArgumentError: If `world_dir_name` or `target_mcworld_file_path`
+                are empty or not strings.
+            AppFileNotFoundError: If the source world directory
+                (``<server_dir>/worlds/<world_dir_name>``) does not exist or is not a directory.
+            FileOperationError: If creating the parent directory for the
+                `target_mcworld_file_path` fails due to an ``OSError``.
+            BackupRestoreError: If creating the ZIP archive (via ``shutil.make_archive``)
+                or renaming it to ``.mcworld`` fails, or for other unexpected errors
+                during the export process. This can wrap underlying ``OSError`` or
+                other exceptions.
+        """
+        await asyncio.to_thread(
+            self.export_world, world_dir_name, target_mcworld_file_path
         )
 
-    @typing.no_type_check
     async def async_import_world(self, mcworld_backup_file_path: str) -> str:
-        """Imports an `.mcworld` file asynchronously."""
+        """Imports a ``.mcworld`` file asynchronously, replacing the server's currently active world.
 
+        .. warning::
+            This is a **DESTRUCTIVE** operation. The existing active world directory
+            will be deleted before the new world is imported.
+
+        This method first determines the name of the server's active world by
+        calling ``self.get_world_name()`` (expected from
+        :class:`~.core.server.state_mixin.ServerStateMixin`). It then uses
+        :meth:`.extract_mcworld` to extract the contents of the
+        provided `mcworld_backup_file_path` into a directory with that active
+        world name, effectively replacing it.
+
+        Args:
+            mcworld_backup_file_path (str): The absolute path to the source
+                ``.mcworld`` file that contains the world data to import.
+
+        Returns:
+            str: The name of the world directory (which is the active world name)
+            that the ``.mcworld`` file was imported into.
+
+        Raises:
+            MissingArgumentError: If `mcworld_backup_file_path` is empty or not a string.
+            AppFileNotFoundError: If the source `mcworld_backup_file_path` does not exist.
+            BackupRestoreError: If any part of the import process fails, including
+                failure to determine the active world name, or errors during
+                extraction (which can wrap :class:`~.error.ExtractError`,
+                :class:`~.error.FileOperationError`, etc.).
+            AttributeError: If ``get_world_name()`` is missing.
+        """
         return await asyncio.to_thread(self.import_world, mcworld_backup_file_path)
 
-    @typing.no_type_check
     async def async_delete_world(self) -> bool:
-        """Deletes the current active world asynchronously."""
+        """Deletes the server's currently active world directory asynchronously.
 
+        .. warning::
+            This is a **DESTRUCTIVE** operation. The active world's data will be
+            permanently removed. The server will typically generate a new world
+            with the same name on its next startup if the ``level-name`` in
+            ``server.properties`` is not changed.
+
+        This method determines the active world's directory path using
+        :meth:`._get_active_world_directory_path` and then uses the robust
+        deletion utility :func:`~.core.system.base.delete_path_robustly`
+        to remove it.
+
+        Returns:
+            bool: ``True`` if the active world directory was successfully deleted
+            or if it did not exist initially.
+
+        Raises:
+            FileOperationError: If determining the world path fails (e.g., due to
+                issues with ``server.properties`` or if the path is not a directory),
+                or if the deletion itself fails critically (though
+                `delete_path_robustly` attempts to handle many common issues).
+            AppFileNotFoundError: If ``server.properties`` is missing (propagated
+                from :meth:`._get_active_world_directory_path` via `get_world_name`).
+            ConfigParseError: If ``level-name`` is missing from ``server.properties``
+                (propagated).
+            AttributeError: If ``get_world_name()`` method (from StateMixin)
+                is not available.
+        """
         return await asyncio.to_thread(self.delete_world)
 
-    @typing.no_type_check
     async def async_has_world_icon(self) -> bool:
-        """Checks if the active world has a custom icon asynchronously."""
+        """Checks if the standard world icon file (``world_icon.jpeg``) exists for the active world asynchronously.
 
-        icon_path = self.world_icon_filesystem_path()
-        if not icon_path:
-            return False
-        return await aiofiles.ospath.isfile(icon_path)
+        This method uses :attr:`.world_icon_filesystem_path` to determine the
+        expected location of the icon and checks if a file exists at that path.
+
+        Returns:
+            bool: ``True`` if the world icon file exists and is a regular file,
+            ``False`` otherwise (e.g., path cannot be determined, file does not
+            exist, or is not a file).
+        """
+        icon_path = self.world_icon_filesystem_path
+        if icon_path and await aiofiles.ospath.isfile(icon_path):
+            self.logger.debug(
+                f"Server '{self.server_name}': World icon found at '{icon_path}' asynchronously."
+            )
+            return True
+
+        if icon_path:
+            self.logger.debug(
+                f"Server '{self.server_name}': World icon not found or is not a file at determined path '{icon_path}' asynchronously."
+            )
+        return False
 
     def extract_mcworld(  # noqa: C901
         self, mcworld_file_path: str, target_world_dir_name: str
