@@ -209,31 +209,33 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             is_running = await asyncio.to_thread(self.is_running)  # type: ignore
 
         if not is_running:
-            if hasattr(self, "players") and self.players:
+            players = getattr(self, "players", [])
+            if players:
                 self.logger.debug(
                     f"Server '{self.server_name}' is stopped. Clearing online players list."
                 )
-                self.players.clear()
+                players.clear()
             return []
 
         if not hasattr(self, "_log_file_cursor"):
             self._log_file_cursor = 0
         if not hasattr(self, "players"):
-            setattr(self, "players", [])
+            self.players: List[Dict[str, str]] = []  # type: ignore[has-type, no-redef]
 
-        online_players: Dict[str, str] = {
-            p["uuid"]: p["name"] for p in getattr(self, "players", [])
-        }
+        online_players: Dict[str, str] = {p["uuid"]: p["name"] for p in self.players}  # type: ignore[has-type]
 
         events = await asyncio.to_thread(
             lambda: list(self._parse_player_log_events(self._log_file_cursor))
         )
         for event_type, name, xuid, new_cursor in events:
-            self._log_file_cursor = new_cursor
-            if event_type == "connect" and name and xuid:
+            if event_type == "connect" and xuid and name:
                 online_players[xuid] = name
             elif event_type == "disconnect" and xuid:
-                online_players.pop(xuid, None)
+                if xuid in online_players:
+                    del online_players[xuid]
+
+            # Update cursor position to right after the parsed line
+            self._log_file_cursor = new_cursor
 
         setattr(
             self,
@@ -333,12 +335,10 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
         if not hasattr(self, "_log_file_cursor"):
             self._log_file_cursor = 0
         if not hasattr(self, "players"):
-            setattr(self, "players", [])
+            self.players: List[Dict[str, str]] = []  # type: ignore[has-type, no-redef]
 
         # Map current players by xuid for quick O(1) updates
-        online_players: Dict[str, str] = {
-            p["uuid"]: p["name"] for p in getattr(self, "players", [])
-        }
+        online_players: Dict[str, str] = {p["uuid"]: p["name"] for p in self.players}  # type: ignore[has-type]
 
         for event_type, name, xuid, new_cursor in self._parse_player_log_events(
             self._log_file_cursor
@@ -353,9 +353,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             self._log_file_cursor = new_cursor
 
         # Update self.players array and return it
-        setattr(
-            self,
-            "players",
-            [{"name": name, "uuid": xuid} for xuid, name in online_players.items()],
-        )
-        return getattr(self, "players", [])
+        self.players = [
+            {"name": name, "uuid": xuid} for xuid, name in online_players.items()
+        ]
+        return self.players
