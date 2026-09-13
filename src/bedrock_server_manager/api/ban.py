@@ -107,7 +107,7 @@ def remove_server_ban_api(
 
         db.delete(ban)
         db.commit()
-        return {"status": "success", "message": f"Ban removed successfully."}
+        return {"status": "success", "message": "Ban removed successfully."}
 
 
 @api_method("get_server_bans_api")

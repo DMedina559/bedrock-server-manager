@@ -186,7 +186,7 @@ def downgrade(ctx: click.Context, revision: str):
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
     click.secho(
-        f"WARNING: Downgrading the database can lead to data loss.",
+        "WARNING: Downgrading the database can lead to data loss.",
         fg="yellow",
         bold=True,
     )

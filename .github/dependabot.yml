@@ -13,22 +13,6 @@ updates:
     commit-message:
       prefix: "dep"
 
-  - package-ecosystem: "npm"
-    directory: "/frontend/legacy"
-    target-branch: "dev"
-    schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "dep"
-
-  - package-ecosystem: "npm"
-    directory: "/frontend/v2"
-    target-branch: "dev"
-    schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "dep"
-
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "dev"

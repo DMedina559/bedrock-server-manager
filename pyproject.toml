@@ -106,8 +106,6 @@ include = ["bedrock_server_manager*"]
 "bedrock_server_manager" = [
     "db/alembic.ini",
     "db/migrations/**",
-    "web/templates/**",
-    "web/static/**",
     "plugins/default/**"
 ]
 

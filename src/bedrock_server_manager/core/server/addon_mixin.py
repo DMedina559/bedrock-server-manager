@@ -1930,7 +1930,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                                 f"Downgrading pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
                             )
                             self.logger.warning(
-                                f"Downgrading packs can cause compatibility issues or data loss."
+                                "Downgrading packs can cause compatibility issues or data loss."
                             )
                         packs_list[i] = {
                             "pack_id": pack_uuid,
@@ -2058,7 +2058,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                                 f"Downgrading pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
                             )
                             self.logger.warning(
-                                f"Downgrading packs can cause compatibility issues or data loss."
+                                "Downgrading packs can cause compatibility issues or data loss."
                             )
                         packs_list[i] = {
                             "pack_id": pack_uuid,
