@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -22,6 +22,8 @@ def test_start_server_success(app_context, monkeypatch):
 
     # Mock the BedrockProcessManager globally mapped onto app_context
     mock_bpm = MagicMock()
+    mock_bpm.add_server = AsyncMock()
+    mock_bpm.remove_server = AsyncMock()
     monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
     result = start_server("test_server", app_context)
@@ -41,6 +43,10 @@ def test_stop_server_success(app_context, monkeypatch):
     """Test stop_server executes successfully on target server."""
     mock_server = MagicMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
+    mock_bpm = MagicMock()
+    mock_bpm.remove_server = AsyncMock()
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
     result = stop_server("test_server", app_context)
 

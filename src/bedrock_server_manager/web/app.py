@@ -32,6 +32,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         # Startup logic goes here
         app_context = app.state.app_context
         app_context.loop = asyncio.get_running_loop()
+        await app_context.bedrock_process_manager.start()
         app_context.resource_monitor.start()
         await asyncio.to_thread(app_context.api.update_server_statuses)
 

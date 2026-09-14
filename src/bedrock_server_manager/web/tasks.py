@@ -25,7 +25,7 @@ class TaskManager:
         self._max_tasks = 100
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         try:
-            self._loop = asyncio.get_running_loop()
+            self._loop = app_context.loop
         except RuntimeError:
             self._loop = None
 

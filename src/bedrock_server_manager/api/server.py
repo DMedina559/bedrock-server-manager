@@ -16,6 +16,7 @@ APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.api_meth
 and by triggering various plugin events during server operations.
 """
 
+import asyncio
 import logging
 import os
 from contextlib import contextmanager
@@ -325,7 +326,17 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
             }
 
         server.start()
-        app_context.bedrock_process_manager.add_server(server)
+        loop = app_context.loop
+        if loop is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    app_context.bedrock_process_manager.add_server(server), loop
+                )
+            except RuntimeError:
+                asyncio.run(app_context.bedrock_process_manager.add_server(server))
+        else:
+            asyncio.run(app_context.bedrock_process_manager.add_server(server))
+
         logger.info(f"API: Start for server '{server_name}' completed.")
         return {
             "status": "success",
@@ -397,7 +408,26 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         app_context.api.set_server_status_api(server_name, "STOPPING")
 
         server.stop()
-        app_context.bedrock_process_manager.remove_server(server.server_name)
+        loop = app_context.loop
+        if loop is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    app_context.bedrock_process_manager.remove_server(
+                        server.server_name
+                    ),
+                    loop,
+                )
+            except RuntimeError:
+                asyncio.run(
+                    app_context.bedrock_process_manager.remove_server(
+                        server.server_name
+                    )
+                )
+        else:
+            asyncio.run(
+                app_context.bedrock_process_manager.remove_server(server.server_name)
+            )
+
         logger.info(f"API: Server '{server_name}' stopped successfully.")
         return {
             "status": "success",

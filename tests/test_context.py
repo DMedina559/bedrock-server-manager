@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.core.bedrock_server import BedrockServer
@@ -100,6 +100,10 @@ def test_remove_server_running(app_context, monkeypatch):
     monkeypatch.setattr(server, "is_running", is_running_mock)
     monkeypatch.setattr(server, "stop", stop_mock)
 
+    mock_bpm = MagicMock()
+    mock_bpm.remove_server = AsyncMock()
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
+
     app_context.remove_server(server_name)
 
     is_running_mock.assert_called_once()
@@ -117,6 +121,10 @@ def test_remove_server_not_running(app_context, monkeypatch):
 
     monkeypatch.setattr(server, "is_running", is_running_mock)
     monkeypatch.setattr(server, "stop", stop_mock)
+
+    mock_bpm = MagicMock()
+    mock_bpm.remove_server = AsyncMock()
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
     app_context.remove_server(server_name)
 
