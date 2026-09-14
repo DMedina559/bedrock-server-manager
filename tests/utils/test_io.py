@@ -39,18 +39,17 @@ async def test_async_save_and_load_json(temp_dir):
 async def test_async_save_json_concurrency(temp_dir):
     """
     Test 50 rapid concurrent saves to the same file.
-    Note: To prevent file corruption, this should ideally be wrapped
-    in an asyncio.Lock by the caller (as implemented in BaseServerMixin),
-    but the atomic os.replace guarantees that even without a lock,
-    the file won't end up half-written or corrupted in standard environments.
+    Uses asyncio.Lock() to mimic real-world usage in BaseServerMixin
+    and prevent Windows PermissionError (WinError 5) during os.replace.
     """
     filepath = os.path.join(temp_dir, "concurrent.json")
+    lock = asyncio.Lock()
 
     async def save_task(i):
-        # Even though these race to write to the same .tmp file, the
-        # final os.replace is atomic.
         data = {"count": i}
-        await async_save_json(data, filepath)
+        # Safely acquire the lock before doing the file operation
+        async with lock:
+            await async_save_json(data, filepath)
 
     tasks = [save_task(i) for i in range(50)]
     await asyncio.gather(*tasks)
@@ -103,11 +102,18 @@ async def test_async_save_and_load_lines(temp_dir):
 
 @pytest.mark.asyncio
 async def test_async_save_lines_concurrency(temp_dir):
+    """
+    Test 50 rapid concurrent line saves to the same file.
+    Uses asyncio.Lock() to prevent Windows locking errors.
+    """
     filepath = os.path.join(temp_dir, "concurrent_lines.txt")
+    lock = asyncio.Lock()
 
     async def save_task(i):
         lines = [f"line {i}\n"]
-        await async_save_lines(lines, filepath)
+        # Safely acquire the lock before doing the file operation
+        async with lock:
+            await async_save_lines(lines, filepath)
 
     tasks = [save_task(i) for i in range(50)]
     await asyncio.gather(*tasks)
