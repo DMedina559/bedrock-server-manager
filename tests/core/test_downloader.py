@@ -5,7 +5,7 @@ Integration tests for bedrock_server_manager/core/downloader.py
 import os
 import platform
 import zipfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -74,76 +74,32 @@ def test_downloader_init_preview(app_context: AppContext):
     assert downloader._version_type == "PREVIEW"
 
 
-@patch("requests.get")
-def test_downloader_lookup_latest(mock_get, app_context: AppContext):
+def test_downloader_lookup_latest(mock_bedrock_api, app_context: AppContext):
     """Test looking up the latest bedrock URL from API."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    if platform.system() == "Windows":
-        mock_response.json.return_value = {
-            "result": {
-                "links": [
-                    {
-                        "downloadType": "serverBedrockWindows",
-                        "downloadUrl": "https://example.com/bedrock-server-1.20.0.zip",
-                    }
-                ]
-            }
-        }
-    else:
-        mock_response.json.return_value = {
-            "result": {
-                "links": [
-                    {
-                        "downloadType": "serverBedrockLinux",
-                        "downloadUrl": "https://example.com/bedrock-server-1.20.0.zip",
-                    }
-                ]
-            }
-        }
-    mock_get.return_value = mock_response
+    # Point the downloader to the mock API
+    app_context.settings.set(
+        "system.bedrock_download_api", f"{mock_bedrock_api.url}/api/v1.0/download/links"
+    )
 
     downloader = BedrockDownloader(app_context.settings, "/fake", "LATEST")
     url = downloader._lookup_bedrock_download_url()
 
-    assert url == "https://example.com/bedrock-server-1.20.0.zip"
-    mock_get.assert_called_once()
+    assert mock_bedrock_api.url in url
+    assert "bedrock-server" in url
 
 
-@patch("requests.get")
-def test_downloader_lookup_preview(mock_get, app_context: AppContext):
+def test_downloader_lookup_preview(mock_bedrock_api, app_context: AppContext):
     """Test looking up the preview bedrock URL from API."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    if platform.system() == "Windows":
-        mock_response.json.return_value = {
-            "result": {
-                "links": [
-                    {
-                        "downloadType": "serverBedrockPreviewWindows",
-                        "downloadUrl": "https://example.com/bedrock-server-1.20.0-preview.zip",
-                    }
-                ]
-            }
-        }
-    else:
-        mock_response.json.return_value = {
-            "result": {
-                "links": [
-                    {
-                        "downloadType": "serverBedrockPreviewLinux",
-                        "downloadUrl": "https://example.com/bedrock-server-1.20.0-preview.zip",
-                    }
-                ]
-            }
-        }
-    mock_get.return_value = mock_response
+    # Point the downloader to the mock API
+    app_context.settings.set(
+        "system.bedrock_download_api", f"{mock_bedrock_api.url}/api/v1.0/download/links"
+    )
 
     downloader = BedrockDownloader(app_context.settings, "/fake", "PREVIEW")
     url = downloader._lookup_bedrock_download_url()
 
-    assert url == "https://example.com/bedrock-server-1.20.0-preview.zip"
-    mock_get.assert_called_once()
+    assert mock_bedrock_api.url in url
+    assert "preview" in url
 
 
 @patch("requests.get")
@@ -187,32 +143,37 @@ def test_downloader_prepare_assets(mock_conn, app_context: AppContext, tmp_path)
                 assert "stable" in zip_path
 
 
-def test_downloader_extract_server_files_fresh(app_context: AppContext, tmp_path):
+def test_downloader_extract_server_files_fresh(
+    app_context: AppContext, tmp_path, dummy_server_zip
+):
     """Test extraction process for a fresh install."""
     server_dir = tmp_path / "server"
     server_dir.mkdir()
 
-    zip_path = tmp_path / "test.zip"
-
-    # Create a fake zip
-    with zipfile.ZipFile(zip_path, "w") as zipf:
-        zipf.writestr("bedrock_server", "executable content")
-        zipf.writestr("server.properties", "server-name=Dedicated Server")
+    # Generate a dummy bedrock server zip using bsm-test-utils
+    zip_path = dummy_server_zip(target_dir=tmp_path, version="1.20.0.01")
 
     downloader = BedrockDownloader(app_context.settings, str(server_dir), "LATEST")
-    downloader.resolved_download_url = "https://example.com/test.zip"
-    downloader.actual_version = "1.20.0"
+    downloader.resolved_download_url = f"https://example.com/{zip_path.name}"
+    downloader.actual_version = "1.20.0.01"
     downloader.zip_file_path = str(zip_path)
     downloader.specific_download_dir = str(tmp_path)
 
     downloader.extract_server_files(is_update=False)
 
     # Assert extracted
-    assert (server_dir / "bedrock_server").exists()
+    if platform.system() == "Windows":
+        assert (server_dir / "bedrock_server.exe").exists()
+    else:
+        assert (server_dir / "bedrock_server").exists()
+
     assert (server_dir / "server.properties").exists()
+    assert (server_dir / "behavior_packs").is_dir()
 
 
-def test_downloader_extract_server_files_update(app_context: AppContext, tmp_path):
+def test_downloader_extract_server_files_update(
+    app_context: AppContext, tmp_path, dummy_server_zip
+):
     """Test extraction process for an update preserves properties."""
     server_dir = tmp_path / "server"
     server_dir.mkdir()
@@ -223,19 +184,21 @@ def test_downloader_extract_server_files_update(app_context: AppContext, tmp_pat
         "server-name=My Custom Server\nold-prop=false\n# some custom comment\nlegacy-prop=123"
     )
 
-    zip_path = tmp_path / "test.zip"
+    # Use the dummy_server_zip fixture which generates standard config files including server.properties
+    zip_path = dummy_server_zip(target_dir=tmp_path, version="1.20.0.01")
 
-    # Create a fake zip with default properties
-    with zipfile.ZipFile(zip_path, "w") as zipf:
-        zipf.writestr("bedrock_server", "executable content")
-        zipf.writestr(
+    # Pre-modify the zip to insert specific server properties for this test,
+    # or just assert on standard dummy_server_zip properties
+    # Let's modify the dummy zip to ensure standard properties testing works
+    with zipfile.ZipFile(zip_path, "a") as zf:
+        zf.writestr(
             "server.properties",
             "# Server Name Comment\nserver-name=Dedicated Server\nnew-prop=true\nold-prop=true",
         )
 
     downloader = BedrockDownloader(app_context.settings, str(server_dir), "LATEST")
-    downloader.resolved_download_url = "https://example.com/test.zip"
-    downloader.actual_version = "1.20.0"
+    downloader.resolved_download_url = f"https://example.com/{zip_path.name}"
+    downloader.actual_version = "1.20.0.01"
     downloader.zip_file_path = str(zip_path)
     downloader.specific_download_dir = str(tmp_path)
 

@@ -156,13 +156,16 @@ def test_post_install_addon_success(
     app_context: AppContext,
     real_bedrock_server,
     tmp_path,
+    valid_mcaddon_zip,
 ):
     """Test installing an addon from a file."""
+    import shutil
+
     # Setup mock addon file
     content_dir = tmp_path / "test_data" / "content" / "addons"
     content_dir.mkdir(parents=True, exist_ok=True)
     addon_file = content_dir / "test_addon.mcaddon"
-    addon_file.touch()
+    shutil.copy2(valid_mcaddon_zip, addon_file)
 
     # Update app_context settings to point to our temp dir
     app_context.settings.set("paths.content", str(tmp_path / "test_data" / "content"))

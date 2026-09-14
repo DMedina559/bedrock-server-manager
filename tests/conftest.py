@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
+pytest_plugins = ["bsm_test_utils.fixtures"]
+
 from bedrock_server_manager.config.settings import Settings  # noqa: E402
 from bedrock_server_manager.context import AppContext  # noqa: E402
 from bedrock_server_manager.db.database import Database  # noqa: E402
@@ -119,8 +121,10 @@ def app_context(settings, db, tmp_path):
 
 
 @pytest.fixture
-def real_bedrock_server(app_context, tmp_path):
-    """Fixture to create dummy files representing a server for BedrockServer instance testing."""
+def real_bedrock_server(app_context, tmp_path, dummy_server_zip):
+    """Fixture to create a real dummy Bedrock Server instance using bsm-test-utils."""
+    import zipfile
+
     server_name = "test_server"
 
     server_dir = os.path.join(app_context.settings.get("paths.servers"), server_name)
@@ -129,23 +133,15 @@ def real_bedrock_server(app_context, tmp_path):
     server_config_dir = os.path.join(app_context.settings.config_dir, server_name)
     os.makedirs(server_config_dir, exist_ok=True)
 
-    properties_file = os.path.join(server_dir, "server.properties")
-    with open(properties_file, "w") as f:
-        f.write("server-name=test-server\nmax-players=5\nlevel-name=world\n")
+    # Use the dummy_server_zip fixture to generate a fake binary that functions like the real one
+    zip_path = dummy_server_zip(target_dir=tmp_path)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(server_dir)
 
     executable_name = "bedrock_server"
     if platform.system() == "Windows":
         executable_name += ".exe"
     executable_path = os.path.join(server_dir, executable_name)
-    with open(executable_path, "w") as f:
-        f.write(
-            "#!/bin/bash\n"
-            "while read line; do\n"
-            '  if [[ "$line" == "stop" ]]; then\n'
-            "    exit 0\n"
-            "  fi\n"
-            "done\n"
-        )
     os.chmod(executable_path, 0o755)
 
     server = app_context.get_server(server_name)

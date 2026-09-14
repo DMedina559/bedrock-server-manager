@@ -179,22 +179,24 @@ def test_guarded_process():
     assert guarded.guard_env[GUARD_VARIABLE] == "1"
 
 
-def test_launch_detached_process(tmp_path: Path, fp):
-    """Test launch_detached_process using pytest-subprocess."""
-    cmd = ["my_executable", "arg1"]
+def test_launch_detached_process(tmp_path: Path, real_bedrock_server):
+    """Test launch_detached_process using the dummy executable."""
+    server = real_bedrock_server
+    exe_path = server.bedrock_executable_path
+    cmd = [exe_path]
     launcher_pid_file = tmp_path / "launcher.pid"
-
-    # Register the command in pytest-subprocess
-    fp.register(cmd, stdout=b"")
 
     pid = launch_detached_process(cmd, str(launcher_pid_file))
 
-    # Assert pytest-subprocess was called
-    assert fp.call_count(cmd) == 1
+    # Process should be running
+    assert is_process_running(pid)
 
     # The PID should be written to the file
     assert launcher_pid_file.exists()
     assert int(launcher_pid_file.read_text().strip()) == pid
+
+    # Cleanup
+    terminate_process_by_pid(pid)
 
 
 def test_launch_detached_process_invalid(tmp_path: Path):
@@ -205,14 +207,13 @@ def test_launch_detached_process_invalid(tmp_path: Path):
         launch_detached_process(["cmd"], "")
 
 
-def test_launch_detached_process_not_found(tmp_path: Path, fp):
+def test_launch_detached_process_not_found(tmp_path: Path):
     """Test launch_detached_process when executable is not found."""
     cmd = ["nonexistent_executable"]
     launcher_pid_file = tmp_path / "launcher.pid"
 
-    with patch("subprocess.Popen", side_effect=FileNotFoundError):
-        with pytest.raises(AppFileNotFoundError):
-            launch_detached_process(cmd, str(launcher_pid_file))
+    with pytest.raises(AppFileNotFoundError):
+        launch_detached_process(cmd, str(launcher_pid_file))
 
 
 # --- Process Status & Verification Tests ---
@@ -468,3 +469,37 @@ def test_terminate_process_by_pid_invalid_args():
         terminate_process_by_pid(1234, terminate_timeout=-1)
     with pytest.raises(ServerStopError):
         terminate_process_by_pid(1234, kill_timeout=-1)
+
+
+def test_dummy_launch_and_verify(tmp_path: Path, real_bedrock_server):
+    """Test process lifecycle using the real dummy binary."""
+    # Use real_bedrock_server fixture to set up a valid dummy binary
+    server = real_bedrock_server
+    exe_path = server.bedrock_executable_path
+    cmd = [exe_path]
+
+    launcher_pid_file = tmp_path / "launcher.pid"
+
+    # 1. Launch the process
+    pid = launch_detached_process(cmd, str(launcher_pid_file))
+
+    assert launcher_pid_file.exists()
+
+    # 2. Verify process is running
+    assert is_process_running(pid) is True
+
+    # 3. Verify process identity matches the dummy binary
+    # Note: cwd may default to current app path if not specified in the detached process Popen call
+    verify_process_identity(
+        pid,
+        expected_executable_path=exe_path,
+    )
+
+    # 4. Terminate process gracefully
+    terminate_process_by_pid(pid)
+
+    # 5. Verify process is no longer running
+    import time
+
+    time.sleep(0.5)
+    assert is_process_running(pid) is False

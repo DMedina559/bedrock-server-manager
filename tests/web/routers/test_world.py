@@ -41,14 +41,21 @@ def test_get_worlds_list_error(admin_auth_client: TestClient):
 
 
 def test_post_world_install_success(
-    admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
+    admin_auth_client: TestClient,
+    real_bedrock_server,
+    app_context,
+    tmp_path,
+    valid_mcworld_zip,
 ):
+    import shutil
+
     # Set up mock content dir
     app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
+
     target_file = worlds_dir / "my_world.mcworld"
-    target_file.touch()
+    shutil.copy2(valid_mcworld_zip, target_file)
 
     with patch(
         "bedrock_server_manager.utils.server.validate_server", return_value=True

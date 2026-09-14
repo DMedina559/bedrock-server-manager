@@ -463,8 +463,9 @@ class BedrockDownloader:
         self.logger.debug(
             f"Asynchronously looking up download URL for target: '{self.input_target_version}'"
         )
-        API_URL = (
-            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
+        API_URL = self.settings.get(
+            "downloader.download_url",
+            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links",
         )
 
         # 1. Determine the API identifier based on OS and version type.
@@ -577,8 +578,9 @@ class BedrockDownloader:
         self.logger.debug(
             f"Looking up download URL for target: '{self.input_target_version}'"
         )
-        API_URL = (
-            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links"
+        API_URL = self.settings.get(
+            "system.bedrock_download_api",
+            "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links",
         )
 
         # 1. Determine the API identifier based on OS and version type.

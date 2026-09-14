@@ -101,34 +101,52 @@ def test_write_error_status_failure(app_context: AppContext):
 
 
 @patch("bedrock_server_manager.core.bedrock_process_manager.mc.lookup")
-def test_monitor_servers_crashed_server_detected(mock_lookup, app_context: AppContext):
+def test_monitor_servers_crashed_server_detected(
+    mock_lookup, app_context: AppContext, real_bedrock_server
+):
     """Test monitoring detects a crashed server and attempts restart."""
     manager = BedrockProcessManager(app_context)
 
-    # Create a server that is NOT intentionally stopped, but IS NOT running (crashed)
-    mock_server = MagicMock()
-    mock_server.server_name = "crashed_server"
-    mock_server.intentionally_stopped = False
-    mock_server.is_running.return_value = False
-    mock_server.get_server_port.return_value = 19132
-    mock_server.failure_count = 0
+    server = real_bedrock_server
 
-    manager.add_server(mock_server)
+    with patch.object(server, "is_installed", return_value=True):
+        server.start()
+        assert server.is_running()
 
-    # We don't want the while loop to run forever, so we fake the _shutdown_event
-    # We'll make it return False once, then True so the loop exits immediately.
-    # The while condition checks `not manager._shutdown_event.is_set()`
-    manager._shutdown_event = MagicMock()
-    # Add an extra True to avoid StopIteration if it checks again while breaking out
-    manager._shutdown_event.is_set.side_effect = [False, True, True, True]
-    manager._shutdown_event.wait.return_value = False  # So it doesn't break early
+        server.intentionally_stopped = False
+        server.failure_count = 0
 
-    with patch.object(manager, "_try_restart_server") as mock_try_restart:
-        manager._monitor_servers()
+        manager.add_server(server)
 
-        # The server should have its failure count increased and a restart attempted
-        assert mock_server.failure_count == 1
-        mock_try_restart.assert_called_once_with(mock_server)
+        # Crash the server via the dummy binary's __DUMMY__ CRASH command
+        server.send_command("__DUMMY__ CRASH")
 
-        # Status lookup shouldn't be called if it's dead
-        mock_lookup.assert_not_called()
+        # Wait for the crash to take effect
+        import time
+
+        # wait a bit for process to actually die
+        for _ in range(50):
+            if not server.is_running():
+                break
+            time.sleep(0.1)
+
+        assert not server.is_running()
+
+        # We don't want the while loop to run forever, so we fake the _shutdown_event
+        # We'll make it return False once, then True so the loop exits immediately.
+        # The while condition checks `not manager._shutdown_event.is_set()`
+        manager._shutdown_event = MagicMock()
+        # Add an extra True to avoid StopIteration if it checks again while breaking out
+        manager._shutdown_event.is_set.side_effect = [False, True, True, True]
+        manager._shutdown_event.wait.return_value = False  # So it doesn't break early
+
+        with patch.object(manager, "_try_restart_server") as mock_try_restart:
+            with patch.object(server, "get_server_property", return_value=19132):
+                manager._monitor_servers()
+
+            # The server should have its failure count increased and a restart attempted
+            assert server.failure_count == 1
+            mock_try_restart.assert_called_once_with(server)
+
+            # Status lookup shouldn't be called if it's dead
+            mock_lookup.assert_not_called()
