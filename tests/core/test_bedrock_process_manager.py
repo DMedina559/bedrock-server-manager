@@ -2,6 +2,7 @@
 Integration tests for bedrock_server_manager/core/bedrock_process_manager.py
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,6 +32,8 @@ async def test_process_manager_shutdown(app_context: AppContext):
     """Test shutting down the process manager stops the thread."""
     manager = BedrockProcessManager(app_context)
     manager._shutdown_event = MagicMock()
+
+    manager.monitoring_task = asyncio.create_task(asyncio.sleep(0))
 
     with patch.object(manager.settings, "get", return_value=0):
         await manager.shutdown()
