@@ -11,7 +11,7 @@ It also handles periodic tasks like player scanning from logs.
 import asyncio
 import logging
 import struct
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from mcstatus import BedrockServer as mc
 
@@ -57,7 +57,7 @@ class BedrockProcessManager:
         self.settings = self.app_context.settings
         self._shutdown_event = asyncio.Event()
         self.player_scan_counter = 0
-        self.monitoring_task = None
+        self.monitoring_task: Optional[asyncio.Task[Any]] = None
         self.logger.info("BedrockProcessManager initialized.")
 
     async def start(self):
