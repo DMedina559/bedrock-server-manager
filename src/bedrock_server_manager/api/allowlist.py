@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
     after="after_allowlist_change",
     identity_keys=("server_name",),
 )
-def add_to_allowlist(
+async def add_to_allowlist(
     server_name: str,
     new_players_data: List[Dict[str, Any]],
     app_context: AppContext,
@@ -43,7 +43,7 @@ def add_to_allowlist(
     )
     try:
         server = app_context.get_server(server_name)
-        added_count = server.add_to_allowlist(new_players_data)
+        added_count = await server.add_to_allowlist(new_players_data)
 
         return {
             "status": "success",
@@ -68,7 +68,7 @@ def add_to_allowlist(
 
 
 @api_method("get_allowlist")
-def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the current allowlist for a given server.
 
     Args:
@@ -83,7 +83,7 @@ def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
     try:
         server = app_context.get_server(server_name)
-        players = server.get_allowlist()
+        players = await server.get_allowlist()
         return {"status": "success", "players": players}
     except BSMError as e:
         logger.error(
@@ -107,7 +107,7 @@ def get_allowlist(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     after="after_allowlist_change",
     identity_keys=("server_name",),
 )
-def remove_from_allowlist(
+async def remove_from_allowlist(
     server_name: str,
     player_names: List[str],
     app_context: AppContext,
@@ -138,7 +138,7 @@ def remove_from_allowlist(
         removed_players, not_found_players = [], []
 
         for player in player_names:
-            if server.remove_from_allowlist(player):
+            if await server.remove_from_allowlist(player):
                 removed_players.append(player)
             else:
                 not_found_players.append(player)

@@ -2,7 +2,7 @@
 Integration tests for the allowlist router endpoints.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -11,7 +11,9 @@ from bedrock_server_manager.error import BSMError, UserInputError
 
 def test_post_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
     """Test adding players to the allowlist successfully."""
-    with patch("bedrock_server_manager.api.allowlist.add_to_allowlist") as mock_add:
+    with patch(
+        "bedrock_server_manager.api.allowlist.add_to_allowlist", new_callable=AsyncMock
+    ) as mock_add:
         mock_add.return_value = {"status": "success", "message": "Players added"}
 
         response = admin_auth_client.post(
@@ -45,7 +47,9 @@ def test_post_allowlist_user_input_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     """Test adding to allowlist when API raises UserInputError."""
-    with patch("bedrock_server_manager.api.allowlist.add_to_allowlist") as mock_add:
+    with patch(
+        "bedrock_server_manager.api.allowlist.add_to_allowlist", new_callable=AsyncMock
+    ) as mock_add:
         mock_add.side_effect = UserInputError("Invalid player name")
 
         response = admin_auth_client.post(
@@ -59,7 +63,9 @@ def test_post_allowlist_user_input_error(
 
 def test_get_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
     """Test retrieving the allowlist successfully."""
-    with patch("bedrock_server_manager.api.allowlist.get_allowlist") as mock_get:
+    with patch(
+        "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
+    ) as mock_get:
         mock_get.return_value = {
             "status": "success",
             "players": [
@@ -81,7 +87,9 @@ def test_get_allowlist_success(admin_auth_client: TestClient, real_bedrock_serve
 
 def test_get_allowlist_not_found(admin_auth_client: TestClient, real_bedrock_server):
     """Test retrieving allowlist when file is not found."""
-    with patch("bedrock_server_manager.api.allowlist.get_allowlist") as mock_get:
+    with patch(
+        "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
+    ) as mock_get:
         mock_get.return_value = {
             "status": "error",
             "message": "allowlist.json not found",
@@ -97,7 +105,9 @@ def test_get_allowlist_not_found(admin_auth_client: TestClient, real_bedrock_ser
 
 def test_get_allowlist_error(admin_auth_client: TestClient, real_bedrock_server):
     """Test retrieving allowlist generic error."""
-    with patch("bedrock_server_manager.api.allowlist.get_allowlist") as mock_get:
+    with patch(
+        "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
+    ) as mock_get:
         mock_get.return_value = {"status": "error", "message": "Failed to parse JSON"}
 
         response = admin_auth_client.get(
@@ -111,7 +121,8 @@ def test_get_allowlist_error(admin_auth_client: TestClient, real_bedrock_server)
 def test_delete_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
     """Test removing players from the allowlist successfully."""
     with patch(
-        "bedrock_server_manager.api.allowlist.remove_from_allowlist"
+        "bedrock_server_manager.api.allowlist.remove_from_allowlist",
+        new_callable=AsyncMock,
     ) as mock_remove:
         mock_remove.return_value = {"status": "success", "message": "Players removed"}
 
@@ -133,7 +144,8 @@ def test_delete_allowlist_success(admin_auth_client: TestClient, real_bedrock_se
 def test_delete_allowlist_bsm_error(admin_auth_client: TestClient, real_bedrock_server):
     """Test removing from allowlist when API raises BSMError."""
     with patch(
-        "bedrock_server_manager.api.allowlist.remove_from_allowlist"
+        "bedrock_server_manager.api.allowlist.remove_from_allowlist",
+        new_callable=AsyncMock,
     ) as mock_remove:
         mock_remove.side_effect = BSMError("Internal system failure")
 

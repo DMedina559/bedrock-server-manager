@@ -40,7 +40,7 @@ async def post_allowlist(
         for p in payload.players
     ]
     try:
-        result = allowlist_api.add_to_allowlist(
+        result = await allowlist_api.add_to_allowlist(
             server_name=server_name,
             new_players_data=new_players_data,
             app_context=app_context,
@@ -77,7 +77,7 @@ async def get_allowlist(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = allowlist_api.get_allowlist(
+    result = await allowlist_api.get_allowlist(
         server_name=server_name, app_context=app_context
     )
     if result.get("status") == "success":
@@ -106,7 +106,7 @@ async def delete_allowlist(
     app_context: AppContext = Depends(get_app_context),
 ):
     try:
-        result = allowlist_api.remove_from_allowlist(
+        result = await allowlist_api.remove_from_allowlist(
             server_name=server_name,
             player_names=payload.players,
             app_context=app_context,
