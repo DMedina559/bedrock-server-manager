@@ -1,3 +1,5 @@
+import asyncio
+
 # bedrock_server_manager/api/world.py
 """Provides API functions for managing Bedrock server worlds.
 
@@ -25,7 +27,6 @@ plugin system.
 
 import logging
 import os
-import threading
 from typing import Any, Dict, Optional
 
 from ..context import AppContext
@@ -44,11 +45,11 @@ logger = logging.getLogger(__name__)
 
 # A unified lock to prevent race conditions during any world file operation
 # (export, import, reset). This ensures data integrity.
-_world_lock = threading.RLock()
+_world_lock = asyncio.Lock()
 
 
 @api_method("get_world_name")
-def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
     This function reads the `server.properties` file to get the name of the
@@ -104,7 +105,7 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     after="after_world_export",
     identity_keys=("server_name", "export_dir"),
 )
-def export_world(
+async def export_world(
     server_name: str,
     app_context: AppContext,
     export_dir: Optional[str] = None,
@@ -144,7 +145,9 @@ def export_world(
             :class:`~.error.AppFileNotFoundError` if world directory is missing,
             :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
     """
-    if not _world_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_world_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
         )
@@ -189,7 +192,7 @@ def export_world(
                 logger.info(
                     f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
                 )
-                server.export_world(world_name_str, export_file_path)
+                await server.export_world(world_name_str, export_file_path)
 
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."
@@ -225,7 +228,7 @@ def export_world(
     after="after_world_import",
     identity_keys=("server_name", "file_path"),
 )
-def import_world(
+async def import_world(
     server_name: str,
     selected_file_path: str,
     app_context: AppContext,
@@ -266,7 +269,9 @@ def import_world(
             :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    if not _world_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_world_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
@@ -301,7 +306,7 @@ def import_world(
                 logger.info(
                     f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
                 )
-                imported_world_name = server.import_world(selected_file_path)
+                imported_world_name = await server.import_world(selected_file_path)
 
             logger.info(
                 f"API: World import from '{selected_filename}' for server '{server_name}' completed."
@@ -335,7 +340,7 @@ def import_world(
     after="after_world_reset",
     identity_keys=("server_name",),
 )
-def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
+async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 
     This is a destructive action. Upon next start, the server will generate
@@ -368,7 +373,9 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
             :class:`~.error.FileOperationError` from deletion, errors determining
             the world name, or errors from server stop/start.
     """
-    if not _world_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_world_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."
         )
@@ -399,7 +406,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
                 logger.info(
                     f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."
                 )
-                server.delete_world()
+                await server.delete_world()
 
             logger.info(
                 f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."

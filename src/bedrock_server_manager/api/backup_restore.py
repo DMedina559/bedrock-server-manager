@@ -24,6 +24,7 @@ this module utilizes the
 to safely stop and restart the server. All functions are exposed to the plugin system.
 """
 
+import asyncio
 import logging
 import os
 import threading
@@ -561,7 +562,7 @@ def restore_world(
                 app_context=app_context,
             ):
                 server = app_context.get_server(server_name)
-                server.import_world(backup_file_path)
+                asyncio.run(server.import_world(backup_file_path))
 
             return {
                 "status": "success",

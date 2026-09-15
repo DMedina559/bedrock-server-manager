@@ -49,7 +49,7 @@ async def get_addons(
     identity = current_user.username
     logger.info(f"API: List available addons request by user '{identity}'.")
     try:
-        api_result = addon_api.list_available_addons(app_context=app_context)
+        api_result = await addon_api.list_available_addons(app_context=app_context)
 
         if api_result.get("status") == "success":
             # Extract just the filenames
@@ -90,7 +90,7 @@ async def get_server_addons(
         f"API: List world addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        result = addon_api.list_installed_addons(server_name, app_context)
+        result = await addon_api.list_installed_addons(server_name, app_context)
         return AddonListResponse(status="success", addons=result.get("addons"))
     except Exception as e:
         logger.error(
@@ -426,7 +426,7 @@ async def get_server_addon_icon(
     logger.debug(f"API: Get addon icon for '{server_name}' requested.")
 
     try:
-        result = addon_api.list_installed_addons(server_name, app_context)
+        result = await addon_api.list_installed_addons(server_name, app_context)
 
         # Determine the key to search in based on pack_type
         pack_key = f"{pack_type}_packs"

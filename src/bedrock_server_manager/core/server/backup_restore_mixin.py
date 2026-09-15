@@ -803,7 +803,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         )
         try:
             # This method is expected to be on the final class from WorldMixin.
-            self.export_world(active_world_name, backup_file_path)  # type: ignore
+            asyncio.run(self.export_world(active_world_name, backup_file_path))  # type: ignore
             self.logger.info(
                 f"World backup for '{self.server_name}' created: {backup_file_path}"
             )
@@ -1182,7 +1182,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                     f"Found latest world backup for '{active_world_name}': {os.path.basename(latest_world_backup_path)}"
                 )
                 # import_world is expected from WorldMixin
-                imported_world_name_check = self.import_world(latest_world_backup_path)  # type: ignore
+                imported_world_name_check = asyncio.run(self.import_world(latest_world_backup_path))  # type: ignore
                 # The path stored should be the actual world path in the server directory, not the backup path
                 restore_results["world"] = os.path.join(
                     self.server_dir, "worlds", imported_world_name_check

@@ -5,20 +5,20 @@ import pytest
 from bsm_test_utils.addons import create_mcworld
 
 
-def test_extract_mcworld(real_bedrock_server, tmp_path, valid_mcworld_zip):
+async def test_extract_mcworld(real_bedrock_server, tmp_path, valid_mcworld_zip):
     """Test extracting a .mcworld file."""
     server = real_bedrock_server
 
     zip_path = valid_mcworld_zip
 
     extract_dir = tmp_path / "extracted_world"
-    server.extract_mcworld(str(zip_path), str(extract_dir))
+    await server.extract_mcworld(str(zip_path), str(extract_dir))
 
     assert os.path.exists(extract_dir)
     assert os.path.exists(os.path.join(extract_dir, "level.dat"))
 
 
-def test_export_world(real_bedrock_server, tmp_path):
+async def test_export_world(real_bedrock_server, tmp_path):
     """Test exporting a world."""
     server = real_bedrock_server
 
@@ -38,13 +38,13 @@ def test_export_world(real_bedrock_server, tmp_path):
         zf.extractall(world_path)
 
     export_target = os.path.join(str(tmp_path), "exported_world.mcworld")
-    server.export_world("test_world", export_target)
+    await server.export_world("test_world", export_target)
 
     assert os.path.exists(export_target)
     assert export_target.endswith(".mcworld")
 
 
-def test_delete_world(real_bedrock_server):
+async def test_delete_world(real_bedrock_server):
     """Test deleting the active world."""
     server = real_bedrock_server
     world_dir = os.path.join(server.server_dir, "worlds", "test_world")
@@ -52,19 +52,25 @@ def test_delete_world(real_bedrock_server):
 
     assert os.path.exists(world_dir)
     with patch.object(server, "get_world_name", return_value="test_world"):
-        assert server.delete_world() is True
+        assert await server.delete_world() is True
 
     assert not os.path.exists(world_dir)
 
 
-def test_import_world(real_bedrock_server, tmp_path, valid_mcworld_zip):
+async def test_import_world(real_bedrock_server, tmp_path, valid_mcworld_zip):
     """Test importing a world from a zip/mcworld file."""
     server = real_bedrock_server
 
     zip_path = valid_mcworld_zip
 
-    with patch.object(server, "get_world_name", return_value="test_world"):
-        world_name = server.import_world(str(zip_path))
+    # The async version tries async_get_world_name or to_thread(get_world_name)
+    with (
+        patch.object(server, "get_world_name", return_value="test_world"),
+        patch.object(
+            server, "async_get_world_name", return_value="test_world", create=True
+        ),
+    ):
+        world_name = await server.import_world(str(zip_path))
 
     assert world_name == "test_world"
 
@@ -76,7 +82,7 @@ def test_import_world(real_bedrock_server, tmp_path, valid_mcworld_zip):
     assert os.path.exists(os.path.join(expected_world_dir, "level.dat"))
 
 
-def test_import_world_invalid(real_bedrock_server, tmp_path):
+async def test_import_world_invalid(real_bedrock_server, tmp_path):
     """Test importing an invalid world fails."""
     server = real_bedrock_server
 
@@ -86,4 +92,4 @@ def test_import_world_invalid(real_bedrock_server, tmp_path):
     from bedrock_server_manager.error import BackupRestoreError
 
     with pytest.raises(BackupRestoreError):
-        server.import_world(str(invalid_path))
+        await server.import_world(str(invalid_path))

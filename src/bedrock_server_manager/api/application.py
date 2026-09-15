@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("list_available_worlds_api")
-def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
+async def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
     Scans the ``worlds`` sub-folder within the application's global content directory.

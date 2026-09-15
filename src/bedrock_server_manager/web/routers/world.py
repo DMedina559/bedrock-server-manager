@@ -46,7 +46,7 @@ async def get_worlds_list(
     identity = current_user.username
     logger.info(f"API: List available worlds request by user '{identity}'.")
     try:
-        api_result = app_api.list_available_worlds_api(app_context=app_context)
+        api_result = await app_api.list_available_worlds_api(app_context=app_context)
         if api_result.get("status") == "success":
             full_paths = api_result.get("files", [])
             basenames = [os.path.basename(p) for p in full_paths]

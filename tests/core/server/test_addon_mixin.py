@@ -5,7 +5,7 @@ from unittest.mock import patch
 from bsm_test_utils import create_behavior_pack, create_resource_pack
 
 
-def test_list_installed_addons(real_bedrock_server):
+async def test_list_installed_addons(real_bedrock_server):
     """Test listing installed addons in physical folders."""
     server = real_bedrock_server
     with patch.object(server, "get_world_name", return_value="test_world"):
@@ -25,14 +25,14 @@ def test_list_installed_addons(real_bedrock_server):
         with open(os.path.join(rp_path, "manifest.json")) as f:
             rp_uuid = json.load(f)["header"]["uuid"]
 
-        addons = server.list_installed_addons()
+        addons = await server.list_installed_addons()
         assert len(addons["behavior_packs"]) == 1
         assert len(addons["resource_packs"]) == 1
         assert addons["behavior_packs"][0]["uuid"] == bp_uuid
         assert addons["resource_packs"][0]["uuid"] == rp_uuid
 
 
-def test_enable_disable_addon(real_bedrock_server):
+async def test_enable_disable_addon(real_bedrock_server):
     """Test enabling and disabling an addon."""
     server = real_bedrock_server
     with patch.object(server, "get_world_name", return_value="test_world"):
@@ -46,7 +46,7 @@ def test_enable_disable_addon(real_bedrock_server):
             bp_uuid = json.load(f)["header"]["uuid"]
 
         # Test Enable
-        server.enable_addon(bp_uuid, "behavior")
+        await server.enable_addon(bp_uuid, "behavior")
 
         world_dir = os.path.join(server.server_dir, "worlds", "test_world")
         bp_json_path = os.path.join(world_dir, "world_behavior_packs.json")
@@ -58,24 +58,24 @@ def test_enable_disable_addon(real_bedrock_server):
             assert data[0]["pack_id"] == bp_uuid
 
         # Check list shows it as enabled (ACTIVE)
-        addons = server.list_installed_addons()
+        addons = await server.list_installed_addons()
         bp = addons["behavior_packs"][0]
         assert bp["status"] == "ACTIVE"
 
         # Test Disable
-        server.disable_addon(bp_uuid, "behavior")
+        await server.disable_addon(bp_uuid, "behavior")
 
         with open(bp_json_path, "r") as f:
             data = json.load(f)
             assert len(data) == 0
 
         # Check list shows it as disabled (INACTIVE)
-        addons = server.list_installed_addons()
+        addons = await server.list_installed_addons()
         bp = addons["behavior_packs"][0]
         assert bp["status"] == "INACTIVE"
 
 
-def test_process_mcpack_archive(real_bedrock_server, tmp_path):
+async def test_process_mcpack_archive(real_bedrock_server, tmp_path):
     """Test processing an mcpack file."""
     server = real_bedrock_server
 
@@ -88,10 +88,10 @@ def test_process_mcpack_archive(real_bedrock_server, tmp_path):
     shutil.move(str(zip_path), str(mcpack_path))
 
     with patch.object(server, "get_world_name", return_value="test_world"):
-        server.process_addon_file(str(mcpack_path))
+        await server.process_addon_file(str(mcpack_path))
 
         # Should be physically installed
-        addons = server.list_installed_addons()
+        addons = await server.list_installed_addons()
         assert len(addons["behavior_packs"]) == 1
 
         # We don't know the exact uuid since it's auto-generated, but it should be enabled
@@ -100,7 +100,7 @@ def test_process_mcpack_archive(real_bedrock_server, tmp_path):
         )  # Auto-enabled on install
 
 
-def test_remove_addon(real_bedrock_server):
+async def test_remove_addon(real_bedrock_server):
     """Test removing an addon deletes physical files and removes from active JSON."""
     server = real_bedrock_server
     with patch.object(server, "get_world_name", return_value="test_world"):
@@ -113,11 +113,11 @@ def test_remove_addon(real_bedrock_server):
         with open(os.path.join(bp_path, "manifest.json")) as f:
             bp_uuid = json.load(f)["header"]["uuid"]
 
-        server.enable_addon(bp_uuid, "behavior")
+        await server.enable_addon(bp_uuid, "behavior")
 
-        server.remove_addon(bp_uuid, "behavior")
+        await server.remove_addon(bp_uuid, "behavior")
 
-        addons = server.list_installed_addons()
+        addons = await server.list_installed_addons()
         assert len(addons["behavior_packs"]) == 0
 
         # Verify JSON is empty
@@ -128,7 +128,7 @@ def test_remove_addon(real_bedrock_server):
             assert len(data) == 0
 
 
-def test_reorder_addons(real_bedrock_server):
+async def test_reorder_addons(real_bedrock_server):
     """Test reordering enabled addons."""
     server = real_bedrock_server
     with patch.object(server, "get_world_name", return_value="test_world"):
@@ -147,11 +147,11 @@ def test_reorder_addons(real_bedrock_server):
         with open(os.path.join(bp2_path, "manifest.json")) as f:
             uuid_2 = json.load(f)["header"]["uuid"]
 
-        server.enable_addon(uuid_1, "behavior")
-        server.enable_addon(uuid_2, "behavior")
+        await server.enable_addon(uuid_1, "behavior")
+        await server.enable_addon(uuid_2, "behavior")
 
         # Reorder sending uuid-2 first
-        server.reorder_addons([uuid_2, uuid_1], "behavior")
+        await server.reorder_addons([uuid_2, uuid_1], "behavior")
 
         world_dir = os.path.join(server.server_dir, "worlds", "test_world")
         bp_json_path = os.path.join(world_dir, "world_behavior_packs.json")
@@ -161,7 +161,7 @@ def test_reorder_addons(real_bedrock_server):
             assert data[1]["pack_id"] == uuid_1
 
 
-def test_process_invalid_mcpack_archive(real_bedrock_server, tmp_path):
+async def test_process_invalid_mcpack_archive(real_bedrock_server, tmp_path):
     """Test processing an uploaded .mcpack archive that is corrupt (invalid json)."""
     server = real_bedrock_server
 
@@ -183,12 +183,12 @@ def test_process_invalid_mcpack_archive(real_bedrock_server, tmp_path):
         # Since invalid_json is true, it won't be able to extract a valid UUID from manifest.
         # Ensure it handles the corrupted pack gracefully or raises an expected error.
         try:
-            server.process_addon_file(str(mcpack_path))
+            await server.process_addon_file(str(mcpack_path))
         except Exception:
             pass  # Depending on exactly how process_addon_file reacts to json.decoder.JSONDecodeError
 
         # In any case, it should not be listed as a correctly installed addon with a valid UUID
-        addons = server.list_installed_addons()
+        addons = await server.list_installed_addons()
         # Even if it extracted, it couldn't parse the UUID properly.
         # Most likely behavior packs list will be empty or not contain a valid entry.
         assert len(addons.get("behavior_packs", [])) == 0

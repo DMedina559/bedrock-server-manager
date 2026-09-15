@@ -2,7 +2,7 @@
 Integration tests for the API functions in bedrock_server_manager/api/backup_restore.py.
 """
 
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -121,7 +121,7 @@ def test_restore_all_success(real_bedrock_server, app_context: AppContext):
 
 def test_restore_world_success(real_bedrock_server, app_context: AppContext):
     """Test restoring world successfully."""
-    real_bedrock_server.import_world = MagicMock()
+    real_bedrock_server.import_world = AsyncMock()
 
     with patch("os.path.isfile", return_value=True):
         with patch(
