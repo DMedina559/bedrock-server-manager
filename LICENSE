@@ -668,7 +668,7 @@ As a special exception to the terms of the GNU Affero General Public License
 version 3, the Copyright Holders of bedrock-server-manager grant you explicit
 permission to write, distribute, and execute independent plugin modules that
 interact with bedrock-server-manager via its official plugin interfaces (such
-as subclasses of `PluginBase` or integrations interacting via `AppAPI`).
+as subclasses of `PluginBase` or integrations interacting via `self.api`).
 
 You retain full copyright over these independent plugin modules and may license
 them under any terms of your choosing, including permissive or proprietary
