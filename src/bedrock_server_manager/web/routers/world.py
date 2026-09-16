@@ -94,7 +94,7 @@ async def post_world_install(
     from ...utils.server import validate_server
 
     try:
-        if not validate_server(server_name=server_name, app_context=app_context):
+        if not await validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -184,7 +184,7 @@ async def post_world_export(
     from ...utils.server import validate_server
 
     try:
-        if not validate_server(server_name=server_name, app_context=app_context):
+        if not await validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -237,7 +237,7 @@ async def delete_world_reset(
     from ...utils.server import validate_server
 
     try:
-        if not validate_server(server_name=server_name, app_context=app_context):
+        if not await validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -285,7 +285,13 @@ async def get_world_icon(
         server = app_context.get_server(server_name)
         icon_path = server.world_icon_filesystem_path
 
-        if server.has_world_icon() and icon_path and os.path.isfile(icon_path):
+        import aiofiles.ospath
+
+        if (
+            await server.has_world_icon()
+            and icon_path
+            and await aiofiles.ospath.isfile(icon_path)
+        ):
             logger.debug(f"Serving world icon from path: {icon_path}")
             return FileResponse(icon_path, media_type="image/jpeg")
         else:

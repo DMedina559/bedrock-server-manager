@@ -60,7 +60,7 @@ def core_validate_server_name_format(server_name: str) -> None:
 # --- Server Discovery and Validation ---
 
 
-def validate_server(server_name: str, app_context: AppContext) -> bool:
+async def validate_server(server_name: str, app_context: AppContext) -> bool:
     """Validates if a given server name corresponds to a valid installation."""
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty for validation.")
@@ -68,7 +68,7 @@ def validate_server(server_name: str, app_context: AppContext) -> bool:
     logger.debug(f"BSM: Validating server '{server_name}' using BedrockServer class.")
     try:
         server_instance = app_context.get_server(server_name)
-        is_valid = server_instance.is_installed()
+        is_valid = await server_instance.async_is_installed()
         if is_valid:
             logger.debug(f"BSM: Server '{server_name}' validation successful.")
         else:

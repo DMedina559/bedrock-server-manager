@@ -140,6 +140,8 @@ def test_delete_world_reset_success(admin_auth_client: TestClient, real_bedrock_
 def test_get_world_icon_success(
     unauth_client: TestClient, real_bedrock_server, tmp_path
 ):
+    from unittest.mock import AsyncMock
+
     icon_path = tmp_path / "world_icon.jpeg"
     icon_path.write_bytes(b"icon_data")
 
@@ -147,7 +149,8 @@ def test_get_world_icon_success(
         "bedrock_server_manager.context.AppContext.get_server"
     ) as mock_get_server:
         mock_server = mock_get_server.return_value
-        mock_server.has_world_icon.return_value = True
+        mock_server.async_is_installed = AsyncMock(return_value=True)
+        mock_server.has_world_icon = AsyncMock(return_value=True)
         mock_server.world_icon_filesystem_path = str(icon_path)
 
         response = unauth_client.get(
@@ -159,6 +162,8 @@ def test_get_world_icon_success(
 def test_get_world_icon_fallback(
     unauth_client: TestClient, real_bedrock_server, tmp_path
 ):
+    from unittest.mock import AsyncMock
+
     fallback_icon = tmp_path / "image" / "icon" / "favicon.ico"
     fallback_icon.parent.mkdir(parents=True, exist_ok=True)
     fallback_icon.write_bytes(b"favicon")
@@ -167,7 +172,8 @@ def test_get_world_icon_fallback(
         "bedrock_server_manager.context.AppContext.get_server"
     ) as mock_get_server:
         mock_server = mock_get_server.return_value
-        mock_server.has_world_icon.return_value = False
+        mock_server.async_is_installed = AsyncMock(return_value=True)
+        mock_server.has_world_icon = AsyncMock(return_value=False)
 
         with patch(
             "bedrock_server_manager.web.routers.world.STATIC_DIR", str(tmp_path)

@@ -72,7 +72,9 @@ async def post_install_server(  # noqa: C901
         )
 
     try:
-        server_exists = validate_server(payload.server_name, app_context=app_context)
+        server_exists = await validate_server(
+            payload.server_name, app_context=app_context
+        )
 
         if not payload.overwrite and server_exists:
             logger.info(

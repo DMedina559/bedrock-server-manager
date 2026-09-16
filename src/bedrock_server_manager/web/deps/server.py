@@ -40,7 +40,7 @@ async def validate_server_exists(
     try:
         server_utils.core_validate_server_name_format(server_name)
 
-        if not server_utils.validate_server(
+        if not await server_utils.validate_server(
             server_name=server_name, app_context=app_context
         ):
             logger.warning(f"Dependency: Server '{server_name}' not found or invalid.")

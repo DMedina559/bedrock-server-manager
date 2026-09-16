@@ -11,6 +11,7 @@ This module provides endpoints for:
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.future import select
 
 from ...context import AppContext
 from ...db.models import User as UserModel
@@ -53,13 +54,14 @@ async def post_update_theme(
     """
     Updates the current user's preferred theme.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        db_user = (
-            db.query(UserModel).filter(UserModel.username == user.username).first()
+    async with app_context.db.async_session_manager() as db:  # type: ignore
+        result = await db.execute(
+            select(UserModel).filter(UserModel.username == user.username)
         )
+        db_user = result.scalar_one_or_none()
         if db_user:
             db_user.theme = theme_update.theme
-            db.commit()
+            await db.commit()
             return BaseApiResponse(
                 status="success", message="Theme updated successfully"
             )
@@ -75,14 +77,15 @@ async def post_update_profile(
     """
     Updates the current user's profile information (name, email).
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        db_user = (
-            db.query(UserModel).filter(UserModel.username == user.username).first()
+    async with app_context.db.async_session_manager() as db:  # type: ignore
+        result = await db.execute(
+            select(UserModel).filter(UserModel.username == user.username)
         )
+        db_user = result.scalar_one_or_none()
         if db_user:
             db_user.full_name = profile_update.full_name
             db_user.email = profile_update.email
-            db.commit()
+            await db.commit()
             return BaseApiResponse(
                 status="success", message="Profile updated successfully"
             )
@@ -102,24 +105,25 @@ async def post_change_password(
     """
     Changes the current user's password.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        db_user = (
-            db.query(UserModel).filter(UserModel.username == user.username).first()
+    async with app_context.db.async_session_manager() as db:  # type: ignore
+        result = await db.execute(
+            select(UserModel).filter(UserModel.username == user.username)
         )
+        db_user = result.scalar_one_or_none()
         if not db_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="UserResponse not found.",
             )
 
-        if not verify_password(data.current_password, db_user.hashed_password):
+        if not verify_password(data.current_password, str(db_user.hashed_password)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Incorrect current password.",
             )
 
         db_user.hashed_password = get_password_hash(data.new_password)
-        db.commit()
+        await db.commit()
 
         return BaseApiResponse(
             status="success", message="Password updated successfully"

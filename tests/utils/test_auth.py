@@ -57,8 +57,6 @@ async def test_get_user_from_token_success(app_context, async_db):
         db.add(user)
         await db.commit()
 
-    # The async_db fixture does not automatically overwrite app_context.db.async_session_manager
-    # Ensure app_context uses the initialized async_db
     app_context.db.async_session_manager = async_db.async_session_manager
 
     token = create_access_token(app_context, {"sub": "test_token_user"})

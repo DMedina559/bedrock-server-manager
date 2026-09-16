@@ -180,6 +180,13 @@ def db_session(db):
 
 
 @pytest.fixture
+async def async_db_session(async_db):
+    """Fixture to get a database session directly."""
+    async with async_db.async_session_manager() as session:
+        yield session
+
+
+@pytest.fixture
 def test_app(app_context):
     """Provides a FastAPI application instance for testing."""
     app = create_web_app(app_context)

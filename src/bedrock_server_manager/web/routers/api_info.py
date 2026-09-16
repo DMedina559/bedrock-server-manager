@@ -123,7 +123,7 @@ async def get_validate_server(
     from ...utils.server import validate_server
 
     try:
-        if validate_server(server_name=server_name, app_context=app_context):
+        if await validate_server(server_name=server_name, app_context=app_context):
             return BaseApiResponse(
                 status="success", message=f"Server '{server_name}' exists and is valid."
             )

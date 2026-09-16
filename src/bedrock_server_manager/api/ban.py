@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, Optional
 
+from sqlalchemy.future import select
+
 from ..context import AppContext
 from ..db.models import Server, ServerBan
 from ..error import UserInputError
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
     after="after_add_server_ban",
     identity_keys=("server_name", "xuid"),
 )
-def add_server_ban_api(
+async def add_server_ban_api(
     app_context: AppContext,
     server_name: str,
     player_name: str,
@@ -34,8 +36,11 @@ def add_server_ban_api(
         f"API: Adding ban for player '{player_name}' ({xuid}) on server '{server_name}'."
     )
 
-    with app_context.settings.db.session_manager() as db:
-        server = db.query(Server).filter(Server.server_name == server_name).first()
+    async with app_context.settings.db.async_session_manager() as db:
+        result = await db.execute(
+            select(Server).filter(Server.server_name == server_name)
+        )
+        server = result.scalar_one_or_none()
         if not server:
             return {
                 "status": "error",
@@ -43,15 +48,16 @@ def add_server_ban_api(
             }
 
         # Check if already banned
-        existing_ban = (
-            db.query(ServerBan)
-            .filter(ServerBan.server_id == server.id, ServerBan.xuid == xuid)
-            .first()
+        result = await db.execute(
+            select(ServerBan).filter(
+                ServerBan.server_id == server.id, ServerBan.xuid == xuid
+            )
         )
+        existing_ban = result.scalar_one_or_none()
 
         if existing_ban:
             existing_ban.reason = reason
-            db.commit()
+            await db.commit()
             return {
                 "status": "success",
                 "message": f"Ban updated for player '{player_name}'.",
@@ -61,7 +67,7 @@ def add_server_ban_api(
             server_id=server.id, player_name=player_name, xuid=xuid, reason=reason
         )
         db.add(new_ban)
-        db.commit()
+        await db.commit()
         return {
             "status": "success",
             "message": f"Player '{player_name}' banned successfully.",
@@ -73,7 +79,7 @@ def add_server_ban_api(
     after="after_remove_server_ban",
     identity_keys=("server_name", "xuid"),
 )
-def remove_server_ban_api(
+async def remove_server_ban_api(
     app_context: AppContext, server_name: str, xuid: str
 ) -> Dict[str, Any]:
     """Removes a player from the server ban list."""
@@ -85,19 +91,23 @@ def remove_server_ban_api(
 
     logger.info(f"API: Removing ban for XUID '{xuid}' on server '{server_name}'.")
 
-    with app_context.settings.db.session_manager() as db:
-        server = db.query(Server).filter(Server.server_name == server_name).first()
+    async with app_context.settings.db.async_session_manager() as db:
+        result = await db.execute(
+            select(Server).filter(Server.server_name == server_name)
+        )
+        server = result.scalar_one_or_none()
         if not server:
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' not found in database.",
             }
 
-        ban = (
-            db.query(ServerBan)
-            .filter(ServerBan.server_id == server.id, ServerBan.xuid == xuid)
-            .first()
+        result = await db.execute(
+            select(ServerBan).filter(
+                ServerBan.server_id == server.id, ServerBan.xuid == xuid
+            )
         )
+        ban = result.scalar_one_or_none()
 
         if not ban:
             return {
@@ -105,13 +115,15 @@ def remove_server_ban_api(
                 "message": f"Ban not found for XUID '{xuid}' on server '{server_name}'.",
             }
 
-        db.delete(ban)
-        db.commit()
+        await db.delete(ban)
+        await db.commit()
         return {"status": "success", "message": "Ban removed successfully."}
 
 
 @api_method("get_server_bans_api")
-def get_server_bans_api(app_context: AppContext, server_name: str) -> Dict[str, Any]:
+async def get_server_bans_api(
+    app_context: AppContext, server_name: str
+) -> Dict[str, Any]:
     """Retrieves all bans for a specific server."""
     if not server_name:
         raise UserInputError("server_name is required.")
@@ -119,15 +131,21 @@ def get_server_bans_api(app_context: AppContext, server_name: str) -> Dict[str, 
     if app_context.settings.db is None:
         return {"status": "error", "message": "Database is not initialized."}
 
-    with app_context.settings.db.session_manager() as db:
-        server = db.query(Server).filter(Server.server_name == server_name).first()
+    async with app_context.settings.db.async_session_manager() as db:
+        result = await db.execute(
+            select(Server).filter(Server.server_name == server_name)
+        )
+        server = result.scalar_one_or_none()
         if not server:
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' not found in database.",
             }
 
-        bans = db.query(ServerBan).filter(ServerBan.server_id == server.id).all()
+        result = await db.execute(
+            select(ServerBan).filter(ServerBan.server_id == server.id)
+        )
+        bans = result.scalars().all()
         ban_list = [
             {
                 "player_name": ban.player_name,

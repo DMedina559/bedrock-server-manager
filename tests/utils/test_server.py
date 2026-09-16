@@ -34,38 +34,42 @@ def test_core_validate_server_name_format_invalid(invalid_name):
         core_validate_server_name_format(invalid_name)
 
 
-def test_validate_server_success(app_context, monkeypatch):
+async def test_validate_server_success(app_context, monkeypatch):
     """Test validate_server returns True for correctly mocked installed servers."""
+    from unittest.mock import AsyncMock
+
     server = MagicMock()
-    server.is_installed.return_value = True
+    server.async_is_installed = AsyncMock(return_value=True)
     monkeypatch.setattr(app_context, "get_server", lambda x: server)
 
-    assert validate_server("test_server", app_context) is True
+    assert await validate_server("test_server", app_context) is True
 
 
-def test_validate_server_empty_name(app_context):
+async def test_validate_server_empty_name(app_context):
     """Test validate_server rejects empty server names."""
     with pytest.raises(MissingArgumentError):
-        validate_server("", app_context)
+        await validate_server("", app_context)
 
 
-def test_validate_server_not_installed(app_context, monkeypatch):
+async def test_validate_server_not_installed(app_context, monkeypatch):
     """Test validate_server returns False if the server class returns false."""
+    from unittest.mock import AsyncMock
+
     server = MagicMock()
-    server.is_installed.return_value = False
+    server.async_is_installed = AsyncMock(return_value=False)
     monkeypatch.setattr(app_context, "get_server", lambda x: server)
 
-    assert validate_server("test_server", app_context) is False
+    assert await validate_server("test_server", app_context) is False
 
 
-def test_validate_server_exception_caught(app_context, monkeypatch):
+async def test_validate_server_exception_caught(app_context, monkeypatch):
     """Test validate_server catches inner application exceptions returning False."""
 
     def raise_error(name):
         raise InvalidServerNameError("Bad format")
 
     monkeypatch.setattr(app_context, "get_server", raise_error)
-    assert validate_server("bad_name!", app_context) is False
+    assert await validate_server("bad_name!", app_context) is False
 
 
 def test_get_servers_data_success(app_context, real_bedrock_server):
