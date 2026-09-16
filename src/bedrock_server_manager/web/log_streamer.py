@@ -3,6 +3,9 @@ import logging
 import os
 from typing import Dict
 
+import aiofiles
+import aiofiles.ospath
+
 from ..context import AppContext
 
 logger = logging.getLogger(__name__)
@@ -55,7 +58,7 @@ class LogStreamer:
                     log_path = os.path.abspath(
                         f"{self.app_context.log_dir}/bedrock_server_manager.log"
                     )
-                    if os.path.exists(log_path):
+                    if await aiofiles.ospath.exists(log_path):
                         files_to_watch["app_log"] = log_path
 
                 # Check for server log subscriptions
@@ -66,7 +69,7 @@ class LogStreamer:
                         server = self.app_context.get_server(server_name)
                         if server:
                             log_path = server.server_log_path
-                            if os.path.exists(log_path):
+                            if await aiofiles.ospath.exists(log_path):
                                 files_to_watch[topic] = log_path
 
                 # 2. Read and broadcast updates
@@ -91,26 +94,28 @@ class LogStreamer:
         """Reads new lines from a file and broadcasts them to a topic."""
         try:
             if file_path not in self.file_positions:
-                size = os.path.getsize(file_path)
+                size = await aiofiles.ospath.getsize(file_path)
                 # If we want to show last ~1KB or so:
                 start_pos = max(0, size - 2048)
                 self.file_positions[file_path] = start_pos
 
             current_pos = self.file_positions[file_path]
-            current_size = os.path.getsize(file_path)
+            current_size = await aiofiles.ospath.getsize(file_path)
 
             if current_size < current_pos:
                 current_pos = 0
                 self.file_positions[file_path] = 0
 
             if current_size > current_pos:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    f.seek(current_pos)
+                async with aiofiles.open(
+                    file_path, "r", encoding="utf-8", errors="replace"
+                ) as f:
+                    await f.seek(current_pos)
                     # Read new content
-                    new_content = f.read()
+                    new_content = await f.read()
                     if new_content:
                         # Update position
-                        self.file_positions[file_path] = f.tell()
+                        self.file_positions[file_path] = await f.tell()
 
                         # Broadcast lines
                         await self.connection_manager.broadcast_to_topic(
