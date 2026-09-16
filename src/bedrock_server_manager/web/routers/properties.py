@@ -34,7 +34,7 @@ async def post_properties_set(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid properties body."
         )
     try:
-        result = properties_api.set_properties(
+        result = await properties_api.set_properties(
             server_name=server_name,
             properties_to_update=properties_data,
             app_context=app_context,
@@ -79,7 +79,7 @@ async def get_properties(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = properties_api.get_properties(
+    result = await properties_api.get_properties(
         server_name=server_name, app_context=app_context
     )
     if result.get("status") == "success":
