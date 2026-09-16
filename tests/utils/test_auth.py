@@ -48,58 +48,69 @@ def test_create_access_token_with_custom_expiry(app_context):
     assert len(token) > 0
 
 
-def test_get_user_from_token_success(app_context, db_session):
+async def test_get_user_from_token_success(app_context, async_db):
     """Test _get_user_from_token successfully retrieves an active user from the database."""
     user = User(
         username="test_token_user", hashed_password="pw", role="admin", is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    async with async_db.async_session_manager() as db:
+        db.add(user)
+        await db.commit()
+
+    # The async_db fixture does not automatically overwrite app_context.db.async_session_manager
+    # Ensure app_context uses the initialized async_db
+    app_context.db.async_session_manager = async_db.async_session_manager
 
     token = create_access_token(app_context, {"sub": "test_token_user"})
-    user_response = _get_user_from_token(app_context, token)
+    user_response = await _get_user_from_token(app_context, token)
 
     assert user_response is not None
     assert user_response.username == "test_token_user"
 
 
-def test_get_user_from_token_invalid_token(app_context):
+async def test_get_user_from_token_invalid_token(app_context, async_db):
     """Test _get_user_from_token gracefully handles and returns None for invalid token strings."""
-    user_response = _get_user_from_token(app_context, "invalid_token_string")
+    app_context.db.async_session_manager = async_db.async_session_manager
+    user_response = await _get_user_from_token(app_context, "invalid_token_string")
     assert user_response is None
 
 
-def test_get_user_from_token_user_not_found(app_context):
+async def test_get_user_from_token_user_not_found(app_context, async_db):
     """Test _get_user_from_token returns None when the token payload references a missing user."""
+    app_context.db.async_session_manager = async_db.async_session_manager
     token = create_access_token(app_context, {"sub": "non_existent_user"})
-    user_response = _get_user_from_token(app_context, token)
+    user_response = await _get_user_from_token(app_context, token)
     assert user_response is None
 
 
-def test_authenticate_websocket_token_success(app_context, db_session):
+async def test_authenticate_websocket_token_success(app_context, async_db):
     """Test authenticate_websocket_token correctly resolves a valid user object."""
     user = User(username="ws_user", hashed_password="pw", role="admin", is_active=True)
-    db_session.add(user)
-    db_session.commit()
+    async with async_db.async_session_manager() as db:
+        db.add(user)
+        await db.commit()
+
+    app_context.db.async_session_manager = async_db.async_session_manager
 
     token = create_access_token(app_context, {"sub": "ws_user"})
-    user_response = authenticate_websocket_token(app_context, token)
+    user_response = await authenticate_websocket_token(app_context, token)
 
     assert user_response.username == "ws_user"
 
 
-def test_authenticate_websocket_token_missing_token(app_context):
+async def test_authenticate_websocket_token_missing_token(app_context):
     """Test authenticate_websocket_token raises a WebSocketException on empty tokens."""
     with pytest.raises(WebSocketException) as exc_info:
-        authenticate_websocket_token(app_context, "")
+        await authenticate_websocket_token(app_context, "")
     assert exc_info.value.reason == "Missing token"
 
 
-def test_authenticate_websocket_token_invalid_user(app_context):
+async def test_authenticate_websocket_token_invalid_user(app_context, async_db):
     """Test authenticate_websocket_token raises a WebSocketException when a token user is missing."""
+    app_context.db.async_session_manager = async_db.async_session_manager
     token = create_access_token(app_context, {"sub": "missing_ws_user"})
     with pytest.raises(WebSocketException) as exc_info:
-        authenticate_websocket_token(app_context, token)
+        await authenticate_websocket_token(app_context, token)
     assert "Invalid token, user not found, or inactive" in exc_info.value.reason
 
 
@@ -112,35 +123,42 @@ def test_password_hashing():
     assert verify_password("wrongpassword", hashed) is False
 
 
-def test_authenticate_user_success(app_context, db_session):
+async def test_authenticate_user_success(app_context, async_db):
     """Test authenticate_user successfully logs in an active user."""
     password = "mypassword"
     hashed = get_password_hash(password)
     user = User(
         username="auth_user", hashed_password=hashed, role="admin", is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    async with async_db.async_session_manager() as db:
+        db.add(user)
+        await db.commit()
 
-    result = authenticate_user(app_context, "auth_user", password)
+    app_context.db.async_session_manager = async_db.async_session_manager
+
+    result = await authenticate_user(app_context, "auth_user", password)
     assert result == "auth_user"
 
 
-def test_authenticate_user_wrong_password(app_context, db_session):
+async def test_authenticate_user_wrong_password(app_context, async_db):
     """Test authenticate_user returns None upon incorrect password submission."""
     password = "mypassword"
     hashed = get_password_hash(password)
     user = User(
         username="auth_user_2", hashed_password=hashed, role="admin", is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    async with async_db.async_session_manager() as db:
+        db.add(user)
+        await db.commit()
 
-    result = authenticate_user(app_context, "auth_user_2", "wrong_password")
+    app_context.db.async_session_manager = async_db.async_session_manager
+
+    result = await authenticate_user(app_context, "auth_user_2", "wrong_password")
     assert result is None
 
 
-def test_authenticate_user_not_found(app_context):
+async def test_authenticate_user_not_found(app_context, async_db):
     """Test authenticate_user returns None if the user does not exist in the database."""
-    result = authenticate_user(app_context, "ghost_user", "password")
+    app_context.db.async_session_manager = async_db.async_session_manager
+    result = await authenticate_user(app_context, "ghost_user", "password")
     assert result is None

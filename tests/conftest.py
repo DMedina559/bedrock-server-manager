@@ -84,6 +84,30 @@ def db(isolated_bcm_config, tmp_path, monkeypatch):
 
 
 @pytest.fixture
+async def async_db(isolated_bcm_config, tmp_path, monkeypatch):
+    """Provides a fresh Database instance initialized with an isolated async SQLite DB."""
+    db_dir = tmp_path / "test_data_async"
+    import os
+
+    os.makedirs(db_dir, exist_ok=True)
+    db_path = db_dir / "test_async.db"
+
+    monkeypatch.setattr("bedrock_server_manager.cli.database.files", MagicMock())
+
+    database = Database(f"sqlite+aiosqlite:///{db_path}")
+    database.async_initialize()
+
+    from bedrock_server_manager.db.models import Base
+
+    async with database.async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield database
+
+    await database.shutdown()
+
+
+@pytest.fixture
 def settings(db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
 

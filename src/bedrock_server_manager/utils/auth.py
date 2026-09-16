@@ -7,6 +7,7 @@ from typing import Optional
 import bcrypt
 from fastapi import WebSocketException, status
 from jose import JWTError, jwt
+from sqlalchemy.future import select
 
 from ..config import Settings
 from ..context import AppContext
@@ -76,26 +77,33 @@ def create_access_token(
 # --- Token Verification and User Retrieval ---
 
 
-def _get_and_update_user_from_db(db_session, username: str) -> Optional[UserResponse]:
+async def _get_and_update_user_from_db(
+    db_session, username: str
+) -> Optional[UserResponse]:
     """Helper function to fetch user, update last_seen, and return UserResponse."""
-    user = db_session.query(UserModel).filter(UserModel.username == username).first()
+    result = await db_session.execute(
+        select(UserModel).filter(UserModel.username == username)
+    )
+    user = result.scalar_one_or_none()
     if not user or not user.is_active:
         return None
 
     user.last_seen = datetime.datetime.now(timezone.utc)
-    db_session.commit()
+    await db_session.commit()
 
     return UserResponse(
-        id=user.id,
-        username=user.username,
+        id=int(user.id),
+        username=str(user.username),
         identity_type="jwt",
-        role=user.role,
-        is_active=user.is_active,
-        theme=user.theme,
+        role=str(user.role),
+        is_active=bool(user.is_active),
+        theme=str(user.theme),
     )
 
 
-def _get_user_from_token(app_context: AppContext, token: str) -> Optional[UserResponse]:
+async def _get_user_from_token(
+    app_context: AppContext, token: str
+) -> Optional[UserResponse]:
     """Helper function to decode a JWT and retrieve the associated user."""
     try:
         settings = app_context.settings
@@ -105,14 +113,16 @@ def _get_user_from_token(app_context: AppContext, token: str) -> Optional[UserRe
         if username is None:
             return None
 
-        with app_context.db.session_manager() as db:  # type: ignore
-            return _get_and_update_user_from_db(db, username)
+        async with app_context.db.async_session_manager() as db:  # type: ignore
+            return await _get_and_update_user_from_db(db, username)
 
     except JWTError:
         return None
 
 
-def authenticate_websocket_token(app_context: AppContext, token: str) -> UserResponse:
+async def authenticate_websocket_token(
+    app_context: AppContext, token: str
+) -> UserResponse:
     """
     Authenticates a WebSocket connection using a provided token.
 
@@ -135,7 +145,7 @@ def authenticate_websocket_token(app_context: AppContext, token: str) -> UserRes
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
         )
 
-    user = _get_user_from_token(app_context, token)
+    user = await _get_user_from_token(app_context, token)
 
     if user is None:
         raise WebSocketException(
@@ -176,7 +186,7 @@ def get_password_hash(password: str) -> str:
     )
 
 
-def authenticate_user(
+async def authenticate_user(
     app_context: AppContext, username_form: str, password_form: str
 ) -> Optional[str]:
     """
@@ -193,10 +203,13 @@ def authenticate_user(
         Optional[str]: The username if authentication is successful,
         otherwise ``None``.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user = db.query(UserModel).filter(UserModel.username == username_form).first()
+    async with app_context.db.async_session_manager() as db:  # type: ignore
+        result = await db.execute(
+            select(UserModel).filter(UserModel.username == username_form)
+        )
+        user = result.scalar_one_or_none()
         if not user:
             return None
-        if not verify_password(password_form, user.hashed_password):
+        if not verify_password(password_form, str(user.hashed_password)):
             return None
         return str(user.username)

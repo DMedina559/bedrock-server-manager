@@ -55,7 +55,7 @@ async def websocket_endpoint(  # noqa: C901
             await websocket.close(code=1008, reason="Missing token")
             return
 
-        user = authenticate_websocket_token(app_context, token)
+        user = await authenticate_websocket_token(app_context, token)
 
     except WebSocketDisconnect:
         logger.info("WebSocket auth failed: Client disconnected during authentication")

@@ -10,7 +10,7 @@ creation and lifecycle.
 import asyncio
 from contextlib import asynccontextmanager, contextmanager
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -116,8 +116,6 @@ class Database:
             if not self.engine:
                 self.initialize()
 
-            from sqlalchemy import inspect
-
             inspector = inspect(self.engine)
             # If there are no tables (or just very few, but we can check if 'users' exists)
             # we consider it a brand new database and run migrations automatically.
@@ -154,7 +152,20 @@ class Database:
             if not self.async_engine:
                 self.async_initialize()
 
-            await asyncio.to_thread(self._ensure_tables_created)
+            async def _check_and_create():
+                from sqlalchemy import inspect
+
+                def has_users_table(conn):
+                    inspector = inspect(conn)
+                    return inspector.has_table("users")
+
+                async with self.async_engine.connect() as conn:
+                    needs_creation = not await conn.run_sync(has_users_table)
+
+                if needs_creation:
+                    await asyncio.to_thread(self._ensure_tables_created)
+
+            await _check_and_create()
             self._async_tables_created = True
 
     @contextmanager

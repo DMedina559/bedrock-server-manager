@@ -60,7 +60,7 @@ async def api_login_for_access_token(
         )
 
     logger.info(f"API login attempt for '{form_data.username}'")
-    authenticated_username = authenticate_user(
+    authenticated_username = await authenticate_user(
         app_context, form_data.username, form_data.password
     )
 
