@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import aiofiles.ospath
 
-from ...core.player import async_get_known_players
+from ...core.player import get_known_players
 from ...error import (
     AppFileNotFoundError,
     ConfigParseError,
@@ -125,7 +125,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
             ) from e
 
         try:
-            known_players = await async_get_known_players(db_session_manager)
+            known_players = await get_known_players(db_session_manager)
             player_map = {p["xuid"]: p["name"] for p in known_players}
         except Exception as e:
             self.logger.error(

@@ -51,7 +51,7 @@ async def test_get_permissions_success(app_context, monkeypatch):
     # Mock player API
     monkeypatch.setattr(
         "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api",
-        MagicMock(
+        AsyncMock(
             return_value={
                 "status": "success",
                 "players": [{"xuid": "xuid2", "name": "p2"}],
@@ -86,7 +86,7 @@ async def test_get_permissions_error(app_context, monkeypatch):
 
     monkeypatch.setattr(
         "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api",
-        MagicMock(return_value={"status": "success"}),
+        AsyncMock(return_value={"status": "success"}),
     )
 
     result = await get_permissions("test_server", app_context)

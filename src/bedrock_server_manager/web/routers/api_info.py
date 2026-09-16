@@ -214,7 +214,7 @@ async def put_scan_players(
     identity = current_user.username
     logger.info(f"API: Request to scan logs for players by user '{identity}'.")
     try:
-        result = player_api.scan_and_update_player_db_api(app_context=app_context)
+        result = await player_api.scan_and_update_player_db_api(app_context=app_context)
         if result.get("status") == "success":
             return AddPlayersResponse(
                 status="success",
@@ -254,7 +254,9 @@ async def get_all_players(
     identity = current_user.username
     logger.info(f"API: Request to retrieve all players by user '{identity}'.")
     try:
-        result_dict = player_api.get_all_known_players_api(app_context=app_context)
+        result_dict = await player_api.get_all_known_players_api(
+            app_context=app_context
+        )
 
         if result_dict.get("status") == "success":
             logger.debug(
@@ -510,7 +512,7 @@ async def post_add_players(
     )
     try:
 
-        result = player_api.add_players_manually_api(
+        result = await player_api.add_players_manually_api(
             player_strings=payload.players, app_context=app_context
         )
 

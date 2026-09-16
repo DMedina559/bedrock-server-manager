@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -82,9 +81,10 @@ async def get_permissions(  # noqa: C901
         server = app_context.get_server(server_name)
         all_known_players: List[Dict[str, Any]] = []
 
-        players_response = await asyncio.to_thread(
-            player_api.get_all_known_players_api, app_context=app_context
+        players_response = await player_api.get_all_known_players_api(
+            app_context=app_context
         )
+
         if players_response.get("status") == "success":
             all_known_players = players_response.get("players", []) or []
 

@@ -17,7 +17,7 @@ from mcstatus import BedrockServer as mc
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError
-from .player import async_save_player_data
+from .player import save_player_data
 
 if TYPE_CHECKING:
     from .bedrock_server import BedrockServer
@@ -387,7 +387,7 @@ class BedrockProcessManager:
                                 )
 
                             if players:
-                                await async_save_player_data(
+                                await save_player_data(
                                     self.settings.db.async_session_manager(),
                                     players,
                                 )
