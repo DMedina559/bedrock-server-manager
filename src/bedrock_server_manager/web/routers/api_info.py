@@ -345,7 +345,7 @@ async def put_prune_downloads(
                 detail="Target cache directory not found.",
             )
 
-        result = misc_api.prune_download_cache(
+        result = await misc_api.prune_download_cache(
             full_download_dir_path, payload.keep, app_context=app_context
         )
 

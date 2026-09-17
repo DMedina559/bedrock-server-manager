@@ -5,7 +5,7 @@ Integration tests for bedrock_server_manager/core/downloader.py
 import os
 import platform
 import zipfile
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -17,7 +17,7 @@ from bedrock_server_manager.core.downloader import (
 from bedrock_server_manager.error import InternetConnectivityError
 
 
-def test_prune_old_downloads(tmp_path):
+async def test_prune_old_downloads(tmp_path):
     """Test prune_old_downloads keeps the specified amount of files and deletes the oldest."""
     # Create 5 fake download files with different modification times
     downloads_dir = tmp_path / "downloads"
@@ -40,7 +40,7 @@ def test_prune_old_downloads(tmp_path):
         os.utime(file_path, (time_to_set, time_to_set))
 
     # Keep 3, should delete the 2 oldest (file1.zip and file2.zip)
-    prune_old_downloads(str(downloads_dir), 3)
+    await prune_old_downloads(str(downloads_dir), 3)
 
     remaining_files = os.listdir(downloads_dir)
     assert len(remaining_files) == 3
@@ -74,68 +74,76 @@ def test_downloader_init_preview(app_context: AppContext):
     assert downloader._version_type == "PREVIEW"
 
 
-def test_downloader_lookup_latest(mock_bedrock_api, app_context: AppContext):
+async def test_downloader_lookup_latest(mock_bedrock_api, app_context: AppContext):
     """Test looking up the latest bedrock URL from API."""
     # Point the downloader to the mock API
     app_context.settings.set(
-        "system.bedrock_download_api", f"{mock_bedrock_api.url}/api/v1.0/download/links"
+        "downloader.download_url", f"{mock_bedrock_api.url}/api/v1.0/download/links"
     )
 
     downloader = BedrockDownloader(app_context.settings, "/fake", "LATEST")
-    url = downloader._lookup_bedrock_download_url()
+    url = await downloader._lookup_bedrock_download_url()
 
     assert mock_bedrock_api.url in url
     assert "bedrock-server" in url
 
 
-def test_downloader_lookup_preview(mock_bedrock_api, app_context: AppContext):
+async def test_downloader_lookup_preview(mock_bedrock_api, app_context: AppContext):
     """Test looking up the preview bedrock URL from API."""
     # Point the downloader to the mock API
     app_context.settings.set(
-        "system.bedrock_download_api", f"{mock_bedrock_api.url}/api/v1.0/download/links"
+        "downloader.download_url", f"{mock_bedrock_api.url}/api/v1.0/download/links"
     )
 
     downloader = BedrockDownloader(app_context.settings, "/fake", "PREVIEW")
-    url = downloader._lookup_bedrock_download_url()
+    url = await downloader._lookup_bedrock_download_url()
 
     assert mock_bedrock_api.url in url
     assert "preview" in url
 
 
-@patch("requests.get")
-def test_downloader_lookup_failure(mock_get, app_context: AppContext):
+@patch("aiohttp.ClientSession.get")
+async def test_downloader_lookup_failure(mock_get, app_context: AppContext):
     """Test failing to look up bedrock URL raises InternetConnectivityError."""
-    import requests
+    import aiohttp
 
-    mock_get.side_effect = requests.exceptions.RequestException("API down")
+    mock_get.side_effect = aiohttp.ClientError("API down")
 
     downloader = BedrockDownloader(app_context.settings, "/fake", "LATEST")
     with pytest.raises(
         InternetConnectivityError, match="Could not contact the Minecraft download API"
     ):
-        downloader._lookup_bedrock_download_url()
+        await downloader._lookup_bedrock_download_url()
 
 
 @patch(
     "bedrock_server_manager.core.system.base.check_internet_connectivity",
     return_value=True,
 )
-def test_downloader_prepare_assets(mock_conn, app_context: AppContext, tmp_path):
+async def test_downloader_prepare_assets(mock_conn, app_context: AppContext, tmp_path):
     """Test prepare_download_assets sets up paths properly."""
     app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     downloader = BedrockDownloader(
         app_context.settings, str(tmp_path / "server_dir"), "LATEST"
     )
 
-    with patch.object(downloader, "get_version_for_target_spec"):
+    with patch.object(
+        downloader, "get_version_for_target_spec", new_callable=AsyncMock
+    ):
         downloader.actual_version = "1.20.0"
         downloader.resolved_download_url = (
             "https://example.com/bedrock-server-1.20.0.zip"
         )
 
-        with patch.object(downloader, "_download_server_zip_file"):
-            with patch.object(downloader, "_execute_instance_pruning"):
-                actual_version, zip_path, url = downloader.prepare_download_assets()
+        with patch.object(
+            downloader, "_download_server_zip_file", new_callable=AsyncMock
+        ):
+            with patch.object(
+                downloader, "_execute_instance_pruning", new_callable=AsyncMock
+            ):
+                actual_version, zip_path, url = (
+                    await downloader.prepare_download_assets()
+                )
 
                 assert url is not None
                 assert actual_version == "1.20.0"
@@ -143,7 +151,7 @@ def test_downloader_prepare_assets(mock_conn, app_context: AppContext, tmp_path)
                 assert "stable" in zip_path
 
 
-def test_downloader_extract_server_files_fresh(
+async def test_downloader_extract_server_files_fresh(
     app_context: AppContext, tmp_path, dummy_server_zip
 ):
     """Test extraction process for a fresh install."""
@@ -159,7 +167,7 @@ def test_downloader_extract_server_files_fresh(
     downloader.zip_file_path = str(zip_path)
     downloader.specific_download_dir = str(tmp_path)
 
-    downloader.extract_server_files(is_update=False)
+    await downloader.extract_server_files(is_update=False)
 
     # Assert extracted
     if platform.system() == "Windows":
@@ -171,7 +179,7 @@ def test_downloader_extract_server_files_fresh(
     assert (server_dir / "behavior_packs").is_dir()
 
 
-def test_downloader_extract_server_files_update(
+async def test_downloader_extract_server_files_update(
     app_context: AppContext, tmp_path, dummy_server_zip
 ):
     """Test extraction process for an update preserves properties."""
@@ -202,7 +210,7 @@ def test_downloader_extract_server_files_update(
     downloader.zip_file_path = str(zip_path)
     downloader.specific_download_dir = str(tmp_path)
 
-    downloader.extract_server_files(is_update=True)
+    await downloader.extract_server_files(is_update=True)
 
     # Assert properties were updated but preserved custom value
     content = existing_props.read_text()
@@ -216,13 +224,16 @@ def test_downloader_extract_server_files_update(
 @patch(
     "bedrock_server_manager.core.downloader.BedrockDownloader.prepare_download_assets"
 )
-@patch("bedrock_server_manager.core.downloader.BedrockDownloader.extract_server_files")
-def test_full_server_setup(mock_extract, mock_prepare, app_context: AppContext):
+@patch(
+    "bedrock_server_manager.core.downloader.BedrockDownloader.extract_server_files",
+    new_callable=AsyncMock,
+)
+async def test_full_server_setup(mock_extract, mock_prepare, app_context: AppContext):
     """Test full setup orchestration."""
     mock_prepare.return_value = ("1.20.0", "/fake/zip.zip", "https://url")
 
     downloader = BedrockDownloader(app_context.settings, "/fake", "LATEST")
-    result_version = downloader.full_server_setup(is_update=False)
+    result_version = await downloader.full_server_setup(is_update=False)
 
     assert result_version == "1.20.0"
     mock_prepare.assert_called_once()
