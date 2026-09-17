@@ -33,16 +33,14 @@ class APIDocsGenerator(PluginBase):
         """
 
         self.logger.info("Generating API and Event documentation...")
-        self.settings = self.api.app_context.settings
 
         try:
             # --- API Docs ---
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
+            backup_dir = self.api.get_global_setting("paths.backups")
 
-            api_output_path = os.path.join(
-                self.settings.config_dir, "PLUGIN_API_REFERENCE.md"
-            )
+            api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 
             def write_api_file():
                 with open(api_output_path, "w", encoding="utf-8") as f:
@@ -56,10 +54,7 @@ class APIDocsGenerator(PluginBase):
             # --- Event Docs ---
             event_list = self._scan_codebase_for_events()
             event_markdown_content = self._format_event_markdown(event_list)
-
-            event_output_path = os.path.join(
-                self.settings.config_dir, "PLUGIN_EVENT_REFERENCE.md"
-            )
+            event_output_path = os.path.join(backup_dir, "PLUGIN_EVENT_REFERENCE.md")
 
             def write_event_file():
                 with open(event_output_path, "w", encoding="utf-8") as f:
