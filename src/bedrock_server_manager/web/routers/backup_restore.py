@@ -94,7 +94,7 @@ async def get_list_server_backups(
         f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
     )
     try:
-        api_result = backup_restore_api.list_backup_files(
+        api_result = await backup_restore_api.list_backup_files(
             server_name=server_name, backup_type=backup_type, app_context=app_context
         )
         if api_result.get("status") == "success":

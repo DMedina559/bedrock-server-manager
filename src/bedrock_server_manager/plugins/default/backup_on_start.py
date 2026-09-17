@@ -28,7 +28,7 @@ class AutoBackupOnStart(PluginBase):
         )
 
     @app_event("before_server_start")
-    def backup_on_start(self, **kwargs: Any):
+    async def backup_on_start(self, **kwargs: Any):
         """
         Triggers a full backup of the server before it starts.
         """
@@ -47,7 +47,7 @@ class AutoBackupOnStart(PluginBase):
             # to run a backup without stopping it first.
 
             # Run the backup in a separate thread so it doesn't block the main asyncio event loop
-            result = self.api.backup_all(
+            result = await self.api.backup_all(
                 server_name=server_name, stop_start_server=False
             )
 

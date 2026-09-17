@@ -139,8 +139,6 @@ def update_server(
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            logger.info(f"API: Backing up '{server_name}' before update...")
-            server.backup_all_data()
             logger.info(
                 f"API: Performing update for '{server_name}' to target '{target_version}'..."
             )
