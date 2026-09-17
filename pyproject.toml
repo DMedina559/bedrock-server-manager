@@ -77,7 +77,7 @@ docs = [
 ]
 
 mysql = [
-    "mysqlclient>=2.2.7,<2.3",
+    "mysqlclient>=2.2.7,<2.4",
     "PyMySQL>=1.1.1,<1.3",
 ]
 
