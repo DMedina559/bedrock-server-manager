@@ -11,7 +11,10 @@ from bedrock_server_manager.error import (
 
 def test_install_new_server_success(app_context, monkeypatch):
     """Test install_new_server formats new server context and runs successfully."""
+    from unittest.mock import AsyncMock
+
     mock_server = MagicMock()
+    mock_server.backup_all_data = AsyncMock()
     mock_server.get_version.return_value = "1.20"
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
@@ -54,7 +57,10 @@ def test_install_new_server_no_base_dir(app_context):
 
 def test_install_new_server_error(app_context, monkeypatch):
     """Test install_new_server traps underlying BSMError thrown via the class."""
+    from unittest.mock import AsyncMock
+
     mock_server = MagicMock()
+    mock_server.backup_all_data = AsyncMock()
     mock_server.install_or_update.side_effect = BSMError("Broken install")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
@@ -65,7 +71,10 @@ def test_install_new_server_error(app_context, monkeypatch):
 
 def test_update_server_no_update_needed(app_context, monkeypatch):
     """Test update_server returns early if version is current."""
+    from unittest.mock import AsyncMock
+
     mock_server = MagicMock()
+    mock_server.backup_all_data = AsyncMock()
     mock_server.is_update_needed.return_value = False
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
@@ -78,7 +87,10 @@ def test_update_server_no_update_needed(app_context, monkeypatch):
 
 def test_update_server_success(app_context, monkeypatch):
     """Test update_server triggers backups, locks, and lifecycle managers properly."""
+    from unittest.mock import AsyncMock
+
     mock_server = MagicMock()
+    mock_server.backup_all_data = AsyncMock()
     mock_server.is_update_needed.return_value = True
     mock_server.get_version.return_value = "1.21"
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
@@ -121,7 +133,10 @@ def test_update_server_missing_name(app_context):
 
 def test_update_server_error(app_context, monkeypatch):
     """Test update_server captures failing tasks from subclass appropriately."""
+    from unittest.mock import AsyncMock
+
     mock_server = MagicMock()
+    mock_server.backup_all_data = AsyncMock()
     mock_server.is_update_needed.return_value = True
     mock_server.backup_all_data.side_effect = BSMError("Backup Failed")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
