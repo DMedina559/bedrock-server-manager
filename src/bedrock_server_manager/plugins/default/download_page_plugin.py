@@ -260,7 +260,10 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
-                backup_dir_str = self.api.app_context.settings.get("paths.backups")
+                result = self.api.get_global_setting(key="paths.backups")
+                backup_dir_str = (
+                    result.get("value") if result.get("status") == "success" else None
+                )
                 if not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
 
@@ -277,7 +280,10 @@ class DownloadPagePlugin(PluginBase):
                     raise HTTPException(403, "Access denied: Invalid server path")
 
             elif file_type in ("content_world", "content_addon"):
-                content_dir_str = self.api.app_context.settings.get("paths.content")
+                result = self.api.get_global_setting(key="paths.content")
+                content_dir_str = (
+                    result.get("value") if result.get("status") == "success" else None
+                )
                 if not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
 

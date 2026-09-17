@@ -37,14 +37,12 @@ def test_trigger_event_sync_hooks(mock_app_context, monkeypatch):
 
     mock_app_context.plugin_manager.trigger_event.assert_any_call(
         "sync_before",
-        app_context=mock_app_context,
         multiplier=10,
         increment=5,
         event=ANY,
     )
     mock_app_context.plugin_manager.trigger_event.assert_any_call(
         "sync_after",
-        app_context=mock_app_context,
         multiplier=10,
         increment=5,
         event=ANY,
@@ -81,24 +79,24 @@ async def test_trigger_event_async_hooks(mock_app_context, monkeypatch):
 
         mock_app_context.plugin_manager.trigger_event_async = AsyncMock()
 
-    result = await async_target(app_context=mock_app_context, val=20)
+    result = await async_target(mock_app_context, val=20)
     assert result == 30
 
     from unittest.mock import ANY
 
     if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
         mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
-            "async_before", app_context=mock_app_context, val=20, event=ANY
+            "async_before", val=20, event=ANY
         )
         mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
-            "async_after", app_context=mock_app_context, val=20, result=30, event=ANY
+            "async_after", val=20, result=30, event=ANY
         )
     else:
         mock_app_context.plugin_manager.trigger_event.assert_any_call(
-            "async_before", app_context=mock_app_context, val=20, event=ANY
+            "async_before", val=20, event=ANY
         )
         mock_app_context.plugin_manager.trigger_event.assert_any_call(
-            "async_after", app_context=mock_app_context, val=20, result=30, event=ANY
+            "async_after", val=20, result=30, event=ANY
         )
 
 
@@ -125,7 +123,7 @@ def test_trigger_event_only_before(mock_app_context):
     from unittest.mock import ANY
 
     mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_before", app_context=mock_app_context, event=ANY
+        "only_before", event=ANY
     )
 
 
@@ -140,5 +138,5 @@ def test_trigger_event_only_after(mock_app_context):
     from unittest.mock import ANY
 
     mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
-        "only_after", app_context=mock_app_context, result="success_val", event=ANY
+        "only_after", result="success_val", event=ANY
     )

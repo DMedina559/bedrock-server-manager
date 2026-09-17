@@ -71,54 +71,63 @@ class WorldOperationNotificationsPlugin(PluginBase):
         """Notifies players before a world export begins."""
 
         server_name = str(kwargs.get("server_name"))
-        app_context = kwargs.get("app_context")
         export_dir = kwargs.get("export_dir")
         self.logger.debug(
             f"Handling before_world_export for '{server_name}' to '{export_dir}'."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-            if getattr(server, "player_count", 0) > 0:
-                self._send_ingame_warning(
-                    server_name,
-                    "World export starting...",
-                    "world export",
-                )
+        summary = self.api.get_server_summary(server_name=server_name)
+        player_count = (
+            summary.get("summary", {}).get("player_count", 0)
+            if summary.get("status") == "success"
+            else 0
+        )
+        if player_count > 0:
+            self._send_ingame_warning(
+                server_name,
+                "World export starting...",
+                "world export",
+            )
 
     @app_event("before_world_import")
     def send_import_warning(self, **kwargs: Any):
         """Notifies players before a world import begins."""
 
         server_name = str(kwargs.get("server_name"))
-        app_context = kwargs.get("app_context")
         file_path = kwargs.get("file_path")
         self.logger.debug(
             f"Handling before_world_import for '{server_name}' from '{file_path}'."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-            if getattr(server, "player_count", 0) > 0:
-                self._send_ingame_warning(
-                    server_name,
-                    "World import starting... Current world will be replaced.",
-                    "world import",
-                )
+        summary = self.api.get_server_summary(server_name=server_name)
+        player_count = (
+            summary.get("summary", {}).get("player_count", 0)
+            if summary.get("status") == "success"
+            else 0
+        )
+        if player_count > 0:
+            self._send_ingame_warning(
+                server_name,
+                "World import starting... Current world will be replaced.",
+                "world import",
+            )
 
     @app_event("before_world_reset")
     def send_reset_warning(self, **kwargs: Any):
         """Sends a critical warning before a world reset operation."""
 
         server_name = str(kwargs.get("server_name"))
-        app_context = kwargs.get("app_context")
         self.logger.debug(f"Handling before_world_reset for '{server_name}'.")
         self.logger.warning(
             f"Critical operation: World reset initiated for server '{server_name}'."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-            if getattr(server, "player_count", 0) > 0:
-                self._send_ingame_warning(
-                    server_name,
-                    "CRITICAL WARNING: Server world is being reset NOW!",
-                    "world reset",
-                )
+        summary = self.api.get_server_summary(server_name=server_name)
+        player_count = (
+            summary.get("summary", {}).get("player_count", 0)
+            if summary.get("status") == "success"
+            else 0
+        )
+        if player_count > 0:
+            self._send_ingame_warning(
+                server_name,
+                "CRITICAL WARNING: Server world is being reset NOW!",
+                "world reset",
+            )

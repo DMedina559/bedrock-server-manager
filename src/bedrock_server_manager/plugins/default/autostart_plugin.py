@@ -48,7 +48,7 @@ class AutostartServers(PluginBase):
                 )
                 # Use the task manager to start the server in the background so app startup isn't blocked
                 # especially if an update is required.
-                self.api.app_context.task_manager.run_task(
+                self.api.run_task(
                     self.api.start_server,
                     server_name=server_name,
                     username="System (Autostart)",

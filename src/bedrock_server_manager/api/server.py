@@ -326,7 +326,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
             }
 
         server.start()
-        loop = app_context.loop
+        loop = asyncio.get_running_loop()
         if loop is not None:
             try:
                 asyncio.run_coroutine_threadsafe(
@@ -408,7 +408,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
         app_context.api.set_server_status_api(server_name, "STOPPING")
 
         server.stop()
-        loop = app_context.loop
+        loop = asyncio.get_running_loop()
         if loop is not None:
             try:
                 asyncio.run_coroutine_threadsafe(

@@ -20,7 +20,7 @@ intended for use by UIs, CLIs, or other high-level components.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..config import const as config_const
 from ..context import AppContext
@@ -152,6 +152,30 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"API: Unexpected error getting system info: {e}", exc_info=True)
         return {"status": "error", "message": "An unexpected error occurred."}
+
+
+@api_method("run_task")
+def run_task(
+    target_function: Callable,
+    app_context: AppContext,
+    username: Optional[str] = None,
+    *args: Any,
+    **kwargs: Any,
+) -> str:
+    """Submits a function to be run in the background by the TaskManager.
+
+    Args:
+        target_function (Callable): The function to execute.
+        app_context (AppContext): The application context.
+        username (Optional[str], optional): The user associated with the task for WebSocket notifications.
+        *args (Any): Positional arguments for the target function.
+        **kwargs (Any): Keyword arguments for the target function.
+
+    Returns:
+        str: The ID of the created task.
+    """
+    logger.debug(f"API: Running task in background: {target_function.__name__}")
+    return app_context.task_manager.run_task(target_function, username, *args, **kwargs)
 
 
 @api_method("update_server_statuses", expose_to_plugins=False)

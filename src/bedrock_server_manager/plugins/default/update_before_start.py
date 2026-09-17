@@ -41,9 +41,13 @@ class AutoupdatePlugin(PluginBase):
         self.logger.debug(f"Handling before_server_start for '{server_name}'.")
 
         try:
-            # Create an instance for the server to access its configuration.
-            server_instance = self.api.app_context.get_server(server_name)
-            autoupdate_enabled = server_instance.get_autoupdate()
+            # Check if the server has autoupdate enabled in its settings
+            result = self.api.get_server_setting(server_name, "settings.autoupdate")
+            autoupdate_enabled = (
+                result.get("value", False)
+                if result.get("status") == "success"
+                else False
+            )
 
             if not autoupdate_enabled:
                 self.logger.info(

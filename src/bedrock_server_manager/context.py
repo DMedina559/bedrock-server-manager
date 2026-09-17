@@ -210,9 +210,9 @@ class AppContext:
         Lazily loads and returns the API instance.
         """
         if not hasattr(self, "_api") or self._api is None:
-            from .plugins.api_bridge import AppAPI
+            from .plugins.api_bridge import create_app_api
 
-            self._api = AppAPI("CoreAPI", self, is_core=True)
+            self._api = create_app_api("CoreAPI", self, is_core=True)
         return self._api
 
     @property

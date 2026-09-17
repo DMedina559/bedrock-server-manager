@@ -39,7 +39,7 @@ class TaskManager:
             }
 
             try:
-                loop = self.app_context.loop
+                loop = asyncio.get_running_loop()
             except RuntimeError:
                 logger.debug(
                     f"Skipping task update notification for task {task_id}: No running event loop available."
@@ -127,7 +127,7 @@ class TaskManager:
         self._notify_client_of_update(task_id)
 
         try:
-            loop = self.app_context.loop
+            loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
 

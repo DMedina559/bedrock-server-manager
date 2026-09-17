@@ -2,7 +2,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bedrock_server_manager.plugins.api_bridge import AppAPI, _api_registry, api_method
+from bedrock_server_manager.plugins.api_bridge import (
+    _api_registry,
+    api_method,
+    create_app_api,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -48,13 +52,13 @@ def test_getattr_success(app_context):
     def my_test_function():
         return "hello"
 
-    plugin_api = AppAPI("test_plugin", app_context)
+    plugin_api = create_app_api("test_plugin", app_context)
     assert plugin_api.my_test_api() == "hello"
 
 
 def test_getattr_fail(app_context):
     """Test AppAPI throws an AttributeError when invoking an unregistered function."""
-    plugin_api = AppAPI("test_plugin", app_context)
+    plugin_api = create_app_api("test_plugin", app_context)
     with pytest.raises(AttributeError):
         plugin_api.non_existent_api()
 
@@ -67,7 +71,7 @@ def test_list_available_apis(app_context):
         """This is a test function."""
         return f"{param1}, {param2}"
 
-    plugin_api = AppAPI("test_plugin", app_context)
+    plugin_api = create_app_api("test_plugin", app_context)
     api_list = plugin_api.list_available_apis()
 
     assert len(api_list) == 1
@@ -84,7 +88,7 @@ def test_listen_for_event(app_context, monkeypatch):
     mock_plugin_manager = MagicMock()
     # Mocking internal properties due to getter
     monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
-    plugin_api = AppAPI("test_plugin", app_context)
+    plugin_api = create_app_api("test_plugin", app_context)
 
     def my_callback():
         pass
@@ -110,7 +114,7 @@ def test_send_event(app_context, monkeypatch):
 
     monkeypatch.setattr(api_bridge, "broadcast_event", mock_broadcast, raising=False)
 
-    plugin_api = AppAPI("test_plugin", app_context)
+    plugin_api = create_app_api("test_plugin", app_context)
 
     plugin_api.send_event("my_event", 1, 2, key="value")
     mock_plugin_manager.trigger_event.assert_called_once_with(

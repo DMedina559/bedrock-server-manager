@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 from ..config import DEFAULT_ENABLED_PLUGINS, GUARD_VARIABLE
 from ..config.const import _MISSING_PARAM_PLACEHOLDER
 from ..db.models import Plugin
-from .api_bridge import AppAPI
+from .api_bridge import create_app_api
 from .event_trigger import _event_registry
 from .plugin_base import PluginBase
 
@@ -705,7 +705,7 @@ class PluginManager:
             plugin_version = config_data.get("version")
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                api_instance = AppAPI(
+                api_instance = create_app_api(
                     plugin_name=plugin_name,
                     app_context=self.app_context,
                 )

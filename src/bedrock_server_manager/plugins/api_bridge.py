@@ -98,6 +98,77 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
     return decorator
 
 
+def create_app_api(
+    plugin_name: str, app_context: Optional["AppContext"], is_core: bool = False
+) -> "AppAPI":
+    """Factory function to create an AppAPI instance with enclosed application context.
+
+    This approach keeps the app_context completely hidden from the plugin's introspectable
+    attributes by utilizing closures for API dispatch and event handling.
+    """
+
+    def api_dispatcher(name: str) -> Callable[..., Any]:
+        if name not in _api_registry:
+            logger.error(
+                f"Plugin '{plugin_name}' attempted to access unregistered API "
+                f"function: '{name}'."
+            )
+            raise AttributeError(
+                f"The API function '{name}' has not been registered or does not exist. "
+                f"Available APIs: {[k for k, v in _api_registry.items() if v[1]]}"
+            )
+        api_function, expose_to_plugins, requires_context = _api_registry[name]
+
+        if not expose_to_plugins and not is_core:
+            logger.error(
+                f"Plugin '{plugin_name}' attempted to access internal API '{name}'."
+            )
+            raise AttributeError(
+                f"The API function '{name}' is not exposed to plugins."
+            )
+
+        # --- Automatic AppContext Injection ---
+        if requires_context:
+            if app_context is None:
+                raise RuntimeError(
+                    f"API '{name}' requires app_context, but it was not provided."
+                )
+            logger.debug(
+                f"API function '{name}' expects 'app_context'. "
+                "Injecting it automatically via closure."
+            )
+            return functools.partial(api_function, app_context=app_context)
+        return api_function
+
+    def event_listener(event_name: str, callback: Callable[..., None]):
+        logger.debug(
+            f"Plugin '{plugin_name}' is attempting to register a listener "
+            f"for custom event '{event_name}' with callback '{callback.__name__}'."
+        )
+        if app_context is None or app_context.plugin_manager is None:
+            raise RuntimeError("PluginManager was not found in AppContext!")
+        app_context.plugin_manager.register_app_event_listener(
+            event_name, callback, plugin_name
+        )
+
+    def event_sender(event_name: str, *args: Any, **kwargs: Any):
+        logger.debug(
+            f"Plugin '{plugin_name}' is attempting to send event "
+            f"'{event_name}' with args: {args}, kwargs: {kwargs}."
+        )
+        if app_context is None or app_context.plugin_manager is None:
+            raise RuntimeError("PluginManager was not found in AppContext!")
+
+        kwargs["_triggering_plugin"] = plugin_name
+        app_context.plugin_manager.trigger_event(event_name, *args, **kwargs)
+
+        from bedrock_server_manager.plugins.util import broadcast_event
+
+        broadcast_event(app_context, event_name, kwargs)
+
+    return AppAPI(plugin_name, api_dispatcher, event_listener, event_sender, is_core)
+
+
 class AppAPI:
     """Provides a safe, dynamic, and decoupled interface for plugins to access core APIs.
 
@@ -115,140 +186,47 @@ class AppAPI:
     def __init__(
         self,
         plugin_name: str,
-        app_context: Optional["AppContext"],
+        api_dispatcher: Callable[[str], Callable[..., Any]],
+        event_listener: Callable[[str, Callable[..., None]], None],
+        event_sender: Callable[..., None],
         is_core: bool = False,
     ):
         """Initializes the AppAPI instance for a specific plugin.
 
-        This constructor is called by the `PluginManager` when a plugin is
-        being loaded and instantiated.
+        This constructor is called by the `create_app_api` factory.
 
         Args:
             plugin_name (str): The name of the plugin for which this API
                 instance is being created. This is used for logging and context.
-            app_context (Optional[AppContext]): A reference to the global
-                application context, providing access to shared application state
-                and managers. This can be `None` during initial setup phases.
+            api_dispatcher (Callable): A closure that resolves APIs and injects context.
+            event_listener (Callable): A closure to handle event listening.
+            event_sender (Callable): A closure to handle event dispatching.
             is_core (bool): If True, bypasses internal plugin API access checks.
         """
         self._plugin_name: str = plugin_name
-        self._app_context: Optional["AppContext"] = app_context
-        self._plugin_manager = (
-            self._app_context.plugin_manager if self._app_context else None
-        )
+        self._api_dispatcher = api_dispatcher
+        self._event_listener = event_listener
+        self._event_sender = event_sender
         self._is_core: bool = is_core
         logger.debug(
             f"AppAPI instance created for plugin '{self._plugin_name}' (is_core={is_core})."
         )
 
-    @property
-    def app_context(self) -> "AppContext":
-        """Provides direct access to the application's context.
-
-        This property returns the central `AppContext` object, which holds
-        instances of key application components like the `Settings` manager
-        and the `PluginManager` itself.
-
-        Example:
-            ```python
-            # In a plugin method:
-            settings = self.api.app_context.settings
-            from bedrock_server_manager.utils.server import get_servers_data
-            all_servers_data, _ = get_servers_data(self.api.app_context)
-            ```
-
-        Returns:
-            AppContext: The application context instance.
-
-        Raises:
-            RuntimeError: If the application context has not been set on this
-                `AppAPI` instance yet. This would indicate an improper
-                initialization sequence in the application startup.
-        """
-        if self._app_context is None:
-            # This state should not be reachable in a correctly started application,
-            # as the AppContext is set by the PluginManager during plugin loading.
-            logger.critical(
-                f"Plugin '{self._plugin_name}' tried to access `api.app_context`, but it has not been set. "
-                "This indicates a critical error in the application's startup sequence."
-            )
-            raise RuntimeError(
-                "Application context is not available. It may not have been "
-                "properly initialized and set for the AppAPI."
-            )
-        return self._app_context
-
     def __getattr__(self, name: str) -> Callable[..., Any]:
         """Dynamically retrieves a registered core API function when accessed as an attribute.
-
-        This magic method is the cornerstone of the API bridge's functionality.
-        When a plugin executes code like `self.api.some_function_name()`, Python
-        internally calls this `__getattr__` method with `name` set to
-        `'some_function_name'`. This method then looks up `name` in the
-        `_api_registry`.
-
-        It checks the pre-computed signature flags of the retrieved function. If the function
-        has a parameter named `app_context`, this method automatically provides
-        the `AppContext` to it, simplifying the function's implementation for
-        both the core API and the plugin calling it.
 
         Args:
             name (str): The name of the attribute (API function) being accessed
                 by the plugin.
 
         Returns:
-            Callable[..., Any]: The callable API function retrieved from the
-            `_api_registry` corresponding to the given `name`. If the function
-            expects an `app_context`, a partial function with the context already
-            bound is returned.
-
-        Raises:
-            AttributeError: If the function `name` has not been registered in
-                the `_api_registry`, indicating the plugin is trying to access
-                a non-existent or unavailable API function.
+            Callable[..., Any]: The callable API function.
         """
-        if name not in _api_registry:
-            logger.error(
-                f"Plugin '{self._plugin_name}' attempted to access unregistered API "
-                f"function: '{name}'."
-            )
-            raise AttributeError(
-                f"The API function '{name}' has not been registered or does not exist. "
-                f"Available APIs: {[k for k, v in _api_registry.items() if v[1]]}"
-            )
-        api_function, expose_to_plugins, requires_context = _api_registry[name]
-
-        if not expose_to_plugins and not self._is_core:
-            logger.error(
-                f"Plugin '{self._plugin_name}' attempted to access internal API '{name}'."
-            )
-            raise AttributeError(
-                f"The API function '{name}' is not exposed to plugins."
-            )
-
-        # --- Automatic AppContext Injection ---
-        resolved_function: Callable[..., Any]
-        if requires_context:
-            logger.debug(
-                f"API function '{name}' expects 'app_context'. "
-                "Injecting it automatically."
-            )
-            # Use functools.partial to pre-fill the app_context argument.
-            # This returns a new callable that plugins can use without
-            # needing to pass the context themselves.
-            resolved_function = functools.partial(
-                api_function, app_context=self.app_context
-            )
-        else:
-            resolved_function = api_function
-
+        resolved_function = self._api_dispatcher(name)
         logger.debug(
             f"Plugin '{self._plugin_name}' successfully accessed API function: '{name}'."
         )
-
-        # Cache the resolved function on the instance so subsequent lookups bypass __getattr__
         setattr(self, name, resolved_function)
-
         return resolved_function
 
     def list_available_apis(
@@ -333,64 +311,9 @@ class AppAPI:
         return api_details
 
     def listen_for_event(self, event_name: str, callback: Callable[..., None]):
-        """Registers a callback to be executed when a specific custom plugin event occurs.
-
-        This method allows a plugin to subscribe to custom events that may be
-        triggered by other plugins via `send_event()`. The `PluginManager`
-        handles the actual registration and dispatch of these events.
-
-        Args:
-            event_name (str): The unique name of the custom event to listen for
-                (e.g., "myplugin:my_custom_event"). It is a recommended practice
-                to namespace event names with the originating plugin's name or
-                a unique prefix to avoid collisions.
-            callback (Callable[..., None]): The function or method within the
-                listening plugin that should be called when the specified event
-                is triggered. This callback will receive any `*args` and
-                `**kwargs` passed during the `send_event` call, plus an
-                additional `_triggering_plugin` keyword argument (str)
-                indicating the name of the plugin that sent the event.
-        """
-        logger.debug(
-            f"Plugin '{self._plugin_name}' is attempting to register a listener "
-            f"for custom event '{event_name}' with callback '{callback.__name__}'."
-        )
-        assert (
-            self._plugin_manager is not None
-        ), "PluginManager was not found in AppContext!"
-        # Delegate the actual registration to the PluginManager
-        self._plugin_manager.register_app_event_listener(
-            event_name, callback, self._plugin_name
-        )
-        # Note: The PluginManager's method will log the success/failure of registration.
+        """Registers a callback to be executed when a specific custom plugin event occurs."""
+        self._event_listener(event_name, callback)
 
     def send_event(self, event_name: str, *args: Any, **kwargs: Any):
-        """Triggers an event, notifying all registered listeners and broadcasting to WebSockets.
-
-        This method allows a plugin to trigger an event that other plugins
-        can listen for using `@app_event("event_name")`. It routes directly
-        through the core application's event dispatcher.
-
-        Args:
-            event_name (str): The name of the event to trigger.
-            *args (Any): Positional arguments to pass to listeners.
-            **kwargs (Any): Keyword arguments to pass to listeners.
-        """
-        logger.debug(
-            f"Plugin '{self._plugin_name}' is attempting to send event "
-            f"'{event_name}' with args: {args}, kwargs: {kwargs}."
-        )
-        assert (
-            self._plugin_manager is not None
-        ), "PluginManager was not found in AppContext!"
-
-        # Include the triggering plugin name in the event data
-        kwargs["_triggering_plugin"] = self._plugin_name
-
-        # Delegate the event triggering to the unified PluginManager
-        self._plugin_manager.trigger_event(event_name, *args, **kwargs)
-
-        # Broadcast the custom event via WebSockets
-        from bedrock_server_manager.plugins.util import broadcast_event
-
-        broadcast_event(self.app_context, event_name, kwargs)
+        """Triggers an event, notifying all registered listeners and broadcasting to WebSockets."""
+        self._event_sender(event_name, *args, **kwargs)

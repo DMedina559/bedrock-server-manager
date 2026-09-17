@@ -82,27 +82,30 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     def send_shutdown_warning(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
         server_name = str(kwargs.get("server_name"))
-        app_context = kwargs.get("app_context")
-
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
-        if app_context:
-            server = app_context.get_server(server_name)
-            if getattr(server, "player_count", 0) > 0:
 
-                # Run the check in a separate thread so it doesn't block the loop
-                is_running = self._is_server_running(server_name)
-                if is_running:
-                    warning_message = (
-                        f"Server is stopping in {self.stop_warning_delay} seconds..."
-                    )
-                    self._send_ingame_message(
-                        server_name, warning_message, "shutdown warning"
-                    )
+        summary = self.api.get_server_summary(server_name=server_name)
+        player_count = (
+            summary.get("summary", {}).get("player_count", 0)
+            if summary.get("status") == "success"
+            else 0
+        )
+        if player_count > 0:
 
-                    self.logger.info(
-                        f"Waiting {self.stop_warning_delay}s before '{server_name}' stops."
-                    )
-                    time.sleep(self.stop_warning_delay)
+            # Run the check in a separate thread so it doesn't block the loop
+            is_running = self._is_server_running(server_name)
+            if is_running:
+                warning_message = (
+                    f"Server is stopping in {self.stop_warning_delay} seconds..."
+                )
+                self._send_ingame_message(
+                    server_name, warning_message, "shutdown warning"
+                )
+
+                self.logger.info(
+                    f"Waiting {self.stop_warning_delay}s before '{server_name}' stops."
+                )
+                time.sleep(self.stop_warning_delay)
 
     @app_event("after_server_stop")
     def wait_after_stop(self, **kwargs: Any) -> None:
@@ -122,17 +125,20 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         """Sends a final warning before server data is deleted if the server is running."""
 
         server_name = str(kwargs.get("server_name"))
-        app_context = kwargs.get("app_context")
-
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
-        if app_context:
-            server = app_context.get_server(server_name)
-            if getattr(server, "player_count", 0) > 0:
-                self._send_ingame_message(
-                    server_name,
-                    "WARNING: Server data is being deleted permanently!",
-                    "data deletion warning",
-                )
+
+        summary = self.api.get_server_summary(server_name=server_name)
+        player_count = (
+            summary.get("summary", {}).get("player_count", 0)
+            if summary.get("status") == "success"
+            else 0
+        )
+        if player_count > 0:
+            self._send_ingame_message(
+                server_name,
+                "WARNING: Server data is being deleted permanently!",
+                "data deletion warning",
+            )
 
     @app_event("before_server_update")
     def send_update_notification(self, **kwargs: Any) -> None:
@@ -140,19 +146,22 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
 
         server_name = str(kwargs.get("server_name"))
         target_version = kwargs.get("target_version")
-        app_context = kwargs.get("app_context")
-
         self.logger.debug(
             f"Handling before_server_update for '{server_name}' to v{target_version}."
         )
-        if app_context:
-            server = app_context.get_server(server_name)
-            if getattr(server, "player_count", 0) > 0:
-                self._send_ingame_message(
-                    server_name,
-                    "Server is updating now, please wait...",
-                    "update notification",
-                )
+
+        summary = self.api.get_server_summary(server_name=server_name)
+        player_count = (
+            summary.get("summary", {}).get("player_count", 0)
+            if summary.get("status") == "success"
+            else 0
+        )
+        if player_count > 0:
+            self._send_ingame_message(
+                server_name,
+                "Server is updating now, please wait...",
+                "update notification",
+            )
 
     @app_event("after_server_start")
     def wait_after_start(self, **kwargs: Any) -> None:

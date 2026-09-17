@@ -81,7 +81,9 @@ def trigger_event(  # noqa: C901
             event_kwargs["event"] = cancellable_event
 
             if before and app_context:
-                app_context.plugin_manager.trigger_event(before, **event_kwargs)
+                plugin_kwargs = dict(event_kwargs)
+                plugin_kwargs.pop("app_context", None)
+                app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
                 broadcast_event(app_context, before, event_kwargs)
                 if cancellable_event.is_cancelled:
                     return cast(
@@ -97,7 +99,9 @@ def trigger_event(  # noqa: C901
 
             if after and app_context:
                 event_kwargs["result"] = result
-                app_context.plugin_manager.trigger_event(after, **event_kwargs)
+                plugin_kwargs = dict(event_kwargs)
+                plugin_kwargs.pop("app_context", None)
+                app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
                 broadcast_event(app_context, after, event_kwargs)
 
             return result
@@ -111,11 +115,15 @@ def trigger_event(  # noqa: C901
 
             if before and app_context:
                 if hasattr(app_context.plugin_manager, "trigger_event_async"):
+                    plugin_kwargs = dict(event_kwargs)
+                    plugin_kwargs.pop("app_context", None)
                     await app_context.plugin_manager.trigger_event_async(
-                        before, **event_kwargs
+                        before, **plugin_kwargs
                     )
                 else:
-                    app_context.plugin_manager.trigger_event(before, **event_kwargs)
+                    plugin_kwargs = dict(event_kwargs)
+                    plugin_kwargs.pop("app_context", None)
+                    app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
                 await async_broadcast_event(app_context, before, event_kwargs)
                 if cancellable_event.is_cancelled:
                     return cast(
@@ -132,11 +140,15 @@ def trigger_event(  # noqa: C901
             if after and app_context:
                 event_kwargs["result"] = result
                 if hasattr(app_context.plugin_manager, "trigger_event_async"):
+                    plugin_kwargs = dict(event_kwargs)
+                    plugin_kwargs.pop("app_context", None)
                     await app_context.plugin_manager.trigger_event_async(
-                        after, **event_kwargs
+                        after, **plugin_kwargs
                     )
                 else:
-                    app_context.plugin_manager.trigger_event(after, **event_kwargs)
+                    plugin_kwargs = dict(event_kwargs)
+                    plugin_kwargs.pop("app_context", None)
+                    app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
                 await async_broadcast_event(app_context, after, event_kwargs)
 
             return result
