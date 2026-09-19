@@ -61,7 +61,7 @@ async def put_prune_backups(
     logger.info(
         f"API: Request to prune backups for server '{server_name}' by user '{identity}'."
     )
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         backup_restore_api.prune_old_backups,
         username=current_user.username,
         server_name=server_name,
@@ -220,7 +220,7 @@ async def post_backup_action(
             detail="Invalid backup configuration.",
         )
 
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         target_func,
         username=current_user.username,
         **kwargs,
@@ -330,7 +330,7 @@ async def post_restore_action(  # noqa: C901
             detail="Invalid restore configuration.",
         )
 
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         target_func,
         username=current_user.username,
         **kwargs,

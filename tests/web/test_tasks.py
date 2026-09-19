@@ -16,7 +16,7 @@ async def test_run_task_success(task_manager):
     def my_task(a, b):
         return a + b
 
-    task_id = task_manager.run_task(my_task, None, 5, 10)
+    task_id = await task_manager.run_task(my_task, None, 5, 10)
 
     # Check immediate status
     assert task_id in task_manager.tasks
@@ -40,7 +40,7 @@ async def test_run_async_task_success(task_manager, app_context):
         await asyncio.sleep(0.1)
         return a * b
 
-    task_id = task_manager.run_task(my_async_task, None, 5, 10)
+    task_id = await task_manager.run_task(my_async_task, None, 5, 10)
     assert task_id in task_manager.tasks
 
     # Wait for the task to complete
@@ -63,14 +63,15 @@ async def test_cancel_task(task_manager, app_context):
         while True:
             await asyncio.sleep(0.1)
 
-    task_id = task_manager.run_task(infinite_task)
+    task_id = await task_manager.run_task(infinite_task)
     assert task_id in task_manager.tasks
 
     # Give it a tiny bit of time to start
     await asyncio.sleep(0.1)
 
     # Cancel it
-    assert task_manager.cancel_task(task_id) is True
+    cancel_result = await task_manager.cancel_task(task_id)
+    assert cancel_result is True
 
     # Allow add_done_callback to finish handling the cancellation
     await asyncio.sleep(0.01)
@@ -85,7 +86,7 @@ async def test_run_task_failure(task_manager):
     def failing_task():
         raise ValueError("Something went wrong")
 
-    task_id = task_manager.run_task(failing_task)
+    task_id = await task_manager.run_task(failing_task)
 
     future = task_manager.futures.get(task_id)
     if future:
@@ -121,7 +122,7 @@ async def test_run_task_websocket_notification_user_specific(
     def dummy_task():
         return True
 
-    task_id = task_manager.run_task(dummy_task, username="testuser")
+    task_id = await task_manager.run_task(dummy_task, username="testuser")
 
     future = task_manager.futures.get(task_id)
     if future:
@@ -140,7 +141,7 @@ async def test_task_manager_shutdown(task_manager):
         # here we want a short task running via to_thread.
         pass
 
-    task_manager.run_task(short_task)
+    await task_manager.run_task(short_task)
     await task_manager.shutdown()
 
     assert task_manager._shutdown_started

@@ -26,10 +26,10 @@ class AutostartServers(PluginBase):
         )
 
     @app_event("on_manager_startup")
-    def autostart_servers(self, **kwargs: Any):
+    async def autostart_servers(self, **kwargs: Any):
 
         # Run API calls in thread to not block startup loop
-        result = self.api.get_all_servers_data()
+        result = await self.api.get_all_servers_data()
         servers = result.get("servers", [])
 
         for server in servers:
@@ -37,7 +37,7 @@ class AutostartServers(PluginBase):
             if not server_name:
                 continue
 
-            setting_result = self.api.get_server_setting(
+            setting_result = await self.api.get_server_setting(
                 server_name, "settings.autostart"
             )
             server_settings = setting_result.get("value")
@@ -48,7 +48,7 @@ class AutostartServers(PluginBase):
                 )
                 # Use the task manager to start the server in the background so app startup isn't blocked
                 # especially if an update is required.
-                self.api.run_task(
+                await self.api.run_task(
                     self.api.start_server,
                     server_name=server_name,
                     username="System (Autostart)",

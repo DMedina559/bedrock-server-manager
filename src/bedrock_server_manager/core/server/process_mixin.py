@@ -21,6 +21,7 @@ is indicated by the :const:`.PSUTIL_AVAILABLE` flag defined in this module.
 """
 
 import asyncio
+import inspect
 import platform
 import subprocess
 import time
@@ -339,7 +340,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
             timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
 
-            if hasattr(self._process, "wait") and asyncio.iscoroutinefunction(
+            if hasattr(self._process, "wait") and inspect.iscoroutinefunction(
                 self._process.wait
             ):
                 # asyncio.subprocess.Process

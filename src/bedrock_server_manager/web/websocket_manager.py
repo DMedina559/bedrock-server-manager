@@ -40,7 +40,7 @@ class ConnectionManager:
         logger.info(f"New client connected: {client_id} for user '{user.username}'")
         return client_id
 
-    def disconnect(self, client_id: str):
+    async def disconnect(self, client_id: str):
         """Removes a client's connection and all their subscriptions."""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
@@ -58,7 +58,7 @@ class ConnectionManager:
 
             logger.info(f"Client disconnected: {client_id}")
 
-    def subscribe(self, client_id: str, topic: str):
+    async def subscribe(self, client_id: str, topic: str):
         """Subscribes a client to a given topic."""
         if topic not in self.subscriptions:
             self.subscriptions[topic] = []
@@ -66,7 +66,7 @@ class ConnectionManager:
             self.subscriptions[topic].append(client_id)
         logger.info(f"Client {client_id} subscribed to topic '{topic}'")
 
-    def unsubscribe(self, client_id: str, topic: str):
+    async def unsubscribe(self, client_id: str, topic: str):
         """Unsubscribes a client from a given topic."""
         if topic in self.subscriptions and client_id in self.subscriptions[topic]:
             self.subscriptions[topic].remove(client_id)
@@ -99,11 +99,11 @@ class ConnectionManager:
                 logger.info(
                     f"Failed to send message to client {client_id} (disconnected): {e}"
                 )
-                self.disconnect(client_id)
+                await self.disconnect(client_id)
             except Exception as e:
                 logger.error(f"Failed to send message to client {client_id}: {e}")
                 # Consider the connection lost and disconnect the client
-                self.disconnect(client_id)
+                await self.disconnect(client_id)
 
     async def broadcast_to_topic(self, topic: str, data: Any):
         """Broadcasts a JSON message to all clients subscribed to a topic."""

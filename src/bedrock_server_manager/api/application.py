@@ -155,7 +155,7 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("run_task")
-def run_task(
+async def run_task(
     target_function: Callable,
     app_context: AppContext,
     username: Optional[str] = None,
@@ -175,7 +175,9 @@ def run_task(
         str: The ID of the created task.
     """
     logger.debug(f"API: Running task in background: {target_function.__name__}")
-    return app_context.task_manager.run_task(target_function, username, *args, **kwargs)
+    return await app_context.task_manager.run_task(
+        target_function, username, *args, **kwargs
+    )
 
 
 @api_method("update_server_statuses", expose_to_plugins=False)

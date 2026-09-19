@@ -121,7 +121,7 @@ async def post_enable_addon(
         f"API: Enable addon for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.enable_addon,
             username=current_user.username,
             server_name=server_name,
@@ -163,7 +163,7 @@ async def post_disable_addon(
         f"API: Disable addon for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.disable_addon,
             username=current_user.username,
             server_name=server_name,
@@ -213,7 +213,7 @@ async def post_update_subpack(
             if dynamic_key in payload_dict:
                 subpack_name = payload_dict[dynamic_key]
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.update_subpack,
             username=current_user.username,
             server_name=server_name,
@@ -257,7 +257,7 @@ async def delete_uninstall_addon(
         f"API: Uninstall addon for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.uninstall_addon,
             username=current_user.username,
             server_name=server_name,
@@ -299,7 +299,7 @@ async def post_reorder_addons(
         f"API: Reorder addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.reorder_addons,
             username=current_user.username,
             server_name=server_name,
@@ -377,7 +377,7 @@ async def post_install_addon(
                 detail=f"Addon file '{selected_filename}' not found for import.",
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.import_addon,
             username=current_user.username,
             server_name=server_name,

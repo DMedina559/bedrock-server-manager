@@ -99,7 +99,7 @@ async def post_start_server(
     """
     identity = current_user.username
     logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         server_api.start_server,
         username=current_user.username,
         server_name=server_name,
@@ -132,7 +132,7 @@ async def post_stop_server(
     """
     identity = current_user.username
     logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         server_api.stop_server,
         username=current_user.username,
         server_name=server_name,
@@ -167,7 +167,7 @@ async def post_restart_server(
     logger.info(
         f"API: Restart server request for '{server_name}' by user '{identity}'."
     )
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         server_api.restart_server,
         username=current_user.username,
         server_name=server_name,
@@ -286,7 +286,7 @@ async def post_update_server(
     """
     identity = current_user.username
     logger.info(f"API: Update server request for '{server_name}' by user '{identity}'.")
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         install.update_server,
         username=current_user.username,
         server_name=server_name,
@@ -321,7 +321,7 @@ async def delete_server(
     logger.warning(
         f"API: DELETE server data request for '{server_name}' by user '{identity}'. This is a destructive operation."
     )
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         server_api.delete_server_data,
         username=current_user.username,
         server_name=server_name,

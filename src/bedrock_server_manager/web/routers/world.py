@@ -127,7 +127,7 @@ async def post_world_install(
                 detail=f"World file '{selected_filename}' not found for import.",
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             world_api.import_world,
             username=current_user.username,
             server_name=server_name,
@@ -190,7 +190,7 @@ async def post_world_export(
                 detail=f"Server '{server_name}' not found.",
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             world_api.export_world,
             username=current_user.username,
             server_name=server_name,
@@ -243,7 +243,7 @@ async def delete_world_reset(
                 detail=f"Server '{server_name}' not found.",
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             world_api.reset_world,
             username=current_user.username,
             server_name=server_name,

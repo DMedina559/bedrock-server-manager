@@ -41,7 +41,7 @@ async def test_websocket_connect_disconnect(
     assert connection_manager.active_connections[client_id].websocket == mock_websocket
     assert connection_manager.active_connections[client_id].user == test_user
 
-    connection_manager.disconnect(client_id)
+    await connection_manager.disconnect(client_id)
 
     assert client_id not in connection_manager.active_connections
 
@@ -53,18 +53,18 @@ async def test_websocket_subscribe_unsubscribe(
     """Test subscribing and unsubscribing a websocket to topics."""
     client_id = await connection_manager.connect(mock_websocket, test_user)
 
-    connection_manager.subscribe(client_id, "topicA")
-    connection_manager.subscribe(client_id, "topicB")
+    await connection_manager.subscribe(client_id, "topicA")
+    await connection_manager.subscribe(client_id, "topicB")
 
     assert client_id in connection_manager.subscriptions["topicA"]
     assert client_id in connection_manager.subscriptions["topicB"]
 
-    connection_manager.unsubscribe(client_id, "topicA")
+    await connection_manager.unsubscribe(client_id, "topicA")
     assert "topicA" not in connection_manager.subscriptions
     assert client_id in connection_manager.subscriptions["topicB"]
 
     # Disconnecting should also unsubscribe from all topics
-    connection_manager.disconnect(client_id)
+    await connection_manager.disconnect(client_id)
     assert "topicB" not in connection_manager.subscriptions
 
 
@@ -119,7 +119,7 @@ async def test_websocket_broadcast_to_topic(
     )
     await connection_manager.connect(mock_ws_unsubscribed, test_user2)
 
-    connection_manager.subscribe(client_id1, "my_topic")
+    await connection_manager.subscribe(client_id1, "my_topic")
 
     message = {"topic_data": 123}
     await connection_manager.broadcast_to_topic("my_topic", message)
@@ -137,7 +137,7 @@ async def test_websocket_broadcast_to_wildcard_topic(
     """Test broadcasting a message to wildcard subscriptions."""
     client_id1 = await connection_manager.connect(mock_websocket, test_user)
 
-    connection_manager.subscribe(client_id1, "*")
+    await connection_manager.subscribe(client_id1, "*")
 
     message = {"topic_data": 123}
     await connection_manager.broadcast_to_topic("any_random_topic", message)

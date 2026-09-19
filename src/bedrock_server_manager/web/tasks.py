@@ -23,7 +23,7 @@ class TaskManager:
         self._max_tasks = 100
         self._background_tasks: set[asyncio.Task] = set()
 
-    def _notify_client_of_update(self, task_id: str):
+    async def _notify_client_of_update(self, task_id: str):
         """Sends a WebSocket notification to the user associated with the task."""
         task_details = self.tasks.get(task_id)
         if not task_details:
@@ -47,13 +47,9 @@ class TaskManager:
                 return
 
             if loop is not None and loop.is_running():
-                task = asyncio.create_task(
-                    connection_manager.send_to_user(username, message)
-                )
-                self._background_tasks.add(task)
-                task.add_done_callback(self._background_tasks.discard)
+                await connection_manager.send_to_user(username, message)
 
-    def _update_task(
+    async def _update_task(
         self, task_id: str, status: str, message: str, result: Optional[Any] = None
     ):
         """Helper function to update the status of a task and notify client."""
@@ -62,27 +58,42 @@ class TaskManager:
             self.tasks[task_id]["message"] = message
             if result is not None:
                 self.tasks[task_id]["result"] = result
-            self._notify_client_of_update(task_id)
+            await self._notify_client_of_update(task_id)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
         """Callback function executed when a task completes."""
-        try:
-            if future.cancelled():
-                self._update_task(task_id, "error", "Task was cancelled.")
-                return
-            result = future.result()
-            self._update_task(
-                task_id, "success", "Task completed successfully.", result
-            )
-        except Exception as e:
-            logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-            self._update_task(task_id, "error", str(e))
-        finally:
-            # Clean up the future from the tracking dictionary
-            if task_id in self.futures:
-                del self.futures[task_id]
 
-    def run_task(
+        async def handle_done():
+            try:
+                if future.cancelled():
+                    await self._update_task(task_id, "error", "Task was cancelled.")
+                    return
+                result = future.result()
+                await self._update_task(
+                    task_id, "success", "Task completed successfully.", result
+                )
+            except Exception as e:
+                logger.error(f"Task {task_id} failed: {e}", exc_info=True)
+                await self._update_task(task_id, "error", str(e))
+            finally:
+                # Clean up the future from the tracking dictionary
+                if task_id in self.futures:
+                    del self.futures[task_id]
+
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                # We are in an event loop, create a task to run the async update
+                update_task = loop.create_task(handle_done())
+                self._background_tasks.add(update_task)
+                update_task.add_done_callback(self._background_tasks.discard)
+            else:
+                asyncio.run(handle_done())
+        except RuntimeError:
+            # No event loop
+            asyncio.run(handle_done())
+
+    async def run_task(
         self,
         target_function: Callable,
         username: Optional[str] = None,
@@ -124,7 +135,7 @@ class TaskManager:
             "result": None,
             "username": username,
         }
-        self._notify_client_of_update(task_id)
+        await self._notify_client_of_update(task_id)
 
         try:
             loop = asyncio.get_running_loop()
@@ -141,11 +152,11 @@ class TaskManager:
                     result = asyncio.run(target_function(*args, **kwargs))
                 else:
                     result = target_function(*args, **kwargs)
-                self._update_task(
+                await self._update_task(
                     task_id, "success", "Task completed successfully.", result
                 )
             except Exception as e:
-                self._update_task(task_id, "error", str(e))
+                await self._update_task(task_id, "error", str(e))
             return task_id
 
         if inspect.iscoroutinefunction(target_function):
@@ -163,7 +174,7 @@ class TaskManager:
 
         return task_id
 
-    def cancel_task(self, task_id: str) -> bool:
+    async def cancel_task(self, task_id: str) -> bool:
         """
         Attempts to cancel a running task.
 
@@ -179,14 +190,14 @@ class TaskManager:
         task = self.futures[task_id]
         task.cancel()
 
-        self._update_task(task_id, "error", "Task was cancelled.")
+        await self._update_task(task_id, "error", "Task was cancelled.")
         return True
 
-    def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves the status of a task."""
         return self.tasks.get(task_id)
 
-    def get_all_tasks(self) -> Dict[str, Dict[str, Any]]:
+    async def get_all_tasks(self) -> Dict[str, Dict[str, Any]]:
         """Retrieves all tasks."""
         return self.tasks
 

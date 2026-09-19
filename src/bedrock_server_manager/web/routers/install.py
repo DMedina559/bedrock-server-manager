@@ -119,7 +119,7 @@ async def post_install_server(  # noqa: C901
                 os.path.join(custom_dir, payload.server_zip_path)
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             install_api.install_new_server,
             username=current_user.username,
             server_name=payload.server_name,
