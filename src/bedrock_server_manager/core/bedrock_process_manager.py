@@ -105,10 +105,7 @@ class BedrockProcessManager:
         self.logger.info("ProcessManager: Stopping all running servers concurrently...")
 
         async def _stop_server(server_name, server):
-            if hasattr(server, "async_is_running"):
-                is_running = await server.async_is_running()
-            else:
-                is_running = await asyncio.to_thread(server.is_running)
+            is_running = await server.is_running()
 
             if not is_running:
                 return
@@ -125,15 +122,9 @@ class BedrockProcessManager:
                     self.logger.error(
                         f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
                     )
-                    if hasattr(server, "async_stop"):
-                        await server.async_stop()
-                    else:
-                        await asyncio.to_thread(server.stop)
+                    await server.stop()
             else:
-                if hasattr(server, "async_stop"):
-                    await server.async_stop()
-                else:
-                    await asyncio.to_thread(server.stop)
+                await server.stop()
 
             self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
 
@@ -173,10 +164,7 @@ class BedrockProcessManager:
             f"Attempting to restart server '{server.server_name}'. Attempt {server.failure_count}/{max_retries}."
         )
         try:
-            if hasattr(server, "async_start"):
-                await server.async_start()
-            else:
-                await asyncio.to_thread(server.start)
+            await server.start()
             self.logger.info(f"Server '{server.server_name}' restarted successfully.")
         except Exception as e:
             self.logger.critical(
@@ -247,10 +235,7 @@ class BedrockProcessManager:
             self.player_scan_counter += monitoring_interval
             for server_name, server in list(self.servers.items()):
                 # Determine run state
-                if hasattr(server, "async_is_running"):
-                    is_running = await server.async_is_running()
-                else:
-                    is_running = await asyncio.to_thread(server.is_running)
+                is_running = await server.is_running()
 
                 if not is_running:
                     if not server.intentionally_stopped:

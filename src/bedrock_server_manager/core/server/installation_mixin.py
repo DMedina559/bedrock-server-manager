@@ -274,17 +274,17 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             )
             return
 
-        if hasattr(self, "async_is_running") and await self.async_is_running():
+        if hasattr(self, "is_running") and await self.is_running():
             self.logger.info(
                 f"Server '{self.server_name}' is currently running. Stopping before deletion..."
             )
-            await getattr(self, "async_stop")()
+            await getattr(self, "stop")()
         elif hasattr(self, "is_running") and await asyncio.to_thread(self.is_running):
             self.logger.info(
                 f"Server '{self.server_name}' is currently running. Stopping before deletion..."
             )
-            if hasattr(self, "async_stop"):
-                await getattr(self, "async_stop")()
+            if hasattr(self, "stop"):
+                await getattr(self, "stop")()
             else:
                 await asyncio.to_thread(getattr(self, "stop"))
 

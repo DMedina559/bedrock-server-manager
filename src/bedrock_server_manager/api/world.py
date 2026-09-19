@@ -186,7 +186,7 @@ async def export_world(
             export_file_path = os.path.join(effective_export_dir, export_filename)
 
             # Use the lifecycle manager to handle stopping and starting the server.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
                 logger.info(
@@ -300,7 +300,7 @@ async def import_world(
 
             imported_world_name: Optional[str] = None
             # Use the lifecycle manager to ensure the server is stopped during the import.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
                 logger.info(
@@ -396,7 +396,7 @@ async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, st
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,
             # and the server is restarted (which will generate the new world).
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=True,
                 start_after=True,

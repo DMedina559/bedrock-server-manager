@@ -324,7 +324,7 @@ async def set_properties(
                     f"Validation failed for '{name}': {val_res.get('message')}"
                 )
 
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=restart_after_modify,
             restart_on_success_only=True,

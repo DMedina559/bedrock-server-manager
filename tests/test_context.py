@@ -89,14 +89,13 @@ def test_get_server_creates_and_caches(app_context):
     assert server1 is server2
 
 
-def test_remove_server_running(app_context, monkeypatch):
+async def test_remove_server_running(app_context, monkeypatch):
     """Test remove_server stops a running server and removes it from cache."""
     server_name = "test_server_to_remove"
     server = app_context.get_server(server_name)
 
-    is_running_mock = MagicMock(return_value=True)
-    stop_mock = MagicMock()
-
+    is_running_mock = AsyncMock(return_value=True)
+    stop_mock = AsyncMock()
     monkeypatch.setattr(server, "is_running", is_running_mock)
     monkeypatch.setattr(server, "stop", stop_mock)
 
@@ -104,21 +103,20 @@ def test_remove_server_running(app_context, monkeypatch):
     mock_bpm.remove_server = AsyncMock()
     monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
-    app_context.remove_server(server_name)
+    await app_context.remove_server(server_name)
 
     is_running_mock.assert_called_once()
     stop_mock.assert_called_once()
     assert server_name not in app_context._servers
 
 
-def test_remove_server_not_running(app_context, monkeypatch):
+async def test_remove_server_not_running(app_context, monkeypatch):
     """Test remove_server removes a stopped server from cache without stopping it."""
     server_name = "test_server_stopped"
     server = app_context.get_server(server_name)
 
-    is_running_mock = MagicMock(return_value=False)
-    stop_mock = MagicMock()
-
+    is_running_mock = AsyncMock(return_value=False)
+    stop_mock = AsyncMock()
     monkeypatch.setattr(server, "is_running", is_running_mock)
     monkeypatch.setattr(server, "stop", stop_mock)
 
@@ -126,14 +124,14 @@ def test_remove_server_not_running(app_context, monkeypatch):
     mock_bpm.remove_server = AsyncMock()
     monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
-    app_context.remove_server(server_name)
+    await app_context.remove_server(server_name)
 
     is_running_mock.assert_called_once()
     stop_mock.assert_not_called()
     assert server_name not in app_context._servers
 
 
-def test_remove_server_non_existent(app_context):
+async def test_remove_server_non_existent(app_context):
     """Test remove_server handles non-existent servers gracefully."""
     # Should not raise an error
-    app_context.remove_server("does_not_exist")
+    await app_context.remove_server("does_not_exist")

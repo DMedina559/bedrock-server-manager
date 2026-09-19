@@ -344,7 +344,7 @@ async def post_install_addon(
     from ...utils.server import validate_server
 
     try:
-        if not validate_server(server_name=server_name, app_context=app_context):
+        if not await validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",

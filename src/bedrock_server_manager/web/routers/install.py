@@ -91,7 +91,7 @@ async def post_install_server(  # noqa: C901
             logger.info(
                 f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
             )
-            delete_result = server_api.delete_server_data(
+            delete_result = await server_api.delete_server_data(
                 server_name=payload.server_name, app_context=app_context
             )
             if delete_result.get("status") == "error":

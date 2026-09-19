@@ -1301,7 +1301,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Determines and returns the current reconciled operational status of the server asynchronously.
 
         This method attempts to determine if the server process is actually running
-        (by calling ``self.async_is_running()``, which is expected to be provided by
+        (by calling ``self.is_running()``, which is expected to be provided by
         another mixin like ``ProcessMixin``). It then compares this live status
         with the status stored in the server's configuration
         (retrieved via :meth:`.async_get_status_from_config`).
@@ -1312,7 +1312,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
         Returns:
             str: The reconciled operational status of the server as a string
-            (e.g., "RUNNING", "STOPPED"). If ``self.async_is_running()`` is not available
+            (e.g., "RUNNING", "STOPPED"). If ``self.is_running()`` is not available
             or fails, it falls back to returning the last known status from config.
         """
         self.logger.debug(
@@ -1321,15 +1321,15 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
         actual_is_running = False
         try:
-            if not hasattr(self, "async_is_running"):
+            if not hasattr(self, "is_running"):
                 self.logger.warning(
-                    "async_is_running method not found. Falling back to stored config status."
+                    "is_running method not found. Falling back to stored config status."
                 )
                 return await self.async_get_status_from_config()
-            actual_is_running = await self.async_is_running()  # type: ignore
+            actual_is_running = await self.is_running()  # type: ignore
         except Exception as e_is_running_check:
             self.logger.error(
-                f"Error calling self.async_is_running() for '{self.server_name}': {e_is_running_check}. Fallback to stored status."
+                f"Error calling self.is_running() for '{self.server_name}': {e_is_running_check}. Fallback to stored status."
             )
             return await self.async_get_status_from_config()
 

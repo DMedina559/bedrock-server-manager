@@ -158,16 +158,16 @@ async def import_addon(  # noqa: C901
             server = app_context.get_server(server_name)
 
             # If the server is running, send a warning message to players.
-            if server.is_running():
+            if await server.is_running():
                 try:
-                    server.send_command("say Installing addon...")
+                    await server.send_command("say Installing addon...")
                 except (SendCommandError, ServerNotRunningError) as e:
                     logger.warning(
                         f"API: Failed to send addon installation warning to '{server_name}': {e}"
                     )
 
             # Use a context manager to handle the server's start/stop lifecycle.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 start_after=stop_start_server,
@@ -265,7 +265,7 @@ async def enable_addon(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
@@ -326,7 +326,7 @@ async def disable_addon(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
@@ -388,7 +388,7 @@ async def update_subpack(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
@@ -450,7 +450,7 @@ async def uninstall_addon(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
@@ -511,7 +511,7 @@ async def reorder_addons(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,

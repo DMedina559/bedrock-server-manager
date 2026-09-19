@@ -18,8 +18,8 @@ from bedrock_server_manager.error import MissingArgumentError
 
 async def test_import_addon_success(app_context, tmp_path, monkeypatch):
     """Test importing an addon returns success status."""
-    mock_process = MagicMock()
-    mock_server = MagicMock()
+    mock_process = AsyncMock()
+    mock_server = AsyncMock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -51,8 +51,8 @@ async def test_import_addon_success(app_context, tmp_path, monkeypatch):
 
 async def test_import_addon_error(app_context, tmp_path, monkeypatch):
     """Test importing an addon returns error status on exception."""
-    mock_process = MagicMock(side_effect=Exception("Failed extracting"))
-    mock_server = MagicMock()
+    mock_process = AsyncMock(side_effect=Exception("Failed extracting"))
+    mock_server = AsyncMock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()

@@ -5,6 +5,7 @@ import sys
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 # Add the src directory to the Python path
@@ -123,8 +124,8 @@ def settings(db, isolated_bcm_config):
     return settings_instance
 
 
-@pytest.fixture
-def app_context(settings, db, tmp_path):
+@pytest_asyncio.fixture
+async def app_context(settings, db, tmp_path):
     """Provides a real AppContext instance."""
     context = AppContext()
     context._settings = settings
@@ -142,6 +143,12 @@ def app_context(settings, db, tmp_path):
     context.plugin_manager.load_plugins()
 
     yield context
+
+    # --- TEARDOWN ---
+    # Gracefully shut down the database engine to close aiosqlite background
+    # threads before the pytest event loop is destroyed.
+    if context._db:
+        await context._db.shutdown()
 
 
 @pytest.fixture
@@ -194,12 +201,6 @@ def test_app(app_context):
 
 
 @pytest.fixture
-def unauth_client(test_app):
-    """Provides an unauthenticated TestClient instance."""
-    return TestClient(test_app)
-
-
-@pytest.fixture
 def test_user(db_session, test_admin_user):
     """Creates a test user in the database, also ensuring an admin user exists."""
     user = UserModel(
@@ -228,18 +229,25 @@ def test_admin_user(db_session):
 
 
 @pytest.fixture
+def unauth_client(test_app):
+    """Provides an unauthenticated TestClient instance."""
+    with TestClient(test_app) as client:
+        yield client
+
+
+@pytest.fixture
 def auth_client(test_app, app_context, test_user):
     """Provides an authenticated TestClient instance with a valid token cookie."""
     token = create_access_token(app_context, {"sub": test_user.username})
-    client = TestClient(test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    with TestClient(test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
 @pytest.fixture
 def admin_auth_client(test_app, app_context, test_admin_user):
     """Provides an authenticated TestClient instance for an admin user."""
     token = create_access_token(app_context, {"sub": test_admin_user.username})
-    client = TestClient(test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    with TestClient(test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client

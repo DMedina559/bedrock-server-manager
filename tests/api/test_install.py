@@ -104,7 +104,7 @@ async def test_update_server_success(app_context, monkeypatch):
     """Test update_server triggers backups, locks, and lifecycle managers properly."""
     from unittest.mock import AsyncMock
 
-    mock_server = MagicMock()
+    mock_server = AsyncMock()
     mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
     mock_server.async_get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
@@ -118,8 +118,8 @@ async def test_update_server_success(app_context, monkeypatch):
     # Needs to bypass stop/start errors gracefully for test scope
     import contextlib
 
-    @contextlib.contextmanager
-    def mock_slm(*args, **kwargs):
+    @contextlib.asynccontextmanager
+    async def mock_slm(*args, **kwargs):
         yield
 
     monkeypatch.setattr(
@@ -165,7 +165,7 @@ async def test_update_server_error(app_context, monkeypatch):
     """Test update_server captures failing tasks from subclass appropriately."""
     from unittest.mock import AsyncMock
 
-    mock_server = MagicMock()
+    mock_server = AsyncMock()
     mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
     mock_server.async_get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
@@ -178,8 +178,8 @@ async def test_update_server_error(app_context, monkeypatch):
 
     import contextlib
 
-    @contextlib.contextmanager
-    def mock_slm(*args, **kwargs):
+    @contextlib.asynccontextmanager
+    async def mock_slm(*args, **kwargs):
         yield
 
     monkeypatch.setattr(

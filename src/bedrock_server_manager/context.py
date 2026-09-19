@@ -5,7 +5,6 @@ Defines the central application context.
 
 from __future__ import annotations
 
-import asyncio
 from logging import Logger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -302,7 +301,7 @@ class AppContext:
             self._servers[server_name] = BedrockServer(server_name, app_context=self)
         return self._servers[server_name]
 
-    def remove_server(self, server_name: str):
+    async def remove_server(self, server_name: str):
         """
         Stops a server, removes it from the process manager, and discards it from the context cache.
         """
@@ -311,18 +310,11 @@ class AppContext:
             server = self._servers[server_name]
 
             # 2. Stop the server if it is running.
-            if server.is_running():
-                server.stop()
+            if await server.is_running():
+                await server.stop()
 
             if self.loop is not None:
-                try:
-                    self.loop.create_task(
-                        self.bedrock_process_manager.remove_server(server_name)
-                    )
-                except RuntimeError:
-                    asyncio.run(self.bedrock_process_manager.remove_server(server_name))
-            else:
-                asyncio.run(self.bedrock_process_manager.remove_server(server_name))
+                await self.bedrock_process_manager.remove_server(server_name)
 
             # 3. Remove from the AppContext cache.
             del self._servers[server_name]

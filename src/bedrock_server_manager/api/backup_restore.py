@@ -158,7 +158,7 @@ async def backup_world(
 
         try:
             # Use a context manager to handle stopping and starting the server.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
@@ -259,7 +259,7 @@ async def backup_config_file(
         )
 
         try:
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
@@ -353,7 +353,7 @@ async def backup_all(
 
         try:
             # The server is stopped before the backup but not restarted after.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
@@ -450,7 +450,7 @@ async def restore_all(
         )
 
         try:
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 restart_on_success_only=True,
@@ -564,7 +564,7 @@ async def restore_world(
             if not os.path.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
 
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 restart_on_success_only=True,
@@ -672,7 +672,7 @@ async def restore_config_file(
             if not os.path.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
 
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 restart_on_success_only=True,

@@ -19,7 +19,7 @@ and by triggering various plugin events during server operations.
 import asyncio
 import logging
 import os
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from ..config import API_COMMAND_BLACKLIST
@@ -32,6 +32,7 @@ from ..error import (
     MissingArgumentError,
     ServerError,
     ServerStartError,
+    ServerStopError,
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
@@ -309,7 +310,7 @@ async def get_server_summary(
     after="after_server_start",
     identity_keys=("server_name",),
 )
-def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -318,7 +319,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     try:
         server = app_context.get_server(server_name)
 
-        if server.is_running():
+        if await server.is_running():
             logger.warning(
                 f"API: Server '{server_name}' is already running. Start request ignored."
             )
@@ -327,17 +328,8 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
                 "message": f"Server '{server_name}' is already running.",
             }
 
-        server.start()
-        loop = app_context.loop
-        if loop is not None:
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    app_context.bedrock_process_manager.add_server(server), loop
-                )
-            except RuntimeError:
-                asyncio.run(app_context.bedrock_process_manager.add_server(server))
-        else:
-            asyncio.run(app_context.bedrock_process_manager.add_server(server))
+        await server.start()
+        await app_context.bedrock_process_manager.add_server(server)
 
         logger.info(f"API: Start for server '{server_name}' completed.")
         return {
@@ -367,7 +359,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     after="after_server_stop",
     identity_keys=("server_name",),
 )
-def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Stops the specified Bedrock server.
 
     Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
@@ -397,7 +389,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     try:
         server = app_context.get_server(server_name)
 
-        if not server.is_running():
+        if not await server.is_running():
             logger.warning(
                 f"API: Server '{server_name}' is not running. Stop request ignored."
             )
@@ -409,26 +401,8 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
         app_context.api.set_server_status_api(server_name, "STOPPING")
 
-        server.stop()
-        loop = app_context.loop
-        if loop is not None:
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    app_context.bedrock_process_manager.remove_server(
-                        server.server_name
-                    ),
-                    loop,
-                )
-            except RuntimeError:
-                asyncio.run(
-                    app_context.bedrock_process_manager.remove_server(
-                        server.server_name
-                    )
-                )
-        else:
-            asyncio.run(
-                app_context.bedrock_process_manager.remove_server(server.server_name)
-            )
+        await server.stop()
+        await app_context.bedrock_process_manager.remove_server(server.server_name)
 
         logger.info(f"API: Server '{server_name}' stopped successfully.")
         return {
@@ -464,7 +438,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("restart_server")
-def restart_server(  # noqa: C901
+async def restart_server(  # noqa: C901
     server_name: str,
     app_context: AppContext,
     send_message: bool = True,
@@ -506,14 +480,16 @@ def restart_server(  # noqa: C901
     )
     try:
         server = app_context.get_server(server_name)
-        is_running = server.is_running()
+        is_running = await server.is_running()
 
         # If server is not running, just start it.
         if not is_running:
             logger.info(
                 f"API: Server '{server_name}' was not running. Attempting to start..."
             )
-            start_result = start_server(server_name, app_context=app_context)
+            start_result = asyncio.run(
+                start_server(server_name, app_context=app_context)
+            )
             if start_result.get("status") == "success":
                 start_result["message"] = (
                     f"Server '{server_name}' was not running and has been started."
@@ -526,20 +502,20 @@ def restart_server(  # noqa: C901
         )
         if send_message:
             try:
-                server.send_command("say Restarting server...")
+                await server.send_command("say Restarting server...")
             except BSMError as e:
                 logger.warning(
                     f"API: Failed to send restart warning to '{server_name}': {e}"
                 )
 
-        stop_result = stop_server(server_name, app_context=app_context)
+        stop_result = asyncio.run(stop_server(server_name, app_context=app_context))
         if stop_result.get("status") == "error":
             stop_result["message"] = (
                 f"Restart failed during stop phase: {stop_result.get('message')}"
             )
             return stop_result
 
-        start_result = start_server(server_name, app_context=app_context)
+        start_result = asyncio.run(start_server(server_name, app_context=app_context))
         if start_result.get("status") == "error":
             start_result["message"] = (
                 f"Restart failed during start phase: {start_result.get('message')}"
@@ -571,7 +547,7 @@ def restart_server(  # noqa: C901
     after="after_command_send",
     identity_keys=("server_name", "command"),
 )
-def send_command(
+async def send_command(
     server_name: str, command: str, app_context: AppContext
 ) -> Dict[str, str]:
     """Sends a command to a running Bedrock server.
@@ -625,7 +601,7 @@ def send_command(
                 raise BlockedCommandError(error_msg)
 
         server = app_context.get_server(server_name)
-        server.send_command(command_clean)
+        await server.send_command(command_clean)
 
         logger.info(
             f"API: Command '{command_clean}' sent successfully to server '{server_name}'."
@@ -655,7 +631,7 @@ def send_command(
     after="after_delete_server_data",
     identity_keys=("server_name",),
 )
-def delete_server_data(
+async def delete_server_data(
     server_name: str,
     app_context: AppContext,
     stop_if_running: bool = True,
@@ -703,12 +679,12 @@ def delete_server_data(
         server = app_context.get_server(server_name)
 
         # Stop the server first if requested and it's running.
-        if stop_if_running and server.is_running():
+        if stop_if_running and await server.is_running():
             logger.info(
                 f"API: Server '{server_name}' is running. Stopping before deletion..."
             )
 
-            stop_result = stop_server(server_name, app_context=app_context)
+            stop_result = await stop_server(server_name, app_context=app_context)
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}' before deletion: {stop_result.get('message')}. Deletion aborted."
                 logger.error(error_msg)
@@ -719,10 +695,10 @@ def delete_server_data(
         logger.debug(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
         )
-        asyncio.run(server.delete_all_data())
+        await server.delete_all_data()
 
         # Remove the server from the AppContext cache
-        app_context.remove_server(server_name)
+        await app_context.remove_server(server_name)
 
         logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
         return {
@@ -747,8 +723,8 @@ def delete_server_data(
 
 
 @api_method("server_lifecycle_manager")
-@contextmanager
-def server_lifecycle_manager(
+@asynccontextmanager
+async def server_lifecycle_manager(
     server_name: str,
     stop_before: bool,
     app_context: AppContext,
@@ -770,15 +746,16 @@ def server_lifecycle_manager(
 
     try:
         # --- PRE-OPERATION: STOP SERVER ---
-        if server.is_running():
+
+        if await server.is_running():
             was_running = True
             logger.info(f"Context Mgr: Server '{server_name}' is running. Stopping...")
-            stop_result = stop_server(server_name, app_context=app_context)
+            stop_result = await stop_server(server_name, app_context=app_context)
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}': {stop_result.get('message')}. Aborted."
                 logger.error(error_msg)
                 # Do not proceed if the server can't be stopped.
-                return {"status": "error", "message": error_msg}
+                raise ServerStopError(error_msg)
             logger.info(f"Context Mgr: Server '{server_name}' stopped.")
         else:
             logger.debug(
@@ -812,7 +789,7 @@ def server_lifecycle_manager(
                 logger.info(f"Context Mgr: Restarting server '{server_name}'...")
                 try:
                     # Use the API function to ensure detached mode and proper handling.
-                    start_result = start_server(
+                    start_result = await start_server(
                         str(server_name), app_context=app_context
                     )
                     if start_result.get("status") == "error":

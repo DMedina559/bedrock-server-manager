@@ -326,7 +326,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
             1. Checks if an update is needed using :meth:`.async_is_update_needed` (unless
                `force_reinstall` is ``True`` or the server isn't installed).
-            2. If the server is running, stops it using ``self.async_stop()`` (expected from
+            2. If the server is running, stops it using ``self.stop()`` (expected from
                :class:`~.ServerProcessMixin`).
             3. Updates the server's persisted status to "INSTALLING" or "UPDATING"
                (via ``self.async_set_status_in_config()`` from :class:`.ServerStateMixin`).
@@ -360,7 +360,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             PermissionsError: If filesystem permissions cannot be set after extraction.
             FileOperationError: For other unexpected file I/O errors during the process.
             AttributeError: If essential methods from other mixins (like `is_installed`,
-                `async_stop`, `async_set_status_in_config`, `async_set_version`, `set_filesystem_permissions`)
+                `stop`, `async_set_status_in_config`, `async_set_version`, `set_filesystem_permissions`)
                 are not available on the instance.
             BSMError: For other known application-specific errors during the process.
         """
@@ -378,8 +378,8 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         required_methods = [
             "is_installed",
-            "async_is_running",
-            "async_stop",
+            "is_running",
+            "stop",
             "async_set_status_in_config",
             "async_set_target_version",
             "async_set_version",
@@ -400,12 +400,12 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 )
                 return
 
-        if await self.async_is_running():  # type: ignore
+        if await self.is_running():  # type: ignore
             self.logger.info(
                 f"Server '{self.server_name}' is running. Stopping before install/update."
             )
             try:
-                await self.async_stop()  # type: ignore
+                await self.stop()  # type: ignore
             except ServerStopError:
                 raise
             except Exception as e_stop:

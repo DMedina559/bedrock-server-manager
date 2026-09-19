@@ -3,7 +3,7 @@
 Plugin to send in-game messages and manage delays during server lifecycle events.
 """
 
-import time
+import asyncio
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
@@ -22,7 +22,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     name = "Server Lifecycle Notifications"
 
     @app_event("on_load")
-    def plugin_loaded(self) -> None:
+    async def plugin_loaded(self) -> None:
         """Initializes default delays and logs plugin activation."""
         # Default delays in seconds. These could be made configurable in the future.
         self.stop_warning_delay: int = 3
@@ -33,10 +33,10 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             "Plugin loaded. Will manage server lifecycle notifications and delays."
         )
 
-    def _is_server_running(self, server_name: str) -> bool:
+    async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
-            response = self.api.get_server_running_status(server_name=server_name)
+            response = await self.api.get_server_running_status(server_name=server_name)
             if response and response.get("status") == "success":
                 return bool(response.get("is_running", False))
             self.logger.warning(
@@ -52,11 +52,11 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
         return False
 
-    def _send_ingame_message(
+    async def _send_ingame_message(
         self, server_name: str, message: str, context: str
     ) -> None:
         """Helper to send an in-game message if the server is running."""
-        if self._is_server_running(server_name):
+        if await self._is_server_running(server_name):
             try:
                 # Ensure the message is formatted as a "say" command.
                 if not message.lower().startswith("say "):
@@ -64,7 +64,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 else:
                     command = message
 
-                self.api.send_command(server_name=server_name, command=command)
+                await self.api.send_command(server_name=server_name, command=command)
                 self.logger.info(
                     f"Sent {context} message to '{server_name}': {message}"
                 )
@@ -79,12 +79,12 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             )
 
     @app_event("before_server_stop")
-    def send_shutdown_warning(self, **kwargs: Any) -> None:
+    async def send_shutdown_warning(self, **kwargs: Any) -> None:
         """Sends a shutdown warning and waits before the server stops."""
         server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
 
-        summary = self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.get_server_summary(server_name=server_name)
         player_count = (
             summary.get("summary", {}).get("player_count", 0)
             if summary.get("status") == "success"
@@ -93,22 +93,22 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         if player_count > 0:
 
             # Run the check in a separate thread so it doesn't block the loop
-            is_running = self._is_server_running(server_name)
+            is_running = await self._is_server_running(server_name)
             if is_running:
                 warning_message = (
                     f"Server is stopping in {self.stop_warning_delay} seconds..."
                 )
-                self._send_ingame_message(
+                await self._send_ingame_message(
                     server_name, warning_message, "shutdown warning"
                 )
 
                 self.logger.info(
                     f"Waiting {self.stop_warning_delay}s before '{server_name}' stops."
                 )
-                time.sleep(self.stop_warning_delay)
+                await asyncio.sleep(self.stop_warning_delay)
 
     @app_event("after_server_stop")
-    def wait_after_stop(self, **kwargs: Any) -> None:
+    async def wait_after_stop(self, **kwargs: Any) -> None:
         """Waits for a short period after a server stops, e.g., for port release."""
 
         server_name = kwargs.get("server_name")
@@ -118,30 +118,30 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             self.logger.info(
                 f"Waiting {self.post_stop_settle_delay}s after '{server_name}' stopped."
             )
-            time.sleep(self.post_stop_settle_delay)
+            await asyncio.sleep(self.post_stop_settle_delay)
 
     @app_event("before_delete_server_data")
-    def send_delete_warning(self, **kwargs: Any) -> None:
+    async def send_delete_warning(self, **kwargs: Any) -> None:
         """Sends a final warning before server data is deleted if the server is running."""
 
         server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
 
-        summary = self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.get_server_summary(server_name=server_name)
         player_count = (
             summary.get("summary", {}).get("player_count", 0)
             if summary.get("status") == "success"
             else 0
         )
         if player_count > 0:
-            self._send_ingame_message(
+            await self._send_ingame_message(
                 server_name,
                 "WARNING: Server data is being deleted permanently!",
                 "data deletion warning",
             )
 
     @app_event("before_server_update")
-    def send_update_notification(self, **kwargs: Any) -> None:
+    async def send_update_notification(self, **kwargs: Any) -> None:
         """Notifies players before a server update begins."""
 
         server_name = str(kwargs.get("server_name"))
@@ -150,21 +150,21 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             f"Handling before_server_update for '{server_name}' to v{target_version}."
         )
 
-        summary = self.api.get_server_summary(server_name=server_name)
+        summary = await self.api.get_server_summary(server_name=server_name)
         player_count = (
             summary.get("summary", {}).get("player_count", 0)
             if summary.get("status") == "success"
             else 0
         )
         if player_count > 0:
-            self._send_ingame_message(
+            await self._send_ingame_message(
                 server_name,
                 "Server is updating now, please wait...",
                 "update notification",
             )
 
     @app_event("after_server_start")
-    def wait_after_start(self, **kwargs: Any) -> None:
+    async def wait_after_start(self, **kwargs: Any) -> None:
         """Waits for a short period after a server starts to allow initialization."""
 
         server_name = kwargs.get("server_name")
@@ -174,4 +174,4 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             self.logger.info(
                 f"Waiting {self.post_start_settle_delay}s after '{server_name}' started."
             )
-            time.sleep(self.post_start_settle_delay)
+            await asyncio.sleep(self.post_start_settle_delay)

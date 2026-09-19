@@ -70,7 +70,7 @@ async def get_server_running_status(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
     try:
-        result = system_api.get_server_running_status(
+        result = await system_api.get_server_running_status(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
@@ -165,7 +165,7 @@ async def get_server_process_info(
     identity = current_user.username
     logger.debug(f"API: Process info request for '{server_name}' by user '{identity}'.")
     try:
-        result = system_api.get_bedrock_process_info(
+        result = await system_api.get_bedrock_process_info(
             server_name=server_name, app_context=app_context
         )
 

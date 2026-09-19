@@ -119,8 +119,8 @@ async def test_monitor_servers_crashed_server_detected(
     with patch.object(
         server, "is_installed", new_callable=AsyncMock, return_value=True
     ):
-        server.start()
-        assert server.is_running()
+        await server.start()
+        assert await server.is_running()
 
         server.intentionally_stopped = False
         server.failure_count = 0
@@ -128,18 +128,15 @@ async def test_monitor_servers_crashed_server_detected(
         await manager.add_server(server)
 
         # Crash the server via the dummy binary's __DUMMY__ CRASH command
-        server.send_command("__DUMMY__ CRASH")
-
-        # Wait for the crash to take effect
-        import time
+        await server.send_command("__DUMMY__ CRASH")
 
         # wait a bit for process to actually die
         for _ in range(50):
-            if not server.is_running():
+            if not await server.is_running():
                 break
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
 
-        assert not server.is_running()
+        assert not await server.is_running()
 
         # We don't want the while loop to run forever, so we fake the _shutdown_event
         # We'll make it return False once, then True so the loop exits immediately.

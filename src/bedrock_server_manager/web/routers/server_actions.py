@@ -207,7 +207,7 @@ async def post_send_command(
         )
 
     try:
-        command_result = server_api.send_command(
+        command_result = await server_api.send_command(
             server_name=server_name,
             command=payload.command.strip(),
             app_context=app_context,

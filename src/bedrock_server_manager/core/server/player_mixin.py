@@ -203,8 +203,8 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             List[Dict[str, str]]: The updated list of dictionaries for each currently
             online player, containing their "name" and "uuid" (XUID).
         """
-        if hasattr(self, "async_is_running"):
-            is_running = await self.async_is_running()  # type: ignore
+        if hasattr(self, "is_running"):
+            is_running = await self.is_running()  # type: ignore
         else:
             is_running = await asyncio.to_thread(self.is_running)  # type: ignore
 

@@ -134,7 +134,7 @@ async def update_server(
                 "message": "Server is already up-to-date.",
             }
 
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
