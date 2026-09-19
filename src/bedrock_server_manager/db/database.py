@@ -10,7 +10,7 @@ creation and lifecycle.
 import asyncio
 from contextlib import asynccontextmanager, contextmanager
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -68,6 +68,8 @@ class Database:
         connect_args = {}
         if db_url.startswith("sqlite"):
             connect_args["check_same_thread"] = False
+            # Increase timeout to prevent "database is locked" during heavy concurrency
+            connect_args["timeout"] = 20.0
 
         self.engine = create_engine(
             db_url,
@@ -75,6 +77,17 @@ class Database:
             pool_pre_ping=True,
             pool_recycle=3600,
         )
+
+        # Enable Write-Ahead Logging (WAL) for SQLite to allow concurrent readers/writers
+        if db_url.startswith("sqlite"):
+
+            @event.listens_for(self.engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
+
         self.SessionLocal = sessionmaker(autoflush=False, bind=self.engine)
         self._tables_created = False
 
@@ -91,7 +104,9 @@ class Database:
 
         connect_args = {}
         # aiosqlite doesn't use check_same_thread like standard sqlite does,
-        # but if we needed specific aiosqlite connection args, they'd go here.
+        # but we add the timeout here for concurrency
+        if async_db_url.startswith("sqlite"):
+            connect_args["timeout"] = 20.0
 
         self.async_engine = create_async_engine(
             async_db_url,
@@ -99,6 +114,17 @@ class Database:
             pool_pre_ping=True,
             pool_recycle=3600,
         )
+
+        # Enable Write-Ahead Logging (WAL) for async SQLite
+        if async_db_url.startswith("sqlite"):
+
+            @event.listens_for(self.async_engine.sync_engine, "connect")
+            def set_sqlite_pragma_async(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
+
         self.AsyncSessionLocal = async_sessionmaker(
             bind=self.async_engine,
             class_=AsyncSession,

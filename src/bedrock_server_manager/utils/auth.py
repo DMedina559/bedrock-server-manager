@@ -88,8 +88,18 @@ async def _get_and_update_user_from_db(
     if not user or not user.is_active:
         return None
 
-    user.last_seen = datetime.datetime.now(timezone.utc)
-    await db_session.commit()
+    now = datetime.datetime.now(timezone.utc)
+
+    # SQLite often returns naive datetime objects.
+    # Make sure we compare aware-to-aware datetimes.
+    last_seen_dt = user.last_seen
+    if last_seen_dt is not None and last_seen_dt.tzinfo is None:
+        last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+
+    # Only update the database if last_seen is missing or older than 5 minutes
+    if last_seen_dt is None or (now - last_seen_dt) > datetime.timedelta(minutes=5):
+        user.last_seen = now
+        await db_session.commit()
 
     return UserResponse(
         id=int(user.id),
