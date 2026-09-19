@@ -3,7 +3,7 @@ Integration tests for bedrock_server_manager/core/bedrock_process_manager.py
 """
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -116,7 +116,9 @@ async def test_monitor_servers_crashed_server_detected(
 
     server = real_bedrock_server
 
-    with patch.object(server, "is_installed", return_value=True):
+    with patch.object(
+        server, "is_installed", new_callable=AsyncMock, return_value=True
+    ):
         server.start()
         assert server.is_running()
 

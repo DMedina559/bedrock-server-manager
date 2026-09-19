@@ -164,8 +164,11 @@ def test_put_prune_downloads_invalid_path(
 
 
 def test_get_servers_list_success(auth_client: TestClient):
+    from unittest.mock import AsyncMock
+
     with patch(
-        "bedrock_server_manager.api.application.get_all_servers_data"
+        "bedrock_server_manager.api.application.get_all_servers_data",
+        new_callable=AsyncMock,
     ) as mock_list:
         mock_list.return_value = {
             "status": "success",

@@ -127,14 +127,7 @@ async def discover_and_store_players(  # noqa: C901
             # Instantiate a BedrockServer to use its encapsulated logic.
             server_instance = app_context.get_server(server_name_candidate)
 
-            # Validate it's a real server before trying to scan its logs.
-            # Assuming is_installed might be synchronous for now or we will add async_is_installed
-            if hasattr(server_instance, "async_is_installed"):
-                is_installed = await server_instance.async_is_installed()
-            else:
-                import asyncio
-
-                is_installed = await asyncio.to_thread(server_instance.is_installed)
+            is_installed = await server_instance.is_installed()
 
             if not is_installed:
                 logger.debug(

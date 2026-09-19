@@ -60,7 +60,7 @@ async def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("get_all_servers_data")
-def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
+async def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
     This function acts as an API orchestrator to gather data from all individual
@@ -91,7 +91,7 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
 
     try:
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = server_utils.get_servers_data(
+        servers_data, bsm_error_messages = await server_utils.get_servers_data(
             app_context=app_context
         )
 
@@ -179,7 +179,7 @@ def run_task(
 
 
 @api_method("update_server_statuses", expose_to_plugins=False)
-def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
+async def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
     This function calls the core function to get servers data.
@@ -208,7 +208,7 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     try:
         # get_servers_data() now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = server_utils.get_servers_data(
+        all_servers_data, discovery_errors = await server_utils.get_servers_data(
             app_context=app_context
         )
         if discovery_errors:

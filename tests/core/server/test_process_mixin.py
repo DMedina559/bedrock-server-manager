@@ -68,7 +68,7 @@ async def test_async_start_server(real_bedrock_server):
     """Test starting the server asynchronously."""
     server = real_bedrock_server
 
-    with patch.object(server, "async_is_installed", return_value=True):
+    with patch.object(server, "is_installed", return_value=True):
         await server.async_start()
 
         assert await server.async_is_running()
@@ -94,7 +94,7 @@ async def test_async_stop_server(real_bedrock_server):
     """Test stopping the server asynchronously."""
     server = real_bedrock_server
 
-    with patch.object(server, "async_is_installed", return_value=True):
+    with patch.object(server, "is_installed", return_value=True):
         await server.async_start()
         assert await server.async_is_running()
 
@@ -118,7 +118,7 @@ async def test_async_send_command(real_bedrock_server):
     """Test sending a command to the server asynchronously."""
     server = real_bedrock_server
 
-    with patch.object(server, "async_is_installed", return_value=True):
+    with patch.object(server, "is_installed", return_value=True):
         await server.async_start()
         assert await server.async_is_running()
 

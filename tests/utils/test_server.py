@@ -39,7 +39,7 @@ async def test_validate_server_success(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     server = MagicMock()
-    server.async_is_installed = AsyncMock(return_value=True)
+    server.is_installed = AsyncMock(return_value=True)
     monkeypatch.setattr(app_context, "get_server", lambda x: server)
 
     assert await validate_server("test_server", app_context) is True
@@ -56,7 +56,7 @@ async def test_validate_server_not_installed(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     server = MagicMock()
-    server.async_is_installed = AsyncMock(return_value=False)
+    server.is_installed = AsyncMock(return_value=False)
     monkeypatch.setattr(app_context, "get_server", lambda x: server)
 
     assert await validate_server("test_server", app_context) is False
@@ -72,13 +72,13 @@ async def test_validate_server_exception_caught(app_context, monkeypatch):
     assert await validate_server("bad_name!", app_context) is False
 
 
-def test_get_servers_data_success(app_context, real_bedrock_server):
+async def test_get_servers_data_success(app_context, real_bedrock_server):
     """Test get_servers_data returns mapped details successfully retrieving from standard configs."""
     # Setup real_bedrock_server correctly mock its validation
     # Actually real_bedrock_server fixture creates valid dummy files!
 
     # We just need to make sure the server base dir exists and holds the dummy server
-    servers_data, error_messages = get_servers_data(app_context)
+    servers_data, error_messages = await get_servers_data(app_context)
 
     assert len(error_messages) == 0
     assert len(servers_data) == 1
@@ -86,16 +86,16 @@ def test_get_servers_data_success(app_context, real_bedrock_server):
     assert "status" in servers_data[0]
 
 
-def test_get_servers_data_base_dir_missing(app_context, tmp_path):
+async def test_get_servers_data_base_dir_missing(app_context, tmp_path):
     """Test get_servers_data fails cleanly throwing an AppFileNotFoundError."""
     app_context.settings.set("paths.servers", str(tmp_path / "missing_dir"))
 
     with pytest.raises(AppFileNotFoundError) as exc_info:
-        get_servers_data(app_context)
+        await get_servers_data(app_context)
     assert "Server base directory not found at path" in str(exc_info.value)
 
 
-def test_get_servers_data_not_installed(app_context, tmp_path):
+async def test_get_servers_data_not_installed(app_context, tmp_path):
     """Test get_servers_data skips directories representing uninstalled servers."""
     # Setup dummy directory that is NOT a valid server
     base_dir = tmp_path / "servers"
@@ -104,13 +104,13 @@ def test_get_servers_data_not_installed(app_context, tmp_path):
 
     app_context.settings.set("paths.servers", str(base_dir))
 
-    servers_data, error_messages = get_servers_data(app_context)
+    servers_data, error_messages = await get_servers_data(app_context)
 
     assert len(servers_data) == 0
     assert len(error_messages) == 0
 
 
-def test_get_servers_data_exception_on_server(
+async def test_get_servers_data_exception_on_server(
     app_context, real_bedrock_server, monkeypatch
 ):
     """Test get_servers_data handles exception safely on corrupted specific server instances."""
@@ -122,7 +122,7 @@ def test_get_servers_data_exception_on_server(
 
     monkeypatch.setattr(app_context, "get_server", mock_get_server)
 
-    servers_data, error_messages = get_servers_data(app_context)
+    servers_data, error_messages = await get_servers_data(app_context)
 
     assert len(servers_data) == 0
     assert len(error_messages) == 1

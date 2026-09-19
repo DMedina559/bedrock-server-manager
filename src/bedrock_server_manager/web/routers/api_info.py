@@ -402,7 +402,7 @@ async def get_servers_list(
     identity = current_user.username
     logger.debug(f"API: Request for all servers list by user '{identity}'.")
     try:
-        result = app_api.get_all_servers_data(app_context=app_context)
+        result = await app_api.get_all_servers_data(app_context=app_context)
         if result.get("status") == "success":
             return ServersListResponse(status="success", servers=result.get("servers"))
         else:

@@ -59,7 +59,7 @@ async def get_server_summary(
         f"API: Get server summary request for '{server_name}' by user '{identity}'."
     )
 
-    result = server_api.get_server_summary(
+    result = await server_api.get_server_summary(
         server_name=server_name, app_context=app_context
     )
 

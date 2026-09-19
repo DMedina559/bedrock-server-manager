@@ -264,7 +264,9 @@ def get_all_server_settings(
 
 
 @api_method("get_server_summary")
-def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_server_summary(
+    server_name: str, app_context: AppContext
+) -> Dict[str, Any]:
     """Retrieves the summary information for a specific server.
 
     This endpoint gets the server summary using the lightweight get_summary_info
@@ -285,7 +287,7 @@ def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, A
 
     try:
         server = app_context.get_server(server_name)
-        if not server.is_installed():
+        if not await server.is_installed():
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' is not installed.",
@@ -717,7 +719,7 @@ def delete_server_data(
         logger.debug(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
         )
-        server.delete_all_data()
+        asyncio.run(server.delete_all_data())
 
         # Remove the server from the AppContext cache
         app_context.remove_server(server_name)

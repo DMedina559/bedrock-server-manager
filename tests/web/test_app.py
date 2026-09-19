@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import Request
@@ -131,37 +131,33 @@ async def test_lifespan_startup_shutdown(app_context):
     """Test the lifespan hook properly initializes and stops components."""
     app = create_web_app(app_context)
 
-    with patch("bedrock_server_manager.web.app.asyncio.to_thread") as mock_to_thread:
-        # Define a mock to_thread that just calls the function immediately
-        # (or does nothing, just so we can verify it was called)
-        async def mock_to_thread_impl(func, *args, **kwargs):
-            return func(*args, **kwargs)
+    # Mock start and stop methods for our internal components
+    app_context.resource_monitor.start = MagicMock()
+    app_context.resource_monitor.stop = MagicMock()
 
-        mock_to_thread.side_effect = mock_to_thread_impl
+    app_context.api.update_server_statuses = AsyncMock()
 
-        # Mock start and stop methods for our internal components
-        app_context.resource_monitor.start = MagicMock()
-        app_context.resource_monitor.stop = MagicMock()
+    # Extract the actual lifespan function from the app router
+    lifespan_manager = app.router.lifespan_context
 
-        # We need to extract the actual lifespan function from the app router
-        lifespan_manager = app.router.lifespan_context
+    # Create a mock for log streamer
+    with patch(
+        "bedrock_server_manager.web.log_streamer.LogStreamer"
+    ) as MockLogStreamer:
+        mock_ls_instance = MagicMock()
+        MockLogStreamer.return_value = mock_ls_instance
 
-        # Create a mock for log streamer
-        with patch(
-            "bedrock_server_manager.web.log_streamer.LogStreamer"
-        ) as MockLogStreamer:
-            mock_ls_instance = MagicMock()
-            MockLogStreamer.return_value = mock_ls_instance
+        async with lifespan_manager(app):
+            # Verify startup logic
+            app_context.resource_monitor.start.assert_called_once()
 
-            async with lifespan_manager(app):
-                # Verify startup logic
-                app_context.resource_monitor.start.assert_called_once()
-                mock_to_thread.assert_any_call(app_context.api.update_server_statuses)
+            # Check that the async function was directly awaited
+            app_context.api.update_server_statuses.assert_awaited_once()
 
-                # Check log streamer was initialized
-                MockLogStreamer.assert_called_once_with(app_context)
-                mock_ls_instance.start.assert_called_once()
+            # Check log streamer was initialized
+            MockLogStreamer.assert_called_once_with(app_context)
+            mock_ls_instance.start.assert_called_once()
 
-            # Verification of shutdown logic
-            mock_ls_instance.stop.assert_called_once()
-            app_context.resource_monitor.stop.assert_called_once()
+        # Verification of shutdown logic
+        mock_ls_instance.stop.assert_called_once()
+        app_context.resource_monitor.stop.assert_called_once()

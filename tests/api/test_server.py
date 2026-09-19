@@ -85,7 +85,7 @@ def test_send_command_blocked(app_context):
 
 def test_delete_server_data_success(app_context, monkeypatch):
     """Test delete_server_data properly purges the cache and directory logic."""
-    mock_server = MagicMock()
+    mock_server = AsyncMock()
     mock_server.is_running.return_value = False
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
     monkeypatch.setattr(app_context, "remove_server", MagicMock())

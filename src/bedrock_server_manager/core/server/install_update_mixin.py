@@ -232,13 +232,13 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
     ) -> None:
         """Core helper to extract server files and set filesystem permissions asynchronously.
 
-        This internal method is called by :meth:`.async_install_or_update` after server
+        This internal method is called by :meth:`.install_or_update` after server
         files have been successfully downloaded by the `downloader`. It first
         delegates to :meth:`BedrockDownloader.async_extract_server_files` to extract
         the archive into the server directory, respecting the `is_update_operation`
         flag to preserve user data if applicable.
 
-        After extraction, it calls ``self.async_set_filesystem_permissions()`` (a method
+        After extraction, it calls ``self.set_filesystem_permissions()`` (a method
         expected to be provided by another mixin or the main class, likely from
         a permissions-focused mixin that uses :func:`~.core.system.base.set_server_folder_permissions`)
         to apply appropriate permissions to the newly extracted files and folders.
@@ -256,8 +256,8 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             ExtractError: If the file extraction process fails (propagated from
                 ``downloader.extract_server_files``).
             PermissionsError: If setting filesystem permissions fails (propagated
-                from ``self.async_set_filesystem_permissions()``).
-            AttributeError: If ``self.async_set_filesystem_permissions()`` method is not
+                from ``self.set_filesystem_permissions()``).
+            AttributeError: If ``self.set_filesystem_permissions()`` method is not
                 available on the instance (indicating a missing mixin).
         """
         zip_file_path_str = downloader.get_zip_file_path()
@@ -288,18 +288,18 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         try:
             # Set filesystem permissions after extraction.
-            if not hasattr(self, "async_set_filesystem_permissions"):
+            if not hasattr(self, "set_filesystem_permissions"):
                 self.logger.error(
-                    "async_set_filesystem_permissions method not found on server instance. Cannot set permissions."
+                    "set_filesystem_permissions method not found on server instance. Cannot set permissions."
                 )
                 raise AttributeError(
-                    "Server instance is missing 'async_set_filesystem_permissions' method."
+                    "Server instance is missing 'set_filesystem_permissions' method."
                 )
 
             self.logger.debug(
                 f"Setting permissions for server directory: {self.server_dir} asynchronously"
             )
-            await self.async_set_filesystem_permissions()  # type: ignore
+            await self.set_filesystem_permissions()  # type: ignore
             self.logger.debug(
                 f"Server folder permissions set for '{self.server_name}'."
             )
@@ -336,7 +336,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             6. Calls :meth:`BedrockDownloader.async_prepare_download_assets` to download/verify files.
             7. Calls the internal helper :meth:`._async_perform_server_files_setup` to extract
                the archive and set permissions. This helper, in turn, relies on
-               ``self.async_set_filesystem_permissions()`` (expected from another mixin).
+               ``self.set_filesystem_permissions()`` (expected from another mixin).
             8. Updates the server's persisted installed version (via ``self.async_set_version()``
                from :class:`.ServerStateMixin`) and final status ("INSTALLED" or "UPDATED").
             9. Cleans up the downloaded ZIP archive.
@@ -359,8 +359,8 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             ExtractError: If the downloaded server archive cannot be extracted.
             PermissionsError: If filesystem permissions cannot be set after extraction.
             FileOperationError: For other unexpected file I/O errors during the process.
-            AttributeError: If essential methods from other mixins (like `async_is_installed`,
-                `async_stop`, `async_set_status_in_config`, `async_set_version`, `async_set_filesystem_permissions`)
+            AttributeError: If essential methods from other mixins (like `is_installed`,
+                `async_stop`, `async_set_status_in_config`, `async_set_version`, `set_filesystem_permissions`)
                 are not available on the instance.
             BSMError: For other known application-specific errors during the process.
         """
@@ -377,13 +377,13 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         )
 
         required_methods = [
-            "async_is_installed",
+            "is_installed",
             "async_is_running",
             "async_stop",
             "async_set_status_in_config",
             "async_set_target_version",
             "async_set_version",
-            "async_set_filesystem_permissions",
+            "set_filesystem_permissions",
         ]
         for method_name in required_methods:
             if not hasattr(self, method_name):
@@ -391,7 +391,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                     f"ServerInstallUpdateMixin on '{self.server_name}' requires method '{method_name}' which is missing. Ensure all necessary mixins are included."
                 )
 
-        is_currently_installed: bool = await self.async_is_installed()  # type: ignore
+        is_currently_installed: bool = await self.is_installed()  # type: ignore
 
         if not force_reinstall and is_currently_installed:
             if not await self.is_update_needed(target_version_specification):

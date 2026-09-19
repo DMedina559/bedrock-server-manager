@@ -173,10 +173,10 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     async def async_start(self) -> None:
         """Starts the Bedrock server process asynchronously."""
-        if hasattr(self, "async_is_installed"):
-            is_inst = await self.async_is_installed()  # type: ignore
+        if hasattr(self, "is_installed"):
+            is_inst = await self.is_installed()  # type: ignore
         else:
-            is_inst = await asyncio.to_thread(self.is_installed)  # type: ignore
+            is_inst = False
 
         if not is_inst:
             raise ServerStartError(
@@ -510,7 +510,29 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     def start(self) -> None:  # noqa: C901
         """Starts the Bedrock server process."""
-        if not hasattr(self, "is_installed") or not self.is_installed():
+        import asyncio
+
+        if hasattr(self, "is_installed"):
+            try:
+
+                # If we have a running event loop, we can't block it with asyncio.run.
+                # However, calling a sync function from async that then needs async again is an anti-pattern.
+                # Since start() is still synchronous, but running from some sync threads, we can use a separate thread
+                # or loop, or just skip it if we know it's being called from within the server_lifecycle context.
+                # Actually we can just run it safely using a new thread and a new loop if needed.
+                def _run_is_installed():
+                    return asyncio.run(self.is_installed())
+
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    is_inst = pool.submit(_run_is_installed).result()
+            except RuntimeError:
+                is_inst = asyncio.run(self.is_installed())
+        else:
+            is_inst = False
+
+        if not hasattr(self, "is_installed") or not is_inst:
             raise ServerStartError(
                 f"Cannot start server '{self.server_name}': Not installed or "
                 f"invalid installation at {self.server_dir} (is_installed check failed or method missing)."
@@ -546,7 +568,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             with open(output_file, "w") as f:
                 f.truncate(0)
 
-            with open(output_file, "ab") as f:
+            with open(output_file, "ab") as f:  # type: ignore[assignment]
                 self._process = subprocess.Popen(
                     [self.bedrock_executable_path],
                     cwd=self.server_dir,

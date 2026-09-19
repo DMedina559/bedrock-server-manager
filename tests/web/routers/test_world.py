@@ -149,7 +149,7 @@ def test_get_world_icon_success(
         "bedrock_server_manager.context.AppContext.get_server"
     ) as mock_get_server:
         mock_server = mock_get_server.return_value
-        mock_server.async_is_installed = AsyncMock(return_value=True)
+        mock_server.is_installed = AsyncMock(return_value=True)
         mock_server.has_world_icon = AsyncMock(return_value=True)
         mock_server.world_icon_filesystem_path = str(icon_path)
 
@@ -172,7 +172,7 @@ def test_get_world_icon_fallback(
         "bedrock_server_manager.context.AppContext.get_server"
     ) as mock_get_server:
         mock_server = mock_get_server.return_value
-        mock_server.async_is_installed = AsyncMock(return_value=True)
+        mock_server.is_installed = AsyncMock(return_value=True)
         mock_server.has_world_icon = AsyncMock(return_value=False)
 
         with patch(
