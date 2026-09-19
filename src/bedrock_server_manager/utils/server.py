@@ -114,7 +114,7 @@ async def get_servers_data(
                 )
                 continue
 
-            servers_data.append(server.get_summary_info())
+            servers_data.append(await server.get_summary_info())
 
         except (FileOperationError, ConfigurationError, InvalidServerNameError) as e:
             msg = f"Could not get info for server '{server_name_candidate}': {e}"

@@ -112,12 +112,7 @@ class BedrockProcessManager:
 
             if hasattr(self.app_context, "api"):
                 try:
-                    if hasattr(self.app_context.api, "async_stop_server"):
-                        await self.app_context.api.async_stop_server(server_name)
-                    else:
-                        await asyncio.to_thread(
-                            self.app_context.api.stop_server, server_name
-                        )
+                    await self.app_context.api.stop_server(server_name)
                 except Exception as e:
                     self.logger.error(
                         f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
@@ -252,14 +247,8 @@ class BedrockProcessManager:
                 elif self.player_scan_counter >= player_log_monitoring_interval_sec:
                     try:
                         # Fetch server port
-                        if hasattr(server, "async_get_server_property"):
-                            port = await server.async_get_server_property("server-port")
-                        else:
-                            port = await asyncio.to_thread(
-                                server.get_server_property, "server-port"
-                            )
+                        port = await server.get_server_property("server-port")
 
-                        # MCStatus lookup is synchronous blocking network request, thread it
                         bedrock_server = await asyncio.to_thread(
                             mc.lookup, f"127.0.0.1:{port}"
                         )

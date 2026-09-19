@@ -294,7 +294,7 @@ async def get_server_summary(
                 "message": f"Server '{server_name}' is not installed.",
             }
 
-        summary = server.get_summary_info()
+        summary = await server.get_summary_info()
         return {"status": "success", "summary": summary}
     except Exception as e:
         logger.error(
@@ -508,14 +508,14 @@ async def restart_server(  # noqa: C901
                     f"API: Failed to send restart warning to '{server_name}': {e}"
                 )
 
-        stop_result = asyncio.run(stop_server(server_name, app_context=app_context))
+        stop_result = await stop_server(server_name, app_context=app_context)
         if stop_result.get("status") == "error":
             stop_result["message"] = (
                 f"Restart failed during stop phase: {stop_result.get('message')}"
             )
             return stop_result
 
-        start_result = asyncio.run(start_server(server_name, app_context=app_context))
+        start_result = await start_server(server_name, app_context=app_context)
         if start_result.get("status") == "error":
             start_result["message"] = (
                 f"Restart failed during start phase: {start_result.get('message')}"

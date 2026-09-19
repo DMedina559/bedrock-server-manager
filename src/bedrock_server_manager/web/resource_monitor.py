@@ -45,9 +45,7 @@ class ResourceMonitor:
 
                         server_name = topic.split(":", 1)[1]
                         if server_name:
-                            # Run the synchronous, blocking call in a separate thread
-                            process_info = await asyncio.to_thread(
-                                system_api.get_bedrock_process_info,
+                            process_info = await system_api.get_bedrock_process_info(
                                 server_name=server_name,
                                 app_context=self.app_context,
                             )
