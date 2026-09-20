@@ -12,7 +12,6 @@ not found.
 import logging
 import os
 
-import aiofiles
 import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
