@@ -1,5 +1,5 @@
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from bsm_test_utils.addons import create_mcworld
@@ -51,7 +51,9 @@ async def test_delete_world(real_bedrock_server):
     os.makedirs(world_dir, exist_ok=True)
 
     assert os.path.exists(world_dir)
-    with patch.object(server, "get_world_name", return_value="test_world"):
+    with patch.object(
+        server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
+    ):
         assert await server.delete_world() is True
 
     assert not os.path.exists(world_dir)
@@ -63,12 +65,12 @@ async def test_import_world(real_bedrock_server, tmp_path, valid_mcworld_zip):
 
     zip_path = valid_mcworld_zip
 
-    # The async version tries async_get_world_name or to_thread(get_world_name)
+    # The async version tries get_world_name or to_thread(get_world_name)
     with (
-        patch.object(server, "get_world_name", return_value="test_world"),
         patch.object(
-            server, "async_get_world_name", return_value="test_world", create=True
+            server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
         ),
+        patch.object(server, "get_world_name", return_value="test_world", create=True),
     ):
         world_name = await server.import_world(str(zip_path))
 

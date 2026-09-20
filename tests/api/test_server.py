@@ -155,10 +155,11 @@ async def test_set_server_status_api(app_context, monkeypatch):
     mock_server.is_running = AsyncMock()
     mock_server.send_command = AsyncMock()
     mock_server.delete_all_data = AsyncMock()
-    mock_server.get_status_from_config.return_value = "STOPPED"
+    mock_server.get_status_from_config = AsyncMock(return_value="STOPPED")
+    mock_server._manage_json_config = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = set_server_status_api("test_server", "RUNNING", app_context)
+    result = await set_server_status_api("test_server", "RUNNING", app_context)
 
     assert result["status"] == "success"
     assert result["previous_status"] == "STOPPED"
@@ -189,9 +190,12 @@ async def test_set_server_setting_success(app_context, monkeypatch):
     mock_server.is_running = AsyncMock()
     mock_server.send_command = AsyncMock()
     mock_server.delete_all_data = AsyncMock()
+    mock_server._manage_json_config = AsyncMock(return_value=None)
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = set_server_setting("test_server", "test.key", "test_val", app_context)
+    result = await set_server_setting(
+        "test_server", "test.key", "test_val", app_context
+    )
 
     assert result["status"] == "success"
     mock_server._manage_json_config.assert_called_once_with(
@@ -209,9 +213,10 @@ async def test_set_server_custom_value_success(app_context, monkeypatch):
     mock_server.is_running = AsyncMock()
     mock_server.send_command = AsyncMock()
     mock_server.delete_all_data = AsyncMock()
+    mock_server.set_custom_config_value = AsyncMock(return_value=None)
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = set_server_custom_value(
+    result = await set_server_custom_value(
         "test_server", "my_custom", "custom_val", app_context
     )
 
@@ -225,7 +230,7 @@ async def test_get_all_server_settings_success(app_context, monkeypatch):
     """Test fetching all configs correctly retrieves the underlying dict from core server."""
     from bedrock_server_manager.api.server import get_all_server_settings
 
-    mock_server = MagicMock()
+    mock_server = AsyncMock()
     mock_server.start = AsyncMock()
     mock_server.stop = AsyncMock()
     mock_server.is_running = AsyncMock()
@@ -234,7 +239,7 @@ async def test_get_all_server_settings_success(app_context, monkeypatch):
     mock_server._load_server_config.return_value = {"key1": "val1"}
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = get_all_server_settings("test_server", app_context)
+    result = await get_all_server_settings("test_server", app_context)
 
     assert result["status"] == "success"
     assert result["key1"] == "val1"
@@ -250,10 +255,10 @@ async def test_get_server_setting_success(app_context, monkeypatch):
     mock_server.is_running = AsyncMock()
     mock_server.send_command = AsyncMock()
     mock_server.delete_all_data = AsyncMock()
-    mock_server._manage_json_config.return_value = "secret"
+    mock_server._manage_json_config = AsyncMock(return_value="secret")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = get_server_setting("test_server", "secret.key", app_context)
+    result = await get_server_setting("test_server", "secret.key", app_context)
 
     assert result["status"] == "success"
     assert result["value"] == "secret"

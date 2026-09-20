@@ -13,7 +13,7 @@ async def test_is_update_needed_specific_version(real_bedrock_server):
     """Test update needed against specific version."""
     server = real_bedrock_server
     with patch.object(
-        server, "async_get_version", new_callable=AsyncMock, return_value="1.19.0"
+        server, "get_version", new_callable=AsyncMock, return_value="1.19.0"
     ):
         assert await server.is_update_needed("1.20.0") is True
         assert await server.is_update_needed("1.19.0") is False

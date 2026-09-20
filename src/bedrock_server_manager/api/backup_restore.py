@@ -779,7 +779,7 @@ async def prune_old_backups(  # noqa: C901
             pruning_errors = []
             # Prune world backups.
             try:
-                world_name = server.get_world_name()
+                world_name = await server.get_world_name()
                 world_name_prefix = f"{world_name}_backup_"
                 await server.prune_server_backups(world_name_prefix, "mcworld")
             except Exception as e:

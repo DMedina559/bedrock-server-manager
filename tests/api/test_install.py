@@ -14,13 +14,13 @@ async def test_install_new_server_success(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
-    mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.async_get_version = AsyncMock(return_value="1.20")
+    mock_server.get_target_version = AsyncMock(return_value="LATEST")
+    mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
-    mock_server.async_get_version = AsyncMock(return_value="1.20")
+    mock_server.get_version = AsyncMock(return_value="1.20")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     result = await install_new_server("new_server", app_context)
@@ -65,8 +65,8 @@ async def test_install_new_server_error(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
-    mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.async_get_version = AsyncMock(return_value="1.20")
+    mock_server.get_target_version = AsyncMock(return_value="LATEST")
+    mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
@@ -84,8 +84,8 @@ async def test_update_server_no_update_needed(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
-    mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.async_get_version = AsyncMock(return_value="1.20")
+    mock_server.get_target_version = AsyncMock(return_value="LATEST")
+    mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
@@ -105,14 +105,14 @@ async def test_update_server_success(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = AsyncMock()
-    mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.async_get_version = AsyncMock(return_value="1.20")
+    mock_server.get_target_version = AsyncMock(return_value="LATEST")
+    mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
     mock_server.is_update_needed = AsyncMock(return_value=True)
-    mock_server.async_get_version = AsyncMock(return_value="1.21")
+    mock_server.get_version = AsyncMock(return_value="1.21")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     # Needs to bypass stop/start errors gracefully for test scope
@@ -166,8 +166,8 @@ async def test_update_server_error(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = AsyncMock()
-    mock_server.async_get_target_version = AsyncMock(return_value="LATEST")
-    mock_server.async_get_version = AsyncMock(return_value="1.20")
+    mock_server.get_target_version = AsyncMock(return_value="LATEST")
+    mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
     mock_server.backup_all_data = AsyncMock()

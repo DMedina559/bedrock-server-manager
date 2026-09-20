@@ -93,12 +93,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         super().__init__(*args, **kwargs)
         # This mixin depends on attributes from BaseMixin: self.server_name, self.base_dir, self.server_dir, self.logger.
         # It also depends on methods from other mixins that will be part of the final BedrockServer class, such as:
-        # - self.get_world_name() (from StateMixin)
+        # - await self.get_world_name() (from StateMixin)
         # - self.extract_mcworld() (from WorldMixin)
 
     if TYPE_CHECKING:
 
-        def get_world_name(self) -> str: ...
+        async def get_world_name(self) -> str: ...
 
         async def extract_mcworld(
             self, mcworld_file_path: str, target_world_dir_name: str
@@ -191,7 +191,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 is not available when ``world_name`` is ``None``.
         """
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(
             f"Listing addons for world '{world_name}' in server '{self.server_name}'."
@@ -254,7 +254,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(
             f"Enabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
@@ -299,7 +299,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(
             f"Updating subpack to '{subpack_name}' for {pack_type} pack '{pack_uuid}' in world '{world_name}'."
@@ -366,7 +366,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(
             f"Disabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
@@ -397,7 +397,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(f"Reordering {pack_type} packs in world '{world_name}'.")
 
@@ -487,7 +487,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(
             f"Exporting {pack_type} pack '{pack_uuid}' from world '{world_name}'."
@@ -581,7 +581,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             raise UserInputError("Pack type must be 'behavior' or 'resource'.")
 
         if world_name is None:
-            world_name = self.get_world_name()
+            world_name = await self.get_world_name()
 
         self.logger.info(
             f"Removing {pack_type} pack '{pack_uuid}' from world '{world_name}'."
@@ -731,7 +731,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Found {len(mcworld_files_found)} .mcworld file(s) in .mcaddon."
             )
             # This method is expected to be on the final class from StateMixin.
-            active_world_name = self.get_world_name()
+            active_world_name = await self.get_world_name()
 
             for world_file_path in mcworld_files_found:
                 world_filename_basename = os.path.basename(world_file_path)
@@ -944,7 +944,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             )
 
             # --- Installation Logic ---
-            active_world_name = self.get_world_name()
+            active_world_name = await self.get_world_name()
 
             # Define paths within the active world.
             active_world_dir = os.path.join(

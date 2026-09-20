@@ -95,7 +95,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         """Checks if the server's installed version requires an update to meet the target asynchronously.
 
         This method compares the server's currently installed version (obtained via
-        ``self.async_get_version()``, expected from :class:`.ServerStateMixin`) against the
+        ``await self.get_version()``, expected from :class:`.ServerStateMixin`) against the
         `target_version_specification`. The target can be:
 
             - A specific version string (e.g., "1.20.10.01").
@@ -118,7 +118,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         Raises:
             MissingArgumentError: If `target_version_specification` is empty or not a string.
-            AttributeError: If ``self.async_get_version()`` method is not available.
+            AttributeError: If ``await self.get_version()`` method is not available.
         """
         if (
             not isinstance(target_version_specification, str)
@@ -128,15 +128,13 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 "Target version specification cannot be empty and must be a string."
             )
 
-        if not hasattr(self, "async_get_version"):
+        if not hasattr(self, "get_version"):
             self.logger.error(
-                "async_get_version method not found on server instance. Cannot check if update is needed."
+                "get_version method not found on server instance. Cannot check if update is needed."
             )
-            raise AttributeError(
-                "Server instance is missing 'async_get_version' method."
-            )
+            raise AttributeError("Server instance is missing 'get_version' method.")
 
-        current_installed_version: str = await self.async_get_version()  # type: ignore
+        current_installed_version: str = await self.get_version()  # type: ignore
         target_spec_upper = target_version_specification.strip().upper()
         is_latest_or_preview = target_spec_upper in ("LATEST", "PREVIEW")
 
@@ -329,7 +327,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             2. If the server is running, stops it using ``self.stop()`` (expected from
                :class:`~.ServerProcessMixin`).
             3. Updates the server's persisted status to "INSTALLING" or "UPDATING"
-               (via ``self.async_set_status_in_config()`` from :class:`.ServerStateMixin`).
+               (via ``await self.set_status_in_config()`` from :class:`.ServerStateMixin`).
             4. If it's a new installation, sets the target version in the config.
             5. Initializes a :class:`~.core.downloader.BedrockDownloader` for the
                `target_version_specification`.
@@ -337,7 +335,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             7. Calls the internal helper :meth:`._async_perform_server_files_setup` to extract
                the archive and set permissions. This helper, in turn, relies on
                ``self.set_filesystem_permissions()`` (expected from another mixin).
-            8. Updates the server's persisted installed version (via ``self.async_set_version()``
+            8. Updates the server's persisted installed version (via ``await self.set_version()``
                from :class:`.ServerStateMixin`) and final status ("INSTALLED" or "UPDATED").
             9. Cleans up the downloaded ZIP archive.
 
@@ -360,7 +358,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             PermissionsError: If filesystem permissions cannot be set after extraction.
             FileOperationError: For other unexpected file I/O errors during the process.
             AttributeError: If essential methods from other mixins (like `is_installed`,
-                `stop`, `async_set_status_in_config`, `async_set_version`, `set_filesystem_permissions`)
+                `stop`, `set_status_in_config`, `set_version`, `set_filesystem_permissions`)
                 are not available on the instance.
             BSMError: For other known application-specific errors during the process.
         """
@@ -380,9 +378,9 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             "is_installed",
             "is_running",
             "stop",
-            "async_set_status_in_config",
-            "async_set_target_version",
-            "async_set_version",
+            "set_status_in_config",
+            "set_target_version",
+            "set_version",
             "set_filesystem_permissions",
         ]
         for method_name in required_methods:
@@ -415,7 +413,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         status_to_set = "UPDATING" if is_currently_installed else "INSTALLING"
         try:
-            await self.async_set_status_in_config(status_to_set)  # type: ignore
+            await self.set_status_in_config(status_to_set)  # type: ignore
         except Exception as e_stat:
             self.logger.warning(
                 f"Could not set status to {status_to_set} for '{self.server_name}': {e_stat}"
@@ -423,7 +421,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         try:
             if not is_currently_installed:
-                await self.async_set_target_version(target_version_specification.strip().upper())  # type: ignore
+                await self.set_target_version(target_version_specification.strip().upper())  # type: ignore
         except Exception as e_set_target:
             self.logger.warning(
                 f"Could not set target version for '{self.server_name}': {e_set_target}"
@@ -458,8 +456,8 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 downloader, is_update_op_for_extraction
             )
 
-            await self.async_set_version(actual_version_downloaded)  # type: ignore
-            await self.async_set_status_in_config("UPDATED" if is_update_op_for_extraction else "INSTALLED")  # type: ignore
+            await self.set_version(actual_version_downloaded)  # type: ignore
+            await self.set_status_in_config("UPDATED" if is_update_op_for_extraction else "INSTALLED")  # type: ignore
             self.logger.info(
                 f"Server '{self.server_name}' successfully {'updated' if is_update_op_for_extraction else 'installed'} to version '{actual_version_downloaded}'."
             )
@@ -469,16 +467,16 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 f"Install/Update failed for server '{self.server_name}' due to a BSM error: {e_bsm_install}",
                 exc_info=True,
             )
-            if hasattr(self, "async_set_status_in_config"):
-                await self.async_set_status_in_config("ERROR")  # type: ignore
+            if hasattr(self, "set_status_in_config"):
+                await self.set_status_in_config("ERROR")  # type: ignore
             raise
         except Exception as e_unexp_install:
             self.logger.error(
                 f"Unexpected error during install/update for '{self.server_name}': {e_unexp_install}",
                 exc_info=True,
             )
-            if hasattr(self, "async_set_status_in_config"):
-                await self.async_set_status_in_config("ERROR")  # type: ignore
+            if hasattr(self, "set_status_in_config"):
+                await self.set_status_in_config("ERROR")  # type: ignore
             raise FileOperationError(
                 f"Unexpected failure during install/update for '{self.server_name}': {e_unexp_install}"
             ) from e_unexp_install

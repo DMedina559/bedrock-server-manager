@@ -48,7 +48,7 @@ async def get_server_settings(
     )
     try:
         server = app_context.get_server(server_name)
-        config = server._load_server_config()
+        config = await server._load_server_config()
         return ServerSettingsResponse(
             status="success",
             settings=config,
@@ -89,7 +89,7 @@ async def post_set_server_setting(
     )
     try:
         server = app_context.get_server(server_name)
-        server._manage_json_config(
+        await server._manage_json_config(
             key=payload.key, operation="write", value=payload.value
         )
         return ServerSettingsResponse(

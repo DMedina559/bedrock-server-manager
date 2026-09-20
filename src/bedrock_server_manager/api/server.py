@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("get_server_setting")
-def get_server_setting(
+async def get_server_setting(
     server_name: str, key: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Reads any value from a server's specific JSON configuration file
@@ -72,7 +72,7 @@ def get_server_setting(
     try:
         server = app_context.get_server(server_name)
         # Use the internal method to access any key
-        value = server._manage_json_config(key, "read")
+        value = await server._manage_json_config(key, "read")
         success_response: Dict[str, Any] = {"status": "success", "value": value}
         return success_response
     except BSMError as e:
@@ -98,7 +98,7 @@ def get_server_setting(
     after="after_set_server_setting",
     identity_keys=("server_name", "key"),
 )
-def set_server_setting(
+async def set_server_setting(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes any value to a server's specific JSON configuration file
@@ -134,7 +134,7 @@ def set_server_setting(
     try:
         server = app_context.get_server(server_name)
         # Use the internal method to write to any key
-        server._manage_json_config(key, "write", value)
+        await server._manage_json_config(key, "write", value)
         success_response: Dict[str, Any] = {
             "status": "success",
             "message": f"Setting '{key}' updated for server '{server_name}'.",
@@ -157,7 +157,7 @@ def set_server_setting(
 
 
 @api_method("set_server_custom_value")
-def set_server_custom_value(
+async def set_server_custom_value(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes a key-value pair to the 'custom' section of a server's specific
@@ -190,7 +190,7 @@ def set_server_custom_value(
     try:
         server = app_context.get_server(server_name)
         # This method is sandboxed to the 'custom' section
-        server.set_custom_config_value(key, value)
+        await server.set_custom_config_value(key, value)
         success_response: Dict[str, Any] = {
             "status": "success",
             "message": f"Custom value '{key}' updated for server '{server_name}'.",
@@ -215,7 +215,7 @@ def set_server_custom_value(
 
 
 @api_method("get_all_server_settings")
-def get_all_server_settings(
+async def get_all_server_settings(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Reads the entire JSON configuration for a specific server from its
@@ -242,7 +242,7 @@ def get_all_server_settings(
     try:
         server = app_context.get_server(server_name)
         # _load_server_config handles loading and migration
-        all_settings = server._load_server_config()
+        all_settings = await server._load_server_config()
         success_response: Dict[str, Any] = {
             "status": "success",
             **all_settings,
@@ -393,7 +393,7 @@ async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, An
             logger.warning(
                 f"API: Server '{server_name}' is not running. Stop request ignored."
             )
-            server.set_status_in_config("STOPPED")
+            await server.set_status_in_config("STOPPED")
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' was already stopped.",
@@ -816,14 +816,14 @@ async def server_lifecycle_manager(
     after="after_server_status_change",
     identity_keys=("server_name", "status"),
 )
-def set_server_status_api(
+async def set_server_status_api(
     server_name: str, status: str, app_context: "AppContext"
 ) -> Dict[str, Any]:
     """Internal API to set server status and trigger events."""
     server = app_context.get_server(server_name)
-    previous_status = server.get_status_from_config()
+    previous_status = await server.get_status_from_config()
 
-    server._manage_json_config(
+    await server._manage_json_config(
         key="server_info.status", operation="write", value=status
     )
     server.logger.info(

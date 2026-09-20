@@ -27,7 +27,7 @@ async def test_export_world_success(app_context, monkeypatch):
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
     mock_server.process_addon_file = AsyncMock()
-    mock_server.get_world_name.return_value = "MyWorld"
+    mock_server.get_world_name = AsyncMock(return_value="MyWorld")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     # Needs to bypass stop/start errors gracefully for test scope
@@ -73,7 +73,7 @@ async def test_export_world_empty_dir(app_context, monkeypatch):
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
     mock_server.process_addon_file = AsyncMock()
-    mock_server.get_world_name.return_value = "MyWorld"
+    mock_server.get_world_name = AsyncMock(return_value="MyWorld")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
     monkeypatch.setattr(
         "bedrock_server_manager.api.world.server_lifecycle_manager", MagicMock()
@@ -99,7 +99,9 @@ async def test_export_world_bsmerror(app_context, monkeypatch):
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
     mock_server.process_addon_file = AsyncMock()
-    mock_server.get_world_name.side_effect = BSMError("Cannot find world files")
+    mock_server.get_world_name = AsyncMock(
+        side_effect=BSMError("Cannot find world files")
+    )
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
     monkeypatch.setattr("os.makedirs", MagicMock())
 
@@ -176,7 +178,7 @@ async def test_reset_world_success(app_context, monkeypatch):
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
     mock_server.process_addon_file = AsyncMock()
-    mock_server.get_world_name.return_value = "TargetWorld"
+    mock_server.get_world_name = AsyncMock(return_value="TargetWorld")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     # Needs to bypass stop/start errors gracefully for test scope

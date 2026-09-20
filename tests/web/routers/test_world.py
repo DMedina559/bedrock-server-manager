@@ -151,7 +151,9 @@ def test_get_world_icon_success(
         mock_server = mock_get_server.return_value
         mock_server.is_installed = AsyncMock(return_value=True)
         mock_server.has_world_icon = AsyncMock(return_value=True)
-        mock_server.world_icon_filesystem_path = str(icon_path)
+        mock_server.get_world_icon_filesystem_path = AsyncMock(
+            return_value=str(icon_path)
+        )
 
         response = unauth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/world/icon"
@@ -174,6 +176,7 @@ def test_get_world_icon_fallback(
         mock_server = mock_get_server.return_value
         mock_server.is_installed = AsyncMock(return_value=True)
         mock_server.has_world_icon = AsyncMock(return_value=False)
+        mock_server.get_world_icon_filesystem_path = AsyncMock(return_value=None)
 
         with patch(
             "bedrock_server_manager.web.routers.world.STATIC_DIR", str(tmp_path)

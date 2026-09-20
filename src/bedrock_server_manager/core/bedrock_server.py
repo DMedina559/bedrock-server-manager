@@ -170,15 +170,9 @@ class BedrockServer(
             f"Gathering async summary info for server '{self.server_name}'."
         )
 
-        if hasattr(self, "async_get_status"):
-            status = await self.async_get_status()
-        else:
-            status = self.get_status()
+        status = await self.get_status()
 
-        if hasattr(self, "async_get_version"):
-            version = await self.async_get_version()
-        else:
-            version = self.get_version()
+        version = await self.get_version()
 
         summary = {
             "name": self.server_name,

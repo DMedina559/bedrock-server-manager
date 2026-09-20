@@ -15,7 +15,8 @@ from bedrock_server_manager.error import BSMError, FileOperationError
 async def test_process_manager_add_remove_server(app_context: AppContext):
     """Test adding and removing servers from the manager."""
     manager = BedrockProcessManager(app_context)
-    mock_server = MagicMock(spec=["set_status_in_config"])
+    mock_server = MagicMock()
+    mock_server.set_status_in_config = AsyncMock()
     mock_server.server_name = "test_server"
 
     # Add server
@@ -87,20 +88,22 @@ async def test_write_error_status_success(app_context: AppContext):
     """Test successfully writing error status to config."""
     manager = BedrockProcessManager(app_context)
 
-    mock_server = MagicMock(spec=["set_status_in_config"])
+    mock_server = MagicMock()
+    mock_server.set_status_in_config = AsyncMock()
     with patch.object(app_context, "get_server", return_value=mock_server):
         await manager.write_error_status("test_server")
 
-        mock_server.set_status_in_config.assert_called_once_with("ERROR")
+        mock_server.set_status_in_config.assert_awaited_once_with("ERROR")
 
 
 async def test_write_error_status_failure(app_context: AppContext):
     """Test writing error status propagating FileOperationError on internal error."""
     manager = BedrockProcessManager(app_context)
 
-    mock_server = MagicMock(spec=["set_status_in_config"])
+    mock_server = MagicMock()
+    mock_server.set_status_in_config = AsyncMock()
     # Simulate a generic BSMError when setting status
-    mock_server.set_status_in_config.side_effect = BSMError("Config missing")
+    mock_server.set_status_in_config = AsyncMock(side_effect=BSMError("Config missing"))
 
     with patch.object(app_context, "get_server", return_value=mock_server):
         with pytest.raises(FileOperationError, match="Failed to write status"):

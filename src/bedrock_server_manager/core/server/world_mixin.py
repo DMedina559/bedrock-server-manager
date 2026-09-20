@@ -76,11 +76,11 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         """
         super().__init__(*args, **kwargs)
         # Attributes from BaseMixin are available.
-        # Relies on self.get_world_name() from StateMixin.
+        # Relies on await self.get_world_name() from StateMixin.
 
     if TYPE_CHECKING:
 
-        def get_world_name(self) -> str: ...
+        async def get_world_name(self) -> str: ...
 
     @property
     def _worlds_base_dir_in_server(self) -> str:
@@ -89,12 +89,12 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         """
         return os.path.join(self.server_dir, "worlds")
 
-    def _get_active_world_directory_path(self) -> str:
+    async def _get_active_world_directory_path(self) -> str:
         """Determines the full path to the directory of the currently active world.
 
         This path is constructed by joining the base worlds directory
         (:attr:`._worlds_base_dir_in_server`) with the active world's name,
-        which is obtained by calling ``self.get_world_name()``. This method
+        which is obtained by calling ``await self.get_world_name()``. This method
         is expected to be provided by :class:`~.core.server.state_mixin.ServerStateMixin`.
 
         Returns:
@@ -117,7 +117,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 "The 'get_world_name' method, typically from ServerStateMixin, is required but not found."
             )
 
-        active_world_name: str = self.get_world_name()  # type: ignore
+        active_world_name: str = await self.get_world_name()  # type: ignore
         if not active_world_name or not isinstance(active_world_name, str):
             # get_world_name should ideally raise if it can't determine, but double check.
             raise ConfigParseError(
@@ -360,7 +360,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             will be deleted before the new world is imported.
 
         This method first determines the name of the server's active world by
-        calling ``self.get_world_name()`` (expected from
+        calling ``await self.get_world_name()`` (expected from
         :class:`~.core.server.state_mixin.ServerStateMixin`). It then uses
         :meth:`.extract_mcworld` to extract the contents of the
         provided `mcworld_backup_file_path` into a directory with that active
@@ -400,10 +400,8 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             raise AppFileNotFoundError(mcworld_backup_file_path, ".mcworld backup file")
 
         try:
-            if hasattr(self, "async_get_world_name"):
-                active_world_dir_name = str(
-                    await getattr(self, "async_get_world_name")()
-                )
+            if hasattr(self, "get_world_name"):
+                active_world_dir_name = str(await getattr(self, "get_world_name")())
             else:
                 active_world_dir_name = str(
                     await asyncio.to_thread(getattr(self, "get_world_name", lambda: ""))
@@ -465,9 +463,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 is not available.
         """
         try:
-            active_world_dir = await asyncio.to_thread(
-                self._get_active_world_directory_path
-            )
+            active_world_dir = await self._get_active_world_directory_path()
             active_world_name = os.path.basename(active_world_dir)
         except (AppFileNotFoundError, ConfigParseError, Exception) as e:
             self.logger.error(
@@ -518,7 +514,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             ``False`` otherwise (e.g., path cannot be determined, file does not
             exist, or is not a file).
         """
-        icon_path = self.world_icon_filesystem_path
+        icon_path = await self.get_world_icon_filesystem_path()
         if icon_path and await aiofiles.ospath.isfile(icon_path):
             self.logger.debug(
                 f"Server '{self.server_name}': World icon found at '{icon_path}' asynchronously."
@@ -536,8 +532,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         """str: The standard filename for a world's icon image (``world_icon.jpeg``)."""
         return "world_icon.jpeg"
 
-    @property
-    def world_icon_filesystem_path(self) -> Optional[str]:
+    async def get_world_icon_filesystem_path(self) -> Optional[str]:
         """Optional[str]: The absolute filesystem path to the world icon for the active world.
 
         This is constructed by joining the active world's directory path (from
@@ -548,7 +543,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         (e.g., if ``get_world_name()`` fails or is unavailable).
         """
         try:
-            active_world_dir = self._get_active_world_directory_path()
+            active_world_dir = await self._get_active_world_directory_path()
             return os.path.join(active_world_dir, self.world_icon_filename)
         except (AppFileNotFoundError, ConfigParseError, Exception) as e:
             self.logger.warning(

@@ -78,7 +78,7 @@ async def get_world_name(server_name: str, app_context: AppContext) -> Dict[str,
     logger.debug(f"API: Attempting to get world name for server '{server_name}'...")
     try:
         server = app_context.get_server(server_name)
-        world_name_str = server.get_world_name()
+        world_name_str = await server.get_world_name()
         logger.info(
             f"API: Retrieved world name for '{server_name}': '{world_name_str}'"
         )
@@ -180,7 +180,7 @@ async def export_world(
             server = app_context.get_server(server_name)
 
             os.makedirs(effective_export_dir, exist_ok=True)
-            world_name_str = server.get_world_name()
+            world_name_str = await server.get_world_name()
             timestamp = get_timestamp()
             export_filename = f"{world_name_str}_export_{timestamp}.mcworld"
             export_file_path = os.path.join(effective_export_dir, export_filename)
@@ -392,7 +392,7 @@ async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, st
 
         try:
             server = app_context.get_server(server_name)
-            world_name_for_msg = server.get_world_name()
+            world_name_for_msg = await server.get_world_name()
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,
             # and the server is restarted (which will generate the new world).

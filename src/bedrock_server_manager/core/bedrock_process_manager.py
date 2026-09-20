@@ -175,10 +175,8 @@ class BedrockProcessManager:
         """
         server = self.app_context.get_server(server_name)
         try:
-            if hasattr(server, "async_set_status_in_config"):
-                await server.async_set_status_in_config("ERROR")
-            else:
-                await asyncio.to_thread(server.set_status_in_config, "ERROR")
+            await server.set_status_in_config("ERROR")
+
         except BSMError as e:
             self.logger.error(f"Error writing status for server '{server_name}': {e}")
             raise FileOperationError(

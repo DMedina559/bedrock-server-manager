@@ -68,8 +68,8 @@ async def install_new_server(
         await server.install_or_update(target_version, server_zip_path=server_zip_path)
         return {
             "status": "success",
-            "version": await server.async_get_version(),
-            "message": f"Server '{server_name}' installed successfully to version {await server.async_get_version()}.",
+            "version": await server.get_version(),
+            "message": f"Server '{server_name}' installed successfully to version {await server.get_version()}.",
         }
 
     except BSMError as e:
@@ -122,7 +122,7 @@ async def update_server(
             raise InvalidServerNameError("Server name cannot be empty.")
 
         server = app_context.get_server(server_name)
-        target_version = await server.async_get_target_version()
+        target_version = await server.get_target_version()
 
         logger.info(
             f"API: Updating server '{server_name}'. Send message: {send_message}"
@@ -151,8 +151,8 @@ async def update_server(
         return {
             "status": "success",
             "updated": True,
-            "new_version": await server.async_get_version(),
-            "message": f"Server '{server_name}' updated successfully to {await server.async_get_version()}.",
+            "new_version": await server.get_version(),
+            "message": f"Server '{server_name}' updated successfully to {await server.get_version()}.",
         }
 
     except BSMError as e:

@@ -365,7 +365,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         This internal helper performs the following sequence:
 
-            1. Retrieves the active world name using ``self.get_world_name()`` (from
+            1. Retrieves the active world name using ``await self.get_world_name()`` (from
                :class:`~.core.server.state_mixin.ServerStateMixin`).
             2. Ensures the server's specific backup directory (derived from
                :attr:`.server_backup_directory`) exists, creating it if necessary.
@@ -406,7 +406,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 "Required world management methods are missing from this server instance."
             )
 
-        active_world_name: str = self.get_world_name()  # type: ignore
+        active_world_name: str = await self.get_world_name()  # type: ignore
         active_world_dir_path = (
             os.path.join(  # For logging/validation, export_world uses world_dir_name
                 self.server_dir, "worlds", active_world_name
@@ -551,7 +551,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         This method orchestrates the backup of the following components:
 
-            - The active world: Determined by ``self.get_world_name()`` (from
+            - The active world: Determined by ``await self.get_world_name()`` (from
               :class:`~.core.server.state_mixin.ServerStateMixin`), then backed up to
               a ``.mcworld`` file via :meth:`._backup_world_data_internal`.
             - ``allowlist.json``: Backed up via :meth:`._backup_config_file_internal`.
@@ -810,7 +810,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
             # Filter for backups matching the current active world name.
             # Assumes backups are named like <world_name>_backup_timestamp.mcworld
-            active_world_name: str = self.get_world_name()  # type: ignore
+            active_world_name: str = await self.get_world_name()  # type: ignore
             # Sanitize world name for matching backup file prefixes
             safe_world_name_prefix = (
                 re.sub(r'[:"/\\|?*]', "_", active_world_name) + "_backup_"
