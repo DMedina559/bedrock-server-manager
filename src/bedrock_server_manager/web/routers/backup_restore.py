@@ -20,6 +20,7 @@ import logging
 import os
 from typing import Any, Callable, Optional
 
+import aiofiles.ospath
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 from ...api import backup_restore as backup_restore_api
@@ -310,7 +311,7 @@ async def post_restore_action(  # noqa: C901
                 detail=f"Security violation - Invalid backup path '{backup_file_name}'.",
             )
 
-        if not os.path.isfile(full_backup_path):
+        if not await aiofiles.ospath.isfile(full_backup_path):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Backup file not found: {full_backup_path}",
