@@ -40,7 +40,7 @@ async def test_resource_monitor_loop_broadcasts(
     mock_info = {"cpu": 10, "mem": 50}
     monkeypatch.setattr(
         "bedrock_server_manager.api.system.get_bedrock_process_info",
-        MagicMock(return_value=mock_info),
+        AsyncMock(return_value=mock_info),
     )
 
     # We want to run the loop manually for one iteration, so we mock sleep to raise an exception to break the loop
