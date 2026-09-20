@@ -112,8 +112,6 @@ async def test_update_online_players(real_bedrock_server):
         f.write("[INFO] Player connected: player1, xuid: 12345\n")
 
     players = await server.update_online_players()
-    # Let us check what is in the players log before asserting
-    print("PLAYERS:", players)
     assert len(players) == 1
     assert players[0]["name"] == "player1"
     assert getattr(server, "players", []) == players
