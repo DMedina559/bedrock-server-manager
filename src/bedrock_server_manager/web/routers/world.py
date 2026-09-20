@@ -1,6 +1,7 @@
 import logging
 import os
 
+import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
@@ -118,7 +119,7 @@ async def post_world_install(
                 detail="Invalid file path (security check failed).",
             )
 
-        if not os.path.isfile(full_world_file_path):
+        if not await aiofiles.ospath.isfile(full_world_file_path):
             logger.warning(
                 f"API Install World '{server_name}': World file '{selected_filename}' not found at '{full_world_file_path}'."
             )

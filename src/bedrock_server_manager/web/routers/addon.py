@@ -5,6 +5,7 @@ Router for addon-related endpoints.
 import logging
 import os
 
+import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -368,7 +369,7 @@ async def post_install_addon(
                 detail="Invalid file path (security check failed).",
             )
 
-        if not os.path.isfile(full_addon_file_path):
+        if not await aiofiles.ospath.isfile(full_addon_file_path):
             logger.warning(
                 f"API Install Addon '{server_name}': Addon file '{selected_filename}' not found at '{full_addon_file_path}'."
             )
@@ -439,7 +440,7 @@ async def get_server_addon_icon(
                 icon_path = pack.get("icon")
                 break
 
-        if icon_path and os.path.exists(icon_path):
+        if icon_path and await aiofiles.ospath.exists(icon_path):
             return FileResponse(icon_path, media_type="image/png")
 
         logger.info(
@@ -450,7 +451,7 @@ async def get_server_addon_icon(
     except (AppFileNotFoundError, HTTPException):
         # Fallback to the default world icon
         default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-        if os.path.isfile(default_icon_path):
+        if await aiofiles.ospath.isfile(default_icon_path):
             return FileResponse(
                 default_icon_path, media_type="image/vnd.microsoft.icon"
             )

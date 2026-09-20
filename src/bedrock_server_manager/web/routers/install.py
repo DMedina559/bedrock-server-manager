@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import os
 
+import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import install as install_api
@@ -32,11 +34,12 @@ async def get_custom_zips(
 ):
     try:
         download_dir = app_context.settings.get("paths.downloads")
+
         custom_dir = os.path.join(download_dir, "custom")
-        if not os.path.isdir(custom_dir):
+        if not await aiofiles.ospath.isdir(custom_dir):
             return CustomZipsResponse(status="success", custom_zips=[])
 
-        custom_zips_paths = find_files(custom_dir, "*.zip")
+        custom_zips_paths = await asyncio.to_thread(find_files, custom_dir, "*.zip")
         custom_zips = [os.path.basename(str(p)) for p in custom_zips_paths]
         return CustomZipsResponse(status="success", custom_zips=custom_zips)
     except Exception as e:

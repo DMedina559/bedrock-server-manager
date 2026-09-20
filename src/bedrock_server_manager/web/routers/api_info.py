@@ -13,9 +13,11 @@ Endpoints typically require authentication and often use path parameters to spec
 a server. Responses are generally structured using the :class:`.BaseApiResponse` model.
 """
 
+import asyncio
 import logging
 import os
 
+import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import application as app_api
@@ -336,7 +338,7 @@ async def put_prune_downloads(
                 detail="Invalid directory path: Path is outside the allowed download cache base directory.",
             )
 
-        if not os.path.isdir(full_download_dir_path):
+        if not await aiofiles.ospath.isdir(full_download_dir_path):
             logger.warning(
                 f"API Prune Downloads: Target cache directory not found: {full_download_dir_path} (from relative: '{payload.directory}')"
             )
@@ -470,11 +472,17 @@ async def get_themes(
         "pink",
     ]
     try:
+
         themes = set(STANDARD_THEMES)
         themes_path = app_context.settings.get("paths.themes")
 
-        if themes_path and os.path.isdir(themes_path):
-            for filename in os.listdir(themes_path):
+        if themes_path and await aiofiles.ospath.isdir(themes_path):
+
+            def list_themes():
+                return os.listdir(themes_path)
+
+            filenames = await asyncio.to_thread(list_themes)
+            for filename in filenames:
                 if filename.endswith(".css"):
                     themes.add(filename[:-4])  # Remove .css extension
 
