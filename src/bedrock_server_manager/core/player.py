@@ -136,14 +136,7 @@ async def discover_and_store_players(  # noqa: C901
                 continue
 
             # Use the instance's own method to scan its log file.
-            if hasattr(server_instance, "async_scan_log_for_players"):
-                players_in_log = await server_instance.async_scan_log_for_players()
-            else:
-                import asyncio
-
-                players_in_log = await asyncio.to_thread(
-                    server_instance.scan_log_for_players
-                )
+            players_in_log = await server_instance.scan_log_for_players()
 
             if players_in_log:
                 all_discovered_from_logs.extend(players_in_log)

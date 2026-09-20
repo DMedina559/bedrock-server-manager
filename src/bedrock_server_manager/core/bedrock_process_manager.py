@@ -258,12 +258,7 @@ class BedrockProcessManager:
                         previous_players = getattr(server, "players", []).copy()
                         server.player_count = status.players.online
 
-                        if hasattr(server, "async_update_online_players"):
-                            server.players = await server.async_update_online_players()
-                        else:
-                            server.players = await asyncio.to_thread(
-                                server.update_online_players
-                            )
+                        server.players = await server.update_online_players()
 
                         if (
                             server.player_count != previous_player_count
@@ -351,14 +346,9 @@ class BedrockProcessManager:
                             self.logger.info(
                                 f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
                             )
-                            if hasattr(server, "async_scan_log_for_players"):
-                                players = await server.async_scan_log_for_players(
-                                    incremental=True
-                                )
-                            else:
-                                players = await asyncio.to_thread(
-                                    server.scan_log_for_players, incremental=True
-                                )
+                            players = await server.scan_log_for_players(
+                                incremental=True
+                            )
 
                             if players:
                                 await save_player_data(
