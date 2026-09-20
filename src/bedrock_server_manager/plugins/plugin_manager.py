@@ -1112,15 +1112,16 @@ class PluginManager:
 
         Executes listeners registered via `@app_event` for this specific event
         and the wildcard `*` event. It also includes backwards compatibility for
-        legacy plugins.
+        legacy plugins that override `before_...`, `after_...` or `on_any_event`
+        methods directly.
 
         Args:
             target_plugin (:class:`.PluginBase`): The plugin instance to dispatch to.
             event_name (str): The name of the event.
-            *args (Any): Positional arguments to pass.
-            **kwargs (Any): Keyword arguments to pass.
+            *args (Any): Positional arguments to pass to the event handlers.
+            **kwargs (Any): Keyword arguments to pass to the event handlers.
         """
-        # 1. Execute @app_event listeners
+        # 1. Execute @app_event listeners for this event name and wildcard
         for event_name_to_check in (event_name, "*"):
             listeners = self._event_listeners.get(event_name_to_check, [])
             for listener_plugin_name, callback in listeners:
@@ -1130,8 +1131,8 @@ class PluginManager:
                     getattr(target_plugin, "api", None), "_plugin_name", None
                 ):
                     logger.debug(
-                        f"Async dispatching event '{event_name}' to plugin '{target_plugin.name}' "
-                        f"(callback: '{callback.__name__}')."
+                        f"Dispatching event '{event_name}' to plugin '{target_plugin.name}' "
+                        f"(callback: '{callback.__name__}'). Args: {args}, Kwargs: {kwargs}"
                     )
                     try:
                         if inspect.iscoroutinefunction(callback):
@@ -1140,11 +1141,11 @@ class PluginManager:
                             callback(*args, **kwargs)
                     except Exception as e:
                         logger.error(
-                            f"Error in plugin '{target_plugin.name}' handling async event '{event_name}': {e}",
+                            f"Error in plugin '{target_plugin.name}' handling event '{event_name}': {e}",
                             exc_info=True,
                         )
 
-        # 2. Legacy backwards compatibility
+        # 2. Legacy backwards compatibility: check if method exists directly on plugin
         plugin_class = type(target_plugin)
         if hasattr(target_plugin, event_name):
             class_method = getattr(plugin_class, event_name, None)
@@ -1153,7 +1154,7 @@ class PluginManager:
             if class_method is not base_method:
                 handler_method = getattr(target_plugin, event_name)
                 warnings.warn(
-                    f"Plugin '{target_plugin.name}' is using legacy async method overriding for event '{event_name}'. "
+                    f"Plugin '{target_plugin.name}' is using legacy method overriding for event '{event_name}'. "
                     f"Please migrate to the @app_event decorator.",
                     DeprecationWarning,
                     stacklevel=2,
@@ -1166,13 +1167,14 @@ class PluginManager:
                         handler_method(*args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error in legacy async event '{event_name}' on '{target_plugin.name}': {e}",
+                        f"Error in legacy event handler '{event_name}' on '{target_plugin.name}': {e}",
                         exc_info=True,
                     )
 
+        # Legacy backwards compatibility for on_any_event
         if hasattr(target_plugin, "on_any_event"):
             warnings.warn(
-                f"Plugin '{target_plugin.name}' is using legacy async 'on_any_event' method. "
+                f"Plugin '{target_plugin.name}' is using legacy 'on_any_event' method. "
                 f"Please migrate to the @app_event('*') decorator.",
                 DeprecationWarning,
                 stacklevel=2,
@@ -1185,7 +1187,7 @@ class PluginManager:
                     target_plugin.on_any_event(event_name, *args, **kwargs)
             except Exception as e:
                 logger.error(
-                    f"Error in legacy async on_any_event on '{target_plugin.name}': {e}",
+                    f"Error in legacy on_any_event on '{target_plugin.name}': {e}",
                     exc_info=True,
                 )
 
@@ -1383,6 +1385,18 @@ class PluginManager:
         logger.debug(f"GUARD_VARIABLE not set. Proceeding to trigger event '{event}'.")
         self.trigger_event(event, *args, **kwargs)
 
+    async def trigger_guarded_event_async(self, event: str, *args, **kwargs):
+        """Asynchronously triggers a standard application event only if not in a guarded child process."""
+        if os.environ.get(GUARD_VARIABLE):
+            logger.debug(
+                f"Skipping guarded event '{event}' because GUARD_VARIABLE ('{GUARD_VARIABLE}') is set in environment."
+            )
+            return
+        logger.debug(
+            f"GUARD_VARIABLE not set. Proceeding to async trigger event '{event}'."
+        )
+        await self.trigger_event_async(event, *args, **kwargs)
+
     def start_plugin_tasks(self):
         """Starts background tasks decorated with @task_loop for all loaded plugins."""
         import asyncio
@@ -1534,142 +1548,379 @@ class PluginManager:
         self.plugin_config = current_config
         await self._async_save_config()
 
-    async def async_load_plugins(self) -> None:
-        """Asynchronously discovers, validates, and loads all enabled plugins."""
-        import asyncio
+    async def async_load_plugins(self) -> None:  # noqa: C901
+        """Discovers, validates, and loads all enabled plugins.
 
-        # Synchronize configuration natively asynchronously if possible
+        This method orchestrates the entire plugin loading process:
+
+            1.  Calls :meth:`._synchronize_config_with_disk` to ensure the plugin
+                configuration (``self.plugin_config``) is up-to-date with files
+                on disk and that all plugin entries are valid.
+            2.  Clears any previously loaded plugin instances from ``self.plugins``.
+                This is important for supporting the :meth:`.reload` functionality.
+            3.  Iterates through the synchronized ``self.plugin_config``:
+
+                a.  If a plugin is marked as ``enabled`` in its configuration and has
+                    a valid ``version``:
+
+                    i.  Finds the plugin's file path using :meth:`._find_plugin_path`.
+
+                    ii. Loads the plugin class from the file using
+                        :meth:`._get_plugin_class_from_path`.
+
+                    iii.If class loading is successful, instantiates the plugin class.
+                        The instance is provided with its name, a
+                        :class:`.api_bridge.AppAPI` instance (for core interaction),
+                        and a dedicated :class:`logging.Logger` instance.
+
+                    iv. Appends the new plugin instance to the ``self.plugins`` list.
+
+                    v.  Dispatches the ``on_load`` event to the newly loaded plugin
+                        instance via :meth:`.dispatch_event`.
+
+        Errors during the loading or instantiation of individual plugins are logged,
+        and the process continues with other plugins.
+
+        """
+        logger.info("Starting plugin loading process...")
         if hasattr(self.app_context.db, "async_session_manager"):
             await self._async_synchronize_config_with_disk()
         else:
+            import asyncio
+
             await asyncio.to_thread(self._synchronize_config_with_disk)
 
-        # Clear existing
-        self.plugins.clear()
-
-        # Load the configuration natively asynchronously
-        if hasattr(self.app_context.db, "async_session_manager"):
-            enabled_plugins_data = {
-                name: data
-                for name, data in (await self._async_load_config()).items()
-                if data.get("enabled", False)
-            }
-        else:
-            enabled_plugins_data = {
-                name: data
-                for name, data in self._load_config().items()
-                if data.get("enabled", False)
-            }
-
-        # The class discovery from files is fundamentally synchronous (importlib). We thread it.
-        def _get_classes_and_sort():
-            plugin_classes = {}
-            for plugin_name in enabled_plugins_data:
-                plugin_path = self._find_plugin_path(plugin_name)
-                if plugin_path:
-                    plugin_class = self._get_plugin_class_from_path(
-                        plugin_path, plugin_name
-                    )
-                    if plugin_class:
-                        plugin_classes[plugin_name] = plugin_class
-
-            from collections import deque
-
-            def topological_sort(classes):
-                in_degree = {name: 0 for name in classes}
-                graph = {name: [] for name in classes}
-                for name, cls in classes.items():
-                    deps = getattr(cls, "dependencies", [])
-                    for dep in deps:
-                        if dep in classes:
-                            graph[dep].append(name)
-                            in_degree[name] += 1
-                queue = deque([name for name in classes if in_degree[name] == 0])
-                sorted_plugins = []
-                while queue:
-                    node = queue.popleft()
-                    sorted_plugins.append(node)
-                    for neighbor in graph[node]:
-                        in_degree[neighbor] -= 1
-                        if in_degree[neighbor] == 0:
-                            queue.append(neighbor)
-                if len(sorted_plugins) != len(classes):
-                    logger.error(
-                        "Circular dependency detected in plugins. Load order will be arbitrary."
-                    )
-                    return list(classes.keys())
-                return sorted_plugins
-
-            sorted_plugin_names = topological_sort(plugin_classes)
-            return sorted_plugin_names, plugin_classes
-
-        sorted_plugin_names, plugin_classes = await asyncio.to_thread(
-            _get_classes_and_sort
+        logger.info(
+            f"Attempting to load plugins from configured directories: {[str(d) for d in self.plugin_dirs]}"
         )
 
-        for plugin_name in sorted_plugin_names:
-            plugin_class = plugin_classes.get(plugin_name)
-            if plugin_class:
-                missing_deps = [
-                    dep
-                    for dep in getattr(plugin_class, "dependencies", [])
-                    if dep not in [p.name for p in self.plugins]
-                ]
-                if missing_deps:
+        if self.plugins:
+            logger.info(
+                f"Clearing {len(self.plugins)} previously loaded plugin instances before attempting new load."
+            )
+            self.plugins.clear()
+
+        # Clear any previously collected commands and routers
+        self.plugin_fastapi_routers.clear()
+        logger.debug("Cleared previously collected plugin FastAPI routers.")
+        self.plugin_static_mounts.clear()
+        logger.debug("Cleared previously collected plugin static mounts.")
+
+        loaded_plugin_count = 0
+
+        # 1. Collect all enabled plugins and their classes
+        def _get_classes_and_sort():
+            enabled_plugins_data: Dict[str, Type[PluginBase]] = {}
+            for plugin_name, config_data in self.plugin_config.items():
+                if not isinstance(config_data, dict):
+                    logger.error(
+                        f"Plugin '{plugin_name}' has malformed config data (not a dict). Skipping. Data: {config_data}"
+                    )
+                    continue
+
+                if not config_data.get("enabled"):
+                    logger.debug(
+                        f"Plugin '{plugin_name}' is disabled in configuration. Skipping load."
+                    )
+                    continue
+
+                plugin_version = config_data.get("version")
+                if not plugin_version or plugin_version == "N/A":
                     logger.warning(
-                        f"Skipping plugin '{plugin_name}' due to missing dependencies: {missing_deps}"
+                        f"Plugin '{plugin_name}' is marked enabled but has a missing or invalid version ('{plugin_version}') "
+                        "in its configuration. Skipping load."
                     )
                     continue
 
                 logger.debug(
+                    f"Attempting to prepare enabled plugin: '{plugin_name}' v{plugin_version}."
+                )
+                path = self._find_plugin_path(plugin_name)
+                if not path:
+                    logger.warning(
+                        f"Enabled plugin '{plugin_name}' v{plugin_version} path not found on disk. Skipping load."
+                    )
+                    continue
+
+                plugin_class = self._get_plugin_class_from_path(
+                    path, plugin_name_override=plugin_name
+                )
+                if plugin_class:
+                    enabled_plugins_data[plugin_name] = plugin_class
+
+            # 2. Perform Topological Sort based on dependencies
+            def topological_sort(
+                plugin_classes: Dict[str, Type[PluginBase]],
+            ) -> List[str]:
+                visited = set()
+                temp_mark = set()
+                sorted_plugins = []
+
+                def visit(node: str):
+                    if node in temp_mark:
+                        logger.error(
+                            f"Circular dependency detected involving plugin '{node}'. It will not be loaded."
+                        )
+                        return False
+                    if node not in visited:
+                        temp_mark.add(node)
+                        p_class = plugin_classes.get(node)
+                        if p_class:
+                            dependencies = getattr(p_class, "dependencies", [])
+                            for dep in dependencies:
+                                if dep not in plugin_classes:
+                                    logger.error(
+                                        f"Plugin '{node}' requires missing or disabled dependency '{dep}'. It will not be loaded."
+                                    )
+                                    return False
+                                if visit(dep) is False:
+                                    return False
+
+                            optional_deps = getattr(
+                                p_class, "optional_dependencies", []
+                            )
+                            for opt_dep in optional_deps:
+                                if opt_dep in plugin_classes:
+                                    if visit(opt_dep) is False:
+                                        return False
+
+                        temp_mark.remove(node)
+                        visited.add(node)
+                        if node in plugin_classes:
+                            sorted_plugins.append(node)
+                    return True
+
+                for p_name in list(plugin_classes.keys()):
+                    if p_name not in visited:
+                        if visit(p_name) is False:
+                            plugin_classes.pop(p_name, None)
+
+                return sorted_plugins
+
+            sorted_plugin_names = topological_sort(enabled_plugins_data)
+            return sorted_plugin_names, enabled_plugins_data
+
+        import asyncio
+
+        sorted_plugin_names, enabled_plugins_data = await asyncio.to_thread(
+            _get_classes_and_sort
+        )
+
+        # 3. Instantiate and load plugins in the sorted order
+        for plugin_name in sorted_plugin_names:
+            plugin_class = enabled_plugins_data[plugin_name]
+            config_data = self.plugin_config[plugin_name]
+            plugin_version = config_data.get("version")
+            try:
+                plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
+                api_instance = create_app_api(
+                    plugin_name=plugin_name,
+                    app_context=self.app_context,
+                )
+                logger.debug(
                     f"Instantiating plugin class '{plugin_class.__name__}' for '{plugin_name}'."
                 )
-                import logging
+                instance = plugin_class(plugin_name, api_instance, plugin_logger)
+                self.plugins.append(instance)
+                loaded_plugin_count += 1
+                logger.info(
+                    f"Successfully loaded and initialized plugin: '{plugin_name}' v{plugin_version}."
+                )
 
+                # Register methods decorated with @app_event
                 try:
-                    plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
-                    plugin_instance = plugin_class(
-                        name=plugin_name,
-                        api=self.app_context.api,
-                        logger=plugin_logger,
-                    )
-                    self.plugins.append(plugin_instance)
-
-                    await self.dispatch_event_async(plugin_instance, "on_load")
-
-                except Exception as e:
+                    for method_name, method in inspect.getmembers(
+                        instance, predicate=inspect.ismethod
+                    ):
+                        event_name = getattr(method, "_app_event_name", None)
+                        if event_name:
+                            logger.debug(
+                                f"Auto-registering listener for event '{event_name}' on plugin '{plugin_name}'."
+                            )
+                            instance.api.listen_for_event(event_name, method)
+                except Exception as e_event:
                     logger.error(
-                        f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
+                        f"Error auto-registering @app_event listeners for plugin '{plugin_name}': {e_event}",
                         exc_info=True,
                     )
 
-    async def async_unload_plugins(self) -> None:
-        """Asynchronously unloads all currently active plugins."""
-        logger.info("Unloading all plugins asynchronously...")
+                logger.debug(f"Dispatching 'on_load' event to plugin '{plugin_name}'.")
+                await self.dispatch_event_async(instance, "on_load")
 
-        for plugin in self.plugins:
-            try:
-                await self.dispatch_event_async(plugin, "on_unload")
+                # Collect FastAPI routers
+                try:
+                    if hasattr(instance, "get_fastapi_routers") and callable(
+                        getattr(instance, "get_fastapi_routers")
+                    ):
+                        routers = instance.get_fastapi_routers()
+                        if isinstance(routers, list) and routers:
+                            self.plugin_fastapi_routers.extend(routers)
+                            logger.info(
+                                f"Collected {len(routers)} FastAPI router(s) from plugin '{plugin_name}'."
+                            )
+                            logger.warning(
+                                f"Plugin '{plugin_name}' added {len(routers)} FastAPI router(s). "
+                                "Ensure you trust this plugin as it can expose new web endpoints."
+                            )
+                        elif routers:  # Not a list or empty
+                            logger.warning(
+                                f"Plugin '{plugin_name}' get_fastapi_routers() did not return a list or returned an empty list."
+                            )
+                except Exception as e_api:
+                    logger.error(
+                        f"Error collecting FastAPI routers from plugin '{plugin_name}': {e_api}",
+                        exc_info=True,
+                    )
+
+                # Collect static mounts
+                try:
+                    if hasattr(instance, "get_static_mounts") and callable(
+                        getattr(instance, "get_static_mounts")
+                    ):
+                        static_mounts_configs = instance.get_static_mounts()
+                        if (
+                            isinstance(static_mounts_configs, list)
+                            and static_mounts_configs
+                        ):
+                            valid_mounts = []
+                            for mount_config in static_mounts_configs:
+                                if (
+                                    isinstance(mount_config, tuple)
+                                    and len(mount_config) == 3
+                                    and isinstance(mount_config[0], str)  # mount_path
+                                    and isinstance(mount_config[1], Path)
+                                    and mount_config[1].is_dir()  # dir_path
+                                    and isinstance(mount_config[2], str)
+                                ):  # name
+                                    valid_mounts.append(mount_config)
+                                else:
+                                    logger.warning(
+                                        f"Plugin '{plugin_name}' provided an invalid static mount configuration: {mount_config}. Expected (str, Path, str) with valid directory."
+                                    )
+
+                            self.plugin_static_mounts.extend(valid_mounts)
+                            if valid_mounts:
+                                logger.info(
+                                    f"Collected {len(valid_mounts)} static mount(s) from plugin '{plugin_name}'."
+                                )
+                                logger.warning(
+                                    f"Plugin '{plugin_name}' added {len(valid_mounts)} static file director(y/ies). Ensure these paths are safe and intended."
+                                )
+                        elif static_mounts_configs:  # Not a list or empty
+                            logger.warning(
+                                f"Plugin '{plugin_name}' get_static_mounts() did not return a list or returned an empty list."
+                            )
+                except Exception as e_static:
+                    logger.error(
+                        f"Error collecting static mounts from plugin '{plugin_name}': {e_static}",
+                        exc_info=True,
+                    )
+
             except Exception as e:
                 logger.error(
-                    f"Error during 'on_unload' for plugin '{getattr(plugin, 'name', 'unknown')}': {e}",
+                    f"Failed to instantiate or initialize plugin '{plugin_name}' from class '{plugin_class.__name__}': {e}",
                     exc_info=True,
                 )
+        logger.info(
+            f"Plugin loading process complete. Loaded {loaded_plugin_count} plugins. "
+            f"{len(self.plugin_fastapi_routers)} total FastAPI router(s), "
+            f"{len(self.plugin_static_mounts)} total static mounts."
+        )
 
-        self.plugins.clear()
+    async def async_unload_plugins(self) -> None:
+        """Unloads all currently active plugins.
 
-        if hasattr(self, "plugin_tasks"):
-            for plugin_name, tasks in list(self.plugin_tasks.items()):
-                for task in tasks:
-                    task.cancel()
-            self.plugin_tasks.clear()
+        This method provides a way to refresh the plugin system without restarting
+        the entire application. It involves:
 
-        logger.info("All plugins unloaded asynchronously.")
+            1.  Dispatching the ``on_unload`` event to all currently loaded plugins
+                (via :meth:`.dispatch_event`).
+            2.  Clearing all registered custom event listeners from
+                ``self._event_listeners`` (as the plugins that registered
+                them are being unloaded).
+        """
+        logger.info("--- Unloading all plugins ---")
+
+        if self.plugins:
+            logger.info(f"Unloading {len(self.plugins)} currently active plugins...")
+            for plugin_instance in list(self.plugins):
+                logger.debug(
+                    f"Dispatching 'on_unload' event to plugin '{plugin_instance.name}'."
+                )
+                await self.dispatch_event_async(plugin_instance, "on_unload")
+
+                # Cancel plugin tasks
+                if plugin_instance.name in self.plugin_tasks:
+                    tasks = self.plugin_tasks.pop(plugin_instance.name)
+                    logger.debug(
+                        f"Cancelling {len(tasks)} tasks for plugin '{plugin_instance.name}'."
+                    )
+                    for task in tasks:
+                        task.cancel()
+
+            logger.info(
+                f"Finished dispatching 'on_unload' to {len(self.plugins)} plugins."
+            )
+            self.plugins.clear()
+        else:
+            logger.info("No plugins were active to unload.")
+
+        if self._event_listeners:
+            logger.info(
+                f"Clearing {sum(len(v) for v in self._event_listeners.values())} custom plugin event listeners from {len(self._event_listeners)} event types."
+            )
+            self._event_listeners.clear()
+        else:
+            logger.info("No custom plugin event listeners to clear.")
 
     async def async_reload(self) -> None:
-        """Asynchronously reloads the plugin manager."""
-        logger.info("Reloading PluginManager asynchronously...")
-        await self.async_unload_plugins()
+        """Unloads all currently active plugins and then reloads all plugins.
+
+        This method provides a way to refresh the plugin system without restarting
+        the entire application. It involves:
+
+            1.  Dispatching the ``on_unload`` event to all currently loaded plugins
+                (via :meth:`.dispatch_event`).
+            2.  Clearing all registered custom event listeners from
+                ``self._event_listeners`` (as the plugins that registered
+                them are being unloaded).
+            3.  Calling :meth:`.load_plugins` to re-run the discovery, synchronization,
+                and loading process for all plugins based on the current disk state
+                and ``plugins.json`` configuration.
+
+        """
+        logger.info("--- Starting Full Plugin Reload Process ---")
+
+        if self.plugins:
+            logger.info(f"Unloading {len(self.plugins)} currently active plugins...")
+            for plugin_instance in list(self.plugins):
+                logger.debug(
+                    f"Dispatching 'on_unload' event to plugin '{plugin_instance.name}'."
+                )
+                await self.dispatch_event_async(plugin_instance, "on_unload")
+            logger.info(
+                f"Finished dispatching 'on_unload' to {len(self.plugins)} plugins."
+            )
+        else:
+            logger.info("No plugins were active to unload.")
+
+        if self._event_listeners:
+            logger.info(
+                f"Clearing {sum(len(v) for v in self._event_listeners.values())} custom plugin event listeners from {len(self._event_listeners)} event types."
+            )
+            self._event_listeners.clear()
+        else:
+            logger.info("No custom plugin event listeners to clear.")
+
+        # Also clear collected commands and routers on full reload
+        self.plugin_fastapi_routers.clear()
+        logger.debug("Cleared collected plugin FastAPI routers during reload.")
+        self.plugin_static_mounts.clear()
+        logger.debug("Cleared collected plugin static mounts during reload.")
+
+        logger.info(
+            "Re-running plugin discovery, synchronization, and loading process..."
+        )
         if hasattr(self.app_context.db, "async_session_manager"):
             self.plugin_config = await self._async_load_config()
         else:
