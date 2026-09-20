@@ -107,9 +107,8 @@ async def test_write_error_status_failure(app_context: AppContext):
             await manager.write_error_status("test_server")
 
 
-@patch("bedrock_server_manager.core.bedrock_process_manager.mc.lookup")
 async def test_monitor_servers_crashed_server_detected(
-    mock_lookup, app_context: AppContext, real_bedrock_server
+    app_context: AppContext, real_bedrock_server
 ):
     """Test monitoring detects a crashed server and attempts restart."""
     manager = BedrockProcessManager(app_context)
@@ -162,6 +161,3 @@ async def test_monitor_servers_crashed_server_detected(
             # The server should have its failure count increased and a restart attempted
             assert server.failure_count == 1
             mock_try_restart.assert_awaited_once_with(server)
-
-            # Status lookup shouldn't be called if it's dead
-            mock_lookup.assert_not_called()

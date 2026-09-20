@@ -10,10 +10,7 @@ It also handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
-import struct
 from typing import TYPE_CHECKING, Any, Dict, Optional
-
-from mcstatus import BedrockServer as mc
 
 from ..context import AppContext
 from ..error import BSMError, FileOperationError
@@ -246,19 +243,11 @@ class BedrockProcessManager:
                         await self.remove_server(server_name)
                 elif self.player_scan_counter >= player_log_monitoring_interval_sec:
                     try:
-                        # Fetch server port
-                        port = await server.get_server_property("server-port")
-
-                        bedrock_server = await asyncio.to_thread(
-                            mc.lookup, f"127.0.0.1:{port}"
-                        )
-                        status = await asyncio.to_thread(bedrock_server.status)
-
                         previous_player_count = getattr(server, "player_count", 0)
                         previous_players = getattr(server, "players", []).copy()
-                        server.player_count = status.players.online
 
                         server.players = await server.update_online_players()
+                        server.player_count = len(server.players)
 
                         if (
                             server.player_count != previous_player_count
@@ -342,9 +331,9 @@ class BedrockProcessManager:
                                         f"Could not trigger get_server_bans_api: {e}"
                                     )
 
-                        if status.players.online > 0:
+                        if server.players:
                             self.logger.info(
-                                f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
+                                f"Server '{server.server_name}' has {server.player_count} players online. Scanning for players."
                             )
                             players = await server.scan_log_for_players(
                                 incremental=True
@@ -355,20 +344,11 @@ class BedrockProcessManager:
                                     self.settings.db.async_session_manager(),
                                     players,
                                 )
-                    except struct.error:
-                        server.player_count = 0
-                        self.logger.debug(
-                            f"Server '{server.server_name}' returned invalid status packet (likely starting up)."
-                        )
-                    except TimeoutError:
-                        server.player_count = 0
-                        self.logger.debug(
-                            f"Server '{server.server_name}' timed out during ping."
-                        )
                     except Exception as e:
                         server.player_count = 0
+                        server.players = []
                         self.logger.error(
-                            f"Error pinging server '{server.server_name}': {e}"
+                            f"Error processing players for server '{server.server_name}': {e}"
                         )
             if self.player_scan_counter >= player_log_monitoring_interval_sec:
                 self.player_scan_counter = 0
