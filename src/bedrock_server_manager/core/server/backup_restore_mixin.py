@@ -398,14 +398,6 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 :class:`~.core.server.state_mixin.ServerStateMixin` or
                 :class:`~.core.server.world_mixin.ServerWorldMixin`).
         """
-        if not hasattr(self, "get_world_name") or not hasattr(self, "export_world"):
-            self.logger.error(
-                "Missing required methods (get_world_name or export_world) for world backup."
-            )
-            raise AttributeError(
-                "Required world management methods are missing from this server instance."
-            )
-
         active_world_name: str = await self.get_world_name()  # type: ignore
         active_world_dir_path = (
             os.path.join(  # For logging/validation, export_world uses world_dir_name
@@ -799,11 +791,6 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         # Restore World
         try:
-            if not hasattr(self, "get_world_name") or not hasattr(self, "import_world"):
-                raise AttributeError(
-                    "Missing get_world_name or import_world method for world restore."
-                )
-
             world_backup_files = await self._find_and_sort_backups(
                 os.path.join(server_bck_dir, "*.mcworld")
             )  # Newest first

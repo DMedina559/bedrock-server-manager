@@ -255,67 +255,52 @@ class BedrockProcessManager:
                                 f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
                             )
                             # Call the API bridge to handle events and websockets properly
-                            if hasattr(self.app_context, "api"):
-                                try:
-                                    if hasattr(
-                                        self.app_context.api,
-                                        "update_server_player_stats_api",
-                                    ):
-                                        await self.app_context.api.update_server_player_stats_api(
-                                            server.server_name,
-                                            server.player_count,
-                                            server.players,
-                                        )
-                                    else:
-                                        self.logger.warning(
-                                            "API bridge does not have 'update_server_player_stats_api' method."
-                                        )
-
-                                except AttributeError as e:
-                                    self.logger.warning(
-                                        f"Could not trigger player stats update API: {e}"
-                                    )
+                            try:
+                                await self.app_context.api.update_server_player_stats_api(
+                                    server.server_name,
+                                    server.player_count,
+                                    server.players,
+                                )
+                            except AttributeError as e:
+                                self.logger.warning(
+                                    f"Could not trigger player stats update API: {e}"
+                                )
 
                         # Enforce bans
                         if server.players:
-                            if hasattr(self.app_context, "api"):
-                                try:
-                                    if hasattr(
-                                        self.app_context.api,
-                                        "get_server_bans_api",
-                                    ):
-                                        ban_res = await self.app_context.api.get_server_bans_api(
-                                            server_name=server.server_name,
-                                        )
-
-                                    if ban_res.get("status") == "success":
-                                        bans = ban_res.get("bans", [])
-                                        banned_xuids = {b["xuid"]: b for b in bans}
-                                        for p in server.players:
-                                            xuid = p.get("uuid")
-                                            if xuid in banned_xuids:
-                                                reason = (
-                                                    banned_xuids[xuid].get("reason")
-                                                    or "You have been banned from this server."
-                                                )
-                                                p_name = p.get("name", "Unknown")
-                                                self.logger.warning(
-                                                    f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
-                                                )
-                                                try:
-                                                    if hasattr(server, "send_command"):
-                                                        await server.send_command(
-                                                            f'kick "{p_name}" {reason}'
-                                                        )
-
-                                                except Exception as kick_err:
-                                                    self.logger.error(
-                                                        f"Failed to kick banned player '{p_name}': {kick_err}"
-                                                    )
-                                except AttributeError as e:
-                                    self.logger.warning(
-                                        f"Could not trigger get_server_bans_api: {e}"
+                            try:
+                                ban_res = (
+                                    await self.app_context.api.get_server_bans_api(
+                                        server_name=server.server_name,
                                     )
+                                )
+
+                                if ban_res.get("status") == "success":
+                                    bans = ban_res.get("bans", [])
+                                    banned_xuids = {b["xuid"]: b for b in bans}
+                                    for p in server.players:
+                                        xuid = p.get("uuid")
+                                        if xuid in banned_xuids:
+                                            reason = (
+                                                banned_xuids[xuid].get("reason")
+                                                or "You have been banned from this server."
+                                            )
+                                            p_name = p.get("name", "Unknown")
+                                            self.logger.warning(
+                                                f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
+                                            )
+                                            try:
+                                                await server.send_command(
+                                                    f'kick "{p_name}" {reason}'
+                                                )
+                                            except Exception as kick_err:
+                                                self.logger.error(
+                                                    f"Failed to kick banned player '{p_name}': {kick_err}"
+                                                )
+                            except AttributeError as e:
+                                self.logger.warning(
+                                    f"Could not trigger get_server_bans_api: {e}"
+                                )
 
                         if server.players:
                             self.logger.info(

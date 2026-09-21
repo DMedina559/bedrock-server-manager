@@ -461,18 +461,13 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
 
-        if (
-            hasattr(self, "app_context")
-            and self.app_context
-            and hasattr(self.app_context, "api")
-        ):
-            try:
-                await self.app_context.api.set_server_status_api(
-                    self.server_name, status_string
-                )
-                return
-            except AttributeError:
-                pass
+        try:
+            await self.app_context.api.set_server_status_api(
+                self.server_name, status_string
+            )
+            return
+        except AttributeError:
+            pass
 
         await self._manage_json_config(
             key="server_info.status", operation="write", value=status_string
@@ -662,11 +657,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
         actual_is_running = False
         try:
-            if not hasattr(self, "is_running"):
-                self.logger.warning(
-                    "is_running method not found. Falling back to stored config status."
-                )
-                return await self.get_status_from_config()
             actual_is_running = await self.is_running()  # type: ignore
         except Exception as e_is_running_check:
             self.logger.error(

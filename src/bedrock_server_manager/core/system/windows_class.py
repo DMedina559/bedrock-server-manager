@@ -74,10 +74,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         self.logger.info(f"Web Service '{self._svc_name_}': Stop request received.")
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         try:
-            if (
-                hasattr(self.app_context, "_web_server")
-                and self.app_context._web_server is not None
-            ):
+            if getattr(self.app_context, "_web_server", None) is not None:
                 self.logger.info("Instructing Uvicorn to exit gracefully...")
                 self.app_context._web_server.should_exit = True
             else:

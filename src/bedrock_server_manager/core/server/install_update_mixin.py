@@ -374,21 +374,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             f"Server '{self.server_name}': Initiating async install/update to version spec '{target_version_specification}'. Force reinstall: {force_reinstall}"
         )
 
-        required_methods = [
-            "is_installed",
-            "is_running",
-            "stop",
-            "set_status_in_config",
-            "set_target_version",
-            "set_version",
-            "set_filesystem_permissions",
-        ]
-        for method_name in required_methods:
-            if not hasattr(self, method_name):
-                raise AttributeError(
-                    f"ServerInstallUpdateMixin on '{self.server_name}' requires method '{method_name}' which is missing. Ensure all necessary mixins are included."
-                )
-
         is_currently_installed: bool = await self.is_installed()  # type: ignore
 
         if not force_reinstall and is_currently_installed:

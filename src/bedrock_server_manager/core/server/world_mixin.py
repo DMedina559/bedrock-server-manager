@@ -108,15 +108,6 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             ConfigParseError: If ``level-name`` is missing from ``server.properties``
                 or the file is malformed.
         """
-        if not hasattr(self, "get_world_name"):
-            # This indicates a programming error / incorrect mixin composition.
-            self.logger.error(
-                "Internal error: get_world_name method is missing from this Server instance."
-            )
-            raise AttributeError(
-                "The 'get_world_name' method, typically from ServerStateMixin, is required but not found."
-            )
-
         active_world_name: str = await self.get_world_name()  # type: ignore
         if not active_world_name or not isinstance(active_world_name, str):
             # get_world_name should ideally raise if it can't determine, but double check.
@@ -400,12 +391,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             raise AppFileNotFoundError(mcworld_backup_file_path, ".mcworld backup file")
 
         try:
-            if hasattr(self, "get_world_name"):
-                active_world_dir_name = str(await getattr(self, "get_world_name")())
-            else:
-                active_world_dir_name = str(
-                    await asyncio.to_thread(getattr(self, "get_world_name", lambda: ""))
-                )
+            active_world_dir_name = str(await self.get_world_name())
 
             self.logger.info(
                 f"Target active world name for server '{self.server_name}' is '{active_world_dir_name}'."

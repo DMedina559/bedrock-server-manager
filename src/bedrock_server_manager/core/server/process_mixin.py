@@ -172,10 +172,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     async def start(self) -> None:
         """Starts the Bedrock server process asynchronously."""
-        if hasattr(self, "is_installed"):
-            is_inst = await self.is_installed()  # type: ignore
-        else:
-            is_inst = False
+        is_inst = await self.is_installed()  # type: ignore
 
         if not is_inst:
             raise ServerStartError(
@@ -190,10 +187,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             raise ServerStartError(f"Server '{self.server_name}' is already running.")
 
         try:
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("STARTING")  # type: ignore
-            else:
-                await asyncio.to_thread(self.set_status_in_config, "STARTING")  # type: ignore
+            await self.set_status_in_config("STARTING")  # type: ignore
         except Exception as e_status:
             self.logger.warning(
                 f"Failed to set status to STARTING for '{self.server_name}': {e_status}"
@@ -239,26 +233,17 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             self.intentionally_stopped = False
             self.start_time = time.time()
 
-            if hasattr(self, "players"):
-                setattr(self, "players", [])
-            if hasattr(self, "_log_file_cursor"):
-                setattr(self, "_log_file_cursor", 0)
-            if hasattr(self, "_scan_log_cursor"):
-                setattr(self, "_scan_log_cursor", 0)
+            setattr(self, "players", [])
+            setattr(self, "_log_file_cursor", 0)
+            setattr(self, "_scan_log_cursor", 0)
 
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("RUNNING")  # type: ignore
-            else:
-                await asyncio.to_thread(self.set_status_in_config, "RUNNING")  # type: ignore
+            await self.set_status_in_config("RUNNING")  # type: ignore
 
             self.logger.info(
                 f"Server '{self.server_name}' has been started with PID {self._process.pid}."
             )
         except FileNotFoundError:
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("ERROR")  # type: ignore
-            else:
-                await asyncio.to_thread(self.set_status_in_config, "ERROR")  # type: ignore
+            await self.set_status_in_config("ERROR")  # type: ignore
             self.logger.error(
                 f"Executable not found for server '{self.server_name}' at path '{self.bedrock_executable_path}'."
             )
@@ -266,10 +251,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"Executable not found for server '{self.server_name}'."
             )
         except Exception as e:
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("ERROR")  # type: ignore
-            else:
-                await asyncio.to_thread(self.set_status_in_config, "ERROR")  # type: ignore
+            await self.set_status_in_config("ERROR")  # type: ignore
             self.logger.error(
                 f"Failed to start server '{self.server_name}': {e}", exc_info=True
             )
@@ -283,15 +265,14 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             self.logger.info(
                 f"Attempted to stop server '{self.server_name}', but it is not currently running."
             )
-            if hasattr(self, "get_status_from_config"):
-                status = await self.get_status_from_config()  # type: ignore
-                if status != "STOPPED":
-                    try:
-                        await self.set_status_in_config("STOPPED")  # type: ignore
-                    except Exception as e_stat:
-                        self.logger.warning(
-                            f"Failed to set status to STOPPED for non-running server '{self.server_name}': {e_stat}"
-                        )
+            status = await self.get_status_from_config()  # type: ignore
+            if status != "STOPPED":
+                try:
+                    await self.set_status_in_config("STOPPED")  # type: ignore
+                except Exception as e_stat:
+                    self.logger.warning(
+                        f"Failed to reset status to STOPPED for '{self.server_name}': {e_stat}"
+                    )
             return
 
         if self._process is None:
@@ -308,8 +289,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 )
 
         try:
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("STOPPING")  # type: ignore
+            await self.set_status_in_config("STOPPING")  # type: ignore
         except Exception as e_stat:
             self.logger.warning(
                 f"Failed to set status to STOPPING for '{self.server_name}': {e_stat}"
@@ -392,17 +372,13 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         pid_file_path = self.get_pid_file_path()
         await system_process.async_remove_pid_file_if_exists(pid_file_path)
 
-        if hasattr(self, "set_status_in_config"):
-            await self.set_status_in_config("STOPPED")  # type: ignore
+        await self.set_status_in_config("STOPPED")  # type: ignore
 
-        if hasattr(self, "player_count"):
-            setattr(self, "player_count", 0)
-            setattr(self, "players", [])
+        setattr(self, "player_count", 0)
+        setattr(self, "players", [])
 
-        if hasattr(self, "_log_file_cursor"):
-            setattr(self, "_log_file_cursor", 0)
-        if hasattr(self, "_scan_log_cursor"):
-            setattr(self, "_scan_log_cursor", 0)
+        setattr(self, "_log_file_cursor", 0)
+        setattr(self, "_scan_log_cursor", 0)
 
         self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 

@@ -150,7 +150,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             FileOperationError: If an OS-level error occurs while trying to read
                 the log file (e.g., permission issues).
         """
-        if not hasattr(self, "_scan_log_cursor"):
+        if not getattr(self, "_scan_log_cursor", None):
             self._scan_log_cursor = 0
 
         log_file = self.server_log_path
@@ -203,10 +203,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             List[Dict[str, str]]: The updated list of dictionaries for each currently
             online player, containing their "name" and "uuid" (XUID).
         """
-        if hasattr(self, "is_running"):
-            is_running = await self.is_running()  # type: ignore
-        else:
-            is_running = await asyncio.to_thread(self.is_running)  # type: ignore
+        is_running = await self.is_running()  # type: ignore
 
         if not is_running:
             players = getattr(self, "players", [])
@@ -217,9 +214,9 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                 players.clear()
             return []
 
-        if not hasattr(self, "_log_file_cursor"):
+        if not getattr(self, "_log_file_cursor", None):
             self._log_file_cursor = 0
-        if not hasattr(self, "players"):
+        if not getattr(self, "players", None):
             self.players: List[Dict[str, str]] = []  # type: ignore[has-type, no-redef]
 
         online_players: Dict[str, str] = {p["uuid"]: p["name"] for p in self.players}  # type: ignore[has-type]
