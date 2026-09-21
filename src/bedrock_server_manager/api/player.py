@@ -126,7 +126,7 @@ async def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": "Database is not initialized."}
 
     try:
-        players = await get_known_players(db.session_manager())
+        players = await get_known_players(db.async_session_manager)
         return {"status": "success", "players": players}
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
