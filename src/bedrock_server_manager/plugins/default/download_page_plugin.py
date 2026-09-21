@@ -80,7 +80,7 @@ class DownloadPagePlugin(PluginBase):
 
                 try:
 
-                    file_list = self.api.list_backup_files(
+                    file_list = await self.api.list_backup_files(
                         server_name=server, backup_type="all"
                     )
 
@@ -152,8 +152,8 @@ class DownloadPagePlugin(PluginBase):
                 addons = []
                 try:
 
-                    worlds_list = self.api.list_available_worlds_api()
-                    addons_list = self.api.list_available_addons()
+                    worlds_list = await self.api.list_available_worlds_api()
+                    addons_list = await self.api.list_available_addons()
 
                     if worlds_list["status"] == "success":
                         worlds = [
@@ -260,7 +260,7 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
-                result = self.api.get_global_setting(key="paths.backups")
+                result = await self.api.get_global_setting(key="paths.backups")
                 backup_dir_str = (
                     result.get("value") if result.get("status") == "success" else None
                 )
@@ -280,7 +280,7 @@ class DownloadPagePlugin(PluginBase):
                     raise HTTPException(403, "Access denied: Invalid server path")
 
             elif file_type in ("content_world", "content_addon"):
-                result = self.api.get_global_setting(key="paths.content")
+                result = await self.api.get_global_setting(key="paths.content")
                 content_dir_str = (
                     result.get("value") if result.get("status") == "success" else None
                 )
