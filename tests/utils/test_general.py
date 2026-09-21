@@ -63,7 +63,7 @@ def test_get_timestamp():
     assert timestamp[8] == "_"
 
 
-def test_list_content_files_success(tmp_path):
+async def test_list_content_files_success(tmp_path):
     """Test list_content_files correctly retrieves valid matches."""
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir()
@@ -72,7 +72,7 @@ def test_list_content_files_success(tmp_path):
     (worlds_dir / "world2.mcworld").touch()
     (worlds_dir / "ignore_this.txt").touch()
 
-    result = list_content_files(str(tmp_path), "worlds", [".mcworld"])
+    result = await list_content_files(str(tmp_path), "worlds", [".mcworld"])
 
     assert len(result) == 2
     assert any("world1.mcworld" in f for f in result)
@@ -80,31 +80,31 @@ def test_list_content_files_success(tmp_path):
     assert not any("ignore_this.txt" in f for f in result)
 
 
-def test_list_content_files_no_matches(tmp_path):
+async def test_list_content_files_no_matches(tmp_path):
     """Test list_content_files returns empty when no files match."""
     addons_dir = tmp_path / "addons"
     addons_dir.mkdir()
 
     (addons_dir / "file.txt").touch()
 
-    result = list_content_files(str(tmp_path), "addons", [".mcpack"])
+    result = await list_content_files(str(tmp_path), "addons", [".mcpack"])
     assert result == []
 
 
-def test_list_content_files_subfolder_not_exist(tmp_path):
+async def test_list_content_files_subfolder_not_exist(tmp_path):
     """Test list_content_files returns empty if the target subfolder doesn't exist."""
-    result = list_content_files(str(tmp_path), "missing_folder", [".txt"])
+    result = await list_content_files(str(tmp_path), "missing_folder", [".txt"])
     assert result == []
 
 
-def test_list_content_files_content_dir_missing():
+async def test_list_content_files_content_dir_missing():
     """Test list_content_files raises AppFileNotFoundError if missing a content directory."""
     with pytest.raises(AppFileNotFoundError) as exc_info:
-        list_content_files("/does/not/exist/ever", "worlds", [".mcworld"])
+        await list_content_files("/does/not/exist/ever", "worlds", [".mcworld"])
     assert "not found at path:" in str(exc_info.value)
 
 
-def test_list_content_files_os_error(tmp_path, monkeypatch):
+async def test_list_content_files_os_error(tmp_path, monkeypatch):
     """Test list_content_files catches OS errors and raises a FileOperationError."""
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir()
@@ -117,5 +117,5 @@ def test_list_content_files_os_error(tmp_path, monkeypatch):
     )
 
     with pytest.raises(FileOperationError) as exc_info:
-        list_content_files(str(tmp_path), "worlds", [".mcworld"])
+        await list_content_files(str(tmp_path), "worlds", [".mcworld"])
     assert "Error scanning content directory" in str(exc_info.value)

@@ -49,7 +49,7 @@ async def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available worlds.")
     try:
         content_dir = app_context.settings.get("paths.content")
-        worlds = list_content_files(content_dir, "worlds", [".mcworld"])
+        worlds = await list_content_files(content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
         # Handle specific file-related errors.

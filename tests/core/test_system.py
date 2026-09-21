@@ -7,8 +7,9 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import psutil
 import pytest
 
@@ -29,7 +30,7 @@ from bedrock_server_manager.error import (
 )
 
 
-def test_find_files(tmp_path: Path):
+async def test_find_files(tmp_path: Path):
     """Test finding files and getting their metadata."""
     dir_path = tmp_path / "find_files_dir"
     dir_path.mkdir()
@@ -40,7 +41,7 @@ def test_find_files(tmp_path: Path):
     file2.write_text("world!")
 
     # Test path returned
-    files = find_files(str(dir_path), pattern="*.txt")
+    files = await find_files(str(dir_path), pattern="*.txt")
     assert len(files) == 2
     assert str(file1) in files
     assert str(file2) in files
@@ -48,7 +49,7 @@ def test_find_files(tmp_path: Path):
     # Test metadata
     metadata = cast(
         list[dict[str, Any]],
-        find_files(str(dir_path), pattern="*.txt", include_metadata=True),
+        await find_files(str(dir_path), pattern="*.txt", include_metadata=True),
     )
     assert len(metadata) == 2
     # Find specific files in metadata
@@ -65,28 +66,28 @@ def test_can_manage_services():
     assert isinstance(can_manage_services(), bool)
 
 
-def test_check_internet_connectivity_success():
+async def test_check_internet_connectivity_success():
     """Test checking internet connectivity when it succeeds."""
     # Assuming the sandbox has internet access.
-    # Otherwise we can mock socket.create_connection.
-    check_internet_connectivity()
+    # Otherwise we can mock aiohttp.ClientSession.get.
+    await check_internet_connectivity()
 
 
-@patch("socket.create_connection", side_effect=TimeoutError)
-def test_check_internet_connectivity_timeout(mock_socket):
+@patch("aiohttp.ClientSession.get", side_effect=TimeoutError)
+async def test_check_internet_connectivity_timeout(mock_get):
     """Test checking internet connectivity handling a timeout."""
     with pytest.raises(InternetConnectivityError):
-        check_internet_connectivity()
+        await check_internet_connectivity()
 
 
-@patch("socket.create_connection", side_effect=OSError)
-def test_check_internet_connectivity_os_error(mock_socket):
+@patch("aiohttp.ClientSession.get", side_effect=aiohttp.ClientError)
+async def test_check_internet_connectivity_os_error(mock_get):
     """Test checking internet connectivity handling an OS Error."""
     with pytest.raises(InternetConnectivityError):
-        check_internet_connectivity()
+        await check_internet_connectivity()
 
 
-def test_set_server_folder_permissions_linux(tmp_path: Path):
+async def test_set_server_folder_permissions_linux(tmp_path: Path):
     """Test setting server folder permissions on Linux."""
     if os.name != "posix":
         pytest.skip("Linux specific test")
@@ -101,7 +102,7 @@ def test_set_server_folder_permissions_linux(tmp_path: Path):
     sub_dir = server_dir / "a_dir"
     sub_dir.mkdir()
 
-    set_server_folder_permissions(str(server_dir))
+    await set_server_folder_permissions(str(server_dir))
 
     assert stat.S_IMODE(server_dir.stat().st_mode) == 0o775
     assert stat.S_IMODE(executable.stat().st_mode) == 0o775
@@ -109,7 +110,7 @@ def test_set_server_folder_permissions_linux(tmp_path: Path):
     assert stat.S_IMODE(sub_dir.stat().st_mode) == 0o775
 
 
-def test_set_server_folder_permissions_windows(tmp_path: Path):
+async def test_set_server_folder_permissions_windows(tmp_path: Path):
     """Test setting server folder permissions on Windows."""
     if os.name != "nt":
         pytest.skip("Windows specific test")
@@ -122,66 +123,70 @@ def test_set_server_folder_permissions_windows(tmp_path: Path):
     # Make file read-only
     os.chmod(test_file, stat.S_IREAD)
 
-    set_server_folder_permissions(str(server_dir))
+    await set_server_folder_permissions(str(server_dir))
 
     assert os.access(str(test_file), os.W_OK)
 
 
-def test_set_server_folder_permissions_non_existent():
+async def test_set_server_folder_permissions_non_existent():
     """Test setting permissions on a directory that doesn't exist."""
     with pytest.raises(AppFileNotFoundError):
-        set_server_folder_permissions("does_not_exist_dir")
+        await set_server_folder_permissions("does_not_exist_dir")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Linux specific test")
 @patch("os.chmod", side_effect=OSError)
-def test_set_server_folder_permissions_os_error_on_chmod(mock_chmod, tmp_path: Path):
+async def test_set_server_folder_permissions_os_error_on_chmod(
+    mock_chmod, tmp_path: Path
+):
     """Test handling of OSError during chmod on Linux."""
     server_dir = tmp_path / "err_server"
     server_dir.mkdir()
     with pytest.raises(PermissionsError):
-        set_server_folder_permissions(str(server_dir))
+        await set_server_folder_permissions(str(server_dir))
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Linux specific test")
 @patch("os.chown", side_effect=OSError)
-def test_set_server_folder_permissions_os_error_on_chown(mock_chown, tmp_path: Path):
+async def test_set_server_folder_permissions_os_error_on_chown(
+    mock_chown, tmp_path: Path
+):
     """Test handling of OSError during chown on Linux."""
     server_dir = tmp_path / "err_server_chown"
     server_dir.mkdir()
     with pytest.raises(PermissionsError):
-        set_server_folder_permissions(str(server_dir))
+        await set_server_folder_permissions(str(server_dir))
 
 
-def test_delete_path_robustly_file(tmp_path: Path):
+async def test_delete_path_robustly_file(tmp_path: Path):
     """Test deleting a normal file."""
     file_path = tmp_path / "test.txt"
     file_path.write_text("test")
     assert file_path.exists()
-    assert delete_path_robustly(str(file_path), "test file") is True
+    assert await delete_path_robustly(str(file_path), "test file") is True
     assert not file_path.exists()
 
 
-def test_delete_path_robustly_readonly_file(tmp_path: Path):
+async def test_delete_path_robustly_readonly_file(tmp_path: Path):
     """Test deleting a read-only file."""
     file_path = tmp_path / "readonly.txt"
     file_path.write_text("readonly")
     os.chmod(file_path, stat.S_IREAD)
     assert file_path.exists()
-    assert delete_path_robustly(str(file_path), "readonly test file") is True
+    assert await delete_path_robustly(str(file_path), "readonly test file") is True
     assert not file_path.exists()
 
 
-def test_delete_path_robustly_dir(tmp_path: Path):
+async def test_delete_path_robustly_dir(tmp_path: Path):
     """Test deleting a directory."""
     dir_path = tmp_path / "test_dir"
     dir_path.mkdir()
     assert dir_path.exists()
-    assert delete_path_robustly(str(dir_path), "test directory") is True
+    assert await delete_path_robustly(str(dir_path), "test directory") is True
     assert not dir_path.exists()
 
 
-def test_delete_path_robustly_dir_with_readonly_file(tmp_path: Path):
+async def test_delete_path_robustly_dir_with_readonly_file(tmp_path: Path):
     """Test deleting a directory that contains a read-only file."""
     dir_path = tmp_path / "readonly_dir"
     dir_path.mkdir()
@@ -191,45 +196,53 @@ def test_delete_path_robustly_dir_with_readonly_file(tmp_path: Path):
     assert dir_path.exists()
     assert file_path.exists()
 
-    assert delete_path_robustly(str(dir_path), "directory with read-only file") is True
+    assert (
+        await delete_path_robustly(str(dir_path), "directory with read-only file")
+        is True
+    )
     assert not dir_path.exists()
 
 
-def test_delete_path_robustly_non_existent_path(tmp_path: Path):
+async def test_delete_path_robustly_non_existent_path(tmp_path: Path):
     """Test deleting a path that does not exist."""
     non_existent = tmp_path / "non_existent"
-    assert delete_path_robustly(str(non_existent), "non existent path") is True
+    assert await delete_path_robustly(str(non_existent), "non existent path") is True
 
 
-def test_delete_path_robustly_invalid_inputs():
+async def test_delete_path_robustly_invalid_inputs():
     """Test deleting with invalid path or description."""
     with pytest.raises(MissingArgumentError):
-        delete_path_robustly("", "description")
+        await delete_path_robustly("", "description")
 
     with pytest.raises(MissingArgumentError):
-        delete_path_robustly("path", "")
+        await delete_path_robustly("path", "")
 
     with pytest.raises(MissingArgumentError):
-        delete_path_robustly(None, "description")  # type: ignore
+        await delete_path_robustly(None, "description")  # type: ignore
 
 
-def test_is_server_running_true():
-    """Test is_server_running when process is found."""
+async def test_is_server_running_true():
+    """Test await is_server_running when process is found."""
     with patch(
-        "bedrock_server_manager.core.system.base.core_process.get_verified_bedrock_process"
+        "bedrock_server_manager.core.system.base.core_process.get_verified_bedrock_process",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = MagicMock()
-        assert is_server_running("server", "/path/to/server", "/path/to/config") is True
+        assert (
+            await is_server_running("server", "/path/to/server", "/path/to/config")
+            is True
+        )
 
 
-def test_is_server_running_false():
-    """Test is_server_running when process is not found."""
+async def test_is_server_running_false():
+    """Test await is_server_running when process is not found."""
     with patch(
         "bedrock_server_manager.core.system.base.core_process.get_verified_bedrock_process"
     ) as mock_get:
         mock_get.return_value = None
         assert (
-            is_server_running("server", "/path/to/server", "/path/to/config") is False
+            await is_server_running("server", "/path/to/server", "/path/to/config")
+            is False
         )
 
 

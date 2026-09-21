@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 
@@ -39,7 +38,7 @@ async def get_custom_zips(
         if not await aiofiles.ospath.isdir(custom_dir):
             return CustomZipsResponse(status="success", custom_zips=[])
 
-        custom_zips_paths = await asyncio.to_thread(find_files, custom_dir, "*.zip")
+        custom_zips_paths = await find_files(custom_dir, "*.zip")
         custom_zips = [os.path.basename(str(p)) for p in custom_zips_paths]
         return CustomZipsResponse(status="success", custom_zips=custom_zips)
     except Exception as e:

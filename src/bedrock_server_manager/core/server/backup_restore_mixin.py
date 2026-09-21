@@ -126,7 +126,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         """
         directory = os.path.dirname(pattern)
         file_pattern = os.path.basename(pattern)
-        res = find_files(directory, file_pattern, sort_by="mtime", reverse=True)
+        res = await find_files(directory, file_pattern, sort_by="mtime", reverse=True)
         return [str(p) for p in res]
 
     async def list_backups(  # noqa: C901

@@ -156,9 +156,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             f"Setting filesystem permissions for server directory: {self.server_dir} asynchronously"
         )
         try:
-            await asyncio.to_thread(
-                system_base.set_server_folder_permissions, self.server_dir
-            )
+            await system_base.set_server_folder_permissions(self.server_dir)
             self.logger.info(
                 f"Successfully set permissions for server '{self.server_name}' at '{self.server_dir}'."
             )
@@ -210,8 +208,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             f"Attempting to delete {item_description_prefix} server '{self.server_name}' at '{self.server_dir}' asynchronously. THIS IS DESTRUCTIVE."
         )
 
-        return await asyncio.to_thread(
-            system_base.delete_path_robustly,
+        return await system_base.delete_path_robustly(
             self.server_dir,
             f"{item_description_prefix} '{self.server_name}'",
         )
@@ -300,8 +297,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 failed_deletions.append(server_install_dir)
 
         if await aiofiles.ospath.exists(server_json_config_subdir):
-            success = await asyncio.to_thread(
-                system_base.delete_path_robustly,
+            success = await system_base.delete_path_robustly(
                 server_json_config_subdir,
                 f"JSON config directory for server '{self.server_name}'",
             )
@@ -311,8 +307,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         if server_backup_dir_path and await aiofiles.ospath.exists(
             server_backup_dir_path
         ):
-            success = await asyncio.to_thread(
-                system_base.delete_path_robustly,
+            success = await system_base.delete_path_robustly(
                 server_backup_dir_path,
                 f"backup directory for server '{self.server_name}'",
             )

@@ -15,6 +15,7 @@ These functions are intended for programmatic control of the application's web s
 often used by CLI commands or service management scripts.
 """
 
+import asyncio
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -128,16 +129,24 @@ def start_web_server_api(  # noqa: C901
             # Check for an existing, valid PID file.
             existing_pid = None
             try:
-                existing_pid = system_process_utils.read_pid_from_file(pid_file_path)
+                existing_pid = asyncio.run(
+                    system_process_utils.read_pid_from_file(pid_file_path)
+                )
             except FileOperationError:  # Corrupt PID file.
-                system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                asyncio.run(
+                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                )
 
             # If a PID exists, verify the process is still running and correct.
-            if existing_pid and system_process_utils.is_process_running(existing_pid):
+            if existing_pid and asyncio.run(
+                system_process_utils.is_process_running(existing_pid)
+            ):
                 try:
-                    system_process_utils.verify_process_identity(
-                        pid=existing_pid,
-                        expected_command_args=["web", "start"],
+                    asyncio.run(
+                        system_process_utils.verify_process_identity(
+                            pid=existing_pid,
+                            expected_command_args=["web", "start"],
+                        )
                     )
                     # If verification passes, the server is already running.
                     raise ServerProcessError(
@@ -145,10 +154,14 @@ def start_web_server_api(  # noqa: C901
                     )
                 except ServerProcessError:
                     # The PID points to the wrong process. Clean up the stale file.
-                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                    asyncio.run(
+                        system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                    )
             else:
                 # The PID is stale or doesn't exist. Clean up the file.
-                system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                asyncio.run(
+                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                )
 
             # Construct the command to launch the new detached process.
             command = [
@@ -168,8 +181,8 @@ def start_web_server_api(  # noqa: C901
                 command.append("--debug")
 
             # Launch the process and write the new PID to the file.
-            new_pid = system_process_utils.launch_detached_process(
-                command, pid_file_path
+            new_pid = asyncio.run(
+                system_process_utils.launch_detached_process(command, pid_file_path)
             )
             return {
                 "status": "success",
@@ -220,34 +233,38 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         pid_file_path = os.path.join(app_context.settings.config_dir, "web_server.pid")
 
         # Read the PID from the file.
-        pid = system_process_utils.read_pid_from_file(pid_file_path)
+        pid = asyncio.run(system_process_utils.read_pid_from_file(pid_file_path))
         if pid is None:
-            system_process_utils.remove_pid_file_if_exists(pid_file_path)
+            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
             return {
                 "status": "success",
                 "message": "Web server not running (no valid PID file).",
             }
 
         # Check if the process is actually running.
-        if not system_process_utils.is_process_running(pid):
-            system_process_utils.remove_pid_file_if_exists(pid_file_path)
+        if not asyncio.run(system_process_utils.is_process_running(pid)):
+            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
             return {
                 "status": "success",
                 "message": f"Web server not running (stale PID {pid}).",
             }
 
         # Verify it's the correct process before terminating.
-        system_process_utils.verify_process_identity(
-            pid=pid, expected_command_args=["web", "start"]
+        asyncio.run(
+            system_process_utils.verify_process_identity(
+                pid=pid, expected_command_args=["web", "start"]
+            )
         )
-        system_process_utils.terminate_process_by_pid(pid)
-        system_process_utils.remove_pid_file_if_exists(pid_file_path)
+        asyncio.run(system_process_utils.terminate_process_by_pid(pid))
+        asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
         return {"status": "success", "message": f"Web server (PID: {pid}) stopped."}
 
     except (FileOperationError, ServerProcessError) as e:
         # Clean up the PID file if there's a file error or process mismatch.
-        system_process_utils.remove_pid_file_if_exists(
-            os.path.join(app_context.settings.config_dir, "web_server.pid")
+        asyncio.run(
+            system_process_utils.remove_pid_file_if_exists(
+                os.path.join(app_context.settings.config_dir, "web_server.pid")
+            )
         )
         error_type = (
             "PID file error"
@@ -298,9 +315,9 @@ def get_web_server_status_api(  # noqa: C901
         expected_arg = ["web", "start"]
 
         try:
-            pid = system_process_utils.read_pid_from_file(pid_file_path)
+            pid = asyncio.run(system_process_utils.read_pid_from_file(pid_file_path))
         except FileOperationError:  # Handle corrupt PID file.
-            system_process_utils.remove_pid_file_if_exists(pid_file_path)
+            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
             return {
                 "status": "STOPPED",
                 "pid": None,
@@ -310,7 +327,9 @@ def get_web_server_status_api(  # noqa: C901
         # Case: No PID file, or PID file was empty.
         if pid is None:
             if os.path.exists(pid_file_path):  # Clean up empty file.
-                system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                asyncio.run(
+                    system_process_utils.remove_pid_file_if_exists(pid_file_path)
+                )
             return {
                 "status": "STOPPED",
                 "pid": None,
@@ -318,8 +337,8 @@ def get_web_server_status_api(  # noqa: C901
             }
 
         # Case: PID file exists, but process is not running.
-        if not system_process_utils.is_process_running(pid):
-            system_process_utils.remove_pid_file_if_exists(pid_file_path)
+        if not asyncio.run(system_process_utils.is_process_running(pid)):
+            asyncio.run(system_process_utils.remove_pid_file_if_exists(pid_file_path))
             return {
                 "status": "STOPPED",
                 "pid": pid,
@@ -328,8 +347,10 @@ def get_web_server_status_api(  # noqa: C901
 
         # Case: Process is running, verify it's the correct one.
         try:
-            system_process_utils.verify_process_identity(
-                pid=pid, expected_command_args=expected_arg
+            asyncio.run(
+                system_process_utils.verify_process_identity(
+                    pid=pid, expected_command_args=expected_arg
+                )
             )
             return {
                 "status": "RUNNING",

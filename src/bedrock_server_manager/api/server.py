@@ -429,7 +429,7 @@ async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, An
             try:
                 pid_file_path = server.get_pid_file_path()
                 if os.path.isfile(pid_file_path):
-                    remove_pid_file_if_exists(pid_file_path)
+                    await remove_pid_file_if_exists(pid_file_path)
             except Exception as e_cleanup:
                 logger.warning(
                     f"Error during PID file cleanup for '{server_name}': {e_cleanup}"

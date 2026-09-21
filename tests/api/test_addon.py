@@ -108,7 +108,7 @@ async def test_list_available_addons_success(app_context, monkeypatch):
     """Test listing available addons from content directory successfully."""
     monkeypatch.setattr(
         "bedrock_server_manager.api.addon.list_content_files",
-        MagicMock(return_value=["addon1.mcpack", "addon2.mcaddon"]),
+        AsyncMock(return_value=["addon1.mcpack", "addon2.mcaddon"]),
     )
 
     result = await list_available_addons(app_context)

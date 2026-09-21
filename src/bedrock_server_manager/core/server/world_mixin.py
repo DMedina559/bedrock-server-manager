@@ -472,8 +472,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Path for active world '{active_world_name}' is not a directory: {active_world_dir}"
             )
 
-        success = await asyncio.to_thread(
-            system_base.delete_path_robustly,
+        success = await system_base.delete_path_robustly(
             active_world_dir,
             f"active world directory '{active_world_name}' for server '{self.server_name}'",
         )

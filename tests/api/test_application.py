@@ -13,7 +13,7 @@ async def test_list_available_worlds_api_success(app_context, monkeypatch):
     """Test list_available_worlds_api properly routes request and formats response."""
     monkeypatch.setattr(
         "bedrock_server_manager.api.application.list_content_files",
-        MagicMock(return_value=["/world1.mcworld"]),
+        AsyncMock(return_value=["/world1.mcworld"]),
     )
 
     result = await list_available_worlds_api(app_context)

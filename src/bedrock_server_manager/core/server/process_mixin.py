@@ -124,7 +124,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         ):
             # For asyncio.subprocess.Process
             return True
-        return await system_base.async_is_server_running(
+        return await system_base.is_server_running(
             self.server_name,
             self.server_dir,
             self.app_config_dir,
@@ -227,9 +227,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 ),
             )
 
-            await system_process.async_write_pid_to_file(
-                pid_file_path, self._process.pid
-            )
+            await system_process.write_pid_to_file(pid_file_path, self._process.pid)
             self.intentionally_stopped = False
             self.start_time = time.time()
 
@@ -276,7 +274,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             return
 
         if self._process is None:
-            verified_process = await system_process.async_get_verified_bedrock_process(
+            verified_process = await system_process.get_verified_bedrock_process(
                 self.server_name,
                 self.server_dir,
                 self.app_config_dir,
@@ -370,7 +368,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         self._process = None
 
         pid_file_path = self.get_pid_file_path()
-        await system_process.async_remove_pid_file_if_exists(pid_file_path)
+        await system_process.remove_pid_file_if_exists(pid_file_path)
 
         await self.set_status_in_config("STOPPED")  # type: ignore
 
@@ -386,7 +384,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process asynchronously.
 
         This method first uses
-        :func:`~.core.system.process.async_get_verified_bedrock_process` to locate and
+        :func:`~.core.system.process.get_verified_bedrock_process` to locate and
         verify the Bedrock server process associated with this server instance.
         If a valid process is found, it then uses the :attr:`._resource_monitor`
         (an instance of :class:`~.core.system.base.ResourceMonitor` from the base
@@ -401,7 +399,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             Example: ``{"pid": 1234, "cpu_percent": 15.2, "memory_mb": 256.5, "uptime": "0:10:30"}``
         """
         try:
-            process_obj = await system_process.async_get_verified_bedrock_process(
+            process_obj = await system_process.get_verified_bedrock_process(
                 self.server_name, self.server_dir, self.app_config_dir
             )
 

@@ -64,7 +64,9 @@ async def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available addons.")
     try:
         content_dir = app_context.settings.get("paths.content")
-        addons = list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
+        addons = await list_content_files(
+            content_dir, "addons", [".mcpack", ".mcaddon"]
+        )
         return {"status": "success", "files": addons}
     except FileError as e:
         # Handle specific file-related errors.

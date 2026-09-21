@@ -92,7 +92,7 @@ def get_timestamp() -> str:
     return timestamp
 
 
-def list_content_files(
+async def list_content_files(
     content_dir: str | None, sub_folder: str, extensions: List[str]
 ) -> List[str]:
     """
@@ -115,7 +115,7 @@ def list_content_files(
     try:
         for ext in extensions:
             pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
-            files = find_files(target_dir, pattern=pattern)
+            files = await find_files(target_dir, pattern=pattern)
             found_files.extend(os.path.abspath(str(f)) for f in files)
     except OSError as e:
         raise FileOperationError(

@@ -101,8 +101,7 @@ async def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C
 
     try:
         # Find all files matching the bedrock server download pattern using thread wrap.
-        download_files_paths = await asyncio.to_thread(
-            find_files,
+        download_files_paths = await find_files(
             download_dir,
             "bedrock-server-*.zip",
             sort_by="mtime",
@@ -893,7 +892,7 @@ class BedrockDownloader:
 
             return self.actual_version, self.zip_file_path, self.specific_download_dir
 
-        await system_base.async_check_internet_connectivity()
+        await system_base.check_internet_connectivity()
 
         try:
             await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
