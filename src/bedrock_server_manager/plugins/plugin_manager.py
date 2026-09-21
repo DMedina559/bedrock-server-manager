@@ -26,8 +26,8 @@ from .plugin_base import PluginBase
 logger = logging.getLogger(__name__)
 
 # ContextVars are the async-safe alternative to threading.local()
-_event_context_var: contextvars.ContextVar[List[str]] = contextvars.ContextVar(
-    "_event_context_var", default=[]
+_event_context_var: contextvars.ContextVar[Optional[Tuple[str, ...]]] = (
+    contextvars.ContextVar("_event_context_var", default=None)
 )
 
 
@@ -146,7 +146,8 @@ class PluginManager:
             else:
                 module.__package__ = ""
 
-            sys.modules[module_name_for_spec] = module
+            internal_module_name = f"bsm_plugins.{module_name_for_spec}"
+            sys.modules[internal_module_name] = module
             spec.loader.exec_module(module)
 
             for member_name, obj in inspect.getmembers(module):
@@ -250,13 +251,12 @@ class PluginManager:
         current_event_key = self._generate_event_key(event_name, **kwargs)
 
         # Async-safe context handling
-        current_stack = _event_context_var.get().copy()
+        current_stack = _event_context_var.get() or ()
 
         if current_event_key in current_stack:
             return
 
-        current_stack.append(current_event_key)
-        token = _event_context_var.set(current_stack)
+        token = _event_context_var.set(current_stack + (current_event_key,))
 
         try:
             for plugin_instance in list(self.plugins):
@@ -319,7 +319,7 @@ class PluginManager:
         self.plugin_config = await self._load_config()
         valid_plugin_names = set()
 
-        def _scan_and_load() -> List[Tuple[str, Type[PluginBase], str]]:
+        def _scan_disk_for_plugins() -> List[Tuple[Path, Optional[str]]]:
             found: List[Tuple[Path, Optional[str]]] = []
             for directory in self.plugin_dirs:
                 if not directory.exists() or not directory.is_dir():
@@ -331,18 +331,20 @@ class PluginManager:
                         found.append((item, None))
                     elif item.is_dir() and (item / "__init__.py").is_file():
                         found.append((item / "__init__.py", item.name))
+            return found
 
-            validated: List[Tuple[str, Type[PluginBase], str]] = []
-            for path, override_name in found:
-                p_name = override_name if override_name else path.stem
-                p_class = self._get_plugin_class_from_path(path, override_name)
-                if p_class:
-                    version = getattr(p_class, "version", None)
-                    if version and version != "N/A":
-                        validated.append((p_name, p_class, str(version)))
-            return validated
+        # Scan filesystem in a background thread
+        found_paths = await asyncio.to_thread(_scan_disk_for_plugins)
 
-        validated_plugins = await asyncio.to_thread(_scan_and_load)
+        # Load modules natively on the event loop
+        validated_plugins = []
+        for path, override_name in found_paths:
+            p_name = override_name if override_name else path.stem
+            p_class = self._get_plugin_class_from_path(path, override_name)
+            if p_class:
+                version = getattr(p_class, "version", None)
+                if version and version != "N/A":
+                    validated_plugins.append((p_name, p_class, str(version)))
 
         for plugin_name, plugin_class, version in validated_plugins:
             valid_plugin_names.add(plugin_name)
@@ -392,61 +394,60 @@ class PluginManager:
         self.plugin_fastapi_routers.clear()
         self.plugin_static_mounts.clear()
 
-        def _get_classes_and_sort() -> Tuple[List[str], Dict[str, Type[PluginBase]]]:
-            enabled_plugins_data: Dict[str, Type[PluginBase]] = {}
+        def _find_enabled_plugin_paths() -> List[Tuple[str, Path]]:
+            found = []
             for plugin_name, config_data in self.plugin_config.items():
                 if not isinstance(config_data, dict) or not config_data.get("enabled"):
                     continue
                 path = self._find_plugin_path(plugin_name)
-                if not path:
-                    continue
-                plugin_class = self._get_plugin_class_from_path(
-                    path, plugin_name_override=plugin_name
-                )
-                if plugin_class:
-                    enabled_plugins_data[plugin_name] = plugin_class
+                if path:
+                    found.append((plugin_name, path))
+            return found
 
-            def topological_sort(
-                plugin_classes: Dict[str, Type[PluginBase]],
-            ) -> List[str]:
-                visited = set()
-                temp_mark = set()
-                sorted_plugins: List[str] = []
+        def _topological_sort(
+            plugin_classes: Dict[str, Type[PluginBase]],
+        ) -> List[str]:
+            visited = set()
+            temp_mark = set()
+            sorted_plugins: List[str] = []
 
-                def visit(node: str) -> bool:
-                    if node in temp_mark:
-                        return False
-                    if node not in visited:
-                        temp_mark.add(node)
-                        p_class = plugin_classes.get(node)
-                        if p_class:
-                            for dep in getattr(p_class, "dependencies", []):
-                                if dep not in plugin_classes or visit(dep) is False:
-                                    return False
-                            for opt_dep in getattr(
-                                p_class, "optional_dependencies", []
-                            ):
-                                if (
-                                    opt_dep in plugin_classes
-                                    and visit(opt_dep) is False
-                                ):
-                                    return False
-                        temp_mark.remove(node)
-                        visited.add(node)
-                        if node in plugin_classes:
-                            sorted_plugins.append(node)
-                    return True
+            def visit(node: str) -> bool:
+                if node in temp_mark:
+                    return False
+                if node not in visited:
+                    temp_mark.add(node)
+                    p_class = plugin_classes.get(node)
+                    if p_class:
+                        for dep in getattr(p_class, "dependencies", []):
+                            if dep not in plugin_classes or visit(dep) is False:
+                                return False
+                        for opt_dep in getattr(p_class, "optional_dependencies", []):
+                            if opt_dep in plugin_classes and visit(opt_dep) is False:
+                                return False
+                    temp_mark.remove(node)
+                    visited.add(node)
+                    if node in plugin_classes:
+                        sorted_plugins.append(node)
+                return True
 
-                for p_name in list(plugin_classes.keys()):
-                    if p_name not in visited:
-                        if visit(p_name) is False:
-                            plugin_classes.pop(p_name, None)
-                return sorted_plugins
+            for p_name in list(plugin_classes.keys()):
+                if p_name not in visited:
+                    if visit(p_name) is False:
+                        plugin_classes.pop(p_name, None)
+            return sorted_plugins
 
-            return topological_sort(enabled_plugins_data), enabled_plugins_data
+        enabled_plugin_paths = await asyncio.to_thread(_find_enabled_plugin_paths)
+        enabled_plugins_data: Dict[str, Type[PluginBase]] = {}
 
-        sorted_plugin_names, enabled_plugins_data = await asyncio.to_thread(
-            _get_classes_and_sort
+        for plugin_name, path in enabled_plugin_paths:
+            plugin_class = self._get_plugin_class_from_path(
+                path, plugin_name_override=plugin_name
+            )
+            if plugin_class:
+                enabled_plugins_data[plugin_name] = plugin_class
+
+        sorted_plugin_names = await asyncio.to_thread(
+            _topological_sort, enabled_plugins_data
         )
 
         for plugin_name in sorted_plugin_names:
@@ -503,6 +504,12 @@ class PluginManager:
 
         if self._event_listeners:
             self._event_listeners.clear()
+
+        import sys
+
+        for name in list(sys.modules.keys()):
+            if name.startswith("bsm_plugins."):
+                del sys.modules[name]
 
     async def reload(self) -> None:
         logger.info("--- Starting Full Plugin Reload Process ---")
