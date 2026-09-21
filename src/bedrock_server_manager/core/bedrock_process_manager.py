@@ -107,15 +107,12 @@ class BedrockProcessManager:
             if not is_running:
                 return
 
-            if hasattr(self.app_context, "api"):
-                try:
-                    await self.app_context.api.stop_server(server_name)
-                except Exception as e:
-                    self.logger.error(
-                        f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
-                    )
-                    await server.stop()
-            else:
+            try:
+                await self.app_context.api.stop_server(server_name)
+            except Exception as e:
+                self.logger.error(
+                    f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                )
                 await server.stop()
 
             self.logger.info(f"ProcessManager: Stopped server '{server_name}'")

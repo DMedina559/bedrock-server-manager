@@ -128,12 +128,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 "Target version specification cannot be empty and must be a string."
             )
 
-        if not hasattr(self, "get_version"):
-            self.logger.error(
-                "get_version method not found on server instance. Cannot check if update is needed."
-            )
-            raise AttributeError("Server instance is missing 'get_version' method.")
-
         current_installed_version: str = await self.get_version()  # type: ignore
         target_spec_upper = target_version_specification.strip().upper()
         is_latest_or_preview = target_spec_upper in ("LATEST", "PREVIEW")
@@ -286,14 +280,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         try:
             # Set filesystem permissions after extraction.
-            if not hasattr(self, "set_filesystem_permissions"):
-                self.logger.error(
-                    "set_filesystem_permissions method not found on server instance. Cannot set permissions."
-                )
-                raise AttributeError(
-                    "Server instance is missing 'set_filesystem_permissions' method."
-                )
-
             self.logger.debug(
                 f"Setting permissions for server directory: {self.server_dir} asynchronously"
             )
@@ -452,16 +438,14 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 f"Install/Update failed for server '{self.server_name}' due to a BSM error: {e_bsm_install}",
                 exc_info=True,
             )
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("ERROR")  # type: ignore
+            await self.set_status_in_config("ERROR")  # type: ignore
             raise
         except Exception as e_unexp_install:
             self.logger.error(
                 f"Unexpected error during install/update for '{self.server_name}': {e_unexp_install}",
                 exc_info=True,
             )
-            if hasattr(self, "set_status_in_config"):
-                await self.set_status_in_config("ERROR")  # type: ignore
+            await self.set_status_in_config("ERROR")  # type: ignore
             raise FileOperationError(
                 f"Unexpected failure during install/update for '{self.server_name}': {e_unexp_install}"
             ) from e_unexp_install
