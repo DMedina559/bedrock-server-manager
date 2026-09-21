@@ -174,7 +174,12 @@ async def run_task(
     Returns:
         str: The ID of the created task.
     """
-    logger.debug(f"API: Running task in background: {target_function.__name__}")
+    # Safely get the name, unwrapping functools.partial if necessary
+    actual_func = getattr(target_function, "func", target_function)
+    task_name = getattr(actual_func, "__name__", str(target_function))
+
+    logger.debug(f"API: Running task in background: {task_name}")
+
     return await app_context.task_manager.run_task(
         target_function, username, *args, **kwargs
     )

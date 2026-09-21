@@ -37,8 +37,6 @@ from ..error import (
     SystemError,
     UserInputError,
 )
-from ..plugins.api_bridge import api_method
-from ..plugins.event_trigger import trigger_event
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +262,6 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-@api_method("get_web_server_status")
 def get_web_server_status_api(  # noqa: C901
     app_context: AppContext,
 ) -> Dict[str, Any]:
@@ -360,11 +357,6 @@ def get_web_server_status_api(  # noqa: C901
         }
 
 
-@trigger_event(
-    before="before_web_service_change",
-    after="after_web_service_change",
-    identity_keys=("action",),
-)
 def create_web_ui_service(
     app_context: AppContext,
     autostart: bool = False,
@@ -444,11 +436,6 @@ def create_web_ui_service(
         }
 
 
-@trigger_event(
-    before="before_web_service_change",
-    after="after_web_service_change",
-    identity_keys=("action",),
-)
 def enable_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -500,11 +487,6 @@ def enable_web_ui_service(
         }
 
 
-@trigger_event(
-    before="before_web_service_change",
-    after="after_web_service_change",
-    identity_keys=("action",),
-)
 def disable_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -561,11 +543,6 @@ def disable_web_ui_service(
         }
 
 
-@trigger_event(
-    before="before_web_service_change",
-    after="after_web_service_change",
-    identity_keys=("action",),
-)
 def remove_web_ui_service(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, str]:
@@ -632,7 +609,6 @@ def remove_web_ui_service(
         }
 
 
-@api_method("get_web_ui_service_status")
 def get_web_ui_service_status(
     app_context: AppContext, system: bool = False
 ) -> Dict[str, Any]:

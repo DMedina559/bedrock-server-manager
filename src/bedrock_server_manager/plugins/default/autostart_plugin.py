@@ -17,7 +17,7 @@ class AutostartServers(PluginBase):
     name = "Auto Start Servers"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         """
         This event is called when the plugin is loaded by the manager.
         """

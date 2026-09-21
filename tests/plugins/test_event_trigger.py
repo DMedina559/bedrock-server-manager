@@ -18,7 +18,7 @@ def mock_app_context():
     return mock_context
 
 
-def test_trigger_event_sync_hooks(mock_app_context, monkeypatch):
+async def test_trigger_event_sync_hooks(mock_app_context, monkeypatch):
     """Test trigger_event wraps a synchronous function, triggering both before and after hooks."""
 
     import bedrock_server_manager.plugins.event_trigger as et
@@ -100,7 +100,7 @@ async def test_trigger_event_async_hooks(mock_app_context, monkeypatch):
         )
 
 
-def test_trigger_event_no_args(mock_app_context):
+async def test_trigger_event_no_args(mock_app_context):
     """Test trigger_event skips triggering when no string events are mapped to kwargs."""
 
     @trigger_event
@@ -112,7 +112,7 @@ def test_trigger_event_no_args(mock_app_context):
     mock_app_context.connection_manager.broadcast_to_topic.assert_not_called()
 
 
-def test_trigger_event_only_before(mock_app_context):
+async def test_trigger_event_only_before(mock_app_context):
     """Test trigger_event only executes the before hook if no after is given."""
 
     @trigger_event(before="only_before")
@@ -127,7 +127,7 @@ def test_trigger_event_only_before(mock_app_context):
     )
 
 
-def test_trigger_event_only_after(mock_app_context):
+async def test_trigger_event_only_after(mock_app_context):
     """Test trigger_event only executes the after hook if no before is given."""
 
     @trigger_event(after="only_after")

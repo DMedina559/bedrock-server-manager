@@ -21,7 +21,7 @@ class AutoBackupOnStart(PluginBase):
     name = "Auto Backup On Start"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will perform a full backup before any server starts."

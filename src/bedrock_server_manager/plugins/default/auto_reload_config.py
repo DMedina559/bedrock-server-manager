@@ -21,13 +21,13 @@ class AutoReloadPlugin(PluginBase):
     name = "Auto Reload Config"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will send reload commands after config changes if server is running."
         )
 
-    def _is_server_running(self, server_name: str) -> bool:
+    async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
             response = self.api.get_server_running_status(server_name=server_name)
@@ -47,7 +47,7 @@ class AutoReloadPlugin(PluginBase):
             )
         return False
 
-    def _send_reload_command(self, server_name: str, command: str, context: str):
+    async def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""
         if not self.get_plugin_setting("enable_auto_reload", default=True):
             self.logger.info("Auto reload is disabled in plugin settings.")
@@ -69,7 +69,7 @@ class AutoReloadPlugin(PluginBase):
             )
 
     @app_event("after_allowlist_change")
-    def send_allowlist_reload_command(self, **kwargs: Any):
+    async def send_allowlist_reload_command(self, **kwargs: Any):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
@@ -82,7 +82,7 @@ class AutoReloadPlugin(PluginBase):
             removed_players = result.get("details", {}).get("removed", [])
 
             if added_count > 0 or len(removed_players) > 0:
-                self._send_reload_command(
+                await self._send_reload_command(
                     server_name,
                     "allowlist reload",
                     "allowlist",
@@ -97,7 +97,7 @@ class AutoReloadPlugin(PluginBase):
             )
 
     @app_event("after_permission_change")
-    def send_permission_reload_command(self, **kwargs: Any):
+    async def send_permission_reload_command(self, **kwargs: Any):
         """Triggers a `permission reload` if permissions were successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
@@ -105,7 +105,7 @@ class AutoReloadPlugin(PluginBase):
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
         if result.get("status") == "success":
-            self._send_reload_command(
+            await self._send_reload_command(
                 server_name,
                 "permission reload",
                 "permission",

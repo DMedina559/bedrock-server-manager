@@ -170,7 +170,7 @@ async def test_set_server_status_api(app_context, monkeypatch):
 
 async def test_update_server_player_stats_api(app_context):
     """Test update_server_player_stats_api effectively builds dictionary outputs for socket notifications."""
-    result = update_server_player_stats_api(
+    result = await update_server_player_stats_api(
         "test_server", 5, [{"name": "p1"}], app_context
     )
 

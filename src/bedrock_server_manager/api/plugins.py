@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("get_plugin_statuses")
-def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
+async def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
     """
     Retrieves the statuses and metadata of all discovered plugins.
 
@@ -54,7 +54,7 @@ def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Attempting to get plugin statuses.")
     try:
         pm = app_context.plugin_manager
-        pm._synchronize_config_with_disk()
+        await pm._synchronize_config_with_disk()
         statuses = pm.plugin_config
         logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
         return {"status": "success", "plugins": statuses.copy()}
@@ -68,7 +68,7 @@ def get_plugin_statuses(app_context: AppContext) -> Dict[str, Any]:
     after="after_set_plugin_status",
     identity_keys=("plugin_name", "new_status"),
 )
-def set_plugin_status(
+async def set_plugin_status(
     plugin_name: str,
     enabled: bool,
     app_context: AppContext,
@@ -106,7 +106,7 @@ def set_plugin_status(
     logger.info(f"API: Setting status for plugin '{plugin_name}' to {enabled}.")
     try:
         pm = app_context.plugin_manager
-        pm._synchronize_config_with_disk()
+        await pm._synchronize_config_with_disk()
 
         if plugin_name not in pm.plugin_config:
             raise UserInputError(
@@ -120,7 +120,7 @@ def set_plugin_status(
             }
 
         pm.plugin_config[plugin_name]["enabled"] = bool(enabled)
-        pm._save_config()
+        await pm._save_config()
 
         action = "enabled" if enabled else "disabled"
         logger.info(f"API: Plugin '{plugin_name}' successfully {action}.")
@@ -140,7 +140,7 @@ def set_plugin_status(
         }
 
 
-def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
+async def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
     """
     Triggers the plugin manager to unload all active plugins and
     then reload all plugins based on the current configuration.
@@ -159,7 +159,7 @@ def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
     logger.info("API: Attempting to reload all plugins.")
     try:
         pm = app_context.plugin_manager
-        pm.reload()
+        await pm.reload()
         logger.info("API: Plugins reloaded successfully.")
         return {
             "status": "success",
@@ -173,7 +173,7 @@ def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-def trigger_external_app_event_api(
+async def trigger_external_app_event_api(
     event_name: str,
     app_context: AppContext,
     payload: Optional[Dict[str, Any]] = None,
@@ -213,7 +213,7 @@ def trigger_external_app_event_api(
     try:
         pm = app_context.plugin_manager
         actual_payload = payload if payload is not None else {}
-        pm.trigger_event(
+        await pm.trigger_event(
             event_name, **actual_payload, _triggering_plugin="external_api_trigger"
         )
         logger.info(

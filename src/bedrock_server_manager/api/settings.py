@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("get_global_setting")
-def get_global_setting(key: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_global_setting(key: str, app_context: AppContext) -> Dict[str, Any]:
     """Reads a single value from the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.get`
@@ -67,7 +67,7 @@ def get_global_setting(key: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("get_all_global_settings")
-def get_all_global_settings(
+async def get_all_global_settings(
     app_context: AppContext,
 ) -> Dict[str, Any]:
     """Reads the entire global application settings configuration.
@@ -104,7 +104,9 @@ def get_all_global_settings(
 @trigger_event(
     before="before_setting_update", after="after_setting_update", identity_keys=("key",)
 )
-def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[str, Any]:
+async def set_global_setting(
+    key: str, value: Any, app_context: AppContext
+) -> Dict[str, Any]:
     """Writes a value to the global application settings.
 
     This function uses :meth:`~bedrock_server_manager.config.settings.Settings.set`
@@ -158,7 +160,7 @@ def set_global_setting(key: str, value: Any, app_context: AppContext) -> Dict[st
 
 
 @api_method("set_custom_global_setting")
-def set_custom_global_setting(
+async def set_custom_global_setting(
     key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes a custom value to the global application settings.
@@ -215,7 +217,7 @@ def set_custom_global_setting(
         }
 
 
-def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
+async def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
     """
     Forces a reload of settings and logging config from the file.
 

@@ -13,7 +13,16 @@ facilitates inter-plugin communication through a custom event system.
 import functools
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    TypeVar,
+)
 
 if TYPE_CHECKING:
     # Used for type hinting to avoid circular import at runtime.
@@ -151,7 +160,7 @@ def create_app_api(
             event_name, callback, plugin_name
         )
 
-    def event_sender(event_name: str, *args: Any, **kwargs: Any):
+    async def event_sender(event_name: str, *args: Any, **kwargs: Any):
         logger.debug(
             f"Plugin '{plugin_name}' is attempting to send event "
             f"'{event_name}' with args: {args}, kwargs: {kwargs}."
@@ -160,11 +169,11 @@ def create_app_api(
             raise RuntimeError("PluginManager was not found in AppContext!")
 
         kwargs["_triggering_plugin"] = plugin_name
-        app_context.plugin_manager.trigger_event(event_name, *args, **kwargs)
+        await app_context.plugin_manager.trigger_event(event_name, *args, **kwargs)
 
-        from bedrock_server_manager.plugins.util import broadcast_event
+        from bedrock_server_manager.plugins.util import async_broadcast_event
 
-        broadcast_event(app_context, event_name, kwargs)
+        await async_broadcast_event(app_context, event_name, kwargs)
 
     return AppAPI(plugin_name, api_dispatcher, event_listener, event_sender, is_core)
 
@@ -188,7 +197,7 @@ class AppAPI:
         plugin_name: str,
         api_dispatcher: Callable[[str], Callable[..., Any]],
         event_listener: Callable[[str, Callable[..., None]], None],
-        event_sender: Callable[..., None],
+        event_sender: Callable[..., Awaitable[Any]],
         is_core: bool = False,
     ):
         """Initializes the AppAPI instance for a specific plugin.
@@ -314,6 +323,6 @@ class AppAPI:
         """Registers a callback to be executed when a specific custom plugin event occurs."""
         self._event_listener(event_name, callback)
 
-    def send_event(self, event_name: str, *args: Any, **kwargs: Any):
+    async def send_event(self, event_name: str, *args: Any, **kwargs: Any):
         """Triggers an event, notifying all registered listeners and broadcasting to WebSockets."""
-        self._event_sender(event_name, *args, **kwargs)
+        await self._event_sender(event_name, *args, **kwargs)

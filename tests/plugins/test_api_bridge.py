@@ -99,7 +99,7 @@ def test_listen_for_event(app_context, monkeypatch):
     )
 
 
-def test_send_event(app_context, monkeypatch):
+async def test_send_event(app_context, monkeypatch):
     """Test AppAPI properly bridges custom event triggers to the PluginManager."""
     mock_plugin_manager = MagicMock()
     monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
@@ -116,7 +116,7 @@ def test_send_event(app_context, monkeypatch):
 
     plugin_api = create_app_api("test_plugin", app_context)
 
-    plugin_api.send_event("my_event", 1, 2, key="value")
+    await plugin_api.send_event("my_event", 1, 2, key="value")
     mock_plugin_manager.trigger_event.assert_called_once_with(
         "my_event", 1, 2, key="value", _triggering_plugin="test_plugin"
     )

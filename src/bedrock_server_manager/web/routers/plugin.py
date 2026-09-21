@@ -76,7 +76,7 @@ async def get_plugins_status(
     identity = current_user.username
     logger.info(f"API: Get plugin statuses request by '{identity}'.")
     try:
-        result = plugins_api.get_plugin_statuses(app_context=app_context)
+        result = await plugins_api.get_plugin_statuses(app_context=app_context)
         if result.get("status") == "success":
             return PluginStatusesResponse(
                 status="success", plugins=result.get("plugins")
@@ -114,7 +114,7 @@ async def post_trigger_event(
     )
 
     try:
-        result = plugins_api.trigger_external_app_event_api(
+        result = await plugins_api.trigger_external_app_event_api(
             app_context=app_context,
             event_name=payload.event_name,
             payload=payload.payload,
@@ -172,7 +172,7 @@ async def post_set_plugin_status(
     )
 
     try:
-        result = plugins_api.set_plugin_status(
+        result = await plugins_api.set_plugin_status(
             app_context=app_context, plugin_name=plugin_name, enabled=payload.enabled
         )
         if result.get("status") == "success":
@@ -219,7 +219,7 @@ async def put_reload_plugins(
     logger.info(f"API: Reload plugins request by '{identity}'.")
 
     try:
-        result = plugins_api.reload_plugins(app_context=app_context)
+        result = await plugins_api.reload_plugins(app_context=app_context)
         if result.get("status") == "success":
             return ActionResponse(status="success", message=str(result.get("message")))
         else:

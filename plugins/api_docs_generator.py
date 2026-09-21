@@ -20,13 +20,13 @@ class APIDocsGenerator(PluginBase):
     name = "API Docs Generator"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         self.logger.info(
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
     @app_event("on_manager_startup")
-    def generate_docs(self, **kwargs: Any):
+    async def generate_docs(self, **kwargs: Any):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API and events.
@@ -38,7 +38,7 @@ class APIDocsGenerator(PluginBase):
             # --- API Docs ---
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
-            backup_dir = self.api.get_global_setting("paths.backups")
+            backup_dir = await self.api.get_global_setting("paths.backups")
 
             api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 

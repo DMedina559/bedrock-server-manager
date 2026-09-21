@@ -25,7 +25,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
 
-    plugin_manager.load_plugins()
+    asyncio.run(plugin_manager.load_plugins())
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -36,8 +36,8 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context.resource_monitor.start()
         await app_context.api.update_server_statuses()
 
-        app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
-        app_context.plugin_manager.start_plugin_tasks()
+        await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+        await app_context.plugin_manager.start_plugin_tasks()
 
         # Initialize and start LogStreamer
         from .log_streamer import LogStreamer

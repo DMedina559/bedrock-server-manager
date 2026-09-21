@@ -16,7 +16,6 @@ APIs for plugins (via :func:`~bedrock_server_manager.plugins.api_bridge.api_meth
 and by triggering various plugin events during server operations.
 """
 
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -487,9 +486,8 @@ async def restart_server(  # noqa: C901
             logger.info(
                 f"API: Server '{server_name}' was not running. Attempting to start..."
             )
-            start_result = asyncio.run(
-                start_server(server_name, app_context=app_context)
-            )
+            start_result = await start_server(server_name, app_context=app_context)
+
             if start_result.get("status") == "success":
                 start_result["message"] = (
                     f"Server '{server_name}' was not running and has been started."
@@ -843,7 +841,7 @@ async def set_server_status_api(
 @trigger_event(
     before="before_server_players_change", after="after_server_players_change"
 )
-def update_server_player_stats_api(
+async def update_server_player_stats_api(
     server_name: str, player_count: int, players: list, app_context: "AppContext"
 ) -> Dict[str, Any]:
     """Internal API to trigger player stat updates for websockets/plugins."""
