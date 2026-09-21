@@ -259,20 +259,18 @@ class BedrockProcessManager:
                                 try:
                                     if hasattr(
                                         self.app_context.api,
-                                        "async_update_server_player_stats_api",
+                                        "update_server_player_stats_api",
                                     ):
-                                        await self.app_context.api.async_update_server_player_stats_api(
+                                        await self.app_context.api.update_server_player_stats_api(
                                             server.server_name,
                                             server.player_count,
                                             server.players,
                                         )
                                     else:
-                                        await asyncio.to_thread(
-                                            self.app_context.api.update_server_player_stats_api,
-                                            server.server_name,
-                                            server.player_count,
-                                            server.players,
+                                        self.logger.warning(
+                                            "API bridge does not have 'update_server_player_stats_api' method."
                                         )
+
                                 except AttributeError as e:
                                     self.logger.warning(
                                         f"Could not trigger player stats update API: {e}"
@@ -284,16 +282,12 @@ class BedrockProcessManager:
                                 try:
                                     if hasattr(
                                         self.app_context.api,
-                                        "async_get_server_bans_api",
+                                        "get_server_bans_api",
                                     ):
-                                        ban_res = await self.app_context.api.async_get_server_bans_api(
+                                        ban_res = await self.app_context.api.get_server_bans_api(
                                             server_name=server.server_name,
                                         )
-                                    else:
-                                        ban_res = await asyncio.to_thread(
-                                            self.app_context.api.get_server_bans_api,
-                                            server_name=server.server_name,
-                                        )
+
                                     if ban_res.get("status") == "success":
                                         bans = ban_res.get("bans", [])
                                         banned_xuids = {b["xuid"]: b for b in bans}
@@ -309,17 +303,11 @@ class BedrockProcessManager:
                                                     f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
                                                 )
                                                 try:
-                                                    if hasattr(
-                                                        server, "async_send_command"
-                                                    ):
-                                                        await server.async_send_command(
+                                                    if hasattr(server, "send_command"):
+                                                        await server.send_command(
                                                             f'kick "{p_name}" {reason}'
                                                         )
-                                                    else:
-                                                        await asyncio.to_thread(
-                                                            server.send_command,
-                                                            f'kick "{p_name}" {reason}',
-                                                        )
+
                                                 except Exception as kick_err:
                                                     self.logger.error(
                                                         f"Failed to kick banned player '{p_name}': {kick_err}"
@@ -339,7 +327,7 @@ class BedrockProcessManager:
 
                             if players:
                                 await save_player_data(
-                                    self.settings.db.async_session_manager(),
+                                    self.app_context.db.async_session_manager,
                                     players,
                                 )
                     except Exception as e:
