@@ -127,8 +127,13 @@ def test_cors_middleware_configuration(app_context, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_lifespan_startup_shutdown(app_context):
+async def test_lifespan_startup_shutdown(app_context, monkeypatch):
     """Test the lifespan hook properly initializes and stops components."""
+    # We must patch asyncio.run so create_web_app doesn't try to run it inside the test's event loop
+    import asyncio
+
+    monkeypatch.setattr(asyncio, "run", lambda coro: None)
+
     app = create_web_app(app_context)
 
     # Mock start and stop methods for our internal components
@@ -136,6 +141,12 @@ async def test_lifespan_startup_shutdown(app_context):
     app_context.resource_monitor.stop = MagicMock()
 
     app_context.api.update_server_statuses = AsyncMock()
+    app_context.plugin_manager.load_plugins = AsyncMock()
+    app_context.plugin_manager.trigger_guarded_event = AsyncMock()
+    app_context.plugin_manager.start_plugin_tasks = AsyncMock()
+    app_context.plugin_manager.shutdown = AsyncMock()
+    app_context.bedrock_process_manager.start = AsyncMock()
+    app_context.bedrock_process_manager.shutdown = AsyncMock()
 
     # Extract the actual lifespan function from the app router
     lifespan_manager = app.router.lifespan_context

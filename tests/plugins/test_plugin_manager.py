@@ -121,9 +121,12 @@ async def test_reload_plugins(async_db, app_context, monkeypatch):
     pm._event_listeners = {"test_event": []}
 
     with monkeypatch.context() as m:
-        m.setattr(pm, "load_plugins", MagicMock())
+        from unittest.mock import AsyncMock
+
+        mock_load = AsyncMock()
+        m.setattr(pm, "load_plugins", mock_load)
         # Instead of intercepting the mock plugin event, just verify load_plugins is called and lists are cleared
         await pm.reload()
 
         assert len(pm._event_listeners) == 0
-        pm.load_plugins.assert_called_once()
+        mock_load.assert_called_once()

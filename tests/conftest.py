@@ -140,7 +140,7 @@ async def app_context(settings, db, tmp_path):
     settings.set("paths.plugins", str(plugins_dir))
 
     context.plugin_manager.plugin_dirs = [plugins_dir]
-    context.plugin_manager.load_plugins()
+    await context.plugin_manager.load_plugins()
 
     yield context
 

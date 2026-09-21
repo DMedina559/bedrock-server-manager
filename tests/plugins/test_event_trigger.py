@@ -9,6 +9,7 @@ from bedrock_server_manager.plugins.event_trigger import trigger_event
 def mock_app_context():
     mock_context = MagicMock()
     mock_context.plugin_manager = MagicMock()
+    mock_context.plugin_manager.trigger_event = AsyncMock()
     mock_context.plugin_manager.trigger_event_async = AsyncMock()
     mock_context.connection_manager = AsyncMock()
 
@@ -18,19 +19,19 @@ def mock_app_context():
     return mock_context
 
 
-async def test_trigger_event_sync_hooks(mock_app_context, monkeypatch):
-    """Test trigger_event wraps a synchronous function, triggering both before and after hooks."""
+async def test_trigger_event_basic_hooks(mock_app_context, monkeypatch):
+    """Test trigger_event wraps an async function, triggering both before and after hooks."""
 
     import bedrock_server_manager.plugins.event_trigger as et
 
-    mock_broadcast = MagicMock()
-    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
+    mock_broadcast = AsyncMock()
+    monkeypatch.setattr(et, "async_broadcast_event", mock_broadcast, raising=False)
 
     @trigger_event(before="sync_before", after="sync_after")
-    def sync_target(app_context, multiplier, increment=5):
+    async def async_target(app_context, multiplier, increment=5):
         return multiplier * increment
 
-    result = sync_target(mock_app_context, 10)
+    result = await async_target(mock_app_context, 10)
     assert result == 50
 
     from unittest.mock import ANY
@@ -73,41 +74,27 @@ async def test_trigger_event_async_hooks(mock_app_context, monkeypatch):
         await asyncio.sleep(0)
         return val + 10
 
-    # Ensure trigger_event_async is properly mocked if it exists
-    if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
-        from unittest.mock import AsyncMock
-
-        mock_app_context.plugin_manager.trigger_event_async = AsyncMock()
-
     result = await async_target(mock_app_context, val=20)
     assert result == 30
 
     from unittest.mock import ANY
 
-    if hasattr(mock_app_context.plugin_manager, "trigger_event_async"):
-        mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
-            "async_before", val=20, event=ANY
-        )
-        mock_app_context.plugin_manager.trigger_event_async.assert_any_call(
-            "async_after", val=20, result=30, event=ANY
-        )
-    else:
-        mock_app_context.plugin_manager.trigger_event.assert_any_call(
-            "async_before", val=20, event=ANY
-        )
-        mock_app_context.plugin_manager.trigger_event.assert_any_call(
-            "async_after", val=20, result=30, event=ANY
-        )
+    mock_app_context.plugin_manager.trigger_event.assert_any_call(
+        "async_before", val=20, event=ANY
+    )
+    mock_app_context.plugin_manager.trigger_event.assert_any_call(
+        "async_after", val=20, result=30, event=ANY
+    )
 
 
 async def test_trigger_event_no_args(mock_app_context):
     """Test trigger_event skips triggering when no string events are mapped to kwargs."""
 
     @trigger_event
-    def blank_target(app_context):
+    async def blank_target(app_context):
         return "blank"
 
-    assert blank_target(mock_app_context) == "blank"
+    assert await blank_target(mock_app_context) == "blank"
     mock_app_context.plugin_manager.trigger_event.assert_not_called()
     mock_app_context.connection_manager.broadcast_to_topic.assert_not_called()
 
@@ -116,10 +103,10 @@ async def test_trigger_event_only_before(mock_app_context):
     """Test trigger_event only executes the before hook if no after is given."""
 
     @trigger_event(before="only_before")
-    def my_target(app_context):
+    async def my_target(app_context):
         return True
 
-    my_target(mock_app_context)
+    await my_target(mock_app_context)
     from unittest.mock import ANY
 
     mock_app_context.plugin_manager.trigger_event.assert_called_once_with(
@@ -131,10 +118,10 @@ async def test_trigger_event_only_after(mock_app_context):
     """Test trigger_event only executes the after hook if no before is given."""
 
     @trigger_event(after="only_after")
-    def my_target(app_context):
+    async def my_target(app_context):
         return "success_val"
 
-    my_target(mock_app_context)
+    await my_target(mock_app_context)
     from unittest.mock import ANY
 
     mock_app_context.plugin_manager.trigger_event.assert_called_once_with(

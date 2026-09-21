@@ -101,14 +101,22 @@ def test_listen_for_event(app_context, monkeypatch):
 
 async def test_send_event(app_context, monkeypatch):
     """Test AppAPI properly bridges custom event triggers to the PluginManager."""
+    from unittest.mock import AsyncMock
+
     mock_plugin_manager = MagicMock()
+    mock_plugin_manager.trigger_event = AsyncMock()
     monkeypatch.setattr(app_context, "_plugin_manager", mock_plugin_manager)
 
     mock_broadcast = MagicMock()
     # It seems to be complaining about ModuleNotFoundError during import in the test
+    # Because sys.modules mocking of util replaces the actual module, we need to mock async_broadcast_event directly
+    # on the module level if it's imported there, but since we mocked the module, the imported function will be a MagicMock
     import sys
+    import types
 
-    sys.modules["bedrock_server_manager.plugins.util"] = MagicMock()
+    mock_util = types.ModuleType("bedrock_server_manager.plugins.util")
+    mock_util.async_broadcast_event = AsyncMock()
+    sys.modules["bedrock_server_manager.plugins.util"] = mock_util
 
     from bedrock_server_manager.plugins import api_bridge
 

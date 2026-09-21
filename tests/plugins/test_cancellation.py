@@ -6,14 +6,16 @@ from bedrock_server_manager.plugins.event_trigger import trigger_event
 
 
 async def test_cancellable_event_sync(monkeypatch):
+    from unittest.mock import AsyncMock
+
     mock_context = MagicMock()
     mock_context.plugin_manager = MagicMock()
-    # Mock broadcast_event to avoid unawaited coroutines
-    mock_context.connection_manager = MagicMock()
+    mock_context.plugin_manager.trigger_event = AsyncMock()
+    mock_context.connection_manager = AsyncMock()
 
     import bedrock_server_manager.plugins.event_trigger as et
 
-    mock_broadcast = MagicMock()
+    mock_broadcast = AsyncMock()
     monkeypatch.setattr(et, "async_broadcast_event", mock_broadcast, raising=False)
 
     async def mock_trigger_event(event_name, *args, **kwargs):
