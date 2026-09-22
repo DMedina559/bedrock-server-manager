@@ -11,7 +11,6 @@ def task_manager(app_context):
     return TaskManager(app_context)
 
 
-@pytest.mark.asyncio
 async def test_run_task_success(task_manager):
     def my_task(a, b):
         return a + b
@@ -32,7 +31,6 @@ async def test_run_task_success(task_manager):
     assert task_manager.tasks[task_id]["result"] == 15
 
 
-@pytest.mark.asyncio
 async def test_run_async_task_success(task_manager, app_context):
     app_context.loop = asyncio.get_running_loop()
 
@@ -55,7 +53,6 @@ async def test_run_async_task_success(task_manager, app_context):
     assert task_manager.tasks[task_id]["result"] == 50
 
 
-@pytest.mark.asyncio
 async def test_cancel_task(task_manager, app_context):
     app_context.loop = asyncio.get_running_loop()
 
@@ -81,7 +78,6 @@ async def test_cancel_task(task_manager, app_context):
     assert "cancelled" in task_manager.tasks[task_id]["message"].lower()
 
 
-@pytest.mark.asyncio
 async def test_run_task_failure(task_manager):
     def failing_task():
         raise ValueError("Something went wrong")
@@ -101,7 +97,6 @@ async def test_run_task_failure(task_manager):
     assert task_manager.tasks[task_id]["status"] == "error"
 
 
-@pytest.mark.asyncio
 async def test_run_task_websocket_notification_user_specific(
     task_manager, app_context, monkeypatch
 ):
@@ -134,7 +129,6 @@ async def test_run_task_websocket_notification_user_specific(
     assert mock_send.call_count >= 1
 
 
-@pytest.mark.asyncio
 async def test_task_manager_shutdown(task_manager):
     def short_task():
         # Even though we are not using time.sleep in tests where possible,

@@ -30,7 +30,6 @@ def mock_websocket():
     return ws
 
 
-@pytest.mark.asyncio
 async def test_websocket_connect_disconnect(
     connection_manager, mock_websocket, test_user
 ):
@@ -46,7 +45,6 @@ async def test_websocket_connect_disconnect(
     assert client_id not in connection_manager.active_connections
 
 
-@pytest.mark.asyncio
 async def test_websocket_subscribe_unsubscribe(
     connection_manager, mock_websocket, test_user
 ):
@@ -68,7 +66,6 @@ async def test_websocket_subscribe_unsubscribe(
     assert "topicB" not in connection_manager.subscriptions
 
 
-@pytest.mark.asyncio
 async def test_websocket_send_to_client(connection_manager, mock_websocket, test_user):
     """Test sending a direct message to a specific client ID."""
     client_id = await connection_manager.connect(mock_websocket, test_user)
@@ -81,7 +78,6 @@ async def test_websocket_send_to_client(connection_manager, mock_websocket, test
     mock_websocket.send_text.assert_called_once_with(json.dumps(message))
 
 
-@pytest.mark.asyncio
 async def test_websocket_send_to_user(connection_manager, mock_websocket, test_user):
     """Test sending a message to all websockets of a specific user."""
     mock_websocket2 = MagicMock()
@@ -99,7 +95,6 @@ async def test_websocket_send_to_user(connection_manager, mock_websocket, test_u
     mock_websocket2.send_text.assert_called_once_with(json.dumps(message))
 
 
-@pytest.mark.asyncio
 async def test_websocket_broadcast_to_topic(
     connection_manager, mock_websocket, test_user
 ):
@@ -130,7 +125,6 @@ async def test_websocket_broadcast_to_topic(
     mock_ws_unsubscribed.send_text.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_websocket_broadcast_to_wildcard_topic(
     connection_manager, mock_websocket, test_user
 ):
@@ -147,7 +141,6 @@ async def test_websocket_broadcast_to_wildcard_topic(
     mock_websocket.send_text.assert_called_once_with(json.dumps(message))
 
 
-@pytest.mark.asyncio
 async def test_websocket_disconnect_on_send_error(
     connection_manager, mock_websocket, test_user
 ):

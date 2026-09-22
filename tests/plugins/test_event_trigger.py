@@ -51,7 +51,6 @@ async def test_trigger_event_basic_hooks(mock_app_context, monkeypatch):
     )
 
 
-@pytest.mark.asyncio
 async def test_trigger_event_async_hooks(mock_app_context, monkeypatch):
     """Test trigger_event successfully wraps async coroutines awaiting correctly."""
 

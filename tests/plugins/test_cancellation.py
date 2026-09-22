@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 from bedrock_server_manager.plugins.event_trigger import trigger_event
 
 
@@ -32,7 +30,6 @@ async def test_cancellable_event_sync(monkeypatch):
     assert result == {"status": "canceled", "message": "Sync cancelled"}
 
 
-@pytest.mark.asyncio
 async def test_cancellable_event_async(monkeypatch):
     from unittest.mock import AsyncMock
 

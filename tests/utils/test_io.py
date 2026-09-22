@@ -21,7 +21,6 @@ def temp_dir():
     shutil.rmtree(d)
 
 
-@pytest.mark.asyncio
 async def test_async_save_and_load_json(temp_dir):
     filepath = os.path.join(temp_dir, "test.json")
     data = {"key": "value", "list": [1, 2, 3]}
@@ -35,7 +34,6 @@ async def test_async_save_and_load_json(temp_dir):
     assert loaded_data == data
 
 
-@pytest.mark.asyncio
 async def test_async_save_json_concurrency(temp_dir):
     """
     Test 50 rapid concurrent saves to the same file.
@@ -60,7 +58,6 @@ async def test_async_save_json_concurrency(temp_dir):
     assert "count" in loaded
 
 
-@pytest.mark.asyncio
 async def test_async_save_json_fault_tolerance(temp_dir):
     """
     Mock a failure during the JSON dump to ensure the original file
@@ -87,7 +84,6 @@ async def test_async_save_json_fault_tolerance(temp_dir):
     assert not os.path.exists(filepath + ".tmp")
 
 
-@pytest.mark.asyncio
 async def test_async_save_and_load_lines(temp_dir):
     filepath = os.path.join(temp_dir, "test.txt")
     lines = ["line 1\n", "line 2\n", "line 3\n"]
@@ -100,7 +96,6 @@ async def test_async_save_and_load_lines(temp_dir):
     assert loaded_lines == lines
 
 
-@pytest.mark.asyncio
 async def test_async_save_lines_concurrency(temp_dir):
     """
     Test 50 rapid concurrent line saves to the same file.
@@ -124,7 +119,6 @@ async def test_async_save_lines_concurrency(temp_dir):
     assert loaded[0].startswith("line ")
 
 
-@pytest.mark.asyncio
 async def test_async_save_lines_fault_tolerance(temp_dir):
     filepath = os.path.join(temp_dir, "fault_test_lines.txt")
     original_lines = ["original\n"]

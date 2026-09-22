@@ -1,6 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
@@ -126,7 +125,6 @@ def test_cors_middleware_configuration(app_context, monkeypatch):
     assert cors_mw.kwargs.get("allow_origin_regex") == ".*"
 
 
-@pytest.mark.asyncio
 async def test_lifespan_startup_shutdown(app_context, monkeypatch):
     """Test the lifespan hook properly initializes and stops components."""
     # We must patch asyncio.run so create_web_app doesn't try to run it inside the test's event loop
