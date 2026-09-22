@@ -60,7 +60,7 @@ class AppContext:
         self._needs_setup: Optional[bool] = None
         self._pre_app_config_cache: Optional[Dict[str, Any]] = None
 
-    def load(self):
+    async def load(self):
         """
         Loads the application context by initializing the settings.
         """
@@ -72,13 +72,13 @@ class AppContext:
         self._settings = Settings(
             db=self.db, config_dir=self.config_dir, data_dir=self.data_dir
         )
-        self._settings.load()
+        await self._settings.load()
 
         from .utils import get_utils
 
         self.splash_txt = get_utils._get_splash_text()
 
-    def reload(self):
+    async def reload(self):
         """
         Reloads the application context by reloading settings and all components.
         """
@@ -90,8 +90,8 @@ class AppContext:
         self._log_level = None
         self._log_dir = None
 
-        self.settings.reload()
-        self.plugin_manager.reload()
+        await self.settings.reload()
+        await self.plugin_manager.reload()
 
         if self._resource_monitor is not None:
             self._resource_monitor.stop()

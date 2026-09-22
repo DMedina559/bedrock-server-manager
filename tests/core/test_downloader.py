@@ -63,7 +63,7 @@ def test_downloader_init(app_context: AppContext):
     assert downloader._version_type == "LATEST"
 
 
-def test_downloader_init_preview(app_context: AppContext):
+async def test_downloader_init_preview(app_context: AppContext):
     """Test initialization of BedrockDownloader with PREVIEW target."""
     downloader = BedrockDownloader(
         settings_obj=app_context.settings,
@@ -77,7 +77,7 @@ def test_downloader_init_preview(app_context: AppContext):
 async def test_downloader_lookup_latest(mock_bedrock_api, app_context: AppContext):
     """Test looking up the latest bedrock URL from API."""
     # Point the downloader to the mock API
-    app_context.settings.set(
+    await app_context.settings.set(
         "downloader.download_url", f"{mock_bedrock_api.url}/api/v1.0/download/links"
     )
 
@@ -91,7 +91,7 @@ async def test_downloader_lookup_latest(mock_bedrock_api, app_context: AppContex
 async def test_downloader_lookup_preview(mock_bedrock_api, app_context: AppContext):
     """Test looking up the preview bedrock URL from API."""
     # Point the downloader to the mock API
-    app_context.settings.set(
+    await app_context.settings.set(
         "downloader.download_url", f"{mock_bedrock_api.url}/api/v1.0/download/links"
     )
 
@@ -122,7 +122,7 @@ async def test_downloader_lookup_failure(mock_get, app_context: AppContext):
 )
 async def test_downloader_prepare_assets(mock_conn, app_context: AppContext, tmp_path):
     """Test prepare_download_assets sets up paths properly."""
-    app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
+    await app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     downloader = BedrockDownloader(
         app_context.settings, str(tmp_path / "server_dir"), "LATEST"
     )

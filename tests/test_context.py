@@ -22,18 +22,20 @@ def test_app_context_initialization(app_context):
     assert app_context._task_manager is task_manager
 
 
-def test_app_context_load_without_prior_settings(db, isolated_bcm_config):
+async def test_app_context_load_without_prior_settings(db, isolated_bcm_config):
     """Test load() creates settings if not provided."""
     context = AppContext()
     context._db = db
-    context.load()
+    await context.load()
     assert context.settings is not None
 
 
-def test_app_context_reload(app_context, monkeypatch):
+async def test_app_context_reload(app_context, monkeypatch):
     """Test reload() clears caches and calls reload on sub-components."""
-    settings_reload_mock = MagicMock()
-    plugin_manager_reload_mock = MagicMock()
+    from unittest.mock import AsyncMock
+
+    settings_reload_mock = AsyncMock()
+    plugin_manager_reload_mock = AsyncMock()
 
     monkeypatch.setattr(app_context.settings, "reload", settings_reload_mock)
     monkeypatch.setattr(
@@ -53,7 +55,7 @@ def test_app_context_reload(app_context, monkeypatch):
     app_context._resource_monitor = MagicMock()
     app_context.log_streamer = MagicMock()
 
-    app_context.reload()
+    await app_context.reload()
 
     # Verify caches are cleared
     assert app_context._pre_app_config_cache is None

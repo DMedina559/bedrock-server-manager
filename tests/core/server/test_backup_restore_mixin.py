@@ -3,7 +3,7 @@ import zipfile
 from unittest.mock import AsyncMock, patch
 
 
-def test_server_backup_directory(real_bedrock_server, app_context):
+async def test_server_backup_directory(real_bedrock_server, app_context):
     """Test generating the server backup directory."""
     server = real_bedrock_server
     expected_dir = os.path.join(
@@ -90,7 +90,7 @@ async def test_prune_server_backups(real_bedrock_server, app_context):
     """Test pruning old backups based on retention settings."""
     server = real_bedrock_server
 
-    app_context.settings.set("retention.backups", 1)
+    await app_context.settings.set("retention.backups", 1)
 
     world_dir = os.path.join(server.server_dir, "worlds", "test_world")
     os.makedirs(world_dir, exist_ok=True)

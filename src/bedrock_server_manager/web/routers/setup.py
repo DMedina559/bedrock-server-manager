@@ -75,7 +75,7 @@ async def create_first_user(
             app_context._needs_setup = False
 
             # Log the user in by creating an access token and returning it
-            access_token = create_access_token(
+            access_token = await create_access_token(
                 data={"sub": user.username}, app_context=app_context
             )
 

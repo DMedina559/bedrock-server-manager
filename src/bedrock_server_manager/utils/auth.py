@@ -20,20 +20,20 @@ ALGORITHM = "HS256"
 
 
 # --- JWT Configuration ---
-def get_jwt_secret_key(settings: Settings) -> str:
+async def get_jwt_secret_key(settings: Settings) -> str:
     """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
     jwt_secret_key = settings.get("web.jwt_secret_key")
 
     if not jwt_secret_key:
         jwt_secret_key = secrets.token_urlsafe(32)
-        settings.set("web.jwt_secret_key", jwt_secret_key)
+        await settings.set("web.jwt_secret_key", jwt_secret_key)
         logger.info("JWT secret key not found in settings, generating a new one")
 
     return str(jwt_secret_key)
 
 
 # --- Token Creation ---
-def create_access_token(
+async def create_access_token(
     app_context: AppContext,
     data: dict,
     expires_delta: Optional[datetime.timedelta] = None,
@@ -56,7 +56,7 @@ def create_access_token(
 
     settings = app_context.settings
 
-    JWT_SECRET_KEY = get_jwt_secret_key(settings)
+    JWT_SECRET_KEY = await get_jwt_secret_key(settings)
 
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
@@ -117,7 +117,7 @@ async def _get_user_from_token(
     """Helper function to decode a JWT and retrieve the associated user."""
     try:
         settings = app_context.settings
-        JWT_SECRET_KEY = get_jwt_secret_key(settings)
+        JWT_SECRET_KEY = await get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
         if username is None:

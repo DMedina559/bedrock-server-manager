@@ -42,27 +42,27 @@ def unauth_client_test(auth_test_app):
 
 
 @pytest.fixture
-def auth_client_test(auth_test_app, app_context, test_user):
+async def auth_client_test(auth_test_app, app_context, test_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
-    token = create_access_token(app_context, {"sub": test_user.username})
+    token = await create_access_token(app_context, {"sub": test_user.username})
     client = TestClient(auth_test_app)
     client.cookies.set("access_token_cookie", token)
     return client
 
 
 @pytest.fixture
-def admin_client_test(auth_test_app, app_context, test_admin_user):
+async def admin_client_test(auth_test_app, app_context, test_admin_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
-    token = create_access_token(app_context, {"sub": test_admin_user.username})
+    token = await create_access_token(app_context, {"sub": test_admin_user.username})
     client = TestClient(auth_test_app)
     client.cookies.set("access_token_cookie", token)
     return client
 
 
 @pytest.fixture
-def moderator_client_test(auth_test_app, app_context, db_session):
+async def moderator_client_test(auth_test_app, app_context, db_session):
     from bedrock_server_manager.db.models import User as UserModel
     from bedrock_server_manager.utils.auth import create_access_token, get_password_hash
 
@@ -75,13 +75,13 @@ def moderator_client_test(auth_test_app, app_context, db_session):
     db_session.add(user)
     db_session.commit()
 
-    token = create_access_token(app_context, {"sub": user.username})
+    token = await create_access_token(app_context, {"sub": user.username})
     client = TestClient(auth_test_app)
     client.cookies.set("access_token_cookie", token)
     return client
 
 
-def test_get_current_user_optional_no_token(unauth_client_test):
+async def test_get_current_user_optional_no_token(unauth_client_test):
     """Test get_current_user_optional without any token returns None."""
     response = unauth_client_test.get("/optional")
     assert response.status_code == 200
@@ -149,11 +149,13 @@ def test_get_moderator_user_as_normal_user(auth_client_test):
     assert response.status_code == 403
 
 
-def test_get_current_user_optional_bearer_token(auth_test_app, app_context, test_user):
+async def test_get_current_user_optional_bearer_token(
+    auth_test_app, app_context, test_user
+):
     """Test get_current_user_optional with a bearer token."""
     from bedrock_server_manager.utils.auth import create_access_token
 
-    token = create_access_token(app_context, {"sub": test_user.username})
+    token = await create_access_token(app_context, {"sub": test_user.username})
 
     client = TestClient(auth_test_app)
     response = client.get("/optional", headers={"Authorization": f"Bearer {token}"})

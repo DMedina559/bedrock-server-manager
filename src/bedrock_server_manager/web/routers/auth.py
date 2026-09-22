@@ -82,7 +82,7 @@ async def api_login_for_access_token(
     else:
         expires_delta = datetime.timedelta(hours=24)
 
-    access_token = create_access_token(
+    access_token = await create_access_token(
         data={"sub": authenticated_username},
         app_context=app_context,
         expires_delta=expires_delta,
@@ -132,7 +132,7 @@ async def reauth(
     else:
         expires_delta = datetime.timedelta(hours=24)
 
-    access_token = create_access_token(
+    access_token = await create_access_token(
         data={"sub": current_user.username},
         app_context=app_context,
         expires_delta=expires_delta,

@@ -135,7 +135,7 @@ async def set_global_setting(
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
         settings = app_context.settings
-        settings.set(key, value)
+        await settings.set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
             "status": "success",
@@ -193,7 +193,7 @@ async def set_custom_global_setting(
     logger.debug(f"API: Writing to global setting. Key='{key}', Value='{value}'")
     try:
         settings = app_context.settings
-        settings.set(key, value)
+        await settings.set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
         return {
             "status": "success",
@@ -242,9 +242,9 @@ async def reload_global_settings(app_context: AppContext) -> Dict[str, str]:
     logger.info("API: Received request to reload global settings and logging.")
     try:
         # Step 1: Reload the settings from the file
-        app_context.reload()
+        await app_context.reload()
         settings = app_context.settings
-        settings.reload()
+        await settings.reload()
         logger.info("API: Global settings successfully reloaded.")
 
         return {

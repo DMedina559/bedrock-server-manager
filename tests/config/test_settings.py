@@ -7,41 +7,45 @@ from bedrock_server_manager.db.models import Setting
 from bedrock_server_manager.error import ConfigurationError
 
 
-def test_settings_initialization(db, isolated_bcm_config):
+async def test_settings_initialization(async_db, isolated_bcm_config):
     """Test Settings initializes properties correctly without loading."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
-    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
-    assert settings.db == db
+    settings = Settings(db=async_db, data_dir=test_data_dir, config_dir=test_config_dir)
+    assert settings.db == async_db
     assert settings._settings == {}
 
 
-def test_settings_load_populates_defaults(db, isolated_bcm_config):
+async def test_settings_load_populates_defaults(async_db, isolated_bcm_config):
     """Test loading on an empty database populates default settings."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
-    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
-    settings.load()
+    settings = Settings(db=async_db, data_dir=test_data_dir, config_dir=test_config_dir)
+    await settings.load()
 
     # Check that settings were populated from default_config
     assert "web" in settings._settings
     assert "port" in settings._settings["web"]
 
     # Verify they were saved to the DB
-    with db.session_manager() as session:
-        count = session.query(Setting).count()
+    async with async_db.async_session_manager() as session:
+        from sqlalchemy import func
+        from sqlalchemy.future import select
+
+        result = await session.execute(select(func.count(Setting.key)))
+        count = result.scalar()
         assert count > 0
 
 
-def test_settings_load_merges_existing_db(db, isolated_bcm_config):
+async def test_settings_load_merges_existing_db(async_db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
-    with db.session_manager() as session:
+    async with async_db.async_session_manager() as session:
         session.add(
             Setting(
                 key="web",
@@ -49,10 +53,10 @@ def test_settings_load_merges_existing_db(db, isolated_bcm_config):
             )
         )
         session.add(Setting(key="custom", value={"my_setting": "val"}))
-        session.commit()
+        await session.commit()
 
-    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
-    settings.load()
+    settings = Settings(db=async_db, data_dir=test_data_dir, config_dir=test_config_dir)
+    await settings.load()
 
     assert settings.get("web.port") == 9999
     assert settings.get("custom.my_setting") == "val"
@@ -61,7 +65,7 @@ def test_settings_load_merges_existing_db(db, isolated_bcm_config):
     assert settings.get("retention.backups") is not None
 
 
-def test_settings_get(settings):
+async def test_settings_get(settings):
     """Test getting deeply nested keys and defaults."""
     assert settings.get("paths.servers") is not None
     assert settings.get("web.port") == 11325
@@ -69,47 +73,53 @@ def test_settings_get(settings):
     assert settings.get("web.invalid", "fallback") == "fallback"
 
 
-def test_settings_set(settings, db):
+async def test_settings_set(settings, async_db):
     """Test setting deeply nested keys."""
     # Test setting existing key
-    settings.set("web.port", 8080)
+    await settings.set("web.port", 8080)
     assert settings.get("web.port") == 8080
 
     # Test setting new nested key
-    settings.set("custom.plugin.enabled", True)
+    await settings.set("custom.plugin.enabled", True)
     assert settings.get("custom.plugin.enabled") is True
 
     # Verify written to DB
-    with db.session_manager() as session:
-        custom_setting = session.query(Setting).filter_by(key="custom").first()
+    async with async_db.async_session_manager() as session:
+        from sqlalchemy.future import select
+
+        result = await session.execute(select(Setting).filter_by(key="custom"))
+        custom_setting = result.scalars().first()
         assert custom_setting.value["plugin"]["enabled"] is True
 
 
-def test_settings_set_no_change_skips_write(settings, monkeypatch):
+async def test_settings_set_no_change_skips_write(settings, monkeypatch):
     """Test setting the same value skips database write."""
     mock_write = MagicMock()
     monkeypatch.setattr(settings, "_write_config", mock_write)
 
     current_val = settings.get("web.port")
-    settings.set("web.port", current_val)
+    await settings.set("web.port", current_val)
 
     mock_write.assert_not_called()
 
 
-def test_settings_set_conflict_raises_error(settings):
+async def test_settings_set_conflict_raises_error(settings):
     """Test setting a key where a path conflict exists raises ConfigurationError."""
     # We must try to set a sub-key on a path that is already a primitive value, not a dict.
     # web.port is an int, so setting web.port.sub should throw a ConfigurationError.
 
     with pytest.raises(ConfigurationError, match="Cannot set key"):
-        settings.set("web.port.sub.another", "value")
+        await settings.set("web.port.sub.another", "value")
 
 
-def test_settings_reload(settings, db):
+async def test_settings_reload(settings, async_db):
     """Test reload pulls fresh changes from the database."""
     # Modify db directly
-    with db.session_manager() as session:
-        setting = session.query(Setting).filter_by(key="web").first()
+    async with async_db.async_session_manager() as session:
+        from sqlalchemy.future import select
+
+        result = await session.execute(select(Setting).filter_by(key="web"))
+        setting = result.scalars().first()
         if not setting:
             setting = Setting(key="web", value={"port": 11325})
             session.add(setting)
@@ -119,14 +129,14 @@ def test_settings_reload(settings, db):
         new_val = dict(setting.value) if setting.value else {}
         new_val["port"] = 5555
         setting.value = new_val
-        session.commit()
+        await session.commit()
 
     assert settings.get("web.port") == 11325  # Before reload
-    settings.reload()
+    await settings.reload()
     assert settings.get("web.port") == 5555  # After reload
 
 
-def test_settings_properties(settings):
+async def test_settings_properties(settings):
     """Test property getters like config_dir and data_dir."""
     assert settings.config_dir is not None
     assert settings.data_dir is not None

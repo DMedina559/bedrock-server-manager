@@ -15,33 +15,33 @@ from bedrock_server_manager.utils.auth import (
 )
 
 
-def test_get_jwt_secret_key_creates_if_missing(app_context):
+async def test_get_jwt_secret_key_creates_if_missing(app_context):
     """Test get_jwt_secret_key creates and sets a new key if one is missing in settings."""
-    app_context.settings.set("web.jwt_secret_key", None)
-    key = get_jwt_secret_key(app_context.settings)
+    await app_context.settings.set("web.jwt_secret_key", None)
+    key = await get_jwt_secret_key(app_context.settings)
     assert key is not None
     assert len(key) > 0
     assert app_context.settings.get("web.jwt_secret_key") == key
 
 
-def test_get_jwt_secret_key_returns_existing(app_context):
+async def test_get_jwt_secret_key_returns_existing(app_context):
     """Test get_jwt_secret_key returns the existing key from settings."""
-    app_context.settings.set("web.jwt_secret_key", "my_secret_key")
-    key = get_jwt_secret_key(app_context.settings)
+    await app_context.settings.set("web.jwt_secret_key", "my_secret_key")
+    key = await get_jwt_secret_key(app_context.settings)
     assert key == "my_secret_key"
 
 
-def test_create_access_token(app_context):
+async def test_create_access_token(app_context):
     """Test create_access_token successfully generates a valid JWT string."""
-    token = create_access_token(app_context, {"sub": "test_user"})
+    token = await create_access_token(app_context, {"sub": "test_user"})
     assert isinstance(token, str)
     assert len(token) > 0
 
 
-def test_create_access_token_with_custom_expiry(app_context):
+async def test_create_access_token_with_custom_expiry(app_context):
     """Test create_access_token handles custom expiration deltas correctly."""
     expires = datetime.timedelta(minutes=15)
-    token = create_access_token(
+    token = await create_access_token(
         app_context, {"sub": "test_user"}, expires_delta=expires
     )
     assert isinstance(token, str)
@@ -59,7 +59,7 @@ async def test_get_user_from_token_success(app_context, async_db):
 
     app_context.db.async_session_manager = async_db.async_session_manager
 
-    token = create_access_token(app_context, {"sub": "test_token_user"})
+    token = await create_access_token(app_context, {"sub": "test_token_user"})
     user_response = await _get_user_from_token(app_context, token)
 
     assert user_response is not None
@@ -76,7 +76,7 @@ async def test_get_user_from_token_invalid_token(app_context, async_db):
 async def test_get_user_from_token_user_not_found(app_context, async_db):
     """Test _get_user_from_token returns None when the token payload references a missing user."""
     app_context.db.async_session_manager = async_db.async_session_manager
-    token = create_access_token(app_context, {"sub": "non_existent_user"})
+    token = await create_access_token(app_context, {"sub": "non_existent_user"})
     user_response = await _get_user_from_token(app_context, token)
     assert user_response is None
 
@@ -90,7 +90,7 @@ async def test_authenticate_websocket_token_success(app_context, async_db):
 
     app_context.db.async_session_manager = async_db.async_session_manager
 
-    token = create_access_token(app_context, {"sub": "ws_user"})
+    token = await create_access_token(app_context, {"sub": "ws_user"})
     user_response = await authenticate_websocket_token(app_context, token)
 
     assert user_response.username == "ws_user"
@@ -106,13 +106,13 @@ async def test_authenticate_websocket_token_missing_token(app_context):
 async def test_authenticate_websocket_token_invalid_user(app_context, async_db):
     """Test authenticate_websocket_token raises a WebSocketException when a token user is missing."""
     app_context.db.async_session_manager = async_db.async_session_manager
-    token = create_access_token(app_context, {"sub": "missing_ws_user"})
+    token = await create_access_token(app_context, {"sub": "missing_ws_user"})
     with pytest.raises(WebSocketException) as exc_info:
         await authenticate_websocket_token(app_context, token)
     assert "Invalid token, user not found, or inactive" in exc_info.value.reason
 
 
-def test_password_hashing():
+async def test_password_hashing():
     """Test password hashing encrypts effectively and verification checks appropriately."""
     password = "supersecretpassword"
     hashed = get_password_hash(password)

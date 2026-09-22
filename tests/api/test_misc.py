@@ -29,7 +29,7 @@ async def test_prune_download_cache_default_settings(app_context, monkeypatch):
     monkeypatch.setattr(
         "bedrock_server_manager.api.misc.prune_old_downloads", mock_prune
     )
-    app_context.settings.set("retention.downloads", 2)
+    await app_context.settings.set("retention.downloads", 2)
 
     result = await prune_download_cache("/downloads", app_context=app_context)
 

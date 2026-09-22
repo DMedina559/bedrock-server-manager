@@ -40,7 +40,7 @@ def test_get_worlds_list_error(admin_auth_client: TestClient):
         assert "Disk unavailable" in response.json()["detail"]
 
 
-def test_post_world_install_success(
+async def test_post_world_install_success(
     admin_auth_client: TestClient,
     real_bedrock_server,
     app_context,
@@ -50,7 +50,7 @@ def test_post_world_install_success(
     import shutil
 
     # Set up mock content dir
-    app_context.settings.set("paths.content", str(tmp_path))
+    await app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,10 +72,10 @@ def test_post_world_install_success(
             assert response.json()["task_id"] == "task-123"
 
 
-def test_post_world_install_not_found(
+async def test_post_world_install_not_found(
     admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
 ):
-    app_context.settings.set("paths.content", str(tmp_path))
+    await app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
 
@@ -89,10 +89,10 @@ def test_post_world_install_not_found(
         assert response.status_code == 404
 
 
-def test_post_world_install_path_traversal(
+async def test_post_world_install_path_traversal(
     admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
 ):
-    app_context.settings.set("paths.content", str(tmp_path))
+    await app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
 

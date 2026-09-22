@@ -16,7 +16,6 @@ Key components:
 
 """
 
-import asyncio
 import collections.abc
 import logging
 import os
@@ -186,72 +185,6 @@ class Settings:
             "custom": {},
         }
 
-    def load(self) -> None:
-        """Loads settings from the database.
-
-        The process is as follows:
-
-            1. Starts with a fresh copy of the default settings (see :meth:`default_config`).
-            2. If the database is empty, it's populated with these default settings.
-            3. If the database has settings, they are loaded:
-                The loaded user settings are deeply merged on top of the default settings.
-                This ensures that any new settings added in later application versions are present,
-                while user-defined values are preserved.
-            4. If any error occurs during loading (e.g., JSON decoding error, OS error),
-               a warning is logged, and the application proceeds with default settings.
-               The configuration will be saved with current (potentially default) settings
-               on the next call to :meth:`set` or :meth:`_write_config`.
-            5. Finally, :meth:`_ensure_dirs_exist` is called to create any missing
-               critical application directories.
-
-        """
-
-        # Always start with a fresh copy of the defaults to build upon.
-        self._settings = self.default_config
-
-        assert self.db is not None
-        with self.db.session_manager() as db:  # type: ignore
-            # Check if the database is empty
-            if db.query(Setting).count() == 0:
-                logger.info(
-                    "No settings found in the database. Creating with default settings."
-                )
-                self._write_config(db)
-            else:
-                try:
-                    user_config: Dict[str, Any] = {}
-                    for setting in db.query(Setting).all():
-                        user_config[setting.key] = setting.value
-
-                    # Deep merge user settings into the default settings.
-                    deep_merge(user_config, self._settings)
-
-                except (ValueError, OSError) as e:
-                    logger.warning(
-                        f"Could not load config from database: {e}. "
-                        "Using default settings. A new config will be saved on the next settings change."
-                    )
-
-    def _write_config(self, db: Any) -> None:
-        """Writes the current settings dictionary to the database.
-
-        Raises:
-            ConfigurationError: If writing the configuration fails (e.g., due to
-                permission issues or an object that cannot be serialized to JSON).
-        """
-        try:
-            for key, value in self._settings.items():
-                setting = db.query(Setting).filter_by(key=key).first()
-                if setting:
-                    setting.value = value
-                else:
-                    setting = Setting(key=key, value=value)
-                    db.add(setting)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            raise ConfigurationError(f"Failed to write configuration: {e}") from e
-
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting value using dot-notation for nested access.
 
@@ -279,73 +212,13 @@ class Settings:
         except (KeyError, TypeError):
             return default
 
-    def set(self, key: str, value: Any) -> None:
-        """Sets a configuration value using dot-notation and saves the change.
-
-        Intermediate dictionaries are created if they do not exist along the
-        path specified by `key`. The configuration is only written to the database via
-        :meth:`_write_config` if the new ``value`` is different from the
-        existing value for the given ``key``.
-
-        Example:
-            ``settings.set("retention.backups", 5)``
-            This will update the "backups" key within the "retention" dictionary
-            and then save the entire configuration to the database.
-
-        Args:
-            key (str): The dot-separated configuration key to set (e.g.,
-                "retention.backups").
-            value (Any): The value to associate with the key.
-        """
-        # Avoid writing to file if the value hasn't changed.
-        if self.get(key) == value:
-            return
-
-        keys = key.split(".")
-        d: Any = self._settings
-        for k in keys[:-1]:
-            if isinstance(d, dict):
-                d = d.setdefault(k, {})
-            else:
-                # Should not happen if structure is maintained, but safety check
-                raise ConfigurationError(
-                    f"Cannot set key '{key}' because path conflict."
-                )
-
-        if isinstance(d, dict):
-            d[keys[-1]] = value
-        if key != "web.jwt_token_secret":
-            logger.debug(f"Setting '{key}' updated to '{value}'. Saving configuration.")
-        else:
-            logger.debug(f"Setting '{key}' updated. Saving configuration.")
-        assert self.db is not None
-        with self.db.session_manager() as db:  # type: ignore
-            self._write_config(db)
-
-    def reload(self):
-        """Reloads the settings from the database.
-
-        This method re-runs the :meth:`load` method, which re-reads the
-        configuration from the database and updates the
-        in-memory settings dictionary. Any external changes made to the database
-        since the last load or save will be reflected.
-        """
-        logger.info("Reloading configuration from database")
-        self.load()
-        logger.info("Configuration reloaded successfully.")
-
-    async def async_load(self) -> None:
+    async def load(self) -> None:
         """Loads settings from the database asynchronously."""
         from sqlalchemy.future import select
 
         self._settings = self.default_config
 
         assert self.db is not None
-        if not hasattr(self.db, "async_session_manager"):
-            # Fallback to thread if async is not available
-            await asyncio.to_thread(self.load)
-            return
-
         async with self.db.async_session_manager() as db:
             result = await db.execute(select(Setting))
             settings_all = result.scalars().all()
@@ -354,7 +227,7 @@ class Settings:
                 logger.info(
                     "No settings found in the database. Creating with default settings asynchronously."
                 )
-                await self._async_write_config(db)
+                await self._write_config(db)
             else:
                 try:
                     user_config = {}
@@ -369,7 +242,7 @@ class Settings:
                         "Using default settings."
                     )
 
-    async def _async_write_config(self, db: Any) -> None:
+    async def _write_config(self, db: Any) -> None:
         """Writes the current settings dictionary to the database asynchronously."""
         from sqlalchemy.future import select
 
@@ -389,7 +262,7 @@ class Settings:
                 f"Failed to write configuration asynchronously: {e}"
             ) from e
 
-    async def async_set(self, key: str, value: Any) -> None:
+    async def set(self, key: str, value: Any) -> None:
         """Sets a configuration value using dot-notation and saves the change asynchronously."""
         if self.get(key) == value:
             return
@@ -417,15 +290,11 @@ class Settings:
             )
 
         assert self.db is not None
-        if not hasattr(self.db, "async_session_manager"):
-            await asyncio.to_thread(self.set, key, value)
-            return
-
         async with self.db.async_session_manager() as db:
-            await self._async_write_config(db)
+            await self._write_config(db)
 
-    async def async_reload(self):
+    async def reload(self):
         """Reloads the settings from the database asynchronously."""
         logger.info("Reloading configuration from database asynchronously")
-        await self.async_load()
+        await self.load()
         logger.info("Configuration reloaded successfully.")

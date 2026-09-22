@@ -123,14 +123,14 @@ def test_get_all_players_success(admin_auth_client: TestClient):
         assert len(data["players"]) == 1
 
 
-def test_put_prune_downloads_success(
+async def test_put_prune_downloads_success(
     admin_auth_client: TestClient, tmp_path, app_context
 ):
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
     target_dir = downloads_dir / "test_target"
     target_dir.mkdir()
-    app_context.settings.set("paths.downloads", str(downloads_dir))
+    await app_context.settings.set("paths.downloads", str(downloads_dir))
 
     with patch("bedrock_server_manager.api.misc.prune_download_cache") as mock_prune:
         mock_prune.return_value = {
@@ -149,12 +149,12 @@ def test_put_prune_downloads_success(
         assert data["files_deleted"] == 2
 
 
-def test_put_prune_downloads_invalid_path(
+async def test_put_prune_downloads_invalid_path(
     admin_auth_client: TestClient, tmp_path, app_context
 ):
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    app_context.settings.set("paths.downloads", str(downloads_dir))
+    await app_context.settings.set("paths.downloads", str(downloads_dir))
 
     response = admin_auth_client.put(
         "/api/downloads/prune", json={"directory": "../../etc/passwd", "keep": 1}
@@ -208,11 +208,11 @@ def test_get_system_info_success(unauth_client: TestClient):
         assert data["info"]["os"] == "Linux"
 
 
-def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
+async def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
     themes_dir = tmp_path / "themes"
     themes_dir.mkdir()
     (themes_dir / "custom1.css").touch()
-    app_context.settings.set("paths.themes", str(themes_dir))
+    await app_context.settings.set("paths.themes", str(themes_dir))
 
     response = unauth_client.get("/api/info/themes")
 

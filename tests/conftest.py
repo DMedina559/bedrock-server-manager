@@ -108,8 +108,8 @@ async def async_db(isolated_bcm_config, tmp_path, monkeypatch):
     await database.shutdown()
 
 
-@pytest.fixture
-def settings(db, isolated_bcm_config):
+@pytest_asyncio.fixture
+async def settings(async_db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
 
     base_dir = isolated_bcm_config
@@ -118,26 +118,26 @@ def settings(db, isolated_bcm_config):
     test_data_dir = base_dir / "test_data"
 
     settings_instance = Settings(
-        db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
+        db=async_db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
     )
-    settings_instance.load()
+    await settings_instance.load()
     return settings_instance
 
 
 @pytest_asyncio.fixture
-async def app_context(settings, db, tmp_path):
+async def app_context(settings, async_db, tmp_path):
     """Provides a real AppContext instance."""
     context = AppContext()
     context._settings = settings
-    context._db = db
-    context.load()
+    context._db = async_db
+    await context.load()
 
     startup_checks(context)
 
     # Create dummy plugin dir so plugin manager can load
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir(exist_ok=True)
-    settings.set("paths.plugins", str(plugins_dir))
+    await settings.set("paths.plugins", str(plugins_dir))
 
     context.plugin_manager.plugin_dirs = [plugins_dir]
     await context.plugin_manager.load_plugins()
@@ -229,25 +229,25 @@ def test_admin_user(db_session):
 
 
 @pytest.fixture
-def unauth_client(test_app):
+async def unauth_client(test_app):
     """Provides an unauthenticated TestClient instance."""
     with TestClient(test_app) as client:
         yield client
 
 
 @pytest.fixture
-def auth_client(test_app, app_context, test_user):
+async def auth_client(test_app, app_context, test_user):
     """Provides an authenticated TestClient instance with a valid token cookie."""
-    token = create_access_token(app_context, {"sub": test_user.username})
+    token = await create_access_token(app_context, {"sub": test_user.username})
     with TestClient(test_app) as client:
         client.cookies.set("access_token_cookie", token)
         yield client
 
 
 @pytest.fixture
-def admin_auth_client(test_app, app_context, test_admin_user):
+async def admin_auth_client(test_app, app_context, test_admin_user):
     """Provides an authenticated TestClient instance for an admin user."""
-    token = create_access_token(app_context, {"sub": test_admin_user.username})
+    token = await create_access_token(app_context, {"sub": test_admin_user.username})
     with TestClient(test_app) as client:
         client.cookies.set("access_token_cookie", token)
         yield client

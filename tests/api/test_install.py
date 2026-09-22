@@ -44,7 +44,7 @@ async def test_install_new_server_already_exists(app_context, tmp_path):
     base_dir.mkdir()
     (base_dir / "existing_server").mkdir()
 
-    app_context.settings.set("paths.servers", str(base_dir))
+    await app_context.settings.set("paths.servers", str(base_dir))
 
     result = await install_new_server("existing_server", app_context)
     assert result["status"] == "error"
@@ -53,7 +53,7 @@ async def test_install_new_server_already_exists(app_context, tmp_path):
 
 async def test_install_new_server_no_base_dir(app_context):
     """Test install_new_server triggers error if path properties missing."""
-    app_context.settings.set("paths.servers", None)
+    await app_context.settings.set("paths.servers", None)
 
     result = await install_new_server("new_server", app_context)
     assert result["status"] == "error"

@@ -27,9 +27,6 @@ def test_database_upgrade(runner, app_context, monkeypatch):
     monkeypatch.setattr("bedrock_server_manager.cli.database.inspect", mock_inspect)
 
     result = runner.invoke(database, ["upgrade"], obj={"app_context": app_context})
-    if result.exit_code != 0:
-        print(result.output)
-        print(result.exception)
     assert result.exit_code == 0
     assert "Running database upgrade" in result.output
     mock_command.upgrade.assert_called_once()
@@ -47,9 +44,6 @@ def test_database_downgrade(runner, app_context, monkeypatch):
         input="y\n",
         obj={"app_context": app_context},
     )
-    if result.exit_code != 0:
-        print(result.output)
-        print(result.exception)
     assert result.exit_code == 0
     assert "Running database downgrade" in result.output
     mock_command.downgrade.assert_called_once()
@@ -84,7 +78,9 @@ def test_database_backup(runner, app_context, tmp_path, monkeypatch):
 
 def test_database_backup_default_path(runner, app_context, tmp_path, monkeypatch):
     """Test database backup CLI command uses default settings correctly when not specifying -o."""
-    app_context.settings.set("paths.backups", str(tmp_path))
+    import asyncio
+
+    asyncio.run(app_context.settings.set("paths.backups", str(tmp_path)))
     monkeypatch.setattr(
         "bedrock_server_manager.cli.database.backup_database", MagicMock()
     )

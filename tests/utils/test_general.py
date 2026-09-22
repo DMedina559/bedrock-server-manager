@@ -10,13 +10,13 @@ from bedrock_server_manager.utils.general import (
 )
 
 
-def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
+async def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
     """Test startup_checks creates missing essential app directories."""
-    app_context.settings.set("paths.servers", str(tmp_path / "servers"))
-    app_context.settings.set("paths.content", str(tmp_path / "content"))
-    app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
-    app_context.settings.set("paths.plugins", str(tmp_path / "plugins"))
-    app_context.settings.set("paths.backups", str(tmp_path / "backups"))
+    await app_context.settings.set("paths.servers", str(tmp_path / "servers"))
+    await app_context.settings.set("paths.content", str(tmp_path / "content"))
+    await app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
+    await app_context.settings.set("paths.plugins", str(tmp_path / "plugins"))
+    await app_context.settings.set("paths.backups", str(tmp_path / "backups"))
 
     startup_checks(app_context)
 
@@ -29,13 +29,13 @@ def test_startup_checks_creates_dirs(app_context, tmp_path, monkeypatch):
     assert os.path.isdir(tmp_path / "backups")
 
 
-def test_startup_checks_handles_existing_dirs(app_context, tmp_path):
+async def test_startup_checks_handles_existing_dirs(app_context, tmp_path):
     """Test startup_checks gracefully handles existing directories without raising an error."""
     # Create the servers dir beforehand
     servers_dir = tmp_path / "servers"
     servers_dir.mkdir()
 
-    app_context.settings.set("paths.servers", str(servers_dir))
+    await app_context.settings.set("paths.servers", str(servers_dir))
 
     startup_checks(app_context)
 
@@ -55,7 +55,7 @@ def test_startup_checks_python_version_fail(app_context, monkeypatch):
     assert "Python version 3.11 or later is required" in str(exc_info.value)
 
 
-def test_get_timestamp():
+async def test_get_timestamp():
     """Test get_timestamp generates a valid date string format."""
     timestamp = get_timestamp()
     assert isinstance(timestamp, str)

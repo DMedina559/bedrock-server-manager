@@ -28,7 +28,7 @@ def test_core_validate_server_name_format_valid(valid_name):
 
 
 @pytest.mark.parametrize("invalid_name", ["", "my server", "server@123", "test/server"])
-def test_core_validate_server_name_format_invalid(invalid_name):
+async def test_core_validate_server_name_format_invalid(invalid_name):
     """Test core_validate_server_name_format correctly rejects invalid server names."""
     with pytest.raises(InvalidServerNameError):
         core_validate_server_name_format(invalid_name)
@@ -88,7 +88,7 @@ async def test_get_servers_data_success(app_context, real_bedrock_server):
 
 async def test_get_servers_data_base_dir_missing(app_context, tmp_path):
     """Test get_servers_data fails cleanly throwing an AppFileNotFoundError."""
-    app_context.settings.set("paths.servers", str(tmp_path / "missing_dir"))
+    await app_context.settings.set("paths.servers", str(tmp_path / "missing_dir"))
 
     with pytest.raises(AppFileNotFoundError) as exc_info:
         await get_servers_data(app_context)
@@ -102,7 +102,7 @@ async def test_get_servers_data_not_installed(app_context, tmp_path):
     base_dir.mkdir()
     (base_dir / "invalid_server").mkdir()
 
-    app_context.settings.set("paths.servers", str(base_dir))
+    await app_context.settings.set("paths.servers", str(base_dir))
 
     servers_data, error_messages = await get_servers_data(app_context)
 
