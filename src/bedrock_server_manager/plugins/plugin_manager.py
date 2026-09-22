@@ -49,7 +49,7 @@ class PluginManager:
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
         self.plugins: List[PluginBase] = []
 
-        # Event listener map structured as: {event_name: {plugin_name: [callbacks]}}
+        # Event listener map structured as: {event_name: {plugin_identifier: [callbacks]}}
         self._event_listeners: Dict[str, Dict[str, List[Callable[..., Any]]]] = {}
         self.plugin_fastapi_routers: List[Any] = []
         self.ui_render_tags = {"json": "plugin-json-ui", "legacy": "plugin-ui-native"}
@@ -158,8 +158,6 @@ class PluginManager:
                     return obj
 
         try:
-            # submodule_search_locations allows Python to resolve relative package imports
-            # without requiring global sys.path mutation
             submodule_locations = [str(path.parent)] if is_package else None
 
             spec = importlib.util.spec_from_file_location(
@@ -172,7 +170,6 @@ class PluginManager:
 
             module = importlib.util.module_from_spec(spec)
 
-            # Register before execution so circular and relative sub-imports resolve properly
             sys.modules[full_module_name] = module
             spec.loader.exec_module(module)
 
@@ -236,30 +233,62 @@ class PluginManager:
     async def dispatch_event(
         self, target_plugin: PluginBase, event_name: str, *args: Any, **kwargs: Any
     ) -> None:
-        """Asynchronously dispatches an event to a specific plugin instance in O(1) lookup.
+        """Asynchronously dispatches an event to a specific plugin instance.
 
-        Synchronous callbacks are executed off the event loop via asyncio.to_thread
-        to prevent blocking application request handling.
+        Checks both internal slug (api._plugin_name) and display name (target_plugin.name)
+        to ensure listeners are reliably found. Synchronous callbacks are executed off the
+        event loop via asyncio.to_thread.
         """
-        plugin_name = getattr(target_plugin, "name", None) or getattr(
-            getattr(target_plugin, "api", None), "_plugin_name", None
-        )
+        target_identifiers: Set[str] = set()
 
-        if not plugin_name:
+        api = getattr(target_plugin, "api", None)
+        if api and getattr(api, "_plugin_name", None):
+            target_identifiers.add(api._plugin_name)
+        if getattr(target_plugin, "name", None):
+            target_identifiers.add(target_plugin.name)
+
+        if not target_identifiers:
             return
+
+        executed_callbacks: Set[Callable[..., Any]] = set()
 
         # 1. Execute registered @app_event listeners
         for name in (event_name, "*"):
-            listeners = self._event_listeners.get(name, {}).get(plugin_name, [])
-            for callback in listeners:
+            plugin_map = self._event_listeners.get(name, {})
+            for ident in target_identifiers:
+                listeners = plugin_map.get(ident, [])
+                for callback in listeners:
+                    if callback in executed_callbacks:
+                        continue
+                    executed_callbacks.add(callback)
+                    try:
+                        if inspect.iscoroutinefunction(callback):
+                            await callback(*args, **kwargs)
+                        else:
+                            await asyncio.to_thread(callback, *args, **kwargs)
+                    except Exception as e:
+                        logger.error(
+                            f"Error in plugin '{ident}' handling event '{event_name}': {e}",
+                            exc_info=True,
+                        )
+
+        # 2. Lifecycle fallback (supports on_load and on_unload without requiring explicit @app_event)
+        if event_name in ("on_load", "on_unload"):
+            lifecycle_method = getattr(target_plugin, event_name, None)
+            if (
+                callable(lifecycle_method)
+                and lifecycle_method not in executed_callbacks
+                and not getattr(lifecycle_method, "_app_event_name", None)
+                and not getattr(lifecycle_method, "_app_event_names", None)
+            ):
                 try:
-                    if inspect.iscoroutinefunction(callback):
-                        await callback(*args, **kwargs)
+                    if inspect.iscoroutinefunction(lifecycle_method):
+                        await lifecycle_method(*args, **kwargs)
                     else:
-                        await asyncio.to_thread(callback, *args, **kwargs)
+                        await asyncio.to_thread(lifecycle_method, *args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error in plugin '{plugin_name}' handling event '{event_name}': {e}",
+                        f"Error in plugin '{target_plugin}' during lifecycle method '{event_name}': {e}",
                         exc_info=True,
                     )
 
@@ -302,9 +331,22 @@ class PluginManager:
         await self.trigger_event(event, *args, **kwargs)
 
     async def start_plugin_tasks(self) -> None:
-        """Starts background tasks for all plugins that have methods decorated with @task_loop."""
+        """Starts background tasks for all plugins that have methods decorated with @task_loop.
+
+        Includes idempotency checks to prevent duplicate task loops if called multiple times.
+        """
         logger.info("Starting background tasks for plugins.")
         for plugin_instance in self.plugins:
+            plugin_key = (
+                getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
+                or plugin_instance.name
+            )
+
+            # Do not start tasks if they are already running for this plugin
+            existing_tasks = self.plugin_tasks.get(plugin_key, [])
+            if any(not t.done() for t in existing_tasks):
+                continue
+
             try:
                 for method_name, method in inspect.getmembers(
                     plugin_instance, predicate=inspect.ismethod
@@ -316,7 +358,7 @@ class PluginManager:
                         async def run_task_loop(
                             m: Callable[..., Any] = method,
                             intv: float = interval,
-                            p_name: str = plugin_instance.name,
+                            p_name: str = plugin_key,
                             m_name: str = method_name,
                         ) -> None:
                             while True:
@@ -335,14 +377,12 @@ class PluginManager:
 
                         task = asyncio.create_task(
                             run_task_loop(),
-                            name=f"task_loop_{plugin_instance.name}_{method_name}",
+                            name=f"task_loop_{plugin_key}_{method_name}",
                         )
-                        self.plugin_tasks.setdefault(plugin_instance.name, []).append(
-                            task
-                        )
+                        self.plugin_tasks.setdefault(plugin_key, []).append(task)
             except Exception as e:
                 logger.error(
-                    f"Error auto-registering tasks for plugin '{plugin_instance.name}': {e}"
+                    f"Error auto-registering tasks for plugin '{plugin_key}': {e}"
                 )
 
     async def _synchronize_config_with_disk(self) -> None:
@@ -493,6 +533,7 @@ class PluginManager:
                     for event_name in event_names:
                         instance.api.listen_for_event(event_name, method)
 
+                # Dispatch on_load so plugins initialize internal state (e.g. self.router)
                 await self.dispatch_event(instance, "on_load")
 
                 if callable(getattr(instance, "get_fastapi_routers", None)):
@@ -514,7 +555,7 @@ class PluginManager:
 
         logger.info(f"Loaded {len(self.plugins)} plugins.")
 
-        # Ensure background tasks auto-start on load
+        # Auto-start background tasks
         await self.start_plugin_tasks()
 
     async def unload_plugins(self) -> None:
@@ -524,16 +565,20 @@ class PluginManager:
 
         if self.plugins:
             for plugin_instance in list(self.plugins):
+                plugin_key = (
+                    getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
+                    or plugin_instance.name
+                )
                 try:
                     await self.dispatch_event(plugin_instance, "on_unload")
                 except Exception as e:
                     logger.error(
-                        f"Error during on_unload for '{plugin_instance.name}': {e}",
+                        f"Error during on_unload for '{plugin_key}': {e}",
                         exc_info=True,
                     )
 
-                if plugin_instance.name in self.plugin_tasks:
-                    for task in self.plugin_tasks.pop(plugin_instance.name):
+                if plugin_key in self.plugin_tasks:
+                    for task in self.plugin_tasks.pop(plugin_key):
                         task.cancel()
                         tasks_to_await.append(task)
 
@@ -557,6 +602,5 @@ class PluginManager:
         await self.unload_plugins()
         self.plugin_fastapi_routers.clear()
         self.plugin_static_mounts.clear()
-        # load_plugins automatically starts tasks
         await self.load_plugins()
         logger.info("PluginManager reload complete.")
