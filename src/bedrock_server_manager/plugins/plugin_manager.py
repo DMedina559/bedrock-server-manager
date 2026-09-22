@@ -236,7 +236,11 @@ class PluginManager:
     async def dispatch_event(
         self, target_plugin: PluginBase, event_name: str, *args: Any, **kwargs: Any
     ) -> None:
-        """Asynchronously dispatches an event to a specific plugin instance in O(1) lookup."""
+        """Asynchronously dispatches an event to a specific plugin instance in O(1) lookup.
+
+        Synchronous callbacks are executed off the event loop via asyncio.to_thread
+        to prevent blocking application request handling.
+        """
         plugin_name = getattr(target_plugin, "name", None) or getattr(
             getattr(target_plugin, "api", None), "_plugin_name", None
         )
@@ -244,6 +248,7 @@ class PluginManager:
         if not plugin_name:
             return
 
+        # 1. Execute registered @app_event listeners
         for name in (event_name, "*"):
             listeners = self._event_listeners.get(name, {}).get(plugin_name, [])
             for callback in listeners:
@@ -251,10 +256,11 @@ class PluginManager:
                     if inspect.iscoroutinefunction(callback):
                         await callback(*args, **kwargs)
                     else:
-                        callback(*args, **kwargs)
+                        await asyncio.to_thread(callback, *args, **kwargs)
                 except Exception as e:
                     logger.error(
-                        f"Error in plugin '{plugin_name}' handling event '{event_name}': {e}"
+                        f"Error in plugin '{plugin_name}' handling event '{event_name}': {e}",
+                        exc_info=True,
                     )
 
     def _generate_event_key(self, event_name: str, **kwargs: Any) -> str:
@@ -446,7 +452,7 @@ class PluginManager:
         return [p for p in sorted_plugins if p in plugin_classes]
 
     async def load_plugins(self) -> None:
-        """Discovers, loads, and initializes all enabled plugins."""
+        """Discovers, loads, initializes, and starts tasks for all enabled plugins."""
         logger.info("Starting plugin loading process...")
         await self._synchronize_config_with_disk()
 
@@ -475,11 +481,16 @@ class PluginManager:
                 instance = plugin_class(plugin_name, api_instance, plugin_logger)
                 self.plugins.append(instance)
 
+                # Support both single (_app_event_name) and stacked/multi (_app_event_names) decorators
                 for _, method in inspect.getmembers(
                     instance, predicate=inspect.ismethod
                 ):
-                    event_name = getattr(method, "_app_event_name", None)
-                    if event_name:
+                    event_names = getattr(method, "_app_event_names", None) or (
+                        [getattr(method, "_app_event_name", None)]
+                        if getattr(method, "_app_event_name", None)
+                        else []
+                    )
+                    for event_name in event_names:
                         instance.api.listen_for_event(event_name, method)
 
                 await self.dispatch_event(instance, "on_load")
@@ -497,9 +508,14 @@ class PluginManager:
                         )
 
             except Exception as e:
-                logger.error(f"Failed to instantiate plugin '{plugin_name}': {e}")
+                logger.error(
+                    f"Failed to instantiate plugin '{plugin_name}': {e}", exc_info=True
+                )
 
         logger.info(f"Loaded {len(self.plugins)} plugins.")
+
+        # Ensure background tasks auto-start on load
+        await self.start_plugin_tasks()
 
     async def unload_plugins(self) -> None:
         """Unloads all currently loaded plugins, cleans up background tasks, and purges imported modules."""
@@ -512,7 +528,8 @@ class PluginManager:
                     await self.dispatch_event(plugin_instance, "on_unload")
                 except Exception as e:
                     logger.error(
-                        f"Error during on_unload for '{plugin_instance.name}': {e}"
+                        f"Error during on_unload for '{plugin_instance.name}': {e}",
+                        exc_info=True,
                     )
 
                 if plugin_instance.name in self.plugin_tasks:
@@ -540,6 +557,6 @@ class PluginManager:
         await self.unload_plugins()
         self.plugin_fastapi_routers.clear()
         self.plugin_static_mounts.clear()
+        # load_plugins automatically starts tasks
         await self.load_plugins()
-        await self.start_plugin_tasks()
         logger.info("PluginManager reload complete.")
