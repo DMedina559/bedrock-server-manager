@@ -263,7 +263,7 @@ async def backup_config_file(
                 server_name, stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
-                backup_file = server._backup_config_file_internal(filename_base)
+                backup_file = await server._backup_config_file_internal(filename_base)
             return {
                 "status": "success",
                 "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",

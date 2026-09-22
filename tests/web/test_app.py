@@ -132,7 +132,13 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
     # We must patch asyncio.run so create_web_app doesn't try to run it inside the test's event loop
     import asyncio
 
-    monkeypatch.setattr(asyncio, "run", lambda coro: None)
+    def dummy_run(coro):
+        try:
+            coro.close()
+        except Exception:
+            pass
+
+    monkeypatch.setattr(asyncio, "run", dummy_run)
 
     app = create_web_app(app_context)
 

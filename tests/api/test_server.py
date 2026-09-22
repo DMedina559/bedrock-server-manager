@@ -52,6 +52,9 @@ async def test_stop_server_success(app_context, monkeypatch):
     mock_server.is_running = AsyncMock()
     mock_server.send_command = AsyncMock()
     mock_server.delete_all_data = AsyncMock()
+    mock_server.get_status_from_config = AsyncMock()
+    mock_server._manage_json_config = AsyncMock()
+    mock_server.get_pid_file_path = MagicMock(return_value="/tmp/test_pid")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     mock_bpm = MagicMock()

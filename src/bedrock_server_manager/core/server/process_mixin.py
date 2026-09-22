@@ -25,6 +25,7 @@ import inspect
 import platform
 import subprocess
 import time
+from io import BufferedWriter
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import aiofiles
@@ -94,6 +95,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
         self.intentionally_stopped: bool = True
         self.failure_count: int = 0
         self.start_time: float = 0
+        self._log_file_handle: BufferedWriter | None = None
 
     if TYPE_CHECKING:
 
@@ -212,13 +214,13 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 await f.truncate(0)
 
             # Native async subprocess creation
-            f_out = open(output_file, "ab")
+            self._log_file_handle = open(output_file, "ab")
 
             self._process = await asyncio.create_subprocess_exec(
                 self.bedrock_executable_path,
                 cwd=self.server_dir,
                 stdin=asyncio.subprocess.PIPE,
-                stdout=f_out,
+                stdout=self._log_file_handle,
                 stderr=asyncio.subprocess.STDOUT,
                 creationflags=(
                     getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
@@ -364,6 +366,13 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                     self._process.kill()
             except Exception as kill_e:
                 self.logger.error(f"Failed to kill process after error: {kill_e}")
+        finally:
+            if hasattr(self, "_log_file_handle") and self._log_file_handle is not None:
+                try:
+                    self._log_file_handle.close()
+                except Exception as close_e:
+                    self.logger.warning(f"Failed to close log file handle: {close_e}")
+                self._log_file_handle = None
 
         self._process = None
 

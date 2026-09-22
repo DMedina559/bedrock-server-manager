@@ -195,14 +195,21 @@ async def test_downloader_extract_server_files_update(
     # Use the dummy_server_zip fixture which generates standard config files including server.properties
     zip_path = dummy_server_zip(target_dir=tmp_path, version="1.20.0.01")
 
-    # Pre-modify the zip to insert specific server properties for this test,
-    # or just assert on standard dummy_server_zip properties
-    # Let's modify the dummy zip to ensure standard properties testing works
-    with zipfile.ZipFile(zip_path, "a") as zf:
-        zf.writestr(
-            "server.properties",
-            "# Server Name Comment\nserver-name=Dedicated Server\nnew-prop=true\nold-prop=true",
-        )
+    # We need to replace the server.properties in the zip file
+    # The standard library zipfile module does not support deleting or replacing entries natively.
+    # We will read the zip, write to a new one, skipping server.properties, and then add our custom one.
+    new_zip_path = tmp_path / "modified_server.zip"
+    with zipfile.ZipFile(zip_path, "r") as z_in:
+        with zipfile.ZipFile(new_zip_path, "w") as z_out:
+            for item in z_in.infolist():
+                if item.filename != "server.properties":
+                    z_out.writestr(item, z_in.read(item.filename))
+            z_out.writestr(
+                "server.properties",
+                "# Server Name Comment\nserver-name=Dedicated Server\nnew-prop=true\nold-prop=true",
+            )
+
+    zip_path = new_zip_path
 
     downloader = BedrockDownloader(app_context.settings, str(server_dir), "LATEST")
     downloader.resolved_download_url = f"https://example.com/{zip_path.name}"

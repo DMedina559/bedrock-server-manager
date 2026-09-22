@@ -278,7 +278,6 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             self.logger.warning(
                 f"[{self.server_name}] 'is_running' not found. Assuming stopped."
             )
-
         if is_running:
             self.logger.info(
                 f"Server '{self.server_name}' is currently running. Stopping before deletion..."

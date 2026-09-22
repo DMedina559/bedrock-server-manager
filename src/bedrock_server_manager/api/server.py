@@ -398,7 +398,7 @@ async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, An
                 "message": f"Server '{server_name}' was already stopped.",
             }
 
-        app_context.api.set_server_status_api(server_name, "STOPPING")
+        await app_context.api.set_server_status_api(server_name, "STOPPING")
 
         await server.stop()
         await app_context.bedrock_process_manager.remove_server(server.server_name)

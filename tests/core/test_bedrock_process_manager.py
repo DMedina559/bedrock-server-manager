@@ -164,3 +164,5 @@ async def test_monitor_servers_crashed_server_detected(
             # The server should have its failure count increased and a restart attempted
             assert server.failure_count == 1
             mock_try_restart.assert_awaited_once_with(server)
+
+        await server.stop()
