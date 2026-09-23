@@ -207,6 +207,54 @@ async def post_set_plugin_status(
         )
 
 
+@router.post(
+    "/api/plugins/{plugin_name}/reload",
+    response_model=ActionResponse,
+)
+async def post_reload_single_plugin(
+    plugin_name: str,
+    current_user: UserResponse = Depends(get_admin_user),
+    app_context: AppContext = Depends(get_app_context),
+):
+    """
+    Reloads a single plugin by name.
+    """
+    identity = current_user.username
+    logger.info(f"API: Request to reload plugin '{plugin_name}' by user '{identity}'.")
+
+    try:
+        result = await plugins_api.reload_single_plugin(
+            app_context=app_context, plugin_name=plugin_name
+        )
+        if result.get("status") == "success":
+            return ActionResponse(status="success", message=str(result.get("message")))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get(
+                    "message", f"Failed to reload plugin '{plugin_name}'."
+                ),
+            )
+
+    except UserInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
+    except BSMError as e:
+        logger.error(f"API Reload Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+    except Exception as e:
+        logger.error(
+            f"API Reload Plugin '{plugin_name}': Unexpected error: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred while reloading plugin '{plugin_name}'.",
+        )
+
+
 @router.put("/api/plugins/reload", response_model=ActionResponse)
 async def put_reload_plugins(
     current_user: UserResponse = Depends(get_admin_user),

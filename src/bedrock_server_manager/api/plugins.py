@@ -119,14 +119,16 @@ async def set_plugin_status(
                 "message": f"Plugin '{plugin_name}' has an invalid configuration. Please try reloading plugins.",
             }
 
-        pm.plugin_config[plugin_name]["enabled"] = bool(enabled)
-        await pm._save_config()
+        if enabled:
+            await pm.enable_plugin(plugin_name, load_immediately=True)
+        else:
+            await pm.disable_plugin(plugin_name, unload_immediately=True)
 
         action = "enabled" if enabled else "disabled"
         logger.info(f"API: Plugin '{plugin_name}' successfully {action}.")
         return {
             "status": "success",
-            "message": f"Plugin '{plugin_name}' has been {action}. Reload plugins for changes to take full effect.",
+            "message": f"Plugin '{plugin_name}' has been {action}.",
         }
     except UserInputError:
         raise
@@ -137,6 +139,39 @@ async def set_plugin_status(
         return {
             "status": "error",
             "message": f"Failed to set status for plugin '{plugin_name}': {e}",
+        }
+
+
+@api_method("reload_plugin", expose_to_plugins=False)
+async def reload_single_plugin(
+    plugin_name: str, app_context: AppContext
+) -> Dict[str, Any]:
+    """Reloads a single plugin by name."""
+    if not plugin_name:
+        raise UserInputError("Plugin name cannot be empty.")
+
+    logger.info(f"API: Attempting to reload plugin '{plugin_name}'.")
+    try:
+        pm = app_context.plugin_manager
+        success = await pm.reload_plugin(plugin_name)
+        if success:
+            logger.info(f"API: Plugin '{plugin_name}' reloaded successfully.")
+            return {
+                "status": "success",
+                "message": f"Plugin '{plugin_name}' reloaded successfully.",
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to reload plugin '{plugin_name}'.",
+            }
+    except Exception as e:
+        logger.error(
+            f"API: Failed to reload plugin '{plugin_name}': {e}", exc_info=True
+        )
+        return {
+            "status": "error",
+            "message": f"Failed to reload plugin '{plugin_name}': {e}",
         }
 
 
