@@ -58,7 +58,7 @@ async def create_first_user(
             detail="Application has already been set up.",
         )
 
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         hashed_password = get_password_hash(data.password)
         user = User(
             username=data.username, hashed_password=hashed_password, role="admin"

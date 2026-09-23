@@ -73,7 +73,7 @@ async def moderator_client_test(auth_test_app, app_context, db_session):
         is_active=True,
     )
     db_session.add(user)
-    db_session.commit()
+    await db_session.commit()
 
     token = await create_access_token(app_context, {"sub": user.username})
     client = TestClient(auth_test_app)
@@ -88,7 +88,7 @@ async def test_get_current_user_optional_no_token(unauth_client_test):
     assert response.json() == {"user": None}
 
 
-def test_get_current_user_optional_with_token(auth_client_test, test_user):
+async def test_get_current_user_optional_with_token(auth_client_test, test_user):
     """Test get_current_user_optional with a valid token returns the user."""
     response = auth_client_test.get("/optional")
     assert response.status_code == 200
@@ -97,53 +97,53 @@ def test_get_current_user_optional_with_token(auth_client_test, test_user):
     assert data["user"]["username"] == test_user.username
 
 
-def test_get_current_user_no_token(unauth_client_test):
+async def test_get_current_user_no_token(unauth_client_test):
     """Test get_current_user without token raises 401."""
     response = unauth_client_test.get("/required")
     assert response.status_code == 401
 
 
-def test_get_current_user_with_token(auth_client_test, test_user):
+async def test_get_current_user_with_token(auth_client_test, test_user):
     """Test get_current_user with token returns user."""
     response = auth_client_test.get("/required")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_user.username
 
 
-def test_get_admin_user_as_admin(admin_client_test, test_admin_user):
+async def test_get_admin_user_as_admin(admin_client_test, test_admin_user):
     """Test get_admin_user with an admin user succeeds."""
     response = admin_client_test.get("/admin")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_admin_user.username
 
 
-def test_get_admin_user_as_normal_user(auth_client_test):
+async def test_get_admin_user_as_normal_user(auth_client_test):
     """Test get_admin_user with a normal user raises 403."""
     response = auth_client_test.get("/admin")
     assert response.status_code == 403
 
 
-def test_get_admin_user_as_moderator(moderator_client_test):
+async def test_get_admin_user_as_moderator(moderator_client_test):
     """Test get_admin_user with a moderator user raises 403."""
     response = moderator_client_test.get("/admin")
     assert response.status_code == 403
 
 
-def test_get_moderator_user_as_moderator(moderator_client_test):
+async def test_get_moderator_user_as_moderator(moderator_client_test):
     """Test get_moderator_user with a moderator user succeeds."""
     response = moderator_client_test.get("/moderator")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == "moduser"
 
 
-def test_get_moderator_user_as_admin(admin_client_test, test_admin_user):
+async def test_get_moderator_user_as_admin(admin_client_test, test_admin_user):
     """Test get_moderator_user with an admin user succeeds."""
     response = admin_client_test.get("/moderator")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_admin_user.username
 
 
-def test_get_moderator_user_as_normal_user(auth_client_test):
+async def test_get_moderator_user_as_normal_user(auth_client_test):
     """Test get_moderator_user with a normal user raises 403."""
     response = auth_client_test.get("/moderator")
     assert response.status_code == 403

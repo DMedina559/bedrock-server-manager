@@ -50,7 +50,7 @@ async def list_users_api(
     """
     Retrieves the list of users as JSON.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(select(User))
         users = result.scalars().all()
         return users
@@ -65,7 +65,7 @@ async def delete_user(
     """
     Deletes a user.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
         if user:
@@ -104,7 +104,7 @@ async def disable_user(
     """
     Disables a user.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
         if user:
@@ -142,7 +142,7 @@ async def enable_user(
     """
     Enables a user.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
         if user:
@@ -175,7 +175,7 @@ async def update_user_role(
     """
     Updates a user's role.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
         if user:

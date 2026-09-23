@@ -54,7 +54,7 @@ async def post_update_theme(
     """
     Updates the current user's preferred theme.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(
             select(UserModel).filter(UserModel.username == user.username)
         )
@@ -77,7 +77,7 @@ async def post_update_profile(
     """
     Updates the current user's profile information (name, email).
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(
             select(UserModel).filter(UserModel.username == user.username)
         )
@@ -105,7 +105,7 @@ async def post_change_password(
     """
     Changes the current user's password.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(
             select(UserModel).filter(UserModel.username == user.username)
         )

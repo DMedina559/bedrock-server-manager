@@ -80,6 +80,20 @@ def startup_checks(
     logger.debug("Startup checks completed.")
 
 
+def run_async(coro):
+    """Executes a coroutine safely whether an asyncio event loop is currently running or not."""
+    import asyncio
+    import concurrent.futures
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(lambda: asyncio.run(coro)).result()
+
+
 def get_timestamp() -> str:
     """
     Generates a timestamp string suitable for filenames or logging.

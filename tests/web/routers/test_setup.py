@@ -3,37 +3,36 @@ Integration tests for the setup router endpoints.
 """
 
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
+
+from bedrock_server_manager.db.models import User
 
 
-def test_get_setup_status_needs_setup(unauth_client: TestClient, app_context):
+async def test_get_setup_status_needs_setup(unauth_client: TestClient, app_context):
     """Test setup status when DB is empty."""
     # Ensure DB is empty
-    with app_context.db.session_manager() as db:
-        from bedrock_server_manager.db.models import User
-
-        db.query(User).delete()
-        db.commit()
+    async with app_context.db.session_manager() as db:
+        await db.execute(delete(User))
+        await db.commit()
 
     response = unauth_client.get("/api/setup/status")
     assert response.status_code == 200
     assert response.json()["needs_setup"] is True
 
 
-def test_get_setup_status_no_setup_needed(unauth_client: TestClient, test_user):
+async def test_get_setup_status_no_setup_needed(unauth_client: TestClient, test_user):
     """Test setup status when DB has users."""
     response = unauth_client.get("/api/setup/status")
     assert response.status_code == 200
     assert response.json()["needs_setup"] is False
 
 
-def test_create_first_user_success(unauth_client: TestClient, app_context):
+async def test_create_first_user_success(unauth_client: TestClient, app_context):
     """Test creating the first user successfully."""
     # Ensure DB is empty
-    with app_context.db.session_manager() as db:
-        from bedrock_server_manager.db.models import User
-
-        db.query(User).delete()
-        db.commit()
+    async with app_context.db.session_manager() as db:
+        await db.execute(delete(User))
+        await db.commit()
 
     response = unauth_client.post(
         "/api/setup/create-first-user",
@@ -46,12 +45,16 @@ def test_create_first_user_success(unauth_client: TestClient, app_context):
     assert "access_token_cookie" in response.cookies
 
 
-def test_create_first_user_already_exists(
+async def test_create_first_user_already_exists(
     unauth_client: TestClient, test_user, app_context
 ):
     """Test creating a user when one already exists."""
     # Ensure needs_setup is evaluated to False
-    _ = app_context.needs_setup
+    _ = (
+        await app_context.async_needs_setup
+        if hasattr(app_context, "async_needs_setup")
+        else app_context.needs_setup
+    )
 
     response = unauth_client.post(
         "/api/setup/create-first-user",

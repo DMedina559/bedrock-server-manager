@@ -79,7 +79,7 @@ class PluginManager:
 
         from ..db.models import Plugin
 
-        async with self.app_context.db.async_session_manager() as db:
+        async with self.app_context.db.session_manager() as db:
             result = await db.execute(select(Plugin))
             plugins = result.scalars().all()
             return {
@@ -98,7 +98,7 @@ class PluginManager:
 
         from ..db.models import Plugin
 
-        async with self.app_context.db.async_session_manager() as db:
+        async with self.app_context.db.session_manager() as db:
             result = await db.execute(select(Plugin))
             existing_plugins = {p.plugin_name: p for p in result.scalars().all()}
 

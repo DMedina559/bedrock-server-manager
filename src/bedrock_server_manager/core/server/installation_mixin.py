@@ -20,13 +20,13 @@ Key responsibilities include:
 lead to irreversible data loss if not used carefully.
 """
 
-import asyncio
 import os
 from typing import Any
 
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath
+from sqlalchemy import delete, select
 
 from ...error import (
     AppFileNotFoundError,
@@ -327,25 +327,23 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 failed_deletions.append(pid_file_path)
 
         if self.settings.db is not None:
-            # We must wrap this synchronous DB call with asyncio.to_thread since the session is synchronous
-            def _remove_server_db():
+            try:
                 from ...db.models import Server, ServerBan
 
-                with self.settings.db.session_manager() as db_session:
-                    db_server = (
-                        db_session.query(Server)
-                        .filter(Server.server_name == self.server_name)
-                        .first()
+                async with self.settings.db.session_manager() as db_session:
+                    result = await db_session.execute(
+                        select(Server).filter(Server.server_name == self.server_name)
                     )
+                    db_server = result.scalars().first()
                     if db_server:
-                        db_session.query(ServerBan).filter(
-                            ServerBan.server_id == db_server.id
-                        ).delete()
-                        db_session.delete(db_server)
-                        db_session.commit()
+                        await db_session.execute(
+                            delete(ServerBan).filter(
+                                ServerBan.server_id == db_server.id
+                            )
+                        )
+                        await db_session.delete(db_server)
+                        await db_session.commit()
 
-            try:
-                await asyncio.to_thread(_remove_server_db)
                 self.logger.info(
                     f"Successfully deleted server '{self.server_name}' and its associated data from the database."
                 )

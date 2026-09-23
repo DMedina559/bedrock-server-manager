@@ -62,45 +62,20 @@ def isolated_bcm_config(monkeypatch, tmp_path):
     bcm_config.set_custom_log_level(None)
 
 
-@pytest.fixture
-def db(isolated_bcm_config, tmp_path, monkeypatch):
-    """Provides a fresh Database instance initialized with an isolated SQLite DB."""
-    # We use a memory database for speed and isolation
-    db_path = tmp_path / "test_data" / "test.db"
-
-    # ensure mock for alembic files since they might be missing or not findable in tests sometimes
-    monkeypatch.setattr("bedrock_server_manager.cli.database.files", MagicMock())
-
-    database = Database(f"sqlite:///{db_path}")
-    database.initialize()
-
-    # Ensure tables are created for tests
-    from bedrock_server_manager.db.models import Base
-
-    Base.metadata.create_all(database.engine)
-
-    yield database
-
-    database.close()
-
-
-@pytest.fixture
-async def async_db(isolated_bcm_config, tmp_path, monkeypatch):
+@pytest_asyncio.fixture
+async def db(isolated_bcm_config, tmp_path, monkeypatch):
     """Provides a fresh Database instance initialized with an isolated async SQLite DB."""
-    db_dir = tmp_path / "test_data_async"
-    import os
-
-    os.makedirs(db_dir, exist_ok=True)
-    db_path = db_dir / "test_async.db"
+    db_path = tmp_path / "test_data" / "test.db"
 
     monkeypatch.setattr("bedrock_server_manager.cli.database.files", MagicMock())
 
     database = Database(f"sqlite+aiosqlite:///{db_path}")
-    database.async_initialize()
+    database.initialize()
 
     from bedrock_server_manager.db.models import Base
 
-    async with database.async_engine.begin() as conn:
+    assert database.engine is not None
+    async with database.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield database
@@ -109,7 +84,13 @@ async def async_db(isolated_bcm_config, tmp_path, monkeypatch):
 
 
 @pytest_asyncio.fixture
-async def settings(async_db, isolated_bcm_config):
+async def async_db(db):
+    """Alias for db fixture for backwards compatibility."""
+    yield db
+
+
+@pytest_asyncio.fixture
+async def settings(db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
 
     base_dir = isolated_bcm_config
@@ -118,18 +99,18 @@ async def settings(async_db, isolated_bcm_config):
     test_data_dir = base_dir / "test_data"
 
     settings_instance = Settings(
-        db=async_db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
+        db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
     )
     await settings_instance.load()
     return settings_instance
 
 
 @pytest_asyncio.fixture
-async def app_context(settings, async_db, tmp_path):
+async def app_context(settings, db, tmp_path):
     """Provides a real AppContext instance."""
     context = AppContext()
     context._settings = settings
-    context._db = async_db
+    context._db = db
     await context.load()
 
     startup_checks(context)
@@ -145,8 +126,6 @@ async def app_context(settings, async_db, tmp_path):
     yield context
 
     # --- TEARDOWN ---
-    # Gracefully shut down the database engine to close aiosqlite background
-    # threads before the pytest event loop is destroyed.
     if context._db:
         await context._db.shutdown()
 
@@ -179,18 +158,17 @@ def real_bedrock_server(app_context, tmp_path, dummy_server_zip):
     return server
 
 
-@pytest.fixture
-def db_session(db):
-    """Fixture to get a database session directly."""
-    with db.session_manager() as session:
+@pytest_asyncio.fixture
+async def db_session(db):
+    """Fixture to get an async database session directly."""
+    async with db.session_manager() as session:
         yield session
 
 
-@pytest.fixture
-async def async_db_session(async_db):
-    """Fixture to get a database session directly."""
-    async with async_db.async_session_manager() as session:
-        yield session
+@pytest_asyncio.fixture
+async def async_db_session(db_session):
+    """Alias for db_session."""
+    yield db_session
 
 
 @pytest.fixture
@@ -200,22 +178,8 @@ def test_app(app_context):
     return app
 
 
-@pytest.fixture
-def test_user(db_session, test_admin_user):
-    """Creates a test user in the database, also ensuring an admin user exists."""
-    user = UserModel(
-        username="testuser",
-        hashed_password=get_password_hash("testpassword"),
-        role="user",
-        is_active=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-    return user
-
-
-@pytest.fixture
-def test_admin_user(db_session):
+@pytest_asyncio.fixture
+async def test_admin_user(db_session):
     """Creates a test admin user in the database."""
     user = UserModel(
         username="adminuser",
@@ -224,18 +188,32 @@ def test_admin_user(db_session):
         is_active=True,
     )
     db_session.add(user)
-    db_session.commit()
+    await db_session.commit()
     return user
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
+async def test_user(db_session, test_admin_user):
+    """Creates a test user in the database, also ensuring an admin user exists."""
+    user = UserModel(
+        username="testuser",
+        hashed_password=get_password_hash("testpassword"),
+        role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    return user
+
+
+@pytest_asyncio.fixture
 async def unauth_client(test_app):
     """Provides an unauthenticated TestClient instance."""
     with TestClient(test_app) as client:
         yield client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def auth_client(test_app, app_context, test_user):
     """Provides an authenticated TestClient instance with a valid token cookie."""
     token = await create_access_token(app_context, {"sub": test_user.username})
@@ -244,7 +222,7 @@ async def auth_client(test_app, app_context, test_user):
         yield client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def admin_auth_client(test_app, app_context, test_admin_user):
     """Provides an authenticated TestClient instance for an admin user."""
     token = await create_access_token(app_context, {"sub": test_admin_user.username})

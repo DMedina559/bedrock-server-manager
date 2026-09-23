@@ -108,7 +108,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         if self.settings.db is None:
             raise RuntimeError("Database connection not initialized.")
 
-        async with self.settings.db.async_session_manager() as db:  # type: ignore
+        async with self.settings.db.session_manager() as db:  # type: ignore
             result = await db.execute(
                 select(Server).filter(Server.server_name == self.server_name)
             )
@@ -166,7 +166,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         if self.settings.db is None:
             raise RuntimeError("Database connection not initialized.")
 
-        async with self.settings.db.async_session_manager() as db:  # type: ignore
+        async with self.settings.db.session_manager() as db:  # type: ignore
             result = await db.execute(
                 select(Server).filter(Server.server_name == self.server_name)
             )

@@ -172,7 +172,7 @@ async def discover_and_store_players(  # noqa: C901
         try:
             # Save all unique players to the central database.
             saved_count = await save_player_data(
-                app_context.db.async_session_manager, unique_players_to_save_list
+                app_context.db.session_manager, unique_players_to_save_list
             )
         except (FileOperationError, Exception) as e_save:
             logger.error(

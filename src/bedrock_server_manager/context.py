@@ -188,16 +188,24 @@ class AppContext:
         if not self._db:
             return True
 
+        from sqlalchemy import create_engine, select
         from sqlalchemy.orm import Session
 
         from .db.models import User
 
         try:
-            with Session(self.db.engine) as session:
-                admin_user = session.query(User).filter(User.role == "admin").first()
+            sync_url = self.db._get_sync_db_url()
+            sync_engine = create_engine(sync_url)
+            with Session(sync_engine) as session:
+                res = session.execute(
+                    select(User).filter(User.role == "admin", User.is_active.is_(True))
+                )
+                admin_user = res.scalars().first()
                 if admin_user:
                     self._needs_setup = False
+                    sync_engine.dispose()
                     return False
+            sync_engine.dispose()
         except Exception:
             return True
 

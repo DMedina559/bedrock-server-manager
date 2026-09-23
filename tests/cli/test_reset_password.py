@@ -1,5 +1,6 @@
 import pytest
 from click.testing import CliRunner
+from sqlalchemy import select
 
 from bedrock_server_manager.cli.reset_password import reset_password_command
 from bedrock_server_manager.db.models import User
@@ -11,13 +12,13 @@ def runner():
     return CliRunner()
 
 
-def test_reset_password_success(runner, app_context, db_session):
+async def test_reset_password_success(runner, app_context, db_session):
     """Test the reset-password CLI command successfully changes an existing user's password."""
     # Setup user
     old_hash = get_password_hash("old_pw")
     user = User(username="target_user", hashed_password=old_hash, role="admin")
     db_session.add(user)
-    db_session.commit()
+    await db_session.commit()
 
     # Run CLI command passing input twice for password and confirmation
     result = runner.invoke(
@@ -33,11 +34,13 @@ def test_reset_password_success(runner, app_context, db_session):
     )
 
     # Verify hash was updated
-    updated_user = db_session.query(User).filter(User.username == "target_user").first()
+    db_session.expire_all()
+    res = await db_session.execute(select(User).filter(User.username == "target_user"))
+    updated_user = res.scalars().first()
     assert verify_password("new_pw", updated_user.hashed_password)
 
 
-def test_reset_password_user_not_found(runner, app_context):
+async def test_reset_password_user_not_found(runner, app_context):
     """Test the reset-password CLI command cleanly fails when a user is not found."""
     result = runner.invoke(
         reset_password_command,
@@ -50,14 +53,14 @@ def test_reset_password_user_not_found(runner, app_context):
     assert "Error: User 'non_existent_user' not found." in result.output
 
 
-def test_reset_password_mismatch_confirmation(runner, app_context):
+async def test_reset_password_mismatch_confirmation(runner, app_context):
     """Test the reset-password CLI command fails and aborts on prompt confirmation mismatch."""
     # Setup user
     old_hash = get_password_hash("old_pw")
-    with app_context.db.session_manager() as db_session:
+    async with app_context.db.session_manager() as db_session:
         user = User(username="target_user", hashed_password=old_hash, role="admin")
         db_session.add(user)
-        db_session.commit()
+        await db_session.commit()
 
     result = runner.invoke(
         reset_password_command,

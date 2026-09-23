@@ -49,7 +49,7 @@ async def generate_token(
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
     registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         db.add(registration_token)
         await db.commit()
 
@@ -80,7 +80,7 @@ async def validate_token(
     """
     Checks if a registration token is valid.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(
             select(RegistrationToken).filter(RegistrationToken.token == token)
         )
@@ -107,7 +107,7 @@ async def register_user(
     """
     Creates a new user from a registration token.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(
             select(RegistrationToken).filter(RegistrationToken.token == token)
         )

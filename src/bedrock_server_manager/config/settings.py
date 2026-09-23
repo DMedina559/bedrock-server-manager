@@ -219,7 +219,7 @@ class Settings:
         self._settings = self.default_config
 
         assert self.db is not None
-        async with self.db.async_session_manager() as db:
+        async with self.db.session_manager() as db:
             result = await db.execute(select(Setting))
             settings_all = result.scalars().all()
 
@@ -290,7 +290,7 @@ class Settings:
             )
 
         assert self.db is not None
-        async with self.db.async_session_manager() as db:
+        async with self.db.session_manager() as db:
             await self._write_config(db)
 
     async def reload(self):

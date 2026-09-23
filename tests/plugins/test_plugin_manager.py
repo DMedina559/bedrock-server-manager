@@ -95,15 +95,14 @@ async def test_event_dispatch(async_db, app_context):
     """Test trigger_event correctly loops over all active plugins invoking registered hooks."""
     pm = app_context.plugin_manager
 
-    # Just mock pm._event_listeners and target_plugin.name since we removed direct fallback for non-existing hooks in test setup
     mock_plugin = MagicMock()
     mock_plugin.name = "mock_plugin"
 
     callback = MagicMock()
     callback.__name__ = "my_callback"
 
-    pm.plugins = {mock_plugin}
-    pm._event_listeners = {"on_unload": [("mock_plugin", callback)]}
+    pm.plugins = [mock_plugin]
+    pm._event_listeners = {"on_unload": {"mock_plugin": [callback]}}
 
     await pm.trigger_event("on_unload")
 

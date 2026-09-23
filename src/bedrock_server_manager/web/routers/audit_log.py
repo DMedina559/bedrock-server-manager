@@ -31,7 +31,7 @@ async def create_audit_log(
     """
     Creates an audit log entry.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         log = AuditLog(user_id=user_id, action=action, details=details)
         db.add(log)
         await db.commit()
@@ -45,7 +45,7 @@ async def list_audit_logs_api(
     """
     Retrieves audit logs as JSON.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(select(AuditLog).order_by(AuditLog.timestamp.desc()))
         logs = result.scalars().all()
         # Convert timestamp to string if needed, or Pydantic handles datetime

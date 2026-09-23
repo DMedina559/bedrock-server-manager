@@ -123,7 +123,7 @@ async def _get_user_from_token(
         if username is None:
             return None
 
-        async with app_context.db.async_session_manager() as db:  # type: ignore
+        async with app_context.db.session_manager() as db:  # type: ignore
             return await _get_and_update_user_from_db(db, username)
 
     except JWTError:
@@ -213,7 +213,7 @@ async def authenticate_user(
         Optional[str]: The username if authentication is successful,
         otherwise ``None``.
     """
-    async with app_context.db.async_session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         result = await db.execute(
             select(UserModel).filter(UserModel.username == username_form)
         )

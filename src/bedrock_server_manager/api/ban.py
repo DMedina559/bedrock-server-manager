@@ -36,7 +36,7 @@ async def add_server_ban_api(
         f"API: Adding ban for player '{player_name}' ({xuid}) on server '{server_name}'."
     )
 
-    async with app_context.db.async_session_manager() as db:
+    async with app_context.db.session_manager() as db:
         result = await db.execute(
             select(Server).filter(Server.server_name == server_name)
         )
@@ -91,7 +91,7 @@ async def remove_server_ban_api(
 
     logger.info(f"API: Removing ban for XUID '{xuid}' on server '{server_name}'.")
 
-    async with app_context.db.async_session_manager() as db:
+    async with app_context.db.session_manager() as db:
         result = await db.execute(
             select(Server).filter(Server.server_name == server_name)
         )
@@ -131,7 +131,7 @@ async def get_server_bans_api(
     if app_context.db is None:
         return {"status": "error", "message": "Database is not initialized."}
 
-    async with app_context.db.async_session_manager() as db:
+    async with app_context.db.session_manager() as db:
         result = await db.execute(
             select(Server).filter(Server.server_name == server_name)
         )
