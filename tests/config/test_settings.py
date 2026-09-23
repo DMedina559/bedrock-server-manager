@@ -7,22 +7,22 @@ from bedrock_server_manager.db.models import Setting
 from bedrock_server_manager.error import ConfigurationError
 
 
-async def test_settings_initialization(async_db, isolated_bcm_config):
+async def test_settings_initialization(db, isolated_bcm_config):
     """Test Settings initializes properties correctly without loading."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
-    settings = Settings(db=async_db, data_dir=test_data_dir, config_dir=test_config_dir)
-    assert settings.db == async_db
+    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
+    assert settings.db == db
     assert settings._settings == {}
 
 
-async def test_settings_load_populates_defaults(async_db, isolated_bcm_config):
+async def test_settings_load_populates_defaults(db, isolated_bcm_config):
     """Test loading on an empty database populates default settings."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
-    settings = Settings(db=async_db, data_dir=test_data_dir, config_dir=test_config_dir)
+    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
     await settings.load()
 
     # Check that settings were populated from default_config
@@ -30,7 +30,7 @@ async def test_settings_load_populates_defaults(async_db, isolated_bcm_config):
     assert "port" in settings._settings["web"]
 
     # Verify they were saved to the DB
-    async with async_db.async_session_manager() as session:
+    async with db.async_session_manager() as session:
         from sqlalchemy import func
         from sqlalchemy.future import select
 
@@ -39,13 +39,13 @@ async def test_settings_load_populates_defaults(async_db, isolated_bcm_config):
         assert count > 0
 
 
-async def test_settings_load_merges_existing_db(async_db, isolated_bcm_config):
+async def test_settings_load_merges_existing_db(db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
-    async with async_db.async_session_manager() as session:
+    async with db.async_session_manager() as session:
         session.add(
             Setting(
                 key="web",
@@ -55,7 +55,7 @@ async def test_settings_load_merges_existing_db(async_db, isolated_bcm_config):
         session.add(Setting(key="custom", value={"my_setting": "val"}))
         await session.commit()
 
-    settings = Settings(db=async_db, data_dir=test_data_dir, config_dir=test_config_dir)
+    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
     await settings.load()
 
     assert settings.get("web.port") == 9999
@@ -73,7 +73,7 @@ async def test_settings_get(settings):
     assert settings.get("web.invalid", "fallback") == "fallback"
 
 
-async def test_settings_set(settings, async_db):
+async def test_settings_set(settings, db):
     """Test setting deeply nested keys."""
     # Test setting existing key
     await settings.set("web.port", 8080)
@@ -84,7 +84,7 @@ async def test_settings_set(settings, async_db):
     assert settings.get("custom.plugin.enabled") is True
 
     # Verify written to DB
-    async with async_db.async_session_manager() as session:
+    async with db.async_session_manager() as session:
         from sqlalchemy.future import select
 
         result = await session.execute(select(Setting).filter_by(key="custom"))
@@ -112,10 +112,10 @@ async def test_settings_set_conflict_raises_error(settings):
         await settings.set("web.port.sub.another", "value")
 
 
-async def test_settings_reload(settings, async_db):
+async def test_settings_reload(settings, db):
     """Test reload pulls fresh changes from the database."""
     # Modify db directly
-    async with async_db.async_session_manager() as session:
+    async with db.async_session_manager() as session:
         from sqlalchemy.future import select
 
         result = await session.execute(select(Setting).filter_by(key="web"))

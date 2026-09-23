@@ -34,7 +34,7 @@ def parse_player_string(player_string: str) -> List[Dict[str, str]]:
 
 
 async def save_player_data(
-    async_db_session_manager, players_data: List[Dict[str, str]]
+    db_session_manager, players_data: List[Dict[str, str]]
 ) -> int:
     """Saves or updates player data in the database asynchronously."""
     from sqlalchemy.future import select
@@ -53,7 +53,7 @@ async def save_player_data(
         ):
             raise UserInputError(f"Invalid player entry format: {p_data}")
 
-    async with async_db_session_manager() as db:
+    async with db_session_manager() as db:
         try:
             updated_count = 0
             added_count = 0
@@ -91,11 +91,11 @@ async def save_player_data(
             raise e
 
 
-async def get_known_players(async_db_session_manager) -> List[Dict[str, str]]:
+async def get_known_players(db_session_manager) -> List[Dict[str, str]]:
     """Retrieves all known players from the database asynchronously."""
     from sqlalchemy.future import select
 
-    async with async_db_session_manager() as db:
+    async with db_session_manager() as db:
         result = await db.execute(select(Player))
         players = result.scalars().all()
         return [{"name": player.player_name, "xuid": player.xuid} for player in players]

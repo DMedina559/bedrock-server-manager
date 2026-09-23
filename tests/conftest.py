@@ -84,12 +84,6 @@ async def db(isolated_bcm_config, tmp_path, monkeypatch):
 
 
 @pytest_asyncio.fixture
-async def async_db(db):
-    """Alias for db fixture for backwards compatibility."""
-    yield db
-
-
-@pytest_asyncio.fixture
 async def settings(db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
 
@@ -163,12 +157,6 @@ async def db_session(db):
     """Fixture to get an async database session directly."""
     async with db.session_manager() as session:
         yield session
-
-
-@pytest_asyncio.fixture
-async def async_db_session(db_session):
-    """Alias for db_session."""
-    yield db_session
 
 
 @pytest.fixture

@@ -163,9 +163,7 @@ class GuardedProcess:
         kwargs["env"] = self.guard_env
         return subprocess.Popen(self.command, **kwargs)
 
-    async def async_create_subprocess_exec(
-        self, **kwargs: Any
-    ) -> asyncio.subprocess.Process:
+    async def create_subprocess_exec(self, **kwargs: Any) -> asyncio.subprocess.Process:
         """Wraps ``asyncio.create_subprocess_exec``, injecting the guarded environment.
 
         Args:
@@ -178,7 +176,7 @@ class GuardedProcess:
         kwargs["env"] = self.guard_env
         return await asyncio.create_subprocess_exec(*self.command, **kwargs)
 
-    async def async_create_subprocess_shell(
+    async def create_subprocess_shell(
         self, **kwargs: Any
     ) -> asyncio.subprocess.Process:
         """Wraps ``asyncio.create_subprocess_shell``, injecting the guarded environment.
@@ -195,6 +193,18 @@ class GuardedProcess:
 
         cmd_str = shlex.join(str(arg) for arg in self.command)
         return await asyncio.create_subprocess_shell(cmd_str, **kwargs)
+
+    async def async_create_subprocess_exec(
+        self, **kwargs: Any
+    ) -> asyncio.subprocess.Process:
+        """Alias for create_subprocess_exec."""
+        return await self.create_subprocess_exec(**kwargs)
+
+    async def async_create_subprocess_shell(
+        self, **kwargs: Any
+    ) -> asyncio.subprocess.Process:
+        """Alias for create_subprocess_shell."""
+        return await self.create_subprocess_shell(**kwargs)
 
 
 async def get_pid_file_path(config_dir: str, pid_filename: str) -> str:

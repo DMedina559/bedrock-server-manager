@@ -60,7 +60,7 @@ class Database:
         """Alias for SessionLocal for backwards compatibility."""
         return self.SessionLocal
 
-    def _get_async_db_url(self) -> str:
+    def _get_db_url(self) -> str:
         """Converts the standard database URL into an async-compatible URL."""
         if self.db_url.startswith("sqlite://"):
             return self.db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
@@ -87,20 +87,20 @@ class Database:
         if self.engine:
             return
 
-        async_db_url = self._get_async_db_url()
+        db_url = self._get_db_url()
 
         connect_args = {}
-        if async_db_url.startswith("sqlite"):
+        if db_url.startswith("sqlite"):
             connect_args["timeout"] = 20.0
 
         self.engine = create_async_engine(
-            async_db_url,
+            db_url,
             connect_args=connect_args,
             pool_pre_ping=True,
             pool_recycle=3600,
         )
 
-        if async_db_url.startswith("sqlite"):
+        if db_url.startswith("sqlite"):
 
             @event.listens_for(self.engine.sync_engine, "connect")
             def set_sqlite_pragma_async(dbapi_connection, connection_record):
