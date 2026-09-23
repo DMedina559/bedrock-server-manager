@@ -9,7 +9,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-from ...utils.io import async_load_lines, async_save_lines
+from ...utils.io import load_lines, save_lines
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -27,7 +27,7 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
         )
         properties: Dict[str, str] = {}
         try:
-            lines = await async_load_lines(server_properties_path)
+            lines = await load_lines(server_properties_path)
             for line_num, line_content in enumerate(lines, 1):
                 line = line_content.strip()
                 if not line or line.startswith("#"):
@@ -68,7 +68,7 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
         )
 
         try:
-            lines = await async_load_lines(server_properties_path)
+            lines = await load_lines(server_properties_path)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to read '{server_properties_path}': {e}"
@@ -101,7 +101,7 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
         try:
             lock = self.get_file_lock(server_properties_path)
             async with lock:
-                await async_save_lines(output_lines, server_properties_path)
+                await save_lines(output_lines, server_properties_path)
             self.logger.info(
                 f"Successfully set property '{property_key}' for '{self.server_name}'."
             )

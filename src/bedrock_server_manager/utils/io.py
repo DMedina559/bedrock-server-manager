@@ -39,12 +39,12 @@ def _sync_json_load(filepath: str) -> Any:
         return json.load(f)
 
 
-async def async_save_json(data: Any, filepath: str, indent: int = 4) -> None:
+async def save_json(data: Any, filepath: str, indent: int = 4) -> None:
     """Non-blocking asynchronous entry point to save data to a JSON file safely."""
     await asyncio.to_thread(_sync_atomic_json_dump, data, filepath, indent)
 
 
-async def async_load_json(filepath: str) -> Any:
+async def load_json(filepath: str) -> Any:
     """Non-blocking asynchronous entry point to read and parse a JSON file safely."""
     return await asyncio.to_thread(_sync_json_load, filepath)
 
@@ -81,11 +81,11 @@ def _sync_lines_load(filepath: str) -> List[str]:
         return f.readlines()
 
 
-async def async_save_lines(lines: List[str], filepath: str) -> None:
+async def save_lines(lines: List[str], filepath: str) -> None:
     """Non-blocking asynchronous entry point to save lines of text to a file safely."""
     await asyncio.to_thread(_sync_atomic_lines_dump, lines, filepath)
 
 
-async def async_load_lines(filepath: str) -> List[str]:
+async def load_lines(filepath: str) -> List[str]:
     """Non-blocking asynchronous entry point to read lines from a file safely."""
     return await asyncio.to_thread(_sync_lines_load, filepath)

@@ -598,7 +598,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
             ConfigParseError: If the file cannot be read (e.g., due to permissions)
                 or if the ``level-name`` key is missing, malformed, or has an empty value.
         """
-        from ...utils.io import async_load_lines
+        from ...utils.io import load_lines
 
         self.logger.debug(
             f"Reading world name for server '{self.server_name}' from: {self.server_properties_path} asynchronously"
@@ -609,7 +609,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
 
         try:
-            lines = await async_load_lines(self.server_properties_path)
+            lines = await load_lines(self.server_properties_path)
             for line_content in lines:
                 line = line_content.strip()
                 if line.startswith("level-name="):

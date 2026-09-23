@@ -10,7 +10,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-from ...utils.io import async_load_json, async_save_json
+from ...utils.io import load_json, save_json
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -42,7 +42,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
         permissions_list: List[Dict[str, Any]] = []
         if await aiofiles.ospath.isfile(self.permissions_json_path):
             try:
-                loaded_data = await async_load_json(self.permissions_json_path)
+                loaded_data = await load_json(self.permissions_json_path)
                 if isinstance(loaded_data, list):
                     permissions_list = loaded_data
                 elif loaded_data:
@@ -82,7 +82,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
             try:
                 lock = self.get_file_lock(self.permissions_json_path)
                 async with lock:
-                    await async_save_json(
+                    await save_json(
                         permissions_list, self.permissions_json_path, indent=4
                     )
                 self.logger.info(
@@ -112,7 +112,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
 
         raw_permissions: List[Dict[str, Any]] = []
         try:
-            loaded_data = await async_load_json(self.permissions_json_path)
+            loaded_data = await load_json(self.permissions_json_path)
             if isinstance(loaded_data, list):
                 raw_permissions = loaded_data
             elif loaded_data:

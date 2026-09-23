@@ -8,7 +8,7 @@ from ...error import (
     FileOperationError,
     MissingArgumentError,
 )
-from ...utils.io import async_load_json, async_save_json
+from ...utils.io import load_json, save_json
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -32,7 +32,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                 return []
 
             try:
-                loaded_data = await async_load_json(self.allowlist_json_path)
+                loaded_data = await load_json(self.allowlist_json_path)
                 if isinstance(loaded_data, list):
                     allowlist_entries = loaded_data
                 elif loaded_data:
@@ -40,7 +40,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
                         f"Allowlist file '{self.allowlist_json_path}' is not a JSON list. Treating as empty."
                     )
             except ValueError as e:
-                # `json.load` in `async_load_json` throws json.decoder.JSONDecodeError which inherits from ValueError
+                # `json.load` in `load_json` throws json.decoder.JSONDecodeError which inherits from ValueError
                 raise ConfigParseError(
                     f"Invalid JSON in allowlist '{self.allowlist_json_path}': {e}"
                 ) from e
@@ -104,7 +104,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
             try:
                 lock = self.get_file_lock(self.allowlist_json_path)
                 async with lock:
-                    await async_save_json(
+                    await save_json(
                         current_allowlist, self.allowlist_json_path, indent=4
                     )
                 self.logger.info(
@@ -149,7 +149,7 @@ class ServerAllowlistMixin(BedrockServerBaseMixin):
             try:
                 lock = self.get_file_lock(self.allowlist_json_path)
                 async with lock:
-                    await async_save_json(
+                    await save_json(
                         updated_allowlist, self.allowlist_json_path, indent=4
                     )
                 self.logger.info(

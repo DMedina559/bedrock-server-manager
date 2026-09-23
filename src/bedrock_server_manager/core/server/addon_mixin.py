@@ -43,7 +43,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
-from ...utils.io import async_load_json, async_save_json
+from ...utils.io import load_json, save_json
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -341,7 +341,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         try:
             lock = self.get_file_lock(world_json_path)
             async with lock:
-                await async_save_json(packs_list, world_json_path, indent=2)
+                await save_json(packs_list, world_json_path, indent=2)
             self.logger.debug(
                 f"Successfully wrote updated subpack '{subpack_name}' to '{json_filename_basename}'."
             )
@@ -427,7 +427,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         try:
             lock = self.get_file_lock(world_json_path)
             async with lock:
-                await async_save_json(new_packs_list, world_json_path, indent=2)
+                await save_json(new_packs_list, world_json_path, indent=2)
             self.logger.info(
                 f"Successfully reordered {pack_type} packs in world '{world_name}'."
             )
@@ -1325,7 +1325,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             )
             lock = self.get_file_lock(world_json_file_path)
             async with lock:
-                await async_save_json(packs_list, world_json_file_path, indent=2)
+                await save_json(packs_list, world_json_file_path, indent=2)
             self.logger.debug(
                 f"Successfully wrote updated packs to '{json_filename_basename}'."
             )
@@ -1430,7 +1430,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return []
 
         try:
-            data = await async_load_json(world_json_file_path)
+            data = await load_json(world_json_file_path)
             if data is None:
                 return []
             if isinstance(data, list):
@@ -1589,9 +1589,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         try:
             lock = self.get_file_lock(world_json_file_path)
             async with lock:
-                await async_save_json(
-                    updated_packs_list, world_json_file_path, indent=2
-                )
+                await save_json(updated_packs_list, world_json_file_path, indent=2)
             self.logger.info(
                 f"Removed pack '{pack_uuid}' from activation file '{json_filename}'."
             )
