@@ -318,7 +318,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 )
                 self._process.terminate()
 
-            timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
+            timeout = int(self.settings.get("monitor.server_stop_timeout", 10))
 
             if hasattr(self._process, "wait") and inspect.iscoroutinefunction(
                 self._process.wait

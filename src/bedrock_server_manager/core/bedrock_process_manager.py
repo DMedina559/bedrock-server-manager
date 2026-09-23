@@ -90,45 +90,52 @@ class BedrockProcessManager:
         """Shuts down all managed servers concurrently and stops the monitoring task.
 
         This method:
-        1. Sets the shutdown event for the monitoring task.
-        2. Spawns tasks to stop all currently running servers concurrently.
-        3. Waits asynchronously for the monitoring task to exit.
+        1. Sets the shutdown event for the monitoring task and cancels it immediately.
+        2. Spawns tasks to stop all currently running servers concurrently with exception handling.
         """
 
         self.logger.info("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
 
+        if self.monitoring_task and not self.monitoring_task.done():
+            self.monitoring_task.cancel()
+            try:
+                await asyncio.wait_for(self.monitoring_task, timeout=2)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
+
         # Concurrently shut down all servers
         self.logger.info("ProcessManager: Stopping all running servers concurrently...")
 
         async def _stop_server(server_name, server):
-            is_running = await server.is_running()
-
-            if not is_running:
-                return
-
             try:
-                await self.app_context.api.stop_server(server_name)
-            except Exception as e:
+                is_running = await server.is_running()
+
+                if not is_running:
+                    return
+
+                try:
+                    await self.app_context.api.stop_server(server_name)
+                except Exception as e:
+                    self.logger.error(
+                        f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                    )
+                    await server.stop()
+
+                self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
+            except Exception as e_stop:
                 self.logger.error(
-                    f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                    f"ProcessManager: Failed to stop server '{server_name}': {e_stop}",
+                    exc_info=True,
                 )
-                await server.stop()
 
-            self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
-
-        tasks = []
-        for server_name, server in self.servers.items():
-            tasks.append(_stop_server(server_name, server))
+        tasks = [
+            _stop_server(server_name, server)
+            for server_name, server in list(self.servers.items())
+        ]
 
         if tasks:
-            await asyncio.gather(*tasks)
-
-        # Wait for the task to finish
-        try:
-            await asyncio.wait_for(self.monitoring_task, timeout=5)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            pass
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _try_restart_server(self, server: "BedrockServer"):
         """Tries to restart a crashed server asynchronously.
