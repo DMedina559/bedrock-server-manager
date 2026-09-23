@@ -8,6 +8,8 @@ from __future__ import annotations
 from logging import Logger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from sqlalchemy import inspect, select
+
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
 
@@ -188,28 +190,35 @@ class AppContext:
         if not self._db:
             return True
 
-        from sqlalchemy import create_engine, select
-        from sqlalchemy.orm import Session
-
         from .db.models import User
+        from .utils.general import run_async
+
+        async def _async_check():
+            if not self.db.engine:
+                self.db.initialize()
+            assert self.db.engine is not None
+            async with self.db.engine.connect() as conn:
+
+                def _sync_inspect_and_query(sync_conn):
+                    inspector = inspect(sync_conn)
+                    if not inspector.has_table("users"):
+                        return True
+                    res = sync_conn.execute(
+                        select(User).filter(
+                            User.role == "admin", User.is_active.is_(True)
+                        )
+                    )
+                    return res.scalars().first() is None
+
+                return await conn.run_sync(_sync_inspect_and_query)
 
         try:
-            sync_url = self.db._get_sync_db_url()
-            sync_engine = create_engine(sync_url)
-            with Session(sync_engine) as session:
-                res = session.execute(
-                    select(User).filter(User.role == "admin", User.is_active.is_(True))
-                )
-                admin_user = res.scalars().first()
-                if admin_user:
-                    self._needs_setup = False
-                    sync_engine.dispose()
-                    return False
-            sync_engine.dispose()
+            needs = bool(run_async(_async_check()))
+            if not needs:
+                self._needs_setup = False
+            return needs
         except Exception:
             return True
-
-        return True
 
     @property
     def api(self) -> "AppAPI":

@@ -50,10 +50,17 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
 
-        if hasattr(app_context, "log_streamer"):
+        if (
+            hasattr(app_context, "log_streamer")
+            and app_context.log_streamer is not None
+        ):
             app_context.log_streamer.stop()
 
-        app_context.resource_monitor.stop()
+        if (
+            hasattr(app_context, "resource_monitor")
+            and app_context.resource_monitor is not None
+        ):
+            app_context.resource_monitor.stop()
 
         # Shut down the process manager gracefully
         if (
@@ -76,7 +83,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         ):
             await app_context.task_manager.shutdown()
 
-        # Shut down the connection manager gracefully
+        # Shut down the connection manager after all components finished sending shutdown events
         if (
             hasattr(app_context, "_connection_manager")
             and app_context._connection_manager is not None
