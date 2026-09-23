@@ -194,18 +194,6 @@ class GuardedProcess:
         cmd_str = shlex.join(str(arg) for arg in self.command)
         return await asyncio.create_subprocess_shell(cmd_str, **kwargs)
 
-    async def async_create_subprocess_exec(
-        self, **kwargs: Any
-    ) -> asyncio.subprocess.Process:
-        """Alias for create_subprocess_exec."""
-        return await self.create_subprocess_exec(**kwargs)
-
-    async def async_create_subprocess_shell(
-        self, **kwargs: Any
-    ) -> asyncio.subprocess.Process:
-        """Alias for create_subprocess_shell."""
-        return await self.create_subprocess_shell(**kwargs)
-
 
 async def get_pid_file_path(config_dir: str, pid_filename: str) -> str:
     """Asynchronously constructs the full, absolute path for a generic PID file.
@@ -483,7 +471,7 @@ async def launch_detached_process(
         start_new_session = True
 
     try:
-        process = await guarded_proc.async_create_subprocess_exec(
+        process = await guarded_proc.create_subprocess_exec(
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
