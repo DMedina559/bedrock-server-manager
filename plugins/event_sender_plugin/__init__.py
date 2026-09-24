@@ -17,7 +17,7 @@ class EventSenderPlugin(PluginBase):
     name = "Event Sender"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         self.logger.info(
             f"Plugin '{self.name}' v{self.version} loaded. Event sender page available at /event_sender/ui"
         )
@@ -30,7 +30,7 @@ class EventSenderPlugin(PluginBase):
         self.logger.info(f"EventSenderPlugin v{self.version} initialized.")
 
     @app_event("on_unload")
-    def plugin_unloaded(self):
+    async def plugin_unloaded(self):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
     def get_fastapi_routers(self):

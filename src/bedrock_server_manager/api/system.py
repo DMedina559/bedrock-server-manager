@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("get_server_running_status")
-def get_server_running_status(
+async def get_server_running_status(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Checks if the server process is currently running.
@@ -64,7 +64,7 @@ def get_server_running_status(
     logger.info(f"API: Checking running status for server '{server_name}'...")
     try:
         server = app_context.get_server(server_name)
-        is_running = server.is_running()
+        is_running = await server.is_running()
         logger.debug(
             f"API: is_running() check for '{server_name}' returned: {is_running}"
         )
@@ -87,7 +87,7 @@ def get_server_running_status(
 
 
 @api_method("get_bedrock_process_info")
-def get_bedrock_process_info(
+async def get_bedrock_process_info(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Retrieves resource usage for a running Bedrock server process.
@@ -120,7 +120,7 @@ def get_bedrock_process_info(
     logger.debug(f"API: Getting process info for server '{server_name}'...")
     try:
         server = app_context.get_server(server_name)
-        process_info = server.get_process_info()
+        process_info = await server.get_process_info()
 
         # If get_process_info returns None, the server is not running or inaccessible.
         if process_info is None:

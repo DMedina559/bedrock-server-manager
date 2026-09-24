@@ -1,6 +1,5 @@
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
@@ -27,16 +26,15 @@ def test_setup_check_middleware_redirect(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    # Access a non-API route that is not allowed during setup
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    # Note: request.url_for('serve_spa') resolves to an absolute URL, so it might include the domain
-    assert (
-        response.headers["location"].endswith("/app")
-        or response.headers["location"] == "/app"
-    )
+    with TestClient(app) as client:
+        # Access a non-API route that is not allowed during setup
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 307
+        # Note: request.url_for('serve_spa') resolves to an absolute URL, so it might include the domain
+        assert (
+            response.headers["location"].endswith("/app")
+            or response.headers["location"] == "/app"
+        )
 
 
 def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
@@ -47,12 +45,11 @@ def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    # Access an API route
-    response = client.get("/api/users", follow_redirects=False)
-    # Should not redirect. The route itself might return 401 because we aren't auth'd.
-    assert response.status_code != 307
+    with TestClient(app) as client:
+        # Access an API route
+        response = client.get("/api/users", follow_redirects=False)
+        # Should not redirect. The route itself might return 401 because we aren't auth'd.
+        assert response.status_code != 307
 
 
 def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
@@ -63,10 +60,9 @@ def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    response = client.get("/docs", follow_redirects=False)
-    assert response.status_code == 200
+    with TestClient(app) as client:
+        response = client.get("/docs", follow_redirects=False)
+        assert response.status_code == 200
 
 
 def test_setup_check_middleware_static_assets(app_context, monkeypatch):
@@ -77,28 +73,23 @@ def test_setup_check_middleware_static_assets(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
+    with TestClient(app) as client:
+        response = client.get("/app/assets/test.js", follow_redirects=False)
+        assert response.status_code != 307
 
-    response = client.get("/app/assets/test.js", follow_redirects=False)
-    assert response.status_code != 307
 
-
-def test_add_user_to_request_middleware(app_context, auth_client, test_user):
+def test_add_user_to_request_middleware(test_app, auth_client, test_user):
     """Test that the user is injected into the request state."""
-    app = create_web_app(app_context)
 
     # We will test the middleware specifically by hitting a dummy endpoint that reads request.state
-    @app.get("/test-middleware-user")
+    @test_app.get("/test-middleware-user")
     def get_user(request: Request):
         user = getattr(request.state, "current_user", None)
         if user:
             return {"username": user.username}
         return {"username": None}
 
-    client = TestClient(app)
-    client.cookies = auth_client.cookies  # steal the auth cookie
-
-    response = client.get("/test-middleware-user", follow_redirects=False)
+    response = auth_client.get("/test-middleware-user", follow_redirects=False)
     assert response.status_code == 200
     assert response.json()["username"] == test_user.username
 
@@ -126,42 +117,54 @@ def test_cors_middleware_configuration(app_context, monkeypatch):
     assert cors_mw.kwargs.get("allow_origin_regex") == ".*"
 
 
-@pytest.mark.asyncio
-async def test_lifespan_startup_shutdown(app_context):
+async def test_lifespan_startup_shutdown(app_context, monkeypatch):
     """Test the lifespan hook properly initializes and stops components."""
+    # We must patch asyncio.run so create_web_app doesn't try to run it inside the test's event loop
+    import asyncio
+
+    def dummy_run(coro):
+        try:
+            coro.close()
+        except Exception:
+            pass
+
+    monkeypatch.setattr(asyncio, "run", dummy_run)
+
     app = create_web_app(app_context)
 
-    with patch("bedrock_server_manager.web.app.asyncio.to_thread") as mock_to_thread:
-        # Define a mock to_thread that just calls the function immediately
-        # (or does nothing, just so we can verify it was called)
-        async def mock_to_thread_impl(func, *args, **kwargs):
-            return func(*args, **kwargs)
+    # Mock start and stop methods for our internal components
+    app_context.resource_monitor.start = MagicMock()
+    app_context.resource_monitor.stop = MagicMock()
 
-        mock_to_thread.side_effect = mock_to_thread_impl
+    app_context.api.update_server_statuses = AsyncMock()
+    app_context.plugin_manager.load_plugins = AsyncMock()
+    app_context.plugin_manager.trigger_guarded_event = AsyncMock()
+    app_context.plugin_manager.start_plugin_tasks = AsyncMock()
+    app_context.plugin_manager.shutdown = AsyncMock()
+    app_context.bedrock_process_manager.start = AsyncMock()
+    app_context.bedrock_process_manager.shutdown = AsyncMock()
 
-        # Mock start and stop methods for our internal components
-        app_context.resource_monitor.start = MagicMock()
-        app_context.resource_monitor.stop = MagicMock()
+    # Extract the actual lifespan function from the app router
+    lifespan_manager = app.router.lifespan_context
 
-        # We need to extract the actual lifespan function from the app router
-        lifespan_manager = app.router.lifespan_context
+    # Create a mock for log streamer
+    with patch(
+        "bedrock_server_manager.web.log_streamer.LogStreamer"
+    ) as MockLogStreamer:
+        mock_ls_instance = MagicMock()
+        MockLogStreamer.return_value = mock_ls_instance
 
-        # Create a mock for log streamer
-        with patch(
-            "bedrock_server_manager.web.log_streamer.LogStreamer"
-        ) as MockLogStreamer:
-            mock_ls_instance = MagicMock()
-            MockLogStreamer.return_value = mock_ls_instance
+        async with lifespan_manager(app):
+            # Verify startup logic
+            app_context.resource_monitor.start.assert_called_once()
 
-            async with lifespan_manager(app):
-                # Verify startup logic
-                app_context.resource_monitor.start.assert_called_once()
-                mock_to_thread.assert_any_call(app_context.api.update_server_statuses)
+            # Check that the async function was directly awaited
+            app_context.api.update_server_statuses.assert_awaited_once()
 
-                # Check log streamer was initialized
-                MockLogStreamer.assert_called_once_with(app_context)
-                mock_ls_instance.start.assert_called_once()
+            # Check log streamer was initialized
+            MockLogStreamer.assert_called_once_with(app_context)
+            mock_ls_instance.start.assert_called_once()
 
-            # Verification of shutdown logic
-            mock_ls_instance.stop.assert_called_once()
-            app_context.resource_monitor.stop.assert_called_once()
+        # Verification of shutdown logic
+        mock_ls_instance.stop.assert_called_once()
+        app_context.resource_monitor.stop.assert_called_once()

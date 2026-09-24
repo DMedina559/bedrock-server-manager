@@ -77,7 +77,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
     name = "Nested Different Server Start"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         global _server_b_triggered_by_this_plugin
         _server_b_triggered_by_this_plugin = False  # Reset state on load/reload
 
@@ -100,7 +100,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
         )
 
     @app_event("before_server_start")
-    def trigger_nested_server_start(self, **kwargs: Any):
+    async def trigger_nested_server_start(self, **kwargs: Any):
         global _server_b_triggered_by_this_plugin
 
         server_name = kwargs.get("server_name")
@@ -121,7 +121,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
-                self.api.start_server(server_name=SERVER_B_NAME_NESTED)
+                await self.api.start_server(server_name=SERVER_B_NAME_NESTED)
                 self.logger.info(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
                 )
@@ -150,5 +150,5 @@ class NestedDifferentServerStartPlugin(PluginBase):
         )
 
     @app_event("on_unload")
-    def plugin_unloaded(self, **kwargs):
+    async def plugin_unloaded(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} is unloading.")

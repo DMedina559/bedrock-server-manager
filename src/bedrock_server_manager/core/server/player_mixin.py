@@ -10,6 +10,7 @@ player gamertags and their corresponding XUIDs. This information can be used,
 for example, to populate a player database or track server activity.
 """
 
+import asyncio
 import os
 import re
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
@@ -122,8 +123,10 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                 exc_info=True,
             )
 
-    def scan_log_for_players(self, incremental: bool = False) -> List[Dict[str, str]]:
-        """Scans the server's log file for player connection entries to extract gamertags and XUIDs.
+    async def scan_log_for_players(
+        self, incremental: bool = False
+    ) -> List[Dict[str, str]]:
+        """Scans the server's log file for player connection entries to extract gamertags and XUIDs asynchronously.
 
         This method reads the server's primary output log file (obtained via
         :attr:`~.BedrockServerBaseMixin.server_log_path`) to find player connections.
@@ -147,59 +150,51 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             FileOperationError: If an OS-level error occurs while trying to read
                 the log file (e.g., permission issues).
         """
-        if not hasattr(self, "_scan_log_cursor"):
+        if not getattr(self, "_scan_log_cursor", None):
             self._scan_log_cursor = 0
 
         log_file = self.server_log_path
         self.logger.debug(
-            f"Server '{self.server_name}': Scanning log file for players: {log_file} (incremental={incremental})"
+            f"Server '{self.server_name}': Scanning log file for players: {log_file} (incremental={incremental}) asynchronously"
         )
 
-        players_data: List[Dict[str, str]] = []
-        unique_xuids = set()
-
-        start_pos = self._scan_log_cursor if incremental else 0
+        start_pos = getattr(self, "_scan_log_cursor", 0) if incremental else 0
+        unique_players = {}
 
         try:
             for (
                 event_type,
-                player_name,
+                name,
                 xuid,
                 new_cursor,
-            ) in self._parse_player_log_events(start_pos):
-                if (
-                    event_type == "connect"
-                    and player_name is not None
-                    and xuid is not None
-                    and xuid not in unique_xuids
-                ):
-                    players_data.append({"name": player_name, "xuid": xuid})
-                    unique_xuids.add(xuid)
-                    self.logger.debug(
-                        f"Found player in log: Name='{player_name}', XUID='{xuid}'"
-                    )
+            ) in await asyncio.to_thread(
+                lambda: list(self._parse_player_log_events(start_pos))
+            ):
+                if event_type == "connect" and name and xuid:
+                    unique_players[xuid] = name
+
                 if incremental:
                     self._scan_log_cursor = new_cursor
-        except Exception as e:
-            # We wrap it in FileOperationError to match old behavior
+
+            found_players = [
+                {"name": name, "xuid": xuid} for xuid, name in unique_players.items()
+            ]
+
+            if found_players:
+                self.logger.debug(
+                    f"Server '{self.server_name}': Found {len(found_players)} unique player(s) in log."
+                )
+            return found_players
+        except OSError as e:
+            self.logger.error(
+                f"Server '{self.server_name}': Failed to read log file '{log_file}' for player scanning: {e}"
+            )
             raise FileOperationError(
-                f"Error reading log file '{log_file}' for server '{self.server_name}': {e}"
+                f"Could not read log file for player scanning: {e}"
             ) from e
 
-        num_found = len(players_data)
-        if num_found > 0:
-            self.logger.info(
-                f"Found {num_found} unique player(s) in log for server '{self.server_name}'."
-            )
-        else:
-            self.logger.debug(
-                f"No new unique players found in log for server '{self.server_name}'."
-            )
-
-        return players_data
-
-    def update_online_players(self) -> List[Dict[str, str]]:
-        """Incrementally parses the server log to update the list of currently online players.
+    async def update_online_players(self) -> List[Dict[str, str]]:
+        """Incrementally parses the server log to update the list of currently online players asynchronously.
 
         Reads new lines from the log file starting from the last known cursor position
         (`self._log_file_cursor`), updates the `self.players` attribute, and saves the new cursor position.
@@ -208,18 +203,28 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             List[Dict[str, str]]: The updated list of dictionaries for each currently
             online player, containing their "name" and "uuid" (XUID).
         """
-        # Ensure attributes exist
-        if not hasattr(self, "_log_file_cursor"):
+        is_running = await self.is_running()  # type: ignore
+
+        if not is_running:
+            players = getattr(self, "players", [])
+            if players:
+                self.logger.debug(
+                    f"Server '{self.server_name}' is stopped. Clearing online players list."
+                )
+                players.clear()
+            return []
+
+        if not getattr(self, "_log_file_cursor", None):
             self._log_file_cursor = 0
-        if not hasattr(self, "players"):
-            self.players: List[Dict[str, str]] = []
+        if not getattr(self, "players", None):
+            self.players: List[Dict[str, str]] = []  # type: ignore[has-type, no-redef]
 
-        # Map current players by xuid for quick O(1) updates
-        online_players: Dict[str, str] = {p["uuid"]: p["name"] for p in self.players}
+        online_players: Dict[str, str] = {p["uuid"]: p["name"] for p in self.players}  # type: ignore[has-type]
 
-        for event_type, name, xuid, new_cursor in self._parse_player_log_events(
-            self._log_file_cursor
-        ):
+        events = await asyncio.to_thread(
+            lambda: list(self._parse_player_log_events(self._log_file_cursor))
+        )
+        for event_type, name, xuid, new_cursor in events:
             if event_type == "connect" and xuid and name:
                 online_players[xuid] = name
             elif event_type == "disconnect" and xuid:
@@ -229,8 +234,10 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
             # Update cursor position to right after the parsed line
             self._log_file_cursor = new_cursor
 
-        # Update self.players array and return it
-        self.players = [
-            {"name": name, "uuid": xuid} for xuid, name in online_players.items()
-        ]
-        return self.players
+        setattr(
+            self,
+            "players",
+            [{"name": name, "uuid": xuid} for xuid, name in online_players.items()],
+        )
+
+        return getattr(self, "players", [])

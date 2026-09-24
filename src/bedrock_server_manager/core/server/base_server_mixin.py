@@ -5,15 +5,18 @@ This mixin is the first in the inheritance chain for the main
 :class:`~.core.bedrock_server.BedrockServer` class. Its primary responsibility
 is to initialize core attributes that are common across all server-related
 operations, such as server name, directory paths, application settings, and
-the logger. All other mixins should inherit from this class to ensure these
+the logger. All other mixins should inherit from this import typing
+
+class to ensure these
 fundamental attributes are available.
 """
 
+import asyncio
 import logging
 import os
 import platform
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from ...context import AppContext
@@ -121,6 +124,9 @@ class BedrockServerBaseMixin:
         # --- State attributes for other mixins ---
         # These are initialized here but primarily used by other mixins.
 
+        # For atomic file writes concurrency control
+        self._file_locks: Dict[str, asyncio.Lock] = {}
+
         # For process resource monitoring.
         self._resource_monitor = system_base.ResourceMonitor()
 
@@ -199,3 +205,19 @@ class BedrockServerBaseMixin:
         # The actual creation of this dir is handled by functions that write the PID file.
         current_server_config_dir = self.server_config_dir
         return os.path.join(current_server_config_dir, pid_filename)
+
+    def get_file_lock(self, filepath: str) -> asyncio.Lock:
+        """Retrieves or creates an asyncio.Lock for the specified filepath.
+
+        This ensures that asynchronous operations (like atomic JSON writes)
+        do not concurrently collide when targeting the same configuration file.
+
+        Args:
+            filepath (str): The absolute path to the file.
+
+        Returns:
+            asyncio.Lock: The lock associated with the given file.
+        """
+        if filepath not in self._file_locks:
+            self._file_locks[filepath] = asyncio.Lock()
+        return self._file_locks[filepath]

@@ -1,3 +1,5 @@
+import asyncio
+
 # bedrock_server_manager/api/addon.py
 """API functions for managing addons on Bedrock servers.
 
@@ -20,7 +22,6 @@ plugin system.
 
 import logging
 import os
-import threading
 from typing import Any, Dict
 
 from ..context import AppContext
@@ -42,11 +43,11 @@ logger = logging.getLogger(__name__)
 # A unified lock to prevent race conditions during addon file operations.
 # This ensures that only one addon installation can occur at a time,
 # preventing potential file corruption.
-_addon_lock = threading.RLock()
+_addon_lock = asyncio.Lock()
 
 
 @api_method("list_available_addons")
-def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
+async def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcaddon and .mcpack files from the content directory.
 
     Scans the ``addons`` sub-folder within the application's global content directory.
@@ -63,7 +64,9 @@ def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available addons.")
     try:
         content_dir = app_context.settings.get("paths.content")
-        addons = list_content_files(content_dir, "addons", [".mcpack", ".mcaddon"])
+        addons = await list_content_files(
+            content_dir, "addons", [".mcpack", ".mcaddon"]
+        )
         return {"status": "success", "files": addons}
     except FileError as e:
         # Handle specific file-related errors.
@@ -79,7 +82,7 @@ def list_available_addons(app_context: AppContext) -> Dict[str, Any]:
     after="after_addon_import",
     identity_keys=("server_name", "addon_file_path"),
 )
-def import_addon(  # noqa: C901
+async def import_addon(  # noqa: C901
     server_name: str,
     addon_file_path: str,
     app_context: AppContext,
@@ -127,7 +130,9 @@ def import_addon(  # noqa: C901
     """
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
-    if not _addon_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"An addon operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
@@ -155,16 +160,16 @@ def import_addon(  # noqa: C901
             server = app_context.get_server(server_name)
 
             # If the server is running, send a warning message to players.
-            if server.is_running():
+            if await server.is_running():
                 try:
-                    server.send_command("say Installing addon...")
+                    await server.send_command("say Installing addon...")
                 except (SendCommandError, ServerNotRunningError) as e:
                     logger.warning(
                         f"API: Failed to send addon installation warning to '{server_name}': {e}"
                     )
 
             # Use a context manager to handle the server's start/stop lifecycle.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 start_after=stop_start_server,
@@ -175,7 +180,7 @@ def import_addon(  # noqa: C901
                     f"API: Processing addon file '{addon_filename}' for server '{server_name}'..."
                 )
                 # Delegate the core file extraction and placement to the server instance.
-                server.process_addon_file(addon_file_path)
+                await server.process_addon_file(addon_file_path)
                 logger.info(
                     f"API: Core addon processing completed for '{addon_filename}' on '{server_name}'."
                 )
@@ -213,7 +218,9 @@ def import_addon(  # noqa: C901
 
 
 @api_method("list_installed_addons")
-def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def list_installed_addons(
+    server_name: str, app_context: AppContext
+) -> Dict[str, Any]:
     """Lists all addons for a server's active world.
 
     Args:
@@ -224,7 +231,7 @@ def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str
         Dict[str, Any]: A dictionary containing the addon lists.
     """
     server = app_context.get_server(server_name)
-    return {"status": "success", "addons": server.list_installed_addons()}
+    return {"status": "success", "addons": await server.list_installed_addons()}
 
 
 @api_method("enable_addon")
@@ -233,7 +240,7 @@ def list_installed_addons(server_name: str, app_context: AppContext) -> Dict[str
     after="after_addon_enable",
     identity_keys=("server_name", "pack_uuid"),
 )
-def enable_addon(
+async def enable_addon(
     server_name: str,
     pack_uuid: str,
     pack_type: str,
@@ -250,7 +257,9 @@ def enable_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -258,14 +267,14 @@ def enable_addon(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+            await server.enable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return {
             "status": "success",
             "message": f"Successfully enabled pack '{pack_uuid}'.",
@@ -292,7 +301,7 @@ def enable_addon(
     after="after_addon_disable",
     identity_keys=("server_name", "pack_uuid"),
 )
-def disable_addon(
+async def disable_addon(
     server_name: str,
     pack_uuid: str,
     pack_type: str,
@@ -309,7 +318,9 @@ def disable_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -317,14 +328,14 @@ def disable_addon(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+            await server.disable_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return {
             "status": "success",
             "message": f"Successfully disabled pack '{pack_uuid}'.",
@@ -350,7 +361,7 @@ def disable_addon(
     after="after_addon_subpack_update",
     identity_keys=("server_name", "pack_uuid"),
 )
-def update_subpack(
+async def update_subpack(
     server_name: str,
     pack_uuid: str,
     pack_type: str,
@@ -369,7 +380,9 @@ def update_subpack(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -377,14 +390,14 @@ def update_subpack(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.update_subpack(
+            await server.update_subpack(
                 pack_uuid=pack_uuid, pack_type=pack_type, subpack_name=subpack_name
             )
         return {
@@ -412,7 +425,7 @@ def update_subpack(
     after="after_addon_uninstall",
     identity_keys=("server_name", "pack_uuid"),
 )
-def uninstall_addon(
+async def uninstall_addon(
     server_name: str,
     pack_uuid: str,
     pack_type: str,
@@ -429,7 +442,9 @@ def uninstall_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -437,14 +452,14 @@ def uninstall_addon(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
+            await server.remove_addon(pack_uuid=pack_uuid, pack_type=pack_type)
         return {
             "status": "success",
             "message": f"Successfully uninstalled pack '{pack_uuid}'.",
@@ -471,7 +486,7 @@ def uninstall_addon(
     after="after_addon_reorder",
     identity_keys=("server_name",),
 )
-def reorder_addons(
+async def reorder_addons(
     server_name: str,
     uuids: list[str],
     pack_type: str,
@@ -488,7 +503,9 @@ def reorder_addons(
     Returns:
         Dict[str, str]: Status of the operation.
     """
-    if not _addon_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         return {
             "status": "skipped",
             "message": "An addon operation is already in progress.",
@@ -496,14 +513,14 @@ def reorder_addons(
 
     try:
         server = app_context.get_server(server_name)
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
             restart_on_success_only=True,
             app_context=app_context,
         ):
-            server.reorder_addons(uuids=uuids, pack_type=pack_type)
+            await server.reorder_addons(uuids=uuids, pack_type=pack_type)
         return {
             "status": "success",
             "message": f"Successfully reordered {pack_type} packs.",

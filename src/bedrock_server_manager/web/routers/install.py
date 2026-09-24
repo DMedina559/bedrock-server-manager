@@ -1,6 +1,7 @@
 import logging
 import os
 
+import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import install as install_api
@@ -32,11 +33,12 @@ async def get_custom_zips(
 ):
     try:
         download_dir = app_context.settings.get("paths.downloads")
+
         custom_dir = os.path.join(download_dir, "custom")
-        if not os.path.isdir(custom_dir):
+        if not await aiofiles.ospath.isdir(custom_dir):
             return CustomZipsResponse(status="success", custom_zips=[])
 
-        custom_zips_paths = find_files(custom_dir, "*.zip")
+        custom_zips_paths = await find_files(custom_dir, "*.zip")
         custom_zips = [os.path.basename(str(p)) for p in custom_zips_paths]
         return CustomZipsResponse(status="success", custom_zips=custom_zips)
     except Exception as e:
@@ -72,7 +74,9 @@ async def post_install_server(  # noqa: C901
         )
 
     try:
-        server_exists = validate_server(payload.server_name, app_context=app_context)
+        server_exists = await validate_server(
+            payload.server_name, app_context=app_context
+        )
 
         if not payload.overwrite and server_exists:
             logger.info(
@@ -89,7 +93,7 @@ async def post_install_server(  # noqa: C901
             logger.info(
                 f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
             )
-            delete_result = server_api.delete_server_data(
+            delete_result = await server_api.delete_server_data(
                 server_name=payload.server_name, app_context=app_context
             )
             if delete_result.get("status") == "error":
@@ -117,7 +121,7 @@ async def post_install_server(  # noqa: C901
                 os.path.join(custom_dir, payload.server_zip_path)
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             install_api.install_new_server,
             username=current_user.username,
             server_name=payload.server_name,

@@ -5,10 +5,13 @@ import sys
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
+pytest_plugins = ["bsm_test_utils.fixtures"]
 
 from bedrock_server_manager.config.settings import Settings  # noqa: E402
 from bedrock_server_manager.context import AppContext  # noqa: E402
@@ -59,30 +62,29 @@ def isolated_bcm_config(monkeypatch, tmp_path):
     bcm_config.set_custom_log_level(None)
 
 
-@pytest.fixture
-def db(isolated_bcm_config, tmp_path, monkeypatch):
-    """Provides a fresh Database instance initialized with an isolated SQLite DB."""
-    # We use a memory database for speed and isolation
+@pytest_asyncio.fixture
+async def db(isolated_bcm_config, tmp_path, monkeypatch):
+    """Provides a fresh Database instance initialized with an isolated async SQLite DB."""
     db_path = tmp_path / "test_data" / "test.db"
 
-    # ensure mock for alembic files since they might be missing or not findable in tests sometimes
     monkeypatch.setattr("bedrock_server_manager.cli.database.files", MagicMock())
 
-    database = Database(f"sqlite:///{db_path}")
+    database = Database(f"sqlite+aiosqlite:///{db_path}")
     database.initialize()
 
-    # Ensure tables are created for tests
     from bedrock_server_manager.db.models import Base
 
-    Base.metadata.create_all(database.engine)
+    assert database.engine is not None
+    async with database.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     yield database
 
-    database.close()
+    await database.shutdown()
 
 
-@pytest.fixture
-def settings(db, isolated_bcm_config):
+@pytest_asyncio.fixture
+async def settings(db, isolated_bcm_config):
     """Provides a fresh Settings instance."""
 
     base_dir = isolated_bcm_config
@@ -93,34 +95,40 @@ def settings(db, isolated_bcm_config):
     settings_instance = Settings(
         db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
     )
-    settings_instance.load()
+    await settings_instance.load()
     return settings_instance
 
 
-@pytest.fixture
-def app_context(settings, db, tmp_path):
+@pytest_asyncio.fixture
+async def app_context(settings, db, tmp_path):
     """Provides a real AppContext instance."""
     context = AppContext()
     context._settings = settings
     context._db = db
-    context.load()
+    await context.load()
 
     startup_checks(context)
 
     # Create dummy plugin dir so plugin manager can load
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir(exist_ok=True)
-    settings.set("paths.plugins", str(plugins_dir))
+    await settings.set("paths.plugins", str(plugins_dir))
 
     context.plugin_manager.plugin_dirs = [plugins_dir]
-    context.plugin_manager.load_plugins()
+    await context.plugin_manager.load_plugins()
 
     yield context
 
+    # --- TEARDOWN ---
+    if context._db:
+        await context._db.shutdown()
+
 
 @pytest.fixture
-def real_bedrock_server(app_context, tmp_path):
-    """Fixture to create dummy files representing a server for BedrockServer instance testing."""
+def real_bedrock_server(app_context, tmp_path, dummy_server_zip):
+    """Fixture to create a real dummy Bedrock Server instance using bsm-test-utils."""
+    import zipfile
+
     server_name = "test_server"
 
     server_dir = os.path.join(app_context.settings.get("paths.servers"), server_name)
@@ -129,33 +137,25 @@ def real_bedrock_server(app_context, tmp_path):
     server_config_dir = os.path.join(app_context.settings.config_dir, server_name)
     os.makedirs(server_config_dir, exist_ok=True)
 
-    properties_file = os.path.join(server_dir, "server.properties")
-    with open(properties_file, "w") as f:
-        f.write("server-name=test-server\nmax-players=5\nlevel-name=world\n")
+    # Use the dummy_server_zip fixture to generate a fake binary that functions like the real one
+    zip_path = dummy_server_zip(target_dir=tmp_path)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(server_dir)
 
     executable_name = "bedrock_server"
     if platform.system() == "Windows":
         executable_name += ".exe"
     executable_path = os.path.join(server_dir, executable_name)
-    with open(executable_path, "w") as f:
-        f.write(
-            "#!/bin/bash\n"
-            "while read line; do\n"
-            '  if [[ "$line" == "stop" ]]; then\n'
-            "    exit 0\n"
-            "  fi\n"
-            "done\n"
-        )
     os.chmod(executable_path, 0o755)
 
     server = app_context.get_server(server_name)
     return server
 
 
-@pytest.fixture
-def db_session(db):
-    """Fixture to get a database session directly."""
-    with db.session_manager() as session:
+@pytest_asyncio.fixture
+async def db_session(db):
+    """Fixture to get an async database session directly."""
+    async with db.session_manager() as session:
         yield session
 
 
@@ -166,28 +166,8 @@ def test_app(app_context):
     return app
 
 
-@pytest.fixture
-def unauth_client(test_app):
-    """Provides an unauthenticated TestClient instance."""
-    return TestClient(test_app)
-
-
-@pytest.fixture
-def test_user(db_session, test_admin_user):
-    """Creates a test user in the database, also ensuring an admin user exists."""
-    user = UserModel(
-        username="testuser",
-        hashed_password=get_password_hash("testpassword"),
-        role="user",
-        is_active=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-    return user
-
-
-@pytest.fixture
-def test_admin_user(db_session):
+@pytest_asyncio.fixture
+async def test_admin_user(db_session):
     """Creates a test admin user in the database."""
     user = UserModel(
         username="adminuser",
@@ -196,23 +176,44 @@ def test_admin_user(db_session):
         is_active=True,
     )
     db_session.add(user)
-    db_session.commit()
+    await db_session.commit()
     return user
 
 
-@pytest.fixture
-def auth_client(test_app, app_context, test_user):
+@pytest_asyncio.fixture
+async def test_user(db_session, test_admin_user):
+    """Creates a test user in the database, also ensuring an admin user exists."""
+    user = UserModel(
+        username="testuser",
+        hashed_password=get_password_hash("testpassword"),
+        role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    return user
+
+
+@pytest_asyncio.fixture
+async def unauth_client(test_app):
+    """Provides an unauthenticated TestClient instance."""
+    with TestClient(test_app) as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def auth_client(test_app, app_context, test_user):
     """Provides an authenticated TestClient instance with a valid token cookie."""
-    token = create_access_token(app_context, {"sub": test_user.username})
-    client = TestClient(test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    token = await create_access_token(app_context, {"sub": test_user.username})
+    with TestClient(test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
-@pytest.fixture
-def admin_auth_client(test_app, app_context, test_admin_user):
+@pytest_asyncio.fixture
+async def admin_auth_client(test_app, app_context, test_admin_user):
     """Provides an authenticated TestClient instance for an admin user."""
-    token = create_access_token(app_context, {"sub": test_admin_user.username})
-    client = TestClient(test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    token = await create_access_token(app_context, {"sub": test_admin_user.username})
+    with TestClient(test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client

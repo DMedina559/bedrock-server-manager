@@ -33,8 +33,12 @@ def parse_player_string(player_string: str) -> List[Dict[str, str]]:
     return player_list
 
 
-def save_player_data(db_session_manager, players_data: List[Dict[str, str]]) -> int:
-    """Saves or updates player data in the database."""
+async def save_player_data(
+    db_session_manager, players_data: List[Dict[str, str]]
+) -> int:
+    """Saves or updates player data in the database asynchronously."""
+    from sqlalchemy.future import select
+
     if not isinstance(players_data, list):
         raise UserInputError("players_data must be a list.")
     for p_data in players_data:
@@ -49,13 +53,14 @@ def save_player_data(db_session_manager, players_data: List[Dict[str, str]]) -> 
         ):
             raise UserInputError(f"Invalid player entry format: {p_data}")
 
-    with db_session_manager as db:
+    async with db_session_manager() as db:
         try:
             updated_count = 0
             added_count = 0
             for player_to_add in players_data:
                 xuid = player_to_add["xuid"]
-                player = db.query(Player).filter_by(xuid=xuid).first()
+                result = await db.execute(select(Player).filter_by(xuid=xuid))
+                player = result.scalars().first()
                 if player:
                     if (
                         player.player_name != player_to_add["name"]
@@ -73,7 +78,7 @@ def save_player_data(db_session_manager, players_data: List[Dict[str, str]]) -> 
                     added_count += 1
 
             if updated_count > 0 or added_count > 0:
-                db.commit()
+                await db.commit()
                 logger.info(
                     f"Saved/Updated players. Added: {added_count}, Updated: {updated_count}."
                 )
@@ -82,22 +87,28 @@ def save_player_data(db_session_manager, players_data: List[Dict[str, str]]) -> 
             logger.debug("No new or updated player data to save.")
             return 0
         except Exception as e:
-            db.rollback()
+            await db.rollback()
             raise e
 
 
-def get_known_players(db_session_manager) -> List[Dict[str, str]]:
-    """Retrieves all known players from the database."""
-    with db_session_manager as db:
-        players = db.query(Player).all()
+async def get_known_players(db_session_manager) -> List[Dict[str, str]]:
+    """Retrieves all known players from the database asynchronously."""
+    from sqlalchemy.future import select
+
+    async with db_session_manager() as db:
+        result = await db.execute(select(Player))
+        players = result.scalars().all()
         return [{"name": player.player_name, "xuid": player.xuid} for player in players]
 
 
-def discover_and_store_players(  # noqa: C901
+async def discover_and_store_players(  # noqa: C901
     base_dir: str, app_context: AppContext
 ) -> Dict[str, Any]:
-    """Scans all server logs for player data and updates the central player database."""
-    if not base_dir or not os.path.isdir(base_dir):
+    """Scans all server logs for player data and updates the central player database asynchronously."""
+    import aiofiles.os
+    import aiofiles.ospath
+
+    if not base_dir or not await aiofiles.ospath.isdir(base_dir):
         raise AppFileNotFoundError(str(base_dir), "Server base directory")
 
     all_discovered_from_logs: List[Dict[str, str]] = []
@@ -105,9 +116,10 @@ def discover_and_store_players(  # noqa: C901
 
     logger.info(f"Starting discovery of players from all server logs in '{base_dir}'.")
 
+    # aiofiles.os.listdir returns a list of files, we can await it
     for server_name_candidate in os.listdir(base_dir):
         potential_server_path = os.path.join(base_dir, server_name_candidate)
-        if not os.path.isdir(potential_server_path):
+        if not await aiofiles.ospath.isdir(potential_server_path):
             continue
 
         logger.debug(f"Processing potential server '{server_name_candidate}'.")
@@ -115,15 +127,17 @@ def discover_and_store_players(  # noqa: C901
             # Instantiate a BedrockServer to use its encapsulated logic.
             server_instance = app_context.get_server(server_name_candidate)
 
-            # Validate it's a real server before trying to scan its logs.
-            if not server_instance.is_installed():
+            is_installed = await server_instance.is_installed()
+
+            if not is_installed:
                 logger.debug(
                     f"'{server_name_candidate}' is not a valid Bedrock server installation. Skipping log scan."
                 )
                 continue
 
             # Use the instance's own method to scan its log file.
-            players_in_log = server_instance.scan_log_for_players()
+            players_in_log = await server_instance.scan_log_for_players()
+
             if players_in_log:
                 all_discovered_from_logs.extend(players_in_log)
                 logger.debug(
@@ -157,8 +171,8 @@ def discover_and_store_players(  # noqa: C901
         unique_players_to_save_list = list(unique_players_to_save_map.values())
         try:
             # Save all unique players to the central database.
-            saved_count = save_player_data(
-                app_context.db.session_manager(), unique_players_to_save_list
+            saved_count = await save_player_data(
+                app_context.db.session_manager, unique_players_to_save_list
             )
         except (FileOperationError, Exception) as e_save:
             logger.error(

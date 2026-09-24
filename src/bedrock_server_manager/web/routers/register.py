@@ -15,6 +15,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.future import select
 
 from ...context import AppContext
 from ...db.models import RegistrationToken, User
@@ -48,9 +49,9 @@ async def generate_token(
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
     registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    with app_context.db.session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         db.add(registration_token)
-        db.commit()
+        await db.commit()
 
     # Get the base URL from the request
     base_url = str(request.base_url)
@@ -79,10 +80,11 @@ async def validate_token(
     """
     Checks if a registration token is valid.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        registration_token = (
-            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+    async with app_context.db.session_manager() as db:  # type: ignore
+        result = await db.execute(
+            select(RegistrationToken).filter(RegistrationToken.token == token)
         )
+        registration_token = result.scalar_one_or_none()
         if not registration_token or registration_token.expires < int(time.time()):
             return JSONResponse(
                 content={"status": "error", "message": "Invalid or expired token."},
@@ -105,10 +107,11 @@ async def register_user(
     """
     Creates a new user from a registration token.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        registration_token = (
-            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+    async with app_context.db.session_manager() as db:  # type: ignore
+        result = await db.execute(
+            select(RegistrationToken).filter(RegistrationToken.token == token)
         )
+        registration_token = result.scalar_one_or_none()
         if not registration_token or registration_token.expires < int(time.time()):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -122,14 +125,18 @@ async def register_user(
         user = User(
             username=data.username,
             hashed_password=hashed_password,
-            role=registration_token.role,
+            role=str(registration_token.role),
         )
 
         try:
             db.add(user)
-            db.delete(registration_token)  # Delete token after successful registration
-            db.commit()
-            db.refresh(user)  # Refresh the user object to get its ID if needed later
+            await db.delete(
+                registration_token
+            )  # Delete token after successful registration
+            await db.commit()
+            await db.refresh(
+                user
+            )  # Refresh the user object to get its ID if needed later
 
             logger.info(
                 f"UserResponse '{data.username}' registered with role '{registration_token.role}'."
@@ -144,7 +151,7 @@ async def register_user(
             )
 
         except IntegrityError:
-            db.rollback()  # Rollback the transaction on database error
+            await db.rollback()  # Rollback the transaction on database error
             logger.warning(
                 f"Registration failed: Username '{data.username}' already exists."
             )
@@ -156,7 +163,7 @@ async def register_user(
                 },
             )
         except Exception as e:
-            db.rollback()  # Rollback for any other unexpected errors
+            await db.rollback()  # Rollback for any other unexpected errors
             logger.error(
                 f"An unexpected error occurred during registration: {e}", exc_info=True
             )

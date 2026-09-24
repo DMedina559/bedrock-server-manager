@@ -2,8 +2,9 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
 
-from sqlalchemy import inspect
-from sqlalchemy.engine import Engine
+import aiofiles
+from sqlalchemy import Connection, delete, inspect, select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..db import models
 from ..db.database import Database
@@ -28,11 +29,12 @@ def default_serializer(obj: Any) -> str:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-def get_current_db_revision(engine: Optional[Engine]) -> Optional[str]:
-    """Retrieves the current Alembic revision from the database."""
+async def get_current_db_revision(engine: Optional[AsyncEngine]) -> Optional[str]:
+    """Retrieves the current Alembic revision from the database asynchronously."""
     if not engine:
         return None
-    with engine.connect() as connection:
+
+    def _get_rev(connection: Connection) -> Optional[str]:
         inspector = inspect(connection)
         if inspector.has_table("alembic_version"):
             from sqlalchemy import text
@@ -41,28 +43,33 @@ def get_current_db_revision(engine: Optional[Engine]) -> Optional[str]:
                 text("SELECT version_num FROM alembic_version")
             ).scalar_one_or_none()
             return cast(Optional[str], result)
-    return None
+        return None
+
+    async with engine.connect() as connection:
+        return cast(Optional[str], await connection.run_sync(_get_rev))
 
 
-def get_backup_metadata(input_path: str) -> Dict[str, Any]:
-    """Reads the metadata from a backup JSON file."""
-    with open(input_path, "r") as f:
-        backup_data = json.load(f)
+async def get_backup_metadata(input_path: str) -> Dict[str, Any]:
+    """Reads the metadata from a backup JSON file asynchronously."""
+    async with aiofiles.open(input_path, "r") as f:
+        content = await f.read()
+        backup_data = json.loads(content)
         return dict(backup_data.get("_metadata", {}))
 
 
-def backup_database(db: Database, output_path: str) -> None:
-    """Backups all database records to a JSON file."""
+async def backup_database(db: Database, output_path: str) -> None:
+    """Backups all database records to a JSON file asynchronously."""
     backup_data: Dict[str, Any] = {}
 
-    current_rev = get_current_db_revision(db.engine)
+    current_rev = await get_current_db_revision(db.engine)
     if current_rev:
         backup_data["_metadata"] = {"alembic_version": current_rev}
 
-    with db.session_manager() as session:  # type: ignore
+    async with db.session_manager() as session:
         for model in MODELS_TO_MANAGE:
             model_name = model.__name__
-            records = session.query(model).all()
+            result = await session.execute(select(model))
+            records = result.scalars().all()
             model_data = []
             for record in records:
                 record_dict = {
@@ -71,16 +78,16 @@ def backup_database(db: Database, output_path: str) -> None:
                 model_data.append(record_dict)
             backup_data[model_name] = model_data
 
-    with open(output_path, "w") as f:
-        json.dump(backup_data, f, default=default_serializer, indent=4)
+    async with aiofiles.open(output_path, "w") as f:
+        await f.write(json.dumps(backup_data, default=default_serializer, indent=4))
 
 
-def restore_database(db: Database, backup_data: Dict[str, Any]) -> None:
-    """Restores database records from a dictionary payload. Wipes existing data!"""
-    with db.session_manager() as session:  # type: ignore
+async def restore_database(db: Database, backup_data: Dict[str, Any]) -> None:
+    """Restores database records from a dictionary payload asynchronously. Wipes existing data!"""
+    async with db.session_manager() as session:
         # 1. Delete existing data (reverse order to respect foreign keys)
         for model in reversed(MODELS_TO_MANAGE):
-            session.query(model).delete()
+            await session.execute(delete(model))
 
         # 2. Insert new data
         for model in MODELS_TO_MANAGE:
@@ -95,7 +102,6 @@ def restore_database(db: Database, backup_data: Dict[str, Any]) -> None:
                 for col in getattr(model, "__table__").columns:
                     col_name = col.name
                     if col_name in record_dict and record_dict[col_name] is not None:
-                        # Heuristic: if it looks like an ISO format string and the column is DateTime
                         import sqlalchemy
 
                         is_datetime = (
@@ -114,5 +120,5 @@ def restore_database(db: Database, backup_data: Dict[str, Any]) -> None:
 
                 new_objects.append(model(**record_dict))
 
-            session.bulk_save_objects(new_objects)
-        session.commit()
+            session.add_all(new_objects)
+        await session.commit()

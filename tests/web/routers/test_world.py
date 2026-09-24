@@ -40,15 +40,22 @@ def test_get_worlds_list_error(admin_auth_client: TestClient):
         assert "Disk unavailable" in response.json()["detail"]
 
 
-def test_post_world_install_success(
-    admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
+async def test_post_world_install_success(
+    admin_auth_client: TestClient,
+    real_bedrock_server,
+    app_context,
+    tmp_path,
+    valid_mcworld_zip,
 ):
+    import shutil
+
     # Set up mock content dir
-    app_context.settings.set("paths.content", str(tmp_path))
+    await app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
+
     target_file = worlds_dir / "my_world.mcworld"
-    target_file.touch()
+    shutil.copy2(valid_mcworld_zip, target_file)
 
     with patch(
         "bedrock_server_manager.utils.server.validate_server", return_value=True
@@ -65,10 +72,10 @@ def test_post_world_install_success(
             assert response.json()["task_id"] == "task-123"
 
 
-def test_post_world_install_not_found(
+async def test_post_world_install_not_found(
     admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
 ):
-    app_context.settings.set("paths.content", str(tmp_path))
+    await app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,10 +89,10 @@ def test_post_world_install_not_found(
         assert response.status_code == 404
 
 
-def test_post_world_install_path_traversal(
+async def test_post_world_install_path_traversal(
     admin_auth_client: TestClient, real_bedrock_server, app_context, tmp_path
 ):
-    app_context.settings.set("paths.content", str(tmp_path))
+    await app_context.settings.set("paths.content", str(tmp_path))
     worlds_dir = tmp_path / "worlds"
     worlds_dir.mkdir(parents=True, exist_ok=True)
 
@@ -133,6 +140,8 @@ def test_delete_world_reset_success(admin_auth_client: TestClient, real_bedrock_
 def test_get_world_icon_success(
     unauth_client: TestClient, real_bedrock_server, tmp_path
 ):
+    from unittest.mock import AsyncMock
+
     icon_path = tmp_path / "world_icon.jpeg"
     icon_path.write_bytes(b"icon_data")
 
@@ -140,8 +149,11 @@ def test_get_world_icon_success(
         "bedrock_server_manager.context.AppContext.get_server"
     ) as mock_get_server:
         mock_server = mock_get_server.return_value
-        mock_server.has_world_icon.return_value = True
-        mock_server.world_icon_filesystem_path = str(icon_path)
+        mock_server.is_installed = AsyncMock(return_value=True)
+        mock_server.has_world_icon = AsyncMock(return_value=True)
+        mock_server.get_world_icon_filesystem_path = AsyncMock(
+            return_value=str(icon_path)
+        )
 
         response = unauth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/world/icon"
@@ -152,6 +164,8 @@ def test_get_world_icon_success(
 def test_get_world_icon_fallback(
     unauth_client: TestClient, real_bedrock_server, tmp_path
 ):
+    from unittest.mock import AsyncMock
+
     fallback_icon = tmp_path / "image" / "icon" / "favicon.ico"
     fallback_icon.parent.mkdir(parents=True, exist_ok=True)
     fallback_icon.write_bytes(b"favicon")
@@ -160,7 +174,9 @@ def test_get_world_icon_fallback(
         "bedrock_server_manager.context.AppContext.get_server"
     ) as mock_get_server:
         mock_server = mock_get_server.return_value
-        mock_server.has_world_icon.return_value = False
+        mock_server.is_installed = AsyncMock(return_value=True)
+        mock_server.has_world_icon = AsyncMock(return_value=False)
+        mock_server.get_world_icon_filesystem_path = AsyncMock(return_value=None)
 
         with patch(
             "bedrock_server_manager.web.routers.world.STATIC_DIR", str(tmp_path)

@@ -16,7 +16,7 @@ from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import UserInputError
 
 
-def test_get_plugin_statuses_success(app_context: AppContext):
+async def test_get_plugin_statuses_success(app_context: AppContext):
     """Test retrieving plugin statuses successfully."""
     # Mocking the internal methods
     with patch.object(
@@ -26,14 +26,14 @@ def test_get_plugin_statuses_success(app_context: AppContext):
             "test_plugin": {"enabled": True, "version": "1.0.0"}
         }
 
-        result = get_plugin_statuses(app_context)
+        result = await get_plugin_statuses(app_context)
 
         assert result["status"] == "success"
         assert "test_plugin" in result["plugins"]
         mock_sync.assert_called_once()
 
 
-def test_set_plugin_status_success(app_context: AppContext):
+async def test_set_plugin_status_success(app_context: AppContext):
     """Test setting plugin status successfully."""
     with patch.object(app_context.plugin_manager, "_synchronize_config_with_disk"):
         with patch.object(app_context.plugin_manager, "_save_config") as mock_save:
@@ -41,7 +41,7 @@ def test_set_plugin_status_success(app_context: AppContext):
                 "test_plugin": {"enabled": False}
             }
 
-            result = set_plugin_status("test_plugin", True, app_context)
+            result = await set_plugin_status("test_plugin", True, app_context)
 
             assert result["status"] == "success"
             assert "test_plugin" in result["message"]
@@ -52,35 +52,35 @@ def test_set_plugin_status_success(app_context: AppContext):
             mock_save.assert_called_once()
 
 
-def test_set_plugin_status_not_found(app_context: AppContext):
+async def test_set_plugin_status_not_found(app_context: AppContext):
     """Test setting plugin status for non-existent plugin raises UserInputError."""
     with patch.object(app_context.plugin_manager, "_synchronize_config_with_disk"):
         app_context.plugin_manager.plugin_config = {}
 
         with pytest.raises(UserInputError, match="not found"):
-            set_plugin_status("unknown_plugin", True, app_context)
+            await set_plugin_status("unknown_plugin", True, app_context)
 
 
-def test_set_plugin_status_empty_name(app_context: AppContext):
+async def test_set_plugin_status_empty_name(app_context: AppContext):
     """Test setting plugin status with empty name raises UserInputError."""
     with pytest.raises(UserInputError):
-        set_plugin_status("", True, app_context)
+        await set_plugin_status("", True, app_context)
 
 
-def test_reload_plugins_success(app_context: AppContext):
+async def test_reload_plugins_success(app_context: AppContext):
     """Test reloading plugins successfully."""
     with patch.object(app_context.plugin_manager, "reload") as mock_reload:
-        result = reload_plugins(app_context)
+        result = await reload_plugins(app_context)
 
         assert result["status"] == "success"
         assert "reloaded successfully" in result["message"]
         mock_reload.assert_called_once()
 
 
-def test_trigger_external_app_event_api_success(app_context: AppContext):
+async def test_trigger_external_app_event_api_success(app_context: AppContext):
     """Test triggering external plugin event successfully."""
     with patch.object(app_context.plugin_manager, "trigger_event") as mock_trigger:
-        result = trigger_external_app_event_api(
+        result = await trigger_external_app_event_api(
             "test:event", app_context, {"data": 123}
         )
 
@@ -91,7 +91,7 @@ def test_trigger_external_app_event_api_success(app_context: AppContext):
         )
 
 
-def test_trigger_external_app_event_api_empty_name(app_context: AppContext):
+async def test_trigger_external_app_event_api_empty_name(app_context: AppContext):
     """Test triggering event with empty name raises UserInputError."""
     with pytest.raises(UserInputError):
-        trigger_external_app_event_api("", app_context)
+        await trigger_external_app_event_api("", app_context)

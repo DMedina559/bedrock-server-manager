@@ -1,7 +1,9 @@
 import click
+from sqlalchemy import select
 
 from ..db.models import User
 from ..utils import get_password_hash
+from ..utils.general import run_async
 
 
 @click.command("reset-password", help="Resets the password for a user.")
@@ -16,14 +18,19 @@ def reset_password_command(ctx, username: str):
         "Enter new password", hide_input=True, confirmation_prompt=True
     )
 
-    with app_context.db.session_manager() as db:
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            click.secho(f"Error: User '{username}' not found.", fg="red")
-            return
+    async def _reset():
+        async with app_context.db.session_manager() as db:
+            result = await db.execute(select(User).filter(User.username == username))
+            user = result.scalars().first()
+            if not user:
+                click.secho(f"Error: User '{username}' not found.", fg="red")
+                return
 
-        user.hashed_password = get_password_hash(password)
-        db.commit()
-        click.secho(
-            f"Password for user '{username}' has been reset successfully.", fg="green"
-        )
+            user.hashed_password = get_password_hash(password)
+            await db.commit()
+            click.secho(
+                f"Password for user '{username}' has been reset successfully.",
+                fg="green",
+            )
+
+    run_async(_reset())

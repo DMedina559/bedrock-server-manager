@@ -17,7 +17,7 @@ def test_init_once(app_context):
     assert any("plugins" in str(path) for path in pm.plugin_dirs)
 
 
-def test_load_and_save_config(app_context):
+async def test_load_and_save_config(db, app_context):
     """Test saving and loading arbitrary plugin JSON configuration dictionary mappings."""
     pm = app_context.plugin_manager
 
@@ -29,28 +29,28 @@ def test_load_and_save_config(app_context):
         }
     }
 
-    pm._save_config()
+    await pm._save_config()
 
     # Reload from disk into fresh config dictionary
     pm.plugin_config = {}
-    loaded = pm._load_config()
+    loaded = await pm._load_config()
     assert "test_plugin_x" in loaded
     assert loaded["test_plugin_x"]["enabled"] is True
     assert loaded["test_plugin_x"]["version"] == "1.0"
 
 
-def test_synchronize_config_with_disk(app_context):
+async def test_synchronize_config_with_disk(db, app_context):
     """Test synchronize configuration cleans up orphaned keys and adds loaded ones."""
     pm = app_context.plugin_manager
     # Injected plugins mock directory might be empty, but we can verify it wipes clean unused dict entries
     pm.plugin_config = {"phantom_plugin": {"enabled": True}}
 
-    pm._synchronize_config_with_disk()
+    await pm._synchronize_config_with_disk()
 
     assert isinstance(pm.plugin_config, dict)
 
 
-def test_load_plugins(app_context, monkeypatch):
+async def test_load_plugins(db, app_context, monkeypatch):
     """Test PluginManager loads properly matching plugins."""
     pm = app_context.plugin_manager
 
@@ -67,7 +67,7 @@ def test_load_plugins(app_context, monkeypatch):
     assert pm.plugins[0].name == "mock_plugin_y"
 
 
-def test_custom_event_system(app_context):
+async def test_custom_event_system(db, app_context):
     """Test inter-plugin event broadcast and listeners dispatch accurately."""
     pm = app_context.plugin_manager
 
@@ -82,33 +82,34 @@ def test_custom_event_system(app_context):
 
     pm.register_app_event_listener("test:event", callback, "listen_plugin")
 
-    pm.trigger_event("test:event", "arg1", kw="val", _triggering_plugin="sender_plugin")
+    await pm.trigger_event(
+        "test:event", "arg1", kw="val", _triggering_plugin="sender_plugin"
+    )
 
     callback.assert_called_once_with(
         "arg1", kw="val", _triggering_plugin="sender_plugin"
     )
 
 
-def test_event_dispatch(app_context):
+async def test_event_dispatch(db, app_context):
     """Test trigger_event correctly loops over all active plugins invoking registered hooks."""
     pm = app_context.plugin_manager
 
-    # Just mock pm._event_listeners and target_plugin.name since we removed direct fallback for non-existing hooks in test setup
     mock_plugin = MagicMock()
     mock_plugin.name = "mock_plugin"
 
     callback = MagicMock()
     callback.__name__ = "my_callback"
 
-    pm.plugins = {mock_plugin}
-    pm._event_listeners = {"on_unload": [("mock_plugin", callback)]}
+    pm.plugins = [mock_plugin]
+    pm._event_listeners = {"on_unload": {"mock_plugin": [callback]}}
 
-    pm.trigger_event("on_unload")
+    await pm.trigger_event("on_unload")
 
     callback.assert_called_once()
 
 
-def test_reload_plugins(app_context, monkeypatch):
+async def test_reload_plugins(db, app_context, monkeypatch):
     """Test PluginManager unloads plugins before reloading the cache."""
     pm = app_context.plugin_manager
 
@@ -119,9 +120,133 @@ def test_reload_plugins(app_context, monkeypatch):
     pm._event_listeners = {"test_event": []}
 
     with monkeypatch.context() as m:
-        m.setattr(pm, "load_plugins", MagicMock())
+        from unittest.mock import AsyncMock
+
+        mock_load = AsyncMock()
+        m.setattr(pm, "load_plugins", mock_load)
         # Instead of intercepting the mock plugin event, just verify load_plugins is called and lists are cleared
-        pm.reload()
+        await pm.reload()
 
         assert len(pm._event_listeners) == 0
-        pm.load_plugins.assert_called_once()
+        mock_load.assert_called_once()
+
+
+def test_path_traversal_rejection(app_context):
+    """Test PluginManager rejects path traversal and unsafe names in plugin discovery."""
+    pm = app_context.plugin_manager
+
+    assert pm._find_plugin_path("../secret") is None
+    assert pm._find_plugin_path("../../etc/passwd") is None
+    assert pm._find_plugin_path("foo/bar") is None
+    assert pm._find_plugin_path("..") is None
+
+
+async def test_event_dispatch_app_context_sanitization(app_context):
+    """Test dispatch_event strips app_context from kwargs passed to listeners."""
+    pm = app_context.plugin_manager
+
+    received_kwargs = {}
+
+    async def listener(**kwargs):
+        received_kwargs.update(kwargs)
+
+    listener.__name__ = "listener"
+
+    mock_plugin = MagicMock()
+    mock_plugin.name = "test_plugin"
+    pm.plugins = [mock_plugin]
+    pm.register_app_event_listener("test_event", listener, "test_plugin")
+
+    await pm.dispatch_event(
+        mock_plugin, "test_event", app_context=app_context, payload="data"
+    )
+
+    assert "app_context" not in received_kwargs
+    assert received_kwargs.get("payload") == "data"
+
+
+async def test_topological_dependency_sorting(app_context):
+    """Test inter-plugin dependency resolution sorts in correct topological order."""
+    from bedrock_server_manager.plugins.plugin_base import PluginBase
+
+    pm = app_context.plugin_manager
+
+    class PluginA(PluginBase):
+        version = "1.0.0"
+
+    class PluginB(PluginBase):
+        version = "1.0.0"
+        dependencies = ["PluginA"]
+
+    class PluginC(PluginBase):
+        version = "1.0.0"
+        dependencies = ["PluginB"]
+
+    classes = {
+        "PluginC": PluginC,
+        "PluginA": PluginA,
+        "PluginB": PluginB,
+    }
+
+    sorted_names = pm._sort_plugin_dependencies(classes)
+    assert sorted_names == ["PluginA", "PluginB", "PluginC"]
+
+
+async def test_granular_plugin_lifecycle(db, app_context, tmp_path):
+    """Test load_plugin_by_name, unload_plugin_by_name, enable_plugin, disable_plugin, and reload_plugin."""
+    pm = app_context.plugin_manager
+
+    plugin_dir = pm.plugin_dirs[0]
+    plugin_file = plugin_dir / "sample_test_plugin.py"
+    plugin_code = """
+from bedrock_server_manager.plugins.plugin_base import PluginBase
+
+class SampleTestPlugin(PluginBase):
+    version = "1.0.0"
+    author = "Tester"
+    description = "Sample test plugin"
+
+    async def on_load(self):
+        pass
+
+    async def on_unload(self):
+        pass
+"""
+    plugin_file.write_text(plugin_code)
+
+    try:
+        # Enable and load
+        enabled = await pm.enable_plugin("sample_test_plugin", load_immediately=True)
+        assert enabled is True
+        assert pm.get_plugin_status("sample_test_plugin") == "LOADED"
+        assert len(pm.plugins) == 1
+
+        # Reload
+        reloaded = await pm.reload_plugin("sample_test_plugin")
+        assert reloaded is True
+        assert pm.get_plugin_status("sample_test_plugin") == "LOADED"
+
+        # Disable and unload
+        disabled = await pm.disable_plugin(
+            "sample_test_plugin", unload_immediately=True
+        )
+        assert disabled is True
+        assert pm.get_plugin_status("sample_test_plugin") == "DISABLED"
+        assert len(pm.plugins) == 0
+
+    finally:
+        if plugin_file.exists():
+            plugin_file.unlink()
+
+
+def test_plugin_status_tracking(app_context):
+    """Test get_plugin_status returns correct statuses."""
+    pm = app_context.plugin_manager
+
+    assert pm.get_plugin_status("nonexistent_plugin") == "UNKNOWN"
+
+    pm.plugin_config["disabled_plugin"] = {"enabled": False, "status": "DISABLED"}
+    assert pm.get_plugin_status("disabled_plugin") == "DISABLED"
+
+    pm.plugin_config["error_plugin"] = {"enabled": True, "status": "ERROR"}
+    assert pm.get_plugin_status("error_plugin") == "ERROR"

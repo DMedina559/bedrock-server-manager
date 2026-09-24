@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.future import select
 
 from ...context import AppContext
 from ...db.models import AuditLog
@@ -21,7 +22,7 @@ router = APIRouter(
 )
 
 
-def create_audit_log(
+async def create_audit_log(
     app_context,
     user_id: int,
     action: str,
@@ -30,10 +31,10 @@ def create_audit_log(
     """
     Creates an audit log entry.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
+    async with app_context.db.session_manager() as db:  # type: ignore
         log = AuditLog(user_id=user_id, action=action, details=details)
         db.add(log)
-        db.commit()
+        await db.commit()
 
 
 @router.get("/list", response_model=List[AuditLogResponse])
@@ -44,7 +45,8 @@ async def list_audit_logs_api(
     """
     Retrieves audit logs as JSON.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()
+    async with app_context.db.session_manager() as db:  # type: ignore
+        result = await db.execute(select(AuditLog).order_by(AuditLog.timestamp.desc()))
+        logs = result.scalars().all()
         # Convert timestamp to string if needed, or Pydantic handles datetime
         return logs

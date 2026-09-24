@@ -11,7 +11,6 @@ def resource_monitor(app_context):
     return ResourceMonitor(app_context)
 
 
-@pytest.mark.asyncio
 async def test_resource_monitor_start_stop(resource_monitor):
     """Test start and stop lifecycle methods for ResourceMonitor."""
     assert resource_monitor._task is None
@@ -24,7 +23,6 @@ async def test_resource_monitor_start_stop(resource_monitor):
     assert resource_monitor._task is None
 
 
-@pytest.mark.asyncio
 async def test_resource_monitor_loop_broadcasts(
     resource_monitor, app_context, monkeypatch
 ):
@@ -40,7 +38,7 @@ async def test_resource_monitor_loop_broadcasts(
     mock_info = {"cpu": 10, "mem": 50}
     monkeypatch.setattr(
         "bedrock_server_manager.api.system.get_bedrock_process_info",
-        MagicMock(return_value=mock_info),
+        AsyncMock(return_value=mock_info),
     )
 
     # We want to run the loop manually for one iteration, so we mock sleep to raise an exception to break the loop
@@ -66,7 +64,6 @@ async def test_resource_monitor_loop_broadcasts(
     )
 
 
-@pytest.mark.asyncio
 async def test_resource_monitor_loop_no_subscribers(
     resource_monitor, app_context, monkeypatch
 ):
@@ -94,7 +91,6 @@ async def test_resource_monitor_loop_no_subscribers(
     mock_broadcast.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_resource_monitor_exception_handling(
     resource_monitor, app_context, monkeypatch
 ):

@@ -21,10 +21,15 @@ with the filesystem within the server's ``worlds`` subdirectory.
     are **DESTRUCTIVE** and can lead to data loss if not used carefully.
 """
 
+import asyncio
 import os
 import shutil
 import zipfile
 from typing import TYPE_CHECKING, Any, Optional
+
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
 
 from ...error import (
     AppFileNotFoundError,
@@ -34,7 +39,7 @@ from ...error import (
     FileOperationError,
     MissingArgumentError,
 )
-from ..system import base as system_base_utils
+from ..system import base as system_base
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -71,11 +76,11 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         """
         super().__init__(*args, **kwargs)
         # Attributes from BaseMixin are available.
-        # Relies on self.get_world_name() from StateMixin.
+        # Relies on await self.get_world_name() from StateMixin.
 
     if TYPE_CHECKING:
 
-        def get_world_name(self) -> str: ...
+        async def get_world_name(self) -> str: ...
 
     @property
     def _worlds_base_dir_in_server(self) -> str:
@@ -84,12 +89,12 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         """
         return os.path.join(self.server_dir, "worlds")
 
-    def _get_active_world_directory_path(self) -> str:
+    async def _get_active_world_directory_path(self) -> str:
         """Determines the full path to the directory of the currently active world.
 
         This path is constructed by joining the base worlds directory
         (:attr:`._worlds_base_dir_in_server`) with the active world's name,
-        which is obtained by calling ``self.get_world_name()``. This method
+        which is obtained by calling ``await self.get_world_name()``. This method
         is expected to be provided by :class:`~.core.server.state_mixin.ServerStateMixin`.
 
         Returns:
@@ -103,16 +108,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             ConfigParseError: If ``level-name`` is missing from ``server.properties``
                 or the file is malformed.
         """
-        if not hasattr(self, "get_world_name"):
-            # This indicates a programming error / incorrect mixin composition.
-            self.logger.error(
-                "Internal error: get_world_name method is missing from this Server instance."
-            )
-            raise AttributeError(
-                "The 'get_world_name' method, typically from ServerStateMixin, is required but not found."
-            )
-
-        active_world_name: str = self.get_world_name()  # type: ignore
+        active_world_name: str = await self.get_world_name()  # type: ignore
         if not active_world_name or not isinstance(active_world_name, str):
             # get_world_name should ideally raise if it can't determine, but double check.
             raise ConfigParseError(
@@ -120,10 +116,10 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
         return os.path.join(self._worlds_base_dir_in_server, active_world_name)
 
-    def extract_mcworld(  # noqa: C901
+    async def extract_mcworld(
         self, mcworld_file_path: str, target_world_dir_name: str
     ) -> str:
-        """Extracts a ``.mcworld`` archive file into a specified world directory name.
+        """Extracts a ``.mcworld`` archive file into a specified world directory name asynchronously.
 
         The extraction target is a subdirectory named `target_world_dir_name`
         within the server's main "worlds" folder (see :attr:`._worlds_base_dir_in_server`).
@@ -167,42 +163,38 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         mcworld_filename = os.path.basename(mcworld_file_path)
 
         self.logger.info(
-            f"Server '{self.server_name}': Preparing to extract '{mcworld_filename}' into world directory '{target_world_dir_name}'."
+            f"Server '{self.server_name}': Preparing to extract '{mcworld_filename}' into world directory '{target_world_dir_name}' asynchronously."
         )
 
-        if not os.path.isfile(mcworld_file_path):
+        if not await aiofiles.ospath.isfile(mcworld_file_path):
             raise AppFileNotFoundError(mcworld_file_path, ".mcworld file")
 
-        # Ensure a clean target directory by removing it if it exists.
-        if os.path.exists(full_target_extract_dir):
+        if await aiofiles.ospath.exists(full_target_extract_dir):
             self.logger.warning(
                 f"Target world directory '{full_target_extract_dir}' already exists. Removing its contents."
             )
             try:
-                shutil.rmtree(full_target_extract_dir)
+                await asyncio.to_thread(shutil.rmtree, full_target_extract_dir)
             except OSError as e:
                 raise FileOperationError(
                     f"Failed to clear target world directory '{full_target_extract_dir}': {e}"
                 ) from e
 
-        # Recreate the empty target directory.
         try:
-            os.makedirs(full_target_extract_dir, exist_ok=True)
+            await asyncio.to_thread(os.makedirs, full_target_extract_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create target world directory '{full_target_extract_dir}': {e}"
             ) from e
 
-        # Extract the world archive.
         self.logger.info(
-            f"Server '{self.server_name}': Extracting '{mcworld_filename}'..."
+            f"Server '{self.server_name}': Extracting '{mcworld_filename}' asynchronously..."
         )
-        try:
+
+        def _do_extract_and_flatten():
             with zipfile.ZipFile(mcworld_file_path, "r") as zip_ref:
                 zip_ref.extractall(full_target_extract_dir)
 
-            # Check for nested extraction: If level.dat (or level.txt) is not in the root
-            # but is inside a single subdirectory, move contents up.
             entries = os.listdir(full_target_extract_dir)
             has_level_dat = any(
                 f.lower() in ("level.dat", "level.txt") for f in entries
@@ -215,7 +207,6 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                     self.logger.info(
                         f"Detected nested world directory '{nested_dir_name}'. flattening structure..."
                     )
-                    # Move everything from nested dir to target dir
                     for item in os.listdir(nested_dir_path):
                         shutil.move(
                             os.path.join(nested_dir_path, item), full_target_extract_dir
@@ -223,14 +214,17 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                     os.rmdir(nested_dir_path)
                     self.logger.debug("Flattened nested world directory structure.")
 
+        try:
+            await asyncio.to_thread(_do_extract_and_flatten)
             self.logger.info(
                 f"Server '{self.server_name}': Successfully extracted world to '{full_target_extract_dir}'."
             )
             return full_target_extract_dir
         except zipfile.BadZipFile as e:
-            # Clean up the partially created directory on failure.
-            if os.path.exists(full_target_extract_dir):
-                shutil.rmtree(full_target_extract_dir, ignore_errors=True)
+            if await aiofiles.ospath.exists(full_target_extract_dir):
+                await asyncio.to_thread(
+                    shutil.rmtree, full_target_extract_dir, ignore_errors=True
+                )
             raise ExtractError(
                 f"Invalid .mcworld file (not a valid zip): {mcworld_filename}"
             ) from e
@@ -243,10 +237,10 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Unexpected error extracting world '{mcworld_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def export_world(  # noqa: C901
+    async def export_world(
         self, world_dir_name: str, target_mcworld_file_path: str
     ) -> None:
-        """Exports a specified world directory into a ``.mcworld`` archive file.
+        """Exports a specified world directory into a ``.mcworld`` archive file asynchronously.
 
         This method takes the name of a world directory (located within the server's
         "worlds" folder), archives its entire contents into a ZIP file, and then
@@ -289,17 +283,16 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         mcworld_filename = os.path.basename(target_mcworld_file_path)
 
         self.logger.info(
-            f"Server '{self.server_name}': Exporting world '{world_dir_name}' to .mcworld file '{mcworld_filename}'."
+            f"Server '{self.server_name}': Exporting world '{world_dir_name}' to .mcworld file '{mcworld_filename}' asynchronously."
         )
 
-        if not os.path.isdir(full_source_world_dir):
+        if not await aiofiles.ospath.isdir(full_source_world_dir):
             raise AppFileNotFoundError(full_source_world_dir, "Source world directory")
 
-        # Ensure the parent directory for the exported file exists.
         target_parent_dir = os.path.dirname(target_mcworld_file_path)
         if target_parent_dir:
             try:
-                os.makedirs(target_parent_dir, exist_ok=True)
+                await asyncio.to_thread(os.makedirs, target_parent_dir, exist_ok=True)
             except OSError as e:
                 raise FileOperationError(
                     f"Cannot create target directory '{target_parent_dir}': {e}"
@@ -312,8 +305,8 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             self.logger.debug(
                 f"Creating temporary ZIP archive at '{archive_base_name_no_ext}' for world '{world_dir_name}'."
             )
-            # Create a zip archive of the world directory's contents.
-            shutil.make_archive(
+            await asyncio.to_thread(
+                shutil.make_archive,
                 base_name=archive_base_name_no_ext,
                 format="zip",
                 root_dir=full_source_world_dir,
@@ -321,44 +314,44 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             )
             self.logger.debug(f"Successfully created temporary ZIP: {temp_zip_path}")
 
-            if not os.path.exists(temp_zip_path):
+            if not await aiofiles.ospath.exists(temp_zip_path):
                 raise BackupRestoreError(
                     f"Archive process completed but temp zip '{temp_zip_path}' not found."
                 )
 
-            # Rename the .zip to .mcworld, overwriting if necessary.
-            if os.path.exists(target_mcworld_file_path):
+            if await aiofiles.ospath.exists(target_mcworld_file_path):
                 self.logger.warning(
                     f"Target file '{target_mcworld_file_path}' exists. Overwriting."
                 )
-                os.remove(target_mcworld_file_path)
-            os.rename(temp_zip_path, target_mcworld_file_path)
+                await aiofiles.os.remove(target_mcworld_file_path)
+
+            await asyncio.to_thread(os.rename, temp_zip_path, target_mcworld_file_path)
             self.logger.info(
                 f"Server '{self.server_name}': World export successful. Created: {target_mcworld_file_path}"
             )
 
         except OSError as e:
-            if os.path.exists(temp_zip_path):
-                os.remove(temp_zip_path)  # Clean up temporary file on failure.
+            if await aiofiles.ospath.exists(temp_zip_path):
+                await aiofiles.os.remove(temp_zip_path)
             raise BackupRestoreError(
                 f"Failed to create .mcworld for server '{self.server_name}', world '{world_dir_name}': {e}"
             ) from e
         except Exception as e_unexp:
-            if os.path.exists(temp_zip_path):
-                os.remove(temp_zip_path)  # Clean up temporary file on failure.
+            if await aiofiles.ospath.exists(temp_zip_path):
+                await aiofiles.os.remove(temp_zip_path)
             raise BackupRestoreError(
-                f"Unexpected error exporting world for server '{self.server_name}', world '{world_dir_name}': {e_unexp}"
+                f"Unexpected error during world export for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def import_world(self, mcworld_backup_file_path: str) -> str:
-        """Imports a ``.mcworld`` file, replacing the server's currently active world.
+    async def import_world(self, mcworld_backup_file_path: str) -> str:
+        """Imports a ``.mcworld`` file asynchronously, replacing the server's currently active world.
 
         .. warning::
             This is a **DESTRUCTIVE** operation. The existing active world directory
             will be deleted before the new world is imported.
 
         This method first determines the name of the server's active world by
-        calling ``self.get_world_name()`` (expected from
+        calling ``await self.get_world_name()`` (expected from
         :class:`~.core.server.state_mixin.ServerStateMixin`). It then uses
         :meth:`.extract_mcworld` to extract the contents of the
         provided `mcworld_backup_file_path` into a directory with that active
@@ -391,16 +384,15 @@ class ServerWorldMixin(BedrockServerBaseMixin):
 
         mcworld_filename = os.path.basename(mcworld_backup_file_path)
         self.logger.info(
-            f"Server '{self.server_name}': Importing active world from backup '{mcworld_filename}'."
+            f"Server '{self.server_name}': Importing active world from backup '{mcworld_filename}' asynchronously."
         )
 
-        if not os.path.isfile(mcworld_backup_file_path):
+        if not await aiofiles.ospath.isfile(mcworld_backup_file_path):
             raise AppFileNotFoundError(mcworld_backup_file_path, ".mcworld backup file")
 
-        # 1. Determine the target active world directory name.
         try:
-            # This method is expected to be on the final class from StateMixin.
-            active_world_dir_name = self.get_world_name()
+            active_world_dir_name = str(await self.get_world_name())
+
             self.logger.info(
                 f"Target active world name for server '{self.server_name}' is '{active_world_dir_name}'."
             )
@@ -409,9 +401,8 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Cannot import world: Failed to get active world name for '{self.server_name}'."
             ) from e
 
-        # 2. Delegate the extraction to the specialized method.
         try:
-            self.extract_mcworld(mcworld_backup_file_path, active_world_dir_name)
+            await self.extract_mcworld(mcworld_backup_file_path, active_world_dir_name)
             self.logger.info(
                 f"Server '{self.server_name}': Active world import from '{mcworld_filename}' completed successfully into '{active_world_dir_name}'."
             )
@@ -427,8 +418,8 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"World import for server '{self.server_name}' failed into '{active_world_dir_name}': {e_extract}"
             ) from e_extract
 
-    def delete_world(self) -> bool:
-        """Deletes the server's currently active world directory.
+    async def delete_world(self) -> bool:
+        """Deletes the server's currently active world directory asynchronously.
 
         .. warning::
             This is a **DESTRUCTIVE** operation. The active world's data will be
@@ -458,7 +449,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 is not available.
         """
         try:
-            active_world_dir = self._get_active_world_directory_path()
+            active_world_dir = await self._get_active_world_directory_path()
             active_world_name = os.path.basename(active_world_dir)
         except (AppFileNotFoundError, ConfigParseError, Exception) as e:
             self.logger.error(
@@ -470,19 +461,18 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             f"Server '{self.server_name}': Attempting to delete active world directory: '{active_world_dir}'. THIS IS A DESTRUCTIVE operation."
         )
 
-        if not os.path.exists(active_world_dir):
+        if not await aiofiles.ospath.exists(active_world_dir):
             self.logger.info(
                 f"Server '{self.server_name}': Active world directory '{active_world_dir}' does not exist. Nothing to delete."
             )
             return True
 
-        if not os.path.isdir(active_world_dir):
+        if not await aiofiles.ospath.isdir(active_world_dir):
             raise FileOperationError(
                 f"Path for active world '{active_world_name}' is not a directory: {active_world_dir}"
             )
 
-        # Use the robust deletion utility from the system module.
-        success = system_base_utils.delete_path_robustly(
+        success = await system_base.delete_path_robustly(
             active_world_dir,
             f"active world directory '{active_world_name}' for server '{self.server_name}'",
         )
@@ -492,20 +482,42 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Server '{self.server_name}': Successfully deleted active world directory '{active_world_dir}'."
             )
         else:
-            # The robust utility already logs errors, but we raise to signal failure.
             raise FileOperationError(
                 f"Failed to completely delete active world directory '{active_world_name}' for server '{self.server_name}'. Check logs."
             )
 
         return success
 
+    async def has_world_icon(self) -> bool:
+        """Checks if the standard world icon file (``world_icon.jpeg``) exists for the active world asynchronously.
+
+        This method uses :attr:`.world_icon_filesystem_path` to determine the
+        expected location of the icon and checks if a file exists at that path.
+
+        Returns:
+            bool: ``True`` if the world icon file exists and is a regular file,
+            ``False`` otherwise (e.g., path cannot be determined, file does not
+            exist, or is not a file).
+        """
+        icon_path = await self.get_world_icon_filesystem_path()
+        if icon_path and await aiofiles.ospath.isfile(icon_path):
+            self.logger.debug(
+                f"Server '{self.server_name}': World icon found at '{icon_path}' asynchronously."
+            )
+            return True
+
+        if icon_path:
+            self.logger.debug(
+                f"Server '{self.server_name}': World icon not found or is not a file at determined path '{icon_path}' asynchronously."
+            )
+        return False
+
     @property
     def world_icon_filename(self) -> str:
         """str: The standard filename for a world's icon image (``world_icon.jpeg``)."""
         return "world_icon.jpeg"
 
-    @property
-    def world_icon_filesystem_path(self) -> Optional[str]:
+    async def get_world_icon_filesystem_path(self) -> Optional[str]:
         """Optional[str]: The absolute filesystem path to the world icon for the active world.
 
         This is constructed by joining the active world's directory path (from
@@ -516,37 +528,10 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         (e.g., if ``get_world_name()`` fails or is unavailable).
         """
         try:
-            active_world_dir = self._get_active_world_directory_path()
+            active_world_dir = await self._get_active_world_directory_path()
             return os.path.join(active_world_dir, self.world_icon_filename)
         except (AppFileNotFoundError, ConfigParseError, Exception) as e:
             self.logger.warning(
                 f"Server '{self.server_name}': Cannot determine world icon path because active world name is unavailable: {e}"
             )
             return None
-
-    def has_world_icon(self) -> bool:
-        """Checks if the standard world icon file (``world_icon.jpeg``) exists for the active world.
-
-        This method uses :attr:`.world_icon_filesystem_path` to determine the
-        expected location of the icon and checks if a file exists at that path.
-
-        Returns:
-            bool: ``True`` if the world icon file exists and is a regular file,
-            ``False`` otherwise (e.g., path cannot be determined, file does not
-            exist, or is not a file).
-        """
-        icon_path = self.world_icon_filesystem_path
-        if icon_path and os.path.isfile(icon_path):
-            self.logger.debug(
-                f"Server '{self.server_name}': World icon found at '{icon_path}'."
-            )
-            return True
-
-        # Log if path was determined but file not found/not a file
-        if icon_path:  # Implies get_world_name succeeded
-            self.logger.debug(
-                f"Server '{self.server_name}': World icon not found or is not a file at determined path '{icon_path}'."
-            )
-        # If icon_path is None, _get_active_world_directory_path (via world_icon_filesystem_path)
-        # would have already logged a warning if get_world_name failed.
-        return False

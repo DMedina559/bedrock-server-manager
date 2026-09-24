@@ -38,3 +38,5 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-requests, types-PyYAML]
+        pass_filenames: false
+        args: ["."]

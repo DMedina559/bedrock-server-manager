@@ -20,7 +20,7 @@ intended for use by UIs, CLIs, or other high-level components.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..config import const as config_const
 from ..context import AppContext
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("list_available_worlds_api")
-def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
+async def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
     Scans the ``worlds`` sub-folder within the application's global content directory.
@@ -49,7 +49,7 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
     logger.debug("API: Requesting list of available worlds.")
     try:
         content_dir = app_context.settings.get("paths.content")
-        worlds = list_content_files(content_dir, "worlds", [".mcworld"])
+        worlds = await list_content_files(content_dir, "worlds", [".mcworld"])
         return {"status": "success", "files": worlds}
     except FileError as e:
         # Handle specific file-related errors.
@@ -60,7 +60,7 @@ def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("get_all_servers_data")
-def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
+async def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves status and version for all detected servers.
 
     This function acts as an API orchestrator to gather data from all individual
@@ -91,7 +91,7 @@ def get_all_servers_data(app_context: AppContext) -> Dict[str, Any]:
 
     try:
         # Call the core function which returns both data and potential errors.
-        servers_data, bsm_error_messages = server_utils.get_servers_data(
+        servers_data, bsm_error_messages = await server_utils.get_servers_data(
             app_context=app_context
         )
 
@@ -154,8 +154,39 @@ def get_system_and_app_info(app_context: AppContext) -> Dict[str, Any]:
         return {"status": "error", "message": "An unexpected error occurred."}
 
 
+@api_method("run_task")
+async def run_task(
+    target_function: Callable,
+    app_context: AppContext,
+    username: Optional[str] = None,
+    *args: Any,
+    **kwargs: Any,
+) -> str:
+    """Submits a function to be run in the background by the TaskManager.
+
+    Args:
+        target_function (Callable): The function to execute.
+        app_context (AppContext): The application context.
+        username (Optional[str], optional): The user associated with the task for WebSocket notifications.
+        *args (Any): Positional arguments for the target function.
+        **kwargs (Any): Keyword arguments for the target function.
+
+    Returns:
+        str: The ID of the created task.
+    """
+    # Safely get the name, unwrapping functools.partial if necessary
+    actual_func = getattr(target_function, "func", target_function)
+    task_name = getattr(actual_func, "__name__", str(target_function))
+
+    logger.debug(f"API: Running task in background: {task_name}")
+
+    return await app_context.task_manager.run_task(
+        target_function, username, *args, **kwargs
+    )
+
+
 @api_method("update_server_statuses", expose_to_plugins=False)
-def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
+async def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     """Reconciles the status in config files with the runtime state for all servers.
 
     This function calls the core function to get servers data.
@@ -184,7 +215,7 @@ def update_server_statuses(app_context: AppContext) -> Dict[str, Any]:
     try:
         # get_servers_data() now handles the reconciliation internally.
         # It returns both the server data and any errors encountered during discovery.
-        all_servers_data, discovery_errors = server_utils.get_servers_data(
+        all_servers_data, discovery_errors = await server_utils.get_servers_data(
             app_context=app_context
         )
         if discovery_errors:

@@ -1,3 +1,5 @@
+import asyncio
+
 import click
 import questionary
 
@@ -54,7 +56,7 @@ def setup(ctx: click.Context):  # noqa: C901
             click.echo("Using the default SQLite database.")
 
         # --- Load AppContext ---
-        app_context.load()
+        asyncio.run(app_context.load())
         settings = app_context.settings
 
         # --- Prompt for Web Host and Port ---
@@ -64,7 +66,7 @@ def setup(ctx: click.Context):  # noqa: C901
             default=settings.get("web.host", "127.0.0.1"),
         ).ask()
         if web_host:
-            settings.set("web.host", web_host)
+            asyncio.run(settings.set("web.host", web_host))
 
         web_port = questionary.text(
             "Enter the web UI port:",
@@ -72,7 +74,7 @@ def setup(ctx: click.Context):  # noqa: C901
             validate=lambda text: text.isdigit(),
         ).ask()
         if web_port:
-            settings.set("web.port", int(web_port))
+            asyncio.run(settings.set("web.port", int(web_port)))
 
         click.secho(
             f"Web UI will be hosted at: http://{web_host}:{web_port}", fg="green"

@@ -25,18 +25,19 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     settings = app_context.settings
     plugin_manager = app_context.plugin_manager
 
-    plugin_manager.load_plugins()
+    asyncio.run(plugin_manager.load_plugins())
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Startup logic goes here
         app_context = app.state.app_context
         app_context.loop = asyncio.get_running_loop()
+        await app_context.bedrock_process_manager.start()
         app_context.resource_monitor.start()
-        await asyncio.to_thread(app_context.api.update_server_statuses)
+        await app_context.api.update_server_statuses()
 
-        app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
-        app_context.plugin_manager.start_plugin_tasks()
+        await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+        await app_context.plugin_manager.start_plugin_tasks()
 
         # Initialize and start LogStreamer
         from .log_streamer import LogStreamer
@@ -49,10 +50,17 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
 
-        if hasattr(app_context, "log_streamer"):
+        if (
+            hasattr(app_context, "log_streamer")
+            and app_context.log_streamer is not None
+        ):
             app_context.log_streamer.stop()
 
-        app_context.resource_monitor.stop()
+        if (
+            hasattr(app_context, "resource_monitor")
+            and app_context.resource_monitor is not None
+        ):
+            app_context.resource_monitor.stop()
 
         # Shut down the process manager gracefully
         if (
@@ -75,7 +83,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         ):
             await app_context.task_manager.shutdown()
 
-        # Shut down the connection manager gracefully
+        # Shut down the connection manager after all components finished sending shutdown events
         if (
             hasattr(app_context, "_connection_manager")
             and app_context._connection_manager is not None

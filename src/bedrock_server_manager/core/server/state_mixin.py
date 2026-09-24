@@ -23,8 +23,9 @@ Key functionalities:
 
 """
 
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+
+import aiofiles.ospath
 
 from ...db.models import Server
 from ...error import (
@@ -72,10 +73,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
         initialized or will be by a preceding class in the MRO.
         """
         super().__init__(*args, **kwargs)
-        self.player_count = 0
-        self.players: List[Dict[str, str]] = []
-        self._log_file_cursor = 0
-        self._scan_log_cursor = 0
+        setattr(self, "player_count", 0)
+        setattr(self, "players", [])
+        setattr(self, "_log_file_cursor", 0)
+        setattr(self, "_scan_log_cursor", 0)
 
     def _get_default_server_config(self) -> Dict[str, Any]:
         """Returns the default structure and values for a server's JSON config file.
@@ -100,31 +101,19 @@ class ServerStateMixin(BedrockServerBaseMixin):
             "custom": {},
         }
 
-    def _load_server_config(self) -> Dict[str, Any]:
-        """Loads the server-specific JSON configuration.
+    async def _load_server_config(self) -> Dict[str, Any]:
+        """Loads the server-specific JSON configuration asynchronously."""
+        from sqlalchemy.future import select
 
-        This method handles:
-            -   Ensuring the server's configuration directory exists.
-            -   Creating a default configuration file (using :meth:`._get_default_server_config`)
-                if one does not exist.
-            -   Reading the JSON content if the file exists.
-            -   Handling empty or malformed JSON files by initializing with defaults
-                and attempting migration if necessary.
-        Returns:
-            Dict[str, Any]: The loaded server configuration as a dictionary.
-
-        Raises:
-            FileOperationError: If directory creation or file reading fails due
-                to ``OSError``.
-        """
-        # Type check for self.settings.db being present
         if self.settings.db is None:
             raise RuntimeError("Database connection not initialized.")
 
-        with self.settings.db.session_manager() as db:  # type: ignore
-            server = (
-                db.query(Server).filter(Server.server_name == self.server_name).first()
+        async with self.settings.db.session_manager() as db:  # type: ignore
+            result = await db.execute(
+                select(Server).filter(Server.server_name == self.server_name)
             )
+            server = result.scalars().first()
+
             if server:
                 return {
                     "server_info": {
@@ -154,8 +143,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 custom=default_config["custom"],
             )
             db.add(server)
-            db.commit()
-            db.refresh(server)
+            await db.commit()
+            await db.refresh(server)
 
             return {
                 "server_info": {
@@ -170,19 +159,18 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 "custom": dict(server.custom) if server.custom is not None else {},
             }
 
-    def _save_server_config(self, config_data: Dict[str, Any]) -> None:
-        """Saves the server configuration data to the database.
+    async def _save_server_config(self, config_data: Dict[str, Any]) -> None:
+        """Saves the server configuration data to the database asynchronously."""
+        from sqlalchemy.future import select
 
-        Args:
-            config_data (Dict[str, Any]): The server configuration dictionary to save.
-        """
         if self.settings.db is None:
             raise RuntimeError("Database connection not initialized.")
 
-        with self.settings.db.session_manager() as db:  # type: ignore
-            server = (
-                db.query(Server).filter(Server.server_name == self.server_name).first()
+        async with self.settings.db.session_manager() as db:  # type: ignore
+            result = await db.execute(
+                select(Server).filter(Server.server_name == self.server_name)
             )
+            server = result.scalars().first()
             if server:
                 server_info = config_data.get("server_info", {})
                 settings = config_data.get("settings", {})
@@ -201,48 +189,16 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
                 if "custom" in config_data:
                     server.custom = config_data["custom"]
-                db.commit()
+                await db.commit()
 
-    def _manage_json_config(  # noqa: C901
+    async def _manage_json_config(
         self,
         key: str,
         operation: str,
         value: Any = None,
     ) -> Optional[Any]:
-        """Centralized helper to read/write to the server's JSON config using dot-notation.
-
-        This method handles loading the current configuration (including any necessary
-        migrations via :meth:`._load_server_config`), then performs the specified
-        `operation` ("read" or "write") on the configuration data.
-
-        For "read" operations, it navigates the nested dictionary structure using
-        the dot-separated `key` (e.g., "server_info.status").
-        For "write" operations, it sets the `value` at the location specified by `key`,
-        creating intermediate dictionaries if they don't exist. After a "write",
-        the entire configuration is saved back to the file via :meth:`._save_server_config`.
-
-        Args:
-            key (str): The dot-separated key indicating the path to the value within
-                the JSON structure (e.g., "server_info.installed_version", "custom.my_setting").
-            operation (str): The operation to perform, either "read" or "write"
-                (case-insensitive).
-            value (Any, optional): The value to set if the `operation` is "write".
-                Ignored for "read". Defaults to ``None``.
-
-        Returns:
-            Optional[Any]: For "read" operations, returns the retrieved value if the
-            key exists, otherwise ``None``. For "write" operations, always returns ``None``.
-
-        Raises:
-            MissingArgumentError: If `key` is empty.
-            UserInputError: If `operation` is not "read" or "write".
-            ConfigParseError: If, during a "write" operation, an intermediate part
-                of the `key` path refers to a non-dictionary item, preventing
-                further nesting.
-            FileOperationError: Propagated from :meth:`._load_server_config` or
-                :meth:`._save_server_config` if file I/O fails.
-        """
-        if not key:  # isinstance check for key?
+        """Centralized helper to read/write to the server's JSON config asynchronously."""
+        if not key:
             raise MissingArgumentError("Config key cannot be empty.")
         operation_lower = str(operation).lower()
         if operation_lower not in ["read", "write"]:
@@ -250,13 +206,13 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 f"Invalid operation: '{operation}'. Must be 'read' or 'write'."
             )
 
-        current_config = self._load_server_config()
+        current_config = await self._load_server_config()
 
         if operation_lower == "read":
             d = current_config
             try:
                 for k_part in key.split("."):
-                    if not isinstance(d, dict):  # Ensure intermediate path is dict
+                    if not isinstance(d, dict):
                         self.logger.debug(
                             f"Server Config Read: Key='{key}', part '{k_part}' is not a dictionary. Path invalid."
                         )
@@ -266,12 +222,12 @@ class ServerStateMixin(BedrockServerBaseMixin):
                     f"Server Config Read: Key='{key}', Value='{d}' for '{self.server_name}'"
                 )
                 return d
-            except KeyError:  # Key part not found
+            except KeyError:
                 self.logger.debug(
                     f"Server Config Read: Key='{key}' not found for '{self.server_name}'. Returning None."
                 )
                 return None
-            except TypeError:  # Should be caught by isinstance above, but as fallback
+            except TypeError:
                 self.logger.debug(
                     f"Server Config Read: Key='{key}', path invalid (non-dict intermediate) for '{self.server_name}'. Returning None."
                 )
@@ -284,40 +240,39 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
         d = current_config
         keys_list = key.split(".")
-        for k_part in keys_list[:-1]:  # Navigate to the parent dictionary
-            # Ensure d is a dict before calling setdefault. If not, it's an error.
+        for k_part in keys_list[:-1]:
             if not isinstance(d, dict):
                 raise ConfigParseError(
                     f"Cannot create nested key '{key}': part '{k_part}' conflicts with existing non-dictionary value in config for '{self.server_name}'."
                 )
             d = d.setdefault(k_part, {})
-            # After setdefault, if the new d is not a dict (e.g. if setdefault returned a non-dict default, though it shouldn't here), error out.
             if not isinstance(d, dict):
                 raise ConfigParseError(
                     f"Cannot create nested key '{key}': part '{k_part}' resulted in a non-dictionary in config for '{self.server_name}'."
                 )
 
-        # Ensure the final parent is a dictionary before setting the key
         if not isinstance(d, dict):
             raise ConfigParseError(
                 f"Cannot set key '{keys_list[-1]}' in path '{'.'.join(keys_list[:-1])}': parent is not a dictionary in config for '{self.server_name}'."
             )
         d[keys_list[-1]] = value
 
-        self._save_server_config(current_config)
-        return None  # Explicitly return None for write operations
+        await self._save_server_config(current_config)
+        return None
 
-    def get_version(self) -> str:
-        """Retrieves the 'installed_version' from the server's JSON config.
+    async def get_version(self) -> str:
+        """Retrieves the 'installed_version' from the server's config asynchronously.
 
         Accesses ``server_info.installed_version`` via :meth:`._manage_json_config`.
 
         Returns:
             str: The installed version string, or "UNKNOWN" if not set or on error.
         """
-        self.logger.debug(f"Getting installed version for server '{self.server_name}'.")
+        self.logger.debug(
+            f"Getting installed version for server '{self.server_name}' asynchronously."
+        )
         try:
-            version = self._manage_json_config(
+            version = await self._manage_json_config(
                 key="server_info.installed_version", operation="read"
             )
             return str(version) if version is not None else "UNKNOWN"
@@ -327,8 +282,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             return "UNKNOWN"
 
-    def set_version(self, version_string: str) -> None:
-        """Sets the 'installed_version' in the server's JSON config.
+    async def set_version(self, version_string: str) -> None:
+        """Sets the 'installed_version' in the server's config asynchronously.
 
         Updates ``server_info.installed_version`` via :meth:`._manage_json_config`.
 
@@ -339,19 +294,19 @@ class ServerStateMixin(BedrockServerBaseMixin):
             UserInputError: If `version_string` is not a string.
         """
         self.logger.debug(
-            f"Setting installed version for '{self.server_name}' to '{version_string}'."
+            f"Setting installed version for '{self.server_name}' to '{version_string}' asynchronously."
         )
         if not isinstance(version_string, str):
             raise UserInputError(
                 f"Version for '{self.server_name}' must be a string, got {type(version_string).__name__}."
             )
-        self._manage_json_config(
+        await self._manage_json_config(
             key="server_info.installed_version", operation="write", value=version_string
         )
         self.logger.info(f"Version for '{self.server_name}' set to '{version_string}'.")
 
-    def get_autoupdate(self) -> bool:
-        """Retrieves the 'autoupdate' setting from the server's JSON config.
+    async def get_autoupdate(self) -> bool:
+        """Retrieves the 'autoupdate' setting from the server's config asynchronously.
 
         Accesses ``settings.autoupdate`` via :meth:`._manage_json_config`.
 
@@ -359,9 +314,11 @@ class ServerStateMixin(BedrockServerBaseMixin):
             bool: The autoupdate status (``True`` or ``False``). Defaults to ``False``
             if the setting is not found or an error occurs during retrieval.
         """
-        self.logger.debug(f"Getting autoupdate value for server '{self.server_name}'.")
+        self.logger.debug(
+            f"Getting autoupdate value for server '{self.server_name}' asynchronously."
+        )
         try:
-            autoupdate_setting = self._manage_json_config(
+            autoupdate_setting = await self._manage_json_config(
                 key="settings.autoupdate", operation="read"
             )
             if isinstance(autoupdate_setting, bool):
@@ -380,8 +337,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             return False
 
-    def set_autoupdate(self, value: bool) -> None:
-        """Sets the 'autoupdate' setting in the server's JSON config.
+    async def set_autoupdate(self, value: bool) -> None:
+        """Sets the 'autoupdate' setting in the server's config asynchronously.
 
         Updates ``settings.autoupdate`` via :meth:`._manage_json_config`.
 
@@ -391,18 +348,20 @@ class ServerStateMixin(BedrockServerBaseMixin):
         Raises:
             UserInputError: If `value` is not a boolean.
         """
-        self.logger.debug(f"Setting autoupdate for '{self.server_name}' to '{value}'.")
+        self.logger.debug(
+            f"Setting autoupdate for '{self.server_name}' to '{value}' asynchronously."
+        )
         if not isinstance(value, bool):
             raise UserInputError(
                 f"Autoupdate value for '{self.server_name}' must be a boolean, got {type(value).__name__}."
             )
-        self._manage_json_config(
+        await self._manage_json_config(
             key="settings.autoupdate", operation="write", value=value
         )
         self.logger.info(f"Autoupdate for '{self.server_name}' set to '{value}'.")
 
-    def get_autostart(self) -> bool:
-        """Retrieves the 'autostart' setting from the server's JSON config.
+    async def get_autostart(self) -> bool:
+        """Retrieves the 'autostart' setting from the server's config asynchronously.
 
         Accesses ``settings.autostart`` via :meth:`._manage_json_config`.
 
@@ -410,9 +369,11 @@ class ServerStateMixin(BedrockServerBaseMixin):
             bool: The autostart status (``True`` or ``False``). Defaults to ``False``
             if the setting is not found or an error occurs during retrieval.
         """
-        self.logger.debug(f"Getting autostart value for server '{self.server_name}'.")
+        self.logger.debug(
+            f"Getting autostart value for server '{self.server_name}' asynchronously."
+        )
         try:
-            autostart_setting = self._manage_json_config(
+            autostart_setting = await self._manage_json_config(
                 key="settings.autostart", operation="read"
             )
             if isinstance(autostart_setting, bool):
@@ -431,8 +392,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             return False
 
-    def set_autostart(self, value: bool) -> None:
-        """Sets the 'autostart' setting in the server's JSON config.
+    async def set_autostart(self, value: bool) -> None:
+        """Sets the 'autostart' setting in the server's config asynchronously.
 
         Updates ``settings.autostart`` via :meth:`._manage_json_config`.
 
@@ -442,18 +403,20 @@ class ServerStateMixin(BedrockServerBaseMixin):
         Raises:
             UserInputError: If `value` is not a boolean.
         """
-        self.logger.debug(f"Setting autostart for '{self.server_name}' to '{value}'.")
+        self.logger.debug(
+            f"Setting autostart for '{self.server_name}' to '{value}' asynchronously."
+        )
         if not isinstance(value, bool):
             raise UserInputError(
                 f"autostart value for '{self.server_name}' must be a boolean, got {type(value).__name__}."
             )
-        self._manage_json_config(
+        await self._manage_json_config(
             key="settings.autostart", operation="write", value=value
         )
         self.logger.info(f"autostart for '{self.server_name}' set to '{value}'.")
 
-    def get_status_from_config(self) -> str:
-        """Retrieves the stored 'status' from the server's JSON config.
+    async def get_status_from_config(self) -> str:
+        """Retrieves the stored 'status' from the server's config asynchronously.
 
         Accesses ``server_info.status`` via :meth:`._manage_json_config`. This
         reflects the last known status written to the config, not necessarily
@@ -464,10 +427,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
             "UNKNOWN" if not set or on error.
         """
         self.logger.debug(
-            f"Getting stored status for '{self.server_name}' from JSON config."
+            f"Getting stored status for '{self.server_name}' from JSON config asynchronously."
         )
         try:
-            status = self._manage_json_config(
+            status = await self._manage_json_config(
                 key="server_info.status", operation="read"
             )
             return str(status) if status is not None else "UNKNOWN"
@@ -478,8 +441,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             return "UNKNOWN"
 
-    def set_status_in_config(self, status_string: str) -> None:
-        """Sets the 'status' in the server's JSON config.
+    async def set_status_in_config(self, status_string: str) -> None:
+        """Sets the 'status' in the server's config asynchronously.
 
         Updates ``server_info.status`` via :meth:`._manage_json_config`. This is
         used to persist the server's state.
@@ -491,35 +454,30 @@ class ServerStateMixin(BedrockServerBaseMixin):
             UserInputError: If `status_string` is not a string.
         """
         self.logger.debug(
-            f"Setting status in JSON config for '{self.server_name}' to '{status_string}'."
+            f"Setting status in JSON config for '{self.server_name}' to '{status_string}' asynchronously."
         )
         if not isinstance(status_string, str):
             raise UserInputError(
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
 
-        if (
-            hasattr(self, "app_context")
-            and self.app_context
-            and hasattr(self.app_context, "api")
-        ):
-            try:
-                self.app_context.api.set_server_status_api(
-                    self.server_name, status_string
-                )
-                return
-            except AttributeError:
-                pass
+        try:
+            await self.app_context.api.set_server_status_api(
+                self.server_name, status_string
+            )
+            return
+        except AttributeError:
+            pass
 
-        self._manage_json_config(
+        await self._manage_json_config(
             key="server_info.status", operation="write", value=status_string
         )
         self.logger.info(
             f"Status in JSON config for '{self.server_name}' set to '{status_string}'."
         )
 
-    def get_target_version(self) -> str:
-        """Retrieves the 'target_version' from the server's JSON config.
+    async def get_target_version(self) -> str:
+        """Retrieves the 'target_version' from the server's config asynchronously.
 
         Accesses ``settings.target_version`` via
         :meth:`._manage_json_config`. This indicates the version the server aims
@@ -529,10 +487,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
             str: The target version string, or "LATEST" if not set or on error.
         """
         self.logger.debug(
-            f"Getting stored target_version for '{self.server_name}' from JSON config."
+            f"Getting stored target_version for '{self.server_name}' from JSON config asynchronously."
         )
         try:
-            version = self._manage_json_config(
+            version = await self._manage_json_config(
                 key="settings.target_version", operation="read"
             )
             return (
@@ -547,8 +505,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
             )
             return "LATEST"
 
-    def set_target_version(self, version_string: str) -> None:
-        """Sets the 'target_version' in the server's JSON config.
+    async def set_target_version(self, version_string: str) -> None:
+        """Sets the 'target_version' in the server's config asynchronously.
 
         Updates ``settings.target_version`` via
         :meth:`._manage_json_config`.
@@ -560,21 +518,21 @@ class ServerStateMixin(BedrockServerBaseMixin):
             UserInputError: If `version_string` is not a string.
         """
         self.logger.debug(
-            f"Setting target_version for '{self.server_name}' to '{version_string}'."
+            f"Setting target_version for '{self.server_name}' to '{version_string}' asynchronously."
         )
         if not isinstance(version_string, str):
             raise UserInputError(
                 f"target_version for '{self.server_name}' must be a string, got {type(version_string).__name__}."
             )
-        self._manage_json_config(
+        await self._manage_json_config(
             key="settings.target_version", operation="write", value=version_string
         )
         self.logger.info(
             f"target_version for '{self.server_name}' set to '{version_string}'."
         )
 
-    def get_custom_config_value(self, key: str) -> Optional[Any]:
-        """Retrieves a custom value from the 'custom' section of the server's JSON config.
+    async def get_custom_config_value(self, key: str) -> Optional[Any]:
+        """Retrieves a custom value from the 'custom' section of the server's config asynchronously.
 
         Accesses ``custom.<key>`` via :meth:`._manage_json_config`.
 
@@ -589,21 +547,21 @@ class ServerStateMixin(BedrockServerBaseMixin):
             UserInputError: If `key` is not a non-empty string.
         """
         self.logger.debug(
-            f"Getting custom config key '{key}' for server '{self.server_name}'."
+            f"Getting custom config key '{key}' for server '{self.server_name}' asynchronously."
         )
         if not isinstance(key, str) or not key:
             raise UserInputError(
                 f"Key for custom config on '{self.server_name}' must be a non-empty string."
             )
         full_key = f"custom.{key}"
-        value = self._manage_json_config(key=full_key, operation="read")
+        value = await self._manage_json_config(key=full_key, operation="read")
         self.logger.debug(
             f"Retrieved custom config for '{self.server_name}': Key='{key}', Value='{value}'."
         )
         return value
 
-    def set_custom_config_value(self, key: str, value: Any) -> None:
-        """Sets a custom key-value pair in the 'custom' section of the server's JSON config.
+    async def set_custom_config_value(self, key: str, value: Any) -> None:
+        """Sets a custom key-value pair in the 'custom' section of the server's config asynchronously.
 
         Updates ``custom.<key>`` via :meth:`._manage_json_config`.
 
@@ -616,20 +574,20 @@ class ServerStateMixin(BedrockServerBaseMixin):
             ConfigParseError: If `value` is not JSON serializable (from underlying save).
         """
         self.logger.debug(
-            f"Setting custom config for '{self.server_name}': Key='{key}', Value='{value}'."
+            f"Setting custom config for '{self.server_name}': Key='{key}', Value='{value}' asynchronously."
         )
         if not isinstance(key, str) or not key:
             raise UserInputError(
                 f"Key for custom config on '{self.server_name}' must be a non-empty string."
             )
         full_key = f"custom.{key}"
-        self._manage_json_config(key=full_key, operation="write", value=value)
+        await self._manage_json_config(key=full_key, operation="write", value=value)
         self.logger.info(
             f"Custom config for '{self.server_name}' set: Key='{key}', Value='{value}'."
         )
 
-    def get_world_name(self) -> str:
-        """Reads the ``level-name`` property from the server's ``server.properties`` file.
+    async def get_world_name(self) -> str:
+        """Reads the ``level-name`` property from the server's ``server.properties`` file asynchronously.
 
         Returns:
             str: The name of the world as specified in ``server.properties``.
@@ -640,52 +598,53 @@ class ServerStateMixin(BedrockServerBaseMixin):
             ConfigParseError: If the file cannot be read (e.g., due to permissions)
                 or if the ``level-name`` key is missing, malformed, or has an empty value.
         """
+        from ...utils.io import load_lines
+
         self.logger.debug(
-            f"Reading world name for server '{self.server_name}' from: {self.server_properties_path}"
+            f"Reading world name for server '{self.server_name}' from: {self.server_properties_path} asynchronously"
         )
-        if not os.path.isfile(self.server_properties_path):
+        if not await aiofiles.ospath.isfile(self.server_properties_path):
             raise AppFileNotFoundError(
                 self.server_properties_path, "server.properties file"
             )
 
         try:
-            with open(self.server_properties_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("level-name="):
-                        parts = line.split("=", 1)
-                        if len(parts) == 2 and parts[1].strip():
-                            world_name = parts[1].strip()
-                            self.logger.debug(
-                                f"Found world name (level-name): '{world_name}' for '{self.server_name}'"
-                            )
-                            return world_name
-                        else:  # Found level-name= but no value or only whitespace
-                            raise ConfigParseError(
-                                f"'level-name' property malformed or has empty value in {self.server_properties_path}"
-                            )
-        except OSError as e_os:  # Changed from generic OSError to be more specific
+            lines = await load_lines(self.server_properties_path)
+            for line_content in lines:
+                line = line_content.strip()
+                if line.startswith("level-name="):
+                    parts = line.split("=", 1)
+                    if len(parts) == 2 and parts[1].strip():
+                        world_name = parts[1].strip()
+                        self.logger.debug(
+                            f"Found world name (level-name): '{world_name}' for '{self.server_name}'"
+                        )
+                        return world_name
+                    else:
+                        raise ConfigParseError(
+                            f"'level-name' property malformed or has empty value in {self.server_properties_path}"
+                        )
+        except OSError as e_os:
             raise ConfigParseError(
                 f"Failed to read server.properties for '{self.server_name}': {e_os}"
             ) from e_os
 
-        # This is reached if the loop completes without finding "level-name=".
         raise ConfigParseError(
             f"'level-name' property not found in {self.server_properties_path}"
         )
 
-    def get_status(self) -> str:  # noqa: C901
-        """Determines and returns the current reconciled operational status of the server.
+    async def get_status(self) -> str:
+        """Determines and returns the current reconciled operational status of the server asynchronously.
 
         This method attempts to determine if the server process is actually running
         (by calling ``self.is_running()``, which is expected to be provided by
         another mixin like ``ProcessMixin``). It then compares this live status
-        with the status stored in the server's JSON configuration file
+        with the status stored in the server's configuration
         (retrieved via :meth:`.get_status_from_config`).
 
         If a discrepancy is found (e.g., process is running but config says "STOPPED",
         or vice-versa when config said "RUNNING"), it updates the stored status in
-        the JSON config to reflect the actual state.
+        the config to reflect the actual state.
 
         Returns:
             str: The reconciled operational status of the server as a string
@@ -693,58 +652,48 @@ class ServerStateMixin(BedrockServerBaseMixin):
             or fails, it falls back to returning the last known status from config.
         """
         self.logger.debug(
-            f"Determining overall status for server '{self.server_name}'."
+            f"Determining overall status for server '{self.server_name}' asynchronously."
         )
 
         actual_is_running = False
         try:
-            # This method is expected to be provided by ServerProcessMixin.
-            if not hasattr(self, "is_running"):
-                self.logger.warning(
-                    "is_running method not found. Falling back to stored config status."
-                )
-                return self.get_status_from_config()
-            actual_is_running = self.is_running()
+            actual_is_running = await self.is_running()  # type: ignore
         except Exception as e_is_running_check:
             self.logger.error(
                 f"Error calling self.is_running() for '{self.server_name}': {e_is_running_check}. Fallback to stored status."
             )
-            return self.get_status_from_config()
+            return await self.get_status_from_config()
 
-        stored_status = self.get_status_from_config()
-        final_status = "UNKNOWN"  # Default
+        stored_status = await self.get_status_from_config()
+        final_status = "UNKNOWN"
 
         if actual_is_running:
             final_status = "RUNNING"
-            # If there's a discrepancy, update the stored status.
             if stored_status != "RUNNING":
                 self.logger.info(
                     f"Server '{self.server_name}' is running. Updating stored status from '{stored_status}' to RUNNING."
                 )
                 try:
-                    self.set_status_in_config("RUNNING")
+                    await self.set_status_in_config("RUNNING")
                 except Exception as e_set_cfg:
                     self.logger.warning(
                         f"Failed to update stored status to RUNNING for '{self.server_name}': {e_set_cfg}"
                     )
-        else:  # Not actually running.
-            # If config thought it was running, correct it.
+        else:
             if stored_status == "RUNNING":
                 self.logger.info(
                     f"Server '{self.server_name}' not running but stored status was RUNNING. Updating to STOPPED."
                 )
                 final_status = "STOPPED"
                 try:
-                    self.set_status_in_config("STOPPED")
+                    await self.set_status_in_config("STOPPED")
                 except Exception as e_set_cfg:
                     self.logger.warning(
                         f"Failed to update stored status to STOPPED for '{self.server_name}': {e_set_cfg}"
                     )
-            elif (
-                stored_status == "UNKNOWN"
-            ):  # If actual is not running and stored is unknown
+            elif stored_status == "UNKNOWN":
                 final_status = "STOPPED"
-            else:  # Trust other stored statuses like UPDATING, ERROR, STARTING, STOPPING etc.
+            else:
                 final_status = stored_status
 
         self.logger.debug(

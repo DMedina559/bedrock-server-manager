@@ -125,7 +125,7 @@ def test_post_restore_action_all_success(
         assert data["task_id"] == "test_task_id"
 
 
-def test_post_restore_action_world_success(
+async def test_post_restore_action_world_success(
     admin_auth_client: TestClient, app_context, tmp_path, real_bedrock_server
 ):
     backups_dir = tmp_path / "backups"
@@ -134,7 +134,7 @@ def test_post_restore_action_world_success(
     backup_file = server_backups_dir / "world_backup.zip"
     backup_file.touch()
 
-    app_context.settings.set("paths.backups", str(backups_dir))
+    await app_context.settings.set("paths.backups", str(backups_dir))
 
     with patch(
         "bedrock_server_manager.web.tasks.TaskManager.run_task"
@@ -161,11 +161,11 @@ def test_post_restore_action_invalid_type(
     assert "Invalid 'restore_type'" in response.json()["detail"]
 
 
-def test_post_restore_action_path_traversal(
+async def test_post_restore_action_path_traversal(
     admin_auth_client: TestClient, app_context, tmp_path, real_bedrock_server
 ):
     backups_dir = tmp_path / "backups"
-    app_context.settings.set("paths.backups", str(backups_dir))
+    await app_context.settings.set("paths.backups", str(backups_dir))
 
     response = admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/restore/action",
@@ -175,13 +175,13 @@ def test_post_restore_action_path_traversal(
     assert "Invalid 'backup_file' path" in response.json()["detail"]
 
 
-def test_post_restore_action_file_not_found(
+async def test_post_restore_action_file_not_found(
     admin_auth_client: TestClient, app_context, tmp_path, real_bedrock_server
 ):
     backups_dir = tmp_path / "backups"
     server_backups_dir = backups_dir / real_bedrock_server.server_name
     server_backups_dir.mkdir(parents=True)
-    app_context.settings.set("paths.backups", str(backups_dir))
+    await app_context.settings.set("paths.backups", str(backups_dir))
 
     response = admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/restore/action",

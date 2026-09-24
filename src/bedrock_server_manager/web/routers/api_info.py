@@ -13,9 +13,11 @@ Endpoints typically require authentication and often use path parameters to spec
 a server. Responses are generally structured using the :class:`.BaseApiResponse` model.
 """
 
+import asyncio
 import logging
 import os
 
+import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api import application as app_api
@@ -70,7 +72,7 @@ async def get_server_running_status(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
     try:
-        result = system_api.get_server_running_status(
+        result = await system_api.get_server_running_status(
             server_name=server_name, app_context=app_context
         )
         if result.get("status") == "success":
@@ -123,7 +125,7 @@ async def get_validate_server(
     from ...utils.server import validate_server
 
     try:
-        if validate_server(server_name=server_name, app_context=app_context):
+        if await validate_server(server_name=server_name, app_context=app_context):
             return BaseApiResponse(
                 status="success", message=f"Server '{server_name}' exists and is valid."
             )
@@ -165,7 +167,7 @@ async def get_server_process_info(
     identity = current_user.username
     logger.debug(f"API: Process info request for '{server_name}' by user '{identity}'.")
     try:
-        result = system_api.get_bedrock_process_info(
+        result = await system_api.get_bedrock_process_info(
             server_name=server_name, app_context=app_context
         )
 
@@ -214,7 +216,7 @@ async def put_scan_players(
     identity = current_user.username
     logger.info(f"API: Request to scan logs for players by user '{identity}'.")
     try:
-        result = player_api.scan_and_update_player_db_api(app_context=app_context)
+        result = await player_api.scan_and_update_player_db_api(app_context=app_context)
         if result.get("status") == "success":
             return AddPlayersResponse(
                 status="success",
@@ -254,7 +256,9 @@ async def get_all_players(
     identity = current_user.username
     logger.info(f"API: Request to retrieve all players by user '{identity}'.")
     try:
-        result_dict = player_api.get_all_known_players_api(app_context=app_context)
+        result_dict = await player_api.get_all_known_players_api(
+            app_context=app_context
+        )
 
         if result_dict.get("status") == "success":
             logger.debug(
@@ -334,7 +338,7 @@ async def put_prune_downloads(
                 detail="Invalid directory path: Path is outside the allowed download cache base directory.",
             )
 
-        if not os.path.isdir(full_download_dir_path):
+        if not await aiofiles.ospath.isdir(full_download_dir_path):
             logger.warning(
                 f"API Prune Downloads: Target cache directory not found: {full_download_dir_path} (from relative: '{payload.directory}')"
             )
@@ -343,7 +347,7 @@ async def put_prune_downloads(
                 detail="Target cache directory not found.",
             )
 
-        result = misc_api.prune_download_cache(
+        result = await misc_api.prune_download_cache(
             full_download_dir_path, payload.keep, app_context=app_context
         )
 
@@ -400,7 +404,7 @@ async def get_servers_list(
     identity = current_user.username
     logger.debug(f"API: Request for all servers list by user '{identity}'.")
     try:
-        result = app_api.get_all_servers_data(app_context=app_context)
+        result = await app_api.get_all_servers_data(app_context=app_context)
         if result.get("status") == "success":
             return ServersListResponse(status="success", servers=result.get("servers"))
         else:
@@ -468,11 +472,17 @@ async def get_themes(
         "pink",
     ]
     try:
+
         themes = set(STANDARD_THEMES)
         themes_path = app_context.settings.get("paths.themes")
 
-        if themes_path and os.path.isdir(themes_path):
-            for filename in os.listdir(themes_path):
+        if themes_path and await aiofiles.ospath.isdir(themes_path):
+
+            def list_themes():
+                return os.listdir(themes_path)
+
+            filenames = await asyncio.to_thread(list_themes)
+            for filename in filenames:
                 if filename.endswith(".css"):
                     themes.add(filename[:-4])  # Remove .css extension
 
@@ -510,7 +520,7 @@ async def post_add_players(
     )
     try:
 
-        result = player_api.add_players_manually_api(
+        result = await player_api.add_players_manually_api(
             player_strings=payload.players, app_context=app_context
         )
 

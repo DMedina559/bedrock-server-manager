@@ -20,29 +20,28 @@ class APIDocsGenerator(PluginBase):
     name = "API Docs Generator"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         self.logger.info(
             "API Docs Generator plugin loaded. Will generate docs on manager startup."
         )
 
     @app_event("on_manager_startup")
-    def generate_docs(self, **kwargs: Any):
+    async def generate_docs(self, **kwargs: Any):
         """
         Triggered once when the application is fully started.
         This is the perfect time to inspect and document the API and events.
         """
 
         self.logger.info("Generating API and Event documentation...")
-        self.settings = self.api.app_context.settings
 
         try:
             # --- API Docs ---
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
+            backup_dir = await self.api.get_global_setting("paths.backups")
+            backup_dir = backup_dir.get("value")
 
-            api_output_path = os.path.join(
-                self.settings.config_dir, "PLUGIN_API_REFERENCE.md"
-            )
+            api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 
             def write_api_file():
                 with open(api_output_path, "w", encoding="utf-8") as f:
@@ -56,10 +55,7 @@ class APIDocsGenerator(PluginBase):
             # --- Event Docs ---
             event_list = self._scan_codebase_for_events()
             event_markdown_content = self._format_event_markdown(event_list)
-
-            event_output_path = os.path.join(
-                self.settings.config_dir, "PLUGIN_EVENT_REFERENCE.md"
-            )
+            event_output_path = os.path.join(backup_dir, "PLUGIN_EVENT_REFERENCE.md")
 
             def write_event_file():
                 with open(event_output_path, "w", encoding="utf-8") as f:
@@ -238,6 +234,7 @@ class APIDocsGenerator(PluginBase):
             name = api_func.get("name", "Unknown Function")
             docstring = api_func.get("docstring", "No description.")
             params = api_func.get("parameters", [])
+            is_async = api_func.get("is_async", True)
 
             param_parts = []
             for param in params:
@@ -251,10 +248,12 @@ class APIDocsGenerator(PluginBase):
                     default_str = f" = {repr(p_default)}"
                     param_parts.append(f"{p_name}: {p_type}{default_str}")
 
-            signature = f"self.api.{name}({', '.join(param_parts)})"
+            signature_prefix = "await self.api." if is_async else "self.api."
+            signature = f"{signature_prefix}{name}({', '.join(param_parts)})"
 
             lines.append(f"\n## `{name}`")
             lines.append(f"```python\n{signature}\n```")
+            lines.append(f"- **Async (Requires await):** {'Yes' if is_async else 'No'}")
             lines.append(f"**Description:** {docstring}\n")
 
             if params:

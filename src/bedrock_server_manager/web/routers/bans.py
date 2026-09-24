@@ -15,25 +15,25 @@ router = APIRouter(
 
 
 @router.get("/get")
-def get_server_bans(
+async def get_server_bans(
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Get all bans for a specific server."""
-    result = get_server_bans_api(app_context=app_context, server_name=server_name)
+    result = await get_server_bans_api(app_context=app_context, server_name=server_name)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
     return dict(result)
 
 
 @router.post("/add")
-def post_add_server_ban(
+async def post_add_server_ban(
     payload: BanAddRequest,
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Add a player to the server ban list."""
-    result = add_server_ban_api(
+    result = await add_server_ban_api(
         app_context=app_context,
         server_name=server_name,
         player_name=payload.player_name,
@@ -46,13 +46,13 @@ def post_add_server_ban(
 
 
 @router.delete("/remove")
-def delete_remove_server_ban(
+async def delete_remove_server_ban(
     payload: BanRemoveRequest,
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Remove a player from the server ban list."""
-    result = remove_server_ban_api(
+    result = await remove_server_ban_api(
         app_context=app_context, server_name=server_name, xuid=payload.xuid
     )
     if result.get("status") == "error":

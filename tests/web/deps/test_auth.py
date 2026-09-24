@@ -38,31 +38,32 @@ def auth_test_app(app_context):
 
 @pytest.fixture
 def unauth_client_test(auth_test_app):
-    return TestClient(auth_test_app)
+    with TestClient(auth_test_app) as client:
+        yield client
 
 
 @pytest.fixture
-def auth_client_test(auth_test_app, app_context, test_user):
+async def auth_client_test(auth_test_app, app_context, test_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
-    token = create_access_token(app_context, {"sub": test_user.username})
-    client = TestClient(auth_test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    token = await create_access_token(app_context, {"sub": test_user.username})
+    with TestClient(auth_test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
 @pytest.fixture
-def admin_client_test(auth_test_app, app_context, test_admin_user):
+async def admin_client_test(auth_test_app, app_context, test_admin_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
-    token = create_access_token(app_context, {"sub": test_admin_user.username})
-    client = TestClient(auth_test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    token = await create_access_token(app_context, {"sub": test_admin_user.username})
+    with TestClient(auth_test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
 @pytest.fixture
-def moderator_client_test(auth_test_app, app_context, db_session):
+async def moderator_client_test(auth_test_app, app_context, db_session):
     from bedrock_server_manager.db.models import User as UserModel
     from bedrock_server_manager.utils.auth import create_access_token, get_password_hash
 
@@ -73,22 +74,22 @@ def moderator_client_test(auth_test_app, app_context, db_session):
         is_active=True,
     )
     db_session.add(user)
-    db_session.commit()
+    await db_session.commit()
 
-    token = create_access_token(app_context, {"sub": user.username})
-    client = TestClient(auth_test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    token = await create_access_token(app_context, {"sub": user.username})
+    with TestClient(auth_test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
-def test_get_current_user_optional_no_token(unauth_client_test):
+async def test_get_current_user_optional_no_token(unauth_client_test):
     """Test get_current_user_optional without any token returns None."""
     response = unauth_client_test.get("/optional")
     assert response.status_code == 200
     assert response.json() == {"user": None}
 
 
-def test_get_current_user_optional_with_token(auth_client_test, test_user):
+async def test_get_current_user_optional_with_token(auth_client_test, test_user):
     """Test get_current_user_optional with a valid token returns the user."""
     response = auth_client_test.get("/optional")
     assert response.status_code == 200
@@ -97,68 +98,70 @@ def test_get_current_user_optional_with_token(auth_client_test, test_user):
     assert data["user"]["username"] == test_user.username
 
 
-def test_get_current_user_no_token(unauth_client_test):
+async def test_get_current_user_no_token(unauth_client_test):
     """Test get_current_user without token raises 401."""
     response = unauth_client_test.get("/required")
     assert response.status_code == 401
 
 
-def test_get_current_user_with_token(auth_client_test, test_user):
+async def test_get_current_user_with_token(auth_client_test, test_user):
     """Test get_current_user with token returns user."""
     response = auth_client_test.get("/required")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_user.username
 
 
-def test_get_admin_user_as_admin(admin_client_test, test_admin_user):
+async def test_get_admin_user_as_admin(admin_client_test, test_admin_user):
     """Test get_admin_user with an admin user succeeds."""
     response = admin_client_test.get("/admin")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_admin_user.username
 
 
-def test_get_admin_user_as_normal_user(auth_client_test):
+async def test_get_admin_user_as_normal_user(auth_client_test):
     """Test get_admin_user with a normal user raises 403."""
     response = auth_client_test.get("/admin")
     assert response.status_code == 403
 
 
-def test_get_admin_user_as_moderator(moderator_client_test):
+async def test_get_admin_user_as_moderator(moderator_client_test):
     """Test get_admin_user with a moderator user raises 403."""
     response = moderator_client_test.get("/admin")
     assert response.status_code == 403
 
 
-def test_get_moderator_user_as_moderator(moderator_client_test):
+async def test_get_moderator_user_as_moderator(moderator_client_test):
     """Test get_moderator_user with a moderator user succeeds."""
     response = moderator_client_test.get("/moderator")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == "moduser"
 
 
-def test_get_moderator_user_as_admin(admin_client_test, test_admin_user):
+async def test_get_moderator_user_as_admin(admin_client_test, test_admin_user):
     """Test get_moderator_user with an admin user succeeds."""
     response = admin_client_test.get("/moderator")
     assert response.status_code == 200
     assert response.json()["user"]["username"] == test_admin_user.username
 
 
-def test_get_moderator_user_as_normal_user(auth_client_test):
+async def test_get_moderator_user_as_normal_user(auth_client_test):
     """Test get_moderator_user with a normal user raises 403."""
     response = auth_client_test.get("/moderator")
     assert response.status_code == 403
 
 
-def test_get_current_user_optional_bearer_token(auth_test_app, app_context, test_user):
+async def test_get_current_user_optional_bearer_token(
+    auth_test_app, app_context, test_user
+):
     """Test get_current_user_optional with a bearer token."""
     from bedrock_server_manager.utils.auth import create_access_token
 
-    token = create_access_token(app_context, {"sub": test_user.username})
+    token = await create_access_token(app_context, {"sub": test_user.username})
 
-    client = TestClient(auth_test_app)
-    response = client.get("/optional", headers={"Authorization": f"Bearer {token}"})
+    with TestClient(auth_test_app) as client:
+        response = client.get("/optional", headers={"Authorization": f"Bearer {token}"})
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["user"] is not None
-    assert data["user"]["username"] == test_user.username
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user"] is not None
+        assert data["user"]["username"] == test_user.username

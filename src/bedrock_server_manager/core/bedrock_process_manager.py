@@ -8,16 +8,12 @@ shutdowns and attempts to restart servers based on configuration policies.
 It also handles periodic tasks like player scanning from logs.
 """
 
+import asyncio
 import logging
-import struct
-import threading
-import time
-from typing import TYPE_CHECKING, Dict
-
-from mcstatus import BedrockServer as mc
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..context import AppContext
-from ..error import BSMError, FileOperationError, ServerStartError
+from ..error import BSMError, FileOperationError
 from .player import save_player_data
 
 if TYPE_CHECKING:
@@ -56,15 +52,17 @@ class BedrockProcessManager:
         self.logger = logging.getLogger(__name__)
         self.app_context = app_context
         self.settings = self.app_context.settings
-        self._shutdown_event = threading.Event()
+        self._shutdown_event = asyncio.Event()
         self.player_scan_counter = 0
-        self.monitoring_thread = threading.Thread(
-            target=self._monitor_servers, daemon=True
-        )
-        self.monitoring_thread.start()
+        self.monitoring_task: Optional[asyncio.Task[Any]] = None
         self.logger.info("BedrockProcessManager initialized.")
 
-    def add_server(self, server: "BedrockServer"):
+    async def start(self):
+        """Call this from the main thread to start monitoring."""
+        if self.monitoring_task is None:
+            self.monitoring_task = asyncio.create_task(self._monitor_servers())
+
+    async def add_server(self, server: "BedrockServer"):
         """Adds a server to be managed by the process manager.
 
         Args:
@@ -75,7 +73,7 @@ class BedrockProcessManager:
         )
         self.servers[server.server_name] = server
 
-    def remove_server(self, server_name: str):
+    async def remove_server(self, server_name: str):
         """Removes a server from the process manager.
 
         This stops the manager from monitoring the server, but does not stop
@@ -89,187 +87,58 @@ class BedrockProcessManager:
             del self.servers[server_name]
 
     async def shutdown(self):
-        """Shuts down all managed servers concurrently and stops the monitoring thread.
+        """Shuts down all managed servers concurrently and stops the monitoring task.
 
         This method:
-        1. Sets the shutdown event for the monitoring thread.
-        2. Spawns tasks to stop all currently running servers concurrently.
-        3. Waits asynchronously for the monitoring thread to exit (up to 5 seconds).
+        1. Sets the shutdown event for the monitoring task and cancels it immediately.
+        2. Spawns tasks to stop all currently running servers concurrently with exception handling.
         """
-        import asyncio
 
         self.logger.info("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
+
+        if self.monitoring_task and not self.monitoring_task.done():
+            self.monitoring_task.cancel()
+            try:
+                await asyncio.wait_for(self.monitoring_task, timeout=2)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
 
         # Concurrently shut down all servers
         self.logger.info("ProcessManager: Stopping all running servers concurrently...")
 
         async def _stop_server(server_name, server):
-            if not server.is_running():
-                return
+            try:
+                is_running = await server.is_running()
 
-            def _do_stop():
-                if hasattr(self.app_context, "api"):
-                    try:
-                        self.app_context.api.stop_server(server_name)
-                    except Exception as e:
-                        self.logger.error(
-                            f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
-                        )
-                        server.stop()
-                else:
-                    server.stop()
+                if not is_running:
+                    return
 
-            await asyncio.to_thread(_do_stop)
-            self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
+                try:
+                    await self.app_context.api.stop_server(server_name)
+                except Exception as e:
+                    self.logger.error(
+                        f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
+                    )
+                    await server.stop()
 
-        tasks = []
-        for server_name, server in self.servers.items():
-            tasks.append(_stop_server(server_name, server))
+                self.logger.info(f"ProcessManager: Stopped server '{server_name}'")
+            except Exception as e_stop:
+                self.logger.error(
+                    f"ProcessManager: Failed to stop server '{server_name}': {e_stop}",
+                    exc_info=True,
+                )
+
+        tasks = [
+            _stop_server(server_name, server)
+            for server_name, server in list(self.servers.items())
+        ]
 
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Wait for the thread to finish without blocking the event loop
-        await asyncio.to_thread(self.monitoring_thread.join, timeout=5)
-
-    def _monitor_servers(self):  # noqa: C901
-        """Monitors server processes and restarts them if they crash.
-
-        This method runs in a background thread. It periodically checks:
-        1. If registered servers are running. If a server has crashed (stopped
-           without ``intentionally_stopped`` flag), it attempts restart.
-        2. Queries server status for player counts.
-        3. Scans logs for player activity.
-        """
-        try:
-            monitoring_interval = int(
-                self.settings.get("monitoring.process_interval_sec", 10)
-            )
-            player_log_monitoring_interval_sec = int(
-                self.settings.get("monitoring.player_interval_sec", 10)
-            )
-        except Exception:
-            monitoring_interval = 10
-            player_log_monitoring_interval_sec = 10
-
-        self.logger.info(
-            f"Server monitoring thread started with a {monitoring_interval} second interval."
-        )
-
-        while not self._shutdown_event.is_set():
-            if self._shutdown_event.wait(timeout=monitoring_interval):
-                break  # Exit if event is set
-
-            self.player_scan_counter += monitoring_interval
-            for server_name, server in list(self.servers.items()):
-                if not server.is_running():
-                    if not server.intentionally_stopped:
-                        self.logger.warning(
-                            f"Monitored server '{server.server_name}' has crashed."
-                        )
-                        server.failure_count += 1
-                        self._try_restart_server(server)
-                    else:
-                        self.logger.info(
-                            f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
-                        )
-                        self.remove_server(server_name)
-                elif self.player_scan_counter >= player_log_monitoring_interval_sec:
-                    try:
-                        bedrock_server = mc.lookup(
-                            f"127.0.0.1:{server.get_server_property('server-port')}"
-                        )
-                        status = bedrock_server.status()
-
-                        previous_player_count = getattr(server, "player_count", 0)
-                        previous_players = getattr(server, "players", []).copy()
-                        server.player_count = status.players.online
-                        server.players = server.update_online_players()
-
-                        if (
-                            server.player_count != previous_player_count
-                            or server.players != previous_players
-                        ):
-                            self.logger.info(
-                                f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
-                            )
-                            # Call the API bridge to handle events and websockets properly
-                            if hasattr(self.app_context, "api"):
-                                try:
-                                    self.app_context.api.update_server_player_stats_api(
-                                        server.server_name,
-                                        server.player_count,
-                                        server.players,
-                                    )
-                                except AttributeError as e:
-                                    self.logger.warning(
-                                        f"Could not trigger player stats update API: {e}"
-                                    )
-
-                        # Enforce bans
-                        if server.players:
-                            if hasattr(self.app_context, "api"):
-                                try:
-                                    ban_res = self.app_context.api.get_server_bans_api(
-                                        server_name=server.server_name,
-                                    )
-                                    if ban_res.get("status") == "success":
-                                        bans = ban_res.get("bans", [])
-                                        banned_xuids = {b["xuid"]: b for b in bans}
-                                        for p in server.players:
-                                            xuid = p.get("uuid")
-                                            if xuid in banned_xuids:
-                                                reason = (
-                                                    banned_xuids[xuid].get("reason")
-                                                    or "You have been banned from this server."
-                                                )
-                                                p_name = p.get("name", "Unknown")
-                                                self.logger.warning(
-                                                    f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
-                                                )
-                                                try:
-                                                    server.send_command(
-                                                        f'kick "{p_name}" {reason}'
-                                                    )
-                                                except Exception as kick_err:
-                                                    self.logger.error(
-                                                        f"Failed to kick banned player '{p_name}': {kick_err}"
-                                                    )
-                                except AttributeError as e:
-                                    self.logger.warning(
-                                        f"Could not trigger get_server_bans_api: {e}"
-                                    )
-
-                        if status.players.online > 0:
-                            self.logger.info(
-                                f"Server '{server.server_name}' has {status.players.online} players online. Scanning for players."
-                            )
-                            players = server.scan_log_for_players(incremental=True)
-                            if players:
-                                save_player_data(
-                                    self.settings.db.session_manager(), players
-                                )
-                    except struct.error:
-                        server.player_count = 0
-                        self.logger.debug(
-                            f"Server '{server.server_name}' returned invalid status packet (likely starting up)."
-                        )
-                    except TimeoutError:
-                        server.player_count = 0
-                        self.logger.debug(
-                            f"Server '{server.server_name}' timed out during ping."
-                        )
-                    except Exception as e:
-                        server.player_count = 0
-                        self.logger.error(
-                            f"Error pinging server '{server.server_name}': {e}"
-                        )
-            if self.player_scan_counter >= player_log_monitoring_interval_sec:
-                self.player_scan_counter = 0
-
-    def _try_restart_server(self, server: "BedrockServer"):
-        """Tries to restart a crashed server.
+    async def _try_restart_server(self, server: "BedrockServer"):
+        """Tries to restart a crashed server asynchronously.
 
         Checks the restart retry limit before attempting to restart. If the
         limit is reached, marks the server status as 'ERROR' and stops monitoring.
@@ -283,24 +152,24 @@ class BedrockProcessManager:
             self.logger.critical(
                 f"Server '{server.server_name}' has reached the maximum restart limit of {max_retries}. Will not attempt to restart again."
             )
-            self.write_error_status(server.server_name)
-            self.remove_server(server.server_name)  # Stop monitoring
+            await self.write_error_status(server.server_name)
+            await self.remove_server(server.server_name)  # Stop monitoring
             return
 
         self.logger.info(
             f"Attempting to restart server '{server.server_name}'. Attempt {server.failure_count}/{max_retries}."
         )
         try:
-            server.start()
+            await server.start()
             self.logger.info(f"Server '{server.server_name}' restarted successfully.")
-        except ServerStartError as e:
+        except Exception as e:
             self.logger.critical(
                 f"Failed to restart server '{server.server_name}': {e}", exc_info=True
             )
-            time.sleep(5)
+            await asyncio.sleep(5)
 
-    def write_error_status(self, server_name: str):
-        """Writes 'ERROR' to server config status.
+    async def write_error_status(self, server_name: str):
+        """Writes 'ERROR' to server config status asynchronously.
 
         Args:
             server_name (str): The name of the server.
@@ -310,9 +179,151 @@ class BedrockProcessManager:
         """
         server = self.app_context.get_server(server_name)
         try:
-            server.set_status_in_config("ERROR")
+            await server.set_status_in_config("ERROR")
+
         except BSMError as e:
             self.logger.error(f"Error writing status for server '{server_name}': {e}")
             raise FileOperationError(
                 f"Failed to write status for server '{server_name}'."
             )
+
+    async def _monitor_servers(self):  # noqa: C901
+        """Monitors server processes and restarts them if they crash asynchronously.
+
+        This method runs as a background task. It periodically checks:
+        1. If registered servers are running. If a server has crashed (stopped
+           without ``intentionally_stopped`` flag), it attempts restart.
+        2. Queries server status for player counts.
+        3. Scans logs for player activity.
+        """
+
+        try:
+            monitoring_interval = int(
+                self.settings.get("monitoring.process_interval_sec", 10)
+            )
+            player_log_monitoring_interval_sec = int(
+                self.settings.get("monitoring.player_interval_sec", 10)
+            )
+        except Exception:
+            monitoring_interval = 10
+            player_log_monitoring_interval_sec = 10
+
+        self.logger.info(
+            f"Async server monitoring loop started with a {monitoring_interval} second interval."
+        )
+
+        while not self._shutdown_event.is_set():
+            # Wait loop utilizing shutdown event natively with timeout
+            try:
+                # Use asyncio sleep but allow interrupt if shutdown happens
+                for _ in range(int(monitoring_interval * 2)):
+                    if self._shutdown_event.is_set():
+                        break
+                    await asyncio.sleep(0.5)
+
+                if self._shutdown_event.is_set():
+                    break
+            except asyncio.CancelledError:
+                break
+
+            self.player_scan_counter += monitoring_interval
+            for server_name, server in list(self.servers.items()):
+                # Determine run state
+                is_running = await server.is_running()
+
+                if not is_running:
+                    if not server.intentionally_stopped:
+                        self.logger.warning(
+                            f"Monitored server '{server.server_name}' has crashed."
+                        )
+                        server.failure_count += 1
+                        await self._try_restart_server(server)
+                    else:
+                        self.logger.info(
+                            f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
+                        )
+                        await self.remove_server(server_name)
+                elif self.player_scan_counter >= player_log_monitoring_interval_sec:
+                    try:
+                        previous_player_count = getattr(server, "player_count", 0)
+                        previous_players = getattr(server, "players", []).copy()
+
+                        server.players = await server.update_online_players()
+                        server.player_count = len(server.players)
+
+                        if (
+                            server.player_count != previous_player_count
+                            or server.players != previous_players
+                        ):
+                            self.logger.info(
+                                f"Player list/count changed for server '{server.server_name}': count {previous_player_count} -> {server.player_count}"
+                            )
+                            # Call the API bridge to handle events and websockets properly
+                            try:
+                                await self.app_context.api.update_server_player_stats_api(
+                                    server.server_name,
+                                    server.player_count,
+                                    server.players,
+                                )
+                            except AttributeError as e:
+                                self.logger.warning(
+                                    f"Could not trigger player stats update API: {e}"
+                                )
+
+                        # Enforce bans
+                        if server.players:
+                            try:
+                                ban_res = (
+                                    await self.app_context.api.get_server_bans_api(
+                                        server_name=server.server_name,
+                                    )
+                                )
+
+                                if ban_res.get("status") == "success":
+                                    bans = ban_res.get("bans", [])
+                                    banned_xuids = {b["xuid"]: b for b in bans}
+                                    for p in server.players:
+                                        xuid = p.get("uuid")
+                                        if xuid in banned_xuids:
+                                            reason = (
+                                                banned_xuids[xuid].get("reason")
+                                                or "You have been banned from this server."
+                                            )
+                                            p_name = p.get("name", "Unknown")
+                                            self.logger.warning(
+                                                f"Banned player '{p_name}' ({xuid}) detected. Kicking..."
+                                            )
+                                            try:
+                                                await server.send_command(
+                                                    f'kick "{p_name}" {reason}'
+                                                )
+                                            except Exception as kick_err:
+                                                self.logger.error(
+                                                    f"Failed to kick banned player '{p_name}': {kick_err}"
+                                                )
+                            except AttributeError as e:
+                                self.logger.warning(
+                                    f"Could not trigger get_server_bans_api: {e}"
+                                )
+
+                        if server.players:
+                            self.logger.info(
+                                f"Server '{server.server_name}' has {server.player_count} players online. Scanning for players."
+                            )
+                            players = await server.scan_log_for_players(
+                                incremental=True
+                            )
+
+                            if players:
+                                await save_player_data(
+                                    self.app_context.db.session_manager,
+                                    players,
+                                )
+                    except Exception as e:
+                        server.player_count = 0
+                        server.players = []
+                        self.logger.error(
+                            f"Error processing players for server '{server.server_name}': {e}"
+                        )
+            if self.player_scan_counter >= player_log_monitoring_interval_sec:
+                self.player_scan_counter = 0

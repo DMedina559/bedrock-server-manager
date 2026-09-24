@@ -24,9 +24,9 @@ this module utilizes the
 to safely stop and restart the server. All functions are exposed to the plugin system.
 """
 
+import asyncio
 import logging
 import os
-import threading
 from typing import Any, Dict
 
 from ..context import AppContext
@@ -45,11 +45,11 @@ logger = logging.getLogger(__name__)
 # A unified lock for all backup, restore, and prune operations.
 # This ensures that only one file-modifying operation can run at a time across
 # the entire module, preventing race conditions and potential data corruption.
-_backup_restore_lock = threading.RLock()
+_backup_restore_lock = asyncio.Lock()
 
 
 @api_method("list_backup_files")
-def list_backup_files(
+async def list_backup_files(
     server_name: str, backup_type: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Lists available backup files for a given server and type.
@@ -84,7 +84,7 @@ def list_backup_files(
         raise InvalidServerNameError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
-        backup_data = server.list_backups(backup_type)
+        backup_data = await server.list_backups(backup_type)
         return {"status": "success", "backups": backup_data}
     except BSMError as e:
         logger.warning(f"Client error listing backups for server '{server_name}': {e}")
@@ -102,7 +102,7 @@ def list_backup_files(
     after="after_backup",
     identity_keys=("server_name", "backup_type"),
 )
-def backup_world(
+async def backup_world(
     server_name: str,
     app_context: AppContext,
     stop_start_server: bool = True,
@@ -137,7 +137,9 @@ def backup_world(
             :class:`~.error.BackupRestoreError` (export/pruning issues),
             or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world backup."
         )
@@ -156,11 +158,11 @@ def backup_world(
 
         try:
             # Use a context manager to handle stopping and starting the server.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
-                backup_file = server._backup_world_data_internal()
+                backup_file = await server._backup_world_data_internal()
             return {
                 "status": "success",
                 "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
@@ -191,7 +193,7 @@ def backup_world(
     after="after_backup",
     identity_keys=("server_name", "backup_type"),
 )
-def backup_config_file(
+async def backup_config_file(
     server_name: str,
     file_to_backup: str,
     app_context: AppContext,
@@ -234,7 +236,9 @@ def backup_config_file(
             :class:`~.error.FileOperationError` (file copy/pruning issues),
             or errors from server stop/start if `stop_start_server` is true.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config backup."
         )
@@ -255,11 +259,11 @@ def backup_config_file(
         )
 
         try:
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
-                backup_file = server._backup_config_file_internal(filename_base)
+                backup_file = await server._backup_config_file_internal(filename_base)
             return {
                 "status": "success",
                 "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
@@ -291,7 +295,7 @@ def backup_config_file(
     after="after_backup",
     identity_keys=("server_name", "backup_type"),
 )
-def backup_all(
+async def backup_all(
     server_name: str,
     app_context: AppContext,
     stop_start_server: bool = True,
@@ -328,7 +332,9 @@ def backup_all(
             :class:`~.error.BackupRestoreError` (if critical world backup fails),
             or errors from server stop if `stop_start_server` is true.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent full backup."
         )
@@ -347,11 +353,11 @@ def backup_all(
 
         try:
             # The server is stopped before the backup but not restarted after.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
                 server = app_context.get_server(server_name)
-                backup_results = server.backup_all_data()
+                backup_results = await server.backup_all_data()
             return {
                 "status": "success",
                 "message": f"Full backup completed successfully for server '{server_name}'.",
@@ -383,7 +389,7 @@ def backup_all(
     after="after_restore",
     identity_keys=("server_name", "restore_type"),
 )
-def restore_all(
+async def restore_all(
     server_name: str,
     app_context: AppContext,
     stop_start_server: bool = True,
@@ -424,7 +430,9 @@ def restore_all(
             :class:`~.error.BackupRestoreError` (if any component fails to restore),
             or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent restore."
         )
@@ -442,14 +450,14 @@ def restore_all(
         )
 
         try:
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
                 server = app_context.get_server(server_name)
-                restore_results = server.restore_all_data_from_latest()
+                restore_results = await server.restore_all_data_from_latest()
 
             if not restore_results:
                 return {
@@ -488,7 +496,7 @@ def restore_all(
     after="after_restore",
     identity_keys=("server_name", "restore_type"),
 )
-def restore_world(
+async def restore_world(
     server_name: str,
     backup_file_path: str,
     app_context: AppContext,
@@ -530,7 +538,9 @@ def restore_world(
             :class:`~.error.BackupRestoreError`, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world restore."
         )
@@ -554,14 +564,14 @@ def restore_world(
             if not os.path.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
 
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
                 server = app_context.get_server(server_name)
-                server.import_world(backup_file_path)
+                await server.import_world(backup_file_path)
 
             return {
                 "status": "success",
@@ -593,7 +603,7 @@ def restore_world(
     after="after_restore",
     identity_keys=("server_name", "restore_type"),
 )
-def restore_config_file(
+async def restore_config_file(
     server_name: str,
     backup_file_path: str,
     app_context: AppContext,
@@ -636,7 +646,9 @@ def restore_config_file(
         BSMError: Propagates errors from underlying operations like
             :class:`~.error.FileOperationError` or errors from server stop/start.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config restore."
         )
@@ -660,14 +672,16 @@ def restore_config_file(
             if not os.path.isfile(backup_file_path):
                 raise AppFileNotFoundError(backup_file_path, "Backup file")
 
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=stop_start_server,
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
                 server = app_context.get_server(server_name)
-                restored_file = server._restore_config_file_internal(backup_file_path)
+                restored_file = await server._restore_config_file_internal(
+                    backup_file_path
+                )
 
             return {
                 "status": "success",
@@ -700,7 +714,7 @@ def restore_config_file(
     after="after_prune_backups",
     identity_keys=("server_name",),
 )
-def prune_old_backups(  # noqa: C901
+async def prune_old_backups(  # noqa: C901
     server_name: str, app_context: AppContext
 ) -> Dict[str, str]:
     """Prunes old backups for a server based on retention settings.
@@ -732,7 +746,9 @@ def prune_old_backups(  # noqa: C901
             Individual :class:`~.error.FileOperationError` for components are
             typically aggregated into the error message.
     """
-    if not _backup_restore_lock.acquire(timeout=300):
+    try:
+        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent prune."
         )
@@ -763,9 +779,9 @@ def prune_old_backups(  # noqa: C901
             pruning_errors = []
             # Prune world backups.
             try:
-                world_name = server.get_world_name()
+                world_name = await server.get_world_name()
                 world_name_prefix = f"{world_name}_backup_"
-                server.prune_server_backups(world_name_prefix, "mcworld")
+                await server.prune_server_backups(world_name_prefix, "mcworld")
             except Exception as e:
                 err_msg = f"world backups ({type(e).__name__})"
                 pruning_errors.append(err_msg)
@@ -783,7 +799,7 @@ def prune_old_backups(  # noqa: C901
             # Prune each type of config file backup.
             for prefix, ext in config_file_types.items():
                 try:
-                    server.prune_server_backups(prefix, ext)
+                    await server.prune_server_backups(prefix, ext)
                 except Exception as e:
                     err_msg = f"config backups ({prefix}*.{ext}) ({type(e).__name__})"
                     pruning_errors.append(err_msg)

@@ -22,14 +22,14 @@ class AutoupdatePlugin(PluginBase):
     name = "Auto Update on Start"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will check for updates before server starts if enabled."
         )
 
     @app_event("before_server_start")
-    def update_before_start(self, **kwargs: Any):
+    async def update_before_start(self, **kwargs: Any):
         """
         Checks for the 'autoupdate' flag before a server starts and runs
         the update process if it's enabled.
@@ -41,9 +41,15 @@ class AutoupdatePlugin(PluginBase):
         self.logger.debug(f"Handling before_server_start for '{server_name}'.")
 
         try:
-            # Create an instance for the server to access its configuration.
-            server_instance = self.api.app_context.get_server(server_name)
-            autoupdate_enabled = server_instance.get_autoupdate()
+            # Check if the server has autoupdate enabled in its settings
+            result = await self.api.get_server_setting(
+                server_name, "settings.autoupdate"
+            )
+            autoupdate_enabled = (
+                result.get("value", False)
+                if result.get("status") == "success"
+                else False
+            )
 
             if not autoupdate_enabled:
                 self.logger.info(
@@ -56,7 +62,7 @@ class AutoupdatePlugin(PluginBase):
             )
 
             # Call the main API to perform the update. We run it in a thread so it doesn't block the async loop.
-            update_result = self.api.update_server(
+            update_result = await self.api.update_server(
                 server_name=server_name, send_message=False
             )
 

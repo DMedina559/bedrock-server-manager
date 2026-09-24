@@ -2,7 +2,7 @@
 Integration tests for the install router endpoints.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -14,7 +14,8 @@ def test_get_custom_zips_unauthorized(unauth_client: TestClient):
 
 def test_get_custom_zips_success(admin_auth_client: TestClient):
     with patch("bedrock_server_manager.web.routers.install.find_files") as mock_find:
-        with patch("os.path.isdir", return_value=True):
+        with patch("aiofiles.ospath.isdir", new_callable=AsyncMock) as mock_isdir:
+            mock_isdir.return_value = True
             mock_find.return_value = [
                 "/path/to/custom/test.zip",
                 "/path/to/custom/another.zip",
@@ -28,7 +29,8 @@ def test_get_custom_zips_success(admin_auth_client: TestClient):
 
 
 def test_get_custom_zips_no_dir(admin_auth_client: TestClient):
-    with patch("os.path.isdir", return_value=False):
+    with patch("aiofiles.ospath.isdir", new_callable=AsyncMock) as mock_isdir:
+        mock_isdir.return_value = False
         response = admin_auth_client.get("/api/downloads/list")
         assert response.status_code == 200
         assert response.json()["custom_zips"] == []
@@ -39,7 +41,8 @@ def test_get_custom_zips_error(admin_auth_client: TestClient):
         "bedrock_server_manager.web.routers.install.find_files",
         side_effect=Exception("Disk error"),
     ):
-        with patch("os.path.isdir", return_value=True):
+        with patch("aiofiles.ospath.isdir", new_callable=AsyncMock) as mock_isdir:
+            mock_isdir.return_value = True
             response = admin_auth_client.get("/api/downloads/list")
             assert response.status_code == 500
 

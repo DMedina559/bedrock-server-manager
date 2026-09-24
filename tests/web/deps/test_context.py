@@ -22,9 +22,9 @@ def context_test_app(app_context):
 
 def test_get_app_context(context_test_app):
     """Test get_app_context dependency extracts AppContext from request.app.state."""
-    client = TestClient(context_test_app)
-    response = client.get("/test-context")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["has_db"] is True
-    assert data["has_settings"] is True
+    with TestClient(context_test_app) as client:
+        response = client.get("/test-context")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["has_db"] is True
+        assert data["has_settings"] is True

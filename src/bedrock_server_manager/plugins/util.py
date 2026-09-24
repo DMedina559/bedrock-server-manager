@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 
@@ -20,36 +19,8 @@ def _sanitize_for_json(data: Any) -> Any:
         return f"<Unserializable object of type {type(data).__name__}>"
 
 
-def broadcast_event(app_context: Any, event_name: str, event_data: dict):
-    """Helper to broadcast event to websockets."""
-    if not app_context or not hasattr(app_context, "connection_manager"):
-        return
-
-    connection_manager = app_context.connection_manager
-    sanitized_data = _sanitize_for_json(event_data)
-
-    if "app_context" in sanitized_data:
-        del sanitized_data["app_context"]
-    if "current_user" in sanitized_data:
-        sanitized_data["current_user"] = str(sanitized_data["current_user"])
-    if "event" in sanitized_data:
-        del sanitized_data["event"]
-
-    message = {
-        "type": "event",
-        "topic": f"event:{event_name}",
-        "data": sanitized_data,
-    }
-
-    if app_context.loop and app_context.loop.is_running():
-        asyncio.run_coroutine_threadsafe(
-            connection_manager.broadcast_to_topic(f"event:{event_name}", message),
-            app_context.loop,
-        )
-
-
-async def async_broadcast_event(app_context: Any, event_name: str, event_data: dict):
-    """Async helper to broadcast event to websockets."""
+async def broadcast_event(app_context: Any, event_name: str, event_data: dict):
+    """Helper to broadcast event to websockets asynchronously."""
     if not app_context or not hasattr(app_context, "connection_manager"):
         return
 

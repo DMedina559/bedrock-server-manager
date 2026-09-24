@@ -23,7 +23,7 @@ class DownloadPagePlugin(PluginBase):
     name = "Download Page"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Download Page Plugin"])
         self._define_routes()
         self.logger.info(f"Plugin '{self.name}' v{self.version} initialized.")
@@ -80,7 +80,7 @@ class DownloadPagePlugin(PluginBase):
 
                 try:
 
-                    file_list = self.api.list_backup_files(
+                    file_list = await self.api.list_backup_files(
                         server_name=server, backup_type="all"
                     )
 
@@ -152,8 +152,8 @@ class DownloadPagePlugin(PluginBase):
                 addons = []
                 try:
 
-                    worlds_list = self.api.list_available_worlds_api()
-                    addons_list = self.api.list_available_addons()
+                    worlds_list = await self.api.list_available_worlds_api()
+                    addons_list = await self.api.list_available_addons()
 
                     if worlds_list["status"] == "success":
                         worlds = [
@@ -260,7 +260,10 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
-                backup_dir_str = self.api.app_context.settings.get("paths.backups")
+                result = await self.api.get_global_setting(key="paths.backups")
+                backup_dir_str = (
+                    result.get("value") if result.get("status") == "success" else None
+                )
                 if not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
 
@@ -277,7 +280,10 @@ class DownloadPagePlugin(PluginBase):
                     raise HTTPException(403, "Access denied: Invalid server path")
 
             elif file_type in ("content_world", "content_addon"):
-                content_dir_str = self.api.app_context.settings.get("paths.content")
+                result = await self.api.get_global_setting(key="paths.content")
+                content_dir_str = (
+                    result.get("value") if result.get("status") == "success" else None
+                )
                 if not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
 
@@ -369,7 +375,7 @@ class DownloadPagePlugin(PluginBase):
         }
 
     @app_event("on_unload")
-    def plugin_unloaded(self, **kwargs):
+    async def plugin_unloaded(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
     def get_fastapi_routers(self, **kwargs):

@@ -8,6 +8,8 @@ from __future__ import annotations
 from logging import Logger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from sqlalchemy import inspect, select
+
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
 
@@ -60,7 +62,7 @@ class AppContext:
         self._needs_setup: Optional[bool] = None
         self._pre_app_config_cache: Optional[Dict[str, Any]] = None
 
-    def load(self):
+    async def load(self):
         """
         Loads the application context by initializing the settings.
         """
@@ -72,13 +74,13 @@ class AppContext:
         self._settings = Settings(
             db=self.db, config_dir=self.config_dir, data_dir=self.data_dir
         )
-        self._settings.load()
+        await self._settings.load()
 
         from .utils import get_utils
 
         self.splash_txt = get_utils._get_splash_text()
 
-    def reload(self):
+    async def reload(self):
         """
         Reloads the application context by reloading settings and all components.
         """
@@ -90,8 +92,8 @@ class AppContext:
         self._log_level = None
         self._log_dir = None
 
-        self.settings.reload()
-        self.plugin_manager.reload()
+        await self.settings.reload()
+        await self.plugin_manager.reload()
 
         if self._resource_monitor is not None:
             self._resource_monitor.stop()
@@ -188,20 +190,35 @@ class AppContext:
         if not self._db:
             return True
 
-        from sqlalchemy.orm import Session
-
         from .db.models import User
+        from .utils.general import run_async
+
+        async def _check():
+            if not self.db.engine:
+                self.db.initialize()
+            assert self.db.engine is not None
+            async with self.db.engine.connect() as conn:
+
+                def _sync_inspect_and_query(sync_conn):
+                    inspector = inspect(sync_conn)
+                    if not inspector.has_table("users"):
+                        return True
+                    res = sync_conn.execute(
+                        select(User).filter(
+                            User.role == "admin", User.is_active.is_(True)
+                        )
+                    )
+                    return res.scalars().first() is None
+
+                return await conn.run_sync(_sync_inspect_and_query)
 
         try:
-            with Session(self.db.engine) as session:
-                admin_user = session.query(User).filter(User.role == "admin").first()
-                if admin_user:
-                    self._needs_setup = False
-                    return False
+            needs = bool(run_async(_check()))
+            if not needs:
+                self._needs_setup = False
+            return needs
         except Exception:
             return True
-
-        return True
 
     @property
     def api(self) -> "AppAPI":
@@ -209,9 +226,9 @@ class AppContext:
         Lazily loads and returns the API instance.
         """
         if not hasattr(self, "_api") or self._api is None:
-            from .plugins.api_bridge import AppAPI
+            from .plugins.api_bridge import create_app_api
 
-            self._api = AppAPI("CoreAPI", self, is_core=True)
+            self._api = create_app_api("CoreAPI", self, is_core=True)
         return self._api
 
     @property
@@ -301,7 +318,7 @@ class AppContext:
             self._servers[server_name] = BedrockServer(server_name, app_context=self)
         return self._servers[server_name]
 
-    def remove_server(self, server_name: str):
+    async def remove_server(self, server_name: str):
         """
         Stops a server, removes it from the process manager, and discards it from the context cache.
         """
@@ -310,8 +327,11 @@ class AppContext:
             server = self._servers[server_name]
 
             # 2. Stop the server if it is running.
-            if server.is_running():
-                server.stop()
+            if await server.is_running():
+                await server.stop()
+
+            if self.loop is not None:
+                await self.bedrock_process_manager.remove_server(server_name)
 
             # 3. Remove from the AppContext cache.
             del self._servers[server_name]

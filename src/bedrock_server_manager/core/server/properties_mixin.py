@@ -1,5 +1,6 @@
-import os
 from typing import Any, Dict, Optional
+
+import aiofiles.ospath
 
 from ...error import (
     AppFileNotFoundError,
@@ -8,15 +9,45 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...utils.io import load_lines, save_lines
 from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerPropertiesMixin(BedrockServerBaseMixin):
     """Provides methods for managing the server.properties configuration."""
 
-    def set_server_property(  # noqa: C901
-        self, property_key: str, property_value: Any
-    ) -> None:
+    async def get_server_properties(self) -> Dict[str, str]:
+        """Reads the `server.properties` file asynchronously and returns its contents."""
+        server_properties_path = self.server_properties_path
+        if not await aiofiles.ospath.isfile(server_properties_path):
+            raise AppFileNotFoundError(server_properties_path, "Server properties file")
+
+        self.logger.debug(
+            f"Server '{self.server_name}': Parsing {server_properties_path} asynchronously"
+        )
+        properties: Dict[str, str] = {}
+        try:
+            lines = await load_lines(server_properties_path)
+            for line_num, line_content in enumerate(lines, 1):
+                line = line_content.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("=", 1)
+                if len(parts) == 2 and parts[0].strip():
+                    properties[parts[0].strip()] = parts[1].strip()
+                else:
+                    self.logger.warning(
+                        f"Skipping malformed line {line_num} in '{server_properties_path}': \"{line}\""
+                    )
+        except OSError as e:
+            raise ConfigParseError(
+                f"Failed to read '{server_properties_path}': {e}"
+            ) from e
+
+        return properties
+
+    async def set_server_property(self, property_key: str, property_value: Any) -> None:
+        """Updates a specific property in `server.properties` asynchronously."""
         if not isinstance(property_key, str) or not property_key:
             raise MissingArgumentError(
                 "Property key cannot be empty and must be a string."
@@ -29,16 +60,15 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
             )
 
         server_properties_path = self.server_properties_path
-        if not os.path.isfile(server_properties_path):
+        if not await aiofiles.ospath.isfile(server_properties_path):
             raise AppFileNotFoundError(server_properties_path, "Server properties file")
 
         self.logger.debug(
-            f"Server '{self.server_name}': Setting property '{property_key}' to '{str_value}' in {server_properties_path}"
+            f"Server '{self.server_name}': Setting property '{property_key}' to '{str_value}' in {server_properties_path} asynchronously"
         )
 
         try:
-            with open(server_properties_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+            lines = await load_lines(server_properties_path)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to read '{server_properties_path}': {e}"
@@ -69,8 +99,9 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
             output_lines.append(new_property_line)
 
         try:
-            with open(server_properties_path, "w", encoding="utf-8") as f:
-                f.writelines(output_lines)
+            lock = self.get_file_lock(server_properties_path)
+            async with lock:
+                await save_lines(output_lines, server_properties_path)
             self.logger.info(
                 f"Successfully set property '{property_key}' for '{self.server_name}'."
             )
@@ -79,45 +110,17 @@ class ServerPropertiesMixin(BedrockServerBaseMixin):
                 f"Failed to write '{server_properties_path}': {e}"
             ) from e
 
-    def get_server_properties(self) -> Dict[str, str]:
-        server_properties_path = self.server_properties_path
-        if not os.path.isfile(server_properties_path):
-            raise AppFileNotFoundError(server_properties_path, "Server properties file")
-
-        self.logger.debug(
-            f"Server '{self.server_name}': Parsing {server_properties_path}"
-        )
-        properties: Dict[str, str] = {}
-        try:
-            with open(server_properties_path, "r", encoding="utf-8") as f:
-                for line_num, line_content in enumerate(f, 1):
-                    line = line_content.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    parts = line.split("=", 1)
-                    if len(parts) == 2 and parts[0].strip():
-                        properties[parts[0].strip()] = parts[1].strip()
-                    else:
-                        self.logger.warning(
-                            f"Skipping malformed line {line_num} in '{server_properties_path}': \"{line}\""
-                        )
-        except OSError as e:
-            raise ConfigParseError(
-                f"Failed to read '{server_properties_path}': {e}"
-            ) from e
-
-        return properties
-
-    def get_server_property(
+    async def get_server_property(
         self, property_key: str, default: Optional[Any] = None
     ) -> Optional[Any]:
+        """Reads a specific property asynchronously."""
         if not isinstance(property_key, str) or not property_key:
             self.logger.warning(
                 f"get_server_property called with invalid key: {property_key}. Returning default."
             )
             return default
         try:
-            props = self.get_server_properties()
+            props = await self.get_server_properties()
             return props.get(property_key, default)
         except AppFileNotFoundError:
             return default

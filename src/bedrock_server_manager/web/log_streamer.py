@@ -1,9 +1,13 @@
 import asyncio
 import logging
 import os
-from typing import Dict
+from typing import Dict, Optional
+
+import aiofiles
+import aiofiles.ospath
 
 from ..context import AppContext
+from ..core.system import find_files
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +55,11 @@ class LogStreamer:
                 files_to_watch: Dict[str, str] = {}  # topic -> file_path
 
                 # Check for app log subscription
-                if "app_log" in active_topics and subscriptions["app_log"]:
-                    log_path = os.path.abspath(
-                        f"{self.app_context.log_dir}/bedrock_server_manager.log"
-                    )
-                    if os.path.exists(log_path):
-                        files_to_watch["app_log"] = log_path
+                for topic in ("app_log", "app_logs"):
+                    if topic in active_topics and subscriptions[topic]:
+                        log_path = await self._get_app_log_path()
+                        if log_path:
+                            files_to_watch[topic] = log_path
 
                 # Check for server log subscriptions
                 # Topic format: server_log:{server_name}
@@ -66,7 +69,7 @@ class LogStreamer:
                         server = self.app_context.get_server(server_name)
                         if server:
                             log_path = server.server_log_path
-                            if os.path.exists(log_path):
+                            if await aiofiles.ospath.exists(log_path):
                                 files_to_watch[topic] = log_path
 
                 # 2. Read and broadcast updates
@@ -87,30 +90,59 @@ class LogStreamer:
 
             await asyncio.sleep(1.0)  # Check every second
 
+    async def _get_app_log_path(self) -> Optional[str]:
+        log_dir = self.app_context.log_dir
+        if not await aiofiles.ospath.isdir(log_dir):
+            return None
+
+        # Check for fixed filename first
+        fixed_path = os.path.abspath(
+            os.path.join(log_dir, "bedrock_server_manager.log")
+        )
+        if await aiofiles.ospath.exists(fixed_path):
+            return fixed_path
+
+        # Check for timestamped log files (e.g. bedrock_server_manager_20260924_012943.log)
+        try:
+            log_files = await find_files(
+                log_dir, "bedrock_server_manager*.log", sort_by="mtime", reverse=True
+            )
+            if log_files:
+                p = log_files[0]
+                file_path = p if isinstance(p, str) else str(p.get("path", ""))
+                if file_path and await aiofiles.ospath.exists(file_path):
+                    return os.path.abspath(file_path)
+        except Exception as e:
+            logger.warning(f"Error finding app log file in '{log_dir}': {e}")
+
+        return None
+
     async def _process_file(self, topic: str, file_path: str):
         """Reads new lines from a file and broadcasts them to a topic."""
         try:
             if file_path not in self.file_positions:
-                size = os.path.getsize(file_path)
+                size = await aiofiles.ospath.getsize(file_path)
                 # If we want to show last ~1KB or so:
                 start_pos = max(0, size - 2048)
                 self.file_positions[file_path] = start_pos
 
             current_pos = self.file_positions[file_path]
-            current_size = os.path.getsize(file_path)
+            current_size = await aiofiles.ospath.getsize(file_path)
 
             if current_size < current_pos:
                 current_pos = 0
                 self.file_positions[file_path] = 0
 
             if current_size > current_pos:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    f.seek(current_pos)
+                async with aiofiles.open(
+                    file_path, "r", encoding="utf-8", errors="replace"
+                ) as f:
+                    await f.seek(current_pos)
                     # Read new content
-                    new_content = f.read()
+                    new_content = await f.read()
                     if new_content:
                         # Update position
-                        self.file_positions[file_path] = f.tell()
+                        self.file_positions[file_path] = await f.tell()
 
                         # Broadcast lines
                         await self.connection_manager.broadcast_to_topic(

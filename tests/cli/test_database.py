@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from click.testing import CliRunner
@@ -12,7 +12,7 @@ def runner():
     return CliRunner()
 
 
-def test_database_upgrade(runner, app_context, monkeypatch):
+async def test_database_upgrade(runner, app_context, monkeypatch):
     """Test database upgrade CLI command queries alembic successfully."""
     mock_command = MagicMock()
     monkeypatch.setattr("bedrock_server_manager.cli.database.command", mock_command)
@@ -27,15 +27,12 @@ def test_database_upgrade(runner, app_context, monkeypatch):
     monkeypatch.setattr("bedrock_server_manager.cli.database.inspect", mock_inspect)
 
     result = runner.invoke(database, ["upgrade"], obj={"app_context": app_context})
-    if result.exit_code != 0:
-        print(result.output)
-        print(result.exception)
     assert result.exit_code == 0
     assert "Running database upgrade" in result.output
     mock_command.upgrade.assert_called_once()
 
 
-def test_database_downgrade(runner, app_context, monkeypatch):
+async def test_database_downgrade(runner, app_context, monkeypatch):
     """Test database downgrade CLI command executes and prompts for downgrade correctly."""
     mock_command = MagicMock()
     monkeypatch.setattr("bedrock_server_manager.cli.database.command", mock_command)
@@ -47,15 +44,12 @@ def test_database_downgrade(runner, app_context, monkeypatch):
         input="y\n",
         obj={"app_context": app_context},
     )
-    if result.exit_code != 0:
-        print(result.output)
-        print(result.exception)
     assert result.exit_code == 0
     assert "Running database downgrade" in result.output
     mock_command.downgrade.assert_called_once()
 
 
-def test_database_downgrade_abort(runner, app_context):
+async def test_database_downgrade_abort(runner, app_context):
     """Test database downgrade CLI command gracefully aborts upon confirmation rejection."""
     result = runner.invoke(
         database,
@@ -67,10 +61,10 @@ def test_database_downgrade_abort(runner, app_context):
     assert "Aborted!" in result.output
 
 
-def test_database_backup(runner, app_context, tmp_path, monkeypatch):
+async def test_database_backup(runner, app_context, tmp_path, monkeypatch):
     """Test database backup CLI command saves file correctly."""
     monkeypatch.setattr(
-        "bedrock_server_manager.cli.database.backup_database", MagicMock()
+        "bedrock_server_manager.cli.database.backup_database", AsyncMock()
     )
 
     out_file = tmp_path / "backup.json"
@@ -82,11 +76,11 @@ def test_database_backup(runner, app_context, tmp_path, monkeypatch):
     assert "Database data backup successful" in result.output
 
 
-def test_database_backup_default_path(runner, app_context, tmp_path, monkeypatch):
+async def test_database_backup_default_path(runner, app_context, tmp_path, monkeypatch):
     """Test database backup CLI command uses default settings correctly when not specifying -o."""
-    app_context.settings.set("paths.backups", str(tmp_path))
+    await app_context.settings.set("paths.backups", str(tmp_path))
     monkeypatch.setattr(
-        "bedrock_server_manager.cli.database.backup_database", MagicMock()
+        "bedrock_server_manager.cli.database.backup_database", AsyncMock()
     )
 
     result = runner.invoke(database, ["backup"], obj={"app_context": app_context})
@@ -95,7 +89,7 @@ def test_database_backup_default_path(runner, app_context, tmp_path, monkeypatch
     assert str(tmp_path) in result.output
 
 
-def test_database_restore_success(runner, app_context, tmp_path, monkeypatch):
+async def test_database_restore_success(runner, app_context, tmp_path, monkeypatch):
     """Test database restore CLI command restores data successfully."""
     in_file = tmp_path / "backup.json"
     with open(in_file, "w") as f:
@@ -108,10 +102,10 @@ def test_database_restore_success(runner, app_context, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "bedrock_server_manager.cli.database.get_current_db_revision",
-        lambda x: "some_rev",
+        AsyncMock(return_value="some_rev"),
     )
     monkeypatch.setattr(
-        "bedrock_server_manager.cli.database.restore_database", MagicMock()
+        "bedrock_server_manager.cli.database.restore_database", AsyncMock()
     )
 
     result = runner.invoke(
@@ -121,7 +115,9 @@ def test_database_restore_success(runner, app_context, tmp_path, monkeypatch):
     assert "Database data restore successful" in result.output
 
 
-def test_database_restore_abort_prompt(runner, app_context, tmp_path, monkeypatch):
+async def test_database_restore_abort_prompt(
+    runner, app_context, tmp_path, monkeypatch
+):
     """Test database restore CLI command correctly aborts on prompt denial."""
     in_file = tmp_path / "backup.json"
     in_file.touch()
@@ -139,7 +135,9 @@ def test_database_restore_abort_prompt(runner, app_context, tmp_path, monkeypatc
     assert "Operation cancelled" in result.output
 
 
-def test_database_restore_version_mismatch(runner, app_context, tmp_path, monkeypatch):
+async def test_database_restore_version_mismatch(
+    runner, app_context, tmp_path, monkeypatch
+):
     """Test database restore CLI command properly detects version mismatch."""
     in_file = tmp_path / "backup.json"
     with open(in_file, "w") as f:
@@ -153,7 +151,7 @@ def test_database_restore_version_mismatch(runner, app_context, tmp_path, monkey
     )
     monkeypatch.setattr(
         "bedrock_server_manager.cli.database.get_current_db_revision",
-        lambda x: "new_rev",
+        AsyncMock(return_value="new_rev"),
     )
 
     result = runner.invoke(

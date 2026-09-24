@@ -18,7 +18,7 @@ and by triggering various plugin events during server operations.
 
 import logging
 import os
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from ..config import API_COMMAND_BLACKLIST
@@ -31,6 +31,7 @@ from ..error import (
     MissingArgumentError,
     ServerError,
     ServerStartError,
+    ServerStopError,
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("get_server_setting")
-def get_server_setting(
+async def get_server_setting(
     server_name: str, key: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Reads any value from a server's specific JSON configuration file
@@ -70,7 +71,7 @@ def get_server_setting(
     try:
         server = app_context.get_server(server_name)
         # Use the internal method to access any key
-        value = server._manage_json_config(key, "read")
+        value = await server._manage_json_config(key, "read")
         success_response: Dict[str, Any] = {"status": "success", "value": value}
         return success_response
     except BSMError as e:
@@ -96,7 +97,7 @@ def get_server_setting(
     after="after_set_server_setting",
     identity_keys=("server_name", "key"),
 )
-def set_server_setting(
+async def set_server_setting(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes any value to a server's specific JSON configuration file
@@ -132,7 +133,7 @@ def set_server_setting(
     try:
         server = app_context.get_server(server_name)
         # Use the internal method to write to any key
-        server._manage_json_config(key, "write", value)
+        await server._manage_json_config(key, "write", value)
         success_response: Dict[str, Any] = {
             "status": "success",
             "message": f"Setting '{key}' updated for server '{server_name}'.",
@@ -155,7 +156,7 @@ def set_server_setting(
 
 
 @api_method("set_server_custom_value")
-def set_server_custom_value(
+async def set_server_custom_value(
     server_name: str, key: str, value: Any, app_context: AppContext
 ) -> Dict[str, Any]:
     """Writes a key-value pair to the 'custom' section of a server's specific
@@ -188,7 +189,7 @@ def set_server_custom_value(
     try:
         server = app_context.get_server(server_name)
         # This method is sandboxed to the 'custom' section
-        server.set_custom_config_value(key, value)
+        await server.set_custom_config_value(key, value)
         success_response: Dict[str, Any] = {
             "status": "success",
             "message": f"Custom value '{key}' updated for server '{server_name}'.",
@@ -213,7 +214,7 @@ def set_server_custom_value(
 
 
 @api_method("get_all_server_settings")
-def get_all_server_settings(
+async def get_all_server_settings(
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Reads the entire JSON configuration for a specific server from its
@@ -240,7 +241,7 @@ def get_all_server_settings(
     try:
         server = app_context.get_server(server_name)
         # _load_server_config handles loading and migration
-        all_settings = server._load_server_config()
+        all_settings = await server._load_server_config()
         success_response: Dict[str, Any] = {
             "status": "success",
             **all_settings,
@@ -263,7 +264,9 @@ def get_all_server_settings(
 
 
 @api_method("get_server_summary")
-def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_server_summary(
+    server_name: str, app_context: AppContext
+) -> Dict[str, Any]:
     """Retrieves the summary information for a specific server.
 
     This endpoint gets the server summary using the lightweight get_summary_info
@@ -284,13 +287,13 @@ def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, A
 
     try:
         server = app_context.get_server(server_name)
-        if not server.is_installed():
+        if not await server.is_installed():
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' is not installed.",
             }
 
-        summary = server.get_summary_info()
+        summary = await server.get_summary_info()
         return {"status": "success", "summary": summary}
     except Exception as e:
         logger.error(
@@ -306,7 +309,7 @@ def get_server_summary(server_name: str, app_context: AppContext) -> Dict[str, A
     after="after_server_start",
     identity_keys=("server_name",),
 )
-def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Starts the specified Bedrock server."""
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
@@ -315,7 +318,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     try:
         server = app_context.get_server(server_name)
 
-        if server.is_running():
+        if await server.is_running():
             logger.warning(
                 f"API: Server '{server_name}' is already running. Start request ignored."
             )
@@ -324,8 +327,9 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
                 "message": f"Server '{server_name}' is already running.",
             }
 
-        server.start()
-        app_context.bedrock_process_manager.add_server(server)
+        await server.start()
+        await app_context.bedrock_process_manager.add_server(server)
+
         logger.info(f"API: Start for server '{server_name}' completed.")
         return {
             "status": "success",
@@ -354,7 +358,7 @@ def start_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     after="after_server_stop",
     identity_keys=("server_name",),
 )
-def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Stops the specified Bedrock server.
 
     Triggers the ``before_server_stop`` and ``after_server_stop`` plugin events.
@@ -384,20 +388,21 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     try:
         server = app_context.get_server(server_name)
 
-        if not server.is_running():
+        if not await server.is_running():
             logger.warning(
                 f"API: Server '{server_name}' is not running. Stop request ignored."
             )
-            server.set_status_in_config("STOPPED")
+            await server.set_status_in_config("STOPPED")
             return {
                 "status": "error",
                 "message": f"Server '{server_name}' was already stopped.",
             }
 
-        app_context.api.set_server_status_api(server_name, "STOPPING")
+        await app_context.api.set_server_status_api(server_name, "STOPPING")
 
-        server.stop()
-        app_context.bedrock_process_manager.remove_server(server.server_name)
+        await server.stop()
+        await app_context.bedrock_process_manager.remove_server(server.server_name)
+
         logger.info(f"API: Server '{server_name}' stopped successfully.")
         return {
             "status": "success",
@@ -424,7 +429,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
             try:
                 pid_file_path = server.get_pid_file_path()
                 if os.path.isfile(pid_file_path):
-                    remove_pid_file_if_exists(pid_file_path)
+                    await remove_pid_file_if_exists(pid_file_path)
             except Exception as e_cleanup:
                 logger.warning(
                     f"Error during PID file cleanup for '{server_name}': {e_cleanup}"
@@ -432,7 +437,7 @@ def stop_server(server_name: str, app_context: AppContext) -> Dict[str, Any]:
 
 
 @api_method("restart_server")
-def restart_server(  # noqa: C901
+async def restart_server(  # noqa: C901
     server_name: str,
     app_context: AppContext,
     send_message: bool = True,
@@ -474,14 +479,15 @@ def restart_server(  # noqa: C901
     )
     try:
         server = app_context.get_server(server_name)
-        is_running = server.is_running()
+        is_running = await server.is_running()
 
         # If server is not running, just start it.
         if not is_running:
             logger.info(
                 f"API: Server '{server_name}' was not running. Attempting to start..."
             )
-            start_result = start_server(server_name, app_context=app_context)
+            start_result = await start_server(server_name, app_context=app_context)
+
             if start_result.get("status") == "success":
                 start_result["message"] = (
                     f"Server '{server_name}' was not running and has been started."
@@ -494,20 +500,20 @@ def restart_server(  # noqa: C901
         )
         if send_message:
             try:
-                server.send_command("say Restarting server...")
+                await server.send_command("say Restarting server...")
             except BSMError as e:
                 logger.warning(
                     f"API: Failed to send restart warning to '{server_name}': {e}"
                 )
 
-        stop_result = stop_server(server_name, app_context=app_context)
+        stop_result = await stop_server(server_name, app_context=app_context)
         if stop_result.get("status") == "error":
             stop_result["message"] = (
                 f"Restart failed during stop phase: {stop_result.get('message')}"
             )
             return stop_result
 
-        start_result = start_server(server_name, app_context=app_context)
+        start_result = await start_server(server_name, app_context=app_context)
         if start_result.get("status") == "error":
             start_result["message"] = (
                 f"Restart failed during start phase: {start_result.get('message')}"
@@ -539,7 +545,7 @@ def restart_server(  # noqa: C901
     after="after_command_send",
     identity_keys=("server_name", "command"),
 )
-def send_command(
+async def send_command(
     server_name: str, command: str, app_context: AppContext
 ) -> Dict[str, str]:
     """Sends a command to a running Bedrock server.
@@ -593,7 +599,7 @@ def send_command(
                 raise BlockedCommandError(error_msg)
 
         server = app_context.get_server(server_name)
-        server.send_command(command_clean)
+        await server.send_command(command_clean)
 
         logger.info(
             f"API: Command '{command_clean}' sent successfully to server '{server_name}'."
@@ -623,7 +629,7 @@ def send_command(
     after="after_delete_server_data",
     identity_keys=("server_name",),
 )
-def delete_server_data(
+async def delete_server_data(
     server_name: str,
     app_context: AppContext,
     stop_if_running: bool = True,
@@ -671,12 +677,12 @@ def delete_server_data(
         server = app_context.get_server(server_name)
 
         # Stop the server first if requested and it's running.
-        if stop_if_running and server.is_running():
+        if stop_if_running and await server.is_running():
             logger.info(
                 f"API: Server '{server_name}' is running. Stopping before deletion..."
             )
 
-            stop_result = stop_server(server_name, app_context=app_context)
+            stop_result = await stop_server(server_name, app_context=app_context)
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}' before deletion: {stop_result.get('message')}. Deletion aborted."
                 logger.error(error_msg)
@@ -687,10 +693,10 @@ def delete_server_data(
         logger.debug(
             f"API: Proceeding with deletion of data for server '{server_name}'..."
         )
-        server.delete_all_data()
+        await server.delete_all_data()
 
         # Remove the server from the AppContext cache
-        app_context.remove_server(server_name)
+        await app_context.remove_server(server_name)
 
         logger.info(f"API: Successfully deleted all data for server '{server_name}'.")
         return {
@@ -715,8 +721,8 @@ def delete_server_data(
 
 
 @api_method("server_lifecycle_manager")
-@contextmanager
-def server_lifecycle_manager(
+@asynccontextmanager
+async def server_lifecycle_manager(
     server_name: str,
     stop_before: bool,
     app_context: AppContext,
@@ -738,15 +744,16 @@ def server_lifecycle_manager(
 
     try:
         # --- PRE-OPERATION: STOP SERVER ---
-        if server.is_running():
+
+        if await server.is_running():
             was_running = True
             logger.info(f"Context Mgr: Server '{server_name}' is running. Stopping...")
-            stop_result = stop_server(server_name, app_context=app_context)
+            stop_result = await stop_server(server_name, app_context=app_context)
             if stop_result.get("status") == "error":
                 error_msg = f"Failed to stop server '{server_name}': {stop_result.get('message')}. Aborted."
                 logger.error(error_msg)
                 # Do not proceed if the server can't be stopped.
-                return {"status": "error", "message": error_msg}
+                raise ServerStopError(error_msg)
             logger.info(f"Context Mgr: Server '{server_name}' stopped.")
         else:
             logger.debug(
@@ -780,7 +787,7 @@ def server_lifecycle_manager(
                 logger.info(f"Context Mgr: Restarting server '{server_name}'...")
                 try:
                     # Use the API function to ensure detached mode and proper handling.
-                    start_result = start_server(
+                    start_result = await start_server(
                         str(server_name), app_context=app_context
                     )
                     if start_result.get("status") == "error":
@@ -807,14 +814,14 @@ def server_lifecycle_manager(
     after="after_server_status_change",
     identity_keys=("server_name", "status"),
 )
-def set_server_status_api(
+async def set_server_status_api(
     server_name: str, status: str, app_context: "AppContext"
 ) -> Dict[str, Any]:
     """Internal API to set server status and trigger events."""
     server = app_context.get_server(server_name)
-    previous_status = server.get_status_from_config()
+    previous_status = await server.get_status_from_config()
 
-    server._manage_json_config(
+    await server._manage_json_config(
         key="server_info.status", operation="write", value=status
     )
     server.logger.info(
@@ -834,7 +841,7 @@ def set_server_status_api(
 @trigger_event(
     before="before_server_players_change", after="after_server_players_change"
 )
-def update_server_player_stats_api(
+async def update_server_player_stats_api(
     server_name: str, player_count: int, players: list, app_context: "AppContext"
 ) -> Dict[str, Any]:
     """Internal API to trigger player stat updates for websockets/plugins."""

@@ -55,7 +55,7 @@ async def websocket_endpoint(  # noqa: C901
             await websocket.close(code=1008, reason="Missing token")
             return
 
-        user = authenticate_websocket_token(app_context, token)
+        user = await authenticate_websocket_token(app_context, token)
 
     except WebSocketDisconnect:
         logger.info("WebSocket auth failed: Client disconnected during authentication")
@@ -99,7 +99,7 @@ async def websocket_endpoint(  # noqa: C901
                 continue
 
             if action == "subscribe":
-                connection_manager.subscribe(client_id, topic)
+                await connection_manager.subscribe(client_id, topic)
                 await connection_manager.send_to_client(
                     {
                         "status": "success",
@@ -108,7 +108,7 @@ async def websocket_endpoint(  # noqa: C901
                     client_id,
                 )
             elif action == "unsubscribe":
-                connection_manager.unsubscribe(client_id, topic)
+                await connection_manager.unsubscribe(client_id, topic)
                 await connection_manager.send_to_client(
                     {
                         "status": "success",
@@ -136,4 +136,4 @@ async def websocket_endpoint(  # noqa: C901
     except Exception as e:
         logger.error(f"Error in WebSocket for client {client_id}: {e}", exc_info=True)
     finally:
-        connection_manager.disconnect(client_id)
+        await connection_manager.disconnect(client_id)

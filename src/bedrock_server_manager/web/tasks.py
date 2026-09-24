@@ -3,8 +3,7 @@ import asyncio
 import inspect
 import logging
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -13,23 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 class TaskManager:
-    """Manages background tasks using a thread pool."""
+    """Manages background tasks using asyncio."""
 
     def __init__(self, app_context: "AppContext", max_workers: Optional[int] = None):
-        """Initializes the TaskManager and the thread pool executor."""
+        """Initializes the TaskManager."""
         self.app_context = app_context
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.tasks: Dict[str, Dict[str, Any]] = {}
-        self.futures: Dict[str, Union[Future, asyncio.Task]] = {}
+        self.futures: Dict[str, asyncio.Task] = {}
         self._shutdown_started = False
         self._max_tasks = 100
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = None
+        self._background_tasks: set[asyncio.Task] = set()
 
-    def _notify_client_of_update(self, task_id: str):
+    async def _notify_client_of_update(self, task_id: str):
         """Sends a WebSocket notification to the user associated with the task."""
         task_details = self.tasks.get(task_id)
         if not task_details:
@@ -44,28 +38,18 @@ class TaskManager:
                 "data": task_details,
             }
 
-            # Determine the correct event loop to use for scheduling the notification.
-            # Prefer the main application loop if available and running.
-            target_loop = None
-            if self.app_context.loop and self.app_context.loop.is_running():
-                target_loop = self.app_context.loop
-            elif self._loop and self._loop.is_running():
-                # Fallback to the loop captured at init if it's running (unlikely if created manually)
-                target_loop = self._loop
-
-            if target_loop:
-                # Use run_coroutine_threadsafe because this function is called from a worker thread
-                asyncio.run_coroutine_threadsafe(
-                    connection_manager.send_to_user(username, message), target_loop
-                )
-            else:
-                # This is expected during early startup (e.g., autostart plugin) when no
-                # WebSocket client is connected yet and the main loop isn't running.
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
                 logger.debug(
                     f"Skipping task update notification for task {task_id}: No running event loop available."
                 )
+                return
 
-    def _update_task(
+            if loop is not None and loop.is_running():
+                await connection_manager.send_to_user(username, message)
+
+    async def _update_task(
         self, task_id: str, status: str, message: str, result: Optional[Any] = None
     ):
         """Helper function to update the status of a task and notify client."""
@@ -74,35 +58,42 @@ class TaskManager:
             self.tasks[task_id]["message"] = message
             if result is not None:
                 self.tasks[task_id]["result"] = result
-            self._notify_client_of_update(task_id)
+            await self._notify_client_of_update(task_id)
 
-    def _task_done_callback(self, task_id: str, future: Union[Future, asyncio.Task]):
+    def _task_done_callback(self, task_id: str, future: asyncio.Task):
         """Callback function executed when a task completes."""
-        try:
-            if isinstance(future, asyncio.Task):
-                # asyncio.Task doesn't have a result() method if it was cancelled
+
+        async def handle_done():
+            try:
                 if future.cancelled():
-                    self._update_task(task_id, "error", "Task was cancelled.")
+                    await self._update_task(task_id, "error", "Task was cancelled.")
                     return
                 result = future.result()
+                await self._update_task(
+                    task_id, "success", "Task completed successfully.", result
+                )
+            except Exception as e:
+                logger.error(f"Task {task_id} failed: {e}", exc_info=True)
+                await self._update_task(task_id, "error", str(e))
+            finally:
+                # Clean up the future from the tracking dictionary
+                if task_id in self.futures:
+                    del self.futures[task_id]
+
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                # We are in an event loop, create a task to run the async update
+                update_task = loop.create_task(handle_done())
+                self._background_tasks.add(update_task)
+                update_task.add_done_callback(self._background_tasks.discard)
             else:
-                result = future.result()
-            self._update_task(
-                task_id, "success", "Task completed successfully.", result
-            )
-        except Exception as e:
-            logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-            self._update_task(task_id, "error", str(e))
-        finally:
-            # Clean up the future from the tracking dictionary
-            if task_id in self.futures:
-                del self.futures[task_id]
+                asyncio.run(handle_done())
+        except RuntimeError:
+            # No event loop
+            asyncio.run(handle_done())
 
-    def _async_task_done_callback(self, task_id: str, future: asyncio.Task):
-        """Wrapper for asyncio add_done_callback which doesn't catch exceptions well in all cases."""
-        self._task_done_callback(task_id, future)
-
-    def run_task(
+    async def run_task(
         self,
         target_function: Callable,
         username: Optional[str] = None,
@@ -111,8 +102,8 @@ class TaskManager:
     ) -> str:
         """
         Submits a function to be run in the background.
-        Supports both synchronous functions (run in a ThreadPoolExecutor)
-        and asynchronous functions (scheduled on the event loop).
+        Supports both asynchronous functions (scheduled directly)
+        and synchronous functions (run in an executor via asyncio.to_thread).
 
         Args:
             target_function: The function to execute.
@@ -144,44 +135,46 @@ class TaskManager:
             "result": None,
             "username": username,
         }
-        self._notify_client_of_update(task_id)
+        await self._notify_client_of_update(task_id)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is None or not loop.is_running():
+            # No running loop, so we have to run it synchronously (e.g. during some tests or early startup)
+            logger.warning(
+                f"Task {task_id}: No running event loop. Running target function synchronously."
+            )
+            try:
+                if inspect.iscoroutinefunction(target_function):
+                    result = asyncio.run(target_function(*args, **kwargs))
+                else:
+                    result = target_function(*args, **kwargs)
+                await self._update_task(
+                    task_id, "success", "Task completed successfully.", result
+                )
+            except Exception as e:
+                await self._update_task(task_id, "error", str(e))
+            return task_id
 
         if inspect.iscoroutinefunction(target_function):
-            # It's an async function, so we need to schedule it on the event loop
-            target_loop = None
-            if self.app_context.loop and self.app_context.loop.is_running():
-                target_loop = self.app_context.loop
-            elif self._loop and self._loop.is_running():
-                target_loop = self._loop
-
-            if target_loop:
-                # We have a running loop, we can create a task
-                coroutine = target_function(*args, **kwargs)
-                task = asyncio.run_coroutine_threadsafe(coroutine, target_loop)
-                self.futures[task_id] = task
-                task.add_done_callback(lambda f: self._task_done_callback(task_id, f))
-            else:
-                # No running loop, so we have to run it synchronously (e.g. during tests or startup)
-                logger.warning(
-                    f"Task {task_id}: Target function is async, but no event loop is running. "
-                    "Running it synchronously using asyncio.run."
-                )
-                try:
-                    result = asyncio.run(target_function(*args, **kwargs))
-                    self._update_task(
-                        task_id, "success", "Task completed successfully.", result
-                    )
-                except Exception as e:
-                    self._update_task(task_id, "error", str(e))
+            coro = target_function(*args, **kwargs)
         else:
-            # Standard synchronous function, run it in the thread pool
-            future = self.executor.submit(target_function, *args, **kwargs)
-            self.futures[task_id] = future
-            future.add_done_callback(lambda f: self._task_done_callback(task_id, f))
+            # Standard synchronous function, run it in a thread
+            def sync_wrapper():
+                return target_function(*args, **kwargs)
+
+            coro = asyncio.to_thread(sync_wrapper)
+
+        task = asyncio.create_task(coro)
+        self.futures[task_id] = task
+        task.add_done_callback(lambda f: self._task_done_callback(task_id, f))
 
         return task_id
 
-    def cancel_task(self, task_id: str) -> bool:
+    async def cancel_task(self, task_id: str) -> bool:
         """
         Attempts to cancel a running task.
 
@@ -194,36 +187,29 @@ class TaskManager:
         if task_id not in self.futures:
             return False
 
-        future_or_task = self.futures[task_id]
-        if isinstance(future_or_task, asyncio.Task):
-            # For asyncio Task, we can cancel it directly
-            # Note: For run_coroutine_threadsafe, it returns a concurrent.futures.Future
-            # So the instance check below handles both cases properly since Future has .cancel()
-            future_or_task.cancel()
-        else:
-            # For ThreadPoolExecutor Future, .cancel() only works if it hasn't started running yet
-            future_or_task.cancel()
+        task = self.futures[task_id]
+        task.cancel()
 
-        self._update_task(task_id, "error", "Task was cancelled.")
+        await self._update_task(task_id, "error", "Task was cancelled.")
         return True
 
-    def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves the status of a task."""
         return self.tasks.get(task_id)
 
-    def get_all_tasks(self) -> Dict[str, Dict[str, Any]]:
+    async def get_all_tasks(self) -> Dict[str, Dict[str, Any]]:
         """Retrieves all tasks."""
         return self.tasks
 
     async def shutdown(self):
-        """Shuts down the thread pool and waits for all tasks to complete asynchronously."""
+        """Waits for all background tasks to complete asynchronously."""
         self._shutdown_started = True
         logger.info(
             "Task manager shutting down. Waiting for running tasks to complete."
         )
 
-        def _do_shutdown():
-            self.executor.shutdown(wait=True)
+        tasks = list(self.futures.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-        await asyncio.to_thread(_do_shutdown)
         logger.info("All tasks have completed. Task manager shutdown finished.")

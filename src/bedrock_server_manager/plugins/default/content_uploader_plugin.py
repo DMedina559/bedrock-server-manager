@@ -28,7 +28,7 @@ class ContentUploaderPlugin(PluginBase):
     name = "Content Uploader"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Content Uploader Plugin"])
         self._define_routes()
         self.logger.info(
@@ -42,7 +42,7 @@ class ContentUploaderPlugin(PluginBase):
         )
 
         try:
-            setting_result = self.api.get_global_setting(key="paths.content")
+            setting_result = await self.api.get_global_setting(key="paths.content")
             if setting_result and setting_result.get("status") == "success":
                 path_str = setting_result.get("value")
                 if path_str and isinstance(path_str, str):
@@ -144,7 +144,7 @@ class ContentUploaderPlugin(PluginBase):
             file_content_type = file.content_type
 
             if self.api:
-                self.api.send_event(
+                await self.api.send_event(
                     "bsm_uploader:upload_initiated",
                     filename=filename,
                     content_type=file_content_type,
@@ -226,7 +226,7 @@ class ContentUploaderPlugin(PluginBase):
                     file.file.close()
 
                 if self.api:
-                    self.api.send_event(
+                    await self.api.send_event(
                         "bsm_uploader:upload_processed",
                         filename=filename,
                         destination_path=destination_path_for_event,
@@ -244,7 +244,7 @@ class ContentUploaderPlugin(PluginBase):
             )
 
     @app_event("on_unload")
-    def plugin_unloaded(self, **kwargs):
+    async def plugin_unloaded(self, **kwargs):
         self.logger.info(f"Plugin '{self.name}' v{self.version} unloaded.")
 
     def get_fastapi_routers(self, **kwargs):

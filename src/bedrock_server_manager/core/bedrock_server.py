@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 if TYPE_CHECKING:
     from ..context import AppContext
 
+import typing
+
 from . import server
 
 
@@ -161,32 +163,22 @@ class BedrockServer(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."
         )
 
-    def get_summary_info(self) -> Dict[str, Any]:
-        """Returns a generic summary of the server's current status and state.
+    @typing.no_type_check
+    async def get_summary_info(self) -> Dict[str, Any]:
+        """Returns a generic summary of the server's current status and state asynchronously."""
+        self.logger.debug(
+            f"Gathering async summary info for server '{self.server_name}'."
+        )
 
-        This method provides lightweight data suitable for list views and general
-        snapshots, including details like installation status, running status,
-        version, and active players.
+        status = await self.get_status()
 
-        Returns:
-            Dict[str, Any]: A dictionary containing a basic summary of the server.
-
-            Key keys include:
-                - ``"name"`` (str): The unique name of the server.
-                - ``"status"`` (str): A textual description of the server's
-                  current status (e.g., "Running", "Stopped", "Not Installed").
-                - ``"version"`` (str): The installed version of the Bedrock server,
-                  or "N/A".
-                - ``"player_count"`` (int): Current number of active players.
-                - ``"players"`` (List[Dict[str, Any]]): List of connected player details.
-        """
-        self.logger.debug(f"Gathering summary info for server '{self.server_name}'.")
+        version = await self.get_version()
 
         summary = {
             "name": self.server_name,
-            "status": self.get_status(),
-            "version": self.get_version(),
-            "player_count": self.player_count,
+            "status": status,
+            "version": version,
+            "player_count": getattr(self, "player_count", 0),
             "players": getattr(self, "players", []),
         }
 

@@ -30,17 +30,22 @@ Internal Helpers:
     - :func:`._handle_remove_readonly_onerror`: An error handler for ``shutil.rmtree``.
 """
 
+import asyncio
 import logging
 import os
 import platform
 import shutil
-import socket
 import stat
 import threading
 import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
+import aiohttp
 
 try:
     import psutil
@@ -67,14 +72,14 @@ from . import process as core_process
 logger = logging.getLogger(__name__)
 
 
-def find_files(
+async def find_files(
     directory: str,
     pattern: str = "*",
     sort_by: str = "name",
     reverse: bool = False,
     include_metadata: bool = False,
 ) -> Union[List[str], List[Dict[str, Any]]]:
-    """Finds files in a directory matching a pattern and returns paths or metadata.
+    """Asynchronously finds files in a directory matching a pattern and returns paths or metadata.
 
     Args:
         directory (str): The root directory to search in.
@@ -87,31 +92,35 @@ def find_files(
     Returns:
         Union[List[str], List[Dict[str, Any]]]: A list of paths or metadata dictionaries.
     """
-    dir_path = Path(directory)
-    if not dir_path.is_dir():
-        return []
 
-    files = [p for p in dir_path.glob(pattern) if p.is_file()]
+    def _find() -> Union[List[str], List[Dict[str, Any]]]:
+        dir_path = Path(directory)
+        if not dir_path.is_dir():
+            return []
 
-    if sort_by == "mtime":
-        files.sort(key=lambda p: p.stat().st_mtime, reverse=reverse)
-    elif sort_by == "size":
-        files.sort(key=lambda p: p.stat().st_size, reverse=reverse)
-    else:  # default to "name"
-        files.sort(key=lambda p: p.name, reverse=reverse)
+        files = [p for p in dir_path.glob(pattern) if p.is_file()]
 
-    if include_metadata:
-        return [
-            {
-                "path": str(p),
-                "name": p.name,
-                "size": p.stat().st_size,
-                "mtime": p.stat().st_mtime,
-            }
-            for p in files
-        ]
-    else:
-        return [str(p) for p in files]
+        if sort_by == "mtime":
+            files.sort(key=lambda p: p.stat().st_mtime, reverse=reverse)
+        elif sort_by == "size":
+            files.sort(key=lambda p: p.stat().st_size, reverse=reverse)
+        else:  # default to "name"
+            files.sort(key=lambda p: p.name, reverse=reverse)
+
+        if include_metadata:
+            return [
+                {
+                    "path": str(p),
+                    "name": p.name,
+                    "size": p.stat().st_size,
+                    "mtime": p.stat().st_mtime,
+                }
+                for p in files
+            ]
+        else:
+            return [str(p) for p in files]
+
+    return await asyncio.to_thread(_find)
 
 
 def can_manage_services() -> bool:
@@ -128,54 +137,51 @@ def can_manage_services() -> bool:
     return False
 
 
-def check_internet_connectivity(
-    host: str = "8.8.8.8", port: int = 53, timeout: int = 3
+async def check_internet_connectivity(
+    url: str = "http://clients3.google.com/generate_204", timeout: int = 3
 ) -> None:
-    """Checks for basic internet connectivity by attempting a TCP socket connection.
+    """Asynchronously checks for basic internet connectivity by attempting an HTTP GET request.
 
-    This function tries to establish a TCP connection to a specified `host` and
-    `port` with a given `timeout`. Success indicates likely internet access.
-    Failure (timeout or other ``OSError``) raises an
+    This function tries to establish an HTTP connection to a specified `url`
+    with a given `timeout`. Success indicates likely internet access.
+    Failure (timeout or other ``ClientError``) raises an
     :class:`~bedrock_server_manager.error.InternetConnectivityError`.
 
     Args:
-        host (str, optional): The hostname or IP address to connect to.
-            Defaults to "8.8.8.8" (Google Public DNS).
-        port (int, optional): The port number to connect to.
-            Defaults to 53 (DNS port).
+        url (str, optional): The URL to connect to.
+            Defaults to "http://clients3.google.com/generate_204".
         timeout (int, optional): The connection timeout in seconds.
             Defaults to 3.
 
     Raises:
-        InternetConnectivityError: If the socket connection fails due to a
-            timeout, ``OSError`` (e.g., network unreachable, host not found),
-            or any other unexpected exception during the check.
+        InternetConnectivityError: If the HTTP connection fails due to a
+            timeout, network error, or any other unexpected exception during the check.
     """
     logger.debug(
-        f"Checking internet connectivity by attempting connection to {host}:{port}..."
+        f"Checking internet connectivity asynchronously by attempting HTTP GET to {url}..."
     )
     try:
-        # Attempt to create a socket connection to a reliable external host.
-        socket.create_connection((host, port), timeout=timeout).close()
-        logger.debug("Internet connectivity check successful.")
-    except socket.timeout:
-        error_msg = f"Connectivity check failed: Connection to {host}:{port} timed out after {timeout} seconds."
+        timeout_client = aiohttp.ClientTimeout(total=timeout)
+        async with aiohttp.ClientSession(timeout=timeout_client) as session:
+            async with session.get(url) as response:
+                if 200 <= response.status < 300:
+                    logger.debug("Asynchronous internet connectivity check successful.")
+                else:
+                    error_msg = f"Connectivity check failed: HTTP status {response.status} from {url}."
+                    logger.error(error_msg)
+                    raise InternetConnectivityError(error_msg)
+    except asyncio.TimeoutError:
+        error_msg = f"Connectivity check failed: Connection to {url} timed out after {timeout} seconds."
         logger.error(error_msg)
         raise InternetConnectivityError(error_msg) from None
-    except OSError as ex:
-        error_msg = (
-            f"Connectivity check failed: Cannot connect to {host}:{port}. Error: {ex}"
-        )
+    except aiohttp.ClientError as ex:
+        error_msg = f"Connectivity check failed: Cannot connect to {url}. Error: {ex}"
         logger.error(error_msg)
         raise InternetConnectivityError(error_msg) from ex
-    except Exception as e:
-        error_msg = f"An unexpected error occurred during connectivity check: {e}"
-        logger.error(error_msg, exc_info=True)
-        raise InternetConnectivityError(error_msg) from e
 
 
-def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
-    """Sets appropriate permissions for a Bedrock server installation directory.
+async def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
+    """Asynchronously sets appropriate permissions for a Bedrock server installation directory.
 
     This function adjusts permissions recursively for the specified `server_dir`
     based on the operating system:
@@ -213,7 +219,7 @@ def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
         raise MissingArgumentError(
             "Server directory cannot be empty and must be a string."
         )
-    if not os.path.isdir(server_dir):
+    if not await aiofiles.ospath.isdir(server_dir):
         raise AppFileNotFoundError(server_dir, "Server directory")
 
     os_name = platform.system()
@@ -221,94 +227,87 @@ def set_server_folder_permissions(server_dir: str) -> None:  # noqa: C901
         f"Setting permissions for server directory: {server_dir} (OS: {os_name})"
     )
 
-    try:
-        if os_name == "Linux":
-            current_uid = os.geteuid()  # type: ignore[attr-defined]
-            current_gid = os.getegid()  # type: ignore[attr-defined]
-            logger.debug(f"Setting ownership to UID={current_uid}, GID={current_gid}")
+    def _set_perms() -> None:
+        try:
+            if os_name == "Linux":
+                current_uid = os.geteuid()  # type: ignore[attr-defined]
+                current_gid = os.getegid()  # type: ignore[attr-defined]
+                logger.debug(
+                    f"Setting ownership to UID={current_uid}, GID={current_gid}"
+                )
 
-            for root, dirs, files in os.walk(server_dir, topdown=True):
-                for d in dirs:
-                    dir_path = os.path.join(root, d)
-                    os.chown(dir_path, current_uid, current_gid)  # type: ignore[attr-defined]
-                    os.chmod(dir_path, 0o775)
-                for f in files:
-                    file_path = os.path.join(root, f)
-                    os.chown(file_path, current_uid, current_gid)  # type: ignore[attr-defined]
-                    # The main executable needs execute permissions.
-                    if os.path.basename(file_path) == "bedrock_server":
-                        os.chmod(file_path, 0o775)
-                    else:
-                        os.chmod(file_path, 0o664)
-            # Set top-level permissions last.
-            os.chown(server_dir, current_uid, current_gid)  # type: ignore[attr-defined]
-            os.chmod(server_dir, 0o775)
-            logger.info(f"Successfully set Linux permissions for: {server_dir}")
+                for root, dirs, files in os.walk(server_dir, topdown=True):
+                    for d in dirs:
+                        dir_path = os.path.join(root, d)
+                        os.chown(dir_path, current_uid, current_gid)  # type: ignore[attr-defined]
+                        os.chmod(dir_path, 0o775)
+                    for f in files:
+                        file_path = os.path.join(root, f)
+                        os.chown(file_path, current_uid, current_gid)  # type: ignore[attr-defined]
+                        # The main executable needs execute permissions.
+                        if os.path.basename(file_path) == "bedrock_server":
+                            os.chmod(file_path, 0o775)
+                        else:
+                            os.chmod(file_path, 0o664)
+                # Set top-level permissions last.
+                os.chown(server_dir, current_uid, current_gid)  # type: ignore[attr-defined]
+                os.chmod(server_dir, 0o775)
+                logger.info(f"Successfully set Linux permissions for: {server_dir}")
 
-        elif os_name == "Windows":
-            logger.debug("Ensuring write permissions (S_IWRITE) on Windows...")
-            for root, dirs, files in os.walk(server_dir):
-                for name in dirs + files:
-                    path = os.path.join(root, name)
-                    try:
-                        current_mode = os.stat(path).st_mode
-                        os.chmod(path, current_mode | stat.S_IWRITE | stat.S_IWUSR)
-                    except OSError as e_chmod:
-                        logger.warning(
-                            f"Could not set write permission on '{path}': {e_chmod}"
-                        )
-            logger.info(
-                f"Successfully ensured write permissions for: {server_dir} on Windows"
-            )
-        else:
-            logger.warning(f"Permission setting not implemented for OS: {os_name}")
+            elif os_name == "Windows":
+                logger.debug("Ensuring write permissions (S_IWRITE) on Windows...")
+                for root, dirs, files in os.walk(server_dir):
+                    for name in dirs + files:
+                        path = os.path.join(root, name)
+                        try:
+                            current_mode = os.stat(path).st_mode
+                            os.chmod(path, current_mode | stat.S_IWRITE | stat.S_IWUSR)
+                        except OSError as e_chmod:
+                            logger.warning(
+                                f"Could not set write permission on '{path}': {e_chmod}"
+                            )
+                logger.info(
+                    f"Successfully ensured write permissions for: {server_dir} on Windows"
+                )
+            else:
+                logger.warning(f"Permission setting not implemented for OS: {os_name}")
 
-    except OSError as e:
-        raise PermissionsError(
-            f"Failed to set permissions for '{server_dir}': {e}"
-        ) from e
-    except Exception as e:
-        raise PermissionsError(f"Unexpected error during permission setup: {e}") from e
+        except OSError as e:
+            raise PermissionsError(
+                f"Failed to set permissions for '{server_dir}': {e}"
+            ) from e
+        except Exception as e:
+            raise PermissionsError(
+                f"Unexpected error during permission setup: {e}"
+            ) from e
+
+    await asyncio.to_thread(_set_perms)
 
 
-def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
-    """Checks if a specific Bedrock server process is running and verified.
+async def is_server_running(server_name: str, server_dir: str, config_dir: str) -> bool:
+    """Asynchronously checks if a specific Bedrock server process is running and verified.
 
-    This function acts as a high-level convenience wrapper around
-    :func:`~.core.system.process.get_verified_bedrock_process`. It determines
-    if a Bedrock server, identified by `server_name`, is active by checking
-    its PID file and verifying the running process's identity (e.g., executable
-    path and CWD).
-
-    Args:
-        server_name (str): The unique name of the server instance.
-        server_dir (str): The server's installation directory, used for
-            process verification.
-        config_dir (str): The main application configuration directory where the
-            server's PID file is expected to be located.
-
-    Returns:
-        bool: ``True`` if a matching and verified Bedrock server process is found
-        to be running, ``False`` otherwise (e.g., if ``psutil`` is unavailable,
-        PID file is missing, process is not running, or verification fails).
-
-    Raises:
-        MissingArgumentError: If `server_name`, `server_dir`, or `config_dir`
-            are empty or not strings.
+    This acts as a high-level convenience wrapper around
+    :func:`~.core.system.process.get_verified_bedrock_process`.
     """
     if not isinstance(server_name, str) or not server_name:
-        raise MissingArgumentError("server_name cannot be empty and must be a string.")
+        raise MissingArgumentError("Server name cannot be empty.")
     if not isinstance(server_dir, str) or not server_dir:
-        raise MissingArgumentError("server_dir cannot be empty and must be a string.")
+        raise MissingArgumentError("Server directory cannot be empty.")
     if not isinstance(config_dir, str) or not config_dir:
-        raise MissingArgumentError("config_dir cannot be empty and must be a string.")
+        raise MissingArgumentError("Configuration directory cannot be empty.")
 
-    # get_verified_bedrock_process handles logging for most non-critical failures
-    # and returns None in those cases.
-    return (
-        core_process.get_verified_bedrock_process(server_name, server_dir, config_dir)
-        is not None
-    )
+    try:
+        process = await core_process.get_verified_bedrock_process(
+            server_name, server_dir, config_dir
+        )
+        return process is not None
+    except Exception as e:
+        logger.error(
+            f"Error asynchronously checking if server '{server_name}' is running: {e}",
+            exc_info=True,
+        )
+        return False
 
 
 def _handle_remove_readonly_onerror(func, path, exc_info):
@@ -358,16 +357,16 @@ def _handle_remove_readonly_onerror(func, path, exc_info):
         raise exc_info[1]
 
 
-def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
-    """Deletes a file or directory robustly, attempting to handle read-only attributes.
+async def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
+    """Asynchronously deletes a file or directory robustly, attempting to handle read-only attributes.
 
     This function attempts to delete the specified `path_to_delete`.
 
-        - If it's a directory, it uses `shutil.rmtree` with a custom error
+        - If it's a directory, it uses `shutil.rmtree` (via `asyncio.to_thread`) with a custom error
           handler (:func:`._handle_remove_readonly_onerror`) that tries to make
           read-only files writable before retrying deletion.
         - If it's a file, it first checks if it's writable. If not, it attempts
-          to make it writable (``stat.S_IWRITE | stat.S_IWUSR``) before calling `os.remove`.
+          to make it writable (``stat.S_IWRITE | stat.S_IWUSR``) before calling `aiofiles.os.remove`.
         - If the path does not exist, it logs this and returns ``True``.
         - If the path is neither a file nor a directory, it logs a warning and returns ``False``.
 
@@ -393,40 +392,54 @@ def delete_path_robustly(path_to_delete: str, item_description: str) -> bool:
     if not isinstance(item_description, str) or not item_description:
         raise MissingArgumentError("item_description cannot be empty.")
 
-    if not os.path.exists(path_to_delete):
+    if not await aiofiles.ospath.exists(path_to_delete):
         logger.debug(
             f"{item_description.capitalize()} at '{path_to_delete}' not found, skipping."
         )
         return True
 
-    logger.info(f"Preparing to delete {item_description}: {path_to_delete}")
-    try:
-        if os.path.isdir(path_to_delete):
-            # Use the custom error handler for directories.
-            shutil.rmtree(path_to_delete, onerror=_handle_remove_readonly_onerror)
-            logger.info(
-                f"Successfully deleted {item_description} directory: {path_to_delete}"
-            )
-        elif os.path.isfile(path_to_delete):
-            # For single files, manually check and set permissions if needed.
+    if await aiofiles.ospath.isfile(path_to_delete):
+        logger.info(f"Preparing to delete {item_description} file: {path_to_delete}")
+        try:
             if not os.access(path_to_delete, os.W_OK):
                 os.chmod(path_to_delete, stat.S_IWRITE | stat.S_IWUSR)
-            os.remove(path_to_delete)
+            await aiofiles.os.remove(path_to_delete)
             logger.info(
                 f"Successfully deleted {item_description} file: {path_to_delete}"
             )
-        else:
-            logger.warning(
-                f"Path '{path_to_delete}' is not a file or directory. Skipping."
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to delete {item_description} file at '{path_to_delete}': {e}",
+                exc_info=True,
             )
             return False
-        return True
-    except Exception as e:
-        logger.error(
-            f"Failed to delete {item_description} at '{path_to_delete}': {e}",
-            exc_info=True,
+
+    if await aiofiles.ospath.isdir(path_to_delete):
+        logger.info(
+            f"Preparing to delete {item_description} directory: {path_to_delete}"
         )
-        return False
+
+        def _rmtree():
+            shutil.rmtree(path_to_delete, onerror=_handle_remove_readonly_onerror)
+
+        try:
+            await asyncio.to_thread(_rmtree)
+            logger.info(
+                f"Successfully deleted {item_description} directory: {path_to_delete}"
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to delete {item_description} directory at '{path_to_delete}': {e}",
+                exc_info=True,
+            )
+            return False
+
+    logger.warning(
+        f"Path '{path_to_delete}' is neither a regular file nor a directory. Deletion skipped."
+    )
+    return False
 
 
 # --- RESOURCE MONITOR ---

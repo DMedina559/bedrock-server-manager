@@ -20,6 +20,7 @@ world, and :class:`~.core.server.world_mixin.ServerWorldMixin` methods for world
 export and import operations.
 """
 
+import asyncio
 import os
 import re
 import shutil
@@ -107,7 +108,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         )  # Ensure backup_base_dir is str
 
     @staticmethod
-    def _find_and_sort_backups(pattern: str) -> List[str]:
+    async def _find_and_sort_backups(pattern: str) -> List[str]:
         """Finds files matching a glob pattern and sorts them by modification time (newest first).
 
         This static utility method is used to find backup files (e.g., based on
@@ -125,10 +126,10 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         """
         directory = os.path.dirname(pattern)
         file_pattern = os.path.basename(pattern)
-        res = find_files(directory, file_pattern, sort_by="mtime", reverse=True)
+        res = await find_files(directory, file_pattern, sort_by="mtime", reverse=True)
         return [str(p) for p in res]
 
-    def list_backups(  # noqa: C901
+    async def list_backups(  # noqa: C901
         self, backup_type: str
     ) -> Union[List[str], Dict[str, List[str]]]:
         """Retrieves a list of available backup files for this server, sorted newest first.
@@ -203,7 +204,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Invalid backup type: '{backup_type}'. Must be one of {valid_types}."
             )
 
-        if not os.path.isdir(server_bck_dir):
+        if not await asyncio.to_thread(os.path.isdir, server_bck_dir):
             self.logger.warning(
                 f"Backup directory not found: '{server_bck_dir}'. Returning empty result."
             )
@@ -211,11 +212,11 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         try:
             if backup_type_norm in patterns:
-                return self._find_and_sort_backups(patterns[backup_type_norm])
+                return await self._find_and_sort_backups(patterns[backup_type_norm])
             elif backup_type_norm == "all":
                 categorized_backups: Dict[str, List[str]] = {}
                 for key, pattern in patterns.items():
-                    files = self._find_and_sort_backups(pattern)
+                    files = await self._find_and_sort_backups(pattern)
                     if files:  # Only add category if backups exist
                         categorized_backups[f"{key}_backups"] = files
                 return categorized_backups
@@ -227,7 +228,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Error listing backups for '{self.server_name}' due to a filesystem issue: {e}"
             ) from e
 
-    def prune_server_backups(  # noqa: C901
+    async def prune_server_backups(  # noqa: C901
         self, component_prefix: str, file_extension: str
     ) -> None:
         """Removes the oldest backups for a specific component to adhere to retention policies.
@@ -279,7 +280,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"extension '{file_extension}', configured to keep {backup_keep_count}."
         )
 
-        if not os.path.isdir(server_bck_dir):
+        if not await asyncio.to_thread(os.path.isdir, server_bck_dir):
             self.logger.info(
                 f"Backup directory '{server_bck_dir}' for server '{self.server_name}' not found. Nothing to prune."
             )
@@ -308,7 +309,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         try:
             # Find and sort backups: newest first, oldest will be at the end.
-            backup_files = self._find_and_sort_backups(
+            backup_files = await self._find_and_sort_backups(
                 glob_pattern
             )  # Uses mtime, newest first
 
@@ -326,7 +327,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 for old_backup_path in files_to_delete:
                     try:
                         self.logger.debug(f"Removing old backup: {old_backup_path}")
-                        os.remove(old_backup_path)
+                        await asyncio.to_thread(os.remove, old_backup_path)
                         deleted_count += 1
                     except OSError as e_del:
                         self.logger.error(
@@ -359,12 +360,12 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Error accessing or processing backup files for pruning for server '{self.server_name}': {e_glob}"
             ) from e_glob
 
-    def _backup_world_data_internal(self) -> str:
+    async def _backup_world_data_internal(self) -> str:
         """Orchestrates the backup of the server's active world to a ``.mcworld`` file.
 
         This internal helper performs the following sequence:
 
-            1. Retrieves the active world name using ``self.get_world_name()`` (from
+            1. Retrieves the active world name using ``await self.get_world_name()`` (from
                :class:`~.core.server.state_mixin.ServerStateMixin`).
             2. Ensures the server's specific backup directory (derived from
                :attr:`.server_backup_directory`) exists, creating it if necessary.
@@ -397,15 +398,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 :class:`~.core.server.state_mixin.ServerStateMixin` or
                 :class:`~.core.server.world_mixin.ServerWorldMixin`).
         """
-        if not hasattr(self, "get_world_name") or not hasattr(self, "export_world"):
-            self.logger.error(
-                "Missing required methods (get_world_name or export_world) for world backup."
-            )
-            raise AttributeError(
-                "Required world management methods are missing from this server instance."
-            )
-
-        active_world_name: str = self.get_world_name()  # type: ignore
+        active_world_name: str = await self.get_world_name()  # type: ignore
         active_world_dir_path = (
             os.path.join(  # For logging/validation, export_world uses world_dir_name
                 self.server_dir, "worlds", active_world_name
@@ -425,7 +418,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         if not os.path.isdir(active_world_dir_path):
             raise AppFileNotFoundError(active_world_dir_path, "Active world directory")
 
-        os.makedirs(server_bck_dir, exist_ok=True)
+        await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
 
         timestamp = get_timestamp()
         # Sanitize the world name to ensure it's a valid filename component.
@@ -438,12 +431,14 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         )
         try:
             # This method is expected to be on the final class from WorldMixin.
-            self.export_world(active_world_name, backup_file_path)  # type: ignore
+            await self.export_world(active_world_name, backup_file_path)  # type: ignore
             self.logger.info(
                 f"World backup for '{self.server_name}' created: {backup_file_path}"
             )
             # Prune old backups after a new one is successfully created.
-            self.prune_server_backups(f"{safe_world_name_for_file}_backup_", "mcworld")
+            await self.prune_server_backups(
+                f"{safe_world_name_for_file}_backup_", "mcworld"
+            )
             return backup_file_path
         except (
             BackupRestoreError,
@@ -460,7 +455,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Unexpected error exporting world '{active_world_name}' for '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def _backup_config_file_internal(
+    async def _backup_config_file_internal(
         self, config_filename_in_server_dir: str
     ) -> Optional[str]:
         """Backs up a single specified server configuration file with a timestamp.
@@ -518,7 +513,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             )
             return None
 
-        os.makedirs(server_bck_dir, exist_ok=True)  # Ensures backup directory exists
+        await asyncio.to_thread(
+            os.makedirs, server_bck_dir, exist_ok=True
+        )  # Ensures backup directory exists
 
         name_part, ext_part = os.path.splitext(config_filename_in_server_dir)
         timestamp = get_timestamp()  # YYYYMMDD_HHMMSS format
@@ -527,24 +524,28 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         try:
             # copy2 preserves metadata like modification time.
-            shutil.copy2(file_to_backup_path, backup_destination_path)
+            await asyncio.to_thread(
+                shutil.copy2, file_to_backup_path, backup_destination_path
+            )
             self.logger.info(
                 f"Config file '{config_filename_in_server_dir}' backed up to '{backup_destination_path}'."
             )
             # Prune old backups of this specific config file.
-            self.prune_server_backups(f"{name_part}_backup_", ext_part.lstrip("."))
+            await self.prune_server_backups(
+                f"{name_part}_backup_", ext_part.lstrip(".")
+            )
             return backup_destination_path
         except OSError as e:  # Covers errors from shutil.copy2
             raise FileOperationError(
                 f"Failed to copy config '{config_filename_in_server_dir}' for '{self.server_name}' to backup: {e}"
             ) from e
 
-    def backup_all_data(self) -> Dict[str, Optional[str]]:
+    async def backup_all_data(self) -> Dict[str, Optional[str]]:
         """Performs a full backup of the server's active world and standard configuration files.
 
         This method orchestrates the backup of the following components:
 
-            - The active world: Determined by ``self.get_world_name()`` (from
+            - The active world: Determined by ``await self.get_world_name()`` (from
               :class:`~.core.server.state_mixin.ServerStateMixin`), then backed up to
               a ``.mcworld`` file via :meth:`._backup_world_data_internal`.
             - ``allowlist.json``: Backed up via :meth:`._backup_config_file_internal`.
@@ -590,7 +591,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         # Ensure the main backup directory for this server exists.
         try:
-            os.makedirs(server_bck_dir, exist_ok=True)
+            await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
         except OSError as e_mkdir:
             raise FileOperationError(
                 f"Failed to create server backup directory '{server_bck_dir}' for server '{self.server_name}': {e_mkdir}"
@@ -603,7 +604,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         world_backup_failed = False
 
         try:
-            backup_results["world"] = self._backup_world_data_internal()
+            backup_results["world"] = await self._backup_world_data_internal()
         except Exception as e_world:  # Catch broadly as world backup is critical
             self.logger.error(
                 f"CRITICAL: World backup failed for server '{self.server_name}': {e_world}",
@@ -619,7 +620,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         ]
         for conf_file in config_files_to_backup:
             try:
-                backup_results[conf_file] = self._backup_config_file_internal(conf_file)
+                backup_results[conf_file] = await self._backup_config_file_internal(
+                    conf_file
+                )
             except Exception as e_conf:  # Catch broadly for individual config files
                 self.logger.error(
                     f"Failed to back up configuration file '{conf_file}' for server '{self.server_name}': {e_conf}",
@@ -639,7 +642,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         )
         return backup_results
 
-    def _restore_config_file_internal(self, backup_config_file_path: str) -> str:
+    async def _restore_config_file_internal(self, backup_config_file_path: str) -> str:
         """Restores a single server configuration file from a specific backup file path.
 
         This helper takes the absolute path to a backup file (e.g.,
@@ -704,7 +707,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"Restoring '{backup_filename_basename}' as '{target_filename_in_server}' into '{self.server_dir}'..."
         )
         try:
-            shutil.copy2(backup_config_file_path, target_restore_path)
+            await asyncio.to_thread(
+                shutil.copy2, backup_config_file_path, target_restore_path
+            )
             self.logger.info(f"Successfully restored config to: {target_restore_path}")
             return target_restore_path
         except OSError as e_copy:  # Covers errors from shutil.copy2
@@ -712,7 +717,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Failed to restore config '{target_filename_in_server}' for server '{self.server_name}' from backup: {e_copy}"
             ) from e_copy
 
-    def restore_all_data_from_latest(self) -> Dict[str, Optional[str]]:  # noqa: C901
+    async def restore_all_data_from_latest(
+        self,
+    ) -> Dict[str, Optional[str]]:  # noqa: C901
         """Restores the server's active world and standard configuration files from their latest backups.
 
         This method attempts to restore the following components by finding their
@@ -786,18 +793,13 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         # Restore World
         try:
-            if not hasattr(self, "get_world_name") or not hasattr(self, "import_world"):
-                raise AttributeError(
-                    "Missing get_world_name or import_world method for world restore."
-                )
-
-            world_backup_files = self._find_and_sort_backups(
+            world_backup_files = await self._find_and_sort_backups(
                 os.path.join(server_bck_dir, "*.mcworld")
             )  # Newest first
 
             # Filter for backups matching the current active world name.
             # Assumes backups are named like <world_name>_backup_timestamp.mcworld
-            active_world_name: str = self.get_world_name()  # type: ignore
+            active_world_name: str = await self.get_world_name()  # type: ignore
             # Sanitize world name for matching backup file prefixes
             safe_world_name_prefix = (
                 re.sub(r'[:"/\\|?*]', "_", active_world_name) + "_backup_"
@@ -817,7 +819,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                     f"Found latest world backup for '{active_world_name}': {os.path.basename(latest_world_backup_path)}"
                 )
                 # import_world is expected from WorldMixin
-                imported_world_name_check = self.import_world(latest_world_backup_path)  # type: ignore
+                imported_world_name_check = await self.import_world(latest_world_backup_path)  # type: ignore
                 # The path stored should be the actual world path in the server directory, not the backup path
                 restore_results["world"] = os.path.join(
                     self.server_dir, "worlds", imported_world_name_check
@@ -851,7 +853,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 backup_extension = ext_part.lstrip(".")  # e.g., "properties"
 
                 # Find backups for this specific config file type, sorted newest first
-                candidate_backups = self._find_and_sort_backups(
+                candidate_backups = await self._find_and_sort_backups(
                     os.path.join(server_bck_dir, f"{backup_prefix}*.{backup_extension}")
                 )
 
@@ -860,7 +862,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                     self.logger.info(
                         f"Found latest backup for '{original_conf_name}': {os.path.basename(latest_config_backup_path)}"
                     )
-                    restored_config_path = self._restore_config_file_internal(
+                    restored_config_path = await self._restore_config_file_internal(
                         latest_config_backup_path
                     )
                     restore_results[original_conf_name] = restored_config_path

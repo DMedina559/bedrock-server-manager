@@ -74,14 +74,11 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         self.logger.info(f"Web Service '{self._svc_name_}': Stop request received.")
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         try:
-            if (
-                hasattr(self.app_context, "_web_server")
-                and self.app_context._web_server is not None
-            ):
-                self.logger.info(f"Instructing Uvicorn to exit gracefully...")
+            if getattr(self.app_context, "_web_server", None) is not None:
+                self.logger.info("Instructing Uvicorn to exit gracefully...")
                 self.app_context._web_server.should_exit = True
             else:
-                self.logger.warning(f"Web server instance not found on app_context.")
+                self.logger.warning("Web server instance not found on app_context.")
         except Exception as e:
             self.logger.error(f"Error sending stop: {e}", exc_info=True)
         self.shutdown_event.set()  # Signal the main loop to exit
@@ -104,7 +101,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
 
             os.chdir(script_dir)
             # --- The service runs the web app DIRECTLY in a thread ---
-            self.logger.info(f"Starting web server logic in a background thread.")
+            self.logger.info("Starting web server logic in a background thread.")
 
             web_thread = threading.Thread(
                 target=start_web_server_api,

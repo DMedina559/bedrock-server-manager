@@ -1,5 +1,4 @@
 import asyncio
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,51 +11,48 @@ def task_manager(app_context):
     return TaskManager(app_context)
 
 
-@pytest.mark.asyncio
 async def test_run_task_success(task_manager):
     def my_task(a, b):
         return a + b
 
-    # We will use purely synchronous checking to bypass issues with how asyncio test scopes
-    # interact with the ThreadPoolExecutor's event loop references.
-
-    task_id = task_manager.run_task(my_task, None, 5, 10)
+    task_id = await task_manager.run_task(my_task, None, 5, 10)
 
     # Check immediate status
     assert task_id in task_manager.tasks
 
     future = task_manager.futures.get(task_id)
     if future:
-        future.result()  # block until done
+        await future  # block until done
 
-    time.sleep(0.1)  # allow thread pool callbacks to finish
+    # Allow add_done_callback to finish
+    await asyncio.sleep(0.01)
 
     assert task_manager.tasks[task_id]["status"] == "success"
     assert task_manager.tasks[task_id]["result"] == 15
 
 
-@pytest.mark.asyncio
-async def test_run_async_task_success(task_manager, app_context):
+async def test_run_coroutine_task_success(task_manager, app_context):
     app_context.loop = asyncio.get_running_loop()
 
-    async def my_async_task(a, b):
+    async def my_coro_task(a, b):
         await asyncio.sleep(0.1)
         return a * b
 
-    task_id = task_manager.run_task(my_async_task, None, 5, 10)
+    task_id = await task_manager.run_task(my_coro_task, None, 5, 10)
     assert task_id in task_manager.tasks
 
     # Wait for the task to complete
-    for _ in range(20):
-        if task_manager.tasks[task_id]["status"] == "success":
-            break
-        await asyncio.sleep(0.05)
+    future = task_manager.futures.get(task_id)
+    if future:
+        await future
+
+    # Allow add_done_callback to finish
+    await asyncio.sleep(0.01)
 
     assert task_manager.tasks[task_id]["status"] == "success"
     assert task_manager.tasks[task_id]["result"] == 50
 
 
-@pytest.mark.asyncio
 async def test_cancel_task(task_manager, app_context):
     app_context.loop = asyncio.get_running_loop()
 
@@ -64,40 +60,43 @@ async def test_cancel_task(task_manager, app_context):
         while True:
             await asyncio.sleep(0.1)
 
-    task_id = task_manager.run_task(infinite_task)
+    task_id = await task_manager.run_task(infinite_task)
     assert task_id in task_manager.tasks
 
     # Give it a tiny bit of time to start
     await asyncio.sleep(0.1)
 
     # Cancel it
-    assert task_manager.cancel_task(task_id) is True
+    cancel_result = await task_manager.cancel_task(task_id)
+    assert cancel_result is True
+
+    # Allow add_done_callback to finish handling the cancellation
+    await asyncio.sleep(0.01)
 
     # Check that status was updated to error (cancelled)
     assert task_manager.tasks[task_id]["status"] == "error"
     assert "cancelled" in task_manager.tasks[task_id]["message"].lower()
 
 
-@pytest.mark.asyncio
 async def test_run_task_failure(task_manager):
     def failing_task():
         raise ValueError("Something went wrong")
 
-    task_id = task_manager.run_task(failing_task)
+    task_id = await task_manager.run_task(failing_task)
 
     future = task_manager.futures.get(task_id)
     if future:
         try:
-            future.result()
+            await future
         except Exception:
             pass
 
-    time.sleep(0.1)
+    # Allow add_done_callback to finish
+    await asyncio.sleep(0.01)
 
     assert task_manager.tasks[task_id]["status"] == "error"
 
 
-@pytest.mark.asyncio
 async def test_run_task_websocket_notification_user_specific(
     task_manager, app_context, monkeypatch
 ):
@@ -118,26 +117,25 @@ async def test_run_task_websocket_notification_user_specific(
     def dummy_task():
         return True
 
-    task_id = task_manager.run_task(dummy_task, username="testuser")
+    task_id = await task_manager.run_task(dummy_task, username="testuser")
 
     future = task_manager.futures.get(task_id)
     if future:
-        future.result()
+        await future
 
-    # Wait for the async run_coroutine_threadsafe to actually execute in the loop
+    # Wait for the async task created to execute send_to_user
     await asyncio.sleep(0.1)
 
     assert mock_send.call_count >= 1
 
 
-@pytest.mark.asyncio
 async def test_task_manager_shutdown(task_manager):
     def short_task():
-        import time
+        # Even though we are not using time.sleep in tests where possible,
+        # here we want a short task running via to_thread.
+        pass
 
-        time.sleep(0.1)
-
-    task_manager.run_task(short_task)
+    await task_manager.run_task(short_task)
     await task_manager.shutdown()
 
     assert task_manager._shutdown_started

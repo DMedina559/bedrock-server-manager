@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.core.bedrock_server import BedrockServer
@@ -22,18 +22,20 @@ def test_app_context_initialization(app_context):
     assert app_context._task_manager is task_manager
 
 
-def test_app_context_load_without_prior_settings(db, isolated_bcm_config):
+async def test_app_context_load_without_prior_settings(db, isolated_bcm_config):
     """Test load() creates settings if not provided."""
     context = AppContext()
     context._db = db
-    context.load()
+    await context.load()
     assert context.settings is not None
 
 
-def test_app_context_reload(app_context, monkeypatch):
+async def test_app_context_reload(app_context, monkeypatch):
     """Test reload() clears caches and calls reload on sub-components."""
-    settings_reload_mock = MagicMock()
-    plugin_manager_reload_mock = MagicMock()
+    from unittest.mock import AsyncMock
+
+    settings_reload_mock = AsyncMock()
+    plugin_manager_reload_mock = AsyncMock()
 
     monkeypatch.setattr(app_context.settings, "reload", settings_reload_mock)
     monkeypatch.setattr(
@@ -53,7 +55,7 @@ def test_app_context_reload(app_context, monkeypatch):
     app_context._resource_monitor = MagicMock()
     app_context.log_streamer = MagicMock()
 
-    app_context.reload()
+    await app_context.reload()
 
     # Verify caches are cleared
     assert app_context._pre_app_config_cache is None
@@ -89,43 +91,49 @@ def test_get_server_creates_and_caches(app_context):
     assert server1 is server2
 
 
-def test_remove_server_running(app_context, monkeypatch):
+async def test_remove_server_running(app_context, monkeypatch):
     """Test remove_server stops a running server and removes it from cache."""
     server_name = "test_server_to_remove"
     server = app_context.get_server(server_name)
 
-    is_running_mock = MagicMock(return_value=True)
-    stop_mock = MagicMock()
-
+    is_running_mock = AsyncMock(return_value=True)
+    stop_mock = AsyncMock()
     monkeypatch.setattr(server, "is_running", is_running_mock)
     monkeypatch.setattr(server, "stop", stop_mock)
 
-    app_context.remove_server(server_name)
+    mock_bpm = MagicMock()
+    mock_bpm.remove_server = AsyncMock()
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
+
+    await app_context.remove_server(server_name)
 
     is_running_mock.assert_called_once()
     stop_mock.assert_called_once()
     assert server_name not in app_context._servers
 
 
-def test_remove_server_not_running(app_context, monkeypatch):
+async def test_remove_server_not_running(app_context, monkeypatch):
     """Test remove_server removes a stopped server from cache without stopping it."""
     server_name = "test_server_stopped"
     server = app_context.get_server(server_name)
 
-    is_running_mock = MagicMock(return_value=False)
-    stop_mock = MagicMock()
-
+    is_running_mock = AsyncMock(return_value=False)
+    stop_mock = AsyncMock()
     monkeypatch.setattr(server, "is_running", is_running_mock)
     monkeypatch.setattr(server, "stop", stop_mock)
 
-    app_context.remove_server(server_name)
+    mock_bpm = MagicMock()
+    mock_bpm.remove_server = AsyncMock()
+    monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
+
+    await app_context.remove_server(server_name)
 
     is_running_mock.assert_called_once()
     stop_mock.assert_not_called()
     assert server_name not in app_context._servers
 
 
-def test_remove_server_non_existent(app_context):
+async def test_remove_server_non_existent(app_context):
     """Test remove_server handles non-existent servers gracefully."""
     # Should not raise an error
-    app_context.remove_server("does_not_exist")
+    await app_context.remove_server("does_not_exist")

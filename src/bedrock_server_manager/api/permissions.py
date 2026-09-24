@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
     after="after_permission_change",
     identity_keys=("server_name", "xuid"),
 )
-def set_permissions(
+async def set_permissions(
     server_name: str,
     xuid: str,
     player_name: Optional[str],
@@ -40,7 +40,7 @@ def set_permissions(
 
     try:
         server = app_context.get_server(server_name)
-        server.set_player_permission(xuid, permission, player_name)
+        await server.set_player_permission(xuid, permission, player_name)
 
         return {
             "status": "success",
@@ -62,7 +62,7 @@ def set_permissions(
 
 
 @api_method("get_permissions")
-def get_permissions(  # noqa: C901
+async def get_permissions(  # noqa: C901
     server_name: str, app_context: AppContext
 ) -> Dict[str, Any]:
     """Retrieves the permissions configuration for a server, formatted with player names.
@@ -79,19 +79,19 @@ def get_permissions(  # noqa: C901
 
     try:
         server = app_context.get_server(server_name)
-        player_name_map: Dict[str, str] = {}
         all_known_players: List[Dict[str, Any]] = []
 
-        players_response = player_api.get_all_known_players_api(app_context=app_context)
+        players_response = await player_api.get_all_known_players_api(
+            app_context=app_context
+        )
+
         if players_response.get("status") == "success":
             all_known_players = players_response.get("players", []) or []
-            for p_data in all_known_players:
-                if p_data.get("xuid") and p_data.get("name"):
-                    player_name_map[str(p_data["xuid"])] = str(p_data["name"])
 
         permissions: List[Dict[str, Any]] = []
         try:
-            permissions = server.get_formatted_permissions(player_name_map)
+            db_manager = app_context.db.session_manager
+            permissions = await server.get_formatted_permissions(db_manager)
         except AppFileNotFoundError:
             permissions = []
 
@@ -109,7 +109,7 @@ def get_permissions(  # noqa: C901
                 )
                 existing_xuids.add(xuid)
 
-        permissions.sort(key=lambda x: x.get("name", "").lower())
+        permissions.sort(key=lambda x: str(x.get("name", "")).lower())
 
         return {"status": "success", "permissions": permissions}
     except BSMError as e:

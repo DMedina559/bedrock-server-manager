@@ -80,6 +80,20 @@ def startup_checks(
     logger.debug("Startup checks completed.")
 
 
+def run_async(coro):
+    """Executes a coroutine safely whether an asyncio event loop is currently running or not."""
+    import asyncio
+    import concurrent.futures
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(lambda: asyncio.run(coro)).result()
+
+
 def get_timestamp() -> str:
     """
     Generates a timestamp string suitable for filenames or logging.
@@ -92,7 +106,7 @@ def get_timestamp() -> str:
     return timestamp
 
 
-def list_content_files(
+async def list_content_files(
     content_dir: str | None, sub_folder: str, extensions: List[str]
 ) -> List[str]:
     """
@@ -115,7 +129,7 @@ def list_content_files(
     try:
         for ext in extensions:
             pattern = f"*{ext}" if ext.startswith(".") else f"*.{ext}"
-            files = find_files(target_dir, pattern=pattern)
+            files = await find_files(target_dir, pattern=pattern)
             found_files.extend(os.path.abspath(str(f)) for f in files)
     except OSError as e:
         raise FileOperationError(

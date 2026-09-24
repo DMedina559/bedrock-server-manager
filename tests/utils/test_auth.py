@@ -15,95 +15,104 @@ from bedrock_server_manager.utils.auth import (
 )
 
 
-def test_get_jwt_secret_key_creates_if_missing(app_context):
+async def test_get_jwt_secret_key_creates_if_missing(app_context):
     """Test get_jwt_secret_key creates and sets a new key if one is missing in settings."""
-    app_context.settings.set("web.jwt_secret_key", None)
-    key = get_jwt_secret_key(app_context.settings)
+    await app_context.settings.set("web.jwt_secret_key", None)
+    key = await get_jwt_secret_key(app_context.settings)
     assert key is not None
     assert len(key) > 0
     assert app_context.settings.get("web.jwt_secret_key") == key
 
 
-def test_get_jwt_secret_key_returns_existing(app_context):
+async def test_get_jwt_secret_key_returns_existing(app_context):
     """Test get_jwt_secret_key returns the existing key from settings."""
-    app_context.settings.set("web.jwt_secret_key", "my_secret_key")
-    key = get_jwt_secret_key(app_context.settings)
+    await app_context.settings.set("web.jwt_secret_key", "my_secret_key")
+    key = await get_jwt_secret_key(app_context.settings)
     assert key == "my_secret_key"
 
 
-def test_create_access_token(app_context):
+async def test_create_access_token(app_context):
     """Test create_access_token successfully generates a valid JWT string."""
-    token = create_access_token(app_context, {"sub": "test_user"})
+    token = await create_access_token(app_context, {"sub": "test_user"})
     assert isinstance(token, str)
     assert len(token) > 0
 
 
-def test_create_access_token_with_custom_expiry(app_context):
+async def test_create_access_token_with_custom_expiry(app_context):
     """Test create_access_token handles custom expiration deltas correctly."""
     expires = datetime.timedelta(minutes=15)
-    token = create_access_token(
+    token = await create_access_token(
         app_context, {"sub": "test_user"}, expires_delta=expires
     )
     assert isinstance(token, str)
     assert len(token) > 0
 
 
-def test_get_user_from_token_success(app_context, db_session):
+async def test_get_user_from_token_success(app_context, db):
     """Test _get_user_from_token successfully retrieves an active user from the database."""
     user = User(
         username="test_token_user", hashed_password="pw", role="admin", is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    async with db.session_manager() as session:
+        session.add(user)
+        await session.commit()
 
-    token = create_access_token(app_context, {"sub": "test_token_user"})
-    user_response = _get_user_from_token(app_context, token)
+    app_context._db = db
+
+    token = await create_access_token(app_context, {"sub": "test_token_user"})
+    user_response = await _get_user_from_token(app_context, token)
 
     assert user_response is not None
     assert user_response.username == "test_token_user"
 
 
-def test_get_user_from_token_invalid_token(app_context):
+async def test_get_user_from_token_invalid_token(app_context, db):
     """Test _get_user_from_token gracefully handles and returns None for invalid token strings."""
-    user_response = _get_user_from_token(app_context, "invalid_token_string")
+    app_context._db = db
+    user_response = await _get_user_from_token(app_context, "invalid_token_string")
     assert user_response is None
 
 
-def test_get_user_from_token_user_not_found(app_context):
+async def test_get_user_from_token_user_not_found(app_context, db):
     """Test _get_user_from_token returns None when the token payload references a missing user."""
-    token = create_access_token(app_context, {"sub": "non_existent_user"})
-    user_response = _get_user_from_token(app_context, token)
+    app_context._db = db
+    token = await create_access_token(app_context, {"sub": "non_existent_user"})
+    user_response = await _get_user_from_token(app_context, token)
     assert user_response is None
 
 
-def test_authenticate_websocket_token_success(app_context, db_session):
+async def test_authenticate_websocket_token_success(app_context, db):
     """Test authenticate_websocket_token correctly resolves a valid user object."""
     user = User(username="ws_user", hashed_password="pw", role="admin", is_active=True)
-    db_session.add(user)
-    db_session.commit()
+    async with db.session_manager() as session:
+        session.add(user)
+        await session.commit()
 
-    token = create_access_token(app_context, {"sub": "ws_user"})
-    user_response = authenticate_websocket_token(app_context, token)
+    app_context._db = db
+
+    token = await create_access_token(app_context, {"sub": "ws_user"})
+    user_response = await authenticate_websocket_token(app_context, token)
 
     assert user_response.username == "ws_user"
 
 
-def test_authenticate_websocket_token_missing_token(app_context):
+async def test_authenticate_websocket_token_missing_token(app_context):
     """Test authenticate_websocket_token raises a WebSocketException on empty tokens."""
     with pytest.raises(WebSocketException) as exc_info:
-        authenticate_websocket_token(app_context, "")
+        await authenticate_websocket_token(app_context, "")
     assert exc_info.value.reason == "Missing token"
 
 
-def test_authenticate_websocket_token_invalid_user(app_context):
+async def test_authenticate_websocket_token_invalid_user(app_context, db):
     """Test authenticate_websocket_token raises a WebSocketException when a token user is missing."""
-    token = create_access_token(app_context, {"sub": "missing_ws_user"})
+    app_context._db = db
+    token = await create_access_token(app_context, {"sub": "missing_ws_user"})
     with pytest.raises(WebSocketException) as exc_info:
-        authenticate_websocket_token(app_context, token)
+        await authenticate_websocket_token(app_context, token)
     assert "Invalid token, user not found, or inactive" in exc_info.value.reason
 
 
-def test_password_hashing():
+async def test_password_hashing():
     """Test password hashing encrypts effectively and verification checks appropriately."""
     password = "supersecretpassword"
     hashed = get_password_hash(password)
@@ -112,35 +121,42 @@ def test_password_hashing():
     assert verify_password("wrongpassword", hashed) is False
 
 
-def test_authenticate_user_success(app_context, db_session):
+async def test_authenticate_user_success(app_context, db):
     """Test authenticate_user successfully logs in an active user."""
     password = "mypassword"
     hashed = get_password_hash(password)
     user = User(
         username="auth_user", hashed_password=hashed, role="admin", is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    async with db.session_manager() as session:
+        session.add(user)
+        await session.commit()
 
-    result = authenticate_user(app_context, "auth_user", password)
+    app_context._db = db
+
+    result = await authenticate_user(app_context, "auth_user", password)
     assert result == "auth_user"
 
 
-def test_authenticate_user_wrong_password(app_context, db_session):
+async def test_authenticate_user_wrong_password(app_context, db):
     """Test authenticate_user returns None upon incorrect password submission."""
     password = "mypassword"
     hashed = get_password_hash(password)
     user = User(
         username="auth_user_2", hashed_password=hashed, role="admin", is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    async with db.session_manager() as session:
+        session.add(user)
+        await session.commit()
 
-    result = authenticate_user(app_context, "auth_user_2", "wrong_password")
+    app_context._db = db
+
+    result = await authenticate_user(app_context, "auth_user_2", "wrong_password")
     assert result is None
 
 
-def test_authenticate_user_not_found(app_context):
+async def test_authenticate_user_not_found(app_context, db):
     """Test authenticate_user returns None if the user does not exist in the database."""
-    result = authenticate_user(app_context, "ghost_user", "password")
+    app_context._db = db
+    result = await authenticate_user(app_context, "ghost_user", "password")
     assert result is None

@@ -11,7 +11,6 @@ def log_streamer(app_context):
     return LogStreamer(app_context)
 
 
-@pytest.mark.asyncio
 async def test_log_streamer_start_stop(log_streamer):
     """Test start and stop lifecycle methods for LogStreamer."""
     assert not log_streamer.running
@@ -32,7 +31,6 @@ async def test_log_streamer_start_stop(log_streamer):
     assert log_streamer._task is None
 
 
-@pytest.mark.asyncio
 async def test_log_streamer_reads_app_log(
     log_streamer, app_context, tmp_path, monkeypatch
 ):
@@ -74,7 +72,6 @@ async def test_log_streamer_reads_app_log(
     )
 
 
-@pytest.mark.asyncio
 async def test_log_streamer_reads_server_log(
     log_streamer, app_context, tmp_path, monkeypatch
 ):
@@ -121,7 +118,6 @@ async def test_log_streamer_reads_server_log(
     )
 
 
-@pytest.mark.asyncio
 async def test_log_streamer_file_rotation(
     log_streamer, app_context, tmp_path, monkeypatch
 ):
