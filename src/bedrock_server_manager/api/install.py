@@ -1,12 +1,10 @@
 import asyncio
 import logging
-import os
 from typing import Any, Dict, Optional
 
 from ..context import AppContext
 from ..error import (
     BSMError,
-    FileOperationError,
     InvalidServerNameError,
     MissingArgumentError,
     UserInputError,
@@ -51,21 +49,17 @@ async def install_new_server(
 
         core_validate_server_name_format(server_name)
 
-        settings = app_context.settings
+        server = app_context.get_server(server_name)
 
-        base_dir = settings.get("paths.servers")
-        if not base_dir:
-            raise FileOperationError("'paths.servers' not configured in settings.")
-        if os.path.exists(os.path.join(base_dir, server_name)):
-            raise UserInputError(
-                f"Directory for server '{server_name}' already exists."
-            )
+        if await server.is_installed():
+            raise UserInputError(f"Server '{server_name}' is already installed.")
 
         logger.info(
             f"API: Installing new server '{server_name}', target version '{target_version}'."
         )
-        server = app_context.get_server(server_name)
+
         await server.install_or_update(target_version, server_zip_path=server_zip_path)
+
         return {
             "status": "success",
             "version": await server.get_version(),
