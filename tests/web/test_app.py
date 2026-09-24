@@ -78,24 +78,20 @@ def test_setup_check_middleware_static_assets(app_context, monkeypatch):
         assert response.status_code != 307
 
 
-def test_add_user_to_request_middleware(app_context, auth_client, test_user):
+def test_add_user_to_request_middleware(test_app, auth_client, test_user):
     """Test that the user is injected into the request state."""
-    app = create_web_app(app_context)
 
     # We will test the middleware specifically by hitting a dummy endpoint that reads request.state
-    @app.get("/test-middleware-user")
+    @test_app.get("/test-middleware-user")
     def get_user(request: Request):
         user = getattr(request.state, "current_user", None)
         if user:
             return {"username": user.username}
         return {"username": None}
 
-    with TestClient(app) as client:
-        client.cookies = auth_client.cookies  # steal the auth cookie
-
-        response = client.get("/test-middleware-user", follow_redirects=False)
-        assert response.status_code == 200
-        assert response.json()["username"] == test_user.username
+    response = auth_client.get("/test-middleware-user", follow_redirects=False)
+    assert response.status_code == 200
+    assert response.json()["username"] == test_user.username
 
 
 def test_cors_middleware_configuration(app_context, monkeypatch):

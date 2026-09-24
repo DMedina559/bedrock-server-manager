@@ -14,11 +14,11 @@ async def test_install_new_server_success(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
+    mock_server.is_installed = AsyncMock(return_value=False)
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
     mock_server.get_version = AsyncMock(return_value="1.20")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
@@ -38,17 +38,23 @@ async def test_install_new_server_empty_name(app_context):
         await install_new_server("", app_context)
 
 
-async def test_install_new_server_already_exists(app_context, tmp_path):
+async def test_install_new_server_already_exists(app_context, tmp_path, monkeypatch):
     """Test install_new_server gracefully fails if server directory exists."""
+    from unittest.mock import AsyncMock
+
     base_dir = tmp_path / "servers"
     base_dir.mkdir()
     (base_dir / "existing_server").mkdir()
 
     await app_context.settings.set("paths.servers", str(base_dir))
 
+    mock_server = MagicMock()
+    mock_server.is_installed = AsyncMock(return_value=True)
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
+
     result = await install_new_server("existing_server", app_context)
     assert result["status"] == "error"
-    assert "already exists" in result["message"]
+    assert "already installed" in result["message"]
 
 
 async def test_install_new_server_no_base_dir(app_context):
@@ -65,11 +71,11 @@ async def test_install_new_server_error(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
+    mock_server.is_installed = AsyncMock(return_value=False)
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
     mock_server.install_or_update = AsyncMock()
-    mock_server.backup_all_data = AsyncMock()
     mock_server.backup_all_data = AsyncMock()
     mock_server.install_or_update.side_effect = BSMError("Broken install")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
