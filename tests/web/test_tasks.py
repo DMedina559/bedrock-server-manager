@@ -31,14 +31,14 @@ async def test_run_task_success(task_manager):
     assert task_manager.tasks[task_id]["result"] == 15
 
 
-async def test_run_async_task_success(task_manager, app_context):
+async def test_run_coroutine_task_success(task_manager, app_context):
     app_context.loop = asyncio.get_running_loop()
 
-    async def my_async_task(a, b):
+    async def my_coro_task(a, b):
         await asyncio.sleep(0.1)
         return a * b
 
-    task_id = await task_manager.run_task(my_async_task, None, 5, 10)
+    task_id = await task_manager.run_task(my_coro_task, None, 5, 10)
     assert task_id in task_manager.tasks
 
     # Wait for the task to complete

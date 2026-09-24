@@ -111,8 +111,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         It inspects the file extension of the provided ``addon_file_path`` to determine if it's an ``.mcaddon``
         or ``.mcpack`` file. It then delegates the actual processing to the
         corresponding internal helper methods:
-        :meth:`.async__process_mcaddon_archive` for ``.mcaddon`` files or
-        :meth:`.async__process_mcpack_archive` for ``.mcpack`` files.
+        :meth:`._process_mcaddon_archive` for ``.mcaddon`` files or
+        :meth:`._process_mcpack_archive` for ``.mcpack`` files.
 
         Args:
             addon_file_path (str): The absolute path to the addon file

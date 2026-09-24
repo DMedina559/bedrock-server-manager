@@ -26,16 +26,15 @@ def test_setup_check_middleware_redirect(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    # Access a non-API route that is not allowed during setup
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    # Note: request.url_for('serve_spa') resolves to an absolute URL, so it might include the domain
-    assert (
-        response.headers["location"].endswith("/app")
-        or response.headers["location"] == "/app"
-    )
+    with TestClient(app) as client:
+        # Access a non-API route that is not allowed during setup
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 307
+        # Note: request.url_for('serve_spa') resolves to an absolute URL, so it might include the domain
+        assert (
+            response.headers["location"].endswith("/app")
+            or response.headers["location"] == "/app"
+        )
 
 
 def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
@@ -46,12 +45,11 @@ def test_setup_check_middleware_api_passthrough(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    # Access an API route
-    response = client.get("/api/users", follow_redirects=False)
-    # Should not redirect. The route itself might return 401 because we aren't auth'd.
-    assert response.status_code != 307
+    with TestClient(app) as client:
+        # Access an API route
+        response = client.get("/api/users", follow_redirects=False)
+        # Should not redirect. The route itself might return 401 because we aren't auth'd.
+        assert response.status_code != 307
 
 
 def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
@@ -62,10 +60,9 @@ def test_setup_check_middleware_allowed_paths(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    response = client.get("/docs", follow_redirects=False)
-    assert response.status_code == 200
+    with TestClient(app) as client:
+        response = client.get("/docs", follow_redirects=False)
+        assert response.status_code == 200
 
 
 def test_setup_check_middleware_static_assets(app_context, monkeypatch):
@@ -76,10 +73,9 @@ def test_setup_check_middleware_static_assets(app_context, monkeypatch):
     )
 
     app = create_web_app(app_context)
-    client = TestClient(app)
-
-    response = client.get("/app/assets/test.js", follow_redirects=False)
-    assert response.status_code != 307
+    with TestClient(app) as client:
+        response = client.get("/app/assets/test.js", follow_redirects=False)
+        assert response.status_code != 307
 
 
 def test_add_user_to_request_middleware(app_context, auth_client, test_user):
@@ -94,12 +90,12 @@ def test_add_user_to_request_middleware(app_context, auth_client, test_user):
             return {"username": user.username}
         return {"username": None}
 
-    client = TestClient(app)
-    client.cookies = auth_client.cookies  # steal the auth cookie
+    with TestClient(app) as client:
+        client.cookies = auth_client.cookies  # steal the auth cookie
 
-    response = client.get("/test-middleware-user", follow_redirects=False)
-    assert response.status_code == 200
-    assert response.json()["username"] == test_user.username
+        response = client.get("/test-middleware-user", follow_redirects=False)
+        assert response.status_code == 200
+        assert response.json()["username"] == test_user.username
 
 
 def test_cors_middleware_configuration(app_context, monkeypatch):

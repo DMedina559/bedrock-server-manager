@@ -17,7 +17,7 @@ def test_init_once(app_context):
     assert any("plugins" in str(path) for path in pm.plugin_dirs)
 
 
-async def test_load_and_save_config(async_db, app_context):
+async def test_load_and_save_config(db, app_context):
     """Test saving and loading arbitrary plugin JSON configuration dictionary mappings."""
     pm = app_context.plugin_manager
 
@@ -39,7 +39,7 @@ async def test_load_and_save_config(async_db, app_context):
     assert loaded["test_plugin_x"]["version"] == "1.0"
 
 
-async def test_synchronize_config_with_disk(async_db, app_context):
+async def test_synchronize_config_with_disk(db, app_context):
     """Test synchronize configuration cleans up orphaned keys and adds loaded ones."""
     pm = app_context.plugin_manager
     # Injected plugins mock directory might be empty, but we can verify it wipes clean unused dict entries
@@ -50,7 +50,7 @@ async def test_synchronize_config_with_disk(async_db, app_context):
     assert isinstance(pm.plugin_config, dict)
 
 
-async def test_load_plugins(async_db, app_context, monkeypatch):
+async def test_load_plugins(db, app_context, monkeypatch):
     """Test PluginManager loads properly matching plugins."""
     pm = app_context.plugin_manager
 
@@ -67,7 +67,7 @@ async def test_load_plugins(async_db, app_context, monkeypatch):
     assert pm.plugins[0].name == "mock_plugin_y"
 
 
-async def test_custom_event_system(async_db, app_context):
+async def test_custom_event_system(db, app_context):
     """Test inter-plugin event broadcast and listeners dispatch accurately."""
     pm = app_context.plugin_manager
 
@@ -91,7 +91,7 @@ async def test_custom_event_system(async_db, app_context):
     )
 
 
-async def test_event_dispatch(async_db, app_context):
+async def test_event_dispatch(db, app_context):
     """Test trigger_event correctly loops over all active plugins invoking registered hooks."""
     pm = app_context.plugin_manager
 
@@ -109,7 +109,7 @@ async def test_event_dispatch(async_db, app_context):
     callback.assert_called_once()
 
 
-async def test_reload_plugins(async_db, app_context, monkeypatch):
+async def test_reload_plugins(db, app_context, monkeypatch):
     """Test PluginManager unloads plugins before reloading the cache."""
     pm = app_context.plugin_manager
 
@@ -192,7 +192,7 @@ async def test_topological_dependency_sorting(app_context):
     assert sorted_names == ["PluginA", "PluginB", "PluginC"]
 
 
-async def test_granular_plugin_lifecycle(async_db, app_context, tmp_path):
+async def test_granular_plugin_lifecycle(db, app_context, tmp_path):
     """Test load_plugin_by_name, unload_plugin_by_name, enable_plugin, disable_plugin, and reload_plugin."""
     pm = app_context.plugin_manager
 

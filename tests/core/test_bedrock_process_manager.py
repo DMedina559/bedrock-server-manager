@@ -48,15 +48,14 @@ async def test_try_restart_server_success(app_context: AppContext):
 
     with patch.object(app_context.settings, "get", return_value=3):
         mock_server = MagicMock()
-        del mock_server.async_start
-        # Just test the fallback
+        mock_server.start = AsyncMock()
         mock_server.server_name = "test_server"
         mock_server.failure_count = 1
 
         await manager._try_restart_server(mock_server)
 
         # Verify the start method was called
-        mock_server.start.assert_called_once()
+        mock_server.start.assert_awaited_once()
 
 
 async def test_try_restart_server_max_retries_reached(app_context: AppContext):
@@ -67,8 +66,7 @@ async def test_try_restart_server_max_retries_reached(app_context: AppContext):
         with patch.object(manager, "write_error_status") as mock_write_error:
             with patch.object(manager, "remove_server") as mock_remove_server:
                 mock_server = MagicMock()
-                del mock_server.async_start
-                # Just test the fallback
+                mock_server.start = AsyncMock()
                 mock_server.server_name = "test_server"
                 # Set higher than max
                 mock_server.failure_count = 4

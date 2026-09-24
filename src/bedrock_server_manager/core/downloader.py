@@ -766,7 +766,7 @@ class BedrockDownloader:
         """Extracts server files asynchronously."""
         if not self.zip_file_path:
             raise MissingArgumentError(
-                "ZIP file path not set. Call async_prepare_download_assets() first."
+                "ZIP file path not set. Call prepare_download_assets() first."
             )
         if not await aiofiles.ospath.exists(self.zip_file_path):
             raise AppFileNotFoundError(self.zip_file_path, "ZIP file to extract")

@@ -25,7 +25,7 @@ async def test_trigger_event_basic_hooks(mock_app_context, monkeypatch):
     import bedrock_server_manager.plugins.event_trigger as et
 
     mock_broadcast = AsyncMock()
-    monkeypatch.setattr(et, "async_broadcast_event", mock_broadcast, raising=False)
+    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
 
     @trigger_event(before="sync_before", after="sync_after")
     async def async_target(app_context, multiplier, increment=5):
@@ -54,17 +54,12 @@ async def test_trigger_event_basic_hooks(mock_app_context, monkeypatch):
 async def test_trigger_event_async_hooks(mock_app_context, monkeypatch):
     """Test trigger_event successfully wraps async coroutines awaiting correctly."""
 
-    mock_broadcast = MagicMock()
-
     async def mock_async_broadcast(*args, **kwargs):
         pass
 
     import bedrock_server_manager.plugins.event_trigger as et
 
-    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
-    monkeypatch.setattr(
-        et, "async_broadcast_event", mock_async_broadcast, raising=False
-    )
+    monkeypatch.setattr(et, "broadcast_event", mock_async_broadcast, raising=False)
 
     @et.trigger_event(before="async_before", after="async_after")
     async def async_target(app_context, val):

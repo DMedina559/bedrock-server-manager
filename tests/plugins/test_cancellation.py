@@ -14,7 +14,7 @@ async def test_cancellable_event_sync(monkeypatch):
     import bedrock_server_manager.plugins.event_trigger as et
 
     mock_broadcast = AsyncMock()
-    monkeypatch.setattr(et, "async_broadcast_event", mock_broadcast, raising=False)
+    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
 
     async def mock_trigger_event(event_name, *args, **kwargs):
         if event_name == "before_event":
@@ -41,7 +41,7 @@ async def test_cancellable_event_async(monkeypatch):
     import bedrock_server_manager.plugins.event_trigger as et
 
     mock_broadcast = AsyncMock()
-    monkeypatch.setattr(et, "async_broadcast_event", mock_broadcast, raising=False)
+    monkeypatch.setattr(et, "broadcast_event", mock_broadcast, raising=False)
 
     async def mock_trigger_event(event_name, *args, **kwargs):
         if event_name == "before_event":

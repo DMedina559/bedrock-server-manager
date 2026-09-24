@@ -171,9 +171,9 @@ def create_app_api(
         kwargs["_triggering_plugin"] = plugin_name
         await app_context.plugin_manager.trigger_event(event_name, *args, **kwargs)
 
-        from bedrock_server_manager.plugins.util import async_broadcast_event
+        from bedrock_server_manager.plugins.util import broadcast_event
 
-        await async_broadcast_event(app_context, event_name, kwargs)
+        await broadcast_event(app_context, event_name, kwargs)
 
     return AppAPI(plugin_name, api_dispatcher, event_listener, event_sender, is_core)
 

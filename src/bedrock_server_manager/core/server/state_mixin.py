@@ -263,7 +263,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def get_version(self) -> str:
         """Retrieves the 'installed_version' from the server's config asynchronously.
 
-        Accesses ``server_info.installed_version`` via :meth:`._async_manage_json_config`.
+        Accesses ``server_info.installed_version`` via :meth:`._manage_json_config`.
 
         Returns:
             str: The installed version string, or "UNKNOWN" if not set or on error.
@@ -285,7 +285,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def set_version(self, version_string: str) -> None:
         """Sets the 'installed_version' in the server's config asynchronously.
 
-        Updates ``server_info.installed_version`` via :meth:`._async_manage_json_config`.
+        Updates ``server_info.installed_version`` via :meth:`._manage_json_config`.
 
         Args:
             version_string (str): The version string to set (e.g., "1.20.30.02").
@@ -308,7 +308,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def get_autoupdate(self) -> bool:
         """Retrieves the 'autoupdate' setting from the server's config asynchronously.
 
-        Accesses ``settings.autoupdate`` via :meth:`._async_manage_json_config`.
+        Accesses ``settings.autoupdate`` via :meth:`._manage_json_config`.
 
         Returns:
             bool: The autoupdate status (``True`` or ``False``). Defaults to ``False``
@@ -340,7 +340,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def set_autoupdate(self, value: bool) -> None:
         """Sets the 'autoupdate' setting in the server's config asynchronously.
 
-        Updates ``settings.autoupdate`` via :meth:`._async_manage_json_config`.
+        Updates ``settings.autoupdate`` via :meth:`._manage_json_config`.
 
         Args:
             value (bool): The boolean value to set for autoupdate.
@@ -363,7 +363,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def get_autostart(self) -> bool:
         """Retrieves the 'autostart' setting from the server's config asynchronously.
 
-        Accesses ``settings.autostart`` via :meth:`._async_manage_json_config`.
+        Accesses ``settings.autostart`` via :meth:`._manage_json_config`.
 
         Returns:
             bool: The autostart status (``True`` or ``False``). Defaults to ``False``
@@ -395,7 +395,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def set_autostart(self, value: bool) -> None:
         """Sets the 'autostart' setting in the server's config asynchronously.
 
-        Updates ``settings.autostart`` via :meth:`._async_manage_json_config`.
+        Updates ``settings.autostart`` via :meth:`._manage_json_config`.
 
         Args:
             value (bool): The boolean value to set for autostart.
@@ -418,7 +418,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def get_status_from_config(self) -> str:
         """Retrieves the stored 'status' from the server's config asynchronously.
 
-        Accesses ``server_info.status`` via :meth:`._async_manage_json_config`. This
+        Accesses ``server_info.status`` via :meth:`._manage_json_config`. This
         reflects the last known status written to the config, not necessarily
         the live process status. For live status, use :meth:`.get_status`.
 
@@ -444,7 +444,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def set_status_in_config(self, status_string: str) -> None:
         """Sets the 'status' in the server's config asynchronously.
 
-        Updates ``server_info.status`` via :meth:`._async_manage_json_config`. This is
+        Updates ``server_info.status`` via :meth:`._manage_json_config`. This is
         used to persist the server's state.
 
         Args:
@@ -480,7 +480,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Retrieves the 'target_version' from the server's config asynchronously.
 
         Accesses ``settings.target_version`` via
-        :meth:`._async_manage_json_config`. This indicates the version the server aims
+        :meth:`._manage_json_config`. This indicates the version the server aims
         to be on, often "LATEST" or a specific version string.
 
         Returns:
@@ -509,7 +509,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Sets the 'target_version' in the server's config asynchronously.
 
         Updates ``settings.target_version`` via
-        :meth:`._async_manage_json_config`.
+        :meth:`._manage_json_config`.
 
         Args:
             version_string (str): The target version string to set (e.g., "LATEST", "1.20.30.02").
@@ -534,7 +534,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def get_custom_config_value(self, key: str) -> Optional[Any]:
         """Retrieves a custom value from the 'custom' section of the server's config asynchronously.
 
-        Accesses ``custom.<key>`` via :meth:`._async_manage_json_config`.
+        Accesses ``custom.<key>`` via :meth:`._manage_json_config`.
 
         Args:
             key (str): The key of the custom value to retrieve.
@@ -563,7 +563,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
     async def set_custom_config_value(self, key: str, value: Any) -> None:
         """Sets a custom key-value pair in the 'custom' section of the server's config asynchronously.
 
-        Updates ``custom.<key>`` via :meth:`._async_manage_json_config`.
+        Updates ``custom.<key>`` via :meth:`._manage_json_config`.
 
         Args:
             key (str): The key for the custom value.

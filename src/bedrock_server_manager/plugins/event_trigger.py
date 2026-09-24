@@ -19,7 +19,7 @@ from typing import (
 )
 
 from .cancellable_event import CancellableEvent
-from .util import async_broadcast_event
+from .util import broadcast_event
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ def trigger_event(
             return dict(bound_args.arguments)
 
         @functools.wraps(func)
-        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
             cancellable_event = CancellableEvent()
@@ -87,7 +87,7 @@ def trigger_event(
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
                 await app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
-                await async_broadcast_event(app_context, before, event_kwargs)
+                await broadcast_event(app_context, before, event_kwargs)
                 if cancellable_event.is_cancelled:
                     return cast(
                         R,
@@ -105,11 +105,11 @@ def trigger_event(
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
                 await app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
-                await async_broadcast_event(app_context, after, event_kwargs)
+                await broadcast_event(app_context, after, event_kwargs)
 
             return result
 
-        return async_wrapper
+        return wrapper
 
     if _func is None:
         return decorator

@@ -50,16 +50,6 @@ class Database:
         self.SessionLocal: async_sessionmaker[AsyncSession] | None = None
         self._tables_created = False
 
-    @property
-    def async_engine(self) -> AsyncEngine | None:
-        """Alias for engine for backwards compatibility."""
-        return self.engine
-
-    @property
-    def AsyncSessionLocal(self) -> async_sessionmaker[AsyncSession] | None:
-        """Alias for SessionLocal for backwards compatibility."""
-        return self.SessionLocal
-
     def _get_db_url(self) -> str:
         """Converts the standard database URL into an async-compatible URL."""
         if self.db_url.startswith("sqlite://"):
@@ -117,10 +107,6 @@ class Database:
         )
         self._tables_created = False
 
-    def async_initialize(self) -> None:
-        """Alias for initialize for backwards compatibility."""
-        self.initialize()
-
     def _run_alembic_upgrade(self) -> None:
         """Runs synchronous Alembic migration command."""
         from sqlalchemy import create_engine
@@ -162,10 +148,6 @@ class Database:
 
             self._tables_created = True
 
-    async def _async_ensure_tables_created(self) -> None:
-        """Alias for _ensure_tables_created."""
-        await self._ensure_tables_created()
-
     @asynccontextmanager
     async def session_manager(self) -> AsyncGenerator[AsyncSession, None]:
         """
@@ -181,12 +163,6 @@ class Database:
         async with self.SessionLocal() as db:
             yield db
 
-    @asynccontextmanager
-    async def async_session_manager(self) -> AsyncGenerator[AsyncSession, None]:
-        """Alias for session_manager for backwards compatibility."""
-        async with self.session_manager() as db:
-            yield db
-
     def close(self) -> None:
         """Closes the database connection engine synchronously if possible."""
         if self.engine:
@@ -200,3 +176,5 @@ class Database:
         """Gracefully closes the database connection engine asynchronously."""
         if self.engine:
             await self.engine.dispose()
+            self.engine = None
+            self.SessionLocal = None

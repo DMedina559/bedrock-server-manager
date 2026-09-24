@@ -38,7 +38,8 @@ def auth_test_app(app_context):
 
 @pytest.fixture
 def unauth_client_test(auth_test_app):
-    return TestClient(auth_test_app)
+    with TestClient(auth_test_app) as client:
+        yield client
 
 
 @pytest.fixture
@@ -46,9 +47,9 @@ async def auth_client_test(auth_test_app, app_context, test_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_user.username})
-    client = TestClient(auth_test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    with TestClient(auth_test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
 @pytest.fixture
@@ -56,9 +57,9 @@ async def admin_client_test(auth_test_app, app_context, test_admin_user):
     from bedrock_server_manager.utils.auth import create_access_token
 
     token = await create_access_token(app_context, {"sub": test_admin_user.username})
-    client = TestClient(auth_test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    with TestClient(auth_test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
 @pytest.fixture
@@ -76,9 +77,9 @@ async def moderator_client_test(auth_test_app, app_context, db_session):
     await db_session.commit()
 
     token = await create_access_token(app_context, {"sub": user.username})
-    client = TestClient(auth_test_app)
-    client.cookies.set("access_token_cookie", token)
-    return client
+    with TestClient(auth_test_app) as client:
+        client.cookies.set("access_token_cookie", token)
+        yield client
 
 
 async def test_get_current_user_optional_no_token(unauth_client_test):
@@ -157,10 +158,10 @@ async def test_get_current_user_optional_bearer_token(
 
     token = await create_access_token(app_context, {"sub": test_user.username})
 
-    client = TestClient(auth_test_app)
-    response = client.get("/optional", headers={"Authorization": f"Bearer {token}"})
+    with TestClient(auth_test_app) as client:
+        response = client.get("/optional", headers={"Authorization": f"Bearer {token}"})
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["user"] is not None
-    assert data["user"]["username"] == test_user.username
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user"] is not None
+        assert data["user"]["username"] == test_user.username

@@ -32,7 +32,7 @@ class AutoBackupOnStart(PluginBase):
         """
         Triggers a full backup of the server before it starts.
         """
-        if not self.get_plugin_setting("enable_backup_on_start", default=True):
+        if not await self.get_plugin_setting("enable_backup_on_start", default=True):
             self.logger.info("Backup on start is disabled in plugin settings.")
             return
 

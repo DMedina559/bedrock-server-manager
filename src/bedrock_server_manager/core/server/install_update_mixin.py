@@ -226,7 +226,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         This internal method is called by :meth:`.install_or_update` after server
         files have been successfully downloaded by the `downloader`. It first
-        delegates to :meth:`BedrockDownloader.async_extract_server_files` to extract
+        delegates to :meth:`BedrockDownloader.extract_server_files` to extract
         the archive into the server directory, respecting the `is_update_operation`
         flag to preserve user data if applicable.
 
@@ -308,7 +308,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
         This is the primary method for managing server software versions. It
         orchestrates the entire workflow:
 
-            1. Checks if an update is needed using :meth:`.async_is_update_needed` (unless
+            1. Checks if an update is needed using :meth:`.is_update_needed` (unless
                `force_reinstall` is ``True`` or the server isn't installed).
             2. If the server is running, stops it using ``self.stop()`` (expected from
                :class:`~.ServerProcessMixin`).
@@ -317,8 +317,8 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             4. If it's a new installation, sets the target version in the config.
             5. Initializes a :class:`~.core.downloader.BedrockDownloader` for the
                `target_version_specification`.
-            6. Calls :meth:`BedrockDownloader.async_prepare_download_assets` to download/verify files.
-            7. Calls the internal helper :meth:`._async_perform_server_files_setup` to extract
+            6. Calls :meth:`BedrockDownloader.prepare_download_assets` to download/verify files.
+            7. Calls the internal helper :meth:`._perform_server_files_setup` to extract
                the archive and set permissions. This helper, in turn, relies on
                ``self.set_filesystem_permissions()`` (expected from another mixin).
             8. Updates the server's persisted installed version (via ``await self.set_version()``
@@ -331,7 +331,7 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
                 "LATEST" (for the latest stable release), or "PREVIEW" (for the
                 latest preview release).
             force_reinstall (bool, optional): If ``True``, the server software will
-                be reinstalled/extracted even if :meth:`.async_is_update_needed` reports
+                be reinstalled/extracted even if :meth:`.is_update_needed` reports
                 that the current version matches the target. Defaults to ``False``.
             server_zip_path (str, optional): A local path to a pre-downloaded Bedrock
                 server zip file.

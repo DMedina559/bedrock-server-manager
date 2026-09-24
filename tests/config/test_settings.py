@@ -30,7 +30,7 @@ async def test_settings_load_populates_defaults(db, isolated_bcm_config):
     assert "port" in settings._settings["web"]
 
     # Verify they were saved to the DB
-    async with db.async_session_manager() as session:
+    async with db.session_manager() as session:
         from sqlalchemy import func
         from sqlalchemy.future import select
 
@@ -45,7 +45,7 @@ async def test_settings_load_merges_existing_db(db, isolated_bcm_config):
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
     # Pre-populate DB with a custom setting that overrides a default
-    async with db.async_session_manager() as session:
+    async with db.session_manager() as session:
         session.add(
             Setting(
                 key="web",
@@ -84,7 +84,7 @@ async def test_settings_set(settings, db):
     assert settings.get("custom.plugin.enabled") is True
 
     # Verify written to DB
-    async with db.async_session_manager() as session:
+    async with db.session_manager() as session:
         from sqlalchemy.future import select
 
         result = await session.execute(select(Setting).filter_by(key="custom"))
@@ -115,7 +115,7 @@ async def test_settings_set_conflict_raises_error(settings):
 async def test_settings_reload(settings, db):
     """Test reload pulls fresh changes from the database."""
     # Modify db directly
-    async with db.async_session_manager() as session:
+    async with db.session_manager() as session:
         from sqlalchemy.future import select
 
         result = await session.execute(select(Setting).filter_by(key="web"))

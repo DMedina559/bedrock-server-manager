@@ -327,7 +327,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 for old_backup_path in files_to_delete:
                     try:
                         self.logger.debug(f"Removing old backup: {old_backup_path}")
-                        os.remove(old_backup_path)
+                        await asyncio.to_thread(os.remove, old_backup_path)
                         deleted_count += 1
                     except OSError as e_del:
                         self.logger.error(
@@ -524,7 +524,9 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         try:
             # copy2 preserves metadata like modification time.
-            shutil.copy2(file_to_backup_path, backup_destination_path)
+            await asyncio.to_thread(
+                shutil.copy2, file_to_backup_path, backup_destination_path
+            )
             self.logger.info(
                 f"Config file '{config_filename_in_server_dir}' backed up to '{backup_destination_path}'."
             )

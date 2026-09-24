@@ -115,7 +115,7 @@ async def test_send_event(app_context, monkeypatch):
     import types
 
     mock_util = types.ModuleType("bedrock_server_manager.plugins.util")
-    mock_util.async_broadcast_event = AsyncMock()
+    mock_util.broadcast_event = AsyncMock()
     sys.modules["bedrock_server_manager.plugins.util"] = mock_util
 
     from bedrock_server_manager.plugins import api_bridge

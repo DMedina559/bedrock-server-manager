@@ -18,7 +18,7 @@ async def test_get_formatted_permissions(real_bedrock_server):
     with open(permissions_path, "w") as f:
         json.dump(perm_data, f)
 
-    # Note: async_get_formatted_permissions internally queries known players from the db
+    # Note: get_formatted_permissions internally queries known players from the db
     # We will simulate this by mocking get_known_players or inserting into db.
     # We can mock it here for test simplicity or just allow it to fall back to Unknown.
     # The current async version uses db_session_manager directly. Let's patch `get_known_players`

@@ -21,7 +21,7 @@ def temp_dir():
     shutil.rmtree(d)
 
 
-async def test_async_save_and_load_json(temp_dir):
+async def test_save_and_load_json(temp_dir):
     filepath = os.path.join(temp_dir, "test.json")
     data = {"key": "value", "list": [1, 2, 3]}
 
@@ -84,7 +84,7 @@ async def test_save_json_fault_tolerance(temp_dir):
     assert not os.path.exists(filepath + ".tmp")
 
 
-async def test_async_save_and_load_lines(temp_dir):
+async def test_save_and_load_lines(temp_dir):
     filepath = os.path.join(temp_dir, "test.txt")
     lines = ["line 1\n", "line 2\n", "line 3\n"]
 

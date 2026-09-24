@@ -193,7 +193,7 @@ class AppContext:
         from .db.models import User
         from .utils.general import run_async
 
-        async def _async_check():
+        async def _check():
             if not self.db.engine:
                 self.db.initialize()
             assert self.db.engine is not None
@@ -213,7 +213,7 @@ class AppContext:
                 return await conn.run_sync(_sync_inspect_and_query)
 
         try:
-            needs = bool(run_async(_async_check()))
+            needs = bool(run_async(_check()))
             if not needs:
                 self._needs_setup = False
             return needs

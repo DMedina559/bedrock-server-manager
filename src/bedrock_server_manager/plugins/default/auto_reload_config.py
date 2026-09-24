@@ -30,7 +30,7 @@ class AutoReloadPlugin(PluginBase):
     async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
-            response = self.api.get_server_running_status(server_name=server_name)
+            response = await self.api.get_server_running_status(server_name=server_name)
             if response and response.get("status") == "success":
                 return bool(response.get("is_running", False))
 
@@ -49,15 +49,15 @@ class AutoReloadPlugin(PluginBase):
 
     async def _send_reload_command(self, server_name: str, command: str, context: str):
         """Sends a given command to a server if it's running."""
-        if not self.get_plugin_setting("enable_auto_reload", default=True):
+        if not await self.get_plugin_setting("enable_auto_reload", default=True):
             self.logger.info("Auto reload is disabled in plugin settings.")
             return
-        if self._is_server_running(server_name):
+        if await self._is_server_running(server_name):
             try:
                 self.logger.info(
                     f"{context.capitalize()} changed for '{server_name}', triggering reload."
                 )
-                self.api.send_command(server_name=server_name, command=command)
+                await self.api.send_command(server_name=server_name, command=command)
                 self.logger.info(f"Successfully sent '{command}' to '{server_name}'.")
             except Exception as e:
                 self.logger.warning(
