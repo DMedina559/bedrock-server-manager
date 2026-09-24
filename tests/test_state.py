@@ -7,6 +7,7 @@ from bedrock_server_manager.state import (
     AppState,
     PluginState,
     RuntimeState,
+    ServerConfigState,
     ServerState,
     SettingsState,
     UserState,
@@ -73,3 +74,24 @@ def test_app_state_dirty_tracking():
 
     app_state.servers.mark_dirty()
     assert app_state.is_dirty()
+
+
+def test_server_state():
+    server_state = ServerState()
+    assert not server_state.is_dirty
+
+    cfg = ServerConfigState(
+        server_name="survival",
+        installed_version="1.20.50.03",
+        status="STOPPED",
+        autostart=True,
+    )
+    server_state.set(cfg)
+
+    assert server_state.is_dirty
+    assert "survival" in server_state.dirty_servers
+    assert server_state.get("survival") == cfg
+
+    server_state.clear_dirty()
+    assert not server_state.is_dirty
+    assert len(server_state.dirty_servers) == 0

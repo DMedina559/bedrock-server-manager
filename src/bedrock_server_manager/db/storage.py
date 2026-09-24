@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
 from sqlalchemy.future import select
 
 from ..state.app_state import AppState
+from ..state.models import ServerConfigState, ServerState
 from ..state.settings import SettingsState
-from .models import Setting
+from .models import Server, Setting
 
 if TYPE_CHECKING:
     from .database import Database
@@ -71,6 +72,20 @@ class Storage:
                 )
                 await self._write_settings(session, state.settings)
 
+            # Load Servers
+            server_result = await session.execute(select(Server))
+            for s in server_result.scalars().all():
+                cfg = ServerConfigState(
+                    server_name=str(s.server_name),
+                    installed_version=str(s.installed_version or "UNKNOWN"),
+                    status=str(s.status or "UNKNOWN"),
+                    autoupdate=bool(s.autoupdate),
+                    autostart=bool(s.autostart),
+                    target_version=str(s.target_version or "UNKNOWN"),
+                    custom=s.custom or {},
+                )
+                state.servers.servers[s.server_name] = cfg
+
         state.clear_dirty()
         return state
 
@@ -86,6 +101,8 @@ class Storage:
         async with self.db.session_manager() as session:
             if state.settings.is_dirty:
                 await self._write_settings(session, state.settings)
+            if state.servers.is_dirty:
+                await self._write_servers(session, state.servers)
 
             await session.commit()
 
@@ -105,3 +122,32 @@ class Storage:
             else:
                 setting = Setting(key=key, value=value)
                 session.add(setting)
+
+    async def _write_servers(self, session: Any, server_state: ServerState) -> None:
+        """Persists dirty ServerConfigState objects into the database Server table."""
+        for server_name in server_state.dirty_servers:
+            cfg = server_state.get(server_name)
+            if not cfg:
+                continue
+            result = await session.execute(
+                select(Server).filter_by(server_name=server_name)
+            )
+            server_record = result.scalars().first()
+            if server_record:
+                server_record.installed_version = cfg.installed_version
+                server_record.status = cfg.status
+                server_record.autoupdate = cfg.autoupdate
+                server_record.autostart = cfg.autostart
+                server_record.target_version = cfg.target_version
+                server_record.custom = cfg.custom
+            else:
+                server_record = Server(
+                    server_name=cfg.server_name,
+                    installed_version=cfg.installed_version,
+                    status=cfg.status,
+                    autoupdate=cfg.autoupdate,
+                    autostart=cfg.autostart,
+                    target_version=cfg.target_version,
+                    custom=cfg.custom,
+                )
+                session.add(server_record)

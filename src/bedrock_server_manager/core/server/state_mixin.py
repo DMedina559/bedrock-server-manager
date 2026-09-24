@@ -102,7 +102,44 @@ class ServerStateMixin(BedrockServerBaseMixin):
         }
 
     async def _load_server_config(self) -> Dict[str, Any]:
-        """Loads the server-specific JSON configuration asynchronously."""
+        """Loads the server-specific configuration asynchronously via AppState and Storage."""
+        from ...state.models import ServerConfigState
+
+        if hasattr(self.app_context, "state"):
+            cfg = self.app_context.state.servers.get(self.server_name)
+            if not cfg:
+                self.logger.info(
+                    f"Server config for '{self.server_name}' not found in AppState. Initializing defaults."
+                )
+                default_config = self._get_default_server_config()
+                cfg = ServerConfigState(
+                    server_name=self.server_name,
+                    installed_version=default_config["server_info"][
+                        "installed_version"
+                    ],
+                    status=default_config["server_info"]["status"],
+                    autoupdate=default_config["settings"]["autoupdate"],
+                    autostart=default_config["settings"]["autostart"],
+                    target_version=default_config["settings"]["target_version"],
+                    custom=default_config["custom"],
+                )
+                self.app_context.state.servers.set(cfg)
+                await self.app_context.storage.flush(self.app_context.state)
+
+            return {
+                "server_info": {
+                    "installed_version": cfg.installed_version,
+                    "status": cfg.status,
+                },
+                "settings": {
+                    "autoupdate": cfg.autoupdate,
+                    "autostart": cfg.autostart,
+                    "target_version": cfg.target_version,
+                },
+                "custom": dict(cfg.custom) if cfg.custom is not None else {},
+            }
+
+        # Fallback if app_context.state is not available
         from sqlalchemy.future import select
 
         if self.settings.db is None:
@@ -128,10 +165,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
                     "custom": dict(server.custom) if server.custom is not None else {},
                 }
 
-            # Create new server config in DB
-            self.logger.info(
-                f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
-            )
             default_config = self._get_default_server_config()
             server = Server(
                 server_name=self.server_name,
@@ -160,7 +193,37 @@ class ServerStateMixin(BedrockServerBaseMixin):
             }
 
     async def _save_server_config(self, config_data: Dict[str, Any]) -> None:
-        """Saves the server configuration data to the database asynchronously."""
+        """Saves the server configuration data asynchronously via AppState and Storage."""
+        from ...state.models import ServerConfigState
+
+        if hasattr(self.app_context, "state"):
+            cfg = self.app_context.state.servers.get(self.server_name)
+            if not cfg:
+                cfg = ServerConfigState(server_name=self.server_name)
+
+            server_info = config_data.get("server_info", {})
+            settings = config_data.get("settings", {})
+
+            if "installed_version" in server_info:
+                cfg.installed_version = server_info["installed_version"]
+            if "status" in server_info:
+                cfg.status = server_info["status"]
+
+            if "autoupdate" in settings:
+                cfg.autoupdate = settings["autoupdate"]
+            if "autostart" in settings:
+                cfg.autostart = settings["autostart"]
+            if "target_version" in settings:
+                cfg.target_version = settings["target_version"]
+
+            if "custom" in config_data:
+                cfg.custom = config_data["custom"]
+
+            self.app_context.state.servers.set(cfg)
+            await self.app_context.storage.flush(self.app_context.state)
+            return
+
+        # Fallback if app_context.state is not available
         from sqlalchemy.future import select
 
         if self.settings.db is None:

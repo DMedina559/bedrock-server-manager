@@ -6,7 +6,7 @@ Integration and unit tests for the Storage layer.
 import pytest
 
 from bedrock_server_manager.db.storage import Storage
-from bedrock_server_manager.state import AppState
+from bedrock_server_manager.state import AppState, ServerConfigState
 
 
 @pytest.mark.asyncio
@@ -47,3 +47,34 @@ async def test_storage_transaction(db):
     reloaded = AppState()
     await storage.load_state(reloaded)
     assert reloaded.settings.web.port == 9999
+
+
+@pytest.mark.asyncio
+async def test_storage_server_persistence(db):
+    storage = Storage(db=db, data_dir="/tmp/test_storage_server")
+    state = AppState()
+    await storage.load_state(state)
+
+    srv = ServerConfigState(
+        server_name="lobby",
+        installed_version="1.21.0.03",
+        status="RUNNING",
+        autostart=True,
+        custom={"motd": "Welcome!"},
+    )
+    state.servers.set(srv)
+    assert state.is_dirty()
+
+    await storage.flush(state)
+    assert not state.is_dirty()
+
+    # Verify reloading server state from DB
+    reloaded_state = AppState()
+    await storage.load_state(reloaded_state)
+
+    loaded_srv = reloaded_state.servers.get("lobby")
+    assert loaded_srv is not None
+    assert loaded_srv.installed_version == "1.21.0.03"
+    assert loaded_srv.status == "RUNNING"
+    assert loaded_srv.autostart is True
+    assert loaded_srv.custom == {"motd": "Welcome!"}

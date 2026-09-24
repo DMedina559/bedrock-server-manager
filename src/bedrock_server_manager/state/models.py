@@ -9,29 +9,43 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 
 class ServerConfigState(BaseModel):
-    name: str
-    server_path: str
-    version: Optional[str] = None
+    server_name: str
+    installed_version: str = "UNKNOWN"
+    status: str = "UNKNOWN"
+    autoupdate: bool = False
     autostart: bool = False
-    port: int = 19132
-    v4_port: int = 19132
-    v6_port: int = 19133
-    settings: Dict[str, Any] = Field(default_factory=dict)
+    target_version: str = "UNKNOWN"
+    custom: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ServerState(BaseModel):
     servers: Dict[str, ServerConfigState] = Field(default_factory=dict)
     _dirty: bool = PrivateAttr(default=False)
+    _dirty_servers: set[str] = PrivateAttr(default_factory=set)
 
-    def mark_dirty(self) -> None:
+    def mark_dirty(self, server_name: Optional[str] = None) -> None:
         self._dirty = True
+        if server_name:
+            self._dirty_servers.add(server_name)
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_servers.clear()
 
     @property
     def is_dirty(self) -> bool:
         return self._dirty
+
+    @property
+    def dirty_servers(self) -> set[str]:
+        return set(self._dirty_servers)
+
+    def get(self, server_name: str) -> Optional[ServerConfigState]:
+        return self.servers.get(server_name)
+
+    def set(self, config: ServerConfigState) -> None:
+        self.servers[config.server_name] = config
+        self.mark_dirty(config.server_name)
 
 
 class PluginInfoState(BaseModel):
