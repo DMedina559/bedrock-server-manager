@@ -39,6 +39,7 @@ class APIDocsGenerator(PluginBase):
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
             backup_dir = await self.api.get_global_setting("paths.backups")
+            backup_dir = backup_dir.get("value")
 
             api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 
@@ -233,6 +234,7 @@ class APIDocsGenerator(PluginBase):
             name = api_func.get("name", "Unknown Function")
             docstring = api_func.get("docstring", "No description.")
             params = api_func.get("parameters", [])
+            is_async = api_func.get("is_async", True)
 
             param_parts = []
             for param in params:
@@ -246,10 +248,12 @@ class APIDocsGenerator(PluginBase):
                     default_str = f" = {repr(p_default)}"
                     param_parts.append(f"{p_name}: {p_type}{default_str}")
 
-            signature = f"self.api.{name}({', '.join(param_parts)})"
+            signature_prefix = "await self.api." if is_async else "self.api."
+            signature = f"{signature_prefix}{name}({', '.join(param_parts)})"
 
             lines.append(f"\n## `{name}`")
             lines.append(f"```python\n{signature}\n```")
+            lines.append(f"- **Async (Requires await):** {'Yes' if is_async else 'No'}")
             lines.append(f"**Description:** {docstring}\n")
 
             if params:

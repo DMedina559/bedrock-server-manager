@@ -28,7 +28,7 @@ Here is the most basic "Hello World" plugin:
 
 ```python
 # my_first_plugin.py
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 class MyFirstPlugin(PluginBase):
     """
@@ -36,12 +36,16 @@ class MyFirstPlugin(PluginBase):
     """
     version = "1.0.0"  # Mandatory version attribute
 
-    def on_load(self):
+    @app_event("on_load")
+    async def plugin_loaded(self, **kwargs):
         """This event is called when the plugin is loaded by the manager."""
         self.logger.info("Hello from MyFirstPlugin!")
 
-    def after_server_start(self, server_name: str, result: dict):
+    @app_event("after_server_start")
+    async def after_server_start(self, **kwargs):
         """This event is called after a server has started."""
+        server_name = kwargs.get("server_name")
+        result = kwargs.get("result", {})
         if result.get("status") == "success":
             self.logger.info(f"Server '{server_name}' has started successfully!")
 ```
@@ -96,7 +100,7 @@ To help the Plugin Manager identify and display your plugin correctly, your `Plu
 *   **`optional_dependencies`** (List[str]) - Optional. Plugins to load first *if* they are present.
 
 ```python
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 class MyAwesomePlugin(PluginBase):
     name = "My Awesome Automation Plugin"
@@ -105,7 +109,8 @@ class MyAwesomePlugin(PluginBase):
     description = "Automatically performs server backups and chat translations."
     dependencies = ["core_backup_plugin"]
 
-    def on_load(self):
+    @app_event("on_load")
+    async def plugin_loaded(self, **kwargs):
         self.logger.info(f"{self.name} v{self.version} by {self.author} loaded!")
 ```
 
@@ -137,27 +142,37 @@ Event hooks are methods from `PluginBase` that you can override. The Plugin Mana
 *   **`before_*` events:** Called *before* an action is attempted.
 *   **`after_*` events:** Called *after* an action has been attempted. They are always passed a `result` dictionary that you can inspect to see if the action succeeded or failed.
 
-### Asynchronous Event Hooks (New in 3.x)
+### Asynchronous Architecture & Event Hooks (Version 4.0)
 
-To prevent plugins from blocking the main event loop (e.g., during long network requests or heavy I/O), BSM supports fully asynchronous event hooks.
+In Version 4.0, Bedrock Server Manager operates on a fully asynchronous architecture. Event handlers and lifecycle methods are defined using `async def` and `await` calls.
 
-You can define any of your event handlers as an `async def` instead of a standard synchronous `def`. The plugin manager will detect this and safely `await` your hook without freezing the rest of the application!
+```{important}
+**Plugin Boundaries & Architecture Standard:**
+
+Plugins **must not** attempt to import or access BSM internal objects (such as `app_context`, `BedrockServer`, or direct database sessions) directly. All interactions with the core application, background tasks, settings, and server operations must go exclusively through `PluginBase` methods and `self.api` methods (e.g., `await self.api.start_server(...)`, `await self.api.run_task(...)`, `await self.get_plugin_setting(...)`).
+```
+
+Define event handlers using the `@app_event` decorator with `async def`:
 
 ```python
 import asyncio
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 class MyAsyncPlugin(PluginBase):
-    version = "1.1.0"
+    version = "4.0.0"
 
-    async def before_start_server(self, server_name: str, **kwargs):
-        """This hook will be awaited by the core application asynchronously!"""
+    @app_event("before_server_start")
+    async def handle_before_start(self, **kwargs):
+        """This hook is awaited by the core application asynchronously."""
+        server_name = kwargs.get("server_name")
         self.logger.info(f"Preparing to start {server_name} in 3 seconds...")
 
-        # We can perform non-blocking waits, HTTP requests, or file I/O here
+        # Non-blocking async operations
         await asyncio.sleep(3)
 
-        self.logger.info(f"Done waiting. Let the server start!")
+        # Call core APIs using await
+        await self.api.send_command(server_name, "say Server starting in 3 seconds!")
+        self.logger.info("Done waiting. Proceeding with server start.")
 ```
 
 ## 4. Advanced Topics

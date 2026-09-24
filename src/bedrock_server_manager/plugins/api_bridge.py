@@ -294,6 +294,7 @@ class AppAPI:
                 summary = (
                     doc.strip().split("\n")[0] if doc else "No documentation available."
                 )
+                is_async = inspect.iscoroutinefunction(func)
 
                 api_details.append(
                     {
@@ -301,11 +302,13 @@ class AppAPI:
                         "parameters": params_info,
                         "docstring": summary,
                         "expose_to_plugins": expose_to_plugins,
+                        "is_async": is_async,
                     }
                 )
             except (ValueError, TypeError) as e:
                 # Handle cases where we can't get a signature (e.g., for some built-in C functions)
                 logger.warning(f"Could not inspect signature for API '{name}': {e}")
+                is_async = inspect.iscoroutinefunction(func)
                 api_details.append(
                     {
                         "name": name,
@@ -314,6 +317,7 @@ class AppAPI:
                         ],
                         "docstring": "Could not inspect function signature.",
                         "expose_to_plugins": expose_to_plugins,
+                        "is_async": is_async,
                     }
                 )
 

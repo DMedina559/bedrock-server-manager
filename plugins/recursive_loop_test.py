@@ -52,7 +52,7 @@ class RecursiveLoopPlugin(PluginBase):
     name = "Recursive Loop Test"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         self.logger.info(
             f"Plugin '{self.name}' v{self.version} loaded. "
             "This plugin tests event loop protection. To run the test, start any server "
@@ -65,7 +65,7 @@ class RecursiveLoopPlugin(PluginBase):
         )
 
     @app_event("before_server_start")
-    def trigger_recursive_loop_a(self, **kwargs: Any):
+    async def trigger_recursive_loop_a(self, **kwargs: Any):
         """This is EVENT A in the A -> B -> A' loop."""
 
         server_name = kwargs.get("server_name")
@@ -77,7 +77,7 @@ class RecursiveLoopPlugin(PluginBase):
         )
         try:
             # Assuming the server is not yet running, so stop_start_server=False is appropriate.
-            self.api.backup_all(server_name=server_name, stop_start_server=False)
+            await self.api.backup_all(server_name=server_name, stop_start_server=False)
         except Exception as e:
             self.logger.error(
                 f"--- LOOP TEST (EVENT A): API call self.api.backup_all() failed unexpectedly: {e}",
@@ -89,7 +89,7 @@ class RecursiveLoopPlugin(PluginBase):
         )
 
     @app_event("before_backup")
-    def trigger_recursive_loop_b(self, **kwargs: Any):
+    async def trigger_recursive_loop_b(self, **kwargs: Any):
         """This is EVENT B in the A -> B -> A' loop."""
 
         server_name = kwargs.get("server_name")
@@ -105,7 +105,7 @@ class RecursiveLoopPlugin(PluginBase):
             # The PluginManager's event stack guard should prevent the *handlers* for this
             # recursive 'before_server_start' from executing.
             # The api.start_server() function itself will still run its internal logic.
-            self.api.start_server(server_name=server_name)
+            await self.api.start_server(server_name=server_name)
 
             self.logger.info(
                 "--- LOOP TEST (EVENT B): Recursive self.api.start_server() call completed. "
