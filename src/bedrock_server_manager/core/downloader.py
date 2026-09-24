@@ -377,11 +377,9 @@ class BedrockDownloader:
 
         # 2. Fetch data from the API asynchronously.
         try:
-            from ..config.const import app_name_title
 
-            app_name = str(self.settings.get("_app_name", app_name_title))
             headers = {
-                "User-Agent": f"Python/{platform.python_version()} {app_name}/UnknownVersion"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(
@@ -391,7 +389,7 @@ class BedrockDownloader:
                     response.raise_for_status()
                     api_data = await response.json(content_type=None)
             self.logger.debug(f"Successfully fetched API data: {api_data}")
-        except aiohttp.ClientError as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
             raise InternetConnectivityError(
                 f"Could not contact the Minecraft download API: {e}"
             ) from e
@@ -535,14 +533,12 @@ class BedrockDownloader:
             ) from e
 
         try:
-            from ..config.const import app_name_title
 
-            app_name = self.settings.get("_app_name", app_name_title)
             headers = {
-                "User-Agent": f"Python aiohttp/{aiohttp.__version__} ({app_name})"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             # Use a streaming request to handle large files efficiently.
-            timeout = aiohttp.ClientTimeout(total=120)
+            timeout = aiohttp.ClientTimeout(total=600, connect=30, sock_read=60)
             async with aiohttp.ClientSession(
                 timeout=timeout, headers=headers
             ) as session:
@@ -565,7 +561,7 @@ class BedrockDownloader:
                         self.logger.warning(
                             f"Downloaded size ({bytes_written}) does not match content-length ({total_size}). File might be incomplete."
                         )
-        except aiohttp.ClientError as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
             # Clean up partial download on failure.
             if await aiofiles.ospath.exists(self.zip_file_path):
                 try:

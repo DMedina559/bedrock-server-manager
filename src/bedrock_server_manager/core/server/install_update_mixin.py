@@ -21,15 +21,10 @@ Key functionalities include:
 
 """
 
-import os
 from typing import Any, Optional
 
 from ...error import (
-    AppFileNotFoundError,
     BSMError,
-    DownloadError,
-    ExtractError,
-    FileError,
     FileOperationError,
     MissingArgumentError,
     PermissionsError,
@@ -219,84 +214,6 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
             )
             return True
 
-    async def _perform_server_files_setup(
-        self, downloader: BedrockDownloader, is_update_operation: bool
-    ) -> None:
-        """Core helper to extract server files and set filesystem permissions asynchronously.
-
-        This internal method is called by :meth:`.install_or_update` after server
-        files have been successfully downloaded by the `downloader`. It first
-        delegates to :meth:`BedrockDownloader.extract_server_files` to extract
-        the archive into the server directory, respecting the `is_update_operation`
-        flag to preserve user data if applicable.
-
-        After extraction, it calls ``self.set_filesystem_permissions()`` (a method
-        expected to be provided by another mixin or the main class, likely from
-        a permissions-focused mixin that uses :func:`~.core.system.base.set_server_folder_permissions`)
-        to apply appropriate permissions to the newly extracted files and folders.
-
-        Args:
-            downloader (BedrockDownloader): An initialized and prepared
-                :class:`~.core.downloader.BedrockDownloader` instance that has
-                already downloaded the server files. Its ``get_zip_file_path()``
-                method will be used.
-            is_update_operation (bool): ``True`` if this is an update to an existing
-                installation (which preserves certain files during extraction),
-                ``False`` for a fresh installation.
-
-        Raises:
-            ExtractError: If the file extraction process fails (propagated from
-                ``downloader.extract_server_files``).
-            PermissionsError: If setting filesystem permissions fails (propagated
-                from ``self.set_filesystem_permissions()``).
-            AttributeError: If ``self.set_filesystem_permissions()`` method is not
-                available on the instance (indicating a missing mixin).
-        """
-        zip_file_path_str = downloader.get_zip_file_path()
-        if not zip_file_path_str:  # Should not happen if downloader is prepared
-            raise ExtractError(
-                "Downloader did not provide a valid ZIP file path for extraction."
-            )
-        zip_file_basename = os.path.basename(zip_file_path_str)
-
-        self.logger.info(
-            f"Server '{self.server_name}': Setting up server files in '{self.server_dir}' from '{zip_file_basename}' asynchronously. Update: {is_update_operation}"
-        )
-        try:
-            # Delegate the extraction logic to the downloader.
-            await downloader.extract_server_files(is_update_operation)
-            self.logger.info(
-                f"Server file extraction completed for '{self.server_name}'."
-            )
-        except (
-            FileError,
-            MissingArgumentError,
-            AppFileNotFoundError,
-            ExtractError,
-        ) as e_extract:  # Catch specific errors from downloader
-            raise ExtractError(
-                f"Extraction phase failed for server '{self.server_name}': {e_extract}"
-            ) from e_extract
-
-        try:
-            # Set filesystem permissions after extraction.
-            self.logger.debug(
-                f"Setting permissions for server directory: {self.server_dir} asynchronously"
-            )
-            await self.set_filesystem_permissions()  # type: ignore
-            self.logger.debug(
-                f"Server folder permissions set for '{self.server_name}'."
-            )
-        except PermissionsError:  # Re-raise PermissionsError directly
-            raise
-        except Exception as e_perm:  # Wrap other unexpected permission errors
-            self.logger.error(
-                f"Failed to set permissions for '{self.server_dir}' during setup: {e_perm}. Installation may be incomplete."
-            )
-            raise PermissionsError(
-                f"Unexpected error setting permissions for '{self.server_dir}'."
-            ) from e_perm
-
     async def install_or_update(
         self,
         target_version_specification: str,
@@ -408,24 +325,24 @@ class ServerInstallUpdateMixin(BedrockServerBaseMixin):
 
         try:
             self.logger.info(
-                f"Server '{self.server_name}': Preparing download assets for '{target_version_specification}'..."
-            )
-            actual_version_downloaded, _, _ = await downloader.prepare_download_assets()
-            if not actual_version_downloaded:
-                raise DownloadError(
-                    f"Could not resolve actual version number for spec '{target_version_specification}' after download preparation."
-                )
-            self.logger.info(
-                f"Server '{self.server_name}': Assets prepared for version '{actual_version_downloaded}' (target spec: '{target_version_specification}')."
-            )
-
-            self.logger.info(
-                f"Server '{self.server_name}': Setting up server files (extracting) for version '{actual_version_downloaded}'..."
+                f"Server '{self.server_name}': Performing full setup for '{target_version_specification}'..."
             )
             is_update_op_for_extraction = is_currently_installed and not force_reinstall
-            await self._perform_server_files_setup(
-                downloader, is_update_op_for_extraction
+            actual_version_downloaded = await downloader.full_server_setup(
+                is_update_op_for_extraction
             )
+
+            try:
+                await self.set_filesystem_permissions()  # type: ignore
+            except PermissionsError:
+                raise
+            except Exception as e_perm:
+                self.logger.error(
+                    f"Failed to set permissions for '{self.server_dir}' during setup: {e_perm}. Installation may be incomplete."
+                )
+                raise PermissionsError(
+                    f"Unexpected error setting permissions for '{self.server_dir}'."
+                ) from e_perm
 
             await self.set_version(actual_version_downloaded)  # type: ignore
             await self.set_status_in_config("UPDATED" if is_update_op_for_extraction else "INSTALLED")  # type: ignore
