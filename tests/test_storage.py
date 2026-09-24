@@ -1,0 +1,49 @@
+# tests/test_storage.py
+"""
+Integration and unit tests for the Storage layer.
+"""
+
+import pytest
+
+from bedrock_server_manager.db.storage import Storage
+from bedrock_server_manager.state import AppState
+
+
+@pytest.mark.asyncio
+async def test_storage_load_and_flush(db):
+    storage = Storage(db=db, data_dir="/tmp/test_storage_data")
+    state = AppState()
+
+    # Load initial state into state
+    await storage.load_state(state)
+    assert state.settings.paths.servers == "/tmp/test_storage_data/servers"
+    assert not state.is_dirty()
+
+    # Modify setting
+    state.settings.set("retention.backups", 10)
+    assert state.is_dirty()
+
+    # Flush changes to DB
+    await storage.flush(state)
+    assert not state.is_dirty()
+
+    # Reload into new state model to verify persistence
+    new_state = AppState()
+    await storage.load_state(new_state)
+    assert new_state.settings.retention.backups == 10
+
+
+@pytest.mark.asyncio
+async def test_storage_transaction(db):
+    storage = Storage(db=db, data_dir="/tmp/test_storage_tx")
+    state = AppState()
+    await storage.load_state(state)
+
+    async with storage.transaction():
+        state.settings.set("web.port", 9999)
+        await storage.flush(state)
+
+    # Verify reload
+    reloaded = AppState()
+    await storage.load_state(reloaded)
+    assert reloaded.settings.web.port == 9999

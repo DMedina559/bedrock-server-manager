@@ -19,7 +19,7 @@ Key components:
 import collections.abc
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from ..db.database import Database
@@ -97,23 +97,14 @@ class Settings:
         db: "Database",
         config_dir: str,
         data_dir: str,
+        app_context: Optional[Any] = None,
     ):
-        """Initializes the Settings object.
-
-        This constructor performs the following actions:
-
-            1. Determines the application's primary data and configuration directories.
-            2. Retrieves the installed package version.
-            3. Loads settings from the database. If the database is empty,
-               it's created with default settings.
-            4. Ensures all necessary application directories (e.g., for servers,
-               backups, logs) exist on the filesystem.
-
-        """
+        """Initializes the Settings object."""
         logger.debug("Initializing Settings")
         self.db = db
         self.data_dir = data_dir
         self.config_dir = config_dir
+        self.app_context = app_context
         self._settings: Dict[str, Any] = {}
 
     @property
@@ -186,21 +177,16 @@ class Settings:
         }
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Retrieves a setting value using dot-notation for nested access.
+        """Retrieves a setting value using dot-notation for nested access."""
+        if (
+            self.app_context
+            and hasattr(self.app_context, "_state")
+            and self.app_context._state is not None
+        ):
+            val = self.app_context.state.settings.get(key, default)
+            if val is not None:
+                return val
 
-        Example:
-            ``settings.get("paths.servers")``
-            ``settings.get("non_existent.key", "default_value")``
-
-        Args:
-            key (str): The dot-separated configuration key (e.g., "paths.servers").
-            default (Any, optional): The value to return if the key is not found
-                or if any part of the path does not exist. Defaults to None.
-
-        Returns:
-            Any: The value associated with the key, or the ``default`` value if
-            the key is not found or an intermediate key is not a dictionary.
-        """
         d: Any = self._settings
         try:
             for k in key.split("."):
@@ -214,6 +200,15 @@ class Settings:
 
     async def load(self) -> None:
         """Loads settings from the database asynchronously."""
+        if (
+            self.app_context
+            and hasattr(self.app_context, "_storage")
+            and self.app_context._storage is not None
+        ):
+            await self.app_context.storage.load_state(self.app_context.state)
+            self._settings = self.app_context.state.settings.to_dict()
+            return
+
         from sqlalchemy.future import select
 
         self._settings = self.default_config
@@ -265,6 +260,16 @@ class Settings:
     async def set(self, key: str, value: Any) -> None:
         """Sets a configuration value using dot-notation and saves the change asynchronously."""
         if self.get(key) == value:
+            return
+
+        if (
+            self.app_context
+            and hasattr(self.app_context, "_state")
+            and self.app_context._state is not None
+        ):
+            self.app_context.state.settings.set(key, value)
+            self._settings = self.app_context.state.settings.to_dict()
+            await self.app_context.storage.flush(self.app_context.state)
             return
 
         keys = key.split(".")

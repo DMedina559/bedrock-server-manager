@@ -17,8 +17,10 @@ if TYPE_CHECKING:
     from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
+    from .db.storage import Storage
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
+    from .state.app_state import AppState
     from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
@@ -48,6 +50,8 @@ class AppContext:
         self._logger: Optional[Logger] = logger
         self._settings: Optional["Settings"] = None
         self._db: Optional["Database"] = None
+        self._state: Optional["AppState"] = None
+        self._storage: Optional["Storage"] = None
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
@@ -64,16 +68,28 @@ class AppContext:
 
     async def load(self):
         """
-        Loads the application context by initializing the settings.
+        Loads the application context by initializing the settings, AppState, and Storage.
         """
         from . import api  # noqa: F401
         from .config.settings import Settings
+        from .db.storage import Storage
+        from .state.app_state import AppState
 
         self.db.initialize()
 
-        self._settings = Settings(
-            db=self.db, config_dir=self.config_dir, data_dir=self.data_dir
-        )
+        self._storage = Storage(db=self.db, data_dir=self.data_dir)
+        self._state = AppState()
+        await self._storage.load_state(self._state)
+
+        if self._settings is not None:
+            self._settings.app_context = self
+        else:
+            self._settings = Settings(
+                db=self.db,
+                config_dir=self.config_dir,
+                data_dir=self.data_dir,
+                app_context=self,
+            )
         await self._settings.load()
 
         from .utils import get_utils
@@ -92,6 +108,8 @@ class AppContext:
         self._log_level = None
         self._log_dir = None
 
+        if self._storage and self._state:
+            await self._storage.load_state(self._state)
         await self.settings.reload()
         await self.plugin_manager.reload()
 
@@ -243,13 +261,40 @@ class AppContext:
         return self._db
 
     @property
+    def state(self) -> "AppState":
+        """
+        Returns the AppState instance.
+        """
+        if self._state is None:
+            from .state.app_state import AppState
+
+            self._state = AppState()
+        return self._state
+
+    @property
+    def storage(self) -> "Storage":
+        """
+        Returns the Storage instance.
+        """
+        if self._storage is None:
+            from .db.storage import Storage
+
+            self._storage = Storage(db=self.db, data_dir=self.data_dir)
+        return self._storage
+
+    @property
     def settings(self) -> "Settings":
         """
         Returns the Settings instance.
         """
         if self._settings is None:
-            raise RuntimeError(
-                "Settings have not been loaded. Please call AppContext.load() first."
+            from .config.settings import Settings
+
+            self._settings = Settings(
+                db=self.db,
+                config_dir=self.config_dir,
+                data_dir=self.data_dir,
+                app_context=self,
             )
         return self._settings
 
