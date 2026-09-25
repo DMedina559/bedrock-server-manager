@@ -75,80 +75,32 @@ class PluginManager:
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
         """Loads plugin configurations asynchronously via AppState and Storage."""
-        if hasattr(self.app_context, "state"):
-            await self.app_context.storage.load_state(self.app_context.state)
-            return {
-                name: {
-                    "enabled": p.enabled,
-                    "version": p.version,
-                    "author": p.author,
-                    "description": p.description,
-                }
-                for name, p in self.app_context.state.plugins.plugins.items()
+        await self.app_context.storage.load_state(self.app_context.state)
+        return {
+            name: {
+                "enabled": p.enabled,
+                "version": p.version,
+                "author": p.author,
+                "description": p.description,
             }
-
-        # Fallback if state is not available
-        from sqlalchemy.future import select
-
-        from ..db.models import Plugin
-
-        async with self.app_context.db.session_manager() as db:
-            result = await db.execute(select(Plugin))
-            plugins = result.scalars().all()
-            return {
-                str(plugin.plugin_name): {
-                    "enabled": plugin.enabled,
-                    "version": plugin.version,
-                    "author": plugin.author,
-                    "description": plugin.description,
-                }
-                for plugin in plugins
-            }
+            for name, p in self.app_context.state.plugins.plugins.items()
+        }
 
     async def _save_config(self) -> None:
         """Saves current plugin configuration asynchronously via AppState and Storage."""
         from ..state.models import PluginInfoState
 
-        if hasattr(self.app_context, "state"):
-            for plugin_name, config in self.plugin_config.items():
-                p_info = PluginInfoState(
-                    plugin_name=plugin_name,
-                    enabled=bool(config.get("enabled", False)),
-                    version=str(config.get("version") or ""),
-                    author=str(config.get("author") or ""),
-                    description=str(config.get("description") or ""),
-                )
-                self.app_context.state.plugins.set(p_info)
+        for plugin_name, config in self.plugin_config.items():
+            p_info = PluginInfoState(
+                plugin_name=plugin_name,
+                enabled=bool(config.get("enabled", False)),
+                version=str(config.get("version") or ""),
+                author=str(config.get("author") or ""),
+                description=str(config.get("description") or ""),
+            )
+            self.app_context.state.plugins.set(p_info)
 
-            await self.app_context.storage.flush(self.app_context.state)
-            return
-
-        # Fallback if state is not available
-        from sqlalchemy.future import select
-
-        from ..db.models import Plugin
-
-        async with self.app_context.db.session_manager() as db:
-            result = await db.execute(select(Plugin))
-            existing_plugins = {str(p.plugin_name): p for p in result.scalars().all()}
-
-            for plugin_name, config in self.plugin_config.items():
-                plugin = existing_plugins.get(plugin_name)
-                if plugin:
-                    plugin.enabled = bool(config.get("enabled", False))  # type: ignore[assignment]
-                    plugin.version = str(config.get("version") or "")  # type: ignore[assignment]
-                    plugin.author = str(config.get("author") or "")  # type: ignore[assignment]
-                    plugin.description = str(config.get("description") or "")  # type: ignore[assignment]
-                else:
-                    plugin = Plugin(
-                        plugin_name=plugin_name,
-                        enabled=bool(config.get("enabled", False)),
-                        version=str(config.get("version") or ""),
-                        author=str(config.get("author") or ""),
-                        description=str(config.get("description") or ""),
-                    )
-                    db.add(plugin)
-            await db.commit()
+        await self.app_context.storage.flush(self.app_context.state)
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches for the plugin file or package in the configured plugin directories."""

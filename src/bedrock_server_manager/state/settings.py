@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional, Set
 
 from pydantic import BaseModel, Field, PrivateAttr
 
+from ..error import ConfigurationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -143,20 +145,50 @@ class SettingsState(BaseModel):
                     sub_dict = root_attr.model_dump()
                     curr = sub_dict
                     for p in parts[1:-1]:
+                        if not isinstance(curr, dict) or (
+                            p in curr and not isinstance(curr[p], dict)
+                        ):
+                            raise ConfigurationError(
+                                f"Cannot set key '{key}' because path conflict."
+                            )
                         curr = curr.setdefault(p, {})
+                    if not isinstance(curr, dict):
+                        raise ConfigurationError(
+                            f"Cannot set key '{key}' because path conflict."
+                        )
                     curr[parts[-1]] = value
                     new_sub_model = type(root_attr)(**sub_dict)
                     setattr(self, root_key, new_sub_model)
             elif isinstance(root_attr, dict):
                 curr = root_attr
                 for p in parts[1:-1]:
+                    if not isinstance(curr, dict) or (
+                        p in curr and not isinstance(curr[p], dict)
+                    ):
+                        raise ConfigurationError(
+                            f"Cannot set key '{key}' because path conflict."
+                        )
                     curr = curr.setdefault(p, {})
+                if not isinstance(curr, dict):
+                    raise ConfigurationError(
+                        f"Cannot set key '{key}' because path conflict."
+                    )
                 curr[parts[-1]] = value
         else:
             # Belongs in custom settings
             curr = self.custom
             for p in parts[:-1]:
+                if not isinstance(curr, dict) or (
+                    p in curr and not isinstance(curr[p], dict)
+                ):
+                    raise ConfigurationError(
+                        f"Cannot set key '{key}' because path conflict."
+                    )
                 curr = curr.setdefault(p, {})
+            if not isinstance(curr, dict):
+                raise ConfigurationError(
+                    f"Cannot set key '{key}' because path conflict."
+                )
             curr[parts[-1]] = value
 
         self.mark_dirty(root_key)

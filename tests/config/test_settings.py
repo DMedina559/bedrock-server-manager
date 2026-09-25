@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from bedrock_server_manager.config.settings import Settings
@@ -94,13 +92,15 @@ async def test_settings_set(settings, db):
 
 async def test_settings_set_no_change_skips_write(settings, monkeypatch):
     """Test setting the same value skips database write."""
-    mock_write = MagicMock()
-    monkeypatch.setattr(settings, "_write_config", mock_write)
+    from unittest.mock import AsyncMock
+
+    mock_flush = AsyncMock()
+    monkeypatch.setattr(settings.storage, "flush", mock_flush)
 
     current_val = settings.get("web.port")
     await settings.set("web.port", current_val)
 
-    mock_write.assert_not_called()
+    mock_flush.assert_not_called()
 
 
 async def test_settings_set_conflict_raises_error(settings):

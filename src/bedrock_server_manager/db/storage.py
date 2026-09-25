@@ -66,9 +66,9 @@ class Storage:
             settings_records = result.scalars().all()
 
             if settings_records:
-                user_config = {}
+                user_config: dict[str, Any] = {}
                 for record in settings_records:
-                    user_config[record.key] = record.value
+                    user_config[str(record.key)] = record.value
 
                 state.settings = SettingsState.from_dict(
                     user_config, data_dir=self.data_dir
@@ -83,43 +83,49 @@ class Storage:
             # Load Servers
             server_result = await session.execute(select(Server))
             for s in server_result.scalars().all():
+                s_name = str(s.server_name)
+                custom_dict: dict[str, Any] = (
+                    dict(s.custom) if isinstance(s.custom, dict) else {}
+                )
                 cfg = ServerConfigState(
-                    server_name=str(s.server_name),
+                    server_name=s_name,
                     installed_version=str(s.installed_version or "UNKNOWN"),
                     status=str(s.status or "UNKNOWN"),
                     autoupdate=bool(s.autoupdate),
                     autostart=bool(s.autostart),
                     target_version=str(s.target_version or "UNKNOWN"),
-                    custom=s.custom or {},
+                    custom=custom_dict,
                 )
-                state.servers.servers[s.server_name] = cfg
+                state.servers.servers[s_name] = cfg
 
             # Load Plugins
             plugin_result = await session.execute(select(Plugin))
             for p in plugin_result.scalars().all():
+                p_name = str(p.plugin_name)
                 p_info = PluginInfoState(
-                    plugin_name=str(p.plugin_name),
+                    plugin_name=p_name,
                     enabled=bool(p.enabled),
                     version=str(p.version) if p.version else None,
                     author=str(p.author) if p.author else None,
                     description=str(p.description) if p.description else None,
-                    settings=state.settings.plugin_settings.get(str(p.plugin_name), {}),
+                    settings=state.settings.plugin_settings.get(p_name, {}),
                 )
-                state.plugins.plugins[p.plugin_name] = p_info
+                state.plugins.plugins[p_name] = p_info
 
             # Load Users
             user_result = await session.execute(select(User))
             for u in user_result.scalars().all():
+                u_name = str(u.username)
                 u_info = UserInfoState(
                     id=int(u.id),
-                    username=str(u.username),
+                    username=u_name,
                     role=str(u.role),
                     theme=str(u.theme),
                     is_active=bool(u.is_active),
                     full_name=str(u.full_name) if u.full_name else None,
                     email=str(u.email) if u.email else None,
                 )
-                state.users.users[u.username] = u_info
+                state.users.users[u_name] = u_info
 
         state.clear_dirty()
         return state

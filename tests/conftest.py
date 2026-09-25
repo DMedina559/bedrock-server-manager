@@ -17,6 +17,8 @@ from bedrock_server_manager.config.settings import Settings  # noqa: E402
 from bedrock_server_manager.context import AppContext  # noqa: E402
 from bedrock_server_manager.db.database import Database  # noqa: E402
 from bedrock_server_manager.db.models import User as UserModel  # noqa: E402
+from bedrock_server_manager.db.storage import Storage  # noqa: E402
+from bedrock_server_manager.state.app_state import AppState  # noqa: E402
 from bedrock_server_manager.utils.auth import (  # noqa: E402
     create_access_token,
     get_password_hash,
@@ -84,27 +86,45 @@ async def db(isolated_bcm_config, tmp_path, monkeypatch):
 
 
 @pytest_asyncio.fixture
-async def settings(db, isolated_bcm_config):
-    """Provides a fresh Settings instance."""
+async def storage(db, isolated_bcm_config):
+    """Provides a fresh Storage instance."""
+    test_data_dir = isolated_bcm_config / "test_data"
+    return Storage(db=db, data_dir=str(test_data_dir))
+
+
+@pytest_asyncio.fixture
+async def state(storage):
+    """Provides a fresh AppState instance loaded via Storage."""
+    app_state = AppState()
+    await storage.load_state(app_state)
+    return app_state
+
+
+@pytest_asyncio.fixture
+async def settings(db, isolated_bcm_config, storage, state):
+    """Provides a fresh Settings instance backed by native Storage and AppState."""
 
     base_dir = isolated_bcm_config
-    print(f"Base dir for settings fixture: {base_dir}")
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
 
     settings_instance = Settings(
         db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
     )
+    settings_instance._storage_instance = storage
+    settings_instance._state_instance = state
     await settings_instance.load()
     return settings_instance
 
 
 @pytest_asyncio.fixture
-async def app_context(settings, db, tmp_path):
-    """Provides a real AppContext instance."""
+async def app_context(settings, db, storage, state, tmp_path):
+    """Provides a real AppContext instance natively configured with AppState and Storage."""
     context = AppContext()
     context._settings = settings
     context._db = db
+    context._storage = storage
+    context._state = state
     await context.load()
 
     startup_checks(context)
