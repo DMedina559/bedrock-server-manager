@@ -1,3 +1,11 @@
+from bedrock_server_manager.db.storage import Storage
+from bedrock_server_manager.services.plugin_service import PluginService
+from bedrock_server_manager.services.server_service import ServerService
+from bedrock_server_manager.services.settings_service import SettingsService
+from bedrock_server_manager.services.user_service import UserService
+from bedrock_server_manager.state.app_state import AppState
+
+
 async def test_settings_service_get_and_update(app_context):
     service = app_context.settings_service
     await service.update_setting("web.port", 9090)
@@ -42,3 +50,32 @@ async def test_user_service_mutations(app_context):
     assert user.username == "john_doe"
     assert user.role == "admin"
     assert app_context.state.users.get("john_doe").full_name == "John Doe"
+
+
+async def test_explicit_di_services(db):
+    state = AppState()
+    storage = Storage(db)
+
+    server_svc = ServerService(state=state, storage=storage)
+    plugin_svc = PluginService(state=state, storage=storage)
+    user_svc = UserService(state=state, storage=storage)
+    settings_svc = SettingsService(state=state, storage=storage)
+
+    # Server mutation
+    srv = await server_svc.register_or_update_server("di_srv", autostart=True)
+    assert srv.server_name == "di_srv"
+    assert state.servers.get("di_srv").autostart is True
+
+    # Plugin mutation
+    p = await plugin_svc.register_or_update_plugin("di_plugin", enabled=True)
+    assert p.plugin_name == "di_plugin"
+    assert state.plugins.get("di_plugin").enabled is True
+
+    # User mutation
+    u = await user_svc.register_or_update_user("di_user", role="admin")
+    assert u.username == "di_user"
+    assert state.users.get("di_user").role == "admin"
+
+    # Setting mutation
+    await settings_svc.update_setting("custom.key", "custom_val")
+    assert state.settings.get("custom.key") == "custom_val"

@@ -143,3 +143,19 @@ class RuntimeState(BaseModel):
     plugins: Dict[str, PluginRuntime] = Field(default_factory=dict)
     active_tasks: Dict[str, Any] = Field(default_factory=dict)
     websocket_connections: int = 0
+
+    def get_server_runtime(self, server_name: str) -> ServerRuntimeInfo:
+        if server_name not in self.servers:
+            self.servers[server_name] = ServerRuntimeInfo()
+        return self.servers[server_name]
+
+    def set_server_runtime(self, server_name: str, runtime: ServerRuntimeInfo) -> None:
+        self.servers[server_name] = runtime
+
+    def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
+        if plugin_name not in self.plugins:
+            self.plugins[plugin_name] = PluginRuntime(plugin_name=plugin_name)
+        return self.plugins[plugin_name]
+
+    def set_plugin_runtime(self, plugin_name: str, runtime: PluginRuntime) -> None:
+        self.plugins[plugin_name] = runtime

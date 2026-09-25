@@ -3,11 +3,9 @@
 Service managing server domain state mutations and business rules.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
-from sqlalchemy.future import select
-
-from ..db.models import Server, ServerBan
+from ..state.changeset import ChangeSet
 from ..state.models import ServerConfigState
 
 if TYPE_CHECKING:
@@ -17,12 +15,44 @@ if TYPE_CHECKING:
 class ServerService:
     """Handles business logic and mutations for Bedrock servers."""
 
-    def __init__(self, app_context: "AppContext"):
-        self.app_context = app_context
+    def __init__(
+        self,
+        app_context: Optional["AppContext"] = None,
+        state: Optional[Any] = None,
+        storage: Optional[Any] = None,
+    ):
+        self._app_context = app_context
+        self._state = state
+        self._storage = storage
+
+    @property
+    def app_context(self) -> Optional["AppContext"]:
+        return self._app_context
+
+    @property
+    def state(self) -> Any:
+        if self._state is not None:
+            return self._state
+        if self._app_context is not None:
+            return self._app_context.state
+        raise ValueError(
+            "ServerService has no AppState provided or set via AppContext."
+        )
+
+    @property
+    def storage(self) -> Optional[Any]:
+        if self._storage is not None:
+            return self._storage
+        if (
+            self._app_context is not None
+            and getattr(self._app_context, "_storage", None) is not None
+        ):
+            return self._app_context.storage
+        return None
 
     def get_server_state(self, server_name: str) -> Optional[ServerConfigState]:
         """Retrieves a server configuration state model snapshot."""
-        cfg = self.app_context.state.servers.get(server_name)
+        cfg = self.state.servers.get(server_name)
         if cfg:
             res: ServerConfigState = cfg.model_copy()
             return res
@@ -39,7 +69,7 @@ class ServerService:
         custom: Optional[Dict[str, Any]] = None,
     ) -> ServerConfigState:
         """Registers or updates server state model while maintaining dirty tracking."""
-        existing = self.app_context.state.servers.get(server_name)
+        existing = self.state.servers.get(server_name)
         if existing:
             updated_dict = existing.model_dump()
             updated_dict["installed_version"] = installed_version
@@ -64,7 +94,14 @@ class ServerService:
                 custom=custom or {},
             )
 
-        self.app_context.state.servers.set(config)
+        self.state.servers.set(config)
+
+        changeset = ChangeSet()
+        changeset.add_server(server_name)
+
+        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+            await self.storage.apply_changeset(self.state, changeset)
+
         return config
 
     async def set_autostart(self, server_name: str, enabled: bool) -> None:
@@ -83,106 +120,47 @@ class ServerService:
         reason: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Adds or updates a server ban record."""
-        if getattr(self.app_context, "_db", None) is None:
+        if (
+            self.app_context is not None
+            and getattr(self.app_context, "_db", None) is None
+        ):
+            return {"status": "error", "message": "Database is not initialized."}
+        st = self.storage
+        if st is None or getattr(st, "db", None) is None:
             return {"status": "error", "message": "Database is not initialized."}
 
-        async with self.app_context.db.session_manager() as session:
-            result = await session.execute(
-                select(Server).filter(Server.server_name == server_name)
+        async with st.transaction() as session:
+            res = await st.ban_repo.add_or_update_ban(
+                session, server_name, player_name, xuid, reason
             )
-            server = result.scalar_one_or_none()
-            if not server:
-                return {
-                    "status": "error",
-                    "message": f"Server '{server_name}' not found in database.",
-                }
-
-            result = await session.execute(
-                select(ServerBan).filter(
-                    ServerBan.server_id == server.id, ServerBan.xuid == xuid
-                )
-            )
-            existing_ban = result.scalar_one_or_none()
-
-            if existing_ban:
-                existing_ban.reason = reason
-                await session.commit()
-                return {
-                    "status": "success",
-                    "message": f"Ban updated for player '{player_name}'.",
-                }
-
-            new_ban = ServerBan(
-                server_id=server.id, player_name=player_name, xuid=xuid, reason=reason
-            )
-            session.add(new_ban)
-            await session.commit()
-            return {
-                "status": "success",
-                "message": f"Player '{player_name}' banned successfully.",
-            }
+            return cast(Dict[str, Any], res)
 
     async def remove_server_ban(self, server_name: str, xuid: str) -> Dict[str, Any]:
         """Removes a server ban record by XUID."""
-        if getattr(self.app_context, "_db", None) is None:
+        if (
+            self.app_context is not None
+            and getattr(self.app_context, "_db", None) is None
+        ):
+            return {"status": "error", "message": "Database is not initialized."}
+        st = self.storage
+        if st is None or getattr(st, "db", None) is None:
             return {"status": "error", "message": "Database is not initialized."}
 
-        async with self.app_context.db.session_manager() as session:
-            result = await session.execute(
-                select(Server).filter(Server.server_name == server_name)
-            )
-            server = result.scalar_one_or_none()
-            if not server:
-                return {
-                    "status": "error",
-                    "message": f"Server '{server_name}' not found in database.",
-                }
-
-            result = await session.execute(
-                select(ServerBan).filter(
-                    ServerBan.server_id == server.id, ServerBan.xuid == xuid
-                )
-            )
-            ban = result.scalar_one_or_none()
-
-            if not ban:
-                return {
-                    "status": "error",
-                    "message": f"Ban not found for XUID '{xuid}' on server '{server_name}'.",
-                }
-
-            await session.delete(ban)
-            await session.commit()
-            return {"status": "success", "message": "Ban removed successfully."}
+        async with st.transaction() as session:
+            res = await st.ban_repo.remove_ban(session, server_name, xuid)
+            return cast(Dict[str, Any], res)
 
     async def get_server_bans(self, server_name: str) -> Dict[str, Any]:
         """Retrieves all bans for a specific server."""
-        if getattr(self.app_context, "_db", None) is None:
+        if (
+            self.app_context is not None
+            and getattr(self.app_context, "_db", None) is None
+        ):
+            return {"status": "error", "message": "Database is not initialized."}
+        st = self.storage
+        if st is None or getattr(st, "db", None) is None:
             return {"status": "error", "message": "Database is not initialized."}
 
-        async with self.app_context.db.session_manager() as session:
-            result = await session.execute(
-                select(Server).filter(Server.server_name == server_name)
-            )
-            server = result.scalar_one_or_none()
-            if not server:
-                return {
-                    "status": "error",
-                    "message": f"Server '{server_name}' not found in database.",
-                }
-
-            result = await session.execute(
-                select(ServerBan).filter(ServerBan.server_id == server.id)
-            )
-            bans = result.scalars().all()
-            ban_list = [
-                {
-                    "player_name": ban.player_name,
-                    "xuid": ban.xuid,
-                    "reason": ban.reason,
-                    "banned_at": ban.banned_at.isoformat() if ban.banned_at else None,
-                }
-                for ban in bans
-            ]
-
-            return {"status": "success", "bans": ban_list}
+        async with st.transaction() as session:
+            res = await st.ban_repo.get_bans(session, server_name)
+            return cast(Dict[str, Any], res)

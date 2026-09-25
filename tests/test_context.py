@@ -53,7 +53,7 @@ async def test_app_context_reload(app_context, monkeypatch):
 
     # Setup mocks for resource_monitor and log_streamer
     app_context._resource_monitor = MagicMock()
-    app_context.log_streamer = MagicMock()
+    app_context._log_streamer = MagicMock()
 
     await app_context.reload()
 

@@ -5,6 +5,7 @@ Service managing plugin state mutations and configuration persistence.
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from ..state.changeset import ChangeSet
 from ..state.models import PluginInfoState
 
 if TYPE_CHECKING:
@@ -14,12 +15,44 @@ if TYPE_CHECKING:
 class PluginService:
     """Handles domain logic and mutations for application plugins."""
 
-    def __init__(self, app_context: "AppContext"):
-        self.app_context = app_context
+    def __init__(
+        self,
+        app_context: Optional["AppContext"] = None,
+        state: Optional[Any] = None,
+        storage: Optional[Any] = None,
+    ):
+        self._app_context = app_context
+        self._state = state
+        self._storage = storage
+
+    @property
+    def app_context(self) -> Optional["AppContext"]:
+        return self._app_context
+
+    @property
+    def state(self) -> Any:
+        if self._state is not None:
+            return self._state
+        if self._app_context is not None:
+            return self._app_context.state
+        raise ValueError(
+            "PluginService has no AppState provided or set via AppContext."
+        )
+
+    @property
+    def storage(self) -> Optional[Any]:
+        if self._storage is not None:
+            return self._storage
+        if (
+            self._app_context is not None
+            and getattr(self._app_context, "_storage", None) is not None
+        ):
+            return self._app_context.storage
+        return None
 
     def get_plugin_state(self, plugin_name: str) -> Optional[PluginInfoState]:
         """Retrieves a plugin state model snapshot."""
-        plugin = self.app_context.state.plugins.get(plugin_name)
+        plugin = self.state.plugins.get(plugin_name)
         if plugin:
             res: PluginInfoState = plugin.model_copy()
             return res
@@ -35,7 +68,7 @@ class PluginService:
         settings: Optional[Dict[str, Any]] = None,
     ) -> PluginInfoState:
         """Registers or updates a plugin state record and marks dirty state."""
-        existing = self.app_context.state.plugins.get(plugin_name)
+        existing = self.state.plugins.get(plugin_name)
         if existing:
             data = existing.model_dump()
             if enabled is not None:
@@ -59,7 +92,14 @@ class PluginService:
                 settings=settings or {},
             )
 
-        self.app_context.state.plugins.set(plugin)
+        self.state.plugins.set(plugin)
+
+        changeset = ChangeSet()
+        changeset.add_plugin(plugin_name)
+
+        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+            await self.storage.apply_changeset(self.state, changeset)
+
         return plugin
 
     async def set_enabled(self, plugin_name: str, enabled: bool) -> None:

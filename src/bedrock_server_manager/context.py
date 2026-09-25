@@ -390,6 +390,21 @@ class AppContext:
         return self._resource_monitor
 
     @property
+    def log_streamer(self) -> "LogStreamer":
+        """
+        Lazily loads and returns the LogStreamer instance.
+        """
+        if self._log_streamer is None:
+            from .web.log_streamer import LogStreamer
+
+            self._log_streamer = LogStreamer(app_context=self)
+        return self._log_streamer
+
+    @log_streamer.setter
+    def log_streamer(self, value: Optional["LogStreamer"]) -> None:
+        self._log_streamer = value
+
+    @property
     def settings_service(self):
         """Returns the SettingsService instance."""
         if self._settings_service is None:
