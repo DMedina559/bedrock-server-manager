@@ -15,7 +15,6 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.future import select
 
 from ...context import AppContext
 from ...db.models import RegistrationToken, User
@@ -49,13 +48,10 @@ async def generate_token(
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
     registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    async with app_context.db.session_manager() as db:  # type: ignore
-        db.add(registration_token)
-        await db.commit()
+    async with app_context.storage.transaction() as session:
+        session.add(registration_token)
 
-    # Get the base URL from the request
     base_url = str(request.base_url)
-    # Corrected registration link to point to the SPA
     registration_link = f"{base_url}app/register/{token}"
 
     logger.info(
@@ -80,11 +76,10 @@ async def validate_token(
     """
     Checks if a registration token is valid.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(
-            select(RegistrationToken).filter(RegistrationToken.token == token)
+    async with app_context.storage.transaction() as session:
+        registration_token = await app_context.storage.user_repo.get_registration_token(
+            session, token
         )
-        registration_token = result.scalar_one_or_none()
         if not registration_token or registration_token.expires < int(time.time()):
             return JSONResponse(
                 content={"status": "error", "message": "Invalid or expired token."},
@@ -107,11 +102,10 @@ async def register_user(
     """
     Creates a new user from a registration token.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(
-            select(RegistrationToken).filter(RegistrationToken.token == token)
+    async with app_context.storage.transaction() as session:
+        registration_token = await app_context.storage.user_repo.get_registration_token(
+            session, token
         )
-        registration_token = result.scalar_one_or_none()
         if not registration_token or registration_token.expires < int(time.time()):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -129,14 +123,11 @@ async def register_user(
         )
 
         try:
-            db.add(user)
-            await db.delete(
-                registration_token
-            )  # Delete token after successful registration
-            await db.commit()
-            await db.refresh(
-                user
-            )  # Refresh the user object to get its ID if needed later
+            session.add(user)
+            await app_context.storage.user_repo.delete_registration_token(
+                session, registration_token
+            )
+            await session.commit()
 
             logger.info(
                 f"UserResponse '{data.username}' registered with role '{registration_token.role}'."
@@ -147,11 +138,11 @@ async def register_user(
                     "status": "success",
                     "message": "Registration successful. Please log in.",
                 },
-                status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
+                status_code=status.HTTP_200_OK,
             )
 
         except IntegrityError:
-            await db.rollback()  # Rollback the transaction on database error
+            await session.rollback()
             logger.warning(
                 f"Registration failed: Username '{data.username}' already exists."
             )
@@ -163,7 +154,7 @@ async def register_user(
                 },
             )
         except Exception as e:
-            await db.rollback()  # Rollback for any other unexpected errors
+            await session.rollback()
             logger.error(
                 f"An unexpected error occurred during registration: {e}", exc_info=True
             )

@@ -2,16 +2,14 @@ import datetime
 import logging
 import secrets
 from datetime import timezone
-from typing import Optional
+from typing import Any, Optional
 
 import bcrypt
 from fastapi import WebSocketException, status
 from jose import JWTError, jwt
-from sqlalchemy.future import select
 
 from ..config import Settings
 from ..context import AppContext
-from ..db.models import User as UserModel
 from ..web.schemas import UserResponse
 
 logger = logging.getLogger(__name__)
@@ -78,13 +76,12 @@ async def create_access_token(
 
 
 async def _get_and_update_user_from_db(
-    db_session, username: str
+    app_context: AppContext, session, username: str
 ) -> Optional[UserResponse]:
-    """Helper function to fetch user, update last_seen, and return UserResponse."""
-    result = await db_session.execute(
-        select(UserModel).filter(UserModel.username == username)
+    """Helper function to fetch user via UserRepository, update last_seen, and return UserResponse."""
+    user: Any = await app_context.storage.user_repo.get_user_by_username(
+        session, username
     )
-    user = result.scalar_one_or_none()
     if not user or not user.is_active:
         return None
 
@@ -99,7 +96,7 @@ async def _get_and_update_user_from_db(
     # Only update the database if last_seen is missing or older than 5 minutes
     if last_seen_dt is None or (now - last_seen_dt) > datetime.timedelta(minutes=5):
         user.last_seen = now
-        await db_session.commit()
+        await session.commit()
 
     return UserResponse(
         id=int(user.id),
@@ -123,8 +120,8 @@ async def _get_user_from_token(
         if username is None:
             return None
 
-        async with app_context.db.session_manager() as db:  # type: ignore
-            return await _get_and_update_user_from_db(db, username)
+        async with app_context.storage.transaction() as session:
+            return await _get_and_update_user_from_db(app_context, session, username)
 
     except JWTError:
         return None
@@ -133,23 +130,7 @@ async def _get_user_from_token(
 async def authenticate_websocket_token(
     app_context: AppContext, token: str
 ) -> UserResponse:
-    """
-    Authenticates a WebSocket connection using a provided token.
-
-    This function extracts the user using `_get_user_from_token`.
-    If the token is missing, invalid, or the user doesn't exist, it raises
-    a WebSocketException to allow the router to close the connection gracefully.
-
-    Args:
-        app_context (AppContext): The application context.
-        token (str): The JWT access token.
-
-    Returns:
-        UserResponse: The authenticated user object.
-
-    Raises:
-        WebSocketException: With code 1008 if authentication fails.
-    """
+    """Authenticates a WebSocket connection using a provided token."""
     if not token:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
@@ -168,29 +149,14 @@ async def authenticate_websocket_token(
 
 # --- Utility for Login Route ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain password against a stored hash using bcrypt.
-
-    Args:
-        plain_password (str): The plain text password to verify.
-        hashed_password (str): The stored hashed password.
-
-    Returns:
-        bool: ``True`` if the password matches the hash, ``False`` otherwise.
-    """
+    """Verifies a plain password against a stored hash using bcrypt."""
     return bool(
         bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     )
 
 
 def get_password_hash(password: str) -> str:
-    """Hashes a password using bcrypt.
-
-    Args:
-        password (str): The plain text password to hash.
-
-    Returns:
-        str: The hashed password.
-    """
+    """Hashes a password using bcrypt."""
     return str(
         bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     )
@@ -199,25 +165,11 @@ def get_password_hash(password: str) -> str:
 async def authenticate_user(
     app_context: AppContext, username_form: str, password_form: str
 ) -> Optional[str]:
-    """
-    Authenticates a user against the database.
-
-    This function checks the provided `username_form` and `password_form`
-    against credentials stored in the database.
-
-    Args:
-        username_form (str): The username submitted by the user.
-        password_form (str): The plain text password submitted by the user.
-
-    Returns:
-        Optional[str]: The username if authentication is successful,
-        otherwise ``None``.
-    """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(
-            select(UserModel).filter(UserModel.username == username_form)
+    """Authenticates a user against the database using UserRepository."""
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.get_user_by_username(
+            session, username_form
         )
-        user = result.scalar_one_or_none()
         if not user:
             return None
         if not verify_password(password_form, str(user.hashed_password)):

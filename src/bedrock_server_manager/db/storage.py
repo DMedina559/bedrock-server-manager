@@ -11,6 +11,8 @@ from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
 from ..state.settings import SettingsState
 from .repositories import (
+    AuditLogRepository,
+    PlayerRepository,
     PluginRepository,
     ServerBanRepository,
     ServerRepository,
@@ -38,6 +40,8 @@ class Storage:
         self.plugin_repo = PluginRepository(db)
         self.user_repo = UserRepository(db)
         self.ban_repo = ServerBanRepository(db)
+        self.player_repo = PlayerRepository(db)
+        self.audit_log_repo = AuditLogRepository(db)
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[Any, None]:

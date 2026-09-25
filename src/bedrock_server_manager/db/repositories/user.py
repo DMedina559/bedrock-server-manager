@@ -1,17 +1,17 @@
 """
-Repository for managing User database entity persistence.
+Repository for managing User and RegistrationToken database entity persistence.
 """
 
-from typing import Any, List
+from typing import Any, List, Optional, cast
 
 from sqlalchemy.future import select
 
 from ...state.models import UserInfoState
-from ..models import User
+from ..models import RegistrationToken, User
 
 
 class UserRepository:
-    """Handles database persistence for user accounts."""
+    """Handles database persistence for user accounts and registration tokens."""
 
     def __init__(self, db: Any = None):
         self.db = db
@@ -34,10 +34,19 @@ class UserRepository:
             users.append(u_info)
         return users
 
+    async def get_user_by_username(self, session: Any, username: str) -> Optional[User]:
+        """Retrieves a User SQLAlchemy model by username."""
+        result = await session.execute(select(User).filter(User.username == username))
+        return cast(Optional[User], result.scalar_one_or_none())
+
+    async def get_user_by_id(self, session: Any, user_id: int) -> Optional[User]:
+        """Retrieves a User SQLAlchemy model by user_id."""
+        result = await session.execute(select(User).filter(User.id == user_id))
+        return cast(Optional[User], result.scalar_one_or_none())
+
     async def save_user(self, session: Any, u_info: UserInfoState) -> None:
         """Persists or updates a single UserInfoState record."""
-        result = await session.execute(select(User).filter_by(username=u_info.username))
-        user_record = result.scalars().first()
+        user_record: Any = await self.get_user_by_username(session, u_info.username)
         if user_record:
             user_record.role = u_info.role
             user_record.theme = u_info.theme
@@ -54,3 +63,22 @@ class UserRepository:
                 email=u_info.email,
             )
             session.add(user_record)
+
+    async def delete_user(self, session: Any, user: User) -> None:
+        """Deletes a User record from the database."""
+        await session.delete(user)
+
+    async def get_registration_token(
+        self, session: Any, token: str
+    ) -> Optional[RegistrationToken]:
+        """Retrieves a RegistrationToken record by token string."""
+        result = await session.execute(
+            select(RegistrationToken).filter(RegistrationToken.token == token)
+        )
+        return cast(Optional[RegistrationToken], result.scalar_one_or_none())
+
+    async def delete_registration_token(
+        self, session: Any, token_record: RegistrationToken
+    ) -> None:
+        """Deletes a RegistrationToken record from the database."""
+        await session.delete(token_record)

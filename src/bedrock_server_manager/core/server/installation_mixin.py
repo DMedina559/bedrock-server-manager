@@ -26,7 +26,7 @@ from typing import Any
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 from ...error import (
     AppFileNotFoundError,
@@ -39,61 +39,13 @@ from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerInstallationMixin(BedrockServerBaseMixin):
-    """Provides methods for validating, managing filesystem permissions, and deleting server installations.
-
-    This mixin extends :class:`.BedrockServerBaseMixin` and focuses on the
-    physical presence and state of the server's files on the disk, as well as
-    the complete removal of all server-related data.
-
-    Key methods include:
-
-        - :meth:`.validate_installation`: Checks if the server directory and executable exist.
-        - :meth:`.is_installed`: A non-raising check for installation validity.
-        - :meth:`.set_filesystem_permissions`: Applies appropriate permissions to server files.
-        - :meth:`.delete_server_files`: Deletes the main server installation directory.
-        - :meth:`.delete_all_data`: **DESTRUCTIVE** - Removes all data for the server,
-          including installation, configuration, backups, and systemd services (Linux).
-
-    It relies on attributes from :class:`.BedrockServerBaseMixin` (like `server_dir`,
-    `bedrock_executable_path`, `logger`) and may depend on methods from other mixins
-    (e.g., :meth:`~.ServerProcessMixin.is_running`, :meth:`~.ServerProcessMixin.stop`)
-    for operations like stopping a server before deletion.
-    """
+    """Provides methods for validating, managing filesystem permissions, and deleting server installations."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerInstallationMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It depends on attributes initialized by
-        :class:`.BedrockServerBaseMixin` and assumes methods from other mixins
-        (like :meth:`~.ServerProcessMixin.is_running` and :meth:`~.ServerProcessMixin.stop`)
-        will be available on the final composed :class:`~.core.bedrock_server.BedrockServer` object.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
         super().__init__(*args, **kwargs)
-        # Attributes from BedrockServerBaseMixin are available.
-        # Methods from other mixins (e.g., ProcessMixin for stop/is_running)
-        # are expected on the final composed BedrockServer object.
 
     async def validate_installation(self) -> bool:
-        """Validates that the server installation directory and executable exist asynchronously.
-
-        This method checks for the presence of:
-
-            1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
-            2. The Bedrock server executable within that directory
-               (path from :attr:`.BedrockServerBaseMixin.bedrock_executable_path`).
-
-        Returns:
-            bool: ``True`` if both the server directory and executable file exist.
-
-        Raises:
-            AppFileNotFoundError: If the server directory or the executable
-                file does not exist at their expected locations.
-        """
+        """Validates that the server installation directory and executable exist asynchronously."""
         self.logger.debug(
             f"Validating installation for server '{self.server_name}' in directory: {self.server_dir} asynchronously"
         )
@@ -112,16 +64,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         return True
 
     async def is_installed(self) -> bool:
-        """Checks if the server installation is valid asynchronously, without raising exceptions.
-
-        This is a convenience method that calls :meth:`.validate_installation`
-        and catches :class:`~.error.AppFileNotFoundError` if validation fails,
-        returning ``False`` in such cases.
-
-        Returns:
-            bool: ``True`` if the installation is valid (directory and executable exist),
-            ``False`` otherwise.
-        """
+        """Checks if the server installation is valid asynchronously, without raising exceptions."""
         try:
             return await self.validate_installation()
         except AppFileNotFoundError:
@@ -131,21 +74,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             return False
 
     async def set_filesystem_permissions(self) -> None:
-        """Sets appropriate filesystem permissions for the server's installation directory asynchronously.
-
-        This method first validates the server installation using :meth:`.is_installed`.
-        If valid, it delegates to the platform-agnostic
-        :func:`~.core.system.base.set_server_folder_permissions` utility to
-        apply the necessary permissions recursively to :attr:`.BedrockServerBaseMixin.server_dir`.
-        This is crucial for proper server operation, especially on Linux.
-
-        Raises:
-            AppFileNotFoundError: If the server is not installed (i.e.,
-                :meth:`.is_installed` returns ``False``).
-            PermissionsError: If setting permissions fails (propagated from
-                :func:`~.core.system.base.set_server_folder_permissions`).
-            MissingArgumentError: If `server_dir` is somehow invalid (propagated).
-        """
+        """Sets appropriate filesystem permissions for the server's installation directory asynchronously."""
         if not await self.is_installed():
             raise AppFileNotFoundError(
                 self.server_dir,
@@ -181,23 +110,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
     async def delete_server_files(
         self, item_description_prefix: str = "server installation files for"
     ) -> bool:
-        """Deletes the server's entire installation directory (:attr:`.BedrockServerBaseMixin.server_dir`) asynchronously.
-
-        .. warning::
-            This is a **DESTRUCTIVE** operation. It will permanently remove the
-            server's main directory and all its contents.
-
-        It uses the :func:`~.core.system.base.delete_path_robustly` utility,
-        which attempts to handle read-only files that might otherwise prevent deletion.
-
-        Args:
-            item_description_prefix (str, optional): A prefix for logging messages
-                to provide context. Defaults to "server installation files for".
-
-        Returns:
-            bool: ``True`` if the deletion was successful or if the directory
-            did not exist initially. ``False`` if the deletion failed.
-        """
+        """Deletes the server's entire installation directory asynchronously."""
         if not await aiofiles.ospath.exists(self.server_dir):
             self.logger.info(
                 f"Server directory '{self.server_dir}' for '{self.server_name}' does not exist. Nothing to delete."
@@ -214,30 +127,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         )
 
     async def delete_all_data(self) -> None:
-        """Deletes **ALL** data associated with this Bedrock server instance asynchronously.
-
-        .. danger::
-            This is a **HIGHLY DESTRUCTIVE** operation and is irreversible.
-
-            It removes:
-
-                1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
-                2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
-                3. The server's entire backup directory (derived from ``paths.backups`` setting).
-                4. The server's PID file.
-                5. Database entries related to the server (e.g. Server and ServerBan records).
-
-        The method will attempt to stop a running server before proceeding with deletions.
-        If any part of the deletion process fails, it raises a
-        :class:`~.error.FileOperationError` with details of the failed items.
-
-        Raises:
-            FileOperationError: If deleting one or more essential directories or
-                files fails. The error message will summarize which items failed.
-            ServerStopError: If the server is running and fails to stop prior to deletion.
-            AttributeError: If essential methods from other mixins (like `is_running` or `stop`)
-                            are not available on the instance.
-        """
+        """Deletes **ALL** data associated with this Bedrock server instance asynchronously."""
         server_install_dir = self.server_dir
         server_json_config_subdir = self.server_config_dir
 
@@ -326,23 +216,26 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 )
                 failed_deletions.append(pid_file_path)
 
-        if getattr(self.app_context, "db", None) is not None:
+        if getattr(self.app_context, "_storage", None) is not None:
             try:
-                from ...db.models import Server, ServerBan
+                from ...db.models import ServerBan
 
-                async with self.app_context.db.session_manager() as db_session:
-                    result = await db_session.execute(
-                        select(Server).filter(Server.server_name == self.server_name)
+                async with self.app_context.storage.transaction() as session:
+                    db_server = (
+                        await self.app_context.storage.server_repo.get_server_by_name(
+                            session, self.server_name
+                        )
                     )
-                    db_server = result.scalars().first()
                     if db_server:
-                        await db_session.execute(
+                        await session.execute(
                             delete(ServerBan).filter(
                                 ServerBan.server_id == db_server.id
                             )
                         )
-                        await db_session.delete(db_server)
-                        await db_session.commit()
+                        await session.delete(db_server)
+
+                if self.server_name in self.app_context.state.servers.servers:
+                    del self.app_context.state.servers.servers[self.server_name]
 
                 self.logger.info(
                     f"Successfully deleted server '{self.server_name}' and its associated data from the database."
