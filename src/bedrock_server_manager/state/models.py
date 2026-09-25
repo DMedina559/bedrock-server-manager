@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr
 
+from ..plugins.runtime import PluginRuntime
+
 
 class ServerConfigState(BaseModel):
     server_name: str
@@ -138,5 +140,6 @@ class ServerRuntimeInfo(BaseModel):
 
 class RuntimeState(BaseModel):
     servers: Dict[str, ServerRuntimeInfo] = Field(default_factory=dict)
+    plugins: Dict[str, PluginRuntime] = Field(default_factory=dict)
     active_tasks: Dict[str, Any] = Field(default_factory=dict)
     websocket_connections: int = 0

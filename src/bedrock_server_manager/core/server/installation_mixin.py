@@ -326,11 +326,11 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 )
                 failed_deletions.append(pid_file_path)
 
-        if self.settings.db is not None:
+        if getattr(self.app_context, "db", None) is not None:
             try:
                 from ...db.models import Server, ServerBan
 
-                async with self.settings.db.session_manager() as db_session:
+                async with self.app_context.db.session_manager() as db_session:
                     result = await db_session.execute(
                         select(Server).filter(Server.server_name == self.server_name)
                     )

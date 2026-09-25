@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
 from sqlalchemy.future import select
 
 from ..state.app_state import AppState
+from ..state.changeset import ChangeSet
 from ..state.models import (
     PluginInfoState,
     PluginState,
@@ -38,16 +39,107 @@ class Storage:
         self.data_dir = data_dir
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncGenerator[None, None]:
-        """Async context manager for transaction boundaries."""
+    async def transaction(self) -> AsyncGenerator[Any, None]:
+        """Async context manager providing a shared SQLAlchemy session for multi-operation transactions."""
         async with self.db.session_manager() as session:
             try:
-                yield
+                yield session
                 await session.commit()
             except Exception as e:
                 await session.rollback()
                 logger.error(f"Storage transaction failed: {e}")
                 raise e
+
+    async def apply_changeset(self, state: AppState, changeset: ChangeSet) -> None:
+        """Applies and persists specific changes recorded in a ChangeSet within a single transaction."""
+        if changeset.is_empty():
+            return
+
+        async with self.transaction() as session:
+            if changeset.settings_changed:
+                await self._write_settings(session, state.settings)
+            if changeset.servers_changed:
+                for server_name in changeset.servers_changed:
+                    cfg = state.servers.get(server_name)
+                    if cfg:
+                        await self._write_single_server(session, cfg)
+            if changeset.plugins_changed:
+                for plugin_name in changeset.plugins_changed:
+                    p_info = state.plugins.get(plugin_name)
+                    if p_info:
+                        await self._write_single_plugin(session, p_info)
+            if changeset.users_changed:
+                for username in changeset.users_changed:
+                    u_info = state.users.get(username)
+                    if u_info:
+                        await self._write_single_user(session, u_info)
+
+    async def _write_single_server(self, session: Any, cfg: ServerConfigState) -> None:
+        """Helper to write or update a single server record in a session."""
+        result = await session.execute(
+            select(Server).filter_by(server_name=cfg.server_name)
+        )
+        server_record = result.scalars().first()
+        if server_record:
+            server_record.installed_version = cfg.installed_version
+            server_record.status = cfg.status
+            server_record.autoupdate = cfg.autoupdate
+            server_record.autostart = cfg.autostart
+            server_record.target_version = cfg.target_version
+            server_record.custom = cfg.custom
+        else:
+            server_record = Server(
+                server_name=cfg.server_name,
+                installed_version=cfg.installed_version,
+                status=cfg.status,
+                autoupdate=cfg.autoupdate,
+                autostart=cfg.autostart,
+                target_version=cfg.target_version,
+                custom=cfg.custom,
+            )
+            session.add(server_record)
+
+    async def _write_single_plugin(self, session: Any, p_info: PluginInfoState) -> None:
+        """Helper to write or update a single plugin record in a session."""
+        result = await session.execute(
+            select(Plugin).filter_by(plugin_name=p_info.plugin_name)
+        )
+        plugin_record = result.scalars().first()
+        if plugin_record:
+            plugin_record.enabled = p_info.enabled
+            plugin_record.version = p_info.version
+            plugin_record.author = p_info.author
+            plugin_record.description = p_info.description
+        else:
+            plugin_record = Plugin(
+                plugin_name=p_info.plugin_name,
+                enabled=p_info.enabled,
+                version=p_info.version,
+                author=p_info.author,
+                description=p_info.description,
+            )
+            session.add(plugin_record)
+
+    async def _write_single_user(self, session: Any, u_info: UserInfoState) -> None:
+        """Helper to write or update a single user record in a session."""
+        result = await session.execute(select(User).filter_by(username=u_info.username))
+        user_record = result.scalars().first()
+        if user_record:
+            user_record.role = u_info.role
+            user_record.theme = u_info.theme
+            user_record.is_active = u_info.is_active
+            user_record.full_name = u_info.full_name
+            user_record.email = u_info.email
+        else:
+            user_record = User(
+                username=u_info.username,
+                role=u_info.role,
+                theme=u_info.theme,
+                is_active=u_info.is_active,
+                full_name=u_info.full_name,
+                email=u_info.email,
+            )
+            session.add(user_record)
 
     async def load_state(self, state: Optional[AppState] = None) -> AppState:
         """

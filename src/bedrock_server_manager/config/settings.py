@@ -22,7 +22,6 @@ import os
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 if TYPE_CHECKING:
-    from ..db.database import Database
     from ..db.storage import Storage
     from ..state.app_state import AppState
 
@@ -94,44 +93,38 @@ class Settings:
 
     def __init__(
         self,
-        db: "Database",
         config_dir: str,
         data_dir: str,
         app_context: Optional[Any] = None,
     ):
         """Initializes the Settings object."""
         logger.debug("Initializing Settings")
-        self.db = db
         self.data_dir = data_dir
         self.config_dir = config_dir
         self.app_context = app_context
         self._settings: Dict[str, Any] = {}
-        self._state_instance: Optional["AppState"] = None
-        self._storage_instance: Optional["Storage"] = None
 
     @property
     def state(self) -> "AppState":
-        if self.app_context is not None and hasattr(self.app_context, "state"):
-            from ..state.app_state import AppState
+        if self.app_context is None:
+            from ..error import BSMError
 
-            return cast(AppState, self.app_context.state)
-        if self._state_instance is None:
-            from ..state.app_state import AppState
+            raise BSMError("Settings.state accessed without an associated app_context.")
+        from ..state.app_state import AppState
 
-            self._state_instance = AppState()
-        return self._state_instance
+        return cast(AppState, self.app_context.state)
 
     @property
     def storage(self) -> "Storage":
-        if self.app_context is not None and hasattr(self.app_context, "storage"):
-            from ..db.storage import Storage
+        if self.app_context is None:
+            from ..error import BSMError
 
-            return cast(Storage, self.app_context.storage)
-        if self._storage_instance is None:
-            from ..db.storage import Storage
+            raise BSMError(
+                "Settings.storage accessed without an associated app_context."
+            )
+        from ..db.storage import Storage
 
-            self._storage_instance = Storage(db=self.db, data_dir=self.data_dir)
-        return self._storage_instance
+        return cast(Storage, self.app_context.storage)
 
     @property
     def default_config(self) -> dict:
@@ -213,13 +206,13 @@ class Settings:
         self._settings = self.state.settings.to_dict()
 
     async def set(self, key: str, value: Any) -> None:
-        """Sets a configuration value using dot-notation and saves the change asynchronously."""
-        if self.get(key) == value:
-            return
+        """Sets a configuration value using dot-notation asynchronously via SettingsService."""
+        if self.app_context is None:
+            from ..error import BSMError
 
-        self.state.settings.set(key, value)
+            raise BSMError("Settings.set accessed without an associated app_context.")
+        await self.app_context.settings_service.update_setting(key, value)
         self._settings = self.state.settings.to_dict()
-        await self.storage.flush(self.state)
 
     async def reload(self):
         """Reloads the settings from the database asynchronously."""

@@ -9,27 +9,24 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import List
+from typing import Any, List
 
-from ..context import AppContext
 from ..error import AppFileNotFoundError, FileOperationError
 
 logger = logging.getLogger(__name__)
 
 
 def startup_checks(
-    app_context: AppContext,
+    settings: Any,
 ) -> None:
     """
     Performs initial checks and setup when the application starts.
 
     - Verifies Python version compatibility (>= 3.11).
     - Creates essential application directories based on settings.
-    - Note: colorama initialization is no longer needed as `click.secho` handles it.
 
     Args:
-        app_name: The name of the application to display in logs.
-        version: The version of the application to display in logs.
+        settings: Settings instance or object providing paths configuration.
     """
     # Python Version Check
     if sys.version_info < (3, 11):
@@ -37,10 +34,11 @@ def startup_checks(
             sys.version_info.major, sys.version_info.minor, sys.version_info.micro
         )
         logger.critical(message)
-        # Raising an exception is the correct way to halt execution on a critical failure.
         raise RuntimeError(message)
 
-    settings = app_context.settings
+    # Accept either Settings object directly or derive from AppContext if passed
+    if hasattr(settings, "settings"):
+        settings = settings.settings
 
     # Ensure essential directories exist
     dirs_to_create = {

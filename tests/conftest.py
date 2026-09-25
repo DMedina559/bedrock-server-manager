@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 pytest_plugins = ["bsm_test_utils.fixtures"]
 
-from bedrock_server_manager.config.settings import Settings  # noqa: E402
 from bedrock_server_manager.context import AppContext  # noqa: E402
 from bedrock_server_manager.db.database import Database  # noqa: E402
 from bedrock_server_manager.db.models import User as UserModel  # noqa: E402
@@ -101,27 +100,9 @@ async def state(storage):
 
 
 @pytest_asyncio.fixture
-async def settings(db, isolated_bcm_config, storage, state):
-    """Provides a fresh Settings instance backed by native Storage and AppState."""
-
-    base_dir = isolated_bcm_config
-    test_config_dir = base_dir / "test_config"
-    test_data_dir = base_dir / "test_data"
-
-    settings_instance = Settings(
-        db=db, config_dir=str(test_config_dir), data_dir=str(test_data_dir)
-    )
-    settings_instance._storage_instance = storage
-    settings_instance._state_instance = state
-    await settings_instance.load()
-    return settings_instance
-
-
-@pytest_asyncio.fixture
-async def app_context(settings, db, storage, state, tmp_path):
+async def app_context(db, storage, state, isolated_bcm_config, tmp_path):
     """Provides a real AppContext instance natively configured with AppState and Storage."""
     context = AppContext()
-    context._settings = settings
     context._db = db
     context._storage = storage
     context._state = state
@@ -132,7 +113,7 @@ async def app_context(settings, db, storage, state, tmp_path):
     # Create dummy plugin dir so plugin manager can load
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir(exist_ok=True)
-    await settings.set("paths.plugins", str(plugins_dir))
+    await context.settings.set("paths.plugins", str(plugins_dir))
 
     context.plugin_manager.plugin_dirs = [plugins_dir]
     await context.plugin_manager.load_plugins()
@@ -219,6 +200,12 @@ async def unauth_client(test_app):
     """Provides an unauthenticated TestClient instance."""
     with TestClient(test_app) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def settings(app_context):
+    """Provides a fresh Settings instance bound to AppContext."""
+    return app_context.settings
 
 
 @pytest_asyncio.fixture

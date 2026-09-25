@@ -50,56 +50,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         # Shutdown logic goes here
         logger.info("Running web app shutdown hooks...")
 
-        if (
-            hasattr(app_context, "log_streamer")
-            and app_context.log_streamer is not None
-        ):
-            app_context.log_streamer.stop()
-
-        if (
-            hasattr(app_context, "resource_monitor")
-            and app_context.resource_monitor is not None
-        ):
-            app_context.resource_monitor.stop()
-
-        # Shut down the process manager gracefully
-        if (
-            hasattr(app_context, "_bedrock_process_manager")
-            and app_context._bedrock_process_manager is not None
-        ):
-            await app_context.bedrock_process_manager.shutdown()
-
-        # Shut down the plugin manager gracefully
-        if (
-            hasattr(app_context, "_plugin_manager")
-            and app_context._plugin_manager is not None
-        ):
-            await app_context.plugin_manager.shutdown()
-
-        # Shut down the task manager gracefully
-        if (
-            hasattr(app_context, "_task_manager")
-            and app_context._task_manager is not None
-        ):
-            await app_context.task_manager.shutdown()
-
-        # Shut down the connection manager after all components finished sending shutdown events
-        if (
-            hasattr(app_context, "_connection_manager")
-            and app_context._connection_manager is not None
-        ):
-            await app_context.connection_manager.shutdown()
-
-        # Flush any unpersisted application state to durable storage before database closure
-        if (
-            hasattr(app_context, "_storage")
-            and app_context._storage is not None
-            and hasattr(app_context, "_state")
-            and app_context._state is not None
-        ):
-            await app_context.storage.flush(app_context.state)
-
-        await app_context.db.shutdown()
+        await app_context.shutdown()
         logger.info("Web app shutdown hooks complete.")
 
     version = get_installed_version()
