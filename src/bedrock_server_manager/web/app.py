@@ -90,6 +90,15 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         ):
             await app_context.connection_manager.shutdown()
 
+        # Flush any unpersisted application state to durable storage before database closure
+        if (
+            hasattr(app_context, "_storage")
+            and app_context._storage is not None
+            and hasattr(app_context, "_state")
+            and app_context._state is not None
+        ):
+            await app_context.storage.flush(app_context.state)
+
         await app_context.db.shutdown()
         logger.info("Web app shutdown hooks complete.")
 

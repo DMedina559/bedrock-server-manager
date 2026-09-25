@@ -19,7 +19,7 @@ Key components:
 import collections.abc
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 if TYPE_CHECKING:
     from ..db.database import Database
@@ -112,8 +112,9 @@ class Settings:
     @property
     def state(self) -> "AppState":
         if self.app_context is not None and hasattr(self.app_context, "state"):
-            app_state: "AppState" = self.app_context.state
-            return app_state
+            from ..state.app_state import AppState
+
+            return cast(AppState, self.app_context.state)
         if self._state_instance is None:
             from ..state.app_state import AppState
 
@@ -123,8 +124,9 @@ class Settings:
     @property
     def storage(self) -> "Storage":
         if self.app_context is not None and hasattr(self.app_context, "storage"):
-            app_storage: "Storage" = self.app_context.storage
-            return app_storage
+            from ..db.storage import Storage
+
+            return cast(Storage, self.app_context.storage)
         if self._storage_instance is None:
             from ..db.storage import Storage
 
