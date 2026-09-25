@@ -6,7 +6,11 @@ Integration and unit tests for the Storage layer.
 import pytest
 
 from bedrock_server_manager.db.storage import Storage
-from bedrock_server_manager.state import AppState, ServerConfigState
+from bedrock_server_manager.state import (
+    AppState,
+    PluginInfoState,
+    ServerConfigState,
+)
 
 
 @pytest.mark.asyncio
@@ -78,3 +82,44 @@ async def test_storage_server_persistence(db):
     assert loaded_srv.status == "RUNNING"
     assert loaded_srv.autostart is True
     assert loaded_srv.custom == {"motd": "Welcome!"}
+
+
+@pytest.mark.asyncio
+async def test_storage_plugin_and_user_persistence(db, test_admin_user):
+    storage = Storage(db=db, data_dir="/tmp/test_storage_plugin_user")
+    state = AppState()
+    await storage.load_state(state)
+
+    # Verify user loaded from database
+    admin_user = state.users.get("adminuser")
+    assert admin_user is not None
+    assert admin_user.role == "admin"
+
+    # Modify user theme
+    admin_user.theme = "nord"
+    state.users.set(admin_user)
+
+    # Add plugin state
+    plugin = PluginInfoState(
+        plugin_name="discord_bridge",
+        enabled=True,
+        version="2.1.0",
+        author="BSM",
+        description="Discord bot bridge",
+    )
+    state.plugins.set(plugin)
+
+    await storage.flush(state)
+
+    # Reload into new state
+    reloaded = AppState()
+    await storage.load_state(reloaded)
+
+    reloaded_admin = reloaded.users.get("adminuser")
+    assert reloaded_admin is not None
+    assert reloaded_admin.theme == "nord"
+
+    reloaded_plugin = reloaded.plugins.get("discord_bridge")
+    assert reloaded_plugin is not None
+    assert reloaded_plugin.enabled is True
+    assert reloaded_plugin.version == "2.1.0"

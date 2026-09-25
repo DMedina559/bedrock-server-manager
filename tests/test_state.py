@@ -5,11 +5,13 @@ Unit tests for AppState and its sub-states.
 
 from bedrock_server_manager.state import (
     AppState,
+    PluginInfoState,
     PluginState,
     RuntimeState,
     ServerConfigState,
     ServerState,
     SettingsState,
+    UserInfoState,
     UserState,
 )
 
@@ -95,3 +97,31 @@ def test_server_state():
     server_state.clear_dirty()
     assert not server_state.is_dirty
     assert len(server_state.dirty_servers) == 0
+
+
+def test_plugin_and_user_state():
+    plugin_state = PluginState()
+    p_info = PluginInfoState(
+        plugin_name="backup_plugin",
+        enabled=True,
+        version="1.0.0",
+        author="BSM",
+        description="Backup plugin",
+    )
+    plugin_state.set(p_info)
+    assert plugin_state.is_dirty
+    assert "backup_plugin" in plugin_state.dirty_plugins
+    assert plugin_state.get("backup_plugin") == p_info
+
+    user_state = UserState()
+    u_info = UserInfoState(
+        id=1,
+        username="admin",
+        role="admin",
+        theme="dark",
+        is_active=True,
+    )
+    user_state.set(u_info)
+    assert user_state.is_dirty
+    assert "admin" in user_state.dirty_users
+    assert user_state.get("admin") == u_info

@@ -27,7 +27,7 @@ class RetentionSettings(BaseModel):
 
 
 class MonitoringSettings(BaseModel):
-    max_retiries: int = 3
+    max_retries: int = 3
     process_interval_sec: int = 10
     player_interval_sec: int = 10
 
@@ -180,7 +180,21 @@ class SettingsState(BaseModel):
         defaults = cls.create_defaults(data_dir) if data_dir else cls()
         merged = defaults.to_dict()
 
+        # Unflatten dot-notation keys if loading flat DB records
+        unflattened: Dict[str, Any] = {}
         for k, v in data.items():
+            if "." in k:
+                parts = k.split(".")
+                curr = unflattened
+                for p in parts[:-1]:
+                    if isinstance(curr, dict):
+                        curr = curr.setdefault(p, {})
+                if isinstance(curr, dict):
+                    curr[parts[-1]] = v
+            else:
+                unflattened[k] = v
+
+        for k, v in unflattened.items():
             if isinstance(v, dict) and k in merged and isinstance(merged[k], dict):
                 merged[k].update(v)
             else:

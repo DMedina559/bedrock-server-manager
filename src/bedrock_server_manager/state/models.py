@@ -49,48 +49,82 @@ class ServerState(BaseModel):
 
 
 class PluginInfoState(BaseModel):
-    name: str
-    version: str
-    enabled: bool = True
-    manifest: Dict[str, Any] = Field(default_factory=dict)
+    plugin_name: str
+    enabled: bool = False
+    version: Optional[str] = None
+    author: Optional[str] = None
+    description: Optional[str] = None
     settings: Dict[str, Any] = Field(default_factory=dict)
 
 
 class PluginState(BaseModel):
     plugins: Dict[str, PluginInfoState] = Field(default_factory=dict)
     _dirty: bool = PrivateAttr(default=False)
+    _dirty_plugins: set[str] = PrivateAttr(default_factory=set)
 
-    def mark_dirty(self) -> None:
+    def mark_dirty(self, plugin_name: Optional[str] = None) -> None:
         self._dirty = True
+        if plugin_name:
+            self._dirty_plugins.add(plugin_name)
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_plugins.clear()
 
     @property
     def is_dirty(self) -> bool:
         return self._dirty
+
+    @property
+    def dirty_plugins(self) -> set[str]:
+        return set(self._dirty_plugins)
+
+    def get(self, plugin_name: str) -> Optional[PluginInfoState]:
+        return self.plugins.get(plugin_name)
+
+    def set(self, plugin: PluginInfoState) -> None:
+        self.plugins[plugin.plugin_name] = plugin
+        self.mark_dirty(plugin.plugin_name)
 
 
 class UserInfoState(BaseModel):
-    id: int
+    id: Optional[int] = None
     username: str
-    role: str
+    role: str = "user"
+    theme: str = "default"
     is_active: bool = True
+    full_name: Optional[str] = None
+    email: Optional[str] = None
 
 
 class UserState(BaseModel):
-    users: Dict[int, UserInfoState] = Field(default_factory=dict)
+    users: Dict[str, UserInfoState] = Field(default_factory=dict)
     _dirty: bool = PrivateAttr(default=False)
+    _dirty_users: set[str] = PrivateAttr(default_factory=set)
 
-    def mark_dirty(self) -> None:
+    def mark_dirty(self, username: Optional[str] = None) -> None:
         self._dirty = True
+        if username:
+            self._dirty_users.add(username)
 
     def clear_dirty(self) -> None:
         self._dirty = False
+        self._dirty_users.clear()
 
     @property
     def is_dirty(self) -> bool:
         return self._dirty
+
+    @property
+    def dirty_users(self) -> set[str]:
+        return set(self._dirty_users)
+
+    def get(self, username: str) -> Optional[UserInfoState]:
+        return self.users.get(username)
+
+    def set(self, user: UserInfoState) -> None:
+        self.users[user.username] = user
+        self.mark_dirty(user.username)
 
 
 class ServerRuntimeInfo(BaseModel):

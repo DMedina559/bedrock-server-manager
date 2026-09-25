@@ -74,7 +74,20 @@ class PluginManager:
         logger.info("PluginManager initialized.")
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations from the database asynchronously."""
+        """Loads plugin configurations asynchronously via AppState and Storage."""
+        if hasattr(self.app_context, "state"):
+            await self.app_context.storage.load_state(self.app_context.state)
+            return {
+                name: {
+                    "enabled": p.enabled,
+                    "version": p.version,
+                    "author": p.author,
+                    "description": p.description,
+                }
+                for name, p in self.app_context.state.plugins.plugins.items()
+            }
+
+        # Fallback if state is not available
         from sqlalchemy.future import select
 
         from ..db.models import Plugin
@@ -93,7 +106,24 @@ class PluginManager:
             }
 
     async def _save_config(self) -> None:
-        """Saves the current in-memory plugin configuration to the database in a single batch."""
+        """Saves current plugin configuration asynchronously via AppState and Storage."""
+        from ..state.models import PluginInfoState
+
+        if hasattr(self.app_context, "state"):
+            for plugin_name, config in self.plugin_config.items():
+                p_info = PluginInfoState(
+                    plugin_name=plugin_name,
+                    enabled=bool(config.get("enabled", False)),
+                    version=str(config.get("version") or ""),
+                    author=str(config.get("author") or ""),
+                    description=str(config.get("description") or ""),
+                )
+                self.app_context.state.plugins.set(p_info)
+
+            await self.app_context.storage.flush(self.app_context.state)
+            return
+
+        # Fallback if state is not available
         from sqlalchemy.future import select
 
         from ..db.models import Plugin
