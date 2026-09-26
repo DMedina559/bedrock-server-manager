@@ -351,16 +351,32 @@ class PluginManager:
         Includes idempotency checks to prevent duplicate task loops if called multiple times.
         """
         logger.info("Starting background tasks for plugins.")
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
         for plugin_instance in self.plugins:
             plugin_key = (
                 getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
                 or plugin_instance.name
             )
 
-            # Do not start tasks if they are already running for this plugin
+            # Keep only tasks that are alive AND belong to the current running event loop
             existing_tasks = self.plugin_tasks.get(plugin_key, [])
-            if any(not t.done() for t in existing_tasks):
+            valid_existing_tasks = [
+                t
+                for t in existing_tasks
+                if not t.done()
+                and (current_loop is None or t.get_loop() is current_loop)
+            ]
+
+            if valid_existing_tasks:
+                self.plugin_tasks[plugin_key] = valid_existing_tasks
                 continue
+
+            # Reset task list for this plugin on the active loop
+            self.plugin_tasks[plugin_key] = []
 
             try:
                 for method_name, method in inspect.getmembers(
@@ -666,9 +682,20 @@ class PluginManager:
                 tasks_to_await.append(task)
         self.plugin_tasks.clear()
 
-        # Ensure all cancelled tasks finish terminating cleanly
+        # Ensure only tasks belonging to the current running event loop are gathered
         if tasks_to_await:
-            await asyncio.gather(*tasks_to_await, return_exceptions=True)
+            try:
+                current_loop = asyncio.get_running_loop()
+                active_tasks = [
+                    t
+                    for t in tasks_to_await
+                    if not t.done() and t.get_loop() is current_loop
+                ]
+                if active_tasks:
+                    await asyncio.gather(*active_tasks, return_exceptions=True)
+            except RuntimeError:
+                # No active running loop, tasks are already cancelled
+                pass
 
         self._event_listeners.clear()
         self._discovered_classes.clear()
@@ -739,7 +766,17 @@ class PluginManager:
                 tasks_to_await.append(task)
 
         if tasks_to_await:
-            await asyncio.gather(*tasks_to_await, return_exceptions=True)
+            try:
+                current_loop = asyncio.get_running_loop()
+                active_tasks = [
+                    t
+                    for t in tasks_to_await
+                    if not t.done() and t.get_loop() is current_loop
+                ]
+                if active_tasks:
+                    await asyncio.gather(*active_tasks, return_exceptions=True)
+            except RuntimeError:
+                pass
 
         if target_instance in self.plugins:
             self.plugins.remove(target_instance)
