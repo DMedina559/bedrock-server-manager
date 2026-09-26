@@ -129,6 +129,19 @@ class UserState(BaseModel):
         self.mark_dirty(user.username)
 
 
+class BanItem(BaseModel):
+    player_name: str
+    xuid: str
+    reason: Optional[str] = None
+    banned_at: Optional[str] = None
+
+
+class BanResult(BaseModel):
+    success: bool
+    message: str
+    bans: Optional[List[BanItem]] = None
+
+
 class ServerRuntimeInfo(BaseModel):
     running: bool = False
     pid: Optional[int] = None

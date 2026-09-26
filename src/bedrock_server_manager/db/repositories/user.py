@@ -4,6 +4,7 @@ Repository for managing User and RegistrationToken database entity persistence.
 
 from typing import Any, List, Optional, cast
 
+from sqlalchemy import func
 from sqlalchemy.future import select
 
 from ...state.models import UserInfoState
@@ -77,8 +78,43 @@ class UserRepository:
         )
         return cast(Optional[RegistrationToken], result.scalar_one_or_none())
 
+    async def create_registration_token(
+        self, session: Any, token: str, role: str, expires: int
+    ) -> RegistrationToken:
+        """Creates and adds a new RegistrationToken record."""
+        token_record = RegistrationToken(token=token, role=role, expires=expires)
+        session.add(token_record)
+        return token_record
+
+    async def create_user(
+        self, session: Any, username: str, hashed_password: str, role: str
+    ) -> User:
+        """Creates and adds a new User record."""
+        user = User(username=username, hashed_password=hashed_password, role=role)
+        session.add(user)
+        return user
+
     async def delete_registration_token(
         self, session: Any, token_record: RegistrationToken
     ) -> None:
         """Deletes a RegistrationToken record from the database."""
         await session.delete(token_record)
+
+    async def update_password(
+        self, session: Any, username: str, hashed_password: str
+    ) -> bool:
+        """Updates hashed password for a user by username."""
+        user = await self.get_user_by_username(session, username)
+        if user:
+            user.hashed_password = hashed_password
+            return True
+        return False
+
+    async def count_active_admins(self, session: Any) -> int:
+        """Counts active admin users in the database."""
+        result = await session.execute(
+            select(func.count())
+            .select_from(User)
+            .filter(User.role == "admin", User.is_active.is_(True))
+        )
+        return int(result.scalar() or 0)

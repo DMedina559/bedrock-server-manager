@@ -3,7 +3,10 @@
 Central AppState class holding in-memory domain states.
 """
 
-from pydantic import BaseModel, Field
+import asyncio
+from typing import Optional
+
+from pydantic import BaseModel, Field, PrivateAttr
 
 from .models import PluginState, RuntimeState, ServerState, UserState
 from .settings import SettingsState
@@ -15,6 +18,14 @@ class AppState(BaseModel):
     plugins: PluginState = Field(default_factory=PluginState)
     users: UserState = Field(default_factory=UserState)
     runtime: RuntimeState = Field(default_factory=RuntimeState)
+    _lock: Optional[asyncio.Lock] = PrivateAttr(default=None)
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Returns or initializes an asyncio.Lock for atomic state mutations across tasks."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def is_dirty(self) -> bool:
         """Returns True if any persistent sub-state has pending modifications."""

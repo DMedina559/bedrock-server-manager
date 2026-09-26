@@ -7,6 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
 
+from ..error import BSMError, StorageError
 from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
 from ..state.settings import SettingsState
@@ -52,8 +53,10 @@ class Storage:
                 await session.commit()
             except Exception as e:
                 await session.rollback()
+                if isinstance(e, BSMError) or e.__class__.__name__ == "HTTPException":
+                    raise
                 logger.error(f"Storage transaction failed: {e}")
-                raise e
+                raise StorageError(f"Database transaction failed: {e}") from e
 
     async def apply_changeset(self, state: AppState, changeset: ChangeSet) -> None:
         """Applies and persists specific changes recorded in a ChangeSet within a single transaction."""

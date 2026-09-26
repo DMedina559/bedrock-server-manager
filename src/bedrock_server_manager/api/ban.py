@@ -29,10 +29,13 @@ async def add_server_ban_api(
     logger.info(
         f"API: Adding ban for player '{player_name}' ({xuid}) on server '{server_name}'."
     )
-    res: Dict[str, Any] = await app_context.server_service.add_server_ban(
+    ban_res = await app_context.server_service.add_server_ban(
         server_name=server_name, player_name=player_name, xuid=xuid, reason=reason
     )
-    return res
+    return {
+        "status": "success" if ban_res.success else "error",
+        "message": ban_res.message,
+    }
 
 
 @trigger_event(
@@ -48,10 +51,13 @@ async def remove_server_ban_api(
         raise UserInputError("server_name and xuid are required.")
 
     logger.info(f"API: Removing ban for XUID '{xuid}' on server '{server_name}'.")
-    res: Dict[str, Any] = await app_context.server_service.remove_server_ban(
+    ban_res = await app_context.server_service.remove_server_ban(
         server_name=server_name, xuid=xuid
     )
-    return res
+    return {
+        "status": "success" if ban_res.success else "error",
+        "message": ban_res.message,
+    }
 
 
 @api_method("get_server_bans_api")
@@ -62,7 +68,10 @@ async def get_server_bans_api(
     if not server_name:
         raise UserInputError("server_name is required.")
 
-    res: Dict[str, Any] = await app_context.server_service.get_server_bans(
-        server_name=server_name
-    )
-    return res
+    ban_res = await app_context.server_service.get_server_bans(server_name=server_name)
+    if not ban_res.success:
+        return {"status": "error", "message": ban_res.message}
+    return {
+        "status": "success",
+        "bans": [ban.model_dump() for ban in (ban_res.bans or [])],
+    }

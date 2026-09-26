@@ -90,21 +90,21 @@ async def test_server_ban_repository(db):
         res = await storage.ban_repo.add_or_update_ban(
             session, "banned_srv", "Gamer123", "xuid_123", "Griefing"
         )
-        assert res["status"] == "success"
+        assert res.success is True
 
     # Get bans
     async with storage.transaction() as session:
         bans = await storage.ban_repo.get_bans(session, "banned_srv")
-        assert bans["status"] == "success"
-        assert len(bans["bans"]) == 1
-        assert bans["bans"][0]["xuid"] == "xuid_123"
+        assert bans.success is True
+        assert len(bans.bans) == 1
+        assert bans.bans[0].xuid == "xuid_123"
 
     # Remove ban
     async with storage.transaction() as session:
         rem_res = await storage.ban_repo.remove_ban(session, "banned_srv", "xuid_123")
-        assert rem_res["status"] == "success"
+        assert rem_res.success is True
 
     # Verify no bans
     async with storage.transaction() as session:
         bans = await storage.ban_repo.get_bans(session, "banned_srv")
-        assert len(bans["bans"]) == 0
+        assert len(bans.bans) == 0

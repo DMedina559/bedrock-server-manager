@@ -3,13 +3,14 @@
 Service managing user domain state mutations and user account operations.
 """
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
 
 if TYPE_CHECKING:
-    from ..context import AppContext
+    from ..db.storage import Storage
+    from ..state.app_state import AppState
 
 
 class UserService:
@@ -17,36 +18,11 @@ class UserService:
 
     def __init__(
         self,
-        app_context: Optional["AppContext"] = None,
-        state: Optional[Any] = None,
-        storage: Optional[Any] = None,
+        state: "AppState",
+        storage: Optional["Storage"] = None,
     ):
-        self._app_context = app_context
-        self._state = state
-        self._storage = storage
-
-    @property
-    def app_context(self) -> Optional["AppContext"]:
-        return self._app_context
-
-    @property
-    def state(self) -> Any:
-        if self._state is not None:
-            return self._state
-        if self._app_context is not None:
-            return self._app_context.state
-        raise ValueError("UserService has no AppState provided or set via AppContext.")
-
-    @property
-    def storage(self) -> Optional[Any]:
-        if self._storage is not None:
-            return self._storage
-        if (
-            self._app_context is not None
-            and getattr(self._app_context, "_storage", None) is not None
-        ):
-            return self._app_context.storage
-        return None
+        self.state = state
+        self.storage = storage
 
     def get_user_state(self, username: str) -> Optional[UserInfoState]:
         """Retrieves a user state snapshot."""
@@ -91,12 +67,13 @@ class UserService:
                 email=email,
             )
 
-        self.state.users.set(user)
+        async with self.state.lock:
+            self.state.users.set(user)
 
-        changeset = ChangeSet()
-        changeset.add_user(username)
+            changeset = ChangeSet()
+            changeset.add_user(username)
 
-        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
-            await self.storage.apply_changeset(self.state, changeset)
+            if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+                await self.storage.apply_changeset(self.state, changeset)
 
         return user

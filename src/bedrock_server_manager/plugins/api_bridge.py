@@ -22,6 +22,7 @@ from typing import (
     List,
     Optional,
     TypeVar,
+    cast,
 )
 
 if TYPE_CHECKING:
@@ -178,6 +179,17 @@ def create_app_api(
     return AppAPI(plugin_name, api_dispatcher, event_listener, event_sender, is_core)
 
 
+class CapabilityNamespace:
+    """Scoped capability interface for domain operations (e.g., api.servers, api.settings)."""
+
+    def __init__(self, api: "AppAPI", domain: str):
+        self._api = api
+        self._domain = domain
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        return cast(Callable[..., Any], getattr(self._api, name))
+
+
 class AppAPI:
     """Provides a safe, dynamic, and decoupled interface for plugins to access core APIs.
 
@@ -217,9 +229,41 @@ class AppAPI:
         self._event_listener = event_listener
         self._event_sender = event_sender
         self._is_core: bool = is_core
+
+        self._servers = CapabilityNamespace(self, "servers")
+        self._settings = CapabilityNamespace(self, "settings")
+        self._players = CapabilityNamespace(self, "players")
+        self._plugins = CapabilityNamespace(self, "plugins")
+        self._tasks = CapabilityNamespace(self, "tasks")
+
         logger.debug(
             f"AppAPI instance created for plugin '{self._plugin_name}' (is_core={is_core})."
         )
+
+    @property
+    def servers(self) -> CapabilityNamespace:
+        """Scoped capability interface for server operations."""
+        return self._servers
+
+    @property
+    def settings(self) -> CapabilityNamespace:
+        """Scoped capability interface for settings operations."""
+        return self._settings
+
+    @property
+    def players(self) -> CapabilityNamespace:
+        """Scoped capability interface for player operations."""
+        return self._players
+
+    @property
+    def plugins(self) -> CapabilityNamespace:
+        """Scoped capability interface for plugin operations."""
+        return self._plugins
+
+    @property
+    def tasks(self) -> CapabilityNamespace:
+        """Scoped capability interface for task operations."""
+        return self._tasks
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
         """Dynamically retrieves a registered core API function when accessed as an attribute.

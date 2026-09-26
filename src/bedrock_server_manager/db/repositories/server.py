@@ -4,10 +4,11 @@ Repository for managing Server database entity persistence.
 
 from typing import Any, List, Optional, cast
 
+from sqlalchemy import delete
 from sqlalchemy.future import select
 
 from ...state.models import ServerConfigState
-from ..models import Server
+from ..models import Server, ServerBan
 
 
 class ServerRepository:
@@ -67,3 +68,14 @@ class ServerRepository:
                 custom=cfg.custom,
             )
             session.add(server_record)
+
+    async def delete_server(self, session: Any, server_name: str) -> bool:
+        """Deletes a server record and its associated bans from the database."""
+        db_server = await self.get_server_by_name(session, server_name)
+        if db_server:
+            await session.execute(
+                delete(ServerBan).filter(ServerBan.server_id == db_server.id)
+            )
+            await session.delete(db_server)
+            return True
+        return False

@@ -76,7 +76,8 @@ async def test_add_server_ban_api_server_missing(app_context):
 
 async def test_add_server_ban_api_no_db(app_context):
     """Test add_server_ban_api cleanly fails if DB is somehow uninitialized."""
-    app_context._db = None
+    app_context._storage = None
+    app_context._server_service = None
     result = await add_server_ban_api(app_context, "test_server", "banned", "xuid")
     assert result["status"] == "error"
     assert "Database is not initialized" in result["message"]

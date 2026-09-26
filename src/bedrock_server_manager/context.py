@@ -88,6 +88,10 @@ class AppContext:
 
         self._storage = Storage(db=self.db, data_dir=self.data_dir)
         self._state = AppState()
+        self._settings_service = None
+        self._server_service = None
+        self._plugin_service = None
+        self._user_service = None
         await self._storage.load_state(self._state)
 
         if self._settings is not None:
@@ -410,7 +414,9 @@ class AppContext:
         if self._settings_service is None:
             from .services.settings_service import SettingsService
 
-            self._settings_service = SettingsService(self)
+            self._settings_service = SettingsService(
+                state=self.state, settings=self.settings, storage=self._storage
+            )
         return self._settings_service
 
     @property
@@ -419,7 +425,9 @@ class AppContext:
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(self)
+            self._server_service = ServerService(
+                state=self.state, storage=self._storage
+            )
         return self._server_service
 
     @property
@@ -428,7 +436,9 @@ class AppContext:
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
-            self._plugin_service = PluginService(self)
+            self._plugin_service = PluginService(
+                state=self.state, storage=self._storage
+            )
         return self._plugin_service
 
     @property
@@ -437,7 +447,7 @@ class AppContext:
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(self)
+            self._user_service = UserService(state=self.state, storage=self._storage)
         return self._user_service
 
     @property

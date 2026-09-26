@@ -96,7 +96,6 @@ async def _get_and_update_user_from_db(
     # Only update the database if last_seen is missing or older than 5 minutes
     if last_seen_dt is None or (now - last_seen_dt) > datetime.timedelta(minutes=5):
         user.last_seen = now
-        await session.commit()
 
     return UserResponse(
         id=int(user.id),

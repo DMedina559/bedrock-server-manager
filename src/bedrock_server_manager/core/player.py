@@ -123,14 +123,9 @@ async def discover_and_store_players(  # noqa: C901
         unique_players_to_save_map = {p["xuid"]: p for p in all_discovered_from_logs}
         unique_players_to_save_list = list(unique_players_to_save_map.values())
         try:
-            if getattr(app_context, "_storage", None) is not None:
-                saved_count = await save_player_data(
-                    app_context.storage, unique_players_to_save_list
-                )
-            else:
-                saved_count = await save_player_data(
-                    app_context.db.session_manager, unique_players_to_save_list
-                )
+            saved_count = await save_player_data(
+                app_context.storage, unique_players_to_save_list
+            )
         except (FileOperationError, Exception) as e_save:
             logger.error(
                 f"Critical error saving player data to global DB: {e_save}",

@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
-from ...db.models import RegistrationToken, User
 from ...utils import get_password_hash
 from ..deps import get_admin_user, get_app_context
 from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
@@ -47,9 +46,10 @@ async def generate_token(
 
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
-    registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
     async with app_context.storage.transaction() as session:
-        session.add(registration_token)
+        await app_context.storage.user_repo.create_registration_token(
+            session, token=token, role=data.role, expires=expires
+        )
 
     base_url = str(request.base_url)
     registration_link = f"{base_url}app/register/{token}"
@@ -116,14 +116,14 @@ async def register_user(
             )
 
         hashed_password = get_password_hash(data.password)
-        user = User(
-            username=data.username,
-            hashed_password=hashed_password,
-            role=str(registration_token.role),
-        )
 
         try:
-            session.add(user)
+            await app_context.storage.user_repo.create_user(
+                session,
+                username=data.username,
+                hashed_password=hashed_password,
+                role=str(registration_token.role),
+            )
             await app_context.storage.user_repo.delete_registration_token(
                 session, registration_token
             )

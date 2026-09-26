@@ -14,11 +14,8 @@ import logging
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
-from sqlalchemy.future import select
 
 from ...context import AppContext
-from ...db.models import User
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
@@ -30,16 +27,6 @@ router = APIRouter(
     prefix="/api/users",
     tags=["User Management"],
 )
-
-
-async def _get_active_admin_count(session) -> int:
-    """Helper function to get the count of active admins."""
-    result = await session.execute(
-        select(func.count())
-        .select_from(User)
-        .filter(User.role == "admin", User.is_active.is_(True))
-    )
-    return int(result.scalar() or 0)
 
 
 @router.get("/list", response_model=List[UserSchema])
@@ -67,7 +54,11 @@ async def delete_user(
     async with app_context.storage.transaction() as session:
         user = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
-            if user.role == "admin" and await _get_active_admin_count(session) <= 1:
+            if (
+                user.role == "admin"
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot delete the last active admin.",
@@ -103,7 +94,11 @@ async def disable_user(
     async with app_context.storage.transaction() as session:
         user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
-            if user.role == "admin" and await _get_active_admin_count(session) <= 1:
+            if (
+                user.role == "admin"
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot disable the last active admin.",
@@ -173,7 +168,8 @@ async def update_user_role(
             if (
                 user.role == "admin"
                 and data.role != "admin"
-                and await _get_active_admin_count(session) <= 1
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
             ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,

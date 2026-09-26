@@ -26,7 +26,6 @@ from typing import Any
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath
-from sqlalchemy import delete
 
 from ...error import (
     AppFileNotFoundError,
@@ -216,35 +215,23 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 )
                 failed_deletions.append(pid_file_path)
 
-        if getattr(self.app_context, "_storage", None) is not None:
-            try:
-                from ...db.models import ServerBan
-
-                async with self.app_context.storage.transaction() as session:
-                    db_server = (
-                        await self.app_context.storage.server_repo.get_server_by_name(
-                            session, self.server_name
-                        )
-                    )
-                    if db_server:
-                        await session.execute(
-                            delete(ServerBan).filter(
-                                ServerBan.server_id == db_server.id
-                            )
-                        )
-                        await session.delete(db_server)
-
-                if self.server_name in self.app_context.state.servers.servers:
-                    del self.app_context.state.servers.servers[self.server_name]
-
-                self.logger.info(
-                    f"Successfully deleted server '{self.server_name}' and its associated data from the database."
+        try:
+            async with self.app_context.storage.transaction() as session:
+                await self.app_context.storage.server_repo.delete_server(
+                    session, self.server_name
                 )
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to remove database entries for server '{self.server_name}': {e}"
-                )
-                failed_deletions.append("Database Entries")
+
+            if self.server_name in self.app_context.state.servers.servers:
+                del self.app_context.state.servers.servers[self.server_name]
+
+            self.logger.info(
+                f"Successfully deleted server '{self.server_name}' and its associated data from the database."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to remove database entries for server '{self.server_name}': {e}"
+            )
+            failed_deletions.append("Database Entries")
 
         if failed_deletions:
             error_msg = f"Failed to delete ALL data for '{self.server_name}'. The following paths/items could not be removed: {', '.join(failed_deletions)}"

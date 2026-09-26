@@ -64,9 +64,9 @@ async def add_players_manually_api(
     """
     logger.info(f"API: Adding players manually: {player_strings}")
 
-    db = app_context.db
-    if db is None:
-        return {"status": "error", "message": "Database is not initialized."}
+    storage = app_context.storage
+    if storage is None:
+        return {"status": "error", "message": "Storage is not initialized."}
 
     # --- Input Validation ---
     if (
@@ -83,7 +83,7 @@ async def add_players_manually_api(
         combined_input = ",".join(player_strings)
         players_data = parse_player_string(combined_input)
         if players_data:
-            await save_player_data(db.session_manager, players_data)
+            await save_player_data(storage, players_data)
 
         return {
             "status": "success",
@@ -121,12 +121,12 @@ async def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
     """
     logger.info("API: Request to get all known players.")
 
-    db = app_context.db
-    if db is None:
-        return {"status": "error", "message": "Database is not initialized."}
+    storage = app_context.storage
+    if storage is None:
+        return {"status": "error", "message": "Storage is not initialized."}
 
     try:
-        players = await get_known_players(db.session_manager)
+        players = await get_known_players(storage)
         return {"status": "success", "players": players}
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
@@ -167,9 +167,9 @@ async def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, An
     """
     logger.info("API: Request to scan all server logs and update player DB.")
 
-    db = app_context.db
-    if db is None:
-        return {"status": "error", "message": "Database is not initialized."}
+    storage = app_context.storage
+    if storage is None:
+        return {"status": "error", "message": "Storage is not initialized."}
 
     try:
         base_dir = app_context.settings.get("paths.servers", "")

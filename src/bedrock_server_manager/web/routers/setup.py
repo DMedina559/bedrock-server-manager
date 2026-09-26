@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
-from ...db.models import User
 from ...utils import (
     create_access_token,
     get_password_hash,
@@ -60,13 +59,14 @@ async def create_first_user(
 
     async with app_context.storage.transaction() as session:
         hashed_password = get_password_hash(data.password)
-        user = User(
-            username=data.username, hashed_password=hashed_password, role="admin"
-        )
 
         try:
-            session.add(user)
-            await session.commit()
+            user = await app_context.storage.user_repo.create_user(
+                session,
+                username=data.username,
+                hashed_password=hashed_password,
+                role="admin",
+            )
 
             logger.info(f"First user '{data.username}' created with admin role.")
 

@@ -46,7 +46,7 @@ async def test_add_players_manually_api_parse_error(app_context, monkeypatch):
 async def test_add_players_manually_api_no_db(app_context, monkeypatch):
     """Test add_players_manually_api errors properly if no db initialized."""
     # We must patch the underlying hidden variable accessed by the property getter
-    monkeypatch.setattr(type(app_context), "db", None)
+    monkeypatch.setattr(type(app_context), "storage", None)
     result = await add_players_manually_api(["player1:123"], app_context)
     assert result["status"] == "error"
     assert "not initialized" in result["message"]
@@ -65,7 +65,7 @@ async def test_get_all_known_players_api_success(app_context, monkeypatch):
 
 async def test_get_all_known_players_api_no_db(app_context, monkeypatch):
     """Test get_all_known_players_api errors properly if no db initialized."""
-    monkeypatch.setattr(type(app_context), "db", None)
+    monkeypatch.setattr(type(app_context), "storage", None)
     result = await get_all_known_players_api(app_context)
     assert result["status"] == "error"
     assert "not initialized" in result["message"]
@@ -107,7 +107,7 @@ async def test_scan_and_update_player_db_api_bsm_error(app_context, monkeypatch)
 
 async def test_scan_and_update_player_db_api_no_db(app_context, monkeypatch):
     """Test scan_and_update_player_db_api errors properly if no db initialized."""
-    monkeypatch.setattr(type(app_context), "db", None)
+    monkeypatch.setattr(type(app_context), "storage", None)
     result = await scan_and_update_player_db_api(app_context)
     assert result["status"] == "error"
     assert "not initialized" in result["message"]

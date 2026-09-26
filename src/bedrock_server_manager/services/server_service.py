@@ -3,13 +3,14 @@
 Service managing server domain state mutations and business rules.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..state.changeset import ChangeSet
-from ..state.models import ServerConfigState
+from ..state.models import BanResult, ServerConfigState
 
 if TYPE_CHECKING:
-    from ..context import AppContext
+    from ..db.storage import Storage
+    from ..state.app_state import AppState
 
 
 class ServerService:
@@ -17,38 +18,11 @@ class ServerService:
 
     def __init__(
         self,
-        app_context: Optional["AppContext"] = None,
-        state: Optional[Any] = None,
-        storage: Optional[Any] = None,
+        state: "AppState",
+        storage: Optional["Storage"] = None,
     ):
-        self._app_context = app_context
-        self._state = state
-        self._storage = storage
-
-    @property
-    def app_context(self) -> Optional["AppContext"]:
-        return self._app_context
-
-    @property
-    def state(self) -> Any:
-        if self._state is not None:
-            return self._state
-        if self._app_context is not None:
-            return self._app_context.state
-        raise ValueError(
-            "ServerService has no AppState provided or set via AppContext."
-        )
-
-    @property
-    def storage(self) -> Optional[Any]:
-        if self._storage is not None:
-            return self._storage
-        if (
-            self._app_context is not None
-            and getattr(self._app_context, "_storage", None) is not None
-        ):
-            return self._app_context.storage
-        return None
+        self.state = state
+        self.storage = storage
 
     def get_server_state(self, server_name: str) -> Optional[ServerConfigState]:
         """Retrieves a server configuration state model snapshot."""
@@ -94,13 +68,14 @@ class ServerService:
                 custom=custom or {},
             )
 
-        self.state.servers.set(config)
+        async with self.state.lock:
+            self.state.servers.set(config)
 
-        changeset = ChangeSet()
-        changeset.add_server(server_name)
+            changeset = ChangeSet()
+            changeset.add_server(server_name)
 
-        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
-            await self.storage.apply_changeset(self.state, changeset)
+            if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+                await self.storage.apply_changeset(self.state, changeset)
 
         return config
 
@@ -118,49 +93,31 @@ class ServerService:
         player_name: str,
         xuid: str,
         reason: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> BanResult:
         """Adds or updates a server ban record."""
-        if (
-            self.app_context is not None
-            and getattr(self.app_context, "_db", None) is None
-        ):
-            return {"status": "error", "message": "Database is not initialized."}
         st = self.storage
         if st is None or getattr(st, "db", None) is None:
-            return {"status": "error", "message": "Database is not initialized."}
+            return BanResult(success=False, message="Database is not initialized.")
 
         async with st.transaction() as session:
-            res = await st.ban_repo.add_or_update_ban(
+            return await st.ban_repo.add_or_update_ban(
                 session, server_name, player_name, xuid, reason
             )
-            return cast(Dict[str, Any], res)
 
-    async def remove_server_ban(self, server_name: str, xuid: str) -> Dict[str, Any]:
+    async def remove_server_ban(self, server_name: str, xuid: str) -> BanResult:
         """Removes a server ban record by XUID."""
-        if (
-            self.app_context is not None
-            and getattr(self.app_context, "_db", None) is None
-        ):
-            return {"status": "error", "message": "Database is not initialized."}
         st = self.storage
         if st is None or getattr(st, "db", None) is None:
-            return {"status": "error", "message": "Database is not initialized."}
+            return BanResult(success=False, message="Database is not initialized.")
 
         async with st.transaction() as session:
-            res = await st.ban_repo.remove_ban(session, server_name, xuid)
-            return cast(Dict[str, Any], res)
+            return await st.ban_repo.remove_ban(session, server_name, xuid)
 
-    async def get_server_bans(self, server_name: str) -> Dict[str, Any]:
+    async def get_server_bans(self, server_name: str) -> BanResult:
         """Retrieves all bans for a specific server."""
-        if (
-            self.app_context is not None
-            and getattr(self.app_context, "_db", None) is None
-        ):
-            return {"status": "error", "message": "Database is not initialized."}
         st = self.storage
         if st is None or getattr(st, "db", None) is None:
-            return {"status": "error", "message": "Database is not initialized."}
+            return BanResult(success=False, message="Database is not initialized.")
 
         async with st.transaction() as session:
-            res = await st.ban_repo.get_bans(session, server_name)
-            return cast(Dict[str, Any], res)
+            return await st.ban_repo.get_bans(session, server_name)
