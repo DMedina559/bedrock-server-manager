@@ -66,14 +66,14 @@ class PluginService:
                 settings=settings or {},
             )
 
-        async with self.state.lock:
+        async with self.state.plugins.get_lock(plugin_name):
             self.state.plugins.set(plugin)
 
-            changeset = ChangeSet()
-            changeset.add_plugin(plugin_name)
+        changeset = ChangeSet()
+        changeset.add_plugin(plugin_name)
 
-            if self.storage is not None and hasattr(self.storage, "apply_changeset"):
-                await self.storage.apply_changeset(self.state, changeset)
+        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+            await self.storage.apply_changeset(self.state, changeset)
 
         return plugin
 

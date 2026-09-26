@@ -68,14 +68,14 @@ class ServerService:
                 custom=custom or {},
             )
 
-        async with self.state.lock:
+        async with self.state.servers.get_lock(server_name):
             self.state.servers.set(config)
 
-            changeset = ChangeSet()
-            changeset.add_server(server_name)
+        changeset = ChangeSet()
+        changeset.add_server(server_name)
 
-            if self.storage is not None and hasattr(self.storage, "apply_changeset"):
-                await self.storage.apply_changeset(self.state, changeset)
+        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+            await self.storage.apply_changeset(self.state, changeset)
 
         return config
 

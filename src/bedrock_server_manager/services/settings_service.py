@@ -40,11 +40,11 @@ class SettingsService:
             if self.settings is not None and hasattr(self.settings, "_settings"):
                 setattr(self.settings, "_settings", self.state.settings.to_dict())
 
-            changeset = ChangeSet()
-            changeset.add_setting(key)
+        changeset = ChangeSet()
+        changeset.add_setting(key)
 
-            if self.storage is not None and hasattr(self.storage, "apply_changeset"):
-                await self.storage.apply_changeset(self.state, changeset)
+        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+            await self.storage.apply_changeset(self.state, changeset)
 
     async def get_all_settings(self) -> Dict[str, Any]:
         """Returns all configuration settings as a dictionary snapshot."""

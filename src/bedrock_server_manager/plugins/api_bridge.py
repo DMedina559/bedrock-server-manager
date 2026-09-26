@@ -187,7 +187,11 @@ class CapabilityNamespace:
         self._domain = domain
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
-        return cast(Callable[..., Any], getattr(self._api, name))
+        full_name = f"{self._domain}_{name}"
+        try:
+            return cast(Callable[..., Any], getattr(self._api, full_name))
+        except AttributeError:
+            return cast(Callable[..., Any], getattr(self._api, name))
 
 
 class AppAPI:
@@ -275,6 +279,19 @@ class AppAPI:
         Returns:
             Callable[..., Any]: The callable API function.
         """
+        if name in (
+            "app_context",
+            "state",
+            "storage",
+            "db",
+            "_app_context",
+            "_state",
+            "_storage",
+        ):
+            raise AttributeError(
+                f"Direct access to '{name}' is forbidden via AppAPI. Use capability namespaces instead."
+            )
+
         resolved_function = self._api_dispatcher(name)
         logger.debug(
             f"Plugin '{self._plugin_name}' successfully accessed API function: '{name}'."

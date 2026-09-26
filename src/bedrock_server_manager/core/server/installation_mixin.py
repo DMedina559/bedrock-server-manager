@@ -216,13 +216,14 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 failed_deletions.append(pid_file_path)
 
         try:
-            async with self.app_context.storage.transaction() as session:
-                await self.app_context.storage.server_repo.delete_server(
-                    session, self.server_name
-                )
+            if self.storage:
+                async with self.storage.transaction() as session:
+                    await self.storage.server_repo.delete_server(
+                        session, self.server_name
+                    )
 
-            if self.server_name in self.app_context.state.servers.servers:
-                del self.app_context.state.servers.servers[self.server_name]
+            if self.state and self.server_name in self.state.servers.servers:
+                del self.state.servers.servers[self.server_name]
 
             self.logger.info(
                 f"Successfully deleted server '{self.server_name}' and its associated data from the database."

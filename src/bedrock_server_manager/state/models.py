@@ -3,6 +3,7 @@
 Typed domain state models for ServerState, PluginState, UserState, and RuntimeState.
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -24,11 +25,22 @@ class ServerState(BaseModel):
     servers: Dict[str, ServerConfigState] = Field(default_factory=dict)
     _dirty: bool = PrivateAttr(default=False)
     _dirty_servers: set[str] = PrivateAttr(default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+
+    def get_lock(self, server_name: str) -> asyncio.Lock:
+        if server_name not in self._locks:
+            self._locks[server_name] = asyncio.Lock()
+        return self._locks[server_name]
 
     def mark_dirty(self, server_name: Optional[str] = None) -> None:
         self._dirty = True
         if server_name:
             self._dirty_servers.add(server_name)
+
+    def remove_dirty_server(self, server_name: str) -> None:
+        self._dirty_servers.discard(server_name)
+        if not self._dirty_servers:
+            self._dirty = False
 
     def clear_dirty(self) -> None:
         self._dirty = False
@@ -63,11 +75,22 @@ class PluginState(BaseModel):
     plugins: Dict[str, PluginInfoState] = Field(default_factory=dict)
     _dirty: bool = PrivateAttr(default=False)
     _dirty_plugins: set[str] = PrivateAttr(default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+
+    def get_lock(self, plugin_name: str) -> asyncio.Lock:
+        if plugin_name not in self._locks:
+            self._locks[plugin_name] = asyncio.Lock()
+        return self._locks[plugin_name]
 
     def mark_dirty(self, plugin_name: Optional[str] = None) -> None:
         self._dirty = True
         if plugin_name:
             self._dirty_plugins.add(plugin_name)
+
+    def remove_dirty_plugin(self, plugin_name: str) -> None:
+        self._dirty_plugins.discard(plugin_name)
+        if not self._dirty_plugins:
+            self._dirty = False
 
     def clear_dirty(self) -> None:
         self._dirty = False
@@ -103,11 +126,22 @@ class UserState(BaseModel):
     users: Dict[str, UserInfoState] = Field(default_factory=dict)
     _dirty: bool = PrivateAttr(default=False)
     _dirty_users: set[str] = PrivateAttr(default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+
+    def get_lock(self, username: str) -> asyncio.Lock:
+        if username not in self._locks:
+            self._locks[username] = asyncio.Lock()
+        return self._locks[username]
 
     def mark_dirty(self, username: Optional[str] = None) -> None:
         self._dirty = True
         if username:
             self._dirty_users.add(username)
+
+    def remove_dirty_user(self, username: str) -> None:
+        self._dirty_users.discard(username)
+        if not self._dirty_users:
+            self._dirty = False
 
     def clear_dirty(self) -> None:
         self._dirty = False

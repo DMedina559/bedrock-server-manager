@@ -357,7 +357,12 @@ class AppContext:
         if self._plugin_manager is None:
             from .plugins.plugin_manager import PluginManager
 
-            self._plugin_manager = PluginManager(self)
+            self._plugin_manager = PluginManager(
+                state=self.state,
+                storage=self.storage,
+                settings=self.settings,
+                app_context=self,
+            )
         return self._plugin_manager
 
     @property
@@ -368,7 +373,9 @@ class AppContext:
         if self._task_manager is None:
             from .web.tasks import TaskManager
 
-            self._task_manager = TaskManager(app_context=self)
+            self._task_manager = TaskManager(
+                connection_manager=self.connection_manager,
+            )
         return self._task_manager
 
     @property
@@ -390,7 +397,10 @@ class AppContext:
         if self._resource_monitor is None:
             from .web.resource_monitor import ResourceMonitor
 
-            self._resource_monitor = ResourceMonitor(app_context=self)
+            self._resource_monitor = ResourceMonitor(
+                connection_manager=self.connection_manager,
+                server_provider=self.get_server,
+            )
         return self._resource_monitor
 
     @property
@@ -401,7 +411,11 @@ class AppContext:
         if self._log_streamer is None:
             from .web.log_streamer import LogStreamer
 
-            self._log_streamer = LogStreamer(app_context=self)
+            self._log_streamer = LogStreamer(
+                connection_manager=self.connection_manager,
+                log_dir=self.log_dir,
+                server_provider=self.get_server,
+            )
         return self._log_streamer
 
     @log_streamer.setter
@@ -415,7 +429,7 @@ class AppContext:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self.state, settings=self.settings, storage=self._storage
+                state=self.state, storage=self.storage, settings=self.settings
             )
         return self._settings_service
 
@@ -425,9 +439,7 @@ class AppContext:
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(
-                state=self.state, storage=self._storage
-            )
+            self._server_service = ServerService(state=self.state, storage=self.storage)
         return self._server_service
 
     @property
@@ -436,9 +448,7 @@ class AppContext:
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
-            self._plugin_service = PluginService(
-                state=self.state, storage=self._storage
-            )
+            self._plugin_service = PluginService(state=self.state, storage=self.storage)
         return self._plugin_service
 
     @property
@@ -447,7 +457,7 @@ class AppContext:
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(state=self.state, storage=self._storage)
+            self._user_service = UserService(state=self.state, storage=self.storage)
         return self._user_service
 
     @property
@@ -458,7 +468,12 @@ class AppContext:
         if self._bedrock_process_manager is None:
             from .core.bedrock_process_manager import BedrockProcessManager
 
-            self._bedrock_process_manager = BedrockProcessManager(app_context=self)
+            self._bedrock_process_manager = BedrockProcessManager(
+                settings=self.settings,
+                storage=self.storage,
+                server_provider=self.get_server,
+                api=self.api,
+            )
         return self._bedrock_process_manager
 
     def get_server(self, server_name: str) -> "BedrockServer":
@@ -468,7 +483,12 @@ class AppContext:
         from .core.bedrock_server import BedrockServer
 
         if server_name not in self._servers:
-            self._servers[server_name] = BedrockServer(server_name, app_context=self)
+            self._servers[server_name] = BedrockServer(
+                server_name=server_name,
+                settings=self.settings,
+                state=self._state,
+                storage=self._storage,
+            )
         return self._servers[server_name]
 
     async def remove_server(self, server_name: str):

@@ -133,7 +133,12 @@ class BedrockServer(
     def __init__(
         self,
         server_name: str,
+        *args: Any,
+        settings: Optional[Any] = None,
         app_context: Optional["AppContext"] = None,
+        state: Optional[Any] = None,
+        storage: Optional[Any] = None,
+        **kwargs: Any,
     ) -> None:
         """Initializes a BedrockServer instance.
 
@@ -147,17 +152,21 @@ class BedrockServer(
         establishes fundamental server attributes.
 
         Args:
-            server_name (str): The unique name for this server instance. This name
-                is also used as the directory name for the server's files under
-                the application's base server directory (defined by
-                ``paths.servers_base_dir`` in settings).
+            server_name (str): The unique name for this server instance.
+            *args: Variable length argument list.
+            settings: Settings object instance.
             app_context (:class:`~bedrock_server_manager.context.AppContext`):
-                An instance of the application's global :class:`~bedrock_server_manager.context.AppContext`
-                object.
+                Optional instance of the application context.
+            **kwargs: Arbitrary keyword arguments.
         """
         super().__init__(
             server_name=server_name,
+            *args,
+            settings=settings,
             app_context=app_context,
+            state=state,
+            storage=storage,
+            **kwargs,
         )
         self.logger.info(
             f"BedrockServer instance '{self.server_name}' fully initialized and ready for operations."

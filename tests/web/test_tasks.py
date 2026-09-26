@@ -8,7 +8,7 @@ from bedrock_server_manager.web.tasks import TaskManager
 
 @pytest.fixture
 def task_manager(app_context):
-    return TaskManager(app_context)
+    return TaskManager(connection_manager=app_context.connection_manager)
 
 
 async def test_run_task_success(task_manager):

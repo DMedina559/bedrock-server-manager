@@ -36,10 +36,18 @@ _event_context_var: contextvars.ContextVar[Optional[Tuple[str, ...]]] = (
 class PluginManager:
     """Manages the discovery, loading, configuration, and lifecycle of all plugins."""
 
-    def __init__(self, app_context: "AppContext"):
-        """Initialize the PluginManager with the given application context."""
+    def __init__(
+        self,
+        state: Any,
+        storage: Any,
+        settings: Any,
+        app_context: Optional["AppContext"] = None,
+    ):
+        """Initialize the PluginManager with explicit required dependencies."""
+        self.state = state
+        self.storage = storage
+        self.settings = settings
         self.app_context = app_context
-        self.settings = app_context.settings
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -75,7 +83,7 @@ class PluginManager:
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
         """Loads plugin configurations asynchronously via AppState and Storage."""
-        await self.app_context.storage.load_state(self.app_context.state)
+        await self.storage.load_state(self.state)
         return {
             name: {
                 "enabled": p.enabled,
@@ -83,7 +91,7 @@ class PluginManager:
                 "author": p.author,
                 "description": p.description,
             }
-            for name, p in self.app_context.state.plugins.plugins.items()
+            for name, p in self.state.plugins.plugins.items()
         }
 
     async def _save_config(self) -> None:
@@ -98,9 +106,9 @@ class PluginManager:
                 author=str(config.get("author") or ""),
                 description=str(config.get("description") or ""),
             )
-            self.app_context.state.plugins.set(p_info)
+            self.state.plugins.set(p_info)
 
-        await self.app_context.storage.flush(self.app_context.state)
+        await self.storage.flush(self.state)
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches for the plugin file or package in the configured plugin directories."""

@@ -55,7 +55,10 @@ class BedrockServerBaseMixin:
         self,
         server_name: str,
         *args: Any,
+        settings: Optional[Any] = None,
         app_context: Optional["AppContext"] = None,
+        state: Optional[Any] = None,
+        storage: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
         """Initializes the base attributes for a Bedrock server instance.
@@ -74,7 +77,7 @@ class BedrockServerBaseMixin:
                 (like ``paths.servers`` or ``config_dir`` from settings) are missing.
         """
         # Call to super() is essential for cooperative multiple inheritance.
-        super().__init__(*args, **kwargs)
+        super().__init__()
 
         if not server_name:
             # A server instance is meaningless without a name.
@@ -86,13 +89,13 @@ class BedrockServerBaseMixin:
 
         self.server_name: str = server_name
 
-        if app_context is None:
-            raise ConfigurationError("AppContext is required but not provided.")
-        self.app_context = app_context
-        self.settings = app_context.settings
+        if settings is None:
+            raise ConfigurationError("Settings instance is required but not provided.")
 
-        if self.settings is None:
-            raise ConfigurationError("Settings instance is not available.")
+        self.settings = settings
+        self.state = state
+        self.storage = storage
+        self.app_context = app_context
 
         self.logger.debug(
             f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from database"

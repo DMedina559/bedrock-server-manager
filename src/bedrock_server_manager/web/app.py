@@ -40,10 +40,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         await app_context.plugin_manager.start_plugin_tasks()
 
         # Initialize and start LogStreamer
-        from .log_streamer import LogStreamer
-
-        log_streamer = LogStreamer(app_context)
-        app_context.log_streamer = log_streamer
+        log_streamer = app_context.log_streamer
         log_streamer.start()
 
         yield

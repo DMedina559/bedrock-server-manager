@@ -104,7 +104,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Loads the server-specific configuration asynchronously via AppState and Storage."""
         from ...state.models import ServerConfigState
 
-        cfg = self.app_context.state.servers.get(self.server_name)
+        if not self.state or not self.storage:
+            return self._get_default_server_config()
+
+        cfg = self.state.servers.get(self.server_name)
         if not cfg:
             self.logger.info(
                 f"Server config for '{self.server_name}' not found in AppState. Initializing defaults."
@@ -119,8 +122,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 target_version=default_config["settings"]["target_version"],
                 custom=default_config["custom"],
             )
-            self.app_context.state.servers.set(cfg)
-            await self.app_context.storage.flush(self.app_context.state)
+            self.state.servers.set(cfg)
+            await self.storage.flush(self.state)
 
         return {
             "server_info": {
@@ -139,7 +142,10 @@ class ServerStateMixin(BedrockServerBaseMixin):
         """Saves the server configuration data asynchronously via AppState and Storage."""
         from ...state.models import ServerConfigState
 
-        cfg = self.app_context.state.servers.get(self.server_name)
+        if not self.state or not self.storage:
+            return
+
+        cfg = self.state.servers.get(self.server_name)
         if not cfg:
             cfg = ServerConfigState(server_name=self.server_name)
 
@@ -161,8 +167,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
         if "custom" in config_data:
             cfg.custom = config_data["custom"]
 
-        self.app_context.state.servers.set(cfg)
-        await self.app_context.storage.flush(self.app_context.state)
+        self.state.servers.set(cfg)
+        await self.storage.flush(self.state)
 
     async def _manage_json_config(
         self,
@@ -434,13 +440,14 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
 
-        try:
-            await self.app_context.api.set_server_status_api(
-                self.server_name, status_string
-            )
-            return
-        except AttributeError:
-            pass
+        if self.app_context and self.app_context.api:
+            try:
+                await self.app_context.api.set_server_status_api(
+                    self.server_name, status_string
+                )
+                return
+            except AttributeError:
+                pass
 
         await self._manage_json_config(
             key="server_info.status", operation="write", value=status_string

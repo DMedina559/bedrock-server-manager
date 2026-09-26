@@ -8,7 +8,11 @@ from bedrock_server_manager.web.log_streamer import LogStreamer
 
 @pytest.fixture
 def log_streamer(app_context):
-    return LogStreamer(app_context)
+    return LogStreamer(
+        connection_manager=app_context.connection_manager,
+        log_dir=app_context.log_dir,
+        server_provider=app_context.get_server,
+    )
 
 
 async def test_log_streamer_start_stop(log_streamer):
@@ -38,6 +42,7 @@ async def test_log_streamer_reads_app_log(
     # Setup mock file
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
+    log_streamer.log_dir = str(log_dir)
     monkeypatch.setattr(
         "bedrock_server_manager.context.AppContext.log_dir", str(log_dir), raising=False
     )
@@ -84,7 +89,7 @@ async def test_log_streamer_reads_server_log(
 
     mock_server = MagicMock()
     mock_server.server_log_path = str(log_file)
-    monkeypatch.setattr(app_context, "get_server", MagicMock(return_value=mock_server))
+    log_streamer.server_provider = MagicMock(return_value=mock_server)
 
     mock_broadcast = AsyncMock()
     app_context.connection_manager.subscriptions = {
@@ -124,6 +129,7 @@ async def test_log_streamer_file_rotation(
     """Test log streamer handles file rotation (file getting smaller)."""
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
+    log_streamer.log_dir = str(log_dir)
     monkeypatch.setattr(
         "bedrock_server_manager.context.AppContext.log_dir", str(log_dir), raising=False
     )

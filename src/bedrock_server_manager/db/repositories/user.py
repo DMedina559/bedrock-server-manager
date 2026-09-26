@@ -106,7 +106,7 @@ class UserRepository:
         """Updates hashed password for a user by username."""
         user = await self.get_user_by_username(session, username)
         if user:
-            user.hashed_password = hashed_password
+            setattr(user, "hashed_password", hashed_password)
             return True
         return False
 

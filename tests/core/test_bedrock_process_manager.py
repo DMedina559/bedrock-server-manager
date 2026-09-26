@@ -14,7 +14,13 @@ from bedrock_server_manager.error import BSMError, FileOperationError
 
 async def test_process_manager_add_remove_server(app_context: AppContext):
     """Test adding and removing servers from the manager."""
-    manager = BedrockProcessManager(app_context)
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=app_context.get_server,
+        api=app_context.api,
+        app_context=app_context,
+    )
     mock_server = MagicMock()
     mock_server.set_status_in_config = AsyncMock()
     mock_server.server_name = "test_server"
@@ -30,7 +36,13 @@ async def test_process_manager_add_remove_server(app_context: AppContext):
 
 async def test_process_manager_shutdown(app_context: AppContext):
     """Test shutting down the process manager stops the thread."""
-    manager = BedrockProcessManager(app_context)
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=app_context.get_server,
+        api=app_context.api,
+        app_context=app_context,
+    )
     manager._shutdown_event = MagicMock()
 
     manager.monitoring_task = asyncio.create_task(asyncio.sleep(0))
@@ -44,7 +56,13 @@ async def test_process_manager_shutdown(app_context: AppContext):
 
 async def test_try_restart_server_success(app_context: AppContext):
     """Test successfully attempting to restart a server."""
-    manager = BedrockProcessManager(app_context)
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=app_context.get_server,
+        api=app_context.api,
+        app_context=app_context,
+    )
 
     with patch.object(app_context.settings, "get", return_value=3):
         mock_server = MagicMock()
@@ -60,7 +78,13 @@ async def test_try_restart_server_success(app_context: AppContext):
 
 async def test_try_restart_server_max_retries_reached(app_context: AppContext):
     """Test restarting a server stops when max retries is reached."""
-    manager = BedrockProcessManager(app_context)
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=app_context.get_server,
+        api=app_context.api,
+        app_context=app_context,
+    )
 
     with patch.object(app_context.settings, "get", return_value=3):
         with patch.object(manager, "write_error_status") as mock_write_error:
@@ -83,35 +107,53 @@ async def test_try_restart_server_max_retries_reached(app_context: AppContext):
 
 async def test_write_error_status_success(app_context: AppContext):
     """Test successfully writing error status to config."""
-    manager = BedrockProcessManager(app_context)
-
     mock_server = MagicMock()
+    mock_server.get_status_from_config = AsyncMock(return_value="STOPPED")
+    mock_server._manage_json_config = AsyncMock()
     mock_server.set_status_in_config = AsyncMock()
-    with patch.object(app_context, "get_server", return_value=mock_server):
-        await manager.write_error_status("test_server")
 
-        mock_server.set_status_in_config.assert_awaited_once_with("ERROR")
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=MagicMock(return_value=mock_server),
+        api=app_context.api,
+        app_context=app_context,
+    )
+
+    await manager.write_error_status("test_server")
+    mock_server.set_status_in_config.assert_awaited_once_with("ERROR")
 
 
 async def test_write_error_status_failure(app_context: AppContext):
     """Test writing error status propagating FileOperationError on internal error."""
-    manager = BedrockProcessManager(app_context)
-
     mock_server = MagicMock()
-    mock_server.set_status_in_config = AsyncMock()
-    # Simulate a generic BSMError when setting status
+    mock_server.get_status_from_config = AsyncMock(return_value="STOPPED")
+    mock_server._manage_json_config = AsyncMock()
     mock_server.set_status_in_config = AsyncMock(side_effect=BSMError("Config missing"))
 
-    with patch.object(app_context, "get_server", return_value=mock_server):
-        with pytest.raises(FileOperationError, match="Failed to write status"):
-            await manager.write_error_status("test_server")
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=MagicMock(return_value=mock_server),
+        api=app_context.api,
+        app_context=app_context,
+    )
+
+    with pytest.raises(FileOperationError, match="Failed to write status"):
+        await manager.write_error_status("test_server")
 
 
 async def test_monitor_servers_crashed_server_detected(
     app_context: AppContext, real_bedrock_server
 ):
     """Test monitoring detects a crashed server and attempts restart."""
-    manager = BedrockProcessManager(app_context)
+    manager = BedrockProcessManager(
+        settings=app_context.settings,
+        storage=app_context.storage,
+        server_provider=app_context.get_server,
+        api=app_context.api,
+        app_context=app_context,
+    )
 
     server = real_bedrock_server
 

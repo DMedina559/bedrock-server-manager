@@ -67,13 +67,13 @@ class UserService:
                 email=email,
             )
 
-        async with self.state.lock:
+        async with self.state.users.get_lock(username):
             self.state.users.set(user)
 
-            changeset = ChangeSet()
-            changeset.add_user(username)
+        changeset = ChangeSet()
+        changeset.add_user(username)
 
-            if self.storage is not None and hasattr(self.storage, "apply_changeset"):
-                await self.storage.apply_changeset(self.state, changeset)
+        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+            await self.storage.apply_changeset(self.state, changeset)
 
         return user

@@ -68,21 +68,25 @@ class Storage:
                 await self.settings_repo.save_settings(
                     session, state.settings.to_dict()
                 )
+                state.settings.clear_dirty()
             if changeset.servers_changed:
                 for server_name in changeset.servers_changed:
                     cfg = state.servers.get(server_name)
                     if cfg:
                         await self.server_repo.save_server(session, cfg)
+                        state.servers.remove_dirty_server(server_name)
             if changeset.plugins_changed:
                 for plugin_name in changeset.plugins_changed:
                     p_info = state.plugins.get(plugin_name)
                     if p_info:
                         await self.plugin_repo.save_plugin(session, p_info)
+                        state.plugins.remove_dirty_plugin(plugin_name)
             if changeset.users_changed:
                 for username in changeset.users_changed:
                     u_info = state.users.get(username)
                     if u_info:
                         await self.user_repo.save_user(session, u_info)
+                        state.users.remove_dirty_user(username)
 
     async def load_state(self, state: Optional[AppState] = None) -> AppState:
         """

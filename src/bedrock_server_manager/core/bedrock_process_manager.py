@@ -40,18 +40,20 @@ class BedrockProcessManager:
 
     def __init__(
         self,
-        app_context: AppContext,
+        settings: Any,
+        storage: Any,
+        server_provider: Optional[Any] = None,
+        api: Optional[Any] = None,
+        app_context: Optional[AppContext] = None,
     ):
-        """Initializes the BedrockProcessManager.
-
-        Args:
-            app_context (AppContext): The global application context, providing
-                access to settings and the main manager.
-        """
+        """Initializes the BedrockProcessManager with explicit dependencies."""
+        self.settings = settings
+        self.storage = storage
+        self.server_provider = server_provider
+        self.api = api
+        self.app_context = app_context
         self.servers: Dict[str, "BedrockServer"] = {}
         self.logger = logging.getLogger(__name__)
-        self.app_context = app_context
-        self.settings = self.app_context.settings
         self._shutdown_event = asyncio.Event()
         self.player_scan_counter = 0
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
@@ -177,15 +179,19 @@ class BedrockProcessManager:
         Raises:
             FileOperationError: If writing to the config file fails.
         """
-        server = self.app_context.get_server(server_name)
-        try:
-            await server.set_status_in_config("ERROR")
-
-        except BSMError as e:
-            self.logger.error(f"Error writing status for server '{server_name}': {e}")
-            raise FileOperationError(
-                f"Failed to write status for server '{server_name}'."
-            )
+        if not callable(self.server_provider):
+            return
+        server = self.server_provider(server_name)
+        if server:
+            try:
+                await server.set_status_in_config("ERROR")
+            except BSMError as e:
+                self.logger.error(
+                    f"Error writing status for server '{server_name}': {e}"
+                )
+                raise FileOperationError(
+                    f"Failed to write status for server '{server_name}'."
+                )
 
     async def _monitor_servers(self):  # noqa: C901
         """Monitors server processes and restarts them if they crash asynchronously.
