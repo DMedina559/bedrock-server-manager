@@ -3,6 +3,7 @@
 Typed settings state model for AppState.
 """
 
+import asyncio
 import logging
 import os
 from typing import Any, Dict, Optional, Set
@@ -51,6 +52,13 @@ class SettingsState(BaseModel):
 
     _dirty: bool = PrivateAttr(default=False)
     _dirty_keys: Set[str] = PrivateAttr(default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+
+    def get_lock(self, key: str = "global") -> asyncio.Lock:
+        root_key = key.split(".")[0]
+        if root_key not in self._locks:
+            self._locks[root_key] = asyncio.Lock()
+        return self._locks[root_key]
 
     def mark_dirty(self, key: Optional[str] = None) -> None:
         self._dirty = True

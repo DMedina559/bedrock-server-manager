@@ -35,15 +35,15 @@ class SettingsService:
         if self.get(key) == value:
             return
 
-        async with self.state.lock:
+        async with self.state.settings.get_lock(key):
             self.state.settings.set(key, value)
-            if self.settings is not None and hasattr(self.settings, "_settings"):
-                setattr(self.settings, "_settings", self.state.settings.to_dict())
+            if self.settings is not None:
+                self.settings._settings = self.state.settings.to_dict()
 
         changeset = ChangeSet()
         changeset.add_setting(key)
 
-        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+        if self.storage is not None:
             await self.storage.apply_changeset(self.state, changeset)
 
     async def get_all_settings(self) -> Dict[str, Any]:

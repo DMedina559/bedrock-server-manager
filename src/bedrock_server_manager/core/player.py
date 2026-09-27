@@ -3,7 +3,6 @@ import os
 from typing import Any, Dict, List
 
 from ..context import AppContext
-from ..db.repositories.player import PlayerRepository
 from ..error import (
     AppFileNotFoundError,
     FileOperationError,
@@ -33,30 +32,16 @@ def parse_player_string(player_string: str) -> List[Dict[str, str]]:
     return player_list
 
 
-async def save_player_data(
-    db_session_manager: Any, players_data: List[Dict[str, str]]
-) -> int:
-    """Saves or updates player data in the database asynchronously via PlayerRepository."""
-    repo = PlayerRepository()
-    if hasattr(db_session_manager, "transaction"):
-        async with db_session_manager.transaction() as session:
-            return await repo.save_players(session, players_data)
-    else:
-        async with db_session_manager() as session:
-            res = await repo.save_players(session, players_data)
-            await session.commit()
-            return res
+async def save_player_data(storage: Any, players_data: List[Dict[str, str]]) -> int:
+    """Saves or updates player data in the database asynchronously via Storage."""
+    res = await storage.save_players(players_data)
+    return int(res)
 
 
-async def get_known_players(db_session_manager: Any) -> List[Dict[str, str]]:
-    """Retrieves all known players from the database asynchronously via PlayerRepository."""
-    repo = PlayerRepository()
-    if hasattr(db_session_manager, "transaction"):
-        async with db_session_manager.transaction() as session:
-            return await repo.get_all_players(session)
-    else:
-        async with db_session_manager() as session:
-            return await repo.get_all_players(session)
+async def get_known_players(storage: Any) -> List[Dict[str, str]]:
+    """Retrieves all known players from the database asynchronously via Storage."""
+    res = await storage.get_all_players()
+    return list(res)
 
 
 async def discover_and_store_players(  # noqa: C901

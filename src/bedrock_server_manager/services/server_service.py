@@ -74,7 +74,7 @@ class ServerService:
         changeset = ChangeSet()
         changeset.add_server(server_name)
 
-        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+        if self.storage is not None:
             await self.storage.apply_changeset(self.state, changeset)
 
         return config

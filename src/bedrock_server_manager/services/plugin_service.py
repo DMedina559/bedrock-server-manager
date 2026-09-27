@@ -72,7 +72,7 @@ class PluginService:
         changeset = ChangeSet()
         changeset.add_plugin(plugin_name)
 
-        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+        if self.storage is not None:
             await self.storage.apply_changeset(self.state, changeset)
 
         return plugin

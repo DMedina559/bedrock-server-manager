@@ -322,7 +322,7 @@ class BedrockProcessManager:
 
                             if players:
                                 await save_player_data(
-                                    self.app_context.storage,
+                                    self.storage,
                                     players,
                                 )
                     except Exception as e:

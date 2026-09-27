@@ -73,7 +73,7 @@ class UserService:
         changeset = ChangeSet()
         changeset.add_user(username)
 
-        if self.storage is not None and hasattr(self.storage, "apply_changeset"):
+        if self.storage is not None:
             await self.storage.apply_changeset(self.state, changeset)
 
         return user

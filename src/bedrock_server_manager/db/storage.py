@@ -135,6 +135,18 @@ class Storage:
         state.clear_dirty()
         return state
 
+    async def save_players(self, players_data: list) -> int:
+        """Saves player data to the database via player repository within a transaction."""
+        async with self.transaction() as session:
+            res = await self.player_repo.save_players(session, players_data)
+            return int(res)
+
+    async def get_all_players(self) -> list:
+        """Retrieves all known players from the database via player repository within a transaction."""
+        async with self.transaction() as session:
+            res = await self.player_repo.get_all_players(session)
+            return list(res)
+
     async def save_state(self, state: AppState) -> None:
         """Flushes and saves all unpersisted changes from AppState to the database."""
         await self.flush(state)
