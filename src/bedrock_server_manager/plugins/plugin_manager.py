@@ -670,16 +670,22 @@ class PluginManager:
 
                 if plugin_key in self.plugin_tasks:
                     for task in self.plugin_tasks.pop(plugin_key):
-                        task.cancel()
-                        tasks_to_await.append(task)
+                        try:
+                            task.cancel()
+                            tasks_to_await.append(task)
+                        except Exception:
+                            pass
 
             self.plugins.clear()
 
         # Cancel any remaining background tasks across all plugin keys
         for plugin_key, tasks in list(self.plugin_tasks.items()):
             for task in tasks:
-                task.cancel()
-                tasks_to_await.append(task)
+                try:
+                    task.cancel()
+                    tasks_to_await.append(task)
+                except Exception:
+                    pass
         self.plugin_tasks.clear()
 
         # Ensure only tasks belonging to the current running event loop are gathered
@@ -689,7 +695,8 @@ class PluginManager:
                 active_tasks = [
                     t
                     for t in tasks_to_await
-                    if not t.done() and t.get_loop() is current_loop
+                    if not t.done()
+                    and (t.get_loop() is current_loop or t.get_loop() == current_loop)
                 ]
                 if active_tasks:
                     await asyncio.gather(*active_tasks, return_exceptions=True)
