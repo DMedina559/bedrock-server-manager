@@ -26,6 +26,9 @@ async def add_server_ban_api(
     if not server_name or not player_name or not xuid:
         raise UserInputError("server_name, player_name, and xuid are required.")
 
+    if not getattr(app_context, "_storage", None):
+        return {"status": "error", "message": "Database is not initialized."}
+
     logger.info(
         f"API: Adding ban for player '{player_name}' ({xuid}) on server '{server_name}'."
     )
@@ -50,6 +53,9 @@ async def remove_server_ban_api(
     if not server_name or not xuid:
         raise UserInputError("server_name and xuid are required.")
 
+    if not getattr(app_context, "_storage", None):
+        return {"status": "error", "message": "Database is not initialized."}
+
     logger.info(f"API: Removing ban for XUID '{xuid}' on server '{server_name}'.")
     ban_res = await app_context.server_service.remove_server_ban(
         server_name=server_name, xuid=xuid
@@ -67,6 +73,9 @@ async def get_server_bans_api(
     """Retrieves all bans for a specific server."""
     if not server_name:
         raise UserInputError("server_name is required.")
+
+    if not getattr(app_context, "_storage", None):
+        return {"status": "error", "message": "Database is not initialized."}
 
     ban_res = await app_context.server_service.get_server_bans(server_name=server_name)
     if not ban_res.success:

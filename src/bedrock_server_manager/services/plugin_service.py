@@ -19,7 +19,7 @@ class PluginService:
     def __init__(
         self,
         state: "AppState",
-        storage: Optional["Storage"] = None,
+        storage: "Storage",
     ):
         self.state = state
         self.storage = storage
@@ -42,38 +42,37 @@ class PluginService:
         settings: Optional[Dict[str, Any]] = None,
     ) -> PluginInfoState:
         """Registers or updates a plugin state record and marks dirty state."""
-        existing = self.state.plugins.get(plugin_name)
-        if existing:
-            data = existing.model_dump()
-            if enabled is not None:
-                data["enabled"] = enabled
-            if version is not None:
-                data["version"] = version
-            if author is not None:
-                data["author"] = author
-            if description is not None:
-                data["description"] = description
-            if settings is not None:
-                data["settings"] = settings
-            plugin = PluginInfoState(**data)
-        else:
-            plugin = PluginInfoState(
-                plugin_name=plugin_name,
-                enabled=enabled if enabled is not None else True,
-                version=version,
-                author=author,
-                description=description,
-                settings=settings or {},
-            )
-
         async with self.state.plugins.get_lock(plugin_name):
+            existing = self.state.plugins.get(plugin_name)
+            if existing:
+                data = existing.model_dump()
+                if enabled is not None:
+                    data["enabled"] = enabled
+                if version is not None:
+                    data["version"] = version
+                if author is not None:
+                    data["author"] = author
+                if description is not None:
+                    data["description"] = description
+                if settings is not None:
+                    data["settings"] = settings
+                plugin = PluginInfoState(**data)
+            else:
+                plugin = PluginInfoState(
+                    plugin_name=plugin_name,
+                    enabled=enabled if enabled is not None else True,
+                    version=version,
+                    author=author,
+                    description=description,
+                    settings=settings or {},
+                )
+
             self.state.plugins.set(plugin)
 
         changeset = ChangeSet()
         changeset.add_plugin(plugin_name)
 
-        if self.storage is not None:
-            await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.apply_changeset(self.state, changeset)
 
         return plugin
 

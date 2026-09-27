@@ -3,9 +3,10 @@
 Persistence Storage Layer providing state persistence operations between AppState and SQLAlchemy.
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, List, Optional
 
 from ..error import BSMError, StorageError
 from ..state.app_state import AppState
@@ -43,14 +44,56 @@ class Storage:
         self.ban_repo = ServerBanRepository(db)
         self.player_repo = PlayerRepository(db)
         self.audit_log_repo = AuditLogRepository(db)
+        self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
+
+    def subscribe(self, listener: Callable[[AppState, ChangeSet], Any]) -> None:
+        """Registers a callback to receive state change notifications when changesets are persisted."""
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def unsubscribe(self, listener: Callable[[AppState, ChangeSet], Any]) -> None:
+        """Unregisters a state change listener."""
+        if listener in self._listeners:
+            self._listeners.remove(listener)
+
+    async def _notify_listeners(self, state: AppState, changeset: ChangeSet) -> None:
+        """Invokes registered state change listeners safely."""
+        if changeset.is_empty():
+            return
+        for listener in list(self._listeners):
+            try:
+                res = listener(state, changeset)
+                if asyncio.iscoroutine(res) or asyncio.iscoroutinefunction(listener):
+                    await res
+            except Exception as e:
+                logger.error(
+                    f"Error in state change listener {listener}: {e}", exc_info=True
+                )
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncGenerator[Any, None]:
-        """Async context manager providing a shared SQLAlchemy session for multi-operation transactions."""
+    async def transaction(self, max_retries: int = 5) -> AsyncGenerator[Any, None]:
+        """Async context manager providing a shared SQLAlchemy session for multi-operation transactions with lock retries."""
         async with self.db.session_manager() as session:
             try:
                 yield session
-                await session.commit()
+                attempt = 0
+                while True:
+                    try:
+                        await session.commit()
+                        break
+                    except Exception as commit_err:
+                        is_lock_error = (
+                            "locked" in str(commit_err).lower()
+                            or "busy" in str(commit_err).lower()
+                        )
+                        if is_lock_error and attempt < max_retries:
+                            attempt += 1
+                            logger.warning(
+                                f"Database lock during commit, retrying ({attempt}/{max_retries}): {commit_err}"
+                            )
+                            await asyncio.sleep(0.05 * (2**attempt))
+                            continue
+                        raise commit_err
             except Exception as e:
                 await session.rollback()
                 if isinstance(e, BSMError) or e.__class__.__name__ == "HTTPException":
@@ -65,28 +108,44 @@ class Storage:
 
         async with self.transaction() as session:
             if changeset.settings_changed:
-                await self.settings_repo.save_settings(
-                    session, state.settings.to_dict()
-                )
-                state.settings.clear_dirty()
+                async with state.settings.get_lock("global"):
+                    settings_snapshot = state.settings.to_dict()
+                await self.settings_repo.save_settings(session, settings_snapshot)
+                async with state.settings.get_lock("global"):
+                    if state.settings.to_dict() == settings_snapshot:
+                        state.settings.clear_dirty()
+
             if changeset.servers_changed:
                 for server_name in changeset.servers_changed:
-                    cfg = state.servers.get(server_name)
+                    async with state.servers.get_lock(server_name):
+                        cfg = state.servers.get(server_name)
                     if cfg:
                         await self.server_repo.save_server(session, cfg)
-                        state.servers.remove_dirty_server(server_name)
+                        async with state.servers.get_lock(server_name):
+                            if state.servers.get(server_name) == cfg:
+                                state.servers.remove_dirty_server(server_name)
+
             if changeset.plugins_changed:
                 for plugin_name in changeset.plugins_changed:
-                    p_info = state.plugins.get(plugin_name)
+                    async with state.plugins.get_lock(plugin_name):
+                        p_info = state.plugins.get(plugin_name)
                     if p_info:
                         await self.plugin_repo.save_plugin(session, p_info)
-                        state.plugins.remove_dirty_plugin(plugin_name)
+                        async with state.plugins.get_lock(plugin_name):
+                            if state.plugins.get(plugin_name) == p_info:
+                                state.plugins.remove_dirty_plugin(plugin_name)
+
             if changeset.users_changed:
                 for username in changeset.users_changed:
-                    u_info = state.users.get(username)
+                    async with state.users.get_lock(username):
+                        u_info = state.users.get(username)
                     if u_info:
                         await self.user_repo.save_user(session, u_info)
-                        state.users.remove_dirty_user(username)
+                        async with state.users.get_lock(username):
+                            if state.users.get(username) == u_info:
+                                state.users.remove_dirty_user(username)
+
+        await self._notify_listeners(state, changeset)
 
     async def load_state(self, state: Optional[AppState] = None) -> AppState:
         """
@@ -156,25 +215,53 @@ class Storage:
         if not state.is_dirty():
             return
 
+        flushed_changeset = ChangeSet()
+        if state.settings.is_dirty:
+            flushed_changeset.add_setting("global")
+        for s in state.servers.dirty_servers:
+            flushed_changeset.add_server(s)
+        for p in state.plugins.dirty_plugins:
+            flushed_changeset.add_plugin(p)
+        for u in state.users.dirty_users:
+            flushed_changeset.add_user(u)
+
         async with self.transaction() as session:
             if state.settings.is_dirty:
-                await self.settings_repo.save_settings(
-                    session, state.settings.to_dict()
-                )
+                async with state.settings.get_lock("global"):
+                    settings_snapshot = state.settings.to_dict()
+                await self.settings_repo.save_settings(session, settings_snapshot)
+                async with state.settings.get_lock("global"):
+                    if state.settings.to_dict() == settings_snapshot:
+                        state.settings.clear_dirty()
+
             if state.servers.is_dirty:
-                for server_name in state.servers.dirty_servers:
-                    cfg = state.servers.get(server_name)
+                for server_name in list(state.servers.dirty_servers):
+                    async with state.servers.get_lock(server_name):
+                        cfg = state.servers.get(server_name)
                     if cfg:
                         await self.server_repo.save_server(session, cfg)
+                        async with state.servers.get_lock(server_name):
+                            if state.servers.get(server_name) == cfg:
+                                state.servers.remove_dirty_server(server_name)
+
             if state.plugins.is_dirty:
-                for plugin_name in state.plugins.dirty_plugins:
-                    p_info = state.plugins.get(plugin_name)
+                for plugin_name in list(state.plugins.dirty_plugins):
+                    async with state.plugins.get_lock(plugin_name):
+                        p_info = state.plugins.get(plugin_name)
                     if p_info:
                         await self.plugin_repo.save_plugin(session, p_info)
+                        async with state.plugins.get_lock(plugin_name):
+                            if state.plugins.get(plugin_name) == p_info:
+                                state.plugins.remove_dirty_plugin(plugin_name)
+
             if state.users.is_dirty:
-                for username in state.users.dirty_users:
-                    u_info = state.users.get(username)
+                for username in list(state.users.dirty_users):
+                    async with state.users.get_lock(username):
+                        u_info = state.users.get(username)
                     if u_info:
                         await self.user_repo.save_user(session, u_info)
+                        async with state.users.get_lock(username):
+                            if state.users.get(username) == u_info:
+                                state.users.remove_dirty_user(username)
 
-        state.clear_dirty()
+        await self._notify_listeners(state, flushed_changeset)

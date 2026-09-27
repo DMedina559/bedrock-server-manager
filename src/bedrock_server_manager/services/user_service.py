@@ -19,7 +19,7 @@ class UserService:
     def __init__(
         self,
         state: "AppState",
-        storage: Optional["Storage"] = None,
+        storage: "Storage",
     ):
         self.state = state
         self.storage = storage
@@ -43,37 +43,36 @@ class UserService:
         user_id: Optional[int] = None,
     ) -> UserInfoState:
         """Registers or updates a user state record and marks dirty state."""
-        existing = self.state.users.get(username)
-        if existing:
-            data = existing.model_dump()
-            data["role"] = role
-            data["theme"] = theme
-            data["is_active"] = is_active
-            if full_name is not None:
-                data["full_name"] = full_name
-            if email is not None:
-                data["email"] = email
-            if user_id is not None:
-                data["id"] = user_id
-            user = UserInfoState(**data)
-        else:
-            user = UserInfoState(
-                id=user_id,
-                username=username,
-                role=role,
-                theme=theme,
-                is_active=is_active,
-                full_name=full_name,
-                email=email,
-            )
-
         async with self.state.users.get_lock(username):
+            existing = self.state.users.get(username)
+            if existing:
+                data = existing.model_dump()
+                data["role"] = role
+                data["theme"] = theme
+                data["is_active"] = is_active
+                if full_name is not None:
+                    data["full_name"] = full_name
+                if email is not None:
+                    data["email"] = email
+                if user_id is not None:
+                    data["id"] = user_id
+                user = UserInfoState(**data)
+            else:
+                user = UserInfoState(
+                    id=user_id,
+                    username=username,
+                    role=role,
+                    theme=theme,
+                    is_active=is_active,
+                    full_name=full_name,
+                    email=email,
+                )
+
             self.state.users.set(user)
 
         changeset = ChangeSet()
         changeset.add_user(username)
 
-        if self.storage is not None:
-            await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.apply_changeset(self.state, changeset)
 
         return user

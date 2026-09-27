@@ -4,7 +4,7 @@ Typed domain state models for ServerState, PluginState, UserState, and RuntimeSt
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from pydantic import BaseModel, Field, PrivateAttr
 
@@ -55,10 +55,11 @@ class ServerState(BaseModel):
         return set(self._dirty_servers)
 
     def get(self, server_name: str) -> Optional[ServerConfigState]:
-        return self.servers.get(server_name)
+        cfg = self.servers.get(server_name)
+        return cfg.model_copy(deep=True) if cfg is not None else None
 
     def set(self, config: ServerConfigState) -> None:
-        self.servers[config.server_name] = config
+        self.servers[config.server_name] = config.model_copy(deep=True)
         self.mark_dirty(config.server_name)
 
 
@@ -105,10 +106,11 @@ class PluginState(BaseModel):
         return set(self._dirty_plugins)
 
     def get(self, plugin_name: str) -> Optional[PluginInfoState]:
-        return self.plugins.get(plugin_name)
+        p_info = self.plugins.get(plugin_name)
+        return p_info.model_copy(deep=True) if p_info is not None else None
 
     def set(self, plugin: PluginInfoState) -> None:
-        self.plugins[plugin.plugin_name] = plugin
+        self.plugins[plugin.plugin_name] = plugin.model_copy(deep=True)
         self.mark_dirty(plugin.plugin_name)
 
 
@@ -156,10 +158,11 @@ class UserState(BaseModel):
         return set(self._dirty_users)
 
     def get(self, username: str) -> Optional[UserInfoState]:
-        return self.users.get(username)
+        u_info = self.users.get(username)
+        return u_info.model_copy(deep=True) if u_info is not None else None
 
     def set(self, user: UserInfoState) -> None:
-        self.users[user.username] = user
+        self.users[user.username] = user.model_copy(deep=True)
         self.mark_dirty(user.username)
 
 
@@ -194,15 +197,15 @@ class RuntimeState(BaseModel):
     def get_server_runtime(self, server_name: str) -> ServerRuntimeInfo:
         if server_name not in self.servers:
             self.servers[server_name] = ServerRuntimeInfo()
-        return self.servers[server_name]
+        return cast(ServerRuntimeInfo, self.servers[server_name].model_copy(deep=True))
 
     def set_server_runtime(self, server_name: str, runtime: ServerRuntimeInfo) -> None:
-        self.servers[server_name] = runtime
+        self.servers[server_name] = runtime.model_copy(deep=True)
 
     def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
         if plugin_name not in self.plugins:
             self.plugins[plugin_name] = PluginRuntime(plugin_name=plugin_name)
-        return self.plugins[plugin_name]
+        return cast(PluginRuntime, self.plugins[plugin_name].model_copy(deep=True))
 
     def set_plugin_runtime(self, plugin_name: str, runtime: PluginRuntime) -> None:
-        self.plugins[plugin_name] = runtime
+        self.plugins[plugin_name] = runtime.model_copy(deep=True)

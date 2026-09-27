@@ -4,6 +4,7 @@ Typed settings state model for AppState.
 """
 
 import asyncio
+import copy
 import logging
 import os
 from typing import Any, Dict, Optional, Set
@@ -65,6 +66,11 @@ class SettingsState(BaseModel):
         if key:
             self._dirty_keys.add(key)
 
+    def remove_dirty_key(self, key: str) -> None:
+        self._dirty_keys.discard(key)
+        if not self._dirty_keys:
+            self._dirty = False
+
     def clear_dirty(self) -> None:
         self._dirty = False
         self._dirty_keys.clear()
@@ -99,6 +105,12 @@ class SettingsState(BaseModel):
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting value using dot-notation for nested access."""
         parts = key.split(".")
+        for part in parts:
+            if part.startswith("_") or "__" in part:
+                raise ConfigurationError(
+                    f"Access to private/dunder key '{key}' is forbidden."
+                )
+
         root_key = parts[0]
 
         if (
@@ -132,15 +144,26 @@ class SettingsState(BaseModel):
             else:
                 return default
 
+        if isinstance(obj, BaseModel):
+            return obj.model_copy(deep=True)
+        elif isinstance(obj, (dict, list)):
+            return copy.deepcopy(obj)
+
         return obj
 
     def set(self, key: str, value: Any) -> None:
         """Sets a setting value using dot-notation, updating models and dirty state."""
+        parts = key.split(".")
+        for part in parts:
+            if part.startswith("_") or "__" in part:
+                raise ConfigurationError(
+                    f"Access to private/dunder key '{key}' is forbidden."
+                )
+
         current_value = self.get(key)
         if current_value == value:
             return
 
-        parts = key.split(".")
         root_key = parts[0]
 
         if hasattr(self, root_key):
@@ -208,8 +231,8 @@ class SettingsState(BaseModel):
             "retention": self.retention.model_dump(),
             "monitoring": self.monitoring.model_dump(),
             "web": self.web.model_dump(exclude_none=True),
-            "custom": self.custom,
-            "plugin_settings": self.plugin_settings,
+            "custom": copy.deepcopy(self.custom),
+            "plugin_settings": copy.deepcopy(self.plugin_settings),
         }
 
     @classmethod

@@ -19,12 +19,12 @@ class SettingsService:
     def __init__(
         self,
         state: "AppState",
+        storage: "Storage",
         settings: Optional["Settings"] = None,
-        storage: Optional["Storage"] = None,
     ):
         self.state = state
-        self.settings = settings
         self.storage = storage
+        self.settings = settings
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting value via AppState."""
@@ -43,8 +43,7 @@ class SettingsService:
         changeset = ChangeSet()
         changeset.add_setting(key)
 
-        if self.storage is not None:
-            await self.storage.apply_changeset(self.state, changeset)
+        await self.storage.apply_changeset(self.state, changeset)
 
     async def get_all_settings(self) -> Dict[str, Any]:
         """Returns all configuration settings as a dictionary snapshot."""

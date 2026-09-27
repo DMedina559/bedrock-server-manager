@@ -3,6 +3,9 @@
 Unit tests for AppState and its sub-states.
 """
 
+import pytest
+
+from bedrock_server_manager.error import ConfigurationError
 from bedrock_server_manager.state import (
     AppState,
     PluginInfoState,
@@ -125,3 +128,39 @@ def test_plugin_and_user_state():
     assert user_state.is_dirty
     assert "admin" in user_state.dirty_users
     assert user_state.get("admin") == u_info
+
+
+def test_settings_state_security_private_and_dunder_keys():
+    settings = SettingsState.create_defaults("/tmp/test_data")
+
+    # Accessing private/dunder attributes should raise ConfigurationError
+    with pytest.raises(ConfigurationError):
+        settings.get("_locks")
+
+    with pytest.raises(ConfigurationError):
+        settings.get("__class__")
+
+    with pytest.raises(ConfigurationError):
+        settings.set("_dirty", True)
+
+    with pytest.raises(ConfigurationError):
+        settings.set("custom.__class__", "evil")
+
+
+def test_state_models_deep_copy_isolation():
+    server_state = ServerState()
+    cfg = ServerConfigState(
+        server_name="survival",
+        custom={"motd": "Original"},
+    )
+    server_state.set(cfg)
+
+    # Retrieve snapshot and mutate it externally
+    snapshot = server_state.get("survival")
+    assert snapshot is not None
+    snapshot.custom["motd"] = "Hacked"
+
+    # Verify original state model inside ServerState remains unchanged
+    internal_cfg = server_state.get("survival")
+    assert internal_cfg is not None
+    assert internal_cfg.custom["motd"] == "Original"

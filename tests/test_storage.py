@@ -123,3 +123,52 @@ async def test_storage_plugin_and_user_persistence(db, test_admin_user):
     assert reloaded_plugin is not None
     assert reloaded_plugin.enabled is True
     assert reloaded_plugin.version == "2.1.0"
+
+
+@pytest.mark.asyncio
+async def test_storage_subscription_observer(db):
+    storage = Storage(db=db, data_dir="/tmp/test_storage_sub")
+    state = AppState()
+    await storage.load_state(state)
+
+    notified_changes = []
+
+    async def on_change(app_st, changeset):
+        notified_changes.append(changeset)
+
+    storage.subscribe(on_change)
+
+    # Modify state via changeset
+    state.settings.set("retention.downloads", 5)
+    await storage.flush(state)
+
+    assert len(notified_changes) == 1
+    assert notified_changes[0].settings_changed
+
+    # Unsubscribe
+    storage.unsubscribe(on_change)
+    state.settings.set("retention.downloads", 7)
+    await storage.flush(state)
+
+    assert len(notified_changes) == 1
+
+
+@pytest.mark.asyncio
+async def test_alembic_migrations_upgrade_and_downgrade(tmp_path):
+    from bedrock_server_manager.db.database import Database
+    from bedrock_server_manager.utils.migration import (
+        run_migrations_downgrade,
+        run_migrations_upgrade,
+    )
+
+    db_path = tmp_path / "migration_test.db"
+    db = Database(f"sqlite:///{db_path}")
+
+    # Upgrade from empty database to head via Alembic
+    await run_migrations_upgrade(db)
+
+    # Downgrade 1 revision and upgrade back to head
+    await run_migrations_downgrade(db, "-1")
+    await run_migrations_upgrade(db)
+
+    await db.shutdown()
