@@ -429,7 +429,7 @@ class AppContext:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self.state, storage=self.storage, settings=self.settings
+                state=self._state, storage=self._storage, settings=self.settings
             )
         return self._settings_service
 
@@ -439,7 +439,9 @@ class AppContext:
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(state=self.state, storage=self.storage)
+            self._server_service = ServerService(
+                state=self._state, storage=self._storage
+            )
         return self._server_service
 
     @property
@@ -448,7 +450,9 @@ class AppContext:
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
-            self._plugin_service = PluginService(state=self.state, storage=self.storage)
+            self._plugin_service = PluginService(
+                state=self._state, storage=self._storage
+            )
         return self._plugin_service
 
     @property
@@ -457,7 +461,7 @@ class AppContext:
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(state=self.state, storage=self.storage)
+            self._user_service = UserService(state=self._state, storage=self._storage)
         return self._user_service
 
     @property
