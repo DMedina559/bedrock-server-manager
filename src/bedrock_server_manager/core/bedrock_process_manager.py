@@ -12,7 +12,6 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ..context import AppContext
 from ..error import BSMError, FileOperationError
 from .player import save_player_data
 
@@ -44,14 +43,12 @@ class BedrockProcessManager:
         storage: Any,
         server_provider: Optional[Any] = None,
         api: Optional[Any] = None,
-        app_context: Optional[AppContext] = None,
     ):
         """Initializes the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
         self.storage = storage
         self.server_provider = server_provider
         self.api = api
-        self.app_context = app_context
         self.servers: Dict[str, "BedrockServer"] = {}
         self.logger = logging.getLogger(__name__)
         self._shutdown_event = asyncio.Event()
@@ -117,7 +114,7 @@ class BedrockProcessManager:
                     return
 
                 try:
-                    await self.app_context.api.stop_server(server_name)
+                    await self.api.stop_server(server_name)
                 except Exception as e:
                     self.logger.error(
                         f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
@@ -266,12 +263,12 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
-                                await self.app_context.api.update_server_player_stats_api(
+                                await self.api.update_server_player_stats_api(
                                     server.server_name,
                                     server.player_count,
                                     server.players,
                                 )
-                            except AttributeError as e:
+                            except Exception as e:
                                 self.logger.warning(
                                     f"Could not trigger player stats update API: {e}"
                                 )
@@ -279,10 +276,8 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                ban_res = (
-                                    await self.app_context.api.get_server_bans_api(
-                                        server_name=server.server_name,
-                                    )
+                                ban_res = await self.api.get_server_bans_api(
+                                    server_name=server.server_name,
                                 )
 
                                 if ban_res.get("status") == "success":

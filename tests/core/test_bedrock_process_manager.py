@@ -19,7 +19,6 @@ async def test_process_manager_add_remove_server(app_context: AppContext):
         storage=app_context.storage,
         server_provider=app_context.get_server,
         api=app_context.api,
-        app_context=app_context,
     )
     mock_server = MagicMock()
     mock_server.set_status_in_config = AsyncMock()
@@ -41,7 +40,6 @@ async def test_process_manager_shutdown(app_context: AppContext):
         storage=app_context.storage,
         server_provider=app_context.get_server,
         api=app_context.api,
-        app_context=app_context,
     )
     manager._shutdown_event = MagicMock()
 
@@ -61,7 +59,6 @@ async def test_try_restart_server_success(app_context: AppContext):
         storage=app_context.storage,
         server_provider=app_context.get_server,
         api=app_context.api,
-        app_context=app_context,
     )
 
     with patch.object(app_context.settings, "get", return_value=3):
@@ -83,7 +80,6 @@ async def test_try_restart_server_max_retries_reached(app_context: AppContext):
         storage=app_context.storage,
         server_provider=app_context.get_server,
         api=app_context.api,
-        app_context=app_context,
     )
 
     with patch.object(app_context.settings, "get", return_value=3):
@@ -117,7 +113,6 @@ async def test_write_error_status_success(app_context: AppContext):
         storage=app_context.storage,
         server_provider=MagicMock(return_value=mock_server),
         api=app_context.api,
-        app_context=app_context,
     )
 
     await manager.write_error_status("test_server")
@@ -136,7 +131,6 @@ async def test_write_error_status_failure(app_context: AppContext):
         storage=app_context.storage,
         server_provider=MagicMock(return_value=mock_server),
         api=app_context.api,
-        app_context=app_context,
     )
 
     with pytest.raises(FileOperationError, match="Failed to write status"):
@@ -152,7 +146,6 @@ async def test_monitor_servers_crashed_server_detected(
         storage=app_context.storage,
         server_provider=app_context.get_server,
         api=app_context.api,
-        app_context=app_context,
     )
 
     server = real_bedrock_server
