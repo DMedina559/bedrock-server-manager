@@ -284,7 +284,7 @@ class BedrockProcessManager:
                                     bans = ban_res.get("bans", [])
                                     banned_xuids = {b["xuid"]: b for b in bans}
                                     for p in server.players:
-                                        xuid = p.get("uuid")
+                                        xuid = p.get("xuid")
                                         if xuid in banned_xuids:
                                             reason = (
                                                 banned_xuids[xuid].get("reason")

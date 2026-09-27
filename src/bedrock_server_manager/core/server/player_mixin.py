@@ -92,7 +92,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
 
                     # Match connection
                     match_conn = re.search(
-                        r"Player connected:\s*([^,]+),\s*xuid:\s*(\d+)",
+                        r"Player connected:\s*([^,]+?)(?:,\s*|\s+)xuid:\s*(\d+)",
                         line,
                         re.IGNORECASE,
                     )
@@ -106,7 +106,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
                     else:
                         # Match disconnection
                         match_disconn = re.search(
-                            r"Player disconnected:\s*([^,]+),\s*xuid:\s*(\d+)",
+                            r"Player disconnected:\s*([^,]+?)(?:,\s*|\s+)xuid:\s*(\d+)",
                             line,
                             re.IGNORECASE,
                         )
@@ -201,7 +201,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
 
         Returns:
             List[Dict[str, str]]: The updated list of dictionaries for each currently
-            online player, containing their "name" and "uuid" (XUID).
+            online player, containing their "name" and "xuid".
         """
         is_running = await self.is_running()  # type: ignore
 
@@ -219,7 +219,13 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
         if not getattr(self, "players", None):
             self.players: List[Dict[str, str]] = []  # type: ignore[has-type, no-redef]
 
-        online_players: Dict[str, str] = {p["uuid"]: p["name"] for p in self.players}  # type: ignore[has-type]
+        online_players: Dict[str, str] = {}
+        for p in self.players:  # type: ignore[has-type]
+            if isinstance(p, dict):
+                p_xuid = p.get("xuid")
+                p_name = p.get("name")
+                if p_xuid and p_name:
+                    online_players[str(p_xuid)] = str(p_name)
 
         events = await asyncio.to_thread(
             lambda: list(self._parse_player_log_events(self._log_file_cursor))
@@ -237,7 +243,7 @@ class ServerPlayerMixin(BedrockServerBaseMixin):
         setattr(
             self,
             "players",
-            [{"name": name, "uuid": xuid} for xuid, name in online_players.items()],
+            [{"name": name, "xuid": xuid} for xuid, name in online_players.items()],
         )
 
         return getattr(self, "players", [])
