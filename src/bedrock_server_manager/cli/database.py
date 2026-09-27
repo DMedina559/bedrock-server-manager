@@ -13,12 +13,32 @@ from ..context import AppContext
 from ..db import models
 from ..utils.database import backup_database, get_current_db_revision, restore_database
 from ..utils.general import run_async
+from ..utils.migration import run_migrations_downgrade, run_migrations_upgrade
 
 
 @click.group()
 def database():
     """Database management commands."""
     pass
+
+
+@database.command(name="status")
+@click.pass_context
+def db_status(ctx: click.Context):
+    """Displays current database version and migration status."""
+    app_context: AppContext = ctx.obj["app_context"]
+    current_rev = run_async(get_current_db_revision(app_context.db.engine))
+    head_rev = app_context.db._get_head_revision()
+
+    click.echo(f"Current Database Revision: {current_rev or 'Unstamped / None'}")
+    click.echo(f"Latest Available Head Revision: {head_rev or 'Unknown'}")
+    if current_rev == head_rev and head_rev is not None:
+        click.secho("Database is up to date!", fg="green")
+    else:
+        click.secho(
+            "Database pending upgrade. Run 'bsm database upgrade' to update.",
+            fg="yellow",
+        )
 
 
 @database.command()
@@ -142,7 +162,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
 
             # Upgrade Database
             click.echo("Running database upgrade...")
-            command.upgrade(alembic_cfg, "head")
+            run_async(run_migrations_upgrade(app_context.db))
             click.echo("Database upgrade complete.")
 
         sync_engine.dispose()
@@ -213,15 +233,9 @@ def downgrade(ctx: click.Context, revision: str):
                 raise click.Abort()
 
     try:
-        sync_engine = create_engine(sync_db_url)
-
-        with sync_engine.begin() as connection:
-            alembic_cfg.attributes["connection"] = connection
-            click.echo(f"Running database downgrade to revision: {revision}...")
-            command.downgrade(alembic_cfg, revision)
-            click.echo("Database downgrade complete.")
-
-        sync_engine.dispose()
+        click.echo(f"Running database downgrade to revision: {revision}...")
+        run_async(run_migrations_downgrade(app_context.db, revision))
+        click.echo("Database downgrade complete.")
 
     except Exception as e:
         click.secho(f"An error occurred during the database downgrade: {e}", fg="red")

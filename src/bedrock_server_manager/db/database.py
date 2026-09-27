@@ -125,10 +125,44 @@ class Database:
             command.upgrade(alembic_cfg, "head")
         sync_engine.dispose()
 
+    def _get_head_revision(self) -> str | None:
+        """Retrieves the current head revision from Alembic script directory."""
+        try:
+            alembic_ini_path = files("bedrock_server_manager").joinpath(
+                "db/alembic.ini"
+            )
+            alembic_cfg = Config(str(alembic_ini_path))
+            alembic_cfg.set_main_option("skip_logging_config", "true")
+            from alembic.script import ScriptDirectory
+
+            script = ScriptDirectory.from_config(alembic_cfg)
+            head = script.get_current_head()
+            return str(head) if head is not None else None
+        except Exception as e:
+            logging.warning(f"Failed to resolve Alembic head revision: {e}")
+            return None
+
+    def _run_alembic_downgrade(self, revision: str = "-1") -> None:
+        """Runs synchronous Alembic downgrade command."""
+        from sqlalchemy import create_engine
+
+        sync_url = self._get_sync_db_url()
+        logging.getLogger("alembic").setLevel(logging.WARNING)
+
+        alembic_ini_path = files("bedrock_server_manager").joinpath("db/alembic.ini")
+        alembic_cfg = Config(str(alembic_ini_path))
+        alembic_cfg.set_main_option("skip_logging_config", "true")
+        alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
+
+        sync_engine = create_engine(sync_url)
+        with sync_engine.begin() as connection:
+            alembic_cfg.attributes["connection"] = connection
+            command.downgrade(alembic_cfg, revision)
+        sync_engine.dispose()
+
     async def _ensure_tables_created(self) -> None:
         """
-        Ensures that the database tables are created asynchronously.
-        Checks for the 'users' table and runs migrations if needed.
+        Ensures that the database tables are created asynchronously and auto-upgraded if out of date.
         """
         if not self._tables_created:
             if not self.engine:
@@ -136,14 +170,29 @@ class Database:
 
             assert self.engine is not None
 
-            def has_users_table(conn):
+            def inspect_db_state(conn):
                 inspector = inspect(conn)
-                return inspector.has_table("users")
+                has_users = inspector.has_table("users")
+                has_version = inspector.has_table("alembic_version")
+                current_rev = None
+                if has_version:
+                    from sqlalchemy import text
+
+                    res = conn.execute(text("SELECT version_num FROM alembic_version"))
+                    current_rev = res.scalar_one_or_none()
+                return has_users, has_version, current_rev
 
             async with self.engine.connect() as conn:
-                needs_creation = not await conn.run_sync(has_users_table)
+                has_users, has_version, current_rev = await conn.run_sync(
+                    inspect_db_state
+                )
 
-            if needs_creation:
+            head_rev = self._get_head_revision()
+
+            if not has_users or (
+                has_version and current_rev and head_rev and current_rev != head_rev
+            ):
+                logging.info("Auto-upgrading database schema to head...")
                 await asyncio.to_thread(self._run_alembic_upgrade)
 
             self._tables_created = True
