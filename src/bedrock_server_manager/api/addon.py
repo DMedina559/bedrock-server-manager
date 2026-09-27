@@ -36,14 +36,15 @@ from ..error import (
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..utils import list_content_files
+from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-# A unified lock to prevent race conditions during addon file operations.
+# A unified re-entrant lock to prevent race conditions during addon file operations.
 # This ensures that only one addon installation can occur at a time,
-# preventing potential file corruption.
-_addon_lock = asyncio.Lock()
+# preventing potential file corruption while allowing re-entrant event listeners.
+_addon_lock = ReentrantAsyncLock()
 
 
 @api_method("list_available_addons")

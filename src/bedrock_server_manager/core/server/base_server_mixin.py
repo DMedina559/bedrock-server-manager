@@ -11,7 +11,6 @@ class to ensure these
 fundamental attributes are available.
 """
 
-import asyncio
 import logging
 import os
 import platform
@@ -22,6 +21,7 @@ if TYPE_CHECKING:
     from ...context import AppContext
 
 from ...error import ConfigurationError, MissingArgumentError
+from ...utils.general import ReentrantAsyncLock
 from ..system import base as system_base
 
 
@@ -128,7 +128,7 @@ class BedrockServerBaseMixin:
         # These are initialized here but primarily used by other mixins.
 
         # For atomic file writes concurrency control
-        self._file_locks: Dict[str, asyncio.Lock] = {}
+        self._file_locks: Dict[str, ReentrantAsyncLock] = {}
 
         # For process resource monitoring.
         self._resource_monitor = system_base.ResourceMonitor()
@@ -209,18 +209,19 @@ class BedrockServerBaseMixin:
         current_server_config_dir = self.server_config_dir
         return os.path.join(current_server_config_dir, pid_filename)
 
-    def get_file_lock(self, filepath: str) -> asyncio.Lock:
-        """Retrieves or creates an asyncio.Lock for the specified filepath.
+    def get_file_lock(self, filepath: str) -> ReentrantAsyncLock:
+        """Retrieves or creates a ReentrantAsyncLock for the specified filepath.
 
         This ensures that asynchronous operations (like atomic JSON writes)
-        do not concurrently collide when targeting the same configuration file.
+        do not concurrently collide when targeting the same configuration file,
+        while allowing re-entrant locks within the same task.
 
         Args:
             filepath (str): The absolute path to the file.
 
         Returns:
-            asyncio.Lock: The lock associated with the given file.
+            ReentrantAsyncLock: The re-entrant lock associated with the given file.
         """
         if filepath not in self._file_locks:
-            self._file_locks[filepath] = asyncio.Lock()
+            self._file_locks[filepath] = ReentrantAsyncLock()
         return self._file_locks[filepath]

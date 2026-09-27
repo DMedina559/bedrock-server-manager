@@ -38,14 +38,15 @@ from ..error import (
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
+from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-# A unified lock for all backup, restore, and prune operations.
+# A unified re-entrant lock for all backup, restore, and prune operations.
 # This ensures that only one file-modifying operation can run at a time across
-# the entire module, preventing race conditions and potential data corruption.
-_backup_restore_lock = asyncio.Lock()
+# the entire module, while allowing nested/event calls from the same task without deadlocking.
+_backup_restore_lock = ReentrantAsyncLock()
 
 
 @api_method("list_backup_files")

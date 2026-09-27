@@ -15,11 +15,12 @@ from ..core import prune_old_downloads
 from ..error import BSMError, MissingArgumentError, UserInputError
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
+from ..utils.general import ReentrantAsyncLock
 
 logger = logging.getLogger(__name__)
 
 # A lock to prevent race conditions during miscellaneous file operations.
-_misc_lock = asyncio.Lock()
+_misc_lock = ReentrantAsyncLock()
 
 
 @api_method("prune_download_cache")

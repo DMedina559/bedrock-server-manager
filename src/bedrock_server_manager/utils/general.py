@@ -92,6 +92,52 @@ def run_async(coro):
             return executor.submit(lambda: asyncio.run(coro)).result()
 
 
+class ReentrantAsyncLock:
+    """A re-entrant lock for asyncio tasks to prevent deadlocks when a task re-enters locked operations."""
+
+    def __init__(self) -> None:
+        import asyncio
+
+        self._lock = asyncio.Lock()
+        self._owner: Any = None
+        self._count = 0
+
+    async def acquire(self) -> bool:
+        import asyncio
+
+        me = asyncio.current_task()
+        if me is not None and self._owner == me:
+            self._count += 1
+            return True
+        await self._lock.acquire()
+        self._owner = me
+        self._count = 1
+        return True
+
+    def release(self) -> None:
+        import asyncio
+
+        me = asyncio.current_task()
+        if me is None or self._owner != me:
+            raise RuntimeError(
+                "Cannot release un-acquired lock or lock owned by another task"
+            )
+        self._count -= 1
+        if self._count == 0:
+            self._owner = None
+            self._lock.release()
+
+    def locked(self) -> bool:
+        return self._lock.locked()
+
+    async def __aenter__(self) -> "ReentrantAsyncLock":
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.release()
+
+
 def get_timestamp() -> str:
     """
     Generates a timestamp string suitable for filenames or logging.
