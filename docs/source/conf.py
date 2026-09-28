@@ -46,6 +46,18 @@ html_static_path = ["../sphinx_build/_static"]
 html_favicon = "../sphinx_build/_static/favicon.ico"
 html_logo = "../sphinx_build/_static/favicon-96x96.png"
 html_css_files = ["css/custom_sphinx_styles.css"]
+html_js_files = ["js/custom_docs.js"]
+
+html_theme_options = {
+    "logo_only": False,
+    "prev_next_buttons_location": "bottom",
+    "style_external_links": True,
+    "collapse_navigation": False,
+    "sticky_navigation": True,
+    "navigation_depth": 4,
+    "includehidden": True,
+    "titles_only": False,
+}
 
 sphinx_github_changelog_token = os.environ.get(
     "SPHINX_GITHUB_CHANGELOG_TOKEN"
