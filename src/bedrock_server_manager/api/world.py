@@ -110,16 +110,12 @@ async def export_world(
     server_name: str,
     app_context: AppContext,
     export_dir: Optional[str] = None,
-    stop_start_server: bool = True,
 ) -> Dict[str, Any]:
     """Exports the server's currently active world to a .mcworld archive.
 
-    This operation is thread-safe due to ``_world_lock``. If `stop_start_server`
-    is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
-    the server is stopped during the export for file consistency, and then
-    restarted. The core world export is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.export_world`.
+    This operation is thread-safe due to ``_world_lock``. The core world export
+    is performed by :meth:`~.core.bedrock_server.BedrockServer.export_world`,
+    which performs a live backup using save hold if the server is running.
     Triggers ``before_world_export`` and ``after_world_export`` plugin events.
 
     Args:
@@ -128,8 +124,6 @@ async def export_world(
             ``.mcworld`` file. If ``None``, it defaults to a "worlds" subdirectory
             within the application's global content directory (defined by
             ``paths.content`` setting). Defaults to ``None``.
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before the export and restarted afterwards. Defaults to ``True``.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -141,10 +135,10 @@ async def export_world(
         InvalidServerNameError: If `server_name` is empty.
         FileOperationError: If the content directory setting (``paths.content``)
             is missing when `export_dir` is ``None``, or for other file I/O errors
-            during export or lifecycle management.
+            during export.
         BSMError: Propagates errors from underlying operations, including
-            :class:`~.error.AppFileNotFoundError` if world directory is missing,
-            :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
+            :class:`~.error.AppFileNotFoundError` if world directory is missing, or
+            :class:`~.error.BackupRestoreError` from export.
     """
     try:
         await _world_lock.acquire(timeout=300)
@@ -173,9 +167,7 @@ async def export_world(
                 )
             effective_export_dir = os.path.join(content_base_dir, "worlds")
 
-        logger.info(
-            f"API: Initiating world export for '{server_name}' (Stop/Start: {stop_start_server})"
-        )
+        logger.info(f"API: Initiating world export for '{server_name}'")
 
         try:
             server = app_context.get_server(server_name)
@@ -186,14 +178,10 @@ async def export_world(
             export_filename = f"{world_name_str}_export_{timestamp}.mcworld"
             export_file_path = os.path.join(effective_export_dir, export_filename)
 
-            # Use the lifecycle manager to handle stopping and starting the server.
-            async with server_lifecycle_manager(
-                server_name, stop_before=stop_start_server, app_context=app_context
-            ):
-                logger.info(
-                    f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
-                )
-                await server.export_world(world_name_str, export_file_path)
+            logger.info(
+                f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
+            )
+            await server.export_world(world_name_str, export_file_path)
 
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."

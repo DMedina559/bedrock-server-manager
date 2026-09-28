@@ -106,23 +106,18 @@ async def list_backup_files(
 async def backup_world(
     server_name: str,
     app_context: AppContext,
-    stop_start_server: bool = True,
 ) -> Dict[str, str]:
     """Creates a backup of the server's world directory.
 
     This operation is thread-safe and guarded by a lock. It calls the internal
     ``_backup_world_data_internal`` method of the
     :class:`~.core.bedrock_server.BedrockServer` instance, which handles
-    determining the active world, exporting it to a ``.mcworld`` file, and
-    pruning old world backups. If `stop_start_server` is ``True``, the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-    is used to manage the server's state.
+    determining the active world, exporting it to a ``.mcworld`` file (performing
+    a live backup using save hold if the server is running), and pruning old world backups.
     Triggers ``before_backup`` and ``after_backup`` plugin events (with type "world").
 
     Args:
         server_name (str): The name of the server whose world is to be backed up.
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before the backup and restarted afterwards. Defaults to ``True``.
 
     Returns:
         Dict[str, str]: A dictionary with the operation result.
@@ -135,8 +130,7 @@ async def backup_world(
         BSMError: Propagates errors from underlying operations, including:
             :class:`~.error.ConfigurationError` (backup path not set),
             :class:`~.error.AppFileNotFoundError` (world dir missing),
-            :class:`~.error.BackupRestoreError` (export/pruning issues),
-            or errors from server stop/start.
+            or :class:`~.error.BackupRestoreError` (export/pruning issues).
     """
     try:
         await _backup_restore_lock.acquire(timeout=300)
@@ -153,17 +147,11 @@ async def backup_world(
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
 
-        logger.info(
-            f"API: Initiating world backup for server '{server_name}'. Stop/Start: {stop_start_server}"
-        )
+        logger.info(f"API: Initiating world backup for server '{server_name}'.")
 
         try:
-            # Use a context manager to handle stopping and starting the server.
-            async with server_lifecycle_manager(
-                server_name, stop_start_server, app_context=app_context
-            ):
-                server = app_context.get_server(server_name)
-                backup_file = await server._backup_world_data_internal()
+            server = app_context.get_server(server_name)
+            backup_file = await server._backup_world_data_internal()
             return {
                 "status": "success",
                 "message": f"World backup '{os.path.basename(str(backup_file))}' created successfully for server '{server_name}'.",
@@ -198,7 +186,6 @@ async def backup_config_file(
     server_name: str,
     file_to_backup: str,
     app_context: AppContext,
-    stop_start_server: bool = True,
 ) -> Dict[str, str]:
     """Creates a backup of a specific server configuration file.
 
@@ -208,9 +195,6 @@ async def backup_config_file(
     copies the specified file (e.g., ``server.properties``) from the server's
     installation directory to a timestamped backup in the server's backup
     directory, then prunes older backups of that file type.
-    The :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-    is used if `stop_start_server` is ``True``, though typically not strictly
-    necessary for config file backups unless there's a concern about live writes.
     Triggers ``before_backup`` and ``after_backup`` plugin events (with type "config_file").
 
     Args:
@@ -218,10 +202,6 @@ async def backup_config_file(
         file_to_backup (str): The name of the configuration file to back up
             (e.g., "server.properties", "allowlist.json"). This file is expected
             to be in the root of the server's installation directory.
-        stop_start_server (bool, optional): If ``True``, the server lifecycle will be
-            managed (stopped before, restarted after if it was running). While often
-            not strictly needed for config file backups, it can ensure consistency
-            if the server might be writing to the file. Defaults to ``True``.
 
     Returns:
         Dict[str, str]: A dictionary with the operation result.
@@ -233,9 +213,8 @@ async def backup_config_file(
     Raises:
         MissingArgumentError: If `server_name` or `file_to_backup` is empty.
         BSMError: Propagates errors from underlying operations, including
-            :class:`~.error.ConfigurationError` (backup path not set),
-            :class:`~.error.FileOperationError` (file copy/pruning issues),
-            or errors from server stop/start if `stop_start_server` is true.
+            :class:`~.error.ConfigurationError` (backup path not set) or
+            :class:`~.error.FileOperationError` (file copy/pruning issues).
     """
     try:
         await _backup_restore_lock.acquire(timeout=300)
@@ -256,15 +235,12 @@ async def backup_config_file(
 
         filename_base = os.path.basename(file_to_backup)
         logger.info(
-            f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'. Stop/Start: {stop_start_server}"
+            f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'."
         )
 
         try:
-            async with server_lifecycle_manager(
-                server_name, stop_start_server, app_context=app_context
-            ):
-                server = app_context.get_server(server_name)
-                backup_file = await server._backup_config_file_internal(filename_base)
+            server = app_context.get_server(server_name)
+            backup_file = await server._backup_config_file_internal(filename_base)
             return {
                 "status": "success",
                 "message": f"Config file '{filename_base}' backed up as '{os.path.basename(str(backup_file))}' successfully.",
@@ -299,24 +275,15 @@ async def backup_config_file(
 async def backup_all(
     server_name: str,
     app_context: AppContext,
-    stop_start_server: bool = True,
 ) -> Dict[str, Any]:
     """Performs a full backup of the server's world and configuration files.
 
     This operation is thread-safe and guarded by a lock. It calls
     :meth:`~.core.bedrock_server.BedrockServer.backup_all_data`.
-    If `stop_start_server` is ``True``, the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
-    is used to stop the server before the backup. **Note:** The server is
-    **not** automatically restarted by this specific API function after the backup,
-    even if `stop_start_server` is true; only the stop phase of the lifecycle
-    manager is effectively used here for `backup_all`.
     Triggers ``before_backup`` and ``after_backup`` plugin events (with type "all").
 
     Args:
         server_name (str): The name of the server to back up.
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before the backup operation begins. Defaults to ``True``.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -329,9 +296,8 @@ async def backup_all(
     Raises:
         MissingArgumentError: If `server_name` is empty.
         BSMError: Propagates errors from underlying operations, including:
-            :class:`~.error.ConfigurationError` (backup path not set),
-            :class:`~.error.BackupRestoreError` (if critical world backup fails),
-            or errors from server stop if `stop_start_server` is true.
+            :class:`~.error.ConfigurationError` (backup path not set) or
+            :class:`~.error.BackupRestoreError` (if critical world backup fails).
     """
     try:
         await _backup_restore_lock.acquire(timeout=300)
@@ -348,17 +314,11 @@ async def backup_all(
         if not server_name:
             raise MissingArgumentError("Server name cannot be empty.")
 
-        logger.info(
-            f"API: Initiating full backup for server '{server_name}'. Stop/Start: {stop_start_server}"
-        )
+        logger.info(f"API: Initiating full backup for server '{server_name}'.")
 
         try:
-            # The server is stopped before the backup but not restarted after.
-            async with server_lifecycle_manager(
-                server_name, stop_before=stop_start_server, app_context=app_context
-            ):
-                server = app_context.get_server(server_name)
-                backup_results = await server.backup_all_data()
+            server = app_context.get_server(server_name)
+            backup_results = await server.backup_all_data()
             return {
                 "status": "success",
                 "message": f"Full backup completed successfully for server '{server_name}'.",
