@@ -45,6 +45,7 @@ class Storage:
         self.player_repo = PlayerRepository(db)
         self.audit_log_repo = AuditLogRepository(db)
         self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
+        self._flush_lock = asyncio.Lock()
 
     def subscribe(self, listener: Callable[[AppState, ChangeSet], Any]) -> None:
         """Registers a callback to receive state change notifications when changesets are persisted."""
@@ -87,6 +88,7 @@ class Storage:
                             or "busy" in str(commit_err).lower()
                         )
                         if is_lock_error and attempt < max_retries:
+                            await session.rollback()
                             attempt += 1
                             logger.warning(
                                 f"Database lock during commit, retrying ({attempt}/{max_retries}): {commit_err}"
@@ -106,46 +108,48 @@ class Storage:
         if changeset.is_empty():
             return
 
-        async with self.transaction() as session:
-            if changeset.settings_changed:
-                async with state.settings.get_lock("global"):
-                    settings_snapshot = state.settings.to_dict()
-                await self.settings_repo.save_settings(session, settings_snapshot)
-                async with state.settings.get_lock("global"):
-                    if state.settings.to_dict() == settings_snapshot:
-                        state.settings.clear_dirty()
+        async with self._flush_lock:
+            async with self.transaction() as session:
+                if changeset.settings_changed:
+                    async with state.settings.get_lock("global"):
+                        settings_snapshot = state.settings.to_dict()
+                    await self.settings_repo.save_settings(session, settings_snapshot)
+                    async with state.settings.get_lock("global"):
+                        if state.settings.to_dict() == settings_snapshot:
+                            state.settings.clear_dirty()
 
-            if changeset.servers_changed:
-                for server_name in changeset.servers_changed:
-                    async with state.servers.get_lock(server_name):
-                        cfg = state.servers.get(server_name)
-                    if cfg:
-                        await self.server_repo.save_server(session, cfg)
+                if changeset.servers_changed:
+                    for server_name in changeset.servers_changed:
                         async with state.servers.get_lock(server_name):
-                            if state.servers.get(server_name) == cfg:
-                                state.servers.remove_dirty_server(server_name)
+                            cfg = state.servers.get(server_name)
+                        if cfg:
+                            await self.server_repo.save_server(session, cfg)
+                            async with state.servers.get_lock(server_name):
+                                if state.servers.get(server_name) == cfg:
+                                    state.servers.remove_dirty_server(server_name)
 
-            if changeset.plugins_changed:
-                for plugin_name in changeset.plugins_changed:
-                    async with state.plugins.get_lock(plugin_name):
-                        p_info = state.plugins.get(plugin_name)
-                    if p_info:
-                        await self.plugin_repo.save_plugin(session, p_info)
+                if changeset.plugins_changed:
+                    for plugin_name in changeset.plugins_changed:
                         async with state.plugins.get_lock(plugin_name):
-                            if state.plugins.get(plugin_name) == p_info:
-                                state.plugins.remove_dirty_plugin(plugin_name)
+                            p_info = state.plugins.get(plugin_name)
+                        if p_info:
+                            await self.plugin_repo.save_plugin(session, p_info)
+                            async with state.plugins.get_lock(plugin_name):
+                                if state.plugins.get(plugin_name) == p_info:
+                                    state.plugins.remove_dirty_plugin(plugin_name)
 
-            if changeset.users_changed:
-                for username in changeset.users_changed:
-                    async with state.users.get_lock(username):
-                        u_info = state.users.get(username)
-                    if u_info:
-                        await self.user_repo.save_user(session, u_info)
+                if changeset.users_changed:
+                    for username in changeset.users_changed:
                         async with state.users.get_lock(username):
-                            if state.users.get(username) == u_info:
-                                state.users.remove_dirty_user(username)
+                            u_info = state.users.get(username)
+                        if u_info:
+                            await self.user_repo.save_user(session, u_info)
+                            async with state.users.get_lock(username):
+                                if state.users.get(username) == u_info:
+                                    state.users.remove_dirty_user(username)
 
-        await self._notify_listeners(state, changeset)
+            # Listener notifications run strictly post-commit outside the transaction boundary
+            await self._notify_listeners(state, changeset)
 
     async def load_state(self, state: Optional[AppState] = None) -> AppState:
         """
@@ -215,53 +219,58 @@ class Storage:
         if not state.is_dirty():
             return
 
-        flushed_changeset = ChangeSet()
-        if state.settings.is_dirty:
-            flushed_changeset.add_setting("global")
-        for s in state.servers.dirty_servers:
-            flushed_changeset.add_server(s)
-        for p in state.plugins.dirty_plugins:
-            flushed_changeset.add_plugin(p)
-        for u in state.users.dirty_users:
-            flushed_changeset.add_user(u)
+        async with self._flush_lock:
+            if not state.is_dirty():
+                return
 
-        async with self.transaction() as session:
+            flushed_changeset = ChangeSet()
             if state.settings.is_dirty:
-                async with state.settings.get_lock("global"):
-                    settings_snapshot = state.settings.to_dict()
-                await self.settings_repo.save_settings(session, settings_snapshot)
-                async with state.settings.get_lock("global"):
-                    if state.settings.to_dict() == settings_snapshot:
-                        state.settings.clear_dirty()
+                flushed_changeset.add_setting("global")
+            for s in state.servers.dirty_servers:
+                flushed_changeset.add_server(s)
+            for p in state.plugins.dirty_plugins:
+                flushed_changeset.add_plugin(p)
+            for u in state.users.dirty_users:
+                flushed_changeset.add_user(u)
 
-            if state.servers.is_dirty:
-                for server_name in list(state.servers.dirty_servers):
-                    async with state.servers.get_lock(server_name):
-                        cfg = state.servers.get(server_name)
-                    if cfg:
-                        await self.server_repo.save_server(session, cfg)
+            async with self.transaction() as session:
+                if state.settings.is_dirty:
+                    async with state.settings.get_lock("global"):
+                        settings_snapshot = state.settings.to_dict()
+                    await self.settings_repo.save_settings(session, settings_snapshot)
+                    async with state.settings.get_lock("global"):
+                        if state.settings.to_dict() == settings_snapshot:
+                            state.settings.clear_dirty()
+
+                if state.servers.is_dirty:
+                    for server_name in list(state.servers.dirty_servers):
                         async with state.servers.get_lock(server_name):
-                            if state.servers.get(server_name) == cfg:
-                                state.servers.remove_dirty_server(server_name)
+                            cfg = state.servers.get(server_name)
+                        if cfg:
+                            await self.server_repo.save_server(session, cfg)
+                            async with state.servers.get_lock(server_name):
+                                if state.servers.get(server_name) == cfg:
+                                    state.servers.remove_dirty_server(server_name)
 
-            if state.plugins.is_dirty:
-                for plugin_name in list(state.plugins.dirty_plugins):
-                    async with state.plugins.get_lock(plugin_name):
-                        p_info = state.plugins.get(plugin_name)
-                    if p_info:
-                        await self.plugin_repo.save_plugin(session, p_info)
+                if state.plugins.is_dirty:
+                    for plugin_name in list(state.plugins.dirty_plugins):
                         async with state.plugins.get_lock(plugin_name):
-                            if state.plugins.get(plugin_name) == p_info:
-                                state.plugins.remove_dirty_plugin(plugin_name)
+                            p_info = state.plugins.get(plugin_name)
+                        if p_info:
+                            await self.plugin_repo.save_plugin(session, p_info)
+                            async with state.plugins.get_lock(plugin_name):
+                                if state.plugins.get(plugin_name) == p_info:
+                                    state.plugins.remove_dirty_plugin(plugin_name)
 
-            if state.users.is_dirty:
-                for username in list(state.users.dirty_users):
-                    async with state.users.get_lock(username):
-                        u_info = state.users.get(username)
-                    if u_info:
-                        await self.user_repo.save_user(session, u_info)
+                if state.users.is_dirty:
+                    for username in list(state.users.dirty_users):
                         async with state.users.get_lock(username):
-                            if state.users.get(username) == u_info:
-                                state.users.remove_dirty_user(username)
+                            u_info = state.users.get(username)
+                        if u_info:
+                            await self.user_repo.save_user(session, u_info)
+                            async with state.users.get_lock(username):
+                                if state.users.get(username) == u_info:
+                                    state.users.remove_dirty_user(username)
 
-        await self._notify_listeners(state, flushed_changeset)
+            # Listener notifications run strictly post-commit outside the transaction boundary
+            await self._notify_listeners(state, flushed_changeset)
