@@ -11,14 +11,11 @@ This module provides endpoints for:
 """
 
 import logging
-from typing import List
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
-from sqlalchemy.future import select
 
 from ...context import AppContext
-from ...db.models import User
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
@@ -32,16 +29,6 @@ router = APIRouter(
 )
 
 
-async def _get_active_admin_count(db) -> int:
-    """Helper function to get the count of active admins."""
-    result = await db.execute(
-        select(func.count())
-        .select_from(User)
-        .filter(User.role == "admin", User.is_active.is_(True))
-    )
-    return int(result.scalar() or 0)
-
-
 @router.get("/list", response_model=List[UserSchema])
 async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
@@ -50,9 +37,8 @@ async def list_users_api(
     """
     Retrieves the list of users as JSON.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(select(User))
-        users = result.scalars().all()
+    async with app_context.storage.transaction() as session:
+        users = await app_context.storage.user_repo.get_all_users(session)
         return users
 
 
@@ -65,12 +51,14 @@ async def delete_user(
     """
     Deletes a user.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar_one_or_none()
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
-            # Prevent deleting the last admin
-            if user.role == "admin" and await _get_active_admin_count(db) <= 1:
+            if (
+                user.role == "admin"
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot delete the last active admin.",
@@ -82,8 +70,7 @@ async def delete_user(
                 "delete_user",
                 {"user_id": user.id, "username": str(user.username)},
             )
-            await db.delete(user)
-            await db.commit()
+            await app_context.storage.user_repo.delete_user(session, user)
             logger.info(
                 f"UserResponse '{user.username}' deleted by '{current_user.username}'."
             )
@@ -104,18 +91,20 @@ async def disable_user(
     """
     Disables a user.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar_one_or_none()
+    async with app_context.storage.transaction() as session:
+        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
-            if user.role == "admin" and await _get_active_admin_count(db) <= 1:
+            if (
+                user.role == "admin"
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot disable the last active admin.",
                 )
 
             user.is_active = False
-            await db.commit()
             await create_audit_log(
                 app_context,
                 current_user.id,
@@ -142,12 +131,10 @@ async def enable_user(
     """
     Enables a user.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar_one_or_none()
+    async with app_context.storage.transaction() as session:
+        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
             user.is_active = True
-            await db.commit()
             await create_audit_log(
                 app_context,
                 current_user.id,
@@ -175,14 +162,14 @@ async def update_user_role(
     """
     Updates a user's role.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar_one_or_none()
+    async with app_context.storage.transaction() as session:
+        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
             if (
                 user.role == "admin"
                 and data.role != "admin"
-                and await _get_active_admin_count(db) <= 1
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
             ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -190,7 +177,6 @@ async def update_user_role(
                 )
             original_role = str(user.role)
             user.role = data.role
-            await db.commit()
             await create_audit_log(
                 app_context,
                 current_user.id,

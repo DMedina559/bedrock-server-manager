@@ -7,10 +7,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.future import select
 
 from ...context import AppContext
-from ...db.models import AuditLog
 from ..deps import get_admin_user, get_app_context
 from ..schemas import AuditLogResponse, UserResponse
 
@@ -23,7 +21,7 @@ router = APIRouter(
 
 
 async def create_audit_log(
-    app_context,
+    app_context: AppContext,
     user_id: int,
     action: str,
     details: Optional[Dict[Any, Any]] = None,
@@ -31,10 +29,10 @@ async def create_audit_log(
     """
     Creates an audit log entry.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        log = AuditLog(user_id=user_id, action=action, details=details)
-        db.add(log)
-        await db.commit()
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.audit_log_repo.create_audit_log(
+            session, user_id=user_id, action=action, details=details
+        )
 
 
 @router.get("/list", response_model=List[AuditLogResponse])
@@ -45,8 +43,6 @@ async def list_audit_logs_api(
     """
     Retrieves audit logs as JSON.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(select(AuditLog).order_by(AuditLog.timestamp.desc()))
-        logs = result.scalars().all()
-        # Convert timestamp to string if needed, or Pydantic handles datetime
+    async with app_context.storage.transaction() as session:
+        logs = await app_context.storage.audit_log_repo.get_all_logs(session)
         return logs

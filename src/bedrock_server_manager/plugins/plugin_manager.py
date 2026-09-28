@@ -36,10 +36,18 @@ _event_context_var: contextvars.ContextVar[Optional[Tuple[str, ...]]] = (
 class PluginManager:
     """Manages the discovery, loading, configuration, and lifecycle of all plugins."""
 
-    def __init__(self, app_context: "AppContext"):
-        """Initialize the PluginManager with the given application context."""
+    def __init__(
+        self,
+        state: Any,
+        storage: Any,
+        settings: Any,
+        app_context: Optional["AppContext"] = None,
+    ):
+        """Initialize the PluginManager with explicit required dependencies."""
+        self.state = state
+        self.storage = storage
+        self.settings = settings
         self.app_context = app_context
-        self.settings = app_context.settings
         user_plugin_dir = Path(self.settings.get("paths.plugins"))
         default_plugin_dir = Path(__file__).parent / "default"
 
@@ -74,51 +82,33 @@ class PluginManager:
         logger.info("PluginManager initialized.")
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations from the database asynchronously."""
-        from sqlalchemy.future import select
-
-        from ..db.models import Plugin
-
-        async with self.app_context.db.session_manager() as db:
-            result = await db.execute(select(Plugin))
-            plugins = result.scalars().all()
-            return {
-                str(plugin.plugin_name): {
-                    "enabled": plugin.enabled,
-                    "version": plugin.version,
-                    "author": plugin.author,
-                    "description": plugin.description,
-                }
-                for plugin in plugins
+        """Loads plugin configurations asynchronously via AppState and Storage."""
+        await self.storage.load_state(self.state)
+        return {
+            name: {
+                "enabled": p.enabled,
+                "version": p.version,
+                "author": p.author,
+                "description": p.description,
             }
+            for name, p in self.state.plugins.plugins.items()
+        }
 
     async def _save_config(self) -> None:
-        """Saves the current in-memory plugin configuration to the database in a single batch."""
-        from sqlalchemy.future import select
+        """Saves current plugin configuration asynchronously via AppState and Storage."""
+        from ..state.models import PluginInfoState
 
-        from ..db.models import Plugin
+        for plugin_name, config in self.plugin_config.items():
+            p_info = PluginInfoState(
+                plugin_name=plugin_name,
+                enabled=bool(config.get("enabled", False)),
+                version=str(config.get("version") or ""),
+                author=str(config.get("author") or ""),
+                description=str(config.get("description") or ""),
+            )
+            self.state.plugins.set(p_info)
 
-        async with self.app_context.db.session_manager() as db:
-            result = await db.execute(select(Plugin))
-            existing_plugins = {str(p.plugin_name): p for p in result.scalars().all()}
-
-            for plugin_name, config in self.plugin_config.items():
-                plugin = existing_plugins.get(plugin_name)
-                if plugin:
-                    plugin.enabled = bool(config.get("enabled", False))  # type: ignore[assignment]
-                    plugin.version = str(config.get("version") or "")  # type: ignore[assignment]
-                    plugin.author = str(config.get("author") or "")  # type: ignore[assignment]
-                    plugin.description = str(config.get("description") or "")  # type: ignore[assignment]
-                else:
-                    plugin = Plugin(
-                        plugin_name=plugin_name,
-                        enabled=bool(config.get("enabled", False)),
-                        version=str(config.get("version") or ""),
-                        author=str(config.get("author") or ""),
-                        description=str(config.get("description") or ""),
-                    )
-                    db.add(plugin)
-            await db.commit()
+        await self.storage.flush(self.state)
 
     def _find_plugin_path(self, plugin_name: str) -> Optional[Path]:
         """Searches for the plugin file or package in the configured plugin directories."""
@@ -361,16 +351,32 @@ class PluginManager:
         Includes idempotency checks to prevent duplicate task loops if called multiple times.
         """
         logger.info("Starting background tasks for plugins.")
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
         for plugin_instance in self.plugins:
             plugin_key = (
                 getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
                 or plugin_instance.name
             )
 
-            # Do not start tasks if they are already running for this plugin
+            # Keep only tasks that are alive AND belong to the current running event loop
             existing_tasks = self.plugin_tasks.get(plugin_key, [])
-            if any(not t.done() for t in existing_tasks):
+            valid_existing_tasks = [
+                t
+                for t in existing_tasks
+                if not t.done()
+                and (current_loop is None or t.get_loop() is current_loop)
+            ]
+
+            if valid_existing_tasks:
+                self.plugin_tasks[plugin_key] = valid_existing_tasks
                 continue
+
+            # Reset task list for this plugin on the active loop
+            self.plugin_tasks[plugin_key] = []
 
             try:
                 for method_name, method in inspect.getmembers(
@@ -664,21 +670,39 @@ class PluginManager:
 
                 if plugin_key in self.plugin_tasks:
                     for task in self.plugin_tasks.pop(plugin_key):
-                        task.cancel()
-                        tasks_to_await.append(task)
+                        try:
+                            task.cancel()
+                            tasks_to_await.append(task)
+                        except Exception:
+                            pass
 
             self.plugins.clear()
 
         # Cancel any remaining background tasks across all plugin keys
         for plugin_key, tasks in list(self.plugin_tasks.items()):
             for task in tasks:
-                task.cancel()
-                tasks_to_await.append(task)
+                try:
+                    task.cancel()
+                    tasks_to_await.append(task)
+                except Exception:
+                    pass
         self.plugin_tasks.clear()
 
-        # Ensure all cancelled tasks finish terminating cleanly
+        # Ensure only tasks belonging to the current running event loop are gathered
         if tasks_to_await:
-            await asyncio.gather(*tasks_to_await, return_exceptions=True)
+            try:
+                current_loop = asyncio.get_running_loop()
+                active_tasks = [
+                    t
+                    for t in tasks_to_await
+                    if not t.done()
+                    and (t.get_loop() is current_loop or t.get_loop() == current_loop)
+                ]
+                if active_tasks:
+                    await asyncio.gather(*active_tasks, return_exceptions=True)
+            except RuntimeError:
+                # No active running loop, tasks are already cancelled
+                pass
 
         self._event_listeners.clear()
         self._discovered_classes.clear()
@@ -749,7 +773,17 @@ class PluginManager:
                 tasks_to_await.append(task)
 
         if tasks_to_await:
-            await asyncio.gather(*tasks_to_await, return_exceptions=True)
+            try:
+                current_loop = asyncio.get_running_loop()
+                active_tasks = [
+                    t
+                    for t in tasks_to_await
+                    if not t.done() and t.get_loop() is current_loop
+                ]
+                if active_tasks:
+                    await asyncio.gather(*active_tasks, return_exceptions=True)
+            except RuntimeError:
+                pass
 
         if target_instance in self.plugins:
             self.plugins.remove(target_instance)

@@ -8,7 +8,10 @@ from bedrock_server_manager.web.resource_monitor import ResourceMonitor
 
 @pytest.fixture
 def resource_monitor(app_context):
-    return ResourceMonitor(app_context)
+    return ResourceMonitor(
+        connection_manager=app_context.connection_manager,
+        server_provider=app_context.get_server,
+    )
 
 
 async def test_resource_monitor_start_stop(resource_monitor):
@@ -34,15 +37,11 @@ async def test_resource_monitor_loop_broadcasts(
     }
     app_context.connection_manager.broadcast_to_topic = mock_broadcast
 
-    # Mock system API call
+    # Mock server process info
     mock_info = {"cpu": 10, "mem": 50}
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.system.get_bedrock_process_info",
-        AsyncMock(return_value=mock_info),
-    )
-
-    # We want to run the loop manually for one iteration, so we mock sleep to raise an exception to break the loop
-    # or just call the loop in a task and cancel it
+    mock_server = MagicMock()
+    mock_server.get_process_info = AsyncMock(return_value=mock_info)
+    resource_monitor.server_provider = MagicMock(return_value=mock_server)
 
     task = asyncio.create_task(resource_monitor._monitor_loop())
     await asyncio.sleep(0.1)  # Let it run
@@ -59,7 +58,10 @@ async def test_resource_monitor_loop_broadcasts(
         {
             "type": "resource_update",
             "topic": "resource-monitor:test_server",
-            "data": mock_info,
+            "data": {
+                "status": "success",
+                "process_info": mock_info,
+            },
         },
     )
 

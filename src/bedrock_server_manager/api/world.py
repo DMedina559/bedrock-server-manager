@@ -39,13 +39,14 @@ from ..error import (
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..utils import get_timestamp
+from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-# A unified lock to prevent race conditions during any world file operation
-# (export, import, reset). This ensures data integrity.
-_world_lock = asyncio.Lock()
+# A unified re-entrant lock to prevent race conditions during any world file operation
+# (export, import, reset). This ensures data integrity while allowing re-entrant event listeners.
+_world_lock = ReentrantAsyncLock()
 
 
 @api_method("get_world_name")
@@ -146,7 +147,7 @@ async def export_world(
             :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_world_lock.acquire(), timeout=300)
+        await _world_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
@@ -270,7 +271,7 @@ async def import_world(
             or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_world_lock.acquire(), timeout=300)
+        await _world_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
@@ -374,7 +375,7 @@ async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, st
             the world name, or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_world_lock.acquire(), timeout=300)
+        await _world_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."

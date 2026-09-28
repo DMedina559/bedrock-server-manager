@@ -9,12 +9,12 @@ This module provides endpoints for:
 - Changing passwords.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.future import select
 
 from ...context import AppContext
-from ...db.models import User as UserModel
 from ...utils import (
     get_password_hash,
     verify_password,
@@ -54,14 +54,12 @@ async def post_update_theme(
     """
     Updates the current user's preferred theme.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(
-            select(UserModel).filter(UserModel.username == user.username)
+    async with app_context.storage.transaction() as session:
+        db_user: Any = await app_context.storage.user_repo.get_user_by_username(
+            session, user.username
         )
-        db_user = result.scalar_one_or_none()
         if db_user:
             db_user.theme = theme_update.theme
-            await db.commit()
             return BaseApiResponse(
                 status="success", message="Theme updated successfully"
             )
@@ -77,15 +75,13 @@ async def post_update_profile(
     """
     Updates the current user's profile information (name, email).
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(
-            select(UserModel).filter(UserModel.username == user.username)
+    async with app_context.storage.transaction() as session:
+        db_user: Any = await app_context.storage.user_repo.get_user_by_username(
+            session, user.username
         )
-        db_user = result.scalar_one_or_none()
         if db_user:
             db_user.full_name = profile_update.full_name
             db_user.email = profile_update.email
-            await db.commit()
             return BaseApiResponse(
                 status="success", message="Profile updated successfully"
             )
@@ -105,11 +101,10 @@ async def post_change_password(
     """
     Changes the current user's password.
     """
-    async with app_context.db.session_manager() as db:  # type: ignore
-        result = await db.execute(
-            select(UserModel).filter(UserModel.username == user.username)
+    async with app_context.storage.transaction() as session:
+        db_user: Any = await app_context.storage.user_repo.get_user_by_username(
+            session, user.username
         )
-        db_user = result.scalar_one_or_none()
         if not db_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -123,7 +118,6 @@ async def post_change_password(
             )
 
         db_user.hashed_password = get_password_hash(data.new_password)
-        await db.commit()
 
         return BaseApiResponse(
             status="success", message="Password updated successfully"

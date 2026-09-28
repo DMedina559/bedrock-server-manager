@@ -3,10 +3,7 @@ import asyncio
 import inspect
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
-
-if TYPE_CHECKING:
-    from ..context import AppContext
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +11,13 @@ logger = logging.getLogger(__name__)
 class TaskManager:
     """Manages background tasks using asyncio."""
 
-    def __init__(self, app_context: "AppContext", max_workers: Optional[int] = None):
-        """Initializes the TaskManager."""
-        self.app_context = app_context
+    def __init__(
+        self,
+        connection_manager: Any,
+        max_workers: Optional[int] = None,
+    ):
+        """Initializes the TaskManager with explicit dependencies."""
+        self.connection_manager = connection_manager
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.futures: Dict[str, asyncio.Task] = {}
         self._shutdown_started = False
@@ -30,8 +31,8 @@ class TaskManager:
             return
 
         username = task_details.get("username")
-        if username:
-            connection_manager = self.app_context.connection_manager
+        if username and self.connection_manager:
+            connection_manager = self.connection_manager
             message = {
                 "type": "task_update",
                 "topic": f"task:{task_id}",
@@ -137,6 +138,19 @@ class TaskManager:
         }
         await self._notify_client_of_update(task_id)
 
+        call_kwargs = dict(kwargs)
+        if username is not None:
+            try:
+                sig = inspect.signature(target_function)
+                has_var_kw = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in sig.parameters.values()
+                )
+                if "username" in sig.parameters or has_var_kw:
+                    call_kwargs["username"] = username
+            except (ValueError, TypeError):
+                pass
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -149,9 +163,9 @@ class TaskManager:
             )
             try:
                 if inspect.iscoroutinefunction(target_function):
-                    result = asyncio.run(target_function(*args, **kwargs))
+                    result = asyncio.run(target_function(*args, **call_kwargs))
                 else:
-                    result = target_function(*args, **kwargs)
+                    result = target_function(*args, **call_kwargs)
                 await self._update_task(
                     task_id, "success", "Task completed successfully.", result
                 )
@@ -159,16 +173,17 @@ class TaskManager:
                 await self._update_task(task_id, "error", str(e))
             return task_id
 
-        if inspect.iscoroutinefunction(target_function):
-            coro = target_function(*args, **kwargs)
-        else:
-            # Standard synchronous function, run it in a thread
-            def sync_wrapper():
-                return target_function(*args, **kwargs)
+        async def _runner():
+            if inspect.iscoroutinefunction(target_function):
+                return await target_function(*args, **call_kwargs)
+            else:
 
-            coro = asyncio.to_thread(sync_wrapper)
+                def sync_wrapper():
+                    return target_function(*args, **call_kwargs)
 
-        task = asyncio.create_task(coro)
+                return await asyncio.to_thread(sync_wrapper)
+
+        task = asyncio.create_task(_runner())
         self.futures[task_id] = task
         task.add_done_callback(lambda f: self._task_done_callback(task_id, f))
 

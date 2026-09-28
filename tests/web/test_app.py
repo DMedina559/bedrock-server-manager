@@ -162,7 +162,11 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
             app_context.api.update_server_statuses.assert_awaited_once()
 
             # Check log streamer was initialized
-            MockLogStreamer.assert_called_once_with(app_context)
+            MockLogStreamer.assert_called_once_with(
+                connection_manager=app_context.connection_manager,
+                log_dir=app_context.log_dir,
+                server_provider=app_context.get_server,
+            )
             mock_ls_instance.start.assert_called_once()
 
         # Verification of shutdown logic

@@ -19,13 +19,12 @@ Key components:
 import collections.abc
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 if TYPE_CHECKING:
-    from ..db.database import Database
+    from ..db.storage import Storage
+    from ..state.app_state import AppState
 
-from ..db.models import Setting
-from ..error import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -94,27 +93,38 @@ class Settings:
 
     def __init__(
         self,
-        db: "Database",
         config_dir: str,
         data_dir: str,
+        app_context: Optional[Any] = None,
     ):
-        """Initializes the Settings object.
-
-        This constructor performs the following actions:
-
-            1. Determines the application's primary data and configuration directories.
-            2. Retrieves the installed package version.
-            3. Loads settings from the database. If the database is empty,
-               it's created with default settings.
-            4. Ensures all necessary application directories (e.g., for servers,
-               backups, logs) exist on the filesystem.
-
-        """
+        """Initializes the Settings object."""
         logger.debug("Initializing Settings")
-        self.db = db
         self.data_dir = data_dir
         self.config_dir = config_dir
+        self.app_context = app_context
         self._settings: Dict[str, Any] = {}
+
+    @property
+    def state(self) -> "AppState":
+        if self.app_context is None:
+            from ..error import BSMError
+
+            raise BSMError("Settings.state accessed without an associated app_context.")
+        from ..state.app_state import AppState
+
+        return cast(AppState, self.app_context.state)
+
+    @property
+    def storage(self) -> "Storage":
+        if self.app_context is None:
+            from ..error import BSMError
+
+            raise BSMError(
+                "Settings.storage accessed without an associated app_context."
+            )
+        from ..db.storage import Storage
+
+        return cast(Storage, self.app_context.storage)
 
     @property
     def default_config(self) -> dict:
@@ -186,112 +196,23 @@ class Settings:
         }
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Retrieves a setting value using dot-notation for nested access.
-
-        Example:
-            ``settings.get("paths.servers")``
-            ``settings.get("non_existent.key", "default_value")``
-
-        Args:
-            key (str): The dot-separated configuration key (e.g., "paths.servers").
-            default (Any, optional): The value to return if the key is not found
-                or if any part of the path does not exist. Defaults to None.
-
-        Returns:
-            Any: The value associated with the key, or the ``default`` value if
-            the key is not found or an intermediate key is not a dictionary.
-        """
-        d: Any = self._settings
-        try:
-            for k in key.split("."):
-                if isinstance(d, dict):
-                    d = d[k]
-                else:
-                    return default
-            return d
-        except (KeyError, TypeError):
-            return default
+        """Retrieves a setting value using dot-notation for nested access."""
+        val = self.state.settings.get(key, default)
+        return val if val is not None else default
 
     async def load(self) -> None:
         """Loads settings from the database asynchronously."""
-        from sqlalchemy.future import select
-
-        self._settings = self.default_config
-
-        assert self.db is not None
-        async with self.db.session_manager() as db:
-            result = await db.execute(select(Setting))
-            settings_all = result.scalars().all()
-
-            if not settings_all:
-                logger.info(
-                    "No settings found in the database. Creating with default settings asynchronously."
-                )
-                await self._write_config(db)
-            else:
-                try:
-                    user_config = {}
-                    for setting in settings_all:
-                        user_config[setting.key] = setting.value
-
-                    deep_merge(user_config, self._settings)
-
-                except (ValueError, OSError) as e:
-                    logger.warning(
-                        f"Could not load config from database asynchronously: {e}. "
-                        "Using default settings."
-                    )
-
-    async def _write_config(self, db: Any) -> None:
-        """Writes the current settings dictionary to the database asynchronously."""
-        from sqlalchemy.future import select
-
-        try:
-            for key, value in self._settings.items():
-                result = await db.execute(select(Setting).filter_by(key=key))
-                setting = result.scalars().first()
-                if setting:
-                    setting.value = value
-                else:
-                    setting = Setting(key=key, value=value)
-                    db.add(setting)
-            await db.commit()
-        except Exception as e:
-            await db.rollback()
-            raise ConfigurationError(
-                f"Failed to write configuration asynchronously: {e}"
-            ) from e
+        await self.storage.load_state(self.state)
+        self._settings = self.state.settings.to_dict()
 
     async def set(self, key: str, value: Any) -> None:
-        """Sets a configuration value using dot-notation and saves the change asynchronously."""
-        if self.get(key) == value:
-            return
+        """Sets a configuration value using dot-notation asynchronously via SettingsService."""
+        if self.app_context is None:
+            from ..error import BSMError
 
-        keys = key.split(".")
-        d: Any = self._settings
-        for k in keys[:-1]:
-            if isinstance(d, dict):
-                d = d.setdefault(k, {})
-            else:
-                raise ConfigurationError(
-                    f"Cannot set key '{key}' because path conflict."
-                )
-
-        if isinstance(d, dict):
-            d[keys[-1]] = value
-
-        if key != "web.jwt_token_secret":
-            logger.debug(
-                f"Setting '{key}' updated to '{value}'. Saving configuration asynchronously."
-            )
-        else:
-            logger.debug(
-                f"Setting '{key}' updated. Saving configuration asynchronously."
-            )
-
-        assert self.db is not None
-        async with self.db.session_manager() as db:
-            await self._write_config(db)
+            raise BSMError("Settings.set accessed without an associated app_context.")
+        await self.app_context.settings_service.update_setting(key, value)
+        self._settings = self.state.settings.to_dict()
 
     async def reload(self):
         """Reloads the settings from the database asynchronously."""

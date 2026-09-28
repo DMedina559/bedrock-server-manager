@@ -90,8 +90,8 @@ async def get_permissions(  # noqa: C901
 
         permissions: List[Dict[str, Any]] = []
         try:
-            db_manager = app_context.db.session_manager
-            permissions = await server.get_formatted_permissions(db_manager)
+            storage = app_context.storage
+            permissions = await server.get_formatted_permissions(storage)
         except AppFileNotFoundError:
             permissions = []
 

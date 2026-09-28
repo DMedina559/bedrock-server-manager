@@ -15,6 +15,7 @@ def test_serve_custom_panorama_api_custom_exists(
     config_dir.mkdir(parents=True, exist_ok=True)
     custom_pano = config_dir / "panorama.jpeg"
     custom_pano.write_bytes(b"custom_image_data")
+    app_context.settings.config_dir = str(config_dir)
 
     with patch(
         "bedrock_server_manager.config.settings.Settings.config_dir",

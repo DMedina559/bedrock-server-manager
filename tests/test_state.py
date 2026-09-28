@@ -1,0 +1,166 @@
+# tests/test_state.py
+"""
+Unit tests for AppState and its sub-states.
+"""
+
+import pytest
+
+from bedrock_server_manager.error import ConfigurationError
+from bedrock_server_manager.state import (
+    AppState,
+    PluginInfoState,
+    PluginState,
+    RuntimeState,
+    ServerConfigState,
+    ServerState,
+    SettingsState,
+    UserInfoState,
+    UserState,
+)
+
+
+def test_app_state_defaults():
+    state = AppState()
+    assert isinstance(state.settings, SettingsState)
+    assert isinstance(state.servers, ServerState)
+    assert isinstance(state.plugins, PluginState)
+    assert isinstance(state.users, UserState)
+    assert isinstance(state.runtime, RuntimeState)
+    assert not state.is_dirty()
+
+
+def test_settings_state_create_defaults():
+    settings = SettingsState.create_defaults("/tmp/test_data")
+    assert settings.paths.servers == "/tmp/test_data/servers"
+    assert settings.paths.backups == "/tmp/test_data/backups"
+    assert settings.retention.backups == 3
+    assert settings.web.port == 11325
+
+
+def test_settings_state_get_and_set():
+    settings = SettingsState.create_defaults("/tmp/test_data")
+    assert not settings.is_dirty
+
+    # Test set typed field
+    settings.set("paths.servers", "/custom/servers")
+    assert settings.get("paths.servers") == "/custom/servers"
+    assert settings.is_dirty
+    assert "paths" in settings.dirty_keys
+
+    # Test set custom nested field
+    settings.set("custom.my_plugin.enabled", True)
+    assert settings.get("custom.my_plugin.enabled") is True
+
+    # Test clear dirty
+    settings.clear_dirty()
+    assert not settings.is_dirty
+    assert len(settings.dirty_keys) == 0
+
+
+def test_settings_state_serialization():
+    settings = SettingsState.create_defaults("/tmp/test_data")
+    settings.set("paths.servers", "/opt/mc/servers")
+    d = settings.to_dict()
+    assert d["paths"]["servers"] == "/opt/mc/servers"
+
+    reconstructed = SettingsState.from_dict(d)
+    assert reconstructed.paths.servers == "/opt/mc/servers"
+
+
+def test_app_state_dirty_tracking():
+    app_state = AppState()
+    assert not app_state.is_dirty()
+
+    app_state.settings.mark_dirty("paths")
+    assert app_state.is_dirty()
+
+    app_state.clear_dirty()
+    assert not app_state.is_dirty()
+
+    app_state.servers.mark_dirty()
+    assert app_state.is_dirty()
+
+
+def test_server_state():
+    server_state = ServerState()
+    assert not server_state.is_dirty
+
+    cfg = ServerConfigState(
+        server_name="survival",
+        installed_version="1.20.50.03",
+        status="STOPPED",
+        autostart=True,
+    )
+    server_state.set(cfg)
+
+    assert server_state.is_dirty
+    assert "survival" in server_state.dirty_servers
+    assert server_state.get("survival") == cfg
+
+    server_state.clear_dirty()
+    assert not server_state.is_dirty
+    assert len(server_state.dirty_servers) == 0
+
+
+def test_plugin_and_user_state():
+    plugin_state = PluginState()
+    p_info = PluginInfoState(
+        plugin_name="backup_plugin",
+        enabled=True,
+        version="1.0.0",
+        author="BSM",
+        description="Backup plugin",
+    )
+    plugin_state.set(p_info)
+    assert plugin_state.is_dirty
+    assert "backup_plugin" in plugin_state.dirty_plugins
+    assert plugin_state.get("backup_plugin") == p_info
+
+    user_state = UserState()
+    u_info = UserInfoState(
+        id=1,
+        username="admin",
+        role="admin",
+        theme="dark",
+        is_active=True,
+    )
+    user_state.set(u_info)
+    assert user_state.is_dirty
+    assert "admin" in user_state.dirty_users
+    assert user_state.get("admin") == u_info
+
+
+def test_settings_state_security_private_and_dunder_keys():
+    settings = SettingsState.create_defaults("/tmp/test_data")
+
+    # Accessing private/dunder attributes should raise ConfigurationError
+    with pytest.raises(ConfigurationError):
+        settings.get("_locks")
+
+    with pytest.raises(ConfigurationError):
+        settings.get("__class__")
+
+    with pytest.raises(ConfigurationError):
+        settings.set("_dirty", True)
+
+    with pytest.raises(ConfigurationError):
+        settings.set("custom.__class__", "evil")
+
+
+def test_state_models_deep_copy_isolation():
+    server_state = ServerState()
+    cfg = ServerConfigState(
+        server_name="survival",
+        custom={"motd": "Original"},
+    )
+    server_state.set(cfg)
+
+    # Retrieve snapshot and mutate it externally
+    snapshot = server_state.get("survival")
+    assert snapshot is not None
+    snapshot.custom["motd"] = "Hacked"
+
+    # Verify original state model inside ServerState remains unchanged
+    internal_cfg = server_state.get("survival")
+    assert internal_cfg is not None
+    assert internal_cfg.custom["motd"] == "Original"

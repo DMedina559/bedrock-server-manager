@@ -1,12 +1,11 @@
 import asyncio
 import logging
 import os
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import aiofiles
 import aiofiles.ospath
 
-from ..context import AppContext
 from ..core.system import find_files
 
 logger = logging.getLogger(__name__)
@@ -20,9 +19,15 @@ class LogStreamer:
     log files, broadcasting new lines to subscribed clients.
     """
 
-    def __init__(self, app_context: AppContext):
-        self.app_context = app_context
-        self.connection_manager = app_context.connection_manager
+    def __init__(
+        self,
+        connection_manager: Any,
+        log_dir: str,
+        server_provider: Optional[Any] = None,
+    ):
+        self.connection_manager = connection_manager
+        self.log_dir = log_dir
+        self.server_provider = server_provider
         self.running = False
         self._task = None
         # Maps file path to current file pointer position
@@ -66,7 +71,11 @@ class LogStreamer:
                 for topic in active_topics:
                     if topic.startswith("server_log:") and subscriptions[topic]:
                         server_name = topic.split(":", 1)[1]
-                        server = self.app_context.get_server(server_name)
+                        server = (
+                            self.server_provider(server_name)
+                            if callable(self.server_provider)
+                            else None
+                        )
                         if server:
                             log_path = server.server_log_path
                             if await aiofiles.ospath.exists(log_path):
@@ -91,8 +100,8 @@ class LogStreamer:
             await asyncio.sleep(1.0)  # Check every second
 
     async def _get_app_log_path(self) -> Optional[str]:
-        log_dir = self.app_context.log_dir
-        if not await aiofiles.ospath.isdir(log_dir):
+        log_dir = self.log_dir
+        if not log_dir or not await aiofiles.ospath.isdir(log_dir):
             return None
 
         # Check for fixed filename first

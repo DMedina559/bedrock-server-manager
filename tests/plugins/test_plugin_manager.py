@@ -6,7 +6,12 @@ from bedrock_server_manager.plugins.plugin_manager import PluginManager
 def test_not_singleton(app_context):
     """Test PluginManager is not a singleton enforcing context dependency."""
     pm1 = app_context.plugin_manager
-    pm2 = PluginManager(app_context)
+    pm2 = PluginManager(
+        state=app_context.state,
+        storage=app_context.storage,
+        settings=app_context.settings,
+        app_context=app_context,
+    )
     assert pm1 is not pm2
 
 

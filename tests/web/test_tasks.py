@@ -8,7 +8,7 @@ from bedrock_server_manager.web.tasks import TaskManager
 
 @pytest.fixture
 def task_manager(app_context):
-    return TaskManager(app_context)
+    return TaskManager(connection_manager=app_context.connection_manager)
 
 
 async def test_run_task_success(task_manager):
@@ -139,3 +139,20 @@ async def test_task_manager_shutdown(task_manager):
     await task_manager.shutdown()
 
     assert task_manager._shutdown_started
+
+
+async def test_run_task_with_unused_username(task_manager):
+    def target_without_username(a, b):
+        return a * b
+
+    task_id = await task_manager.run_task(target_without_username, "myuser", 3, 4)
+
+    future = task_manager.futures.get(task_id)
+    if future:
+        await future
+
+    await asyncio.sleep(0.01)
+
+    assert task_manager.tasks[task_id]["status"] == "success"
+    assert task_manager.tasks[task_id]["result"] == 12
+    assert task_manager.tasks[task_id]["username"] == "myuser"

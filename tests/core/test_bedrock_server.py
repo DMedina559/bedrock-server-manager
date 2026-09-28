@@ -3,7 +3,11 @@ from bedrock_server_manager.core.bedrock_server import BedrockServer
 
 def test_bedrock_server_composition(app_context):
     """Test that the BedrockServer correctly inherits all properties and methods from mixins."""
-    server = BedrockServer(server_name="composed_server", app_context=app_context)
+    server = BedrockServer(
+        server_name="composed_server",
+        settings=app_context.settings,
+        app_context=app_context,
+    )
 
     # Check Base
     assert server.server_name == "composed_server"

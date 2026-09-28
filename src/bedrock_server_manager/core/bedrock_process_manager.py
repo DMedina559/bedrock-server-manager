@@ -12,7 +12,6 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ..context import AppContext
 from ..error import BSMError, FileOperationError
 from .player import save_player_data
 
@@ -40,18 +39,18 @@ class BedrockProcessManager:
 
     def __init__(
         self,
-        app_context: AppContext,
+        settings: Any,
+        storage: Any,
+        server_provider: Optional[Any] = None,
+        api: Optional[Any] = None,
     ):
-        """Initializes the BedrockProcessManager.
-
-        Args:
-            app_context (AppContext): The global application context, providing
-                access to settings and the main manager.
-        """
+        """Initializes the BedrockProcessManager with explicit dependencies."""
+        self.settings = settings
+        self.storage = storage
+        self.server_provider = server_provider
+        self.api = api
         self.servers: Dict[str, "BedrockServer"] = {}
         self.logger = logging.getLogger(__name__)
-        self.app_context = app_context
-        self.settings = self.app_context.settings
         self._shutdown_event = asyncio.Event()
         self.player_scan_counter = 0
         self.monitoring_task: Optional[asyncio.Task[Any]] = None
@@ -115,7 +114,7 @@ class BedrockProcessManager:
                     return
 
                 try:
-                    await self.app_context.api.stop_server(server_name)
+                    await self.api.stop_server(server_name)
                 except Exception as e:
                     self.logger.error(
                         f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
@@ -177,15 +176,19 @@ class BedrockProcessManager:
         Raises:
             FileOperationError: If writing to the config file fails.
         """
-        server = self.app_context.get_server(server_name)
-        try:
-            await server.set_status_in_config("ERROR")
-
-        except BSMError as e:
-            self.logger.error(f"Error writing status for server '{server_name}': {e}")
-            raise FileOperationError(
-                f"Failed to write status for server '{server_name}'."
-            )
+        if not callable(self.server_provider):
+            return
+        server = self.server_provider(server_name)
+        if server:
+            try:
+                await server.set_status_in_config("ERROR")
+            except BSMError as e:
+                self.logger.error(
+                    f"Error writing status for server '{server_name}': {e}"
+                )
+                raise FileOperationError(
+                    f"Failed to write status for server '{server_name}'."
+                )
 
     async def _monitor_servers(self):  # noqa: C901
         """Monitors server processes and restarts them if they crash asynchronously.
@@ -260,12 +263,12 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
-                                await self.app_context.api.update_server_player_stats_api(
+                                await self.api.update_server_player_stats_api(
                                     server.server_name,
                                     server.player_count,
                                     server.players,
                                 )
-                            except AttributeError as e:
+                            except Exception as e:
                                 self.logger.warning(
                                     f"Could not trigger player stats update API: {e}"
                                 )
@@ -273,17 +276,15 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                ban_res = (
-                                    await self.app_context.api.get_server_bans_api(
-                                        server_name=server.server_name,
-                                    )
+                                ban_res = await self.api.get_server_bans_api(
+                                    server_name=server.server_name,
                                 )
 
                                 if ban_res.get("status") == "success":
                                     bans = ban_res.get("bans", [])
                                     banned_xuids = {b["xuid"]: b for b in bans}
                                     for p in server.players:
-                                        xuid = p.get("uuid")
+                                        xuid = p.get("xuid")
                                         if xuid in banned_xuids:
                                             reason = (
                                                 banned_xuids[xuid].get("reason")
@@ -316,7 +317,7 @@ class BedrockProcessManager:
 
                             if players:
                                 await save_player_data(
-                                    self.app_context.db.session_manager,
+                                    self.storage,
                                     players,
                                 )
                     except Exception as e:

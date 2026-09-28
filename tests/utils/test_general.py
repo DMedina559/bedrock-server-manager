@@ -119,3 +119,57 @@ async def test_list_content_files_os_error(tmp_path, monkeypatch):
     with pytest.raises(FileOperationError) as exc_info:
         await list_content_files(str(tmp_path), "worlds", [".mcworld"])
     assert "Error scanning content directory" in str(exc_info.value)
+
+
+async def test_reentrant_async_lock_reentrancy():
+    """Test ReentrantAsyncLock re-entrancy and release."""
+    from bedrock_server_manager.utils.general import ReentrantAsyncLock
+
+    lock = ReentrantAsyncLock()
+    assert not lock.locked()
+
+    async with lock:
+        assert lock.locked()
+        async with lock:
+            assert lock.locked()
+            assert lock._count == 2
+        assert lock._count == 1
+        assert lock.locked()
+
+    assert not lock.locked()
+    assert lock._count == 0
+
+
+def test_reentrant_async_lock_cross_event_loop():
+    """Test ReentrantAsyncLock resets cleanly when accessed across closed or different event loops."""
+    import asyncio
+
+    from bedrock_server_manager.utils.general import ReentrantAsyncLock
+
+    lock = ReentrantAsyncLock()
+
+    async def run_loop_1():
+        await lock.acquire()
+        assert lock.locked()
+        # Deliberately do not release lock before loop 1 closes
+
+    asyncio.run(run_loop_1())
+
+    async def run_loop_2():
+        # lock should reset owner and lock state for new loop
+        await lock.acquire()
+        assert lock.locked()
+        lock.release()
+        assert not lock.locked()
+
+    asyncio.run(run_loop_2())
+
+
+async def test_reentrant_async_lock_unacquired_release():
+    """Test releasing an unacquired ReentrantAsyncLock raises RuntimeError."""
+    from bedrock_server_manager.utils.general import ReentrantAsyncLock
+
+    lock = ReentrantAsyncLock()
+    with pytest.raises(RuntimeError) as exc_info:
+        lock.release()
+    assert "Cannot release un-acquired lock" in str(exc_info.value)

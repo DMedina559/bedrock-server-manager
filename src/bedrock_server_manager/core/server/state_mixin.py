@@ -27,7 +27,6 @@ from typing import Any, Dict, Optional
 
 import aiofiles.ospath
 
-from ...db.models import Server
 from ...error import (
     AppFileNotFoundError,
     ConfigParseError,
@@ -102,38 +101,19 @@ class ServerStateMixin(BedrockServerBaseMixin):
         }
 
     async def _load_server_config(self) -> Dict[str, Any]:
-        """Loads the server-specific JSON configuration asynchronously."""
-        from sqlalchemy.future import select
+        """Loads the server-specific configuration asynchronously via AppState and Storage."""
+        from ...state.models import ServerConfigState
 
-        if self.settings.db is None:
-            raise RuntimeError("Database connection not initialized.")
+        if not self.state or not self.storage:
+            return self._get_default_server_config()
 
-        async with self.settings.db.session_manager() as db:  # type: ignore
-            result = await db.execute(
-                select(Server).filter(Server.server_name == self.server_name)
-            )
-            server = result.scalars().first()
-
-            if server:
-                return {
-                    "server_info": {
-                        "installed_version": server.installed_version,
-                        "status": server.status,
-                    },
-                    "settings": {
-                        "autoupdate": server.autoupdate,
-                        "autostart": server.autostart,
-                        "target_version": server.target_version,
-                    },
-                    "custom": dict(server.custom) if server.custom is not None else {},
-                }
-
-            # Create new server config in DB
+        cfg = self.state.servers.get(self.server_name)
+        if not cfg:
             self.logger.info(
-                f"Server config for '{self.server_name}' not found in database. Initializing with defaults."
+                f"Server config for '{self.server_name}' not found in AppState. Initializing defaults."
             )
             default_config = self._get_default_server_config()
-            server = Server(
+            cfg = ServerConfigState(
                 server_name=self.server_name,
                 installed_version=default_config["server_info"]["installed_version"],
                 status=default_config["server_info"]["status"],
@@ -142,54 +122,53 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 target_version=default_config["settings"]["target_version"],
                 custom=default_config["custom"],
             )
-            db.add(server)
-            await db.commit()
-            await db.refresh(server)
+            self.state.servers.set(cfg)
+            await self.storage.flush(self.state)
 
-            return {
-                "server_info": {
-                    "installed_version": server.installed_version,
-                    "status": server.status,
-                },
-                "settings": {
-                    "autoupdate": server.autoupdate,
-                    "autostart": server.autostart,
-                    "target_version": server.target_version,
-                },
-                "custom": dict(server.custom) if server.custom is not None else {},
-            }
+        return {
+            "server_info": {
+                "installed_version": cfg.installed_version,
+                "status": cfg.status,
+            },
+            "settings": {
+                "autoupdate": cfg.autoupdate,
+                "autostart": cfg.autostart,
+                "target_version": cfg.target_version,
+            },
+            "custom": dict(cfg.custom) if cfg.custom is not None else {},
+        }
 
     async def _save_server_config(self, config_data: Dict[str, Any]) -> None:
-        """Saves the server configuration data to the database asynchronously."""
-        from sqlalchemy.future import select
+        """Saves the server configuration data asynchronously via AppState and Storage."""
+        from ...state.models import ServerConfigState
 
-        if self.settings.db is None:
-            raise RuntimeError("Database connection not initialized.")
+        if not self.state or not self.storage:
+            return
 
-        async with self.settings.db.session_manager() as db:  # type: ignore
-            result = await db.execute(
-                select(Server).filter(Server.server_name == self.server_name)
-            )
-            server = result.scalars().first()
-            if server:
-                server_info = config_data.get("server_info", {})
-                settings = config_data.get("settings", {})
+        cfg = self.state.servers.get(self.server_name)
+        if not cfg:
+            cfg = ServerConfigState(server_name=self.server_name)
 
-                if "installed_version" in server_info:
-                    server.installed_version = server_info["installed_version"]
-                if "status" in server_info:
-                    server.status = server_info["status"]
+        server_info = config_data.get("server_info", {})
+        settings = config_data.get("settings", {})
 
-                if "autoupdate" in settings:
-                    server.autoupdate = settings["autoupdate"]
-                if "autostart" in settings:
-                    server.autostart = settings["autostart"]
-                if "target_version" in settings:
-                    server.target_version = settings["target_version"]
+        if "installed_version" in server_info:
+            cfg.installed_version = server_info["installed_version"]
+        if "status" in server_info:
+            cfg.status = server_info["status"]
 
-                if "custom" in config_data:
-                    server.custom = config_data["custom"]
-                await db.commit()
+        if "autoupdate" in settings:
+            cfg.autoupdate = settings["autoupdate"]
+        if "autostart" in settings:
+            cfg.autostart = settings["autostart"]
+        if "target_version" in settings:
+            cfg.target_version = settings["target_version"]
+
+        if "custom" in config_data:
+            cfg.custom = config_data["custom"]
+
+        self.state.servers.set(cfg)
+        await self.storage.flush(self.state)
 
     async def _manage_json_config(
         self,
@@ -461,13 +440,14 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 f"Status for '{self.server_name}' must be a string, got {type(status_string).__name__}."
             )
 
-        try:
-            await self.app_context.api.set_server_status_api(
-                self.server_name, status_string
-            )
-            return
-        except AttributeError:
-            pass
+        if self.app_context and self.app_context.api:
+            try:
+                await self.app_context.api.set_server_status_api(
+                    self.server_name, status_string
+                )
+                return
+            except AttributeError:
+                pass
 
         await self._manage_json_config(
             key="server_info.status", operation="write", value=status_string

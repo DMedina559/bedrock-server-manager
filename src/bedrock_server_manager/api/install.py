@@ -11,11 +11,12 @@ from ..error import (
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
+from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-_install_update_lock = asyncio.Lock()
+_install_update_lock = ReentrantAsyncLock()
 
 
 @api_method("install_new_server")
@@ -101,7 +102,7 @@ async def update_server(
         and a message.
     """
     try:
-        await asyncio.wait_for(_install_update_lock.acquire(), timeout=300)
+        await _install_update_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An install/update operation for '{server_name}' is already in progress. Skipping."

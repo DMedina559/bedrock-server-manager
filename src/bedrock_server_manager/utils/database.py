@@ -71,10 +71,9 @@ async def backup_database(db: Database, output_path: str) -> None:
             result = await session.execute(select(model))
             records = result.scalars().all()
             model_data = []
+            table_cols = getattr(model, "__table__").columns
             for record in records:
-                record_dict = {
-                    c.name: getattr(record, c.name) for c in record.__table__.columns
-                }
+                record_dict = {c.name: getattr(record, c.name) for c in table_cols}
                 model_data.append(record_dict)
             backup_data[model_name] = model_data
 

@@ -97,9 +97,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
                 f"No changes needed for XUID '{xuid}' permissions for '{self.server_name}'."
             )
 
-    async def get_formatted_permissions(
-        self, db_session_manager: Any
-    ) -> List[Dict[str, Any]]:
+    async def get_formatted_permissions(self, storage: Any) -> List[Dict[str, Any]]:
         """Retrieves permissions and maps XUIDs to known player names asynchronously."""
         if not await aiofiles.ospath.isdir(self.server_dir):
             raise AppFileNotFoundError(self.server_dir, "Server directory")
@@ -125,7 +123,7 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
             ) from e
 
         try:
-            known_players = await get_known_players(db_session_manager)
+            known_players = await get_known_players(storage)
             player_map = {p["xuid"]: p["name"] for p in known_players}
         except Exception as e:
             self.logger.error(

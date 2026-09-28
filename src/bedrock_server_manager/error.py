@@ -38,6 +38,12 @@ class ConfigurationError(BSMError):
     pass
 
 
+class StorageError(BSMError):
+    """Base for errors related to database persistence or storage transactions."""
+
+    pass
+
+
 class SystemError(BSMError):
     """Base for errors related to interactions with the host operating system."""
 

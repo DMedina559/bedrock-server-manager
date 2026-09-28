@@ -15,11 +15,12 @@ from ..core import prune_old_downloads
 from ..error import BSMError, MissingArgumentError, UserInputError
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
+from ..utils.general import ReentrantAsyncLock
 
 logger = logging.getLogger(__name__)
 
 # A lock to prevent race conditions during miscellaneous file operations.
-_misc_lock = asyncio.Lock()
+_misc_lock = ReentrantAsyncLock()
 
 
 @api_method("prune_download_cache")
@@ -69,7 +70,7 @@ async def prune_download_cache(  # noqa: C901
     # Attempt to acquire the lock without blocking. If another operation
     # is in progress, skip this one to avoid conflicts.
     try:
-        await asyncio.wait_for(_misc_lock.acquire(), timeout=300)
+        await _misc_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             "A miscellaneous file operation is already in progress. Skipping concurrent prune."

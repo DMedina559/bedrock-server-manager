@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from bedrock_server_manager.config.settings import Settings
@@ -7,22 +5,30 @@ from bedrock_server_manager.db.models import Setting
 from bedrock_server_manager.error import ConfigurationError
 
 
-async def test_settings_initialization(db, isolated_bcm_config):
+async def test_settings_initialization(app_context, isolated_bcm_config):
     """Test Settings initializes properties correctly without loading."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
-    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
-    assert settings.db == db
+    settings = Settings(
+        data_dir=str(test_data_dir),
+        config_dir=str(test_config_dir),
+        app_context=app_context,
+    )
+    assert settings.app_context == app_context
     assert settings._settings == {}
 
 
-async def test_settings_load_populates_defaults(db, isolated_bcm_config):
+async def test_settings_load_populates_defaults(app_context, db, isolated_bcm_config):
     """Test loading on an empty database populates default settings."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
-    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
+    settings = Settings(
+        data_dir=str(test_data_dir),
+        config_dir=str(test_config_dir),
+        app_context=app_context,
+    )
     await settings.load()
 
     # Check that settings were populated from default_config
@@ -39,7 +45,7 @@ async def test_settings_load_populates_defaults(db, isolated_bcm_config):
         assert count > 0
 
 
-async def test_settings_load_merges_existing_db(db, isolated_bcm_config):
+async def test_settings_load_merges_existing_db(app_context, db, isolated_bcm_config):
     """Test loading merges DB user config over defaults."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
@@ -55,7 +61,11 @@ async def test_settings_load_merges_existing_db(db, isolated_bcm_config):
         session.add(Setting(key="custom", value={"my_setting": "val"}))
         await session.commit()
 
-    settings = Settings(db=db, data_dir=test_data_dir, config_dir=test_config_dir)
+    settings = Settings(
+        data_dir=str(test_data_dir),
+        config_dir=str(test_config_dir),
+        app_context=app_context,
+    )
     await settings.load()
 
     assert settings.get("web.port") == 9999
@@ -80,8 +90,10 @@ async def test_settings_set(settings, db):
     assert settings.get("web.port") == 8080
 
     # Test setting new nested key
-    await settings.set("custom.plugin.enabled", True)
-    assert settings.get("custom.plugin.enabled") is True
+    await settings.set("custom.plugin", {"enabled": True})
+    assert settings.get("custom.plugin") == {"enabled": True}
+
+    await settings.storage.flush(settings.state)
 
     # Verify written to DB
     async with db.session_manager() as session:
@@ -94,13 +106,15 @@ async def test_settings_set(settings, db):
 
 async def test_settings_set_no_change_skips_write(settings, monkeypatch):
     """Test setting the same value skips database write."""
-    mock_write = MagicMock()
-    monkeypatch.setattr(settings, "_write_config", mock_write)
+    from unittest.mock import AsyncMock
+
+    mock_flush = AsyncMock()
+    monkeypatch.setattr(settings.storage, "flush", mock_flush)
 
     current_val = settings.get("web.port")
     await settings.set("web.port", current_val)
 
-    mock_write.assert_not_called()
+    mock_flush.assert_not_called()
 
 
 async def test_settings_set_conflict_raises_error(settings):
