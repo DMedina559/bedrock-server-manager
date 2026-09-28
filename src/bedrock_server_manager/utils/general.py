@@ -5,6 +5,7 @@ Provides general utility functions for the application.
 Includes startup checks, timestamp generation, and interactive prompts.
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -96,27 +97,41 @@ class ReentrantAsyncLock:
     """A re-entrant lock for asyncio tasks to prevent deadlocks when a task re-enters locked operations."""
 
     def __init__(self) -> None:
-        import asyncio
-
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
         self._owner: Any = None
         self._count = 0
 
-    async def acquire(self) -> bool:
-        import asyncio
+    def _get_lock(self) -> asyncio.Lock:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        elif loop is not None:
+            lock_loop = getattr(self._lock, "_loop", None)
+            if lock_loop is not None and (
+                lock_loop is not loop or lock_loop.is_closed()
+            ):
+                self._lock = asyncio.Lock()
+                self._owner = None
+                self._count = 0
+
+        return self._lock
+
+    async def acquire(self) -> bool:
         me = asyncio.current_task()
         if me is not None and self._owner == me:
             self._count += 1
             return True
-        await self._lock.acquire()
+        lock = self._get_lock()
+        await lock.acquire()
         self._owner = me
         self._count = 1
         return True
 
     def release(self) -> None:
-        import asyncio
-
         me = asyncio.current_task()
         if me is None or self._owner != me:
             raise RuntimeError(
@@ -125,10 +140,12 @@ class ReentrantAsyncLock:
         self._count -= 1
         if self._count == 0:
             self._owner = None
-            self._lock.release()
+            lock = self._get_lock()
+            lock.release()
 
     def locked(self) -> bool:
-        return self._lock.locked()
+        lock = self._get_lock()
+        return bool(lock.locked())
 
     async def __aenter__(self) -> "ReentrantAsyncLock":
         await self.acquire()
