@@ -50,7 +50,7 @@ async def test_get_permissions_success(app_context, monkeypatch):
 
     # Mock player API
     monkeypatch.setattr(
-        "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api",
+        "bedrock_server_manager.api.permissions.player_api.get_all_known_players",
         AsyncMock(
             return_value={
                 "status": "success",
@@ -85,7 +85,7 @@ async def test_get_permissions_error(app_context, monkeypatch):
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     monkeypatch.setattr(
-        "bedrock_server_manager.api.permissions.player_api.get_all_known_players_api",
+        "bedrock_server_manager.api.permissions.player_api.get_all_known_players",
         AsyncMock(return_value={"status": "success"}),
     )
 

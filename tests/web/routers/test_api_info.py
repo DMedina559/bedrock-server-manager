@@ -89,7 +89,7 @@ def test_get_server_process_info_success(auth_client: TestClient, real_bedrock_s
 
 def test_put_scan_players_success(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.api.player.scan_and_update_player_db_api"
+        "bedrock_server_manager.api.player.scan_and_update_player_db"
     ) as mock_scan:
         mock_scan.return_value = {
             "status": "success",
@@ -106,9 +106,7 @@ def test_put_scan_players_success(admin_auth_client: TestClient):
 
 
 def test_get_all_players_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.api.player.get_all_known_players_api"
-    ) as mock_get:
+    with patch("bedrock_server_manager.api.player.get_all_known_players") as mock_get:
         mock_get.return_value = {
             "status": "success",
             "players": [{"xuid": "123", "name": "Steve"}],
@@ -224,9 +222,7 @@ async def test_get_themes_success(unauth_client: TestClient, tmp_path, app_conte
 
 
 def test_post_add_players_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.api.player.add_players_manually_api"
-    ) as mock_add:
+    with patch("bedrock_server_manager.api.player.add_players_manually") as mock_add:
         mock_add.return_value = {
             "status": "success",
             "message": "Added 1 player",

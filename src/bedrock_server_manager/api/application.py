@@ -9,7 +9,7 @@ Key functionalities include:
     - Retrieving application metadata (name, version, OS, key directories) via
       :func:`~.get_application_info_api`.
     - Listing globally available content like world templates
-      (:func:`~.list_available_worlds_api`) and addons
+      (:func:`~.list_available_worlds`) and addons
       (:func:`~.list_available_addons_api`).
     - Aggregating status and version information for all detected server instances
       using :func:`~.get_all_servers_data`.
@@ -31,8 +31,8 @@ from ..utils import list_content_files
 logger = logging.getLogger(__name__)
 
 
-@api_method("list_available_worlds_api")
-async def list_available_worlds_api(app_context: AppContext) -> Dict[str, Any]:
+@api_method("list_available_worlds")
+async def list_available_worlds(app_context: AppContext) -> Dict[str, Any]:
     """Lists available .mcworld files from the content directory.
 
     Scans the ``worlds`` sub-folder within the application's global content directory.

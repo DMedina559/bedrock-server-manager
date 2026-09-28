@@ -6,10 +6,10 @@ from bedrock_server_manager.api.server import (
     delete_server_data,
     send_command,
     server_lifecycle_manager,
-    set_server_status_api,
+    set_server_status,
     start_server,
     stop_server,
-    update_server_player_stats_api,
+    update_server_player_stats,
 )
 from bedrock_server_manager.error import BlockedCommandError, InvalidServerNameError
 
@@ -150,8 +150,8 @@ async def test_server_lifecycle_manager(app_context, monkeypatch):
     mock_start.assert_called_once()
 
 
-async def test_set_server_status_api(app_context, monkeypatch):
-    """Test internal set_server_status_api modifies JSON configuration effectively."""
+async def test_set_server_status(app_context, monkeypatch):
+    """Test internal set_server_status modifies JSON configuration effectively."""
     mock_server = MagicMock()
     mock_server.start = AsyncMock()
     mock_server.stop = AsyncMock()
@@ -162,7 +162,7 @@ async def test_set_server_status_api(app_context, monkeypatch):
     mock_server._manage_json_config = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await set_server_status_api("test_server", "RUNNING", app_context)
+    result = await set_server_status("test_server", "RUNNING", app_context)
 
     assert result["status"] == "success"
     assert result["previous_status"] == "STOPPED"
@@ -171,9 +171,9 @@ async def test_set_server_status_api(app_context, monkeypatch):
     )
 
 
-async def test_update_server_player_stats_api(app_context):
-    """Test update_server_player_stats_api effectively builds dictionary outputs for socket notifications."""
-    result = await update_server_player_stats_api(
+async def test_update_server_player_stats(app_context):
+    """Test update_server_player_stats effectively builds dictionary outputs for socket notifications."""
+    result = await update_server_player_stats(
         "test_server", 5, [{"name": "p1"}], app_context
     )
 

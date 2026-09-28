@@ -9,13 +9,13 @@ from ..plugins.event_trigger import trigger_event
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_server_ban_api")
+@api_method("add_server_ban")
 @trigger_event(
     before="before_add_server_ban",
     after="after_add_server_ban",
     identity_keys=("server_name", "xuid"),
 )
-async def add_server_ban_api(
+async def add_server_ban(
     app_context: AppContext,
     server_name: str,
     player_name: str,
@@ -46,7 +46,7 @@ async def add_server_ban_api(
     after="after_remove_server_ban",
     identity_keys=("server_name", "xuid"),
 )
-async def remove_server_ban_api(
+async def remove_server_ban(
     app_context: AppContext, server_name: str, xuid: str
 ) -> Dict[str, Any]:
     """Removes a player from the server ban list."""
@@ -66,10 +66,8 @@ async def remove_server_ban_api(
     }
 
 
-@api_method("get_server_bans_api")
-async def get_server_bans_api(
-    app_context: AppContext, server_name: str
-) -> Dict[str, Any]:
+@api_method("get_server_bans")
+async def get_server_bans(app_context: AppContext, server_name: str) -> Dict[str, Any]:
     """Retrieves all bans for a specific server."""
     if not server_name:
         raise UserInputError("server_name is required.")

@@ -81,7 +81,7 @@ async def get_permissions(  # noqa: C901
         server = app_context.get_server(server_name)
         all_known_players: List[Dict[str, Any]] = []
 
-        players_response = await player_api.get_all_known_players_api(
+        players_response = await player_api.get_all_known_players(
             app_context=app_context
         )
 

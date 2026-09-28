@@ -3,33 +3,33 @@ from unittest.mock import AsyncMock, MagicMock
 from bedrock_server_manager.api.application import (
     get_all_servers_data,
     get_system_and_app_info,
-    list_available_worlds_api,
+    list_available_worlds,
     update_server_statuses,
 )
 from bedrock_server_manager.error import BSMError, FileError
 
 
-async def test_list_available_worlds_api_success(app_context, monkeypatch):
-    """Test list_available_worlds_api properly routes request and formats response."""
+async def test_list_available_worlds_success(app_context, monkeypatch):
+    """Test list_available_worlds properly routes request and formats response."""
     monkeypatch.setattr(
         "bedrock_server_manager.api.application.list_content_files",
         AsyncMock(return_value=["/world1.mcworld"]),
     )
 
-    result = await list_available_worlds_api(app_context)
+    result = await list_available_worlds(app_context)
 
     assert result["status"] == "success"
     assert result["files"] == ["/world1.mcworld"]
 
 
-async def test_list_available_worlds_api_error(app_context, monkeypatch):
-    """Test list_available_worlds_api handles FileError safely."""
+async def test_list_available_worlds_error(app_context, monkeypatch):
+    """Test list_available_worlds handles FileError safely."""
     monkeypatch.setattr(
         "bedrock_server_manager.api.application.list_content_files",
         MagicMock(side_effect=FileError("No dir")),
     )
 
-    result = await list_available_worlds_api(app_context)
+    result = await list_available_worlds(app_context)
 
     assert result["status"] == "error"
     assert "No dir" in result["message"]

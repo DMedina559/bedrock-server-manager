@@ -17,7 +17,7 @@ You can listen to these events using the `@app_event("event_name")` decorator.
 If an event is **Cancellable**, you can access `kwargs['event']` (which is a `CancellableEvent` object) and call `event.cancel(reason)` to halt the core operation.
 
 ## `after_add_server_ban`
-**Description:** Triggered after 'add_server_ban_api'. Adds a player to the server ban list.
+**Description:** Triggered after 'add_server_ban'. Adds a player to the server ban list.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name, xuid`
 
@@ -293,7 +293,7 @@ def on_after_permission_change(self, server_name, xuid, player_name, permission,
 
 
 ## `after_player_db_scan`
-**Description:** Triggered after 'scan_and_update_player_db_api'. Scans all server logs to discover and save player data.
+**Description:** Triggered after 'scan_and_update_player_db'. Scans all server logs to discover and save player data.
 - **Cancellable:** No
 
 ### Listener Signature:
@@ -312,7 +312,7 @@ def on_after_player_db_scan(self, result, **kwargs):
 
 
 ## `after_players_add`
-**Description:** Triggered after 'add_players_manually_api'. Adds or updates player data in the database.
+**Description:** Triggered after 'add_players_manually'. Adds or updates player data in the database.
 - **Cancellable:** No
 
 ### Listener Signature:
@@ -398,7 +398,7 @@ def on_after_prune_download_cache(self, download_dir, keep_count, result, **kwar
 
 
 ## `after_remove_server_ban`
-**Description:** Triggered after 'remove_server_ban_api'. Removes a player from the server ban list.
+**Description:** Triggered after 'remove_server_ban'. Removes a player from the server ban list.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name, xuid`
 
@@ -466,7 +466,7 @@ def on_after_server_install(self, server_name, target_version, server_zip_path, 
 
 
 ## `after_server_players_change`
-**Description:** Triggered after 'update_server_player_stats_api'. Internal API to trigger player stat updates for websockets/plugins.
+**Description:** Triggered after 'update_server_player_stats'. Internal API to trigger player stat updates for websockets/plugins.
 - **Cancellable:** No
 
 ### Listener Signature:
@@ -509,7 +509,7 @@ def on_after_server_start(self, server_name, result, **kwargs):
 
 
 ## `after_server_status_change`
-**Description:** Triggered after 'set_server_status_api'. Internal API to set server status and trigger events.
+**Description:** Triggered after 'set_server_status'. Internal API to set server status and trigger events.
 - **Cancellable:** No
 - **Identity Keys (for re-entrancy):** `server_name, status`
 
@@ -708,7 +708,7 @@ def on_after_world_reset(self, server_name, result, **kwargs):
 
 
 ## `before_add_server_ban`
-**Description:** Triggered before 'add_server_ban_api'. Adds a player to the server ban list.
+**Description:** Triggered before 'add_server_ban'. Adds a player to the server ban list.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name, xuid`
 
@@ -984,7 +984,7 @@ def on_before_permission_change(self, server_name, xuid, player_name, permission
 
 
 ## `before_player_db_scan`
-**Description:** Triggered before 'scan_and_update_player_db_api'. Scans all server logs to discover and save player data.
+**Description:** Triggered before 'scan_and_update_player_db'. Scans all server logs to discover and save player data.
 - **Cancellable:** Yes (`event.cancel()`)
 
 ### Listener Signature:
@@ -1003,7 +1003,7 @@ def on_before_player_db_scan(self, event, **kwargs):
 
 
 ## `before_players_add`
-**Description:** Triggered before 'add_players_manually_api'. Adds or updates player data in the database.
+**Description:** Triggered before 'add_players_manually'. Adds or updates player data in the database.
 - **Cancellable:** Yes (`event.cancel()`)
 
 ### Listener Signature:
@@ -1089,7 +1089,7 @@ def on_before_prune_download_cache(self, download_dir, keep_count, event, **kwar
 
 
 ## `before_remove_server_ban`
-**Description:** Triggered before 'remove_server_ban_api'. Removes a player from the server ban list.
+**Description:** Triggered before 'remove_server_ban'. Removes a player from the server ban list.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name, xuid`
 
@@ -1157,7 +1157,7 @@ def on_before_server_install(self, server_name, target_version, server_zip_path,
 
 
 ## `before_server_players_change`
-**Description:** Triggered before 'update_server_player_stats_api'. Internal API to trigger player stat updates for websockets/plugins.
+**Description:** Triggered before 'update_server_player_stats'. Internal API to trigger player stat updates for websockets/plugins.
 - **Cancellable:** Yes (`event.cancel()`)
 
 ### Listener Signature:
@@ -1200,7 +1200,7 @@ def on_before_server_start(self, server_name, event, **kwargs):
 
 
 ## `before_server_status_change`
-**Description:** Triggered before 'set_server_status_api'. Internal API to set server status and trigger events.
+**Description:** Triggered before 'set_server_status'. Internal API to set server status and trigger events.
 - **Cancellable:** Yes (`event.cancel()`)
 - **Identity Keys (for re-entrancy):** `server_name, status`
 

@@ -15,7 +15,7 @@ def runner():
 def test_start_web_server_direct_success(runner, app_context, monkeypatch):
     """Test start web server CLI command successfully running in direct mode."""
     mock_api = MagicMock(return_value={"status": "success"})
-    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server_api", mock_api)
+    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_api)
 
     result = runner.invoke(
         web, ["start", "--mode", "direct"], obj={"app_context": app_context}
@@ -31,7 +31,7 @@ def test_start_web_server_direct_success(runner, app_context, monkeypatch):
 def test_start_web_server_detached_success(runner, app_context, monkeypatch):
     """Test start web server CLI command successfully running in detached mode."""
     mock_api = MagicMock(return_value={"status": "success", "pid": 1234})
-    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server_api", mock_api)
+    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_api)
 
     result = runner.invoke(
         web,
@@ -49,7 +49,7 @@ def test_start_web_server_detached_success(runner, app_context, monkeypatch):
 def test_start_web_server_detached_error(runner, app_context, monkeypatch):
     """Test start web server CLI command failing in detached mode returns abort."""
     mock_api = MagicMock(return_value={"status": "error", "message": "Port in use"})
-    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server_api", mock_api)
+    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_api)
 
     result = runner.invoke(
         web, ["start", "--mode", "detached"], obj={"app_context": app_context}
@@ -65,9 +65,7 @@ def test_start_web_server_exception(runner, app_context, monkeypatch):
     def mock_raise(*args, **kwargs):
         raise BSMError("Critical failure")
 
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.start_web_server_api", mock_raise
-    )
+    monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_raise)
 
     result = runner.invoke(
         web, ["start", "--mode", "direct"], obj={"app_context": app_context}
@@ -80,7 +78,7 @@ def test_start_web_server_exception(runner, app_context, monkeypatch):
 def test_stop_web_server_success(runner, app_context, monkeypatch):
     """Test stop web server CLI command successfully running."""
     mock_api = MagicMock(return_value={"status": "success", "message": "Stopped"})
-    monkeypatch.setattr("bedrock_server_manager.api.web.stop_web_server_api", mock_api)
+    monkeypatch.setattr("bedrock_server_manager.api.web.stop_web_server", mock_api)
 
     result = runner.invoke(web, ["stop"], obj={"app_context": app_context})
 
@@ -95,9 +93,7 @@ def test_stop_web_server_error(runner, app_context, monkeypatch):
     def mock_raise(*args, **kwargs):
         raise BSMError("Could not stop")
 
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.web.stop_web_server_api", mock_raise
-    )
+    monkeypatch.setattr("bedrock_server_manager.api.web.stop_web_server", mock_raise)
 
     result = runner.invoke(web, ["stop"], obj={"app_context": app_context})
 

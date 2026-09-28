@@ -6,11 +6,11 @@ player database, typically stored in the database. It leverages the
 application context to perform operations such as:
 
 - Manually adding or updating player entries (gamertag and XUID) via
-  :func:`~.add_players_manually_api`.
+  :func:`~.add_players_manually`.
 - Retrieving all known player entries from the database using
-  :func:`~.get_all_known_players_api`.
+  :func:`~.get_all_known_players`.
 - Discovering players by scanning server logs and updating the database via
-  :func:`~.scan_and_update_player_db_api`.
+  :func:`~.scan_and_update_player_db`.
 
 These functions are exposed to the plugin system and provide a structured way
 to manage player data globally across all server instances.
@@ -33,9 +33,9 @@ from ..plugins.event_trigger import trigger_event
 logger = logging.getLogger(__name__)
 
 
-@api_method("add_players_manually_api")
+@api_method("add_players_manually")
 @trigger_event(before="before_players_add", after="after_players_add", identity_keys=())
-async def add_players_manually_api(
+async def add_players_manually(
     player_strings: List[str],
     app_context: AppContext,
 ) -> Dict[str, Any]:
@@ -108,8 +108,8 @@ async def add_players_manually_api(
         }
 
 
-@api_method("get_all_known_players_api")
-async def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
+@api_method("get_all_known_players")
+async def get_all_known_players(app_context: AppContext) -> Dict[str, Any]:
     """Retrieves all player data from the database.
 
     Returns:
@@ -136,11 +136,11 @@ async def get_all_known_players_api(app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-@api_method("scan_and_update_player_db_api")
+@api_method("scan_and_update_player_db")
 @trigger_event(
     before="before_player_db_scan", after="after_player_db_scan", identity_keys=()
 )
-async def scan_and_update_player_db_api(app_context: AppContext) -> Dict[str, Any]:
+async def scan_and_update_player_db(app_context: AppContext) -> Dict[str, Any]:
     """Scans all server logs to discover and save player data.
 
     This function iterates through the log files of all managed servers,
