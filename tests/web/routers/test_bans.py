@@ -27,7 +27,9 @@ def test_get_server_bans_forbidden(auth_client: TestClient, real_bedrock_server)
 
 def test_get_server_bans_success(admin_auth_client: TestClient, real_bedrock_server):
     """Test getting server bans successfully with admin permissions."""
-    with patch("bedrock_server_manager.web.routers.bans.get_server_bans") as mock_api:
+    with patch(
+        "bedrock_server_manager.web.routers.bans.get_server_bans_api"
+    ) as mock_api:
         mock_api.return_value = {
             "status": "success",
             "message": "Bans retrieved",
@@ -45,16 +47,18 @@ def test_get_server_bans_success(admin_auth_client: TestClient, real_bedrock_ser
 
 def test_get_server_bans_error(admin_auth_client: TestClient, real_bedrock_server):
     """Test getting server bans when API returns error."""
-    with patch("bedrock_server_manager.web.routers.bans.get_server_bans") as mock_api:
+    with patch(
+        "bedrock_server_manager.web.routers.bans.get_server_bans_api"
+    ) as mock_api:
         mock_api.return_value = {
             "status": "error",
-            "message": "Failed to read allowlist.json",
+            "message": "Database is not initialized.",
         }
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/bans/get"
         )
         assert response.status_code == 400
-        assert "Failed to read allowlist.json" in response.json()["detail"]
+        assert "Database is not initialized." in response.json()["detail"]
 
 
 def test_post_add_server_ban_success(

@@ -26,6 +26,10 @@ def test_api_method_decorator():
     def my_test_function():
         return "hello"
 
+    my_test_function.__module__ = "bedrock_server_manager.api.server"
+    # Re-apply decorator to trigger registration with the fake module
+    my_test_function = api_method("my_test_api")(my_test_function)
+
     assert "my_test_api" in _api_registry
     assert _api_registry["my_test_api"][0] == my_test_function
     assert my_test_function() == "hello"
@@ -38,9 +42,15 @@ def test_api_method_decorator_overwrite_warning(caplog):
     def my_test_function():
         return "hello"
 
+    my_test_function.__module__ = "bedrock_server_manager.api.server"
+    api_method("my_test_api")(my_test_function)
+
     @api_method("my_test_api")
     def my_new_test_function():
         return "world"
+
+    my_new_test_function.__module__ = "bedrock_server_manager.api.server"
+    api_method("my_test_api")(my_new_test_function)
 
     assert "Overwriting existing API function 'my_test_api'" in caplog.text
 
@@ -51,6 +61,9 @@ def test_getattr_success(app_context):
     @api_method("my_test_api")
     def my_test_function():
         return "hello"
+
+    my_test_function.__module__ = "bedrock_server_manager.api.server"
+    api_method("my_test_api")(my_test_function)
 
     plugin_api = create_app_api("test_plugin", app_context)
     assert plugin_api.my_test_api() == "hello"
@@ -70,6 +83,9 @@ def test_list_available_apis(app_context):
     def my_test_function(param1: str, param2: int = 5) -> str:
         """This is a test function."""
         return f"{param1}, {param2}"
+
+    my_test_function.__module__ = "bedrock_server_manager.api.server"
+    api_method("my_test_api")(my_test_function)
 
     plugin_api = create_app_api("test_plugin", app_context)
     api_list = plugin_api.list_available_apis()
