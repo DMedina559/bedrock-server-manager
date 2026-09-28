@@ -261,8 +261,10 @@ class APIDocsGenerator(PluginBase):
 
             lines.append(f"\n## `{full_name}`")
             lines.append(f"```python\n{signature}\n```")
-            lines.append(f"- **Async (Requires await):** {'Yes' if is_async else 'No'}")
-            lines.append(f"**Description:** {docstring}\n")
+            lines.append(
+                f"- **Async (Requires await):** {'Yes' if is_async else 'No'}\n"
+            )
+            lines.append(f"- **Description:** {docstring}\n")
 
             filtered_params = [p for p in params if p["name"] != "app_context"]
             if filtered_params:
@@ -319,7 +321,7 @@ class APIDocsGenerator(PluginBase):
                     param_str += ", "
                 param_str += "event"
             lines.append(
-                f'```python\n@app_event("{name}")\ndef on_{name}(self, {param_str}, **kwargs):\n    pass\n```'
+                f'```python\n@app_event("{name}")\nasync def some_function(self, {param_str}, **kwargs):\n    pass\n```'
             )
 
             if params or is_cancellable:
