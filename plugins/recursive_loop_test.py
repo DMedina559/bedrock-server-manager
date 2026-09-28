@@ -76,8 +76,7 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (A->B): From 'before_server_start', calling self.api.backup_all() to trigger 'before_backup'."
         )
         try:
-            # Assuming the server is not yet running, so stop_start_server=False is appropriate.
-            await self.api.backup_all(server_name=server_name, stop_start_server=False)
+            await self.api.backup_all(server_name=server_name)
         except Exception as e:
             self.logger.error(
                 f"--- LOOP TEST (EVENT A): API call self.api.backup_all() failed unexpectedly: {e}",

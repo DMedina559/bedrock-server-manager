@@ -23,9 +23,12 @@ with the filesystem within the server's ``worlds`` subdirectory.
 
 import asyncio
 import os
+import re
 import shutil
+import tempfile
+import time
 import zipfile
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import aiofiles
 import aiofiles.os
@@ -81,6 +84,8 @@ class ServerWorldMixin(BedrockServerBaseMixin):
     if TYPE_CHECKING:
 
         async def get_world_name(self) -> str: ...
+        async def is_running(self) -> bool: ...
+        async def send_command(self, command: str) -> None: ...
 
     @property
     def _worlds_base_dir_in_server(self) -> str:
@@ -237,6 +242,147 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Unexpected error extracting world '{mcworld_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
+    async def _live_export_world(
+        self,
+        world_dir_name: str,
+        target_mcworld_file_path: str,
+        poll_interval: float = 1.0,
+        timeout: float = 30.0,
+    ) -> None:
+        """Executes a live world backup using Bedrock server's save hold/query/resume protocol."""
+        log_path = getattr(self, "server_log_path", None)
+        start_cursor = 0
+        if log_path and os.path.isfile(log_path):
+            start_cursor = os.path.getsize(log_path)
+
+        self.logger.info(
+            f"Server '{self.server_name}': Initiating live backup using 'save hold'..."
+        )
+        try:
+            await self.send_command("save hold")  # type: ignore
+        except Exception as e:
+            raise BackupRestoreError(
+                f"Failed to issue 'save hold' command to server '{self.server_name}': {e}"
+            ) from e
+
+        file_list_with_sizes: List[Tuple[str, int]] = []
+        query_success = False
+        start_time = time.time()
+
+        try:
+            while time.time() - start_time < timeout:
+                await asyncio.sleep(poll_interval)
+                await self.send_command("save query")  # type: ignore
+
+                if log_path and os.path.isfile(log_path):
+                    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                        f.seek(start_cursor)
+                        log_text = f.read()
+
+                    match = re.search(
+                        r"(?:Data saved\. Files are now ready to be copied\.|Data the world is saved:?)\s*([\s\S]*?)(?=\n\r?\n|\r?\n\r?\n|\[\d{4}-|$)",
+                        log_text,
+                        re.IGNORECASE,
+                    )
+                    if match:
+                        files_str = match.group(1).strip()
+                        entries = [
+                            e.strip()
+                            for e in re.split(r"[,\n\r]+", files_str)
+                            if e.strip()
+                        ]
+                        parsed_files = []
+                        for entry in entries:
+                            if ":" in entry:
+                                rpath, rsize = entry.rsplit(":", 1)
+                                try:
+                                    parsed_files.append(
+                                        (rpath.strip(), int(rsize.strip()))
+                                    )
+                                except ValueError:
+                                    pass
+                        if parsed_files:
+                            file_list_with_sizes = parsed_files
+                            query_success = True
+                            self.logger.info(
+                                f"Server '{self.server_name}': Received file list ({len(file_list_with_sizes)} files) from 'save query'."
+                            )
+                            break
+
+            if not query_success:
+                raise BackupRestoreError(
+                    f"Timed out waiting for 'save query' response on server '{self.server_name}' after {timeout} seconds."
+                )
+
+            full_source_world_dir = os.path.join(
+                self._worlds_base_dir_in_server, world_dir_name
+            )
+
+            def _copy_and_truncate_world() -> None:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    if os.path.exists(full_source_world_dir):
+                        shutil.copytree(
+                            full_source_world_dir, temp_dir, dirs_exist_ok=True
+                        )
+
+                    for rpath, rsize in file_list_with_sizes:
+                        clean_rel_path = rpath
+                        if clean_rel_path.startswith(
+                            world_dir_name + "/"
+                        ) or clean_rel_path.startswith(world_dir_name + "\\"):
+                            start_idx = len(world_dir_name) + 1
+                            clean_rel_path = clean_rel_path[start_idx:]
+                        elif "/" in clean_rel_path or "\\" in clean_rel_path:
+                            if not os.path.exists(
+                                os.path.join(full_source_world_dir, clean_rel_path)
+                            ):
+                                parts = re.split(r"[/\\]", clean_rel_path, maxsplit=1)
+                                if len(parts) == 2 and os.path.exists(
+                                    os.path.join(full_source_world_dir, parts[1])
+                                ):
+                                    clean_rel_path = parts[1]
+
+                        src_file = os.path.join(full_source_world_dir, clean_rel_path)
+                        dest_file = os.path.join(temp_dir, clean_rel_path)
+
+                        os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+                        if os.path.exists(src_file):
+                            shutil.copy2(src_file, dest_file)
+
+                        if os.path.exists(dest_file):
+                            with open(dest_file, "r+b") as f:
+                                f.truncate(rsize)
+
+                    archive_base_name_no_ext = os.path.splitext(
+                        target_mcworld_file_path
+                    )[0]
+                    temp_zip_path = archive_base_name_no_ext + ".zip"
+
+                    shutil.make_archive(
+                        base_name=archive_base_name_no_ext,
+                        format="zip",
+                        root_dir=temp_dir,
+                        base_dir=".",
+                    )
+
+                    if os.path.exists(target_mcworld_file_path):
+                        os.remove(target_mcworld_file_path)
+                    os.rename(temp_zip_path, target_mcworld_file_path)
+
+            await asyncio.to_thread(_copy_and_truncate_world)
+            self.logger.info(
+                f"Server '{self.server_name}': Live world export successful. Created: {target_mcworld_file_path}"
+            )
+
+        finally:
+            self.logger.info(f"Server '{self.server_name}': Sending 'save resume'...")
+            try:
+                await self.send_command("save resume")  # type: ignore
+            except Exception as e_res:
+                self.logger.warning(
+                    f"Server '{self.server_name}': Failed to send 'save resume': {e_res}"
+                )
+
     async def export_world(
         self, world_dir_name: str, target_mcworld_file_path: str
     ) -> None:
@@ -246,6 +392,9 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         "worlds" folder), archives its entire contents into a ZIP file, and then
         renames this ZIP file to have a ``.mcworld`` extension, saving it to
         `target_mcworld_file_path`.
+
+        If the server is running and the specified world is currently active, a live
+        backup using `save hold` / `save query` / `save resume` is performed.
 
         The parent directory for `target_mcworld_file_path` will be created if
         it does not exist. If `target_mcworld_file_path` itself already exists,
@@ -297,6 +446,24 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 raise FileOperationError(
                     f"Cannot create target directory '{target_parent_dir}': {e}"
                 ) from e
+
+        is_running = False
+        if hasattr(self, "is_running"):
+            try:
+                is_running = await self.is_running()  # type: ignore
+            except Exception:
+                is_running = False
+
+        active_world_name = None
+        if hasattr(self, "get_world_name"):
+            try:
+                active_world_name = await self.get_world_name()  # type: ignore
+            except Exception:
+                active_world_name = None
+
+        if is_running and active_world_name and world_dir_name == active_world_name:
+            await self._live_export_world(world_dir_name, target_mcworld_file_path)
+            return
 
         archive_base_name_no_ext = os.path.splitext(target_mcworld_file_path)[0]
         temp_zip_path = archive_base_name_no_ext + ".zip"

@@ -46,10 +46,7 @@ class AutoBackupOnStart(PluginBase):
             # The server is guaranteed to be offline at this point, so it is safe
             # to run a backup without stopping it first.
 
-            # Run the backup in a separate thread so it doesn't block the main asyncio event loop
-            result = await self.api.backup_all(
-                server_name=server_name, stop_start_server=False
-            )
+            result = await self.api.backup_all(server_name=server_name)
 
             if result.get("status") == "success":
                 self.logger.info(

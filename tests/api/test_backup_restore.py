@@ -42,19 +42,11 @@ async def test_backup_world_success(real_bedrock_server, app_context: AppContext
         return_value="/path/to/backup.mcworld"
     )
 
-    with patch(
-        "bedrock_server_manager.api.backup_restore.server_lifecycle_manager"
-    ) as mock_lifecycle:
-        # We simulate the context manager doing nothing (yielding None)
-        mock_lifecycle.return_value.__enter__.return_value = None
-        result = await backup_world("test_server", app_context, stop_start_server=True)
+    result = await backup_world("test_server", app_context)
 
-        assert result["status"] == "success"
-        assert "created successfully" in result["message"]
-        real_bedrock_server._backup_world_data_internal.assert_called_once()
-        mock_lifecycle.assert_called_once_with(
-            "test_server", True, app_context=app_context
-        )
+    assert result["status"] == "success"
+    assert "created successfully" in result["message"]
+    real_bedrock_server._backup_world_data_internal.assert_called_once()
 
 
 async def test_backup_world_missing_server(app_context: AppContext):
@@ -70,19 +62,13 @@ async def test_backup_config_file_success(real_bedrock_server, app_context: AppC
         return_value="/path/to/backup.properties"
     )
 
-    with patch(
-        "bedrock_server_manager.api.backup_restore.server_lifecycle_manager"
-    ) as mock_lifecycle:
-        mock_lifecycle.return_value.__enter__.return_value = None
-        result = await backup_config_file(
-            "test_server", "server.properties", app_context, stop_start_server=False
-        )
+    result = await backup_config_file("test_server", "server.properties", app_context)
 
-        assert result["status"] == "success"
-        assert "server.properties" in result["message"]
-        real_bedrock_server._backup_config_file_internal.assert_called_once_with(
-            "server.properties"
-        )
+    assert result["status"] == "success"
+    assert "server.properties" in result["message"]
+    real_bedrock_server._backup_config_file_internal.assert_called_once_with(
+        "server.properties"
+    )
 
 
 async def test_backup_all_success(real_bedrock_server, app_context: AppContext):
@@ -91,15 +77,11 @@ async def test_backup_all_success(real_bedrock_server, app_context: AppContext):
         return_value={"world": "backup.mcworld"}
     )
 
-    with patch(
-        "bedrock_server_manager.api.backup_restore.server_lifecycle_manager"
-    ) as mock_lifecycle:
-        mock_lifecycle.return_value.__enter__.return_value = None
-        result = await backup_all("test_server", app_context)
+    result = await backup_all("test_server", app_context)
 
-        assert result["status"] == "success"
-        assert result["details"] == {"world": "backup.mcworld"}
-        real_bedrock_server.backup_all_data.assert_called_once()
+    assert result["status"] == "success"
+    assert result["details"] == {"world": "backup.mcworld"}
+    real_bedrock_server.backup_all_data.assert_called_once()
 
 
 async def test_restore_all_success(real_bedrock_server, app_context: AppContext):

@@ -40,7 +40,6 @@ async def test_export_world_success(app_context, monkeypatch):
         "test_server",
         app_context,
         export_dir="/some/export/dir",
-        stop_start_server=False,
     )
 
     assert result["status"] == "success"
