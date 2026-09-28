@@ -7,6 +7,7 @@ from bedrock_server_manager.error import (
     BSMError,
     MissingArgumentError,
 )
+from bedrock_server_manager.utils.general import ReentrantAsyncLock
 
 
 async def test_install_new_server_success(app_context, monkeypatch):
@@ -14,6 +15,7 @@ async def test_install_new_server_success(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.is_installed = AsyncMock(return_value=False)
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
@@ -49,6 +51,7 @@ async def test_install_new_server_already_exists(app_context, tmp_path, monkeypa
     await app_context.settings.set("paths.servers", str(base_dir))
 
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.is_installed = AsyncMock(return_value=True)
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
@@ -71,6 +74,7 @@ async def test_install_new_server_error(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.is_installed = AsyncMock(return_value=False)
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
@@ -90,6 +94,7 @@ async def test_update_server_no_update_needed(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
@@ -111,6 +116,7 @@ async def test_update_server_success(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = AsyncMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)
@@ -150,9 +156,9 @@ async def test_update_server_locked(app_context, monkeypatch):
     import asyncio
 
     mock_lock.acquire = AsyncMock(side_effect=asyncio.TimeoutError())
-    monkeypatch.setattr(
-        "bedrock_server_manager.api.install._install_update_lock", mock_lock
-    )
+    mock_server = MagicMock()
+    mock_server.operation_lock = mock_lock
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     result = await update_server("test_server", app_context)
 
@@ -172,6 +178,7 @@ async def test_update_server_error(app_context, monkeypatch):
     from unittest.mock import AsyncMock
 
     mock_server = AsyncMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.get_target_version = AsyncMock(return_value="LATEST")
     mock_server.get_version = AsyncMock(return_value="1.20")
     mock_server.is_update_needed = AsyncMock(return_value=True)

@@ -17,7 +17,7 @@ to facilitate tasks such as:
       (:func:`~.reset_world`).
 
 Operations involving world file modifications (export, import, reset) are
-thread-safe using a unified lock (``_world_lock``) to prevent data corruption.
+thread-safe using a per-server operation lock (``server.operation_lock``) to prevent data corruption.
 For actions that require the server to be offline (like import or reset),
 this module utilizes the
 :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
@@ -39,14 +39,9 @@ from ..error import (
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..utils import get_timestamp
-from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
-
-# A unified re-entrant lock to prevent race conditions during any world file operation
-# (export, import, reset). This ensures data integrity while allowing re-entrant event listeners.
-_world_lock = ReentrantAsyncLock()
 
 
 @api_method("get_world_name")
@@ -113,7 +108,7 @@ async def export_world(
 ) -> Dict[str, Any]:
     """Exports the server's currently active world to a .mcworld archive.
 
-    This operation is thread-safe due to ``_world_lock``. The core world export
+    This operation is thread-safe due to ``server.operation_lock``. The core world export
     is performed by :meth:`~.core.bedrock_server.BedrockServer.export_world`,
     which performs a live backup using save hold if the server is running.
     Triggers ``before_world_export`` and ``after_world_export`` plugin events.
@@ -140,11 +135,16 @@ async def export_world(
             :class:`~.error.AppFileNotFoundError` if world directory is missing, or
             :class:`~.error.BackupRestoreError` from export.
     """
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _world_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent export."
         )
         return {
             "status": "skipped",
@@ -152,9 +152,6 @@ async def export_world(
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty.")
-
         # Determine the effective export directory before triggering hooks.
         if export_dir:
             effective_export_dir = export_dir
@@ -170,8 +167,6 @@ async def export_world(
         logger.info(f"API: Initiating world export for '{server_name}'")
 
         try:
-            server = app_context.get_server(server_name)
-
             os.makedirs(effective_export_dir, exist_ok=True)
             world_name_str = await server.get_world_name()
             timestamp = get_timestamp()
@@ -208,7 +203,7 @@ async def export_world(
             }
 
     finally:
-        _world_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("import_world")
@@ -258,11 +253,18 @@ async def import_world(
             :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+    if not selected_file_path:
+        raise MissingArgumentError(".mcworld file path cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _world_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
         return {
             "status": "skipped",
@@ -270,18 +272,12 @@ async def import_world(
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty.")
-        if not selected_file_path:
-            raise MissingArgumentError(".mcworld file path cannot be empty.")
-
         selected_filename = os.path.basename(selected_file_path)
         logger.info(
             f"API: Initiating world import for '{server_name}' from '{selected_filename}' (Stop/Start: {stop_start_server})"
         )
 
         try:
-            server = app_context.get_server(server_name)
             if not os.path.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
@@ -321,7 +317,7 @@ async def import_world(
             }
 
     finally:
-        _world_lock.release()
+        server.operation_lock.release()
 
 
 @trigger_event(
@@ -362,11 +358,16 @@ async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, st
             :class:`~.error.FileOperationError` from deletion, errors determining
             the world name, or errors from server stop/start.
     """
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty for API request.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _world_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent reset."
         )
         return {
             "status": "skipped",
@@ -374,13 +375,9 @@ async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, st
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty for API request.")
-
         logger.info(f"API: Initiating world reset for server '{server_name}'...")
 
         try:
-            server = app_context.get_server(server_name)
             world_name_for_msg = await server.get_world_name()
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,
@@ -421,4 +418,4 @@ async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, st
             }
 
     finally:
-        _world_lock.release()
+        server.operation_lock.release()

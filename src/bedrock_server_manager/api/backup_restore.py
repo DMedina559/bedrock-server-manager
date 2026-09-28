@@ -17,8 +17,8 @@ Key functionalities include:
     - Restoring a specific configuration file from its backup (:func:`~.restore_config_file`).
     - Pruning old backups based on retention policies (:func:`~.prune_old_backups`).
 
-Operations involving file modifications are thread-safe using a unified lock
-(``_backup_restore_lock``). For actions requiring the server to be offline,
+Operations involving file modifications are thread-safe using a per-server operation lock
+(``server.operation_lock``). For actions requiring the server to be offline,
 this module utilizes the
 :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
 to safely stop and restart the server. All functions are exposed to the plugin system.
@@ -38,15 +38,9 @@ from ..error import (
 )
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
-from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
-
-# A unified re-entrant lock for all backup, restore, and prune operations.
-# This ensures that only one file-modifying operation can run at a time across
-# the entire module, while allowing nested/event calls from the same task without deadlocking.
-_backup_restore_lock = ReentrantAsyncLock()
 
 
 @api_method("list_backup_files")
@@ -132,11 +126,16 @@ async def backup_world(
             :class:`~.error.AppFileNotFoundError` (world dir missing),
             or :class:`~.error.BackupRestoreError` (export/pruning issues).
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world backup."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent world backup."
         )
         return {
             "status": "skipped",
@@ -144,13 +143,9 @@ async def backup_world(
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-
         logger.info(f"API: Initiating world backup for server '{server_name}'.")
 
         try:
-            server = app_context.get_server(server_name)
             backup_file = await server._backup_world_data_internal()
             return {
                 "status": "success",
@@ -173,7 +168,7 @@ async def backup_world(
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("backup_config_file")
@@ -216,11 +211,18 @@ async def backup_config_file(
             :class:`~.error.ConfigurationError` (backup path not set) or
             :class:`~.error.FileOperationError` (file copy/pruning issues).
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+    if not file_to_backup:
+        raise MissingArgumentError("File to backup cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config backup."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent config backup."
         )
         return {
             "status": "skipped",
@@ -228,18 +230,12 @@ async def backup_config_file(
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-        if not file_to_backup:
-            raise MissingArgumentError("File to backup cannot be empty.")
-
         filename_base = os.path.basename(file_to_backup)
         logger.info(
             f"API: Initiating config file backup for '{filename_base}' on server '{server_name}'."
         )
 
         try:
-            server = app_context.get_server(server_name)
             backup_file = await server._backup_config_file_internal(filename_base)
             return {
                 "status": "success",
@@ -263,7 +259,7 @@ async def backup_config_file(
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("backup_all")
@@ -299,11 +295,16 @@ async def backup_all(
             :class:`~.error.ConfigurationError` (backup path not set) or
             :class:`~.error.BackupRestoreError` (if critical world backup fails).
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent full backup."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent full backup."
         )
         return {
             "status": "skipped",
@@ -311,13 +312,9 @@ async def backup_all(
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-
         logger.info(f"API: Initiating full backup for server '{server_name}'.")
 
         try:
-            server = app_context.get_server(server_name)
             backup_results = await server.backup_all_data()
             return {
                 "status": "success",
@@ -341,7 +338,7 @@ async def backup_all(
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("restore_all")
@@ -391,11 +388,16 @@ async def restore_all(
             :class:`~.error.BackupRestoreError` (if any component fails to restore),
             or errors from server stop/start.
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent restore."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent restore."
         )
         return {
             "status": "skipped",
@@ -403,9 +405,6 @@ async def restore_all(
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-
         logger.info(
             f"API: Initiating restore_all for server '{server_name}'. Stop/Start: {stop_start_server}"
         )
@@ -417,7 +416,6 @@ async def restore_all(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                server = app_context.get_server(server_name)
                 restore_results = await server.restore_all_data_from_latest()
 
             if not restore_results:
@@ -448,7 +446,7 @@ async def restore_all(
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("restore_world")
@@ -499,11 +497,18 @@ async def restore_world(
             :class:`~.error.BackupRestoreError`, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+    if not backup_file_path:
+        raise MissingArgumentError("Backup file path cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world restore."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent world restore."
         )
         return {
             "status": "skipped",
@@ -511,11 +516,6 @@ async def restore_world(
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-        if not backup_file_path:
-            raise MissingArgumentError("Backup file path cannot be empty.")
-
         backup_filename = os.path.basename(backup_file_path)
         logger.info(
             f"API: Initiating world restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
@@ -531,7 +531,6 @@ async def restore_world(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                server = app_context.get_server(server_name)
                 await server.import_world(backup_file_path)
 
             return {
@@ -555,7 +554,7 @@ async def restore_world(
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("restore_config_file")
@@ -607,11 +606,18 @@ async def restore_config_file(
         BSMError: Propagates errors from underlying operations like
             :class:`~.error.FileOperationError` or errors from server stop/start.
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+    if not backup_file_path:
+        raise MissingArgumentError("Backup file path cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config restore."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent config restore."
         )
         return {
             "status": "skipped",
@@ -619,11 +625,6 @@ async def restore_config_file(
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-        if not backup_file_path:
-            raise MissingArgumentError("Backup file path cannot be empty.")
-
         backup_filename = os.path.basename(backup_file_path)
         logger.info(
             f"API: Initiating config restore for '{server_name}' from '{backup_filename}'. Stop/Start: {stop_start_server}"
@@ -639,7 +640,6 @@ async def restore_config_file(
                 restart_on_success_only=True,
                 app_context=app_context,
             ):
-                server = app_context.get_server(server_name)
                 restored_file = await server._restore_config_file_internal(
                     backup_file_path
                 )
@@ -666,7 +666,7 @@ async def restore_config_file(
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("prune_old_backups")
@@ -707,11 +707,16 @@ async def prune_old_backups(  # noqa: C901
             Individual :class:`~.error.FileOperationError` for components are
             typically aggregated into the error message.
     """
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _backup_restore_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent prune."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent prune."
         )
         return {
             "status": "skipped",
@@ -719,15 +724,11 @@ async def prune_old_backups(  # noqa: C901
         }
 
     try:
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-
         logger.info(
             f"API: Initiating pruning of old backups for server '{server_name}'."
         )
 
         try:
-            server = app_context.get_server(server_name)
             # If the backup directory doesn't exist, there's nothing to do.
             if not server.server_backup_directory or not os.path.isdir(
                 server.server_backup_directory
@@ -797,4 +798,4 @@ async def prune_old_backups(  # noqa: C901
             }
 
     finally:
-        _backup_restore_lock.release()
+        server.operation_lock.release()

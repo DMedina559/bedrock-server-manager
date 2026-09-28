@@ -9,12 +9,14 @@ from bedrock_server_manager.error import (
     MissingArgumentError,
 )
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
+from bedrock_server_manager.utils.general import ReentrantAsyncLock
 
 
 async def test_export_world_success(app_context, monkeypatch):
     """Test export_world functions appropriately mapping internal core export operations."""
     monkeypatch.setattr(app_context, "_plugin_manager", MagicMock(spec=PluginManager))
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.export_world = AsyncMock()
     mock_server.import_world = AsyncMock()
     mock_server.reset_world = AsyncMock()
@@ -60,6 +62,7 @@ async def test_export_world_empty_dir(app_context, monkeypatch):
     # It does not raise MissingArgumentError, it generates a path if export_dir is empty or None
     monkeypatch.setattr("os.makedirs", MagicMock())
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.export_world = AsyncMock()
     mock_server.import_world = AsyncMock()
     mock_server.reset_world = AsyncMock()
@@ -86,6 +89,7 @@ async def test_export_world_bsmerror(app_context, monkeypatch):
     """Test export_world catches and maps specific core operation errors safely."""
     monkeypatch.setattr(app_context, "_plugin_manager", MagicMock(spec=PluginManager))
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.export_world = AsyncMock()
     mock_server.import_world = AsyncMock()
     mock_server.reset_world = AsyncMock()
@@ -115,6 +119,7 @@ async def test_import_world_success(app_context, monkeypatch):
     """Test import_world coordinates the BedrockServer core replacing existing active world."""
     monkeypatch.setattr(app_context, "_plugin_manager", MagicMock(spec=PluginManager))
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.export_world = AsyncMock()
     mock_server.import_world = AsyncMock()
     mock_server.reset_world = AsyncMock()
@@ -165,6 +170,7 @@ async def test_reset_world_success(app_context, monkeypatch):
     """Test reset_world effectively deletes world dictating a clean generation on next start."""
     monkeypatch.setattr(app_context, "_plugin_manager", MagicMock(spec=PluginManager))
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.export_world = AsyncMock()
     mock_server.import_world = AsyncMock()
     mock_server.reset_world = AsyncMock()

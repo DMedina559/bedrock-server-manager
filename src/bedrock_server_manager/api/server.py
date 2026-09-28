@@ -669,12 +669,24 @@ async def delete_server_data(
     if not server_name:
         raise InvalidServerNameError("Server name cannot be empty.")
 
-    # High-visibility warning for a destructive operation.
-    logger.warning(
-        f"API: !!! Initiating deletion of ALL data for server '{server_name}'. Stop if running: {stop_if_running} !!!"
-    )
+    server = app_context.get_server(server_name)
+
     try:
-        server = app_context.get_server(server_name)
+        await server.operation_lock.acquire(timeout=300)
+    except TimeoutError:
+        logger.warning(
+            f"An operation for '{server_name}' is already in progress. Skipping server deletion."
+        )
+        return {
+            "status": "skipped",
+            "message": "A server operation is already in progress.",
+        }
+
+    try:
+        # High-visibility warning for a destructive operation.
+        logger.warning(
+            f"API: !!! Initiating deletion of ALL data for server '{server_name}'. Stop if running: {stop_if_running} !!!"
+        )
 
         # Stop the server first if requested and it's running.
         if stop_if_running and await server.is_running():
@@ -718,6 +730,8 @@ async def delete_server_data(
             "status": "error",
             "message": f"Unexpected error deleting server data: {e}",
         }
+    finally:
+        server.operation_lock.release()
 
 
 @api_method("server_lifecycle_manager")

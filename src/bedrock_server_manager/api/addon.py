@@ -11,7 +11,7 @@ Currently, the main functionality offered is:
       resource packs directories via :func:`~.import_addon`.
 
 Operations that modify server files, like addon installation, are designed to be
-thread-safe using a lock (``_addon_lock``). The module also utilizes the
+thread-safe using a per-server operation lock (``server.operation_lock``). The module also utilizes the
 :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to
 optionally manage the server's state (stopping and restarting) during these
 operations to ensure data integrity. All primary functions are exposed to the
@@ -35,15 +35,9 @@ from ..error import (
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
 from ..utils import list_content_files
-from ..utils.general import ReentrantAsyncLock
 from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
-
-# A unified re-entrant lock to prevent race conditions during addon file operations.
-# This ensures that only one addon installation can occur at a time,
-# preventing potential file corruption while allowing re-entrant event listeners.
-_addon_lock = ReentrantAsyncLock()
 
 
 @api_method("list_available_addons")
@@ -128,13 +122,20 @@ async def import_addon(  # noqa: C901
             :class:`~.error.ExtractError`, :class:`~.error.FileOperationError`,
             or errors from server stop/start.
     """
-    # Attempt to acquire the lock without blocking. If another addon operation
-    # is in progress, skip this one to avoid conflicts.
+    if not server_name:
+        raise MissingArgumentError("Server name cannot be empty.")
+    if not addon_file_path:
+        raise MissingArgumentError("Addon file path cannot be empty.")
+    if not os.path.isfile(addon_file_path):
+        raise AppFileNotFoundError(addon_file_path, "Addon file")
+
+    server = app_context.get_server(server_name)
+
     try:
-        await _addon_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
-            f"An addon operation for '{server_name}' is already in progress. Skipping concurrent import."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
         return {
             "status": "skipped",
@@ -142,23 +143,13 @@ async def import_addon(  # noqa: C901
         }
 
     try:
-        addon_filename = os.path.basename(addon_file_path) if addon_file_path else "N/A"
+        addon_filename = os.path.basename(addon_file_path)
         logger.info(
             f"API: Initiating addon import for '{server_name}' from '{addon_filename}'. "
             f"Stop/Start: {stop_start_server}, RestartOnSuccess: {restart_only_on_success}"
         )
 
-        # --- Pre-flight Checks ---
-        if not server_name:
-            raise MissingArgumentError("Server name cannot be empty.")
-        if not addon_file_path:
-            raise MissingArgumentError("Addon file path cannot be empty.")
-        if not os.path.isfile(addon_file_path):
-            raise AppFileNotFoundError(addon_file_path, "Addon file")
-
         try:
-            server = app_context.get_server(server_name)
-
             # If the server is running, send a warning message to players.
             if await server.is_running():
                 try:
@@ -213,8 +204,7 @@ async def import_addon(  # noqa: C901
             }
 
     finally:
-        # Ensure the lock is always released, even if errors occur.
-        _addon_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("list_installed_addons")
@@ -257,8 +247,10 @@ async def enable_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
+    server = app_context.get_server(server_name)
+
     try:
-        await _addon_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -266,7 +258,6 @@ async def enable_addon(
         }
 
     try:
-        server = app_context.get_server(server_name)
         async with server_lifecycle_manager(
             server_name,
             stop_before=True,
@@ -292,7 +283,7 @@ async def enable_addon(
         )
         return {"status": "error", "message": str(e)}
     finally:
-        _addon_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("disable_addon")
@@ -318,8 +309,10 @@ async def disable_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
+    server = app_context.get_server(server_name)
+
     try:
-        await _addon_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -327,7 +320,6 @@ async def disable_addon(
         }
 
     try:
-        server = app_context.get_server(server_name)
         async with server_lifecycle_manager(
             server_name,
             stop_before=True,
@@ -353,7 +345,7 @@ async def disable_addon(
         )
         return {"status": "error", "message": str(e)}
     finally:
-        _addon_lock.release()
+        server.operation_lock.release()
 
 
 @trigger_event(
@@ -380,8 +372,10 @@ async def update_subpack(
     Returns:
         Dict[str, str]: Status of the operation.
     """
+    server = app_context.get_server(server_name)
+
     try:
-        await _addon_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -389,7 +383,6 @@ async def update_subpack(
         }
 
     try:
-        server = app_context.get_server(server_name)
         async with server_lifecycle_manager(
             server_name,
             stop_before=True,
@@ -417,7 +410,7 @@ async def update_subpack(
         )
         return {"status": "error", "message": str(e)}
     finally:
-        _addon_lock.release()
+        server.operation_lock.release()
 
 
 @trigger_event(
@@ -442,8 +435,10 @@ async def uninstall_addon(
     Returns:
         Dict[str, str]: Status of the operation.
     """
+    server = app_context.get_server(server_name)
+
     try:
-        await _addon_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -451,7 +446,6 @@ async def uninstall_addon(
         }
 
     try:
-        server = app_context.get_server(server_name)
         async with server_lifecycle_manager(
             server_name,
             stop_before=True,
@@ -477,7 +471,7 @@ async def uninstall_addon(
         )
         return {"status": "error", "message": str(e)}
     finally:
-        _addon_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("reorder_addons")
@@ -503,8 +497,10 @@ async def reorder_addons(
     Returns:
         Dict[str, str]: Status of the operation.
     """
+    server = app_context.get_server(server_name)
+
     try:
-        await _addon_lock.acquire(timeout=300)
+        await server.operation_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -512,7 +508,6 @@ async def reorder_addons(
         }
 
     try:
-        server = app_context.get_server(server_name)
         async with server_lifecycle_manager(
             server_name,
             stop_before=True,
@@ -537,4 +532,4 @@ async def reorder_addons(
         )
         return {"status": "error", "message": str(e)}
     finally:
-        _addon_lock.release()
+        server.operation_lock.release()

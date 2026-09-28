@@ -130,6 +130,9 @@ class BedrockServerBaseMixin:
         # For atomic file writes concurrency control
         self._file_locks: Dict[str, ReentrantAsyncLock] = {}
 
+        # Per-server operation lock for heavy/mutating operations (backups, restores, world ops, addons, installs)
+        self.operation_lock: ReentrantAsyncLock = ReentrantAsyncLock()
+
         # For process resource monitoring.
         self._resource_monitor = system_base.ResourceMonitor()
 

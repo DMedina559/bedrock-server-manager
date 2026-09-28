@@ -14,12 +14,14 @@ from bedrock_server_manager.api.addon import (
     update_subpack,
 )
 from bedrock_server_manager.error import MissingArgumentError
+from bedrock_server_manager.utils.general import ReentrantAsyncLock
 
 
 async def test_import_addon_success(app_context, tmp_path, monkeypatch):
     """Test importing an addon returns success status."""
     mock_process = AsyncMock()
     mock_server = AsyncMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -27,13 +29,11 @@ async def test_import_addon_success(app_context, tmp_path, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     mock_server.process_addon_file.side_effect = mock_process.side_effect
     mock_server.process_addon_file.return_value = mock_process.return_value
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
@@ -53,6 +53,7 @@ async def test_import_addon_error(app_context, tmp_path, monkeypatch):
     """Test importing an addon returns error status on exception."""
     mock_process = AsyncMock(side_effect=Exception("Failed extracting"))
     mock_server = AsyncMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -60,13 +61,11 @@ async def test_import_addon_error(app_context, tmp_path, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     mock_server.process_addon_file.side_effect = mock_process.side_effect
     mock_server.process_addon_file.return_value = mock_process.return_value
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
@@ -97,8 +96,9 @@ async def test_import_addon_lock_skipped(app_context, tmp_path, monkeypatch):
 
     mock_lock = MagicMock()
     mock_lock.acquire = AsyncMock(side_effect=asyncio.TimeoutError)
-    mock_lock.acquire.return_value = False
-    monkeypatch.setattr("bedrock_server_manager.api.addon._addon_lock", mock_lock)
+    mock_server = MagicMock()
+    mock_server.operation_lock = mock_lock
+    monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     result = await import_addon("test_server", str(addon_file), app_context=app_context)
     assert result["status"] == "skipped"
@@ -120,6 +120,7 @@ async def test_list_installed_addons_success(app_context, monkeypatch):
     """Test listing installed addons delegates correctly."""
     mock_list = MagicMock(return_value={"behavior_packs": []})
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -127,13 +128,11 @@ async def test_list_installed_addons_success(app_context, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons.side_effect = mock_list.side_effect
     mock_server.list_installed_addons.return_value = mock_list.return_value
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
@@ -146,6 +145,7 @@ async def test_list_installed_addons_success(app_context, monkeypatch):
 async def test_enable_addon_success(app_context, monkeypatch):
     """Test enabling an addon handles locks and triggers successfully."""
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -153,13 +153,11 @@ async def test_enable_addon_success(app_context, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     # We must mock server_lifecycle_manager to not raise errors if context isnt fully ready
@@ -175,6 +173,7 @@ async def test_enable_addon_success(app_context, monkeypatch):
 async def test_disable_addon_success(app_context, monkeypatch):
     """Test disabling an addon handles locks and triggers successfully."""
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -182,13 +181,11 @@ async def test_disable_addon_success(app_context, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     monkeypatch.setattr(
@@ -203,6 +200,7 @@ async def test_disable_addon_success(app_context, monkeypatch):
 async def test_update_subpack_success(app_context, monkeypatch):
     """Test updating subpack works properly via server class."""
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -210,13 +208,11 @@ async def test_update_subpack_success(app_context, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     monkeypatch.setattr(
@@ -233,6 +229,7 @@ async def test_update_subpack_success(app_context, monkeypatch):
 async def test_uninstall_addon_success(app_context, monkeypatch):
     """Test uninstalling an addon functions successfully."""
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -240,13 +237,11 @@ async def test_uninstall_addon_success(app_context, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     monkeypatch.setattr(
@@ -263,6 +258,7 @@ async def test_uninstall_addon_success(app_context, monkeypatch):
 async def test_reorder_addons_success(app_context, monkeypatch):
     """Test reordering addons delegates to the server core efficiently."""
     mock_server = MagicMock()
+    mock_server.operation_lock = ReentrantAsyncLock()
     mock_server.process_addon_file = AsyncMock()
     mock_server.list_installed_addons = AsyncMock()
     mock_server.export_world = AsyncMock()
@@ -270,13 +266,11 @@ async def test_reorder_addons_success(app_context, monkeypatch):
     mock_server.reset_world = AsyncMock()
     mock_server.delete_world = AsyncMock()
     mock_server.import_addon = AsyncMock()
-    mock_server.list_installed_addons = AsyncMock()
     mock_server.enable_addon = AsyncMock()
     mock_server.disable_addon = AsyncMock()
     mock_server.update_subpack = AsyncMock()
     mock_server.remove_addon = AsyncMock()
     mock_server.reorder_addons = AsyncMock()
-    mock_server.process_addon_file = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     monkeypatch.setattr(
