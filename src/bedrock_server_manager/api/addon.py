@@ -1,5 +1,3 @@
-import asyncio
-
 # bedrock_server_manager/api/addon.py
 """API functions for managing addons on Bedrock servers.
 
@@ -20,6 +18,7 @@ operations to ensure data integrity. All primary functions are exposed to the
 plugin system.
 """
 
+import asyncio
 import logging
 import os
 from typing import Any, Dict

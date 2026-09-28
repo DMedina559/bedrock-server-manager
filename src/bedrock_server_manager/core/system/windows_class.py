@@ -38,7 +38,7 @@ except ImportError:
     win32service = None
     win32serviceutil = None
     pywintypes = None
-from ...api.web import start_web_server_api
+from ...api.web import start_web_server
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
             self.logger.info("Starting web server logic in a background thread.")
 
             web_thread = threading.Thread(
-                target=start_web_server_api,
+                target=start_web_server,
                 kwargs={
                     "app_context": self.app_context,
                     "mode": "direct",

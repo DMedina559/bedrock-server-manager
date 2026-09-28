@@ -5,9 +5,9 @@ This module contains the logic for controlling the lifecycle and querying the
 status of the built-in web UI, which is powered by FastAPI. It handles:
 
     - Starting the web server in 'direct' (blocking) or 'detached' (background) modes
-      (:func:`~.start_web_server_api`).
-    - Stopping the detached web server process (:func:`~.stop_web_server_api`).
-    - Checking the runtime status of the web server (:func:`~.get_web_server_status_api`).
+      (:func:`~.start_web_server`).
+    - Stopping the detached web server process (:func:`~.stop_web_server`).
+    - Checking the runtime status of the web server (:func:`~.get_web_server_status`).
     - Managing the system service for the Web UI (create, enable, disable, remove, get status)
       via functions like :func:`~.create_web_ui_service` and :func:`~.get_web_ui_service_status`.
 
@@ -42,7 +42,7 @@ from ..error import (
 logger = logging.getLogger(__name__)
 
 
-def start_web_server_api(  # noqa: C901
+def start_web_server(  # noqa: C901
     app_context: AppContext,
     host: Optional[str] = None,
     port: Optional[int] = None,
@@ -200,7 +200,7 @@ def start_web_server_api(  # noqa: C901
     return {}
 
 
-def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
+def stop_web_server(app_context: AppContext) -> Dict[str, str]:
     """Stops the detached web server process.
 
     This function reads the PID from the web server's PID file,
@@ -279,7 +279,7 @@ def stop_web_server_api(app_context: AppContext) -> Dict[str, str]:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-def get_web_server_status_api(  # noqa: C901
+def get_web_server_status(  # noqa: C901
     app_context: AppContext,
 ) -> Dict[str, Any]:
     """Checks the status of the web server process.

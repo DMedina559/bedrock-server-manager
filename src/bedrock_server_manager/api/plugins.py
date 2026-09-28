@@ -13,7 +13,7 @@ Key functionalities include:
 - Getting statuses and metadata of all discovered plugins (:func:`~.get_plugin_statuses`).
 - Setting the enabled/disabled state of a specific plugin (:func:`~.set_plugin_status`).
 - Reloading all plugins (:func:`~.reload_plugins`).
-- Triggering custom plugin events externally (:func:`~.trigger_external_app_event_api`).
+- Triggering custom plugin events externally (:func:`~.trigger_external_app_event`).
 
 These functions facilitate management and interaction with plugins, primarily
 for use by administrative interfaces like a web UI or CLI.
@@ -208,7 +208,7 @@ async def reload_plugins(app_context: AppContext) -> Dict[str, Any]:
         }
 
 
-async def trigger_external_app_event_api(
+async def trigger_external_app_event(
     event_name: str,
     app_context: AppContext,
     payload: Optional[Dict[str, Any]] = None,

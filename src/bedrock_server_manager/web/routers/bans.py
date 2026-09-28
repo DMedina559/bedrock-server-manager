@@ -2,7 +2,9 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...api.ban import add_server_ban_api, get_server_bans_api, remove_server_ban_api
+from ...api.ban import add_server_ban
+from ...api.ban import get_server_bans as get_server_bans_api
+from ...api.ban import remove_server_ban
 from ...context import AppContext
 from ..deps import get_admin_user, get_app_context, validate_server_exists
 from ..schemas.ban import BanAddRequest, BanRemoveRequest
@@ -33,7 +35,7 @@ async def post_add_server_ban(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Add a player to the server ban list."""
-    result = await add_server_ban_api(
+    result = await add_server_ban(
         app_context=app_context,
         server_name=server_name,
         player_name=payload.player_name,
@@ -52,7 +54,7 @@ async def delete_remove_server_ban(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Remove a player from the server ban list."""
-    result = await remove_server_ban_api(
+    result = await remove_server_ban(
         app_context=app_context, server_name=server_name, xuid=payload.xuid
     )
     if result.get("status") == "error":

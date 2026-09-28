@@ -8,33 +8,33 @@ from bedrock_server_manager.api.web import (
     create_web_ui_service,
     disable_web_ui_service,
     enable_web_ui_service,
-    get_web_server_status_api,
+    get_web_server_status,
     get_web_ui_service_status,
     remove_web_ui_service,
-    start_web_server_api,
-    stop_web_server_api,
+    start_web_server,
+    stop_web_server,
 )
 from bedrock_server_manager.context import AppContext
 
 
-def test_start_web_server_api_direct_success(app_context: AppContext):
+def test_start_web_server_direct_success(app_context: AppContext):
     """Test starting web server directly."""
     with patch("bedrock_server_manager.web.main.run_web_server") as mock_run:
-        result = start_web_server_api(app_context, mode="direct")
+        result = start_web_server(app_context, mode="direct")
 
         assert result["status"] == "success"
         mock_run.assert_called_once()
 
 
-def test_start_web_server_api_invalid_mode(app_context: AppContext):
+def test_start_web_server_invalid_mode(app_context: AppContext):
     """Test starting web server with invalid mode raises UserInputError."""
     # The API catches the error and returns a status dictionary
-    result = start_web_server_api(app_context, mode="invalid")
+    result = start_web_server(app_context, mode="invalid")
     assert result["status"] == "error"
     assert "Invalid mode" in result["message"]
 
 
-def test_start_web_server_api_detached_success(app_context: AppContext):
+def test_start_web_server_detached_success(app_context: AppContext):
     """Test starting web server detached."""
     with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True):
         with patch(
@@ -45,14 +45,14 @@ def test_start_web_server_api_detached_success(app_context: AppContext):
                 return_value=False,
             ):
                 mock_launch.return_value = 1234
-                result = start_web_server_api(app_context, mode="detached")
+                result = start_web_server(app_context, mode="detached")
 
                 assert result["status"] == "success"
                 assert result["pid"] == 1234
                 mock_launch.assert_called_once()
 
 
-def test_stop_web_server_api_success(app_context: AppContext):
+def test_stop_web_server_success(app_context: AppContext):
     """Test stopping the detached web server."""
     with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True):
         with patch(
@@ -72,21 +72,21 @@ def test_stop_web_server_api_success(app_context: AppContext):
                         with patch(
                             "bedrock_server_manager.core.system.process.remove_pid_file_if_exists"
                         ):
-                            result = stop_web_server_api(app_context)
+                            result = stop_web_server(app_context)
 
                             assert result["status"] == "success"
                             mock_terminate.assert_called_once_with(1234)
 
 
-def test_stop_web_server_api_no_psutil(app_context: AppContext):
+def test_stop_web_server_no_psutil(app_context: AppContext):
     """Test stopping the detached web server when psutil is not available."""
     with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", False):
-        result = stop_web_server_api(app_context)
+        result = stop_web_server(app_context)
         assert result["status"] == "error"
         assert "psutil" in result["message"]
 
 
-def test_get_web_server_status_api_running(app_context: AppContext):
+def test_get_web_server_status_running(app_context: AppContext):
     """Test checking status when it's running."""
     with patch("bedrock_server_manager.api.web.PSUTIL_AVAILABLE", True):
         with patch(
@@ -100,7 +100,7 @@ def test_get_web_server_status_api_running(app_context: AppContext):
                 with patch(
                     "bedrock_server_manager.core.system.process.verify_process_identity"
                 ):
-                    result = get_web_server_status_api(app_context)
+                    result = get_web_server_status(app_context)
 
                     assert result["status"] == "RUNNING"
                     assert result["pid"] == 1234

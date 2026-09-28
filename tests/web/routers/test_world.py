@@ -14,7 +14,7 @@ def test_get_worlds_list_unauthorized(unauth_client: TestClient):
 
 def test_get_worlds_list_success(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.web.routers.world.app_api.list_available_worlds_api"
+        "bedrock_server_manager.web.routers.world.app_api.list_available_worlds"
     ) as mock_list:
         mock_list.return_value = {
             "status": "success",
@@ -31,7 +31,7 @@ def test_get_worlds_list_success(admin_auth_client: TestClient):
 
 def test_get_worlds_list_error(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.web.routers.world.app_api.list_available_worlds_api"
+        "bedrock_server_manager.web.routers.world.app_api.list_available_worlds"
     ) as mock_list:
         mock_list.return_value = {"status": "error", "message": "Disk unavailable"}
 

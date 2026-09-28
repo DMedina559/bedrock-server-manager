@@ -152,7 +152,7 @@ class DownloadPagePlugin(PluginBase):
                 addons = []
                 try:
 
-                    worlds_list = await self.api.list_available_worlds_api()
+                    worlds_list = await self.api.list_available_worlds()
                     addons_list = await self.api.list_available_addons()
 
                     if worlds_list["status"] == "success":

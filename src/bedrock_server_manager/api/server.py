@@ -398,7 +398,7 @@ async def stop_server(server_name: str, app_context: AppContext) -> Dict[str, An
                 "message": f"Server '{server_name}' was already stopped.",
             }
 
-        await app_context.api.set_server_status_api(server_name, "STOPPING")
+        await app_context.api.set_server_status(server_name, "STOPPING")
 
         await server.stop()
         await app_context.bedrock_process_manager.remove_server(server.server_name)
@@ -808,13 +808,13 @@ async def server_lifecycle_manager(
                         raise
 
 
-@api_method("set_server_status_api", expose_to_plugins=False)
+@api_method("set_server_status", expose_to_plugins=False)
 @trigger_event(
     before="before_server_status_change",
     after="after_server_status_change",
     identity_keys=("server_name", "status"),
 )
-async def set_server_status_api(
+async def set_server_status(
     server_name: str, status: str, app_context: "AppContext"
 ) -> Dict[str, Any]:
     """Internal API to set server status and trigger events."""
@@ -837,11 +837,11 @@ async def set_server_status_api(
     }
 
 
-@api_method("update_server_player_stats_api", expose_to_plugins=False)
+@api_method("update_server_player_stats", expose_to_plugins=False)
 @trigger_event(
     before="before_server_players_change", after="after_server_players_change"
 )
-async def update_server_player_stats_api(
+async def update_server_player_stats(
     server_name: str, player_count: int, players: list, app_context: "AppContext"
 ) -> Dict[str, Any]:
     """Internal API to trigger player stat updates for websockets/plugins."""

@@ -263,7 +263,7 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
-                                await self.api.update_server_player_stats_api(
+                                await self.api.update_server_player_stats(
                                     server.server_name,
                                     server.player_count,
                                     server.players,
@@ -276,7 +276,7 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                ban_res = await self.api.get_server_bans_api(
+                                ban_res = await self.api.get_server_bans(
                                     server_name=server.server_name,
                                 )
 
@@ -304,7 +304,7 @@ class BedrockProcessManager:
                                                 )
                             except AttributeError as e:
                                 self.logger.warning(
-                                    f"Could not trigger get_server_bans_api: {e}"
+                                    f"Could not trigger get_server_bans: {e}"
                                 )
 
                         if server.players:

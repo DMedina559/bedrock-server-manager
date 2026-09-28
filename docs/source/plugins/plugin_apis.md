@@ -15,9 +15,9 @@
 This list contains all functions available to plugins via the `self.api` object.
 For an updated list of available APIs, please download and run the [api_docs_generator](https://github.com/DMedina559/bedrock-server-manager/blob/main/plugins/api_docs_generator.py) plugin.
 
-## `add_players_manually_api`
+## `add_players_manually`
 ```python
-await self.api.add_players_manually_api(player_strings: List[str], app_context: bedrock_server_manager.context.AppContext)
+await self.api.add_players_manually(player_strings: List[str], app_context: bedrock_server_manager.context.AppContext)
 ```
 - **Async (Requires await):** Yes
 **Description:** Adds or updates player data in the database.
@@ -32,9 +32,9 @@ await self.api.add_players_manually_api(player_strings: List[str], app_context: 
 ---
 
 
-## `add_server_ban_api`
+## `add_server_ban`
 ```python
-await self.api.add_server_ban_api(app_context: bedrock_server_manager.context.AppContext, server_name: str, player_name: str, xuid: str, reason: str | None = None)
+await self.api.add_server_ban(app_context: bedrock_server_manager.context.AppContext, server_name: str, player_name: str, xuid: str, reason: str | None = None)
 ```
 - **Async (Requires await):** Yes
 **Description:** Adds a player to the server ban list.
@@ -198,9 +198,9 @@ await self.api.get_all_global_settings(app_context: bedrock_server_manager.conte
 ---
 
 
-## `get_all_known_players_api`
+## `get_all_known_players`
 ```python
-await self.api.get_all_known_players_api(app_context: bedrock_server_manager.context.AppContext)
+await self.api.get_all_known_players(app_context: bedrock_server_manager.context.AppContext)
 ```
 - **Async (Requires await):** Yes
 **Description:** Retrieves all player data from the database.
@@ -348,9 +348,9 @@ await self.api.get_properties(server_name: str, app_context: bedrock_server_mana
 ---
 
 
-## `get_server_bans_api`
+## `get_server_bans`
 ```python
-await self.api.get_server_bans_api(app_context: bedrock_server_manager.context.AppContext, server_name: str)
+await self.api.get_server_bans(app_context: bedrock_server_manager.context.AppContext, server_name: str)
 ```
 - **Async (Requires await):** Yes
 **Description:** Retrieves all bans for a specific server.
@@ -524,9 +524,9 @@ await self.api.list_available_addons(app_context: bedrock_server_manager.context
 ---
 
 
-## `list_available_worlds_api`
+## `list_available_worlds`
 ```python
-await self.api.list_available_worlds_api(app_context: bedrock_server_manager.context.AppContext)
+await self.api.list_available_worlds(app_context: bedrock_server_manager.context.AppContext)
 ```
 - **Async (Requires await):** Yes
 **Description:** Lists available .mcworld files from the content directory.
@@ -741,9 +741,9 @@ await self.api.run_task(target_function: Callable, app_context: bedrock_server_m
 ---
 
 
-## `scan_and_update_player_db_api`
+## `scan_and_update_player_db`
 ```python
-await self.api.scan_and_update_player_db_api(app_context: bedrock_server_manager.context.AppContext)
+await self.api.scan_and_update_player_db(app_context: bedrock_server_manager.context.AppContext)
 ```
 - **Async (Requires await):** Yes
 **Description:** Scans all server logs to discover and save player data.
