@@ -224,7 +224,11 @@ class AppAPI:
             include_internal = self._is_core
 
         api_details = []
-        for name, (func, expose_to_plugins, _, domain) in sorted(_api_registry.items()):
+        sorted_registry = sorted(
+            _api_registry.items(),
+            key=lambda item: (item[1][3] or "", item[0]),
+        )
+        for name, (func, expose_to_plugins, _, domain) in sorted_registry:
             if not expose_to_plugins and not include_internal:
                 continue
             try:
@@ -240,6 +244,7 @@ class AppAPI:
                         ),
                     }
                     for p in sig.parameters.values()
+                    if p.name != "app_context"
                 ]
                 doc = inspect.getdoc(func)
                 summary = (

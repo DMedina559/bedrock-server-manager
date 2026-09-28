@@ -230,8 +230,13 @@ class APIDocsGenerator(PluginBase):
             "For an updated list of available APIs, please download and run the [api_docs_generator](https://github.com/DMedina559/bedrock-server-manager/blob/main/plugins/api_docs_generator.py) plugin.",
         ]
 
-        for api_func in api_list:
+        sorted_api_list = sorted(
+            api_list,
+            key=lambda x: (x.get("domain", ""), x.get("name", "")),
+        )
+        for api_func in sorted_api_list:
             name = api_func.get("name", "Unknown Function")
+            domain = api_func.get("domain", "")
             docstring = api_func.get("docstring", "No description.")
             params = api_func.get("parameters", [])
             is_async = api_func.get("is_async", True)
@@ -239,6 +244,8 @@ class APIDocsGenerator(PluginBase):
             param_parts = []
             for param in params:
                 p_name = param["name"]
+                if p_name == "app_context":
+                    continue
                 p_type = self._format_type_hint(param.get("type_obj"))
                 p_default = param.get("default")
 
@@ -248,19 +255,21 @@ class APIDocsGenerator(PluginBase):
                     default_str = f" = {repr(p_default)}"
                     param_parts.append(f"{p_name}: {p_type}{default_str}")
 
+            full_name = f"{domain}.{name}" if domain else name
             signature_prefix = "await self.api." if is_async else "self.api."
-            signature = f"{signature_prefix}{name}({', '.join(param_parts)})"
+            signature = f"{signature_prefix}{full_name}({', '.join(param_parts)})"
 
-            lines.append(f"\n## `{name}`")
+            lines.append(f"\n## `{full_name}`")
             lines.append(f"```python\n{signature}\n```")
             lines.append(f"- **Async (Requires await):** {'Yes' if is_async else 'No'}")
             lines.append(f"**Description:** {docstring}\n")
 
-            if params:
+            filtered_params = [p for p in params if p["name"] != "app_context"]
+            if filtered_params:
                 lines.append("**Parameters:**\n")
                 lines.append("| Name | Type | Default |")
                 lines.append("|------|------|---------|")
-                for param in params:
+                for param in filtered_params:
                     p_name = f"`{param['name']}`"
                     p_type = f"`{self._format_type_hint(param.get('type_obj'))}`"
                     p_default = f"`{repr(param.get('default'))}`"
