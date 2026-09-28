@@ -132,7 +132,7 @@ async def import_addon(  # noqa: C901
     # Attempt to acquire the lock without blocking. If another addon operation
     # is in progress, skip this one to avoid conflicts.
     try:
-        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+        await _addon_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An addon operation for '{server_name}' is already in progress. Skipping concurrent import."
@@ -259,7 +259,7 @@ async def enable_addon(
         Dict[str, str]: Status of the operation.
     """
     try:
-        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+        await _addon_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -320,7 +320,7 @@ async def disable_addon(
         Dict[str, str]: Status of the operation.
     """
     try:
-        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+        await _addon_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -382,7 +382,7 @@ async def update_subpack(
         Dict[str, str]: Status of the operation.
     """
     try:
-        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+        await _addon_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -444,7 +444,7 @@ async def uninstall_addon(
         Dict[str, str]: Status of the operation.
     """
     try:
-        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+        await _addon_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",
@@ -505,7 +505,7 @@ async def reorder_addons(
         Dict[str, str]: Status of the operation.
     """
     try:
-        await asyncio.wait_for(_addon_lock.acquire(), timeout=300)
+        await _addon_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         return {
             "status": "skipped",

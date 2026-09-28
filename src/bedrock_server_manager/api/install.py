@@ -102,7 +102,7 @@ async def update_server(
         and a message.
     """
     try:
-        await asyncio.wait_for(_install_update_lock.acquire(), timeout=300)
+        await _install_update_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"An install/update operation for '{server_name}' is already in progress. Skipping."

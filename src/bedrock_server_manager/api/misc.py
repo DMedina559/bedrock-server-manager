@@ -70,7 +70,7 @@ async def prune_download_cache(  # noqa: C901
     # Attempt to acquire the lock without blocking. If another operation
     # is in progress, skip this one to avoid conflicts.
     try:
-        await asyncio.wait_for(_misc_lock.acquire(), timeout=300)
+        await _misc_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             "A miscellaneous file operation is already in progress. Skipping concurrent prune."

@@ -139,7 +139,7 @@ async def backup_world(
             or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world backup."
@@ -238,7 +238,7 @@ async def backup_config_file(
             or errors from server stop/start if `stop_start_server` is true.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config backup."
@@ -334,7 +334,7 @@ async def backup_all(
             or errors from server stop if `stop_start_server` is true.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent full backup."
@@ -432,7 +432,7 @@ async def restore_all(
             or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent restore."
@@ -540,7 +540,7 @@ async def restore_world(
             or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent world restore."
@@ -648,7 +648,7 @@ async def restore_config_file(
             :class:`~.error.FileOperationError` or errors from server stop/start.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent config restore."
@@ -748,7 +748,7 @@ async def prune_old_backups(  # noqa: C901
             typically aggregated into the error message.
     """
     try:
-        await asyncio.wait_for(_backup_restore_lock.acquire(), timeout=300)
+        await _backup_restore_lock.acquire(timeout=300)
     except asyncio.TimeoutError:
         logger.warning(
             f"Backup/restore operation for '{server_name}' is already in progress. Skipping concurrent prune."

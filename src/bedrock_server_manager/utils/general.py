@@ -140,13 +140,18 @@ class ReentrantAsyncLock:
 
         return self._lock
 
-    async def acquire(self) -> bool:
+    async def acquire(self, timeout: float | None = None) -> bool:
         lock = self._get_lock()
         me = asyncio.current_task()
         if me is not None and self._owner == me:
             self._count += 1
             return True
-        await lock.acquire()
+
+        if timeout is not None:
+            await asyncio.wait_for(lock.acquire(), timeout=timeout)
+        else:
+            await lock.acquire()
+
         self._owner = me
         self._count = 1
         return True
