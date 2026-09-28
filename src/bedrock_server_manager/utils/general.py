@@ -100,6 +100,7 @@ class ReentrantAsyncLock:
         self._lock: asyncio.Lock | None = None
         self._owner: Any = None
         self._count = 0
+        self._created_loop: asyncio.AbstractEventLoop | None = None
 
     def _get_lock(self) -> asyncio.Lock:
         try:
@@ -109,29 +110,49 @@ class ReentrantAsyncLock:
 
         if self._lock is None:
             self._lock = asyncio.Lock()
+            self._created_loop = loop
         elif loop is not None:
+            owner_loop = None
+            if self._owner is not None and hasattr(self._owner, "get_loop"):
+                try:
+                    owner_loop = self._owner.get_loop()
+                except Exception:
+                    pass
+
             lock_loop = getattr(self._lock, "_loop", None)
-            if lock_loop is not None and (
-                lock_loop is not loop or lock_loop.is_closed()
+
+            if (
+                self._created_loop is not loop
+                or (self._created_loop is not None and self._created_loop.is_closed())
+                or (
+                    lock_loop is not None
+                    and (lock_loop is not loop or lock_loop.is_closed())
+                )
+                or (
+                    owner_loop is not None
+                    and (owner_loop is not loop or owner_loop.is_closed())
+                )
             ):
                 self._lock = asyncio.Lock()
+                self._created_loop = loop
                 self._owner = None
                 self._count = 0
 
         return self._lock
 
     async def acquire(self) -> bool:
+        lock = self._get_lock()
         me = asyncio.current_task()
         if me is not None and self._owner == me:
             self._count += 1
             return True
-        lock = self._get_lock()
         await lock.acquire()
         self._owner = me
         self._count = 1
         return True
 
     def release(self) -> None:
+        lock = self._get_lock()
         me = asyncio.current_task()
         if me is None or self._owner != me:
             raise RuntimeError(
@@ -140,7 +161,6 @@ class ReentrantAsyncLock:
         self._count -= 1
         if self._count == 0:
             self._owner = None
-            lock = self._get_lock()
             lock.release()
 
     def locked(self) -> bool:
