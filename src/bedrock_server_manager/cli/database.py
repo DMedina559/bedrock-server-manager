@@ -2,6 +2,7 @@ import json
 import shutil
 from datetime import datetime
 from importlib.resources import files
+from pathlib import Path
 
 import click
 import questionary
@@ -63,6 +64,7 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     click.echo("Creating database backup before upgrading...")
     try:
         backup_dir = app_context.settings.get("paths.backups")
+        Path(backup_dir).mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
         run_async(backup_database(app_context.db, output))
@@ -220,6 +222,7 @@ def downgrade(ctx: click.Context, revision: str):
     if sync_db_url.startswith("sqlite:///"):
         db_path = sync_db_url.split("sqlite:///")[1]
         backup_dir = app_context.settings.get("paths.backups")
+        Path(backup_dir).mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{backup_dir}/db_backup_pre_downgrade_{timestamp}.sqlite3"
         try:
@@ -259,6 +262,8 @@ def backup_db(ctx: click.Context, output: str | None):
         backup_dir = app_context.settings.get("paths.backups")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
+
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
 
     click.echo("Backing up database to JSON...")
     try:

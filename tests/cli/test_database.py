@@ -16,10 +16,14 @@ async def test_database_upgrade(runner, app_context, monkeypatch):
     """Test database upgrade CLI command queries alembic successfully."""
     mock_command = MagicMock()
     monkeypatch.setattr("bedrock_server_manager.cli.database.command", mock_command)
+    mock_run_upgrade = AsyncMock()
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.run_migrations_upgrade", mock_run_upgrade
+    )
 
     # Needs to pretend not to have alembic_version for baseline stamping
     mock_inspector = MagicMock()
-    mock_inspector.has_table.return_value = False
+    mock_inspector.has_table.side_effect = lambda table: table != "alembic_version"
 
     def mock_inspect(*args, **kwargs):
         return mock_inspector
@@ -29,13 +33,16 @@ async def test_database_upgrade(runner, app_context, monkeypatch):
     result = runner.invoke(database, ["upgrade"], obj={"app_context": app_context})
     assert result.exit_code == 0
     assert "Running database upgrade" in result.output
-    mock_command.upgrade.assert_called_once()
+    mock_run_upgrade.assert_called_once_with(app_context.db)
 
 
 async def test_database_downgrade(runner, app_context, monkeypatch):
     """Test database downgrade CLI command executes and prompts for downgrade correctly."""
-    mock_command = MagicMock()
-    monkeypatch.setattr("bedrock_server_manager.cli.database.command", mock_command)
+    mock_run_downgrade = AsyncMock()
+    monkeypatch.setattr(
+        "bedrock_server_manager.cli.database.run_migrations_downgrade",
+        mock_run_downgrade,
+    )
 
     # Provide 'y' to the confirm prompt
     result = runner.invoke(
@@ -46,7 +53,7 @@ async def test_database_downgrade(runner, app_context, monkeypatch):
     )
     assert result.exit_code == 0
     assert "Running database downgrade" in result.output
-    mock_command.downgrade.assert_called_once()
+    mock_run_downgrade.assert_called_once_with(app_context.db, "-1")
 
 
 async def test_database_downgrade_abort(runner, app_context):
