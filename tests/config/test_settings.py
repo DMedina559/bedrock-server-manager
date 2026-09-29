@@ -154,3 +154,55 @@ async def test_settings_properties(settings):
     """Test property getters like config_dir and data_dir."""
     assert settings.config_dir is not None
     assert settings.data_dir is not None
+
+
+async def test_settings_from_dict_unflattens_and_deep_merges():
+    """Test SettingsState.from_dict correctly deep merges flat and section settings."""
+    from bedrock_server_manager.state.settings import SettingsState
+
+    data_flat_first = {
+        "web.jwt_secret_key": "secret_123",
+        "web": {"host": "127.0.0.1", "port": 11325, "token_expires_weeks": 4},
+    }
+    s1 = SettingsState.from_dict(data_flat_first)
+    assert s1.get("web.jwt_secret_key") == "secret_123"
+    assert s1.get("web.port") == 11325
+
+    data_section_first = {
+        "web": {"host": "127.0.0.1", "port": 11325, "token_expires_weeks": 4},
+        "web.jwt_secret_key": "secret_123",
+    }
+    s2 = SettingsState.from_dict(data_section_first)
+    assert s2.get("web.jwt_secret_key") == "secret_123"
+    assert s2.get("web.port") == 11325
+
+
+async def test_save_settings_removes_legacy_flat_keys(app_context, db):
+    """Test save_settings cleans up legacy dot-notation keys in the settings table."""
+    async with db.session_manager() as session:
+        session.add(Setting(key="web.jwt_secret_key", value="legacy_key"))
+        session.add(
+            Setting(
+                key="web",
+                value={
+                    "host": "127.0.0.1",
+                    "port": 11325,
+                    "token_expires_weeks": 4,
+                    "jwt_secret_key": "active_key",
+                },
+            )
+        )
+        await session.commit()
+
+    # Apply changeset / save settings
+    await app_context.settings.set("web.port", 11326)
+    await app_context.storage.flush(app_context.state)
+
+    async with db.session_manager() as session:
+        from sqlalchemy.future import select
+
+        res = await session.execute(
+            select(Setting).filter(Setting.key == "web.jwt_secret_key")
+        )
+        legacy_record = res.scalars().first()
+        assert legacy_record is None
