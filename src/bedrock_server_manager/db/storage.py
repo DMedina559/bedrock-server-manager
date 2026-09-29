@@ -34,7 +34,7 @@ class Storage:
     the in-memory AppState and the persistent database.
     """
 
-    def __init__(self, db: "Database", data_dir: Optional[str] = None):
+    def __init__(self, db: "Database", data_dir: str):
         self.db = db
         self.data_dir = data_dir
         self.settings_repo = SettingsRepository(db)
@@ -166,11 +166,7 @@ class Storage:
                     settings_dict, data_dir=self.data_dir
                 )
             else:
-                if state.settings is None:
-                    if self.data_dir:
-                        state.settings = SettingsState.create_defaults(self.data_dir)
-                    else:
-                        state.settings = SettingsState()
+                state.settings = SettingsState.create_defaults(self.data_dir)
                 logger.info(
                     "No settings found in database during load_state. Persisting defaults."
                 )

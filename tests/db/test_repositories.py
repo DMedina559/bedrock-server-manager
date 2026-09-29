@@ -10,8 +10,8 @@ from bedrock_server_manager.state.models import (
 )
 
 
-async def test_settings_repository(db):
-    storage = Storage(db)
+async def test_settings_repository(db, tmp_path):
+    storage = Storage(db, data_dir=str(tmp_path))
     async with storage.transaction() as session:
         await storage.settings_repo.save_settings(
             session, {"web.port": 8080, "server.name": "test"}
@@ -23,8 +23,8 @@ async def test_settings_repository(db):
         assert all_settings["server.name"] == "test"
 
 
-async def test_server_repository(db):
-    storage = Storage(db)
+async def test_server_repository(db, tmp_path):
+    storage = Storage(db, data_dir=str(tmp_path))
     cfg = ServerConfigState(
         server_name="test_srv",
         installed_version="1.20.0",
@@ -41,8 +41,8 @@ async def test_server_repository(db):
         assert servers[0].autostart is True
 
 
-async def test_plugin_repository(db):
-    storage = Storage(db)
+async def test_plugin_repository(db, tmp_path):
+    storage = Storage(db, data_dir=str(tmp_path))
     plugin = PluginInfoState(
         plugin_name="test_plugin",
         enabled=True,
@@ -59,8 +59,8 @@ async def test_plugin_repository(db):
         assert plugins[0].enabled is True
 
 
-async def test_user_repository(db):
-    storage = Storage(db)
+async def test_user_repository(db, tmp_path):
+    storage = Storage(db, data_dir=str(tmp_path))
     user = UserInfoState(
         username="admin_user",
         role="admin",
@@ -77,8 +77,8 @@ async def test_user_repository(db):
         assert users[0].role == "admin"
 
 
-async def test_server_ban_repository(db):
-    storage = Storage(db)
+async def test_server_ban_repository(db, tmp_path):
+    storage = Storage(db, data_dir=str(tmp_path))
 
     # First add a server
     cfg = ServerConfigState(server_name="banned_srv")
