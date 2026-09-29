@@ -3,6 +3,8 @@
 Integration and unit tests for the Storage layer.
 """
 
+import os
+
 import pytest
 
 from bedrock_server_manager.db.storage import Storage
@@ -15,12 +17,13 @@ from bedrock_server_manager.state import (
 
 @pytest.mark.asyncio
 async def test_storage_load_and_flush(db):
-    storage = Storage(db=db, data_dir="/tmp/test_storage_data")
+    test_data_dir = "/tmp/test_storage_data"
+    storage = Storage(db=db, data_dir=test_data_dir)
     state = AppState()
 
     # Load initial state into state
     await storage.load_state(state)
-    assert state.settings.paths.servers == "/tmp/test_storage_data/servers"
+    assert state.settings.paths.servers == os.path.join(test_data_dir, "servers")
     assert not state.is_dirty()
 
     # Modify setting
