@@ -82,8 +82,7 @@ class PluginManager:
         logger.info("PluginManager initialized.")
 
     async def _load_config(self) -> Dict[str, Dict[str, Any]]:
-        """Loads plugin configurations asynchronously via AppState and Storage."""
-        await self.storage.load_state(self.state)
+        """Loads plugin configurations asynchronously via AppState."""
         return {
             name: {
                 "enabled": p.enabled,

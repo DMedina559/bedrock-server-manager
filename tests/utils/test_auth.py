@@ -31,6 +31,19 @@ async def test_get_jwt_secret_key_returns_existing(app_context):
     assert key == "my_secret_key"
 
 
+async def test_get_jwt_secret_key_persists_across_reloads(app_context):
+    """Test get_jwt_secret_key persists its generated key and retrieves it after reload."""
+    await app_context.settings.set("web.jwt_secret_key", None)
+    initial_key = await get_jwt_secret_key(app_context.settings)
+    assert initial_key is not None
+
+    # Reload storage state into AppState
+    await app_context.storage.load_state(app_context.state)
+    reloaded_key = await get_jwt_secret_key(app_context.settings)
+
+    assert reloaded_key == initial_key
+
+
 async def test_create_access_token(app_context):
     """Test create_access_token successfully generates a valid JWT string."""
     token = await create_access_token(app_context, {"sub": "test_user"})
