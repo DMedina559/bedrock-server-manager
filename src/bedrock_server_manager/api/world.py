@@ -1,3 +1,5 @@
+import asyncio
+
 # bedrock_server_manager/api/world.py
 """Provides API functions for managing Bedrock server worlds.
 
@@ -15,7 +17,7 @@ to facilitate tasks such as:
       (:func:`~.reset_world`).
 
 Operations involving world file modifications (export, import, reset) are
-thread-safe using a unified lock (``_world_lock``) to prevent data corruption.
+thread-safe using a per-server operation lock (``server.operation_lock``) to prevent data corruption.
 For actions that require the server to be offline (like import or reset),
 this module utilizes the
 :func:`~bedrock_server_manager.api.server.server_lifecycle_manager`
@@ -25,7 +27,6 @@ plugin system.
 
 import logging
 import os
-import threading
 from typing import Any, Dict, Optional
 
 from ..context import AppContext
@@ -42,13 +43,9 @@ from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-# A unified lock to prevent race conditions during any world file operation
-# (export, import, reset). This ensures data integrity.
-_world_lock = threading.RLock()
-
 
 @api_method("get_world_name")
-def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the configured world name (`level-name`) for a server.
 
     This function reads the `server.properties` file to get the name of the
@@ -77,7 +74,7 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     logger.debug(f"API: Attempting to get world name for server '{server_name}'...")
     try:
         server = app_context.get_server(server_name)
-        world_name_str = server.get_world_name()
+        world_name_str = await server.get_world_name()
         logger.info(
             f"API: Retrieved world name for '{server_name}': '{world_name_str}'"
         )
@@ -104,20 +101,16 @@ def get_world_name(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     after="after_world_export",
     identity_keys=("server_name", "export_dir"),
 )
-def export_world(
+async def export_world(
     server_name: str,
     app_context: AppContext,
     export_dir: Optional[str] = None,
-    stop_start_server: bool = True,
 ) -> Dict[str, Any]:
     """Exports the server's currently active world to a .mcworld archive.
 
-    This operation is thread-safe due to ``_world_lock``. If `stop_start_server`
-    is ``True``, it uses the
-    :func:`~bedrock_server_manager.api.server.server_lifecycle_manager` to ensure
-    the server is stopped during the export for file consistency, and then
-    restarted. The core world export is performed by
-    :meth:`~.core.bedrock_server.BedrockServer.export_world`.
+    This operation is thread-safe due to ``server.operation_lock``. The core world export
+    is performed by :meth:`~.core.bedrock_server.BedrockServer.export_world`,
+    which performs a live backup using save hold if the server is running.
     Triggers ``before_world_export`` and ``after_world_export`` plugin events.
 
     Args:
@@ -126,8 +119,6 @@ def export_world(
             ``.mcworld`` file. If ``None``, it defaults to a "worlds" subdirectory
             within the application's global content directory (defined by
             ``paths.content`` setting). Defaults to ``None``.
-        stop_start_server (bool, optional): If ``True``, the server will be
-            stopped before the export and restarted afterwards. Defaults to ``True``.
 
     Returns:
         Dict[str, Any]: A dictionary with the operation result.
@@ -139,14 +130,21 @@ def export_world(
         InvalidServerNameError: If `server_name` is empty.
         FileOperationError: If the content directory setting (``paths.content``)
             is missing when `export_dir` is ``None``, or for other file I/O errors
-            during export or lifecycle management.
+            during export.
         BSMError: Propagates errors from underlying operations, including
-            :class:`~.error.AppFileNotFoundError` if world directory is missing,
-            :class:`~.error.BackupRestoreError` from export, or errors from server stop/start.
+            :class:`~.error.AppFileNotFoundError` if world directory is missing, or
+            :class:`~.error.BackupRestoreError` from export.
     """
-    if not _world_lock.acquire(timeout=300):
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
+    try:
+        await server.operation_lock.acquire(timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
-            f"A world operation for '{server_name}' is already in progress. Skipping concurrent export."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent export."
         )
         return {
             "status": "skipped",
@@ -154,9 +152,6 @@ def export_world(
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty.")
-
         # Determine the effective export directory before triggering hooks.
         if export_dir:
             effective_export_dir = export_dir
@@ -169,27 +164,19 @@ def export_world(
                 )
             effective_export_dir = os.path.join(content_base_dir, "worlds")
 
-        logger.info(
-            f"API: Initiating world export for '{server_name}' (Stop/Start: {stop_start_server})"
-        )
+        logger.info(f"API: Initiating world export for '{server_name}'")
 
         try:
-            server = app_context.get_server(server_name)
-
             os.makedirs(effective_export_dir, exist_ok=True)
-            world_name_str = server.get_world_name()
+            world_name_str = await server.get_world_name()
             timestamp = get_timestamp()
             export_filename = f"{world_name_str}_export_{timestamp}.mcworld"
             export_file_path = os.path.join(effective_export_dir, export_filename)
 
-            # Use the lifecycle manager to handle stopping and starting the server.
-            with server_lifecycle_manager(
-                server_name, stop_before=stop_start_server, app_context=app_context
-            ):
-                logger.info(
-                    f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
-                )
-                server.export_world(world_name_str, export_file_path)
+            logger.info(
+                f"API: Exporting world '{world_name_str}' to '{export_file_path}'..."
+            )
+            await server.export_world(world_name_str, export_file_path)
 
             logger.info(
                 f"API: World for server '{server_name}' exported to '{export_file_path}'."
@@ -216,7 +203,7 @@ def export_world(
             }
 
     finally:
-        _world_lock.release()
+        server.operation_lock.release()
 
 
 @api_method("import_world")
@@ -225,7 +212,7 @@ def export_world(
     after="after_world_import",
     identity_keys=("server_name", "file_path"),
 )
-def import_world(
+async def import_world(
     server_name: str,
     selected_file_path: str,
     app_context: AppContext,
@@ -266,9 +253,18 @@ def import_world(
             :class:`~.error.BackupRestoreError` from import, :class:`~.error.ExtractError`,
             or errors from server stop/start.
     """
-    if not _world_lock.acquire(timeout=300):
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty.")
+    if not selected_file_path:
+        raise MissingArgumentError(".mcworld file path cannot be empty.")
+
+    server = app_context.get_server(server_name)
+
+    try:
+        await server.operation_lock.acquire(timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
-            f"A world operation for '{server_name}' is already in progress. Skipping concurrent import."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent import."
         )
         return {
             "status": "skipped",
@@ -276,18 +272,12 @@ def import_world(
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty.")
-        if not selected_file_path:
-            raise MissingArgumentError(".mcworld file path cannot be empty.")
-
         selected_filename = os.path.basename(selected_file_path)
         logger.info(
             f"API: Initiating world import for '{server_name}' from '{selected_filename}' (Stop/Start: {stop_start_server})"
         )
 
         try:
-            server = app_context.get_server(server_name)
             if not os.path.isfile(selected_file_path):
                 raise FileNotFoundError(
                     f"Source .mcworld file not found: {selected_file_path}"
@@ -295,13 +285,13 @@ def import_world(
 
             imported_world_name: Optional[str] = None
             # Use the lifecycle manager to ensure the server is stopped during the import.
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name, stop_before=stop_start_server, app_context=app_context
             ):
                 logger.info(
                     f"API: Importing world from '{selected_filename}' into server '{server_name}'..."
                 )
-                imported_world_name = server.import_world(selected_file_path)
+                imported_world_name = await server.import_world(selected_file_path)
 
             logger.info(
                 f"API: World import from '{selected_filename}' for server '{server_name}' completed."
@@ -327,7 +317,7 @@ def import_world(
             }
 
     finally:
-        _world_lock.release()
+        server.operation_lock.release()
 
 
 @trigger_event(
@@ -335,7 +325,7 @@ def import_world(
     after="after_world_reset",
     identity_keys=("server_name",),
 )
-def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
+async def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
     """Resets the server's world by deleting the active world directory.
 
     This is a destructive action. Upon next start, the server will generate
@@ -368,9 +358,16 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
             :class:`~.error.FileOperationError` from deletion, errors determining
             the world name, or errors from server stop/start.
     """
-    if not _world_lock.acquire(timeout=300):
+    if not server_name:
+        raise InvalidServerNameError("Server name cannot be empty for API request.")
+
+    server = app_context.get_server(server_name)
+
+    try:
+        await server.operation_lock.acquire(timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
-            f"A world operation for '{server_name}' is already in progress. Skipping concurrent reset."
+            f"An operation for '{server_name}' is already in progress. Skipping concurrent reset."
         )
         return {
             "status": "skipped",
@@ -378,18 +375,14 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty for API request.")
-
         logger.info(f"API: Initiating world reset for server '{server_name}'...")
 
         try:
-            server = app_context.get_server(server_name)
-            world_name_for_msg = server.get_world_name()
+            world_name_for_msg = await server.get_world_name()
 
             # The lifecycle manager ensures the server is stopped, the world is deleted,
             # and the server is restarted (which will generate the new world).
-            with server_lifecycle_manager(
+            async with server_lifecycle_manager(
                 server_name,
                 stop_before=True,
                 start_after=True,
@@ -399,7 +392,7 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
                 logger.info(
                     f"API: Attempting to delete world directory for world '{world_name_for_msg}'..."
                 )
-                server.delete_world()
+                await server.delete_world()
 
             logger.info(
                 f"API: World '{world_name_for_msg}' for server '{server_name}' has been successfully reset."
@@ -425,4 +418,4 @@ def reset_world(server_name: str, app_context: AppContext) -> Dict[str, str]:
             }
 
     finally:
-        _world_lock.release()
+        server.operation_lock.release()

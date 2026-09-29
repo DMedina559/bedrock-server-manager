@@ -19,7 +19,7 @@ class DynamicPageTestPlugin(PluginBase):
     name = "Dynamic Page Test"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["Dynamic Page Test Plugin"])
         self._define_routes()
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
@@ -366,7 +366,7 @@ class DynamicPageTestPlugin(PluginBase):
             )
 
     @app_event("on_unload")
-    def plugin_unloaded(self, **kwargs):
+    async def plugin_unloaded(self, **kwargs):
         pass
 
     def get_fastapi_routers(self, **kwargs):

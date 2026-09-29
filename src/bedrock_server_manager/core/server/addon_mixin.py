@@ -21,6 +21,7 @@ It is designed to work in conjunction with other mixins of the
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 
+import asyncio
 import glob
 import json
 import os
@@ -30,6 +31,10 @@ import tempfile
 import zipfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
+
 from ...error import (
     AppFileNotFoundError,
     ConfigParseError,
@@ -38,6 +43,7 @@ from ...error import (
     MissingArgumentError,
     UserInputError,
 )
+from ...utils.io import load_json, save_json
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -87,22 +93,22 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         super().__init__(*args, **kwargs)
         # This mixin depends on attributes from BaseMixin: self.server_name, self.base_dir, self.server_dir, self.logger.
         # It also depends on methods from other mixins that will be part of the final BedrockServer class, such as:
-        # - self.get_world_name() (from StateMixin)
+        # - await self.get_world_name() (from StateMixin)
         # - self.extract_mcworld() (from WorldMixin)
 
     if TYPE_CHECKING:
 
-        def get_world_name(self) -> str: ...
+        async def get_world_name(self) -> str: ...
 
-        def extract_mcworld(
+        async def extract_mcworld(
             self, mcworld_file_path: str, target_world_dir_name: str
         ) -> str: ...
 
-    def process_addon_file(self, addon_file_path: str) -> None:
-        """Processes a given addon file (``.mcaddon`` or ``.mcpack``).
+    async def process_addon_file(self, addon_file_path: str) -> None:
+        """Processes an addon file asynchronously.
 
-        This method acts as a high-level dispatcher. It inspects the file extension
-        of the provided ``addon_file_path`` to determine if it's an ``.mcaddon``
+        This method acts as a high-level dispatcher for asynchronous addon processing.
+        It inspects the file extension of the provided ``addon_file_path`` to determine if it's an ``.mcaddon``
         or ``.mcpack`` file. It then delegates the actual processing to the
         corresponding internal helper methods:
         :meth:`._process_mcaddon_archive` for ``.mcaddon`` files or
@@ -126,22 +132,489 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             f"Server '{self.server_name}': Processing addon file '{os.path.basename(addon_file_path)}'."
         )
 
-        if not os.path.isfile(addon_file_path):
+        if not await aiofiles.ospath.isfile(addon_file_path):
             raise AppFileNotFoundError(addon_file_path, "Addon file")
 
         addon_file_lower = addon_file_path.lower()
         if addon_file_lower.endswith(".mcaddon"):
             self.logger.debug("Detected .mcaddon file type. Delegating.")
-            self._process_mcaddon_archive(addon_file_path)
+            await self._process_mcaddon_archive(addon_file_path)
         elif addon_file_lower.endswith(".mcpack"):
             self.logger.debug("Detected .mcpack file type. Delegating.")
-            self._process_mcpack_archive(addon_file_path)
+            await self._process_mcpack_archive(addon_file_path)
         else:
             err_msg = f"Unsupported addon file type: '{os.path.basename(addon_file_path)}'. Only .mcaddon and .mcpack are supported."
             self.logger.error(err_msg)
             raise UserInputError(err_msg)
 
-    def _process_mcaddon_archive(self, mcaddon_file_path: str) -> None:
+    async def list_installed_addons(
+        self, world_name: Optional[str] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Lists all behavior and resource packs for a specified world asynchronously.
+
+        This method provides a detailed inventory of addons by:
+
+            1. Scanning the physical pack folders (``behavior_packs`` and ``resource_packs``)
+               within the specified world's directory to find all installed packs by
+               reading their ``manifest.json`` files.
+            2. Reading the world's activation JSON files (``world_behavior_packs.json``
+               and ``world_resource_packs.json``) to determine which packs are active.
+            3. Comparing these two sets of information to determine the status of each pack.
+
+        The status can be:
+            - ``ACTIVE``: The pack is physically present and listed in the activation file.
+            - ``INACTIVE``: The pack is physically present but not listed in the activation file.
+            - ``ORPHANED``: The pack is listed in the activation file but not physically present.
+
+        Args:
+            world_name (Optional[str]): The name of the world to inspect.
+                If ``None`` (default), uses the server's currently active world name
+                obtained via :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: A dictionary with two keys:
+            ``"behavior_packs"`` and ``"resource_packs"``. Each key maps to a list
+            of dictionaries, where each dictionary represents an addon with the
+            following string keys:
+
+                - ``"name"`` (str): The display name of the pack from its manifest.
+                - ``"uuid"`` (str): The UUID of the pack from its manifest.
+                - ``"version"`` (List[int]): The version of the pack (e.g., ``[1, 0, 0]``).
+                - ``"status"`` (str): The activation status: 'ACTIVE', 'INACTIVE', or 'ORPHANED'.
+
+            The lists of pack dictionaries are sorted by pack name.
+
+        Raises:
+            AppFileNotFoundError: If the directory for the specified ``world_name``
+                does not exist.
+            AttributeError: If :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                is not available when ``world_name`` is ``None``.
+        """
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(
+            f"Listing addons for world '{world_name}' in server '{self.server_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        if not await aiofiles.ospath.isdir(world_dir):
+            raise AppFileNotFoundError(world_dir, f"World directory for '{world_name}'")
+
+        # Get lists of physical and activated packs for both types.
+        physical_bps = await self._scan_physical_packs(world_dir, "behavior_packs")
+        activated_bps_list = await self._read_world_activation_json(
+            os.path.join(world_dir, "world_behavior_packs.json")
+        )
+
+        physical_rps = await self._scan_physical_packs(world_dir, "resource_packs")
+        activated_rps_list = await self._read_world_activation_json(
+            os.path.join(world_dir, "world_resource_packs.json")
+        )
+
+        # Reconcile the lists to determine status for each pack.
+        behavior_pack_results = await self._compare_physical_and_activated(
+            physical_bps, activated_bps_list
+        )
+        resource_pack_results = await self._compare_physical_and_activated(
+            physical_rps, activated_rps_list
+        )
+
+        # Append icon paths if they exist
+        for pack in behavior_pack_results:
+            if "path" in pack:
+                icon_path = os.path.join(pack["path"], "pack_icon.png")
+                if await aiofiles.ospath.exists(icon_path):
+                    pack["icon"] = icon_path
+
+        for pack in resource_pack_results:
+            if "path" in pack:
+                icon_path = os.path.join(pack["path"], "pack_icon.png")
+                if await aiofiles.ospath.exists(icon_path):
+                    pack["icon"] = icon_path
+
+        return {
+            "behavior_packs": behavior_pack_results,
+            "resource_packs": resource_pack_results,
+        }
+
+    async def enable_addon(
+        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Enables a physically installed addon in a world asynchronously.
+
+        Args:
+            pack_uuid (str): The UUID of the pack to enable.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not pack_uuid or not pack_type:
+            raise MissingArgumentError("Pack UUID and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(
+            f"Enabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        physical_packs = await self._scan_physical_packs(world_dir, pack_folder_name)
+
+        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
+        if not target_pack:
+            raise AppFileNotFoundError(
+                f"pack with UUID {pack_uuid}",
+                f"{pack_folder_name} in world '{world_name}'",
+            )
+
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+        await self._update_world_pack_json_file(
+            world_json_path, pack_uuid, target_pack["version"]
+        )
+
+    async def update_subpack(
+        self,
+        pack_uuid: str,
+        pack_type: str,
+        subpack_name: str,
+        world_name: Optional[str] = None,
+    ) -> None:
+        """Updates the active subpack for an already enabled addon asynchronously.
+
+        Args:
+            pack_uuid (str): The UUID of the active pack.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            subpack_name (str): The new subpack folder name to set.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not pack_uuid or not pack_type or not subpack_name:
+            raise MissingArgumentError(
+                "Pack UUID, pack type, and subpack name are required."
+            )
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(
+            f"Updating subpack to '{subpack_name}' for {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+
+        json_filename_basename = os.path.basename(world_json_path)
+
+        if not await aiofiles.ospath.exists(world_json_path):
+            raise AppFileNotFoundError(
+                world_json_path,
+                f"Activation file '{json_filename_basename}' not found.",
+            )
+
+        packs_list = await self._read_world_activation_json(world_json_path)
+        if not packs_list:
+            raise UserInputError(
+                f"No {pack_type} packs are currently enabled for world '{world_name}'."
+            )
+
+        found = False
+        for i, existing_pack_entry in enumerate(packs_list):
+            if (
+                isinstance(existing_pack_entry, dict)
+                and existing_pack_entry.get("pack_id") == pack_uuid
+            ):
+                packs_list[i]["subpack"] = subpack_name
+                found = True
+                break
+
+        if not found:
+            raise UserInputError(
+                f"Pack '{pack_uuid}' is not currently active. You must enable it first."
+            )
+
+        try:
+            lock = self.get_file_lock(world_json_path)
+            async with lock:
+                await save_json(packs_list, world_json_path, indent=2)
+            self.logger.debug(
+                f"Successfully wrote updated subpack '{subpack_name}' to '{json_filename_basename}'."
+            )
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to write world pack JSON '{json_filename_basename}': {e}"
+            ) from e
+
+    async def disable_addon(
+        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Disables an addon by removing it from the world's activation list asynchronously, preserving files.
+
+        Args:
+            pack_uuid (str): The UUID of the pack to disable.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not pack_uuid or not pack_type:
+            raise MissingArgumentError("Pack UUID and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(
+            f"Disabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+
+        await self._remove_pack_from_world_json(world_json_path, pack_uuid)
+
+    async def reorder_addons(
+        self, uuids: List[str], pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Reorders the active addons based on a provided list of UUIDs asynchronously.
+
+        This method strictly verifies that the provided list of UUIDs contains
+        the exact same set of active UUIDs.
+
+        Args:
+            uuids (List[str]): The exact active UUIDs in their new order.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
+            world_name (Optional[str]): The name of the world.
+        """
+        if not uuids or not pack_type:
+            raise MissingArgumentError("UUID list and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(f"Reordering {pack_type} packs in world '{world_name}'.")
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+
+        original_packs_list = await self._read_world_activation_json(world_json_path)
+        original_uuids = [
+            p.get("pack_id") for p in original_packs_list if p.get("pack_id")
+        ]
+
+        if set(uuids) != set(original_uuids):
+            raise UserInputError(
+                "The provided UUID list does not contain the exact same set of active UUIDs. "
+                "Disabling/Enabling must be done via their respective endpoints."
+            )
+        if len(uuids) != len(original_uuids):
+            raise UserInputError("The provided UUID list contains duplicates.")
+
+        # Reorder the original packs list based on the new UUID list order
+        pack_map = {
+            p.get("pack_id"): p for p in original_packs_list if p.get("pack_id")
+        }
+        new_packs_list = [pack_map[uuid] for uuid in uuids]
+
+        try:
+            lock = self.get_file_lock(world_json_path)
+            async with lock:
+                await save_json(new_packs_list, world_json_path, indent=2)
+            self.logger.info(
+                f"Successfully reordered {pack_type} packs in world '{world_name}'."
+            )
+        except OSError as e:
+            raise FileOperationError(
+                f"Failed to write reordered activation file: {e}"
+            ) from e
+
+    async def export_addon(
+        self,
+        pack_uuid: str,
+        pack_type: str,
+        export_dir: str,
+        world_name: Optional[str] = None,
+    ) -> str:
+        """Exports a specific installed addon from a world into a ``.mcpack`` file asynchronously.
+
+        This method locates an installed behavior or resource pack within the
+        specified world by its UUID, then archives its contents into a new
+        ``.mcpack`` file. The exported file is named using the pack's name
+        and version (e.g., ``MyPack_1.0.0.mcpack``) and saved in the
+        ``export_dir``.
+
+        Args:
+            pack_uuid (str): The UUID of the pack to export.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or
+                ``"resource"``.
+            export_dir (str): The absolute path to the directory where the
+                ``.mcpack`` file will be saved. This directory will be created
+                if it does not already exist.
+            world_name (Optional[str]): The name of the world from which to export
+                the addon. If ``None`` (default), uses the server's currently active
+                world name.
+
+        Returns:
+            str: The absolute path to the created ``.mcpack`` file.
+
+        Raises:
+            MissingArgumentError: If ``pack_uuid``, ``pack_type``, or ``export_dir``
+                are empty or not provided.
+            UserInputError: If ``pack_type`` is not ``"behavior"`` or ``"resource"``.
+            AppFileNotFoundError: If the specified pack (by UUID and type) cannot be
+                found in the physical ``behavior_packs`` or ``resource_packs``
+                folder of the world, or if the world directory itself is missing.
+            FileOperationError: If any OS-level error occurs during directory
+                creation, file scanning, or ``.mcpack`` archive creation (e.g.,
+                permission issues, disk full).
+            AttributeError: If methods like
+                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                are unavailable when ``world_name`` is ``None``.
+        """
+        if not pack_uuid or not pack_type or not export_dir:
+            raise MissingArgumentError(
+                "Pack UUID, pack type, and export directory are required."
+            )
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(
+            f"Exporting {pack_type} pack '{pack_uuid}' from world '{world_name}'."
+        )
+
+        # Find the source directory of the pack to be exported.
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        physical_packs = await self._scan_physical_packs(world_dir, pack_folder_name)
+        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
+
+        if not target_pack:
+            raise AppFileNotFoundError(
+                f"pack with UUID {pack_uuid}",
+                f"{pack_folder_name} in world '{world_name}'",
+            )
+
+        pack_name = target_pack["name"]
+        pack_version = ".".join(map(str, target_pack["version"]))
+        pack_source_path = target_pack["path"]
+
+        # Create a file-safe name for the exported archive.
+        safe_pack_name = re.sub(r'[<>:"/\\|?* ]', "_", pack_name)
+        export_filename = f"{safe_pack_name}_{pack_version}.mcpack"
+        export_file_path = os.path.join(export_dir, export_filename)
+
+        await aiofiles.os.makedirs(export_dir, exist_ok=True)
+
+        try:
+            # Create the zip archive, ensuring paths inside are relative.
+            self.logger.debug(f"Zipping '{pack_source_path}' to '{export_file_path}'")
+
+            def _do_export():
+                with zipfile.ZipFile(
+                    export_file_path, "w", zipfile.ZIP_DEFLATED
+                ) as zipf:
+                    for root, _dirs, files in os.walk(pack_source_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            # Archive name is relative to the pack's source directory.
+                            archive_name = os.path.relpath(file_path, pack_source_path)
+                            zipf.write(file_path, archive_name)
+
+            await asyncio.to_thread(_do_export)
+
+            self.logger.info(
+                f"Successfully exported addon '{pack_name}' to '{export_file_path}'."
+            )
+            return export_file_path
+        except (OSError, zipfile.BadZipFile) as e:
+            raise FileOperationError(
+                f"Could not create addon archive for '{pack_name}': {e}"
+            ) from e
+
+    async def remove_addon(
+        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
+    ) -> None:
+        """Removes a specific addon from a world asynchronously.
+
+        .. warning::
+            This is a destructive operation. It permanently deletes the addon's
+            files from the world's ``behavior_packs`` or ``resource_packs``
+            directory and deactivates the addon by removing its entry from the
+            world's corresponding activation JSON file (e.g.,
+            ``world_behavior_packs.json``).
+
+        If the addon's files are not found, it will still attempt to remove its
+        entry from the activation JSON file.
+
+        Args:
+            pack_uuid (str): The UUID of the pack to remove.
+            pack_type (str): The type of pack; must be either ``"behavior"`` or
+                ``"resource"``.
+            world_name (Optional[str]): The name of the world from which to remove
+                the addon. If ``None`` (default), uses the server's currently active
+                world name.
+
+        Raises:
+            MissingArgumentError: If ``pack_uuid`` or ``pack_type`` are empty or
+                not provided.
+            UserInputError: If ``pack_type`` is not ``"behavior"`` or ``"resource"``.
+            FileOperationError: If an OS-level error occurs during file/directory
+                deletion or when updating the world's activation JSON file.
+            AttributeError: If methods like
+                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
+                are unavailable when ``world_name`` is ``None``.
+        """
+        if not pack_uuid or not pack_type:
+            raise MissingArgumentError("Pack UUID and pack type are required.")
+        if pack_type not in ("behavior", "resource"):
+            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
+
+        if world_name is None:
+            world_name = await self.get_world_name()
+
+        self.logger.info(
+            f"Removing {pack_type} pack '{pack_uuid}' from world '{world_name}'."
+        )
+
+        world_dir = os.path.join(self.server_dir, "worlds", world_name)
+        pack_folder_name = f"{pack_type}_packs"
+        physical_packs = await self._scan_physical_packs(world_dir, pack_folder_name)
+
+        # Find the pack to get its path for deletion.
+        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
+        if not target_pack:
+            # If pack files are already gone, still try to clean the JSON file.
+            self.logger.warning(
+                f"Pack files for UUID '{pack_uuid}' not found. Attempting to clean activation JSON."
+            )
+        else:
+            pack_name = target_pack["name"]
+            pack_source_path = target_pack["path"]
+            try:
+                self.logger.debug(f"Deleting pack folder: {pack_source_path}")
+                await asyncio.to_thread(shutil.rmtree, pack_source_path)
+                self.logger.info(f"Successfully deleted files for pack '{pack_name}'.")
+            except OSError as e:
+                raise FileOperationError(
+                    f"Failed to delete addon folder for '{pack_name}': {e}"
+                ) from e
+
+        # Always attempt to remove the pack from the activation JSON.
+        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
+        await self._remove_pack_from_world_json(world_json_path, pack_uuid)
+
+    async def _process_mcaddon_archive(self, mcaddon_file_path: str) -> None:
         """Extracts a ``.mcaddon`` archive and processes its contents.
 
         An ``.mcaddon`` file is a ZIP archive that can bundle multiple ``.mcpack``
@@ -180,8 +653,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 self.logger.info(
                     f"Extracting '{os.path.basename(mcaddon_file_path)}' to temp dir..."
                 )
-                with zipfile.ZipFile(mcaddon_file_path, "r") as zip_ref:
-                    zip_ref.extractall(temp_dir)
+
+                def _extract():
+                    with zipfile.ZipFile(mcaddon_file_path, "r") as zip_ref:
+                        zip_ref.extractall(temp_dir)
+
+                await asyncio.to_thread(_extract)
                 self.logger.debug(
                     f"Successfully extracted '{os.path.basename(mcaddon_file_path)}'."
                 )
@@ -195,7 +672,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 ) from e
 
             # Delegate to process the extracted contents.
-            self._process_extracted_mcaddon_contents(temp_dir)
+            await self._process_extracted_mcaddon_contents(temp_dir)
 
         finally:
             # Ensure the temporary directory is cleaned up.
@@ -209,7 +686,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         exc_info=True,
                     )
 
-    def _process_extracted_mcaddon_contents(  # noqa: C901
+    async def _process_extracted_mcaddon_contents(  # noqa: C901
         self, temp_dir_with_extracted_files: str
     ) -> None:
         """Processes ``.mcworld`` and ``.mcpack`` files from an extracted ``.mcaddon`` archive.
@@ -246,15 +723,15 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         )
 
         # Process any .mcworld files found.
-        mcworld_files_found = glob.glob(
-            os.path.join(temp_dir_with_extracted_files, "*.mcworld")
+        mcworld_files_found = await asyncio.to_thread(
+            glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcworld")
         )
         if mcworld_files_found:
             self.logger.info(
                 f"Found {len(mcworld_files_found)} .mcworld file(s) in .mcaddon."
             )
             # This method is expected to be on the final class from StateMixin.
-            active_world_name = self.get_world_name()
+            active_world_name = await self.get_world_name()
 
             for world_file_path in mcworld_files_found:
                 world_filename_basename = os.path.basename(world_file_path)
@@ -263,7 +740,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
                 try:
                     # This method is expected to be on the final class from WorldMixin.
-                    self.extract_mcworld(world_file_path, active_world_name)
+                    await self.extract_mcworld(world_file_path, active_world_name)
                     self.logger.info(
                         f"Successfully processed '{world_filename_basename}' into world '{active_world_name}'."
                     )
@@ -273,8 +750,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     ) from e
 
         # Process any .mcpack files found.
-        mcpack_files_found = glob.glob(
-            os.path.join(temp_dir_with_extracted_files, "*.mcpack")
+        mcpack_files_found = await asyncio.to_thread(
+            glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcpack")
         )
         if mcpack_files_found:
             self.logger.info(
@@ -287,7 +764,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 )
                 try:
                     # Recursively call the main pack processor.
-                    self._process_mcpack_archive(pack_file_path)
+                    await self._process_mcpack_archive(pack_file_path)
                 except Exception as e:
                     raise FileOperationError(
                         f"Failed processing pack '{pack_filename_basename}' from .mcaddon for server '{self.server_name}': {e}"
@@ -295,9 +772,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         # Process any folders that look like packs (contain manifest.json).
         found_pack_folders = []
-        for item in os.listdir(temp_dir_with_extracted_files):
+        for item in await asyncio.to_thread(os.listdir, temp_dir_with_extracted_files):
             item_path = os.path.join(temp_dir_with_extracted_files, item)
-            if os.path.isdir(item_path) and os.path.isfile(
+            if await aiofiles.ospath.isdir(item_path) and await aiofiles.ospath.isfile(
                 os.path.join(item_path, "manifest.json")
             ):
                 found_pack_folders.append(item_path)
@@ -310,7 +787,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 folder_name = os.path.basename(pack_folder_path)
                 self.logger.info(f"Processing extracted pack folder: '{folder_name}'.")
                 try:
-                    self._install_pack_from_extracted_data(
+                    await self._install_pack_from_extracted_data(
                         pack_folder_path, pack_folder_path
                     )
                 except Exception as e:
@@ -327,7 +804,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"No .mcworld, .mcpack files, or pack folders found in extracted .mcaddon at '{temp_dir_with_extracted_files}'."
             )
 
-    def _process_mcpack_archive(self, mcpack_file_path: str) -> None:
+    async def _process_mcpack_archive(self, mcpack_file_path: str) -> None:
         """Extracts a ``.mcpack`` archive and initiates its installation.
 
         An ``.mcpack`` file is typically a ZIP archive containing a single
@@ -363,8 +840,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         try:
             try:
                 self.logger.info(f"Extracting '{mcpack_filename}' to temp dir...")
-                with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
-                    zip_ref.extractall(temp_dir)
+
+                def _extract():
+                    with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
+                        zip_ref.extractall(temp_dir)
+
+                await asyncio.to_thread(_extract)
                 self.logger.debug(f"Successfully extracted '{mcpack_filename}'.")
             except zipfile.BadZipFile as e:
                 raise ExtractError(
@@ -392,7 +873,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         )
                         install_source_dir = potential_nested_dir
 
-            self._install_pack_from_extracted_data(install_source_dir, mcpack_file_path)
+            await self._install_pack_from_extracted_data(
+                install_source_dir, mcpack_file_path
+            )
 
         finally:
             if os.path.isdir(temp_dir):
@@ -405,7 +888,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         exc_info=True,
                     )
 
-    def _install_pack_from_extracted_data(  # noqa: C901
+    async def _install_pack_from_extracted_data(  # noqa: C901
         self, extracted_pack_dir: str, original_mcpack_path: str
     ) -> None:
         """Installs a behavior or resource pack from its extracted files into the active world.
@@ -454,14 +937,14 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         try:
             # Get metadata from the manifest.
             pack_type, uuid, version_list, addon_name, _subpacks = (
-                self._extract_manifest_info(extracted_pack_dir)
+                await self._extract_manifest_info(extracted_pack_dir)
             )
             self.logger.info(
                 f"Manifest for '{original_mcpack_filename}': Type='{pack_type}', UUID='{uuid}', Version='{version_list}', Name='{addon_name}'"
             )
 
             # --- Installation Logic ---
-            active_world_name = self.get_world_name()
+            active_world_name = await self.get_world_name()
 
             # Define paths within the active world.
             active_world_dir = os.path.join(
@@ -480,8 +963,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 active_world_dir, "world_resource_packs.json"
             )
 
-            os.makedirs(behavior_packs_target_base, exist_ok=True)
-            os.makedirs(resource_packs_target_base, exist_ok=True)
+            await aiofiles.os.makedirs(behavior_packs_target_base, exist_ok=True)
+            await aiofiles.os.makedirs(resource_packs_target_base, exist_ok=True)
 
             # Create a unique, file-safe folder name for this specific version of the addon.
             version_str = ".".join(map(str, version_list))
@@ -524,7 +1007,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             )
 
             # Find and remove any existing versions of this pack (by UUID) to perform a clean update/downgrade.
-            existing_physical_packs = self._scan_physical_packs(
+            existing_physical_packs = await self._scan_physical_packs(
                 active_world_dir, pack_folder_name
             )
             for existing_pack in existing_physical_packs:
@@ -534,20 +1017,22 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         self.logger.info(
                             f"Removing existing pack installation for UUID '{uuid}' at: {existing_path}"
                         )
-                        shutil.rmtree(existing_path)
+                        await asyncio.to_thread(shutil.rmtree, existing_path)
 
             # Perform a clean install by removing the target directory if it already exists.
-            if os.path.isdir(target_install_path):
+            if await aiofiles.ospath.isdir(target_install_path):
                 self.logger.debug(
                     f"Removing existing target directory: {target_install_path}"
                 )
-                shutil.rmtree(target_install_path)
+                await asyncio.to_thread(shutil.rmtree, target_install_path)
 
-            shutil.copytree(extracted_pack_dir, target_install_path)
+            await asyncio.to_thread(
+                shutil.copytree, extracted_pack_dir, target_install_path
+            )
             self.logger.debug(f"Copied pack contents to '{target_install_path}'.")
 
             # Activate the pack by adding it to the world's JSON file.
-            self._update_world_pack_json_file(
+            await self._update_world_pack_json_file(
                 target_world_json_file, uuid, version_list
             )
             self.logger.info(
@@ -575,7 +1060,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Unexpected error processing pack '{original_mcpack_filename}' for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def _extract_manifest_info(  # noqa: C901
+    async def _extract_manifest_info(  # noqa: C901
         self, extracted_pack_dir: str
     ) -> Tuple[str, str, List[int], str, List[Dict[str, Any]]]:
         """Extracts and validates key information from a pack's ``manifest.json`` file.
@@ -616,12 +1101,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         manifest_file = os.path.join(extracted_pack_dir, "manifest.json")
         self.logger.debug(f"Attempting to read manifest file: {manifest_file}")
 
-        if not os.path.isfile(manifest_file):
+        if not await aiofiles.ospath.isfile(manifest_file):
             raise AppFileNotFoundError(manifest_file, "Manifest file")
 
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
-                manifest_data = json.load(f)
+            async with aiofiles.open(manifest_file, "r", encoding="utf-8") as f:
+                manifest_data = json.loads(await f.read())
 
             if not isinstance(manifest_data, dict):
                 raise ConfigParseError("Manifest content is not a valid JSON object.")
@@ -718,7 +1203,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Cannot read manifest file '{manifest_file}': {e}"
             ) from e
 
-    def _update_world_pack_json_file(  # noqa: C901
+    async def _update_world_pack_json_file(  # noqa: C901
         self, world_json_file_path: str, pack_uuid: str, pack_version_list: List[int]
     ) -> None:
         """Adds or updates a pack entry in a world's activation JSON file.
@@ -763,9 +1248,11 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         packs_list = []
         try:
             # Safely load the existing list of packs.
-            if os.path.exists(world_json_file_path):
-                with open(world_json_file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
+            if await aiofiles.ospath.exists(world_json_file_path):
+                async with aiofiles.open(
+                    world_json_file_path, "r", encoding="utf-8"
+                ) as f:
+                    content = await f.read()
                     if content.strip():
                         loaded_packs = json.loads(content)
                         if isinstance(loaded_packs, list):
@@ -811,7 +1298,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                                 f"Downgrading pack '{pack_uuid}' in '{json_filename_basename}' from v{existing_version_list} to v{pack_version_list}."
                             )
                             self.logger.warning(
-                                f"Downgrading packs can cause compatibility issues or data loss."
+                                "Downgrading packs can cause compatibility issues or data loss."
                             )
                         packs_list[i] = {
                             "pack_id": pack_uuid,
@@ -833,9 +1320,12 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             packs_list.append({"pack_id": pack_uuid, "version": pack_version_list})
 
         try:
-            os.makedirs(os.path.dirname(world_json_file_path), exist_ok=True)
-            with open(world_json_file_path, "w", encoding="utf-8") as f:
-                json.dump(packs_list, f, indent=2, sort_keys=True)
+            await aiofiles.os.makedirs(
+                os.path.dirname(world_json_file_path), exist_ok=True
+            )
+            lock = self.get_file_lock(world_json_file_path)
+            async with lock:
+                await save_json(packs_list, world_json_file_path, indent=2)
             self.logger.debug(
                 f"Successfully wrote updated packs to '{json_filename_basename}'."
             )
@@ -844,294 +1334,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 f"Failed to write world pack JSON '{json_filename_basename}': {e}"
             ) from e
 
-    def list_installed_addons(
-        self, world_name: Optional[str] = None
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """Lists all behavior and resource packs for a specified world.
-
-        This method provides a detailed inventory of addons by:
-
-            1. Scanning the physical pack folders (``behavior_packs`` and ``resource_packs``)
-               within the specified world's directory to find all installed packs by
-               reading their ``manifest.json`` files.
-            2. Reading the world's activation JSON files (``world_behavior_packs.json``
-               and ``world_resource_packs.json``) to determine which packs are active.
-            3. Comparing these two sets of information to determine the status of each pack.
-
-        The status can be:
-            - ``ACTIVE``: The pack is physically present and listed in the activation file.
-            - ``INACTIVE``: The pack is physically present but not listed in the activation file.
-            - ``ORPHANED``: The pack is listed in the activation file but not physically present.
-
-        Args:
-            world_name (Optional[str]): The name of the world to inspect.
-                If ``None`` (default), uses the server's currently active world name
-                obtained via :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`.
-
-        Returns:
-            Dict[str, List[Dict[str, Any]]]: A dictionary with two keys:
-            ``"behavior_packs"`` and ``"resource_packs"``. Each key maps to a list
-            of dictionaries, where each dictionary represents an addon with the
-            following string keys:
-
-                - ``"name"`` (str): The display name of the pack from its manifest.
-                - ``"uuid"`` (str): The UUID of the pack from its manifest.
-                - ``"version"`` (List[int]): The version of the pack (e.g., ``[1, 0, 0]``).
-                - ``"status"`` (str): The activation status: 'ACTIVE', 'INACTIVE', or 'ORPHANED'.
-
-            The lists of pack dictionaries are sorted by pack name.
-
-        Raises:
-            AppFileNotFoundError: If the directory for the specified ``world_name``
-                does not exist.
-            AttributeError: If :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
-                is not available when ``world_name`` is ``None``.
-        """
-        if world_name is None:
-            world_name = self.get_world_name()  # type: ignore
-
-        self.logger.info(
-            f"Listing addons for world '{world_name}' in server '{self.server_name}'."
-        )
-
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        if not os.path.isdir(world_dir):
-            raise AppFileNotFoundError(world_dir, f"World directory for '{world_name}'")
-
-        # Get lists of physical and activated packs for both types.
-        physical_bps = self._scan_physical_packs(world_dir, "behavior_packs")
-        activated_bps_list = self._read_world_activation_json(
-            os.path.join(world_dir, "world_behavior_packs.json")
-        )
-
-        physical_rps = self._scan_physical_packs(world_dir, "resource_packs")
-        activated_rps_list = self._read_world_activation_json(
-            os.path.join(world_dir, "world_resource_packs.json")
-        )
-
-        # Reconcile the lists to determine status for each pack.
-        behavior_pack_results = self._compare_physical_and_activated(
-            physical_bps, activated_bps_list
-        )
-        resource_pack_results = self._compare_physical_and_activated(
-            physical_rps, activated_rps_list
-        )
-
-        # Append icon paths if they exist
-        for pack in behavior_pack_results:
-            if "path" in pack:
-                icon_path = os.path.join(pack["path"], "pack_icon.png")
-                if os.path.exists(icon_path):
-                    pack["icon"] = icon_path
-
-        for pack in resource_pack_results:
-            if "path" in pack:
-                icon_path = os.path.join(pack["path"], "pack_icon.png")
-                if os.path.exists(icon_path):
-                    pack["icon"] = icon_path
-
-        return {
-            "behavior_packs": behavior_pack_results,
-            "resource_packs": resource_pack_results,
-        }
-
-    def enable_addon(
-        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
-    ) -> None:
-        """Enables a physically installed addon in a world.
-
-        Args:
-            pack_uuid (str): The UUID of the pack to enable.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            world_name (Optional[str]): The name of the world.
-        """
-        if not pack_uuid or not pack_type:
-            raise MissingArgumentError("Pack UUID and pack type are required.")
-        if pack_type not in ("behavior", "resource"):
-            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
-
-        if world_name is None:
-            world_name = self.get_world_name()
-
-        self.logger.info(
-            f"Enabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
-        )
-
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        pack_folder_name = f"{pack_type}_packs"
-        physical_packs = self._scan_physical_packs(world_dir, pack_folder_name)
-
-        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
-        if not target_pack:
-            raise AppFileNotFoundError(
-                f"pack with UUID {pack_uuid}",
-                f"{pack_folder_name} in world '{world_name}'",
-            )
-
-        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
-        self._update_world_pack_json_file(
-            world_json_path, pack_uuid, target_pack["version"]
-        )
-
-    def update_subpack(  # noqa: C901
-        self,
-        pack_uuid: str,
-        pack_type: str,
-        subpack_name: str,
-        world_name: Optional[str] = None,
-    ) -> None:
-        """Updates the active subpack for an already enabled addon.
-
-        Args:
-            pack_uuid (str): The UUID of the active pack.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            subpack_name (str): The new subpack folder name to set.
-            world_name (Optional[str]): The name of the world.
-        """
-        if not pack_uuid or not pack_type or not subpack_name:
-            raise MissingArgumentError(
-                "Pack UUID, pack type, and subpack name are required."
-            )
-        if pack_type not in ("behavior", "resource"):
-            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
-
-        if world_name is None:
-            world_name = self.get_world_name()
-
-        self.logger.info(
-            f"Updating subpack to '{subpack_name}' for {pack_type} pack '{pack_uuid}' in world '{world_name}'."
-        )
-
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        pack_folder_name = f"{pack_type}_packs"
-        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
-
-        json_filename_basename = os.path.basename(world_json_path)
-
-        if not os.path.exists(world_json_path):
-            raise AppFileNotFoundError(
-                world_json_path,
-                f"Activation file '{json_filename_basename}' not found.",
-            )
-
-        packs_list = []
-        with open(world_json_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            if content.strip():
-                packs_list = json.loads(content)
-
-        found = False
-        for i, existing_pack_entry in enumerate(packs_list):
-            if (
-                isinstance(existing_pack_entry, dict)
-                and existing_pack_entry.get("pack_id") == pack_uuid
-            ):
-                packs_list[i]["subpack"] = subpack_name
-                found = True
-                break
-
-        if not found:
-            raise UserInputError(
-                f"Pack '{pack_uuid}' is not currently active. You must enable it first."
-            )
-
-        try:
-            with open(world_json_path, "w", encoding="utf-8") as f:
-                json.dump(packs_list, f, indent=2, sort_keys=True)
-            self.logger.debug(
-                f"Successfully wrote updated subpack '{subpack_name}' to '{json_filename_basename}'."
-            )
-        except OSError as e:
-            raise FileOperationError(
-                f"Failed to write world pack JSON '{json_filename_basename}': {e}"
-            ) from e
-
-    def disable_addon(
-        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
-    ) -> None:
-        """Disables an addon by removing it from the world's activation list, preserving files.
-
-        Args:
-            pack_uuid (str): The UUID of the pack to disable.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            world_name (Optional[str]): The name of the world.
-        """
-        if not pack_uuid or not pack_type:
-            raise MissingArgumentError("Pack UUID and pack type are required.")
-        if pack_type not in ("behavior", "resource"):
-            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
-
-        if world_name is None:
-            world_name = self.get_world_name()
-
-        self.logger.info(
-            f"Disabling {pack_type} pack '{pack_uuid}' in world '{world_name}'."
-        )
-
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        pack_folder_name = f"{pack_type}_packs"
-        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
-
-        self._remove_pack_from_world_json(world_json_path, pack_uuid)
-
-    def reorder_addons(
-        self, uuids: List[str], pack_type: str, world_name: Optional[str] = None
-    ) -> None:
-        """Reorders the active addons based on a provided list of UUIDs.
-
-        This method strictly verifies that the provided list of UUIDs contains
-        the exact same set of active UUIDs.
-
-        Args:
-            uuids (List[str]): The exact active UUIDs in their new order.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or ``"resource"``.
-            world_name (Optional[str]): The name of the world.
-        """
-        if not uuids or not pack_type:
-            raise MissingArgumentError("UUID list and pack type are required.")
-        if pack_type not in ("behavior", "resource"):
-            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
-
-        if world_name is None:
-            world_name = self.get_world_name()
-
-        self.logger.info(f"Reordering {pack_type} packs in world '{world_name}'.")
-
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        pack_folder_name = f"{pack_type}_packs"
-        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
-
-        original_packs_list = self._read_world_activation_json(world_json_path)
-        original_uuids = [
-            p.get("pack_id") for p in original_packs_list if p.get("pack_id")
-        ]
-
-        if set(uuids) != set(original_uuids):
-            raise UserInputError(
-                "The provided UUID list does not contain the exact same set of active UUIDs. "
-                "Disabling/Enabling must be done via their respective endpoints."
-            )
-        if len(uuids) != len(original_uuids):
-            raise UserInputError("The provided UUID list contains duplicates.")
-
-        # Reorder the original packs list based on the new UUID list order
-        pack_map = {
-            p.get("pack_id"): p for p in original_packs_list if p.get("pack_id")
-        }
-        new_packs_list = [pack_map[uuid] for uuid in uuids]
-
-        try:
-            with open(world_json_path, "w", encoding="utf-8") as f:
-                json.dump(new_packs_list, f, indent=2, sort_keys=True)
-            self.logger.info(
-                f"Successfully reordered {pack_type} packs in world '{world_name}'."
-            )
-        except OSError as e:
-            raise FileOperationError(
-                f"Failed to write reordered activation file: {e}"
-            ) from e
-
-    def _scan_physical_packs(
+    async def _scan_physical_packs(
         self, world_dir: str, pack_folder_name: str
     ) -> List[Dict[str, Any]]:
         """Scans a world's pack subfolder (e.g., 'behavior_packs') and parses manifests.
@@ -1165,16 +1368,16 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             contains no valid packs.
         """
         pack_base_dir = os.path.join(world_dir, pack_folder_name)
-        if not os.path.isdir(pack_base_dir):
+        if not await aiofiles.ospath.isdir(pack_base_dir):
             return []
 
         installed_packs = []
-        for pack_dir_name in os.listdir(pack_base_dir):
+        for pack_dir_name in await asyncio.to_thread(os.listdir, pack_base_dir):
             pack_full_path = os.path.join(pack_base_dir, pack_dir_name)
             if os.path.isdir(pack_full_path):
                 try:
                     _pack_type, uuid, version, name, subpacks = (
-                        self._extract_manifest_info(pack_full_path)
+                        await self._extract_manifest_info(pack_full_path)
                     )
 
                     # If name is generic "pack.name", attempt to resolve from folder structure
@@ -1201,7 +1404,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     )
         return installed_packs
 
-    def _read_world_activation_json(
+    async def _read_world_activation_json(
         self, world_json_file_path: str
     ) -> List[Dict[str, Any]]:
         """Safely reads and parses a world's pack activation JSON file.
@@ -1223,27 +1426,25 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             typically with ``"pack_id"`` and ``"version"`` keys) if the file is
             valid and contains a list. Returns an empty list otherwise.
         """
-        if not os.path.exists(world_json_file_path):
+        if not await aiofiles.ospath.exists(world_json_file_path):
             return []
 
         try:
-            with open(world_json_file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-                if not content.strip():
-                    return []
-                data = json.loads(content)
-                if isinstance(data, list):
-                    return data
-                else:
-                    self.logger.warning(
-                        f"File '{world_json_file_path}' does not contain a JSON list. Treating as empty."
-                    )
-                    return []
+            data = await load_json(world_json_file_path)
+            if data is None:
+                return []
+            if isinstance(data, list):
+                return data
+            else:
+                self.logger.warning(
+                    f"File '{world_json_file_path}' does not contain a JSON list. Treating as empty."
+                )
+                return []
         except (ValueError, OSError) as e:
             self.logger.error(f"Failed to read or parse '{world_json_file_path}': {e}")
             return []
 
-    def _compare_physical_and_activated(
+    async def _compare_physical_and_activated(
         self, physical: List[Dict[str, Any]], activated: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Compares lists of physical and activated packs to determine addon statuses.
@@ -1339,178 +1540,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         return active_packs + inactive_packs_sorted
 
-    def export_addon(
-        self,
-        pack_uuid: str,
-        pack_type: str,
-        export_dir: str,
-        world_name: Optional[str] = None,
-    ) -> str:
-        """Exports a specific installed addon from a world into a ``.mcpack`` file.
-
-        This method locates an installed behavior or resource pack within the
-        specified world by its UUID, then archives its contents into a new
-        ``.mcpack`` file. The exported file is named using the pack's name
-        and version (e.g., ``MyPack_1.0.0.mcpack``) and saved in the
-        ``export_dir``.
-
-        Args:
-            pack_uuid (str): The UUID of the pack to export.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or
-                ``"resource"``.
-            export_dir (str): The absolute path to the directory where the
-                ``.mcpack`` file will be saved. This directory will be created
-                if it does not already exist.
-            world_name (Optional[str]): The name of the world from which to export
-                the addon. If ``None`` (default), uses the server's currently active
-                world name.
-
-        Returns:
-            str: The absolute path to the created ``.mcpack`` file.
-
-        Raises:
-            MissingArgumentError: If ``pack_uuid``, ``pack_type``, or ``export_dir``
-                are empty or not provided.
-            UserInputError: If ``pack_type`` is not ``"behavior"`` or ``"resource"``.
-            AppFileNotFoundError: If the specified pack (by UUID and type) cannot be
-                found in the physical ``behavior_packs`` or ``resource_packs``
-                folder of the world, or if the world directory itself is missing.
-            FileOperationError: If any OS-level error occurs during directory
-                creation, file scanning, or ``.mcpack`` archive creation (e.g.,
-                permission issues, disk full).
-            AttributeError: If methods like
-                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
-                are unavailable when ``world_name`` is ``None``.
-        """
-        if not pack_uuid or not pack_type or not export_dir:
-            raise MissingArgumentError(
-                "Pack UUID, pack type, and export directory are required."
-            )
-        if pack_type not in ("behavior", "resource"):
-            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
-
-        if world_name is None:
-            world_name = self.get_world_name()
-
-        self.logger.info(
-            f"Exporting {pack_type} pack '{pack_uuid}' from world '{world_name}'."
-        )
-
-        # Find the source directory of the pack to be exported.
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        pack_folder_name = f"{pack_type}_packs"
-        physical_packs = self._scan_physical_packs(world_dir, pack_folder_name)
-        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
-
-        if not target_pack:
-            raise AppFileNotFoundError(
-                f"pack with UUID {pack_uuid}",
-                f"{pack_folder_name} in world '{world_name}'",
-            )
-
-        pack_name = target_pack["name"]
-        pack_version = ".".join(map(str, target_pack["version"]))
-        pack_source_path = target_pack["path"]
-
-        # Create a file-safe name for the exported archive.
-        safe_pack_name = re.sub(r'[<>:"/\\|?* ]', "_", pack_name)
-        export_filename = f"{safe_pack_name}_{pack_version}.mcpack"
-        export_file_path = os.path.join(export_dir, export_filename)
-
-        os.makedirs(export_dir, exist_ok=True)
-
-        try:
-            # Create the zip archive, ensuring paths inside are relative.
-            self.logger.debug(f"Zipping '{pack_source_path}' to '{export_file_path}'")
-            with zipfile.ZipFile(export_file_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for root, _dirs, files in os.walk(pack_source_path):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        # Archive name is relative to the pack's source directory.
-                        archive_name = os.path.relpath(file_path, pack_source_path)
-                        zipf.write(file_path, archive_name)
-            self.logger.info(
-                f"Successfully exported addon '{pack_name}' to '{export_file_path}'."
-            )
-            return export_file_path
-        except (OSError, zipfile.BadZipFile) as e:
-            raise FileOperationError(
-                f"Could not create addon archive for '{pack_name}': {e}"
-            ) from e
-
-    def remove_addon(
-        self, pack_uuid: str, pack_type: str, world_name: Optional[str] = None
-    ) -> None:
-        """Removes a specific addon from a world.
-
-        .. warning::
-            This is a destructive operation. It permanently deletes the addon's
-            files from the world's ``behavior_packs`` or ``resource_packs``
-            directory and deactivates the addon by removing its entry from the
-            world's corresponding activation JSON file (e.g.,
-            ``world_behavior_packs.json``).
-
-        If the addon's files are not found, it will still attempt to remove its
-        entry from the activation JSON file.
-
-        Args:
-            pack_uuid (str): The UUID of the pack to remove.
-            pack_type (str): The type of pack; must be either ``"behavior"`` or
-                ``"resource"``.
-            world_name (Optional[str]): The name of the world from which to remove
-                the addon. If ``None`` (default), uses the server's currently active
-                world name.
-
-        Raises:
-            MissingArgumentError: If ``pack_uuid`` or ``pack_type`` are empty or
-                not provided.
-            UserInputError: If ``pack_type`` is not ``"behavior"`` or ``"resource"``.
-            FileOperationError: If an OS-level error occurs during file/directory
-                deletion or when updating the world's activation JSON file.
-            AttributeError: If methods like
-                :meth:`~.core.server.state_mixin.ServerStateMixin.get_world_name`
-                are unavailable when ``world_name`` is ``None``.
-        """
-        if not pack_uuid or not pack_type:
-            raise MissingArgumentError("Pack UUID and pack type are required.")
-        if pack_type not in ("behavior", "resource"):
-            raise UserInputError("Pack type must be 'behavior' or 'resource'.")
-
-        if world_name is None:
-            world_name = self.get_world_name()
-
-        self.logger.info(
-            f"Removing {pack_type} pack '{pack_uuid}' from world '{world_name}'."
-        )
-
-        world_dir = os.path.join(self.server_dir, "worlds", world_name)
-        pack_folder_name = f"{pack_type}_packs"
-        physical_packs = self._scan_physical_packs(world_dir, pack_folder_name)
-
-        # Find the pack to get its path for deletion.
-        target_pack = next((p for p in physical_packs if p["uuid"] == pack_uuid), None)
-        if not target_pack:
-            # If pack files are already gone, still try to clean the JSON file.
-            self.logger.warning(
-                f"Pack files for UUID '{pack_uuid}' not found. Attempting to clean activation JSON."
-            )
-        else:
-            pack_name = target_pack["name"]
-            pack_source_path = target_pack["path"]
-            try:
-                self.logger.debug(f"Deleting pack folder: {pack_source_path}")
-                shutil.rmtree(pack_source_path)
-                self.logger.info(f"Successfully deleted files for pack '{pack_name}'.")
-            except OSError as e:
-                raise FileOperationError(
-                    f"Failed to delete addon folder for '{pack_name}': {e}"
-                ) from e
-
-        # Always attempt to remove the pack from the activation JSON.
-        world_json_path = os.path.join(world_dir, f"world_{pack_folder_name}.json")
-        self._remove_pack_from_world_json(world_json_path, pack_uuid)
-
-    def _remove_pack_from_world_json(
+    async def _remove_pack_from_world_json(
         self, world_json_file_path: str, pack_uuid: str
     ) -> None:
         """Removes a specific pack entry from a world's pack activation JSON file.
@@ -1533,13 +1563,15 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 Reading errors are handled internally by :meth:`._read_world_activation_json`.
         """
         json_filename = os.path.basename(world_json_file_path)
-        if not os.path.exists(world_json_file_path):
+        if not await aiofiles.ospath.exists(world_json_file_path):
             self.logger.debug(
                 f"Activation file '{json_filename}' not found. Nothing to remove."
             )
             return
 
-        original_packs_list = self._read_world_activation_json(world_json_file_path)
+        original_packs_list = await self._read_world_activation_json(
+            world_json_file_path
+        )
         if not original_packs_list:
             return  # File was empty or invalid, so nothing to do.
 
@@ -1555,8 +1587,9 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return
 
         try:
-            with open(world_json_file_path, "w", encoding="utf-8") as f:
-                json.dump(updated_packs_list, f, indent=2, sort_keys=True)
+            lock = self.get_file_lock(world_json_file_path)
+            async with lock:
+                await save_json(updated_packs_list, world_json_file_path, indent=2)
             self.logger.info(
                 f"Removed pack '{pack_uuid}' from activation file '{json_filename}'."
             )

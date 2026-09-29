@@ -60,7 +60,7 @@ def core_validate_server_name_format(server_name: str) -> None:
 # --- Server Discovery and Validation ---
 
 
-def validate_server(server_name: str, app_context: AppContext) -> bool:
+async def validate_server(server_name: str, app_context: AppContext) -> bool:
     """Validates if a given server name corresponds to a valid installation."""
     if not server_name:
         raise MissingArgumentError("Server name cannot be empty for validation.")
@@ -68,7 +68,7 @@ def validate_server(server_name: str, app_context: AppContext) -> bool:
     logger.debug(f"BSM: Validating server '{server_name}' using BedrockServer class.")
     try:
         server_instance = app_context.get_server(server_name)
-        is_valid = server_instance.is_installed()
+        is_valid = await server_instance.is_installed()
         if is_valid:
             logger.debug(f"BSM: Server '{server_name}' validation successful.")
         else:
@@ -89,7 +89,9 @@ def validate_server(server_name: str, app_context: AppContext) -> bool:
         return False
 
 
-def get_servers_data(app_context: AppContext) -> Tuple[List[Dict[str, Any]], List[str]]:
+async def get_servers_data(
+    app_context: AppContext,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Discovers and retrieves status data for all valid server instances."""
     servers_data: List[Dict[str, Any]] = []
     error_messages: List[str] = []
@@ -106,13 +108,13 @@ def get_servers_data(app_context: AppContext) -> Tuple[List[Dict[str, Any]], Lis
         try:
             server = app_context.get_server(server_name_candidate)
 
-            if not server.is_installed():
+            if not await server.is_installed():
                 logger.debug(
                     f"Skipping '{server_name_candidate}': Not a valid server installation."
                 )
                 continue
 
-            servers_data.append(server.get_summary_info())
+            servers_data.append(await server.get_summary_info())
 
         except (FileOperationError, ConfigurationError, InvalidServerNameError) as e:
             msg = f"Could not get info for server '{server_name_candidate}': {e}"

@@ -77,7 +77,7 @@ def start_web_server(ctx: click.Context, host: str, port: int, debug: bool, mode
 
     The web server's listening host(s) and debug mode can be configured via options.
 
-    Calls API: :func:`~bedrock_server_manager.api.web.start_web_server_api`.
+    Calls API: :func:`~bedrock_server_manager.api.web.start_web_server`.
     """
     app_context = ctx.obj["app_context"]
     click.echo(f"Attempting to start web server in '{mode}' mode...")
@@ -87,7 +87,7 @@ def start_web_server(ctx: click.Context, host: str, port: int, debug: bool, mode
         )
 
     try:
-        response = web_api.start_web_server_api(
+        response = web_api.start_web_server(
             host=host,
             port=port,
             debug=debug,
@@ -95,7 +95,7 @@ def start_web_server(ctx: click.Context, host: str, port: int, debug: bool, mode
             app_context=app_context,
         )
 
-        # In 'direct' mode, start_web_server_api (which calls bsm.start_web_ui_direct)
+        # In 'direct' mode, start_web_server (which calls bsm.start_web_ui_direct)
         # is blocking. So, we'll only reach here after it stops or if mode is 'detached'.
         if mode == "detached":
             if response.get("status") == "error":
@@ -136,12 +136,12 @@ def stop_web_server(ctx: click.Context):
     This command does not affect web servers started in 'direct' mode or those
     managed by system services.
 
-    Calls API: :func:`~bedrock_server_manager.api.web.stop_web_server_api`.
+    Calls API: :func:`~bedrock_server_manager.api.web.stop_web_server`.
     """
     app_context = ctx.obj["app_context"]
     click.echo("Attempting to stop the web server...")
     try:
-        response = web_api.stop_web_server_api(app_context=app_context)
+        response = web_api.stop_web_server(app_context=app_context)
         _handle_api_response(response, "Web server stopped successfully.")
     except BSMError as e:
         click.secho(f"An error occurred: {e}", fg="red")

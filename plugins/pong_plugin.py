@@ -23,7 +23,7 @@ class PongPlugin(PluginBase):
     name = "Pong Test"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         """
         Called by the PluginManager when this plugin is loaded.
 
@@ -33,13 +33,9 @@ class PongPlugin(PluginBase):
         self.logger.info(
             f"'{self.name}' v{self.version} loaded. Registering listener for 'pingplugin:ping' event."
         )
-        # Use self.api.listen_for_event() to subscribe to a custom event.
-        # The first argument is the event name (string).
-        # The second argument is the callback method that will be invoked when the event occurs.
-        # It's good practice to namespace event names, e.g., "source_plugin_name:event_description".
 
     @app_event("pingplugin:ping")
-    def handle_ping_event(self, *args, **kwargs):
+    async def handle_ping_event(self, *args, **kwargs):
         """
         Callback method for the 'pingplugin:ping' custom event.
 
@@ -82,10 +78,9 @@ class PongPlugin(PluginBase):
         self.logger.info(
             f"  Parsed data from event: Server='{server_name}', Message='{message}', Timestamp='{timestamp}'"
         )
-        # Add any further processing of the event data here.
 
     @app_event("on_unload")
-    def plugin_unloaded(self, **kwargs):
+    async def plugin_unloaded(self, **kwargs):
         """
         Called by the PluginManager when this plugin is being unloaded
         (e.g., during a reload or application shutdown).

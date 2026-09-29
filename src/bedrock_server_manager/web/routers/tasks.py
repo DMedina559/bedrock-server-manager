@@ -19,7 +19,7 @@ async def get_task_status(
     """
     Retrieves the status of a background task.
     """
-    task = app_context.task_manager.get_task(task_id)
+    task = await app_context.task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -35,7 +35,7 @@ async def list_tasks(
     """
     Retrieves all background tasks.
     """
-    tasks = app_context.task_manager.get_all_tasks()
+    tasks = await app_context.task_manager.get_all_tasks()
     # Convert dict to list of objects with ID
     task_list = []
     for task_id, task_data in tasks.items():

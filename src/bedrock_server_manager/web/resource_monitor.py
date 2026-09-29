@@ -1,12 +1,7 @@
 # bedrock_server_manager/web/resource_monitor.py
 import asyncio
 import logging
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..context import AppContext
-
-from ..api import system as system_api
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +12,20 @@ class ResourceMonitor:
     for servers that have active WebSocket subscribers.
     """
 
-    def __init__(self, app_context: "AppContext"):
+    def __init__(
+        self,
+        connection_manager: Any,
+        server_provider: Any = None,
+    ):
         """
-        Initializes the ResourceMonitor.
+        Initializes the ResourceMonitor with explicit dependencies.
 
         Args:
-            app_context: The global application context.
+            connection_manager: The WebSocket connection manager.
+            server_provider: Optional callable returning a BedrockServer instance by name.
         """
-        self.app_context = app_context
+        self.connection_manager = connection_manager
+        self.server_provider = server_provider
         self._task: asyncio.Task | None = None
 
     async def _monitor_loop(self):
@@ -33,7 +34,7 @@ class ResourceMonitor:
         """
         while True:
             try:
-                connection_manager = self.app_context.connection_manager
+                connection_manager = self.connection_manager
                 # Get a copy of topics to avoid issues with concurrent modifications
                 topics = list(connection_manager.subscriptions.keys())
 
@@ -44,19 +45,21 @@ class ResourceMonitor:
                             continue
 
                         server_name = topic.split(":", 1)[1]
-                        if server_name:
-                            # Run the synchronous, blocking call in a separate thread
-                            process_info = await asyncio.to_thread(
-                                system_api.get_bedrock_process_info,
-                                server_name=server_name,
-                                app_context=self.app_context,
-                            )
-                            message = {
-                                "type": "resource_update",
-                                "topic": topic,
-                                "data": process_info,
-                            }
-                            await connection_manager.broadcast_to_topic(topic, message)
+                        if server_name and callable(self.server_provider):
+                            server = self.server_provider(server_name)
+                            if server:
+                                process_info = await server.get_process_info()
+                                message = {
+                                    "type": "resource_update",
+                                    "topic": topic,
+                                    "data": {
+                                        "status": "success",
+                                        "process_info": process_info,
+                                    },
+                                }
+                                await connection_manager.broadcast_to_topic(
+                                    topic, message
+                                )
             except Exception as e:
                 logger.error(f"Error in resource monitor loop: {e}", exc_info=True)
 

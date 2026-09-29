@@ -2,22 +2,44 @@ import json
 import shutil
 from datetime import datetime
 from importlib.resources import files
+from pathlib import Path
 
 import click
 import questionary
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect
+from sqlalchemy import create_engine, inspect, select
 
 from ..context import AppContext
 from ..db import models
 from ..utils.database import backup_database, get_current_db_revision, restore_database
+from ..utils.general import run_async
+from ..utils.migration import run_migrations_downgrade, run_migrations_upgrade
 
 
 @click.group()
 def database():
     """Database management commands."""
     pass
+
+
+@database.command(name="status")
+@click.pass_context
+def db_status(ctx: click.Context):
+    """Displays current database version and migration status."""
+    app_context: AppContext = ctx.obj["app_context"]
+    current_rev = run_async(get_current_db_revision(app_context.db.engine))
+    head_rev = app_context.db._get_head_revision()
+
+    click.echo(f"Current Database Revision: {current_rev or 'Unstamped / None'}")
+    click.echo(f"Latest Available Head Revision: {head_rev or 'Unknown'}")
+    if current_rev == head_rev and head_rev is not None:
+        click.secho("Database is up to date!", fg="green")
+    else:
+        click.secho(
+            "Database pending upgrade. Run 'bsm database upgrade' to update.",
+            fg="yellow",
+        )
 
 
 @database.command()
@@ -36,15 +58,16 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
     alembic_cfg.set_main_option("skip_logging_config", "true")
 
     # --- Backup Database ---
-    db_url = app_context.db.db_url
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    sync_db_url = app_context.db._get_sync_db_url()
+    alembic_cfg.set_main_option("sqlalchemy.url", sync_db_url)
 
     click.echo("Creating database backup before upgrading...")
     try:
         backup_dir = app_context.settings.get("paths.backups")
+        Path(backup_dir).mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
-        backup_database(app_context.db, output)
+        run_async(backup_database(app_context.db, output))
         click.secho(f"Database data backup successful! Saved to {output}", fg="green")
     except Exception as e:
 
@@ -56,11 +79,9 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
 
     # --- Run Migrations ---
     try:
-        engine = app_context.db.engine
-        if engine is None:
-            raise click.Abort("Database engine is not available.")
+        sync_engine = create_engine(sync_db_url)
 
-        with engine.begin() as connection:
+        with sync_engine.begin() as connection:
             alembic_cfg.attributes["connection"] = connection
 
             # Check if the database is at the latest revision. If not, stamp it.
@@ -143,19 +164,23 @@ def upgrade(ctx: click.Context, yes: bool):  # noqa: C901
 
             # Upgrade Database
             click.echo("Running database upgrade...")
-            command.upgrade(alembic_cfg, "head")
+            run_async(run_migrations_upgrade(app_context.db))
             click.echo("Database upgrade complete.")
 
+        sync_engine.dispose()
+
         # --- Check for Admin User ---
-        with app_context.db.session_manager() as db:  # type: ignore
-            admin_user = (
-                db.query(models.User).filter(models.User.role == "admin").first()
-            )
-            if not admin_user:
-                click.secho(
-                    "\nWarning: No admin user found in the database.", fg="yellow"
+        async def _check_admin():
+            async with app_context.db.session_manager() as db:
+                result = await db.execute(
+                    select(models.User).filter(models.User.role == "admin")
                 )
-                click.echo("Please run the web server to create an initial admin user.")
+                return result.scalars().first()
+
+        admin_user = run_async(_check_admin())
+        if not admin_user:
+            click.secho("\nWarning: No admin user found in the database.", fg="yellow")
+            click.echo("Please run the web server to create an initial admin user.")
 
     except Exception as e:
         error_msg = str(e)
@@ -182,11 +207,11 @@ def downgrade(ctx: click.Context, revision: str):
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("skip_logging_config", "true")
 
-    db_url = app_context.db.db_url
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    sync_db_url = app_context.db._get_sync_db_url()
+    alembic_cfg.set_main_option("sqlalchemy.url", sync_db_url)
 
     click.secho(
-        f"WARNING: Downgrading the database can lead to data loss.",
+        "WARNING: Downgrading the database can lead to data loss.",
         fg="yellow",
         bold=True,
     )
@@ -194,9 +219,10 @@ def downgrade(ctx: click.Context, revision: str):
         raise click.Abort()
 
     # --- Backup Database ---
-    if db_url.startswith("sqlite:///"):
-        db_path = db_url.split("sqlite:///")[1]
+    if sync_db_url.startswith("sqlite:///"):
+        db_path = sync_db_url.split("sqlite:///")[1]
         backup_dir = app_context.settings.get("paths.backups")
+        Path(backup_dir).mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{backup_dir}/db_backup_pre_downgrade_{timestamp}.sqlite3"
         try:
@@ -210,15 +236,9 @@ def downgrade(ctx: click.Context, revision: str):
                 raise click.Abort()
 
     try:
-        engine = app_context.db.engine
-        if engine is None:
-            raise click.Abort("Database engine is not available.")
-
-        with engine.begin() as connection:
-            alembic_cfg.attributes["connection"] = connection
-            click.echo(f"Running database downgrade to revision: {revision}...")
-            command.downgrade(alembic_cfg, revision)
-            click.echo("Database downgrade complete.")
+        click.echo(f"Running database downgrade to revision: {revision}...")
+        run_async(run_migrations_downgrade(app_context.db, revision))
+        click.echo("Database downgrade complete.")
 
     except Exception as e:
         click.secho(f"An error occurred during the database downgrade: {e}", fg="red")
@@ -243,9 +263,11 @@ def backup_db(ctx: click.Context, output: str | None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = f"{backup_dir}/db_data_backup_{timestamp}.json"
 
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+
     click.echo("Backing up database to JSON...")
     try:
-        backup_database(source_db, output)
+        run_async(backup_database(source_db, output))
         click.secho(f"Database data backup successful! Saved to {output}", fg="green")
     except Exception as e:
         click.secho(
@@ -291,7 +313,7 @@ def restore_db(ctx: click.Context, input: str):
         raise click.Abort()
 
     # Check for version mismatch
-    current_db_rev = get_current_db_revision(target_db.engine)
+    current_db_rev = run_async(get_current_db_revision(target_db.engine))
     backup_rev = backup_data.get("_metadata", {}).get("alembic_version")
 
     if current_db_rev and backup_rev and current_db_rev != backup_rev:
@@ -320,7 +342,7 @@ def restore_db(ctx: click.Context, input: str):
 
     click.echo("Wiping existing data and restoring...")
     try:
-        restore_database(target_db, backup_data)
+        run_async(restore_database(target_db, backup_data))
         click.secho("\nDatabase data restore successful!", fg="green")
     except Exception as e:
         click.secho(f"\nAn error occurred during data restore: {e}", fg="red")

@@ -20,11 +20,16 @@ The availability of ``psutil`` (for :meth:`.ServerProcessMixin.get_process_info`
 is indicated by the :const:`.PSUTIL_AVAILABLE` flag defined in this module.
 """
 
-import os
+import asyncio
+import inspect
 import platform
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from io import BufferedWriter
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+
+import aiofiles
+import aiofiles.ospath
 
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
@@ -80,30 +85,59 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
         """
         super().__init__(*args, **kwargs)
-        self._process: Optional[subprocess.Popen] = None
+        self._process: Optional[
+            Union[
+                subprocess.Popen[Any],
+                asyncio.subprocess.Process,
+                "psutil_for_types.Process",
+            ]
+        ] = None
         self.intentionally_stopped: bool = True
         self.failure_count: int = 0
         self.start_time: float = 0
+        self._log_file_handle: BufferedWriter | None = None
 
     if TYPE_CHECKING:
 
-        def get_status_from_config(self) -> str: ...
+        async def get_status_from_config(self) -> str: ...
 
-    def is_running(self) -> bool:
-        """Checks if the Bedrock server process is currently running and verified."""
-        self.logger.debug(f"Checking if server '{self.server_name}' is running.")
-        if self._process is not None and self._process.poll() is None:
+    async def is_running(self) -> bool:
+        """Checks if the Bedrock server process is currently running and verified asynchronously."""
+        self.logger.debug(
+            f"Checking if server '{self.server_name}' is running asynchronously."
+        )
+        if (
+            self._process is not None
+            and hasattr(self._process, "poll")
+            and self._process.poll() is None
+        ):
             return True
-        return system_base.is_server_running(
-            self.server_name, self.server_dir, self.app_config_dir
+        elif (
+            self._process is not None
+            and hasattr(self._process, "is_running")
+            and self._process.is_running()
+        ):
+            # For psutil.Process
+            return True
+        elif (
+            self._process is not None
+            and hasattr(self._process, "returncode")
+            and self._process.returncode is None
+        ):
+            # For asyncio.subprocess.Process
+            return True
+        return await system_base.is_server_running(
+            self.server_name,
+            self.server_dir,
+            self.app_config_dir,
         )
 
-    def send_command(self, command: str) -> None:
-        """Sends a command string to the running Bedrock server process."""
+    async def send_command(self, command: str) -> None:
+        """Sends a command string to the running Bedrock server process asynchronously."""
         if not command:
             raise MissingArgumentError("Command cannot be empty.")
 
-        if not self.is_running():
+        if not await self.is_running():
             raise ServerNotRunningError(
                 f"Cannot send command: Server '{self.server_name}' is not running."
             )
@@ -114,12 +148,22 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             )
 
         self.logger.info(
-            f"Sending command '{command}' to server '{self.server_name}'..."
+            f"Sending command '{command}' to server '{self.server_name}' asynchronously..."
         )
 
         try:
-            self._process.stdin.write(f"{command}\n".encode())
-            self._process.stdin.flush()
+            if hasattr(self._process.stdin, "drain"):
+                # It is an asyncio StreamWriter
+                self._process.stdin.write(f"{command}\n".encode())
+                await self._process.stdin.drain()
+            else:
+                # It is a synchronous Popen pipe
+                def _write_stdin():
+                    self._process.stdin.write(f"{command}\n".encode())
+                    self._process.stdin.flush()
+
+                await asyncio.to_thread(_write_stdin)
+
             self.logger.info(
                 f"Command '{command}' sent successfully to server '{self.server_name}'."
             )
@@ -128,34 +172,37 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"An unexpected error occurred while sending command to '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def start(self) -> None:  # noqa: C901
-        """Starts the Bedrock server process."""
-        if not hasattr(self, "is_installed") or not self.is_installed():
+    async def start(self) -> None:
+        """Starts the Bedrock server process asynchronously."""
+        is_inst = await self.is_installed()  # type: ignore
+
+        if not is_inst:
             raise ServerStartError(
                 f"Cannot start server '{self.server_name}': Not installed or "
                 f"invalid installation at {self.server_dir} (is_installed check failed or method missing)."
             )
 
-        if self.is_running():
+        if await self.is_running():
             self.logger.warning(
                 f"Attempted to start server '{self.server_name}' but it is already running."
             )
             raise ServerStartError(f"Server '{self.server_name}' is already running.")
 
         try:
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("STARTING")
+            await self.set_status_in_config("STARTING")  # type: ignore
         except Exception as e_status:
             self.logger.warning(
                 f"Failed to set status to STARTING for '{self.server_name}': {e_status}"
             )
 
-        self.logger.info(f"Attempting to start server '{self.server_name}'...")
+        self.logger.info(
+            f"Attempting to start server '{self.server_name}' asynchronously..."
+        )
 
         output_file = self.server_log_path
         pid_file_path = self.get_pid_file_path()
 
-        if os.path.exists(pid_file_path):
+        if await aiofiles.ospath.exists(pid_file_path):
             self.logger.error(
                 f"Attempted to start server '{self.server_name}', but a PID file already exists at '{pid_file_path}'."
             )
@@ -163,42 +210,40 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
         try:
             # Truncate the log file before starting
-            with open(output_file, "w") as f:
-                f.truncate(0)
+            async with aiofiles.open(output_file, "w") as f:
+                await f.truncate(0)
 
-            with open(output_file, "ab") as f:
-                self._process = subprocess.Popen(
-                    [self.bedrock_executable_path],
-                    cwd=self.server_dir,
-                    stdin=subprocess.PIPE,
-                    stdout=f,
-                    stderr=subprocess.STDOUT,
-                    creationflags=(
-                        getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                        if platform.system() == "Windows"
-                        else 0
-                    ),
-                )
+            # Native async subprocess creation
+            self._log_file_handle = open(output_file, "ab")
 
-            system_process.write_pid_to_file(pid_file_path, self._process.pid)
+            self._process = await asyncio.create_subprocess_exec(
+                self.bedrock_executable_path,
+                cwd=self.server_dir,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=self._log_file_handle,
+                stderr=asyncio.subprocess.STDOUT,
+                creationflags=(
+                    getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                    if platform.system() == "Windows"
+                    else 0
+                ),
+            )
+
+            await system_process.write_pid_to_file(pid_file_path, self._process.pid)
             self.intentionally_stopped = False
             self.start_time = time.time()
 
-            if hasattr(self, "players"):
-                self.players: List[Dict[str, str]] = []
-            if hasattr(self, "_log_file_cursor"):
-                self._log_file_cursor = 0
-            if hasattr(self, "_scan_log_cursor"):
-                self._scan_log_cursor = 0
+            setattr(self, "players", [])
+            setattr(self, "_log_file_cursor", 0)
+            setattr(self, "_scan_log_cursor", 0)
 
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("RUNNING")
+            await self.set_status_in_config("RUNNING")  # type: ignore
+
             self.logger.info(
                 f"Server '{self.server_name}' has been started with PID {self._process.pid}."
             )
         except FileNotFoundError:
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("ERROR")
+            await self.set_status_in_config("ERROR")  # type: ignore
             self.logger.error(
                 f"Executable not found for server '{self.server_name}' at path '{self.bedrock_executable_path}'."
             )
@@ -206,36 +251,35 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 f"Executable not found for server '{self.server_name}'."
             )
         except Exception as e:
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("ERROR")
+            await self.set_status_in_config("ERROR")  # type: ignore
             self.logger.error(
                 f"Failed to start server '{self.server_name}': {e}", exc_info=True
             )
             raise ServerStartError(f"Failed to start server '{self.server_name}': {e}")
 
-    def stop(self) -> None:  # noqa: C901
-        """Stops the Bedrock server process gracefully, with a forceful fallback."""
+    async def stop(self) -> None:
+        """Stops the Bedrock server process gracefully, with a forceful fallback asynchronously."""
         self.intentionally_stopped = True
 
-        if not self.is_running():
+        if not await self.is_running():
             self.logger.info(
                 f"Attempted to stop server '{self.server_name}', but it is not currently running."
             )
-            if hasattr(self, "set_status_in_config"):
-                if self.get_status_from_config() != "STOPPED":
-                    try:
-                        self.set_status_in_config("STOPPED")
-                    except Exception as e_stat:
-                        self.logger.warning(
-                            f"Failed to set status to STOPPED for non-running server '{self.server_name}': {e_stat}"
-                        )
+            status = await self.get_status_from_config()  # type: ignore
+            if status != "STOPPED":
+                try:
+                    await self.set_status_in_config("STOPPED")  # type: ignore
+                except Exception as e_stat:
+                    self.logger.warning(
+                        f"Failed to reset status to STOPPED for '{self.server_name}': {e_stat}"
+                    )
             return
 
         if self._process is None:
-            # If we don't have a process handle, try to find it via system call
-            # This is a fallback for when the app restarts but the server process is still running
-            verified_process = system_process.get_verified_bedrock_process(
-                self.server_name, self.server_dir, self.app_config_dir
+            verified_process = await system_process.get_verified_bedrock_process(
+                self.server_name,
+                self.server_dir,
+                self.app_config_dir,
             )
             if verified_process:
                 self._process = verified_process
@@ -245,72 +289,108 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 )
 
         try:
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("STOPPING")
+            await self.set_status_in_config("STOPPING")  # type: ignore
         except Exception as e_stat:
             self.logger.warning(
                 f"Failed to set status to STOPPING for '{self.server_name}': {e_stat}"
             )
 
-        self.logger.info(f"Attempting to stop server '{self.server_name}'...")
+        self.logger.info(
+            f"Attempting to stop server '{self.server_name}' asynchronously..."
+        )
 
         try:
             self.logger.info(f"Sending 'stop' command to server '{self.server_name}'.")
             if hasattr(self._process, "stdin") and self._process.stdin:
-                self._process.stdin.write(b"stop\n")
-                self._process.stdin.flush()
+                if hasattr(self._process.stdin, "drain"):
+                    self._process.stdin.write(b"stop\n")
+                    await self._process.stdin.drain()
+                else:
+
+                    def _write_stop():
+                        self._process.stdin.write(b"stop\n")
+                        self._process.stdin.flush()
+
+                    await asyncio.to_thread(_write_stop)
             elif isinstance(self._process, system_process.psutil.Process):
-                # If we recovered a psutil process, we can't write to its stdin
-                # Send terminate signal instead, which allows it to shut down gracefully
                 self.logger.info(
                     f"Cannot write to stdin of recovered psutil process '{self.server_name}'. Sending terminate signal."
                 )
                 self._process.terminate()
 
-            timeout = self.settings.get("SERVER_STOP_TIMEOUT_SEC", 60)
-            self._process.wait(timeout=timeout)
+            timeout = int(self.settings.get("monitor.server_stop_timeout", 10))
+
+            if hasattr(self._process, "wait") and inspect.iscoroutinefunction(
+                self._process.wait
+            ):
+                # asyncio.subprocess.Process
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    raise subprocess.TimeoutExpired(
+                        getattr(
+                            self._process,
+                            "args",
+                            getattr(self._process, "_args", ["bedrock_server"]),
+                        ),
+                        timeout,
+                    )
+            elif hasattr(self._process, "wait"):
+                # Popen or psutil.Process
+                def _wait() -> None:
+                    if self._process is not None:
+                        self._process.wait(timeout=timeout)  # type: ignore
+
+                await asyncio.to_thread(_wait)
+
             self.logger.info(f"Server '{self.server_name}' stopped gracefully.")
         except (subprocess.TimeoutExpired, OSError, BrokenPipeError) as e:
             self.logger.warning(
                 f"Server '{self.server_name}' did not stop gracefully or pipe was already closed. Killing process. Error: {e}"
             )
-            self._process.kill()
+            if self._process is not None:
+                self._process.kill()
         except system_process.psutil.TimeoutExpired as e:
             self.logger.warning(
                 f"Server '{self.server_name}' psutil process did not stop gracefully. Killing process. Error: {e}"
             )
-            self._process.kill()
+            if self._process is not None:
+                self._process.kill()
         except Exception as e:
             self.logger.error(
                 f"An error occurred while stopping server '{self.server_name}': {e}",
                 exc_info=True,
             )
             try:
-                self._process.kill()
+                if self._process is not None:
+                    self._process.kill()
             except Exception as kill_e:
                 self.logger.error(f"Failed to kill process after error: {kill_e}")
+        finally:
+            if hasattr(self, "_log_file_handle") and self._log_file_handle is not None:
+                try:
+                    self._log_file_handle.close()
+                except Exception as close_e:
+                    self.logger.warning(f"Failed to close log file handle: {close_e}")
+                self._log_file_handle = None
 
         self._process = None
 
         pid_file_path = self.get_pid_file_path()
-        system_process.remove_pid_file_if_exists(pid_file_path)
+        await system_process.remove_pid_file_if_exists(pid_file_path)
 
-        if hasattr(self, "set_status_in_config"):
-            self.set_status_in_config("STOPPED")
+        await self.set_status_in_config("STOPPED")  # type: ignore
 
-        if hasattr(self, "player_count"):
-            self.player_count = 0
-            self.players = []
+        setattr(self, "player_count", 0)
+        setattr(self, "players", [])
 
-        if hasattr(self, "_log_file_cursor"):
-            self._log_file_cursor = 0
-        if hasattr(self, "_scan_log_cursor"):
-            self._scan_log_cursor = 0
+        setattr(self, "_log_file_cursor", 0)
+        setattr(self, "_scan_log_cursor", 0)
 
         self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 
-    def get_process_info(self) -> Optional[Dict[str, Any]]:
-        """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process.
+    async def get_process_info(self) -> Optional[Dict[str, Any]]:
+        """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process asynchronously.
 
         This method first uses
         :func:`~.core.system.process.get_verified_bedrock_process` to locate and
@@ -328,12 +408,8 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             Example: ``{"pid": 1234, "cpu_percent": 15.2, "memory_mb": 256.5, "uptime": "0:10:30"}``
         """
         try:
-            # 1. Find and verify the process.
-            # get_verified_bedrock_process handles cases where psutil might not be available.
-            process_obj: Optional["psutil_for_types.Process"] = (
-                system_process.get_verified_bedrock_process(
-                    self.server_name, self.server_dir, self.app_config_dir
-                )
+            process_obj = await system_process.get_verified_bedrock_process(
+                self.server_name, self.server_dir, self.app_config_dir
             )
 
             if process_obj is None:
@@ -342,19 +418,16 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 )
                 return None
 
-            # 2. Delegate the measurement of the found process to the resource monitor.
-            # _resource_monitor is initialized in BedrockServerBaseMixin.
-            # It also checks for PSUTIL_AVAILABLE.
-            return self._resource_monitor.get_stats(process_obj)
+            return await asyncio.to_thread(
+                self._resource_monitor.get_stats, process_obj
+            )
 
-        except (
-            BSMError
-        ) as e_bsm:  # Catch known BSM errors, e.g. from get_verified_bedrock_process
+        except BSMError as e_bsm:
             self.logger.warning(
                 f"Known error while trying to get process info for '{self.server_name}': {e_bsm}"
             )
             return None
-        except Exception as e_unexp:  # Catch any other unexpected errors
+        except Exception as e_unexp:
             self.logger.error(
                 f"Unexpected error getting process info for '{self.server_name}': {e_unexp}",
                 exc_info=True,

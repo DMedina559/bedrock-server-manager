@@ -5,7 +5,9 @@ This mixin is the first in the inheritance chain for the main
 :class:`~.core.bedrock_server.BedrockServer` class. Its primary responsibility
 is to initialize core attributes that are common across all server-related
 operations, such as server name, directory paths, application settings, and
-the logger. All other mixins should inherit from this class to ensure these
+the logger. All other mixins should inherit from this import typing
+
+class to ensure these
 fundamental attributes are available.
 """
 
@@ -13,12 +15,13 @@ import logging
 import os
 import platform
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from ...context import AppContext
 
 from ...error import ConfigurationError, MissingArgumentError
+from ...utils.general import ReentrantAsyncLock
 from ..system import base as system_base
 
 
@@ -52,7 +55,10 @@ class BedrockServerBaseMixin:
         self,
         server_name: str,
         *args: Any,
+        settings: Optional[Any] = None,
         app_context: Optional["AppContext"] = None,
+        state: Optional[Any] = None,
+        storage: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
         """Initializes the base attributes for a Bedrock server instance.
@@ -71,7 +77,7 @@ class BedrockServerBaseMixin:
                 (like ``paths.servers`` or ``config_dir`` from settings) are missing.
         """
         # Call to super() is essential for cooperative multiple inheritance.
-        super().__init__(*args, **kwargs)
+        super().__init__()
 
         if not server_name:
             # A server instance is meaningless without a name.
@@ -83,13 +89,13 @@ class BedrockServerBaseMixin:
 
         self.server_name: str = server_name
 
-        if app_context is None:
-            raise ConfigurationError("AppContext is required but not provided.")
-        self.app_context = app_context
-        self.settings = app_context.settings
+        if settings is None:
+            raise ConfigurationError("Settings instance is required but not provided.")
 
-        if self.settings is None:
-            raise ConfigurationError("Settings instance is not available.")
+        self.settings = settings
+        self.state = state
+        self.storage = storage
+        self.app_context = app_context
 
         self.logger.debug(
             f"BedrockServerBaseMixin for '{self.server_name}' initialized using settings from database"
@@ -120,6 +126,12 @@ class BedrockServerBaseMixin:
 
         # --- State attributes for other mixins ---
         # These are initialized here but primarily used by other mixins.
+
+        # For atomic file writes concurrency control
+        self._file_locks: Dict[str, ReentrantAsyncLock] = {}
+
+        # Per-server operation lock for heavy/mutating operations (backups, restores, world ops, addons, installs)
+        self.operation_lock: ReentrantAsyncLock = ReentrantAsyncLock()
 
         # For process resource monitoring.
         self._resource_monitor = system_base.ResourceMonitor()
@@ -199,3 +211,20 @@ class BedrockServerBaseMixin:
         # The actual creation of this dir is handled by functions that write the PID file.
         current_server_config_dir = self.server_config_dir
         return os.path.join(current_server_config_dir, pid_filename)
+
+    def get_file_lock(self, filepath: str) -> ReentrantAsyncLock:
+        """Retrieves or creates a ReentrantAsyncLock for the specified filepath.
+
+        This ensures that asynchronous operations (like atomic JSON writes)
+        do not concurrently collide when targeting the same configuration file,
+        while allowing re-entrant locks within the same task.
+
+        Args:
+            filepath (str): The absolute path to the file.
+
+        Returns:
+            ReentrantAsyncLock: The re-entrant lock associated with the given file.
+        """
+        if filepath not in self._file_locks:
+            self._file_locks[filepath] = ReentrantAsyncLock()
+        return self._file_locks[filepath]

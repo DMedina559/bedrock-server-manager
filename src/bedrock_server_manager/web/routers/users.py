@@ -11,12 +11,11 @@ This module provides endpoints for:
 """
 
 import logging
-from typing import List
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...context import AppContext
-from ...db.models import User
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import BaseApiResponse, UpdateUserRolePayload
 from ..schemas import UserResponse as UserSchema
@@ -30,13 +29,6 @@ router = APIRouter(
 )
 
 
-def _get_active_admin_count(db) -> int:
-    """Helper function to get the count of active admins."""
-    return int(
-        db.query(User).filter(User.role == "admin", User.is_active.is_(True)).count()
-    )
-
-
 @router.get("/list", response_model=List[UserSchema])
 async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
@@ -45,8 +37,8 @@ async def list_users_api(
     """
     Retrieves the list of users as JSON.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        users = db.query(User).all()
+    async with app_context.storage.transaction() as session:
+        users = await app_context.storage.user_repo.get_all_users(session)
         return users
 
 
@@ -59,24 +51,26 @@ async def delete_user(
     """
     Deletes a user.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user = db.query(User).filter(User.id == user_id).first()
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
-            # Prevent deleting the last admin
-            if user.role == "admin" and _get_active_admin_count(db) <= 1:
+            if (
+                user.role == "admin"
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot delete the last active admin.",
                 )
 
-            create_audit_log(
+            await create_audit_log(
                 app_context,
                 current_user.id,
                 "delete_user",
-                {"user_id": user.id, "username": user.username},
+                {"user_id": user.id, "username": str(user.username)},
             )
-            db.delete(user)
-            db.commit()
+            await app_context.storage.user_repo.delete_user(session, user)
             logger.info(
                 f"UserResponse '{user.username}' deleted by '{current_user.username}'."
             )
@@ -97,22 +91,25 @@ async def disable_user(
     """
     Disables a user.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user = db.query(User).filter(User.id == user_id).first()
+    async with app_context.storage.transaction() as session:
+        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
-            if user.role == "admin" and _get_active_admin_count(db) <= 1:
+            if (
+                user.role == "admin"
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot disable the last active admin.",
                 )
 
             user.is_active = False
-            db.commit()
-            create_audit_log(
+            await create_audit_log(
                 app_context,
                 current_user.id,
                 "disable_user",
-                {"user_id": user.id, "username": user.username},
+                {"user_id": user.id, "username": str(user.username)},
             )
             logger.info(
                 f"UserResponse '{user.username}' disabled by '{current_user.username}'."
@@ -134,16 +131,15 @@ async def enable_user(
     """
     Enables a user.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user = db.query(User).filter(User.id == user_id).first()
+    async with app_context.storage.transaction() as session:
+        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
             user.is_active = True
-            db.commit()
-            create_audit_log(
+            await create_audit_log(
                 app_context,
                 current_user.id,
                 "enable_user",
-                {"user_id": user.id, "username": user.username},
+                {"user_id": user.id, "username": str(user.username)},
             )
             logger.info(
                 f"UserResponse '{user.username}' enabled by '{current_user.username}'."
@@ -166,28 +162,28 @@ async def update_user_role(
     """
     Updates a user's role.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user = db.query(User).filter(User.id == user_id).first()
+    async with app_context.storage.transaction() as session:
+        user: Any = await app_context.storage.user_repo.get_user_by_id(session, user_id)
         if user:
             if (
                 user.role == "admin"
                 and data.role != "admin"
-                and _get_active_admin_count(db) <= 1
+                and await app_context.storage.user_repo.count_active_admins(session)
+                <= 1
             ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot change the role of the last active admin.",
                 )
-            original_role = user.role
+            original_role = str(user.role)
             user.role = data.role
-            db.commit()
-            create_audit_log(
+            await create_audit_log(
                 app_context,
                 current_user.id,
                 "update_user_role",
                 {
                     "user_id": user.id,
-                    "username": user.username,
+                    "username": str(user.username),
                     "original_role": original_role,
                     "new_role": data.role,
                 },

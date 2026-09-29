@@ -78,13 +78,13 @@ async def get_plugin_ui():
 from bedrock_server_manager import app_event
 
 class MyWebAPIPlugin(PluginBase):
-    version = "1.2.0" # Mandatory
+    version = "4.0.0" # Mandatory
 
     @app_event("on_load")
-    def on_load(self):
+    async def plugin_loaded(self, **kwargs):
         self.logger.info(f"{self.name} v{self.version} loaded.")
         if not HAS_AUTH_DEP:
-            self.logger.warning("Auth dependency 'get_current_active_user' not found. Plugin API endpoints might be unsecured.")
+            self.logger.warning("Auth dependency 'get_current_user' not found. Plugin API endpoints might be unsecured.")
 
     def get_fastapi_routers(self):
         self.logger.info(f"Providing FastAPI router for '/my_web_plugin'.")

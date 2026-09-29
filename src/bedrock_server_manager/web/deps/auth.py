@@ -59,7 +59,7 @@ async def get_current_user_optional(
         return None
 
     app_context = request.app.state.app_context
-    return auth_utils._get_user_from_token(app_context, token)
+    return await auth_utils._get_user_from_token(app_context, token)
 
 
 async def get_current_user(

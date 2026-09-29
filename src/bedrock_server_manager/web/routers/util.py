@@ -12,6 +12,7 @@ not found.
 import logging
 import os
 
+import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
@@ -49,7 +50,7 @@ async def serve_custom_panorama_api(
             raise AppFileNotFoundError("CONFIG_DIR not set.", "Setting")
 
         custom_panorama_path = os.path.join(config_dir, "panorama.jpeg")
-        if os.path.isfile(custom_panorama_path):
+        if await aiofiles.ospath.isfile(custom_panorama_path):
             logger.debug(f"Serving custom panorama from: {custom_panorama_path}")
             return FileResponse(custom_panorama_path, media_type="image/jpeg")
         else:
@@ -58,7 +59,7 @@ async def serve_custom_panorama_api(
 
     except AppFileNotFoundError:
         default_panorama_path = os.path.join(STATIC_DIR, "image", "panorama.jpeg")
-        if os.path.isfile(default_panorama_path):
+        if await aiofiles.ospath.isfile(default_panorama_path):
             logger.debug(f"Serving default panorama from: {default_panorama_path}")
             return FileResponse(default_panorama_path, media_type="image/jpeg")
         else:
@@ -81,7 +82,7 @@ async def serve_custom_panorama_api(
 async def get_root_favicon():
     """Serves the `favicon.ico` file from the static directory."""
     favicon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-    if not os.path.exists(favicon_path):
+    if not await aiofiles.ospath.exists(favicon_path):
         # If the file genuinely doesn't exist, return a 404
         logger.warning(f"Favicon not found at expected path: {favicon_path}")
         raise HTTPException(
@@ -96,7 +97,7 @@ async def serve_webmanifest():
     """Serves the site.webmanifest from the static directory."""
     manifest_path = os.path.join(STATIC_DIR, "site.webmanifest")
 
-    if os.path.exists(manifest_path):
+    if await aiofiles.ospath.exists(manifest_path):
         return FileResponse(manifest_path)
 
     raise HTTPException(status_code=404, detail="Manifest not found.")

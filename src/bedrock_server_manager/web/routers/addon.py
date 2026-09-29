@@ -5,6 +5,7 @@ Router for addon-related endpoints.
 import logging
 import os
 
+import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -49,7 +50,7 @@ async def get_addons(
     identity = current_user.username
     logger.info(f"API: List available addons request by user '{identity}'.")
     try:
-        api_result = addon_api.list_available_addons(app_context=app_context)
+        api_result = await addon_api.list_available_addons(app_context=app_context)
 
         if api_result.get("status") == "success":
             # Extract just the filenames
@@ -90,7 +91,7 @@ async def get_server_addons(
         f"API: List world addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        result = addon_api.list_installed_addons(server_name, app_context)
+        result = await addon_api.list_installed_addons(server_name, app_context)
         return AddonListResponse(status="success", addons=result.get("addons"))
     except Exception as e:
         logger.error(
@@ -121,7 +122,7 @@ async def post_enable_addon(
         f"API: Enable addon for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.enable_addon,
             username=current_user.username,
             server_name=server_name,
@@ -163,7 +164,7 @@ async def post_disable_addon(
         f"API: Disable addon for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.disable_addon,
             username=current_user.username,
             server_name=server_name,
@@ -213,7 +214,7 @@ async def post_update_subpack(
             if dynamic_key in payload_dict:
                 subpack_name = payload_dict[dynamic_key]
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.update_subpack,
             username=current_user.username,
             server_name=server_name,
@@ -257,7 +258,7 @@ async def delete_uninstall_addon(
         f"API: Uninstall addon for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.uninstall_addon,
             username=current_user.username,
             server_name=server_name,
@@ -299,7 +300,7 @@ async def post_reorder_addons(
         f"API: Reorder addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.reorder_addons,
             username=current_user.username,
             server_name=server_name,
@@ -344,7 +345,7 @@ async def post_install_addon(
     from ...utils.server import validate_server
 
     try:
-        if not validate_server(server_name=server_name, app_context=app_context):
+        if not await validate_server(server_name=server_name, app_context=app_context):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Server '{server_name}' not found.",
@@ -368,7 +369,7 @@ async def post_install_addon(
                 detail="Invalid file path (security check failed).",
             )
 
-        if not os.path.isfile(full_addon_file_path):
+        if not await aiofiles.ospath.isfile(full_addon_file_path):
             logger.warning(
                 f"API Install Addon '{server_name}': Addon file '{selected_filename}' not found at '{full_addon_file_path}'."
             )
@@ -377,7 +378,7 @@ async def post_install_addon(
                 detail=f"Addon file '{selected_filename}' not found for import.",
             )
 
-        task_id = app_context.task_manager.run_task(
+        task_id = await app_context.task_manager.run_task(
             addon_api.import_addon,
             username=current_user.username,
             server_name=server_name,
@@ -426,7 +427,7 @@ async def get_server_addon_icon(
     logger.debug(f"API: Get addon icon for '{server_name}' requested.")
 
     try:
-        result = addon_api.list_installed_addons(server_name, app_context)
+        result = await addon_api.list_installed_addons(server_name, app_context)
 
         # Determine the key to search in based on pack_type
         pack_key = f"{pack_type}_packs"
@@ -439,7 +440,7 @@ async def get_server_addon_icon(
                 icon_path = pack.get("icon")
                 break
 
-        if icon_path and os.path.exists(icon_path):
+        if icon_path and await aiofiles.ospath.exists(icon_path):
             return FileResponse(icon_path, media_type="image/png")
 
         logger.info(
@@ -450,7 +451,7 @@ async def get_server_addon_icon(
     except (AppFileNotFoundError, HTTPException):
         # Fallback to the default world icon
         default_icon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-        if os.path.isfile(default_icon_path):
+        if await aiofiles.ospath.isfile(default_icon_path):
             return FileResponse(
                 default_icon_path, media_type="image/vnd.microsoft.icon"
             )

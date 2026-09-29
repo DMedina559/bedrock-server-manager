@@ -21,9 +21,11 @@ def server_test_app(app_context):
 
 def test_validate_server_exists_success(server_test_app, monkeypatch):
     """Test validate_server_exists with a valid existing server."""
+    from unittest.mock import AsyncMock
+
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.validate_server",
-        MagicMock(return_value=True),
+        AsyncMock(return_value=True),
     )
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.core_validate_server_name_format",
@@ -38,9 +40,11 @@ def test_validate_server_exists_success(server_test_app, monkeypatch):
 
 def test_validate_server_exists_not_found(server_test_app, monkeypatch):
     """Test validate_server_exists with a non-existent server raises 404."""
+    from unittest.mock import AsyncMock
+
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.validate_server",
-        MagicMock(return_value=False),
+        AsyncMock(return_value=False),
     )
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.core_validate_server_name_format",

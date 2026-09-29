@@ -2,7 +2,7 @@
 Integration tests for the permissions router endpoints.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -39,7 +39,8 @@ def test_post_permissions_set_success(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.return_value = {"status": "success"}
 
@@ -63,10 +64,11 @@ def test_post_permissions_set_partial_failure(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
+        new_callable=AsyncMock,
     ) as mock_set:
         # Mock side effect to succeed for first, fail for second
-        def side_effect(server_name, xuid, **kwargs):
+        async def side_effect(server_name, xuid, **kwargs):
             if xuid == "123":
                 return {"status": "success"}
             return {"status": "error", "message": "Failed to set"}
@@ -95,7 +97,8 @@ def test_post_permissions_set_not_found_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.return_value = {"status": "error", "message": "Player not found"}
 
@@ -117,7 +120,8 @@ def test_post_permissions_set_exception(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.side_effect = Exception("Crash")
 
@@ -139,7 +143,8 @@ def test_post_permissions_set_bsm_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.side_effect = BSMError("BSMError: Config corrupted")
 
@@ -161,7 +166,8 @@ def test_post_permissions_set_user_input_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.side_effect = UserInputError("Invalid permission level")
 
@@ -188,7 +194,8 @@ def test_get_permissions_unauthorized(unauth_client: TestClient, real_bedrock_se
 
 def test_get_permissions_success(admin_auth_client: TestClient, real_bedrock_server):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = {
             "status": "success",
@@ -209,7 +216,8 @@ def test_get_permissions_success(admin_auth_client: TestClient, real_bedrock_ser
 
 def test_get_permissions_not_found(admin_auth_client: TestClient, real_bedrock_server):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = {
             "status": "error",
@@ -227,7 +235,8 @@ def test_get_permissions_internal_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions"
+        "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = {
             "status": "error",

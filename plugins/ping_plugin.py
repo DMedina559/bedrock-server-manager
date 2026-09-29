@@ -25,7 +25,7 @@ class PingPlugin(PluginBase):
     name = "Ping Test"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         """
         Called by the PluginManager when this plugin is loaded.
         """
@@ -34,7 +34,7 @@ class PingPlugin(PluginBase):
         )
 
     @app_event("after_server_start")
-    def send_ping_event(self, **kwargs: Any):
+    async def send_ping_event(self, **kwargs: Any):
         """
         An application event hook, called by the PluginManager after a server
         start attempt.
@@ -73,7 +73,7 @@ class PingPlugin(PluginBase):
             # Keyword arguments are often more descriptive for event payloads.
             # The event name "pingplugin:ping" suggests this event originates from
             # "pingplugin" and is about a "ping".
-            self.api.send_event(
+            await self.api.send_event(
                 "pingplugin:ping",  # Event name
                 server_name=server_name,  # Example of a top-level kwarg
                 data=ping_payload_data,  # Example of a nested dictionary as a kwarg
@@ -89,7 +89,7 @@ class PingPlugin(PluginBase):
             )
 
     @app_event("on_unload")
-    def plugin_unloaded(self, **kwargs):
+    async def plugin_unloaded(self, **kwargs):
         """
         Called by the PluginManager when this plugin is being unloaded.
         """

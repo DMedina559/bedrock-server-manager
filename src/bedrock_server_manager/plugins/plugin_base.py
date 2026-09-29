@@ -110,7 +110,7 @@ class PluginBase(ABC):
             f"Plugin '{self.name}' v{self.version} initialized and active."
         )
 
-    def get_plugin_setting(self, key: str, default: Any = None) -> Any:
+    async def get_plugin_setting(self, key: str, default: Any = None) -> Any:
         """Retrieves a setting specific to this plugin.
 
         Args:
@@ -121,14 +121,14 @@ class PluginBase(ABC):
             Any: The setting value or the default.
         """
         full_key = f"plugins.{self.name}.{key}"
-        result = self.api.get_global_setting(key=full_key)
+        result = await self.api.get_global_setting(key=full_key)
         if result and result.get("status") == "success":
             value = result.get("value")
             if value is not None:
                 return value
         return default
 
-    def set_plugin_setting(self, key: str, value: Any) -> Dict[str, Any]:
+    async def set_plugin_setting(self, key: str, value: Any) -> Dict[str, Any]:
         """Saves a setting specific to this plugin.
 
         Args:
@@ -140,7 +140,7 @@ class PluginBase(ABC):
         """
         full_key = f"plugins.{self.name}.{key}"
         return cast(
-            Dict[str, Any], self.api.set_global_setting(key=full_key, value=value)
+            Dict[str, Any], await self.api.set_global_setting(key=full_key, value=value)
         )
 
     # --- Plugin Extension Hooks ---

@@ -151,21 +151,26 @@ def test_post_reorder_addons_success(
         assert data["task_id"] == "test_task_id"
 
 
-def test_post_install_addon_success(
+async def test_post_install_addon_success(
     admin_auth_client: TestClient,
     app_context: AppContext,
     real_bedrock_server,
     tmp_path,
+    valid_mcaddon_zip,
 ):
     """Test installing an addon from a file."""
+    import shutil
+
     # Setup mock addon file
     content_dir = tmp_path / "test_data" / "content" / "addons"
     content_dir.mkdir(parents=True, exist_ok=True)
     addon_file = content_dir / "test_addon.mcaddon"
-    addon_file.touch()
+    shutil.copy2(valid_mcaddon_zip, addon_file)
 
     # Update app_context settings to point to our temp dir
-    app_context.settings.set("paths.content", str(tmp_path / "test_data" / "content"))
+    await app_context.settings.set(
+        "paths.content", str(tmp_path / "test_data" / "content")
+    )
 
     with patch(
         "bedrock_server_manager.web.tasks.TaskManager.run_task"
@@ -181,14 +186,16 @@ def test_post_install_addon_success(
         assert data["task_id"] == "test_task_id"
 
 
-def test_post_install_addon_file_not_found(
+async def test_post_install_addon_file_not_found(
     admin_auth_client: TestClient,
     app_context: AppContext,
     real_bedrock_server,
     tmp_path,
 ):
     """Test installing an addon where file does not exist."""
-    app_context.settings.set("paths.content", str(tmp_path / "test_data" / "content"))
+    await app_context.settings.set(
+        "paths.content", str(tmp_path / "test_data" / "content")
+    )
 
     response = admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/addon/install",
@@ -198,14 +205,16 @@ def test_post_install_addon_file_not_found(
     assert "not found" in response.json()["detail"]
 
 
-def test_post_install_addon_path_traversal(
+async def test_post_install_addon_path_traversal(
     admin_auth_client: TestClient,
     app_context: AppContext,
     real_bedrock_server,
     tmp_path,
 ):
     """Test installing an addon with path traversal attack."""
-    app_context.settings.set("paths.content", str(tmp_path / "test_data" / "content"))
+    await app_context.settings.set(
+        "paths.content", str(tmp_path / "test_data" / "content")
+    )
 
     response = admin_auth_client.post(
         f"/api/server/{real_bedrock_server.server_name}/addon/install",

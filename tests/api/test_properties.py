@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -10,21 +10,34 @@ from bedrock_server_manager.api.properties import (
 from bedrock_server_manager.error import InvalidServerNameError
 
 
-def test_get_properties_success(app_context, monkeypatch):
+async def test_get_properties_success(app_context, monkeypatch):
     """Test get_properties maps accurately to BedrockServer properties output."""
     mock_server = MagicMock()
-    mock_server.get_server_properties.return_value = {"server-name": "mc server"}
+    mock_server.get_server_properties = AsyncMock(
+        return_value={"server-name": "mc server"}
+    )
+    mock_server.server_properties_path = "test/path"
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = get_properties("test_server", app_context)
+    # Mock aiofiles for properties read
+    import unittest.mock
+
+    mock_file = AsyncMock()
+    mock_file.read.return_value = "raw data"
+
+    mock_file.__aenter__.return_value = mock_file
+
+    with unittest.mock.patch("aiofiles.open", return_value=mock_file):
+        result = await get_properties("test_server", app_context)
 
     assert result["status"] == "success"
     assert result["properties"]["server-name"] == "mc server"
+    assert result["raw_content"] == "raw data"
 
 
-def test_get_properties_missing_name(app_context):
+async def test_get_properties_missing_name(app_context):
     """Test get_properties catches empty server names smoothly without raising."""
-    result = get_properties("", app_context)
+    result = await get_properties("", app_context)
 
     assert result["status"] == "error"
     assert "cannot be empty" in result["message"]
@@ -53,9 +66,10 @@ def test_validate_property_value():
     assert validate_property_value("tick-distance", "3")["status"] == "error"
 
 
-def test_set_properties_success(app_context, monkeypatch):
+async def test_set_properties_success(app_context, monkeypatch):
     """Test set_properties maps properly calling BedrockServer validation and set operations."""
     mock_server = MagicMock()
+    mock_server.set_server_property = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
     # Bypassing the stop_before lock via monkeypatching context manager
@@ -63,7 +77,7 @@ def test_set_properties_success(app_context, monkeypatch):
         "bedrock_server_manager.api.properties.server_lifecycle_manager", MagicMock()
     )
 
-    result = set_properties(
+    result = await set_properties(
         "test_server", {"server-port": "19132", "server-name": "mc"}, app_context
     )
 
@@ -72,21 +86,21 @@ def test_set_properties_success(app_context, monkeypatch):
     mock_server.set_server_property.assert_any_call("server-name", "mc")
 
 
-def test_set_properties_validation_failure(app_context):
+async def test_set_properties_validation_failure(app_context):
     """Test set_properties returns a validation error gracefully preventing writes."""
-    result = set_properties("test_server", {"server-port": "0"}, app_context)
+    result = await set_properties("test_server", {"server-port": "0"}, app_context)
 
     assert result["status"] == "error"
     assert "Validation failed" in result["message"]
 
 
-def test_set_properties_empty_name(app_context):
+async def test_set_properties_empty_name(app_context):
     """Test set_properties validates server names rigidly before proceeding."""
     with pytest.raises(InvalidServerNameError):
-        set_properties("", {"server-name": "mc"}, app_context)
+        await set_properties("", {"server-name": "mc"}, app_context)
 
 
-def test_set_properties_type_error(app_context):
+async def test_set_properties_type_error(app_context):
     """Test set_properties validates payload typing directly."""
     with pytest.raises(TypeError):
-        set_properties("test_server", "not_a_dict", app_context)
+        await set_properties("test_server", "not_a_dict", app_context)

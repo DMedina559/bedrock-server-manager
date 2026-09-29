@@ -21,18 +21,18 @@ class AutoBackupOnStart(PluginBase):
     name = "Auto Backup On Start"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         """Logs a message when the plugin is loaded."""
         self.logger.info(
             "Plugin loaded. Will perform a full backup before any server starts."
         )
 
     @app_event("before_server_start")
-    def backup_on_start(self, **kwargs: Any):
+    async def backup_on_start(self, **kwargs: Any):
         """
         Triggers a full backup of the server before it starts.
         """
-        if not self.get_plugin_setting("enable_backup_on_start", default=True):
+        if not await self.get_plugin_setting("enable_backup_on_start", default=True):
             self.logger.info("Backup on start is disabled in plugin settings.")
             return
 
@@ -46,10 +46,7 @@ class AutoBackupOnStart(PluginBase):
             # The server is guaranteed to be offline at this point, so it is safe
             # to run a backup without stopping it first.
 
-            # Run the backup in a separate thread so it doesn't block the main asyncio event loop
-            result = self.api.backup_all(
-                server_name=server_name, stop_start_server=False
-            )
+            result = await self.api.backup_all(server_name=server_name)
 
             if result.get("status") == "success":
                 self.logger.info(

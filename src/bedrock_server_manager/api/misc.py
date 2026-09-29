@@ -6,8 +6,8 @@ instance, such as managing the global download cache for server executables.
 Operations are designed to be thread-safe.
 """
 
+import asyncio
 import logging
-import threading
 from typing import Dict, Optional
 
 from ..context import AppContext
@@ -15,11 +15,12 @@ from ..core import prune_old_downloads
 from ..error import BSMError, MissingArgumentError, UserInputError
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
+from ..utils.general import ReentrantAsyncLock
 
 logger = logging.getLogger(__name__)
 
 # A lock to prevent race conditions during miscellaneous file operations.
-_misc_lock = threading.RLock()
+_misc_lock = ReentrantAsyncLock()
 
 
 @api_method("prune_download_cache")
@@ -28,7 +29,7 @@ _misc_lock = threading.RLock()
     after="after_prune_download_cache",
     identity_keys=("download_dir", "keep_count"),
 )
-def prune_download_cache(  # noqa: C901
+async def prune_download_cache(  # noqa: C901
     download_dir: str,
     keep_count: Optional[int] = None,
     app_context: Optional[AppContext] = None,
@@ -68,7 +69,9 @@ def prune_download_cache(  # noqa: C901
     """
     # Attempt to acquire the lock without blocking. If another operation
     # is in progress, skip this one to avoid conflicts.
-    if not _misc_lock.acquire(timeout=300):
+    try:
+        await _misc_lock.acquire(timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
             "A miscellaneous file operation is already in progress. Skipping concurrent prune."
         )
@@ -110,7 +113,9 @@ def prune_download_cache(  # noqa: C901
 
         try:
             # Delegate the actual file deletion to the core downloader module.
-            prune_old_downloads(download_dir=download_dir, download_keep=effective_keep)
+            await prune_old_downloads(
+                download_dir=download_dir, download_keep=effective_keep
+            )
 
             logger.info(f"API: Pruning successful for directory '{download_dir}'.")
             return {

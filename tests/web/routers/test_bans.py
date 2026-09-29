@@ -52,22 +52,20 @@ def test_get_server_bans_error(admin_auth_client: TestClient, real_bedrock_serve
     ) as mock_api:
         mock_api.return_value = {
             "status": "error",
-            "message": "Failed to read allowlist.json",
+            "message": "Database is not initialized.",
         }
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/bans/get"
         )
         assert response.status_code == 400
-        assert "Failed to read allowlist.json" in response.json()["detail"]
+        assert "Database is not initialized." in response.json()["detail"]
 
 
 def test_post_add_server_ban_success(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     """Test adding a server ban successfully."""
-    with patch(
-        "bedrock_server_manager.web.routers.bans.add_server_ban_api"
-    ) as mock_api:
+    with patch("bedrock_server_manager.web.routers.bans.add_server_ban") as mock_api:
         mock_api.return_value = {"status": "success", "message": "Player banned"}
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/bans/add",
@@ -79,9 +77,7 @@ def test_post_add_server_ban_success(
 
 def test_post_add_server_ban_error(admin_auth_client: TestClient, real_bedrock_server):
     """Test adding a server ban when API returns error."""
-    with patch(
-        "bedrock_server_manager.web.routers.bans.add_server_ban_api"
-    ) as mock_api:
+    with patch("bedrock_server_manager.web.routers.bans.add_server_ban") as mock_api:
         mock_api.return_value = {"status": "error", "message": "Player not found"}
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/bans/add",
@@ -95,9 +91,7 @@ def test_delete_remove_server_ban_success(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     """Test removing a server ban successfully."""
-    with patch(
-        "bedrock_server_manager.web.routers.bans.remove_server_ban_api"
-    ) as mock_api:
+    with patch("bedrock_server_manager.web.routers.bans.remove_server_ban") as mock_api:
         mock_api.return_value = {"status": "success", "message": "Player unbanned"}
 
         # httpx testclient needs request for delete with body
@@ -115,9 +109,7 @@ def test_delete_remove_server_ban_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     """Test removing a server ban when API returns error."""
-    with patch(
-        "bedrock_server_manager.web.routers.bans.remove_server_ban_api"
-    ) as mock_api:
+    with patch("bedrock_server_manager.web.routers.bans.remove_server_ban") as mock_api:
         mock_api.return_value = {"status": "error", "message": "Ban not found"}
 
         response = admin_auth_client.request(

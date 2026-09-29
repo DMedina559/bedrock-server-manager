@@ -63,7 +63,7 @@ class CustomEventLoopTestPlugin(PluginBase):
     name = "Custom Event Loop Test"
 
     @app_event("on_load")
-    def plugin_loaded(self):
+    async def plugin_loaded(self):
         self.logger.info(f"Plugin '{self.name}' v{self.version} loaded.")
         self.logger.warning(
             f"'{self.name}': This plugin will intentionally attempt to create a "
@@ -79,14 +79,12 @@ class CustomEventLoopTestPlugin(PluginBase):
             f"'Skipping recursive custom event' DEBUG message from PluginManager."
         )
 
-        # Register listeners
-
         # Initial trigger for the event chain
         self.logger.info(
             f"--- CUSTOM LOOP TEST (ON_LOAD): Initial trigger by sending '{EVENT_X_NAME}'."
         )
         try:
-            self.api.send_event(EVENT_X_NAME, source_method="on_load")
+            await self.api.send_event(EVENT_X_NAME, source_method="on_load")
             self.logger.info(
                 f"--- CUSTOM LOOP TEST (ON_LOAD): Initial '{EVENT_X_NAME}' sent successfully."
             )
@@ -97,7 +95,7 @@ class CustomEventLoopTestPlugin(PluginBase):
             )
 
     @app_event(EVENT_X_NAME)
-    def handle_event_x(self, *args, **kwargs):
+    async def handle_event_x(self, *args, **kwargs):
         """
         Handler for EVENT_X_NAME ('custom_loop:event_X').
         This is the first step in our loop if triggered by on_load,
@@ -115,7 +113,7 @@ class CustomEventLoopTestPlugin(PluginBase):
             f"--- CUSTOM LOOP TEST (HANDLER X -> Y): From '{EVENT_X_NAME}' handler, sending '{EVENT_Y_NAME}'."
         )
         try:
-            self.api.send_event(EVENT_Y_NAME, source_event_x_payload=kwargs)
+            await self.api.send_event(EVENT_Y_NAME, source_event_x_payload=kwargs)
         except Exception as e:
             self.logger.error(
                 f"--- CUSTOM LOOP TEST (HANDLER X): Failed to send '{EVENT_Y_NAME}': {e}",
@@ -126,7 +124,7 @@ class CustomEventLoopTestPlugin(PluginBase):
         )
 
     @app_event(EVENT_Y_NAME)
-    def handle_event_y(self, *args, **kwargs):
+    async def handle_event_y(self, *args, **kwargs):
         """
         Handler for EVENT_Y_NAME ('custom_loop:event_Y').
         This is the middle step, which will attempt the recursive call.
@@ -148,7 +146,7 @@ class CustomEventLoopTestPlugin(PluginBase):
             # This send_event call will attempt to trigger EVENT_X_NAME again.
             # The PluginManager's custom event stack guard should prevent the *handlers*
             # for this recursive EVENT_X_NAME from executing again.
-            self.api.send_event(
+            await self.api.send_event(
                 EVENT_X_NAME, source_method="handle_event_y_recursive_attempt"
             )
 
@@ -169,6 +167,7 @@ class CustomEventLoopTestPlugin(PluginBase):
             f"--- CUSTOM LOOP TEST (HANDLER Y): Finished handling '{EVENT_Y_NAME}'."
         )
 
-    def on_unload(self):
+    @app_event("on_unload")
+    async def on_unload(self, **kwargs):
         """Called when the plugin is unloaded."""
         self.logger.info(f"Plugin '{self.name}' v{self.version} is unloading.")

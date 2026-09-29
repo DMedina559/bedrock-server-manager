@@ -7,13 +7,13 @@ from fastapi.testclient import TestClient
 from bedrock_server_manager.db.models import User as UserModel
 
 
-def test_get_account_api_unauthorized(unauth_client: TestClient):
+async def test_get_account_api_unauthorized(unauth_client: TestClient):
     """Test getting account details without authentication."""
     response = unauth_client.get("/api/account")
     assert response.status_code == 401
 
 
-def test_get_account_api_success(auth_client: TestClient, test_user: UserModel):
+async def test_get_account_api_success(auth_client: TestClient, test_user: UserModel):
     """Test getting account details with valid authentication."""
     response = auth_client.get("/api/account")
     assert response.status_code == 200
@@ -22,7 +22,7 @@ def test_get_account_api_success(auth_client: TestClient, test_user: UserModel):
     assert data["role"] == test_user.role
 
 
-def test_post_update_theme_success(
+async def test_post_update_theme_success(
     auth_client: TestClient, test_user: UserModel, db_session
 ):
     """Test updating user theme successfully."""
@@ -34,11 +34,11 @@ def test_post_update_theme_success(
     assert response.json()["status"] == "success"
 
     # Verify DB update
-    db_session.refresh(test_user)
+    await db_session.refresh(test_user)
     assert test_user.theme == "dark"
 
 
-def test_post_update_profile_success(
+async def test_post_update_profile_success(
     auth_client: TestClient, test_user: UserModel, db_session
 ):
     """Test updating user profile successfully."""
@@ -50,12 +50,12 @@ def test_post_update_profile_success(
     assert response.json()["status"] == "success"
 
     # Verify DB update
-    db_session.refresh(test_user)
+    await db_session.refresh(test_user)
     assert test_user.full_name == "Test User Full"
     assert test_user.email == "test@example.com"
 
 
-def test_post_change_password_success(
+async def test_post_change_password_success(
     auth_client: TestClient, test_user: UserModel, db_session
 ):
     """Test changing user password successfully."""
@@ -66,14 +66,13 @@ def test_post_change_password_success(
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
-    # Verify DB update (password should change, current verification logic requires re-hashing or testing endpoint again)
     from bedrock_server_manager.utils.auth import verify_password
 
-    db_session.refresh(test_user)
+    await db_session.refresh(test_user)
     assert verify_password("newpassword123", str(test_user.hashed_password))
 
 
-def test_post_change_password_incorrect_current(
+async def test_post_change_password_incorrect_current(
     auth_client: TestClient, test_user: UserModel
 ):
     """Test changing password with incorrect current password."""
@@ -85,7 +84,7 @@ def test_post_change_password_incorrect_current(
     assert "Incorrect current password" in response.json()["detail"]
 
 
-def test_post_change_password_validation_error(auth_client: TestClient):
+async def test_post_change_password_validation_error(auth_client: TestClient):
     """Test changing password with missing fields."""
     response = auth_client.post(
         "/api/account/change-password",

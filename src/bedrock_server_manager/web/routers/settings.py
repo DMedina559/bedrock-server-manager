@@ -46,7 +46,7 @@ async def get_all_settings(
     identity = current_user.username
     logger.info(f"API: Get global settings request by '{identity}'.")
     try:
-        result = settings_api.get_all_global_settings(app_context=app_context)
+        result = await settings_api.get_all_global_settings(app_context=app_context)
         if result.get("status") == "success":
             return SettingsResponse(
                 status="success",
@@ -96,7 +96,7 @@ async def post_set_setting(
 
     try:
 
-        result = settings_api.set_global_setting(
+        result = await settings_api.set_global_setting(
             key=payload.key, value=payload.value, app_context=app_context
         )
         if result.get("status") == "success":
@@ -149,7 +149,7 @@ async def put_reload_settings(
     identity = current_user.username
     logger.info(f"API: Reload global settings request by '{identity}'.")
     try:
-        result = settings_api.reload_global_settings(app_context=app_context)
+        result = await settings_api.reload_global_settings(app_context=app_context)
         if result.get("status") == "success":
             return SettingsResponse(
                 status="success",

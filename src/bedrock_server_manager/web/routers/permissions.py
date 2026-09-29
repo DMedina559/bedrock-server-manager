@@ -38,7 +38,7 @@ async def post_permissions_set(
 
     for item in permission_entries:
         try:
-            result = permissions_api.set_permissions(
+            result = await permissions_api.set_permissions(
                 server_name=server_name,
                 xuid=item.xuid,
                 player_name=item.name,
@@ -94,7 +94,7 @@ async def get_permissions(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = permissions_api.get_permissions(
+    result = await permissions_api.get_permissions(
         server_name=server_name, app_context=app_context
     )
     if result.get("status") == "success":

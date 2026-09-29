@@ -8,6 +8,8 @@ from __future__ import annotations
 from logging import Logger
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from sqlalchemy import inspect, select
+
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
 
@@ -15,8 +17,11 @@ if TYPE_CHECKING:
     from .core.bedrock_process_manager import BedrockProcessManager
     from .core.bedrock_server import BedrockServer
     from .db.database import Database
+    from .db.storage import Storage
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
+    from .state.app_state import AppState
+    from .web.log_streamer import LogStreamer
     from .web.resource_monitor import ResourceMonitor
     from .web.tasks import TaskManager
     from .web.websocket_manager import ConnectionManager
@@ -41,44 +46,69 @@ class AppContext:
 
         self._config_dir: Optional[str] = config_dir
         self._data_dir: Optional[str] = data_dir
+        self._log_dir: Optional[str] = None
         self._db_url: Optional[str] = db_url
         self._log_level: Optional[str] = log_level
         self._logger: Optional[Logger] = logger
         self._settings: Optional["Settings"] = None
         self._db: Optional["Database"] = None
+        self._state: Optional["AppState"] = None
+        self._storage: Optional["Storage"] = None
         self._bedrock_process_manager: Optional["BedrockProcessManager"] = None
         self._plugin_manager: Optional["PluginManager"] = None
         self._task_manager: Optional["TaskManager"] = None
         self._connection_manager: Optional["ConnectionManager"] = None
         self._resource_monitor: Optional["ResourceMonitor"] = None
-        self._servers: Dict[str, "BedrockServer"] = {}
-        self.loop: Optional["AbstractEventLoop"] = None
+        self._log_streamer: Optional["LogStreamer"] = None
         self._api: Optional["AppAPI"] = None
-        self._web_server: Optional[Any] = None
-        self.splash_txt: Optional[str] = None
-        self._log_dir: Optional[str] = None
-        self._needs_setup: Optional[bool] = None
-        self._pre_app_config_cache: Optional[Dict[str, Any]] = None
 
-    def load(self):
+        self.loop: Optional["AbstractEventLoop"] = None
+        self._web_server: Optional[Any] = None
+
+        self._servers: Dict[str, "BedrockServer"] = {}
+        self.splash_txt: Optional[str] = None
+        self._needs_setup: Optional[bool] = None
+
+        self._pre_app_config_cache: Optional[Dict[str, Any]] = None
+        self._settings_service: Optional[Any] = None
+        self._server_service: Optional[Any] = None
+        self._plugin_service: Optional[Any] = None
+        self._user_service: Optional[Any] = None
+
+    async def load(self):
         """
-        Loads the application context by initializing the settings.
+        Loads the application context by initializing the settings, AppState, and Storage.
         """
         from . import api  # noqa: F401
         from .config.settings import Settings
+        from .db.storage import Storage
+        from .state.app_state import AppState
 
         self.db.initialize()
 
-        self._settings = Settings(
-            db=self.db, config_dir=self.config_dir, data_dir=self.data_dir
-        )
-        self._settings.load()
+        self._storage = Storage(db=self.db, data_dir=self.data_dir)
+        self._state = AppState()
+        self._settings_service = None
+        self._server_service = None
+        self._plugin_service = None
+        self._user_service = None
+        await self._storage.load_state(self._state)
+
+        if self._settings is not None:
+            self._settings.app_context = self
+        else:
+            self._settings = Settings(
+                config_dir=self.config_dir,
+                data_dir=self.data_dir,
+                app_context=self,
+            )
+        await self._settings.load()
 
         from .utils import get_utils
 
         self.splash_txt = get_utils._get_splash_text()
 
-    def reload(self):
+    async def reload(self):
         """
         Reloads the application context by reloading settings and all components.
         """
@@ -90,17 +120,55 @@ class AppContext:
         self._log_level = None
         self._log_dir = None
 
-        self.settings.reload()
-        self.plugin_manager.reload()
+        if self._storage and self._state:
+            await self._storage.load_state(self._state)
+
+        await self.settings.reload()
+
+        if self._plugin_manager is not None:
+            await self._plugin_manager.reload()
 
         if self._resource_monitor is not None:
             self._resource_monitor.stop()
             self._resource_monitor.start()
 
-        if hasattr(self, "log_streamer") and self.log_streamer is not None:
-            self.log_streamer.stop()
-            self.log_streamer.start()
-        # self._servers.clear()
+        if self._log_streamer is not None:
+            self._log_streamer.stop()
+            self._log_streamer.start()
+
+    async def flush(self):
+        """
+        Flushes any unpersisted application state to storage.
+        """
+        if self._storage and self._state:
+            await self._storage.flush(self._state)
+
+    async def shutdown(self):
+        """
+        Shuts down application context components and flushes pending state to storage.
+        """
+        if self._bedrock_process_manager is not None:
+            await self._bedrock_process_manager.shutdown()
+
+        if self._plugin_manager is not None:
+            await self._plugin_manager.shutdown()
+
+        if self._task_manager is not None:
+            await self._task_manager.shutdown()
+
+        if self._resource_monitor is not None:
+            self._resource_monitor.stop()
+
+        if self._log_streamer is not None:
+            self._log_streamer.stop()
+
+        if self._connection_manager is not None:
+            await self._connection_manager.shutdown()
+
+        await self.flush()
+
+        if self._db is not None:
+            await self._db.shutdown()
 
     @property
     def pre_app_config(self) -> Dict[str, Any]:
@@ -188,20 +256,35 @@ class AppContext:
         if not self._db:
             return True
 
-        from sqlalchemy.orm import Session
-
         from .db.models import User
+        from .utils.general import run_async
+
+        async def _check():
+            if not self.db.engine:
+                self.db.initialize()
+            assert self.db.engine is not None
+            async with self.db.engine.connect() as conn:
+
+                def _sync_inspect_and_query(sync_conn):
+                    inspector = inspect(sync_conn)
+                    if not inspector.has_table("users"):
+                        return True
+                    res = sync_conn.execute(
+                        select(User).filter(
+                            User.role == "admin", User.is_active.is_(True)
+                        )
+                    )
+                    return res.scalars().first() is None
+
+                return await conn.run_sync(_sync_inspect_and_query)
 
         try:
-            with Session(self.db.engine) as session:
-                admin_user = session.query(User).filter(User.role == "admin").first()
-                if admin_user:
-                    self._needs_setup = False
-                    return False
+            needs = bool(run_async(_check()))
+            if not needs:
+                self._needs_setup = False
+            return needs
         except Exception:
             return True
-
-        return True
 
     @property
     def api(self) -> "AppAPI":
@@ -209,9 +292,9 @@ class AppContext:
         Lazily loads and returns the API instance.
         """
         if not hasattr(self, "_api") or self._api is None:
-            from .plugins.api_bridge import AppAPI
+            from .plugins.api_bridge import create_app_api
 
-            self._api = AppAPI("CoreAPI", self, is_core=True)
+            self._api = create_app_api("CoreAPI", self, is_core=True)
         return self._api
 
     @property
@@ -226,13 +309,43 @@ class AppContext:
         return self._db
 
     @property
+    def state(self) -> "AppState":
+        """
+        Returns the AppState instance.
+        """
+        if self._state is None:
+            from .error import BSMError
+
+            raise BSMError(
+                "AppContext.state accessed before AppContext.load() was called."
+            )
+        return self._state
+
+    @property
+    def storage(self) -> "Storage":
+        """
+        Returns the Storage instance.
+        """
+        if self._storage is None:
+            from .error import BSMError
+
+            raise BSMError(
+                "AppContext.storage accessed before AppContext.load() was called."
+            )
+        return self._storage
+
+    @property
     def settings(self) -> "Settings":
         """
         Returns the Settings instance.
         """
         if self._settings is None:
-            raise RuntimeError(
-                "Settings have not been loaded. Please call AppContext.load() first."
+            from .config.settings import Settings
+
+            self._settings = Settings(
+                config_dir=self.config_dir,
+                data_dir=self.data_dir,
+                app_context=self,
             )
         return self._settings
 
@@ -244,7 +357,12 @@ class AppContext:
         if self._plugin_manager is None:
             from .plugins.plugin_manager import PluginManager
 
-            self._plugin_manager = PluginManager(self)
+            self._plugin_manager = PluginManager(
+                state=self.state,
+                storage=self.storage,
+                settings=self.settings,
+                app_context=self,
+            )
         return self._plugin_manager
 
     @property
@@ -255,7 +373,9 @@ class AppContext:
         if self._task_manager is None:
             from .web.tasks import TaskManager
 
-            self._task_manager = TaskManager(app_context=self)
+            self._task_manager = TaskManager(
+                connection_manager=self.connection_manager,
+            )
         return self._task_manager
 
     @property
@@ -277,8 +397,72 @@ class AppContext:
         if self._resource_monitor is None:
             from .web.resource_monitor import ResourceMonitor
 
-            self._resource_monitor = ResourceMonitor(app_context=self)
+            self._resource_monitor = ResourceMonitor(
+                connection_manager=self.connection_manager,
+                server_provider=self.get_server,
+            )
         return self._resource_monitor
+
+    @property
+    def log_streamer(self) -> "LogStreamer":
+        """
+        Lazily loads and returns the LogStreamer instance.
+        """
+        if self._log_streamer is None:
+            from .web.log_streamer import LogStreamer
+
+            self._log_streamer = LogStreamer(
+                connection_manager=self.connection_manager,
+                log_dir=self.log_dir,
+                server_provider=self.get_server,
+            )
+        return self._log_streamer
+
+    @log_streamer.setter
+    def log_streamer(self, value: Optional["LogStreamer"]) -> None:
+        self._log_streamer = value
+
+    @property
+    def settings_service(self):
+        """Returns the SettingsService instance."""
+        if self._settings_service is None:
+            from .services.settings_service import SettingsService
+
+            self._settings_service = SettingsService(
+                state=self._state, storage=self._storage, settings=self.settings
+            )
+        return self._settings_service
+
+    @property
+    def server_service(self):
+        """Returns the ServerService instance."""
+        if self._server_service is None:
+            from .services.server_service import ServerService
+
+            self._server_service = ServerService(
+                state=self._state, storage=self._storage
+            )
+        return self._server_service
+
+    @property
+    def plugin_service(self):
+        """Returns the PluginService instance."""
+        if self._plugin_service is None:
+            from .services.plugin_service import PluginService
+
+            self._plugin_service = PluginService(
+                state=self._state, storage=self._storage
+            )
+        return self._plugin_service
+
+    @property
+    def user_service(self):
+        """Returns the UserService instance."""
+        if self._user_service is None:
+            from .services.user_service import UserService
+
+            self._user_service = UserService(state=self._state, storage=self._storage)
+        return self._user_service
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":
@@ -288,7 +472,12 @@ class AppContext:
         if self._bedrock_process_manager is None:
             from .core.bedrock_process_manager import BedrockProcessManager
 
-            self._bedrock_process_manager = BedrockProcessManager(app_context=self)
+            self._bedrock_process_manager = BedrockProcessManager(
+                settings=self.settings,
+                storage=self.storage,
+                server_provider=self.get_server,
+                api=self.api,
+            )
         return self._bedrock_process_manager
 
     def get_server(self, server_name: str) -> "BedrockServer":
@@ -298,10 +487,15 @@ class AppContext:
         from .core.bedrock_server import BedrockServer
 
         if server_name not in self._servers:
-            self._servers[server_name] = BedrockServer(server_name, app_context=self)
+            self._servers[server_name] = BedrockServer(
+                server_name=server_name,
+                settings=self.settings,
+                state=self._state,
+                storage=self._storage,
+            )
         return self._servers[server_name]
 
-    def remove_server(self, server_name: str):
+    async def remove_server(self, server_name: str):
         """
         Stops a server, removes it from the process manager, and discards it from the context cache.
         """
@@ -310,8 +504,11 @@ class AppContext:
             server = self._servers[server_name]
 
             # 2. Stop the server if it is running.
-            if server.is_running():
-                server.stop()
+            if await server.is_running():
+                await server.stop()
+
+            if self.loop is not None:
+                await self.bedrock_process_manager.remove_server(server_name)
 
             # 3. Remove from the AppContext cache.
             del self._servers[server_name]

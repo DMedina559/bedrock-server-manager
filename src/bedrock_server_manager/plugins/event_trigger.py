@@ -1,4 +1,3 @@
-# bedrock_server_manager/plugins/event_trigger.py
 """
 Provides a decorator for triggering plugin events and broadcasting them.
 """
@@ -20,7 +19,7 @@ from typing import (
 )
 
 from .cancellable_event import CancellableEvent
-from .util import async_broadcast_event, broadcast_event
+from .util import broadcast_event
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +33,8 @@ R = TypeVar("R")
 
 @overload
 def trigger_event(
-    _func: Callable[P, R],
-) -> Callable[P, R]: ...
+    _func: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[R]]: ...
 
 
 @overload
@@ -45,18 +44,22 @@ def trigger_event(
     before: Optional[str] = None,
     after: Optional[str] = None,
     identity_keys: Optional[Tuple[str, ...]] = None,
-) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]: ...
 
 
-def trigger_event(  # noqa: C901
-    _func: Optional[Callable[P, R]] = None,
+def trigger_event(
+    _func: Optional[Callable[P, Awaitable[R]]] = None,
     *,
     before: Optional[str] = None,
     after: Optional[str] = None,
     identity_keys: Optional[Tuple[str, ...]] = None,
-) -> Callable[[Callable[P, R]], Callable[P, R]] | Callable[P, R]:
+) -> (
+    Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]
+    | Callable[P, Awaitable[R]]
+):
     """
     A decorator to trigger plugin events and broadcast them to WebSockets.
+    Because the application core is async, the decorated function must be async.
     """
 
     if identity_keys is not None:
@@ -65,7 +68,7 @@ def trigger_event(  # noqa: C901
         if after:
             _event_registry[after] = identity_keys
 
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         sig = inspect.signature(func)
 
         def get_event_kwargs(*args: Any, **kwargs: Any) -> dict:
@@ -74,49 +77,17 @@ def trigger_event(  # noqa: C901
             return dict(bound_args.arguments)
 
         @functools.wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             event_kwargs = get_event_kwargs(*args, **kwargs)
             app_context = event_kwargs.get("app_context")
             cancellable_event = CancellableEvent()
             event_kwargs["event"] = cancellable_event
 
             if before and app_context:
-                app_context.plugin_manager.trigger_event(before, **event_kwargs)
-                broadcast_event(app_context, before, event_kwargs)
-                if cancellable_event.is_cancelled:
-                    return cast(
-                        R,
-                        {
-                            "status": "canceled",
-                            "message": cancellable_event.cancel_reason
-                            or "Canceled by plugin",
-                        },
-                    )
-
-            result = func(*args, **kwargs)
-
-            if after and app_context:
-                event_kwargs["result"] = result
-                app_context.plugin_manager.trigger_event(after, **event_kwargs)
-                broadcast_event(app_context, after, event_kwargs)
-
-            return result
-
-        @functools.wraps(func)
-        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            event_kwargs = get_event_kwargs(*args, **kwargs)
-            app_context = event_kwargs.get("app_context")
-            cancellable_event = CancellableEvent()
-            event_kwargs["event"] = cancellable_event
-
-            if before and app_context:
-                if hasattr(app_context.plugin_manager, "trigger_event_async"):
-                    await app_context.plugin_manager.trigger_event_async(
-                        before, **event_kwargs
-                    )
-                else:
-                    app_context.plugin_manager.trigger_event(before, **event_kwargs)
-                await async_broadcast_event(app_context, before, event_kwargs)
+                plugin_kwargs = dict(event_kwargs)
+                plugin_kwargs.pop("app_context", None)
+                await app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
+                await broadcast_event(app_context, before, event_kwargs)
                 if cancellable_event.is_cancelled:
                     return cast(
                         R,
@@ -131,20 +102,14 @@ def trigger_event(  # noqa: C901
 
             if after and app_context:
                 event_kwargs["result"] = result
-                if hasattr(app_context.plugin_manager, "trigger_event_async"):
-                    await app_context.plugin_manager.trigger_event_async(
-                        after, **event_kwargs
-                    )
-                else:
-                    app_context.plugin_manager.trigger_event(after, **event_kwargs)
-                await async_broadcast_event(app_context, after, event_kwargs)
+                plugin_kwargs = dict(event_kwargs)
+                plugin_kwargs.pop("app_context", None)
+                await app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
+                await broadcast_event(app_context, after, event_kwargs)
 
             return result
 
-        if inspect.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
-        else:
-            return wrapper
+        return wrapper
 
     if _func is None:
         return decorator

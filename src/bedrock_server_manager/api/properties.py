@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @api_method("get_properties")
-def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
+async def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """Retrieves the current server properties for a given server.
 
     Args:
@@ -29,12 +29,16 @@ def get_properties(server_name: str, app_context: AppContext) -> Dict[str, Any]:
     """
     if not server_name:
         return {"status": "error", "message": "Server name cannot be empty."}
+    import aiofiles
+
     try:
         server = app_context.get_server(server_name)
-        properties = server.get_server_properties()
+        properties = await server.get_server_properties()
         raw_content = ""
-        with open(server.server_properties_path, "r", encoding="utf-8") as f:
-            raw_content = f.read()
+        async with aiofiles.open(
+            server.server_properties_path, "r", encoding="utf-8"
+        ) as f:
+            raw_content = await f.read()
         return {
             "status": "success",
             "properties": properties,
@@ -288,7 +292,7 @@ def validate_property_value(  # noqa: C901
     after="after_properties_change",
     identity_keys=("server_name",),
 )
-def set_properties(
+async def set_properties(
     server_name: str,
     properties_to_update: Dict[str, str],
     app_context: AppContext,
@@ -320,7 +324,7 @@ def set_properties(
                     f"Validation failed for '{name}': {val_res.get('message')}"
                 )
 
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=restart_after_modify,
             restart_on_success_only=True,
@@ -328,7 +332,7 @@ def set_properties(
         ):
             server = app_context.get_server(server_name)
             for prop_name, prop_value in properties_to_update.items():
-                server.set_server_property(prop_name, prop_value)
+                await server.set_server_property(prop_name, prop_value)
 
         return {
             "status": "success",

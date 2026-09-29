@@ -3,6 +3,7 @@
 Main entry point for the Bedrock Server Manager command-line interface.
 """
 
+import asyncio
 import atexit
 import logging
 import sys
@@ -106,7 +107,7 @@ def create_cli_app():
             atexit.register(shutdown_cli_app, app_context)
 
             if ctx.invoked_subcommand not in ["setup", "migrate"]:
-                app_context.load()
+                asyncio.run(app_context.load())
                 startup_checks(app_context)
 
         except Exception as setup_e:

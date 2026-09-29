@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
-from ...db.models import RegistrationToken, User
 from ...utils import get_password_hash
 from ..deps import get_admin_user, get_app_context
 from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
@@ -47,14 +46,12 @@ async def generate_token(
 
     token = secrets.token_urlsafe(32)
     expires = int(time.time()) + 86400  # 24 hours
-    registration_token = RegistrationToken(token=token, role=data.role, expires=expires)
-    with app_context.db.session_manager() as db:  # type: ignore
-        db.add(registration_token)
-        db.commit()
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.user_repo.create_registration_token(
+            session, token=token, role=data.role, expires=expires
+        )
 
-    # Get the base URL from the request
     base_url = str(request.base_url)
-    # Corrected registration link to point to the SPA
     registration_link = f"{base_url}app/register/{token}"
 
     logger.info(
@@ -79,9 +76,9 @@ async def validate_token(
     """
     Checks if a registration token is valid.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        registration_token = (
-            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+    async with app_context.storage.transaction() as session:
+        registration_token = await app_context.storage.user_repo.get_registration_token(
+            session, token
         )
         if not registration_token or registration_token.expires < int(time.time()):
             return JSONResponse(
@@ -105,9 +102,9 @@ async def register_user(
     """
     Creates a new user from a registration token.
     """
-    with app_context.db.session_manager() as db:  # type: ignore
-        registration_token = (
-            db.query(RegistrationToken).filter(RegistrationToken.token == token).first()
+    async with app_context.storage.transaction() as session:
+        registration_token = await app_context.storage.user_repo.get_registration_token(
+            session, token
         )
         if not registration_token or registration_token.expires < int(time.time()):
             raise HTTPException(
@@ -119,17 +116,18 @@ async def register_user(
             )
 
         hashed_password = get_password_hash(data.password)
-        user = User(
-            username=data.username,
-            hashed_password=hashed_password,
-            role=registration_token.role,
-        )
 
         try:
-            db.add(user)
-            db.delete(registration_token)  # Delete token after successful registration
-            db.commit()
-            db.refresh(user)  # Refresh the user object to get its ID if needed later
+            await app_context.storage.user_repo.create_user(
+                session,
+                username=data.username,
+                hashed_password=hashed_password,
+                role=str(registration_token.role),
+            )
+            await app_context.storage.user_repo.delete_registration_token(
+                session, registration_token
+            )
+            await session.commit()
 
             logger.info(
                 f"UserResponse '{data.username}' registered with role '{registration_token.role}'."
@@ -140,11 +138,11 @@ async def register_user(
                     "status": "success",
                     "message": "Registration successful. Please log in.",
                 },
-                status_code=status.HTTP_200_OK,  # Explicitly return 200 OK
+                status_code=status.HTTP_200_OK,
             )
 
         except IntegrityError:
-            db.rollback()  # Rollback the transaction on database error
+            await session.rollback()
             logger.warning(
                 f"Registration failed: Username '{data.username}' already exists."
             )
@@ -156,7 +154,7 @@ async def register_user(
                 },
             )
         except Exception as e:
-            db.rollback()  # Rollback for any other unexpected errors
+            await session.rollback()
             logger.error(
                 f"An unexpected error occurred during registration: {e}", exc_info=True
             )

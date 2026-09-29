@@ -17,8 +17,8 @@ Your FastAPI route should accept this `server` query parameter to dynamically fe
 @self.router.get("/my_plugin/ui", response_class=JSONResponse, tags=["plugin-json-ui"])
 async def get_ui(server: str = "default_server"): # Accept the server query param
     # Fetch data specific to the selected server using the Core API
-    status = self.api.get_server_running_status(server)
-    is_running = status.get("running", False)
+    status = await self.api.get_server_running_status(server)
+    is_running = status.get("is_running", False)
 
     return JSONResponse(content={
         "type": "Card",

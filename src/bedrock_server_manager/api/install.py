@@ -1,12 +1,10 @@
+import asyncio
 import logging
-import os
-import threading
 from typing import Any, Dict, Optional
 
 from ..context import AppContext
 from ..error import (
     BSMError,
-    FileOperationError,
     InvalidServerNameError,
     MissingArgumentError,
     UserInputError,
@@ -17,8 +15,6 @@ from .server import server_lifecycle_manager
 
 logger = logging.getLogger(__name__)
 
-_install_update_lock = threading.RLock()
-
 
 @api_method("install_new_server")
 @trigger_event(
@@ -26,7 +22,7 @@ _install_update_lock = threading.RLock()
     after="after_server_install",
     identity_keys=("server_name", "target_version"),
 )
-def install_new_server(
+async def install_new_server(
     server_name: str,
     app_context: AppContext,
     target_version: str = "LATEST",
@@ -51,25 +47,43 @@ def install_new_server(
 
         core_validate_server_name_format(server_name)
 
-        settings = app_context.settings
+        server = app_context.get_server(server_name)
+    except BSMError as e:
+        logger.error(
+            f"API: Installation failed for '{server_name}': {e}", exc_info=True
+        )
+        return {"status": "error", "message": f"Server installation failed: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error installing '{server_name}': {e}", exc_info=True
+        )
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
 
-        base_dir = settings.get("paths.servers")
-        if not base_dir:
-            raise FileOperationError("'paths.servers' not configured in settings.")
-        if os.path.exists(os.path.join(base_dir, server_name)):
-            raise UserInputError(
-                f"Directory for server '{server_name}' already exists."
-            )
+    try:
+        await server.operation_lock.acquire(timeout=300)
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"An operation for '{server_name}' is already in progress. Skipping installation."
+        )
+        return {
+            "status": "skipped",
+            "message": "An operation is already in progress for this server.",
+        }
+
+    try:
+        if await server.is_installed():
+            raise UserInputError(f"Server '{server_name}' is already installed.")
 
         logger.info(
             f"API: Installing new server '{server_name}', target version '{target_version}'."
         )
-        server = app_context.get_server(server_name)
-        server.install_or_update(target_version, server_zip_path=server_zip_path)
+
+        await server.install_or_update(target_version, server_zip_path=server_zip_path)
+
         return {
             "status": "success",
-            "version": server.get_version(),
-            "message": f"Server '{server_name}' installed successfully to version {server.get_version()}.",
+            "version": await server.get_version(),
+            "message": f"Server '{server_name}' installed successfully to version {await server.get_version()}.",
         }
 
     except BSMError as e:
@@ -82,6 +96,8 @@ def install_new_server(
             f"API: Unexpected error installing '{server_name}': {e}", exc_info=True
         )
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+    finally:
+        server.operation_lock.release()
 
 
 @api_method("update_server")
@@ -90,7 +106,7 @@ def install_new_server(
     after="after_server_update",
     identity_keys=("server_name", "target_version"),
 )
-def update_server(
+async def update_server(
     server_name: str,
     app_context: AppContext,
     send_message: bool = True,
@@ -106,9 +122,25 @@ def update_server(
         Dict[str, Any]: A dictionary containing the update status, a boolean flag `updated`,
         and a message.
     """
-    if not _install_update_lock.acquire(timeout=300):
+    try:
+        if not server_name:
+            raise InvalidServerNameError("Server name cannot be empty.")
+
+        server = app_context.get_server(server_name)
+    except BSMError as e:
+        logger.error(f"API: Update failed for '{server_name}': {e}", exc_info=True)
+        return {"status": "error", "message": f"Server update failed: {e}"}
+    except Exception as e:
+        logger.error(
+            f"API: Unexpected error updating '{server_name}': {e}", exc_info=True
+        )
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+
+    try:
+        await server.operation_lock.acquire(timeout=300)
+    except asyncio.TimeoutError:
         logger.warning(
-            f"An install/update operation for '{server_name}' is already in progress. Skipping."
+            f"An operation for '{server_name}' is already in progress. Skipping update."
         )
         return {
             "status": "skipped",
@@ -116,23 +148,19 @@ def update_server(
         }
 
     try:
-        if not server_name:
-            raise InvalidServerNameError("Server name cannot be empty.")
-
-        server = app_context.get_server(server_name)
-        target_version = server.get_target_version()
+        target_version = await server.get_target_version()
 
         logger.info(
             f"API: Updating server '{server_name}'. Send message: {send_message}"
         )
-        if not server.is_update_needed(target_version):
+        if not await server.is_update_needed(target_version):
             return {
                 "status": "success",
                 "updated": False,
                 "message": "Server is already up-to-date.",
             }
 
-        with server_lifecycle_manager(
+        async with server_lifecycle_manager(
             server_name,
             stop_before=True,
             start_after=True,
@@ -140,17 +168,17 @@ def update_server(
             app_context=app_context,
         ):
             logger.info(f"API: Backing up '{server_name}' before update...")
-            server.backup_all_data()
+            await server.backup_all_data()
             logger.info(
                 f"API: Performing update for '{server_name}' to target '{target_version}'..."
             )
-            server.install_or_update(target_version)
+            await server.install_or_update(target_version)
 
         return {
             "status": "success",
             "updated": True,
-            "new_version": server.get_version(),
-            "message": f"Server '{server_name}' updated successfully to {server.get_version()}.",
+            "new_version": await server.get_version(),
+            "message": f"Server '{server_name}' updated successfully to {await server.get_version()}.",
         }
 
     except BSMError as e:
@@ -162,4 +190,4 @@ def update_server(
         )
         return {"status": "error", "message": f"An unexpected error occurred: {e}"}
     finally:
-        _install_update_lock.release()
+        server.operation_lock.release()

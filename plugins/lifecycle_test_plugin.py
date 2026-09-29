@@ -11,11 +11,11 @@ class LifecycleTestPlugin(PluginBase):
     name = "Lifecycle Test"
 
     @app_event("on_load")
-    def plugin_loaded(self, **kwargs):
+    async def plugin_loaded(self, **kwargs):
         self.logger.info("Lifecycle Test Plugin loaded.")
 
     @app_event("after_server_start")
-    def run_lifecycle_test(self, **kwargs: Any):
+    async def run_lifecycle_test(self, **kwargs: Any):
 
         server_name = str(kwargs.get("server_name"))
         result: Dict[str, Any] = kwargs.get("result", {})
@@ -24,23 +24,20 @@ class LifecycleTestPlugin(PluginBase):
                 f"Server '{server_name}' started. Now testing lifecycle manager."
             )
 
-            def lifecycle_task():
-                try:
-                    with self.api.server_lifecycle_manager(
-                        server_name, stop_before=True, start_after=True
-                    ):
-                        self.logger.info(
-                            "Inside the lifecycle manager's 'with' block. Server should be stopped now."
-                        )
-                        self.logger.info(
-                            "Finished work inside the 'with' block. Server should restart shortly."
-                        )
-
-                    self.logger.info("Lifecycle manager test completed successfully.")
-                except Exception as e:
-                    self.logger.error(
-                        f"An error occurred during the lifecycle manager test: {e}",
-                        exc_info=True,
+            try:
+                async with self.api.server_lifecycle_manager(
+                    server_name, stop_before=True, start_after=True
+                ):
+                    self.logger.info(
+                        "Inside the lifecycle manager's 'async with' block. Server should be stopped now."
+                    )
+                    self.logger.info(
+                        "Finished work inside the 'async with' block. Server should restart shortly."
                     )
 
-            lifecycle_task()
+                self.logger.info("Lifecycle manager test completed successfully.")
+            except Exception as e:
+                self.logger.error(
+                    f"An error occurred during the lifecycle manager test: {e}",
+                    exc_info=True,
+                )

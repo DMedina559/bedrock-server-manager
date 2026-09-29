@@ -1,125 +1,141 @@
 import pytest
+from sqlalchemy import select
 
 from bedrock_server_manager.api.ban import (
-    add_server_ban_api,
-    get_server_bans_api,
-    remove_server_ban_api,
+    add_server_ban,
+    get_server_bans,
+    remove_server_ban,
 )
 from bedrock_server_manager.db.models import Server, ServerBan
 from bedrock_server_manager.error import UserInputError
 
 
-def test_add_server_ban_api_success(app_context, db_session):
-    """Test add_server_ban_api successfully adds a ban to the database."""
-    # Insert mock server
+async def test_add_server_ban_success(app_context, db_session):
+    """Test add_server_ban successfully adds a ban to the database."""
+    # Insert mock server into the same DB the app_context uses
     server = Server(server_name="test_server", installed_version="1.0")
     db_session.add(server)
-    db_session.commit()
+    await db_session.commit()
 
-    result = add_server_ban_api(
+    result = await add_server_ban(
         app_context, "test_server", "bad_player", "xuid123", "griefing"
     )
 
-    assert result["status"] == "success"
+    assert (
+        result["status"] == "success"
+    ), f"API returned an error: {result.get('message')}"
     assert "banned successfully" in result["message"]
 
     # Verify in DB
-    ban = db_session.query(ServerBan).filter_by(xuid="xuid123").first()
+    db_session.expire_all()
+    res = await db_session.execute(select(ServerBan).filter_by(xuid="xuid123"))
+    ban = res.scalars().first()
     assert ban is not None
     assert ban.player_name == "bad_player"
     assert ban.reason == "griefing"
 
 
-def test_add_server_ban_api_update(app_context, db_session):
-    """Test add_server_ban_api updates an existing ban instead of duplicating."""
+async def test_add_server_ban_update(app_context, db_session):
+    """Test add_server_ban updates an existing ban instead of duplicating."""
     server = Server(server_name="test_server", installed_version="1.0")
     db_session.add(server)
-    db_session.commit()
+    await db_session.commit()
 
     # First ban
-    add_server_ban_api(
+    await add_server_ban(
         app_context, "test_server", "bad_player", "xuid123", "old reason"
     )
     # Update ban
-    result = add_server_ban_api(
+    result = await add_server_ban(
         app_context, "test_server", "bad_player", "xuid123", "new reason"
     )
 
-    assert result["status"] == "success"
+    assert (
+        result["status"] == "success"
+    ), f"API returned an error: {result.get('message')}"
     assert "Ban updated" in result["message"]
 
-    ban = db_session.query(ServerBan).filter_by(xuid="xuid123").first()
+    db_session.expire_all()
+    res = await db_session.execute(select(ServerBan).filter_by(xuid="xuid123"))
+    ban = res.scalars().first()
     assert ban.reason == "new reason"
 
 
-def test_add_server_ban_api_missing_args(app_context):
-    """Test add_server_ban_api rejects missing core arguments."""
+async def test_add_server_ban_missing_args(app_context):
+    """Test add_server_ban rejects missing core arguments."""
     with pytest.raises(UserInputError):
-        add_server_ban_api(app_context, "", "", "")
+        await add_server_ban(app_context, "", "", "")
 
 
-def test_add_server_ban_api_server_missing(app_context):
-    """Test add_server_ban_api handles valid args against a non-existent database server smoothly."""
-    result = add_server_ban_api(app_context, "ghost_server", "banned", "xuid")
+async def test_add_server_ban_server_missing(app_context):
+    """Test add_server_ban handles valid args against a non-existent database server smoothly."""
+    result = await add_server_ban(app_context, "ghost_server", "banned", "xuid")
     assert result["status"] == "error"
     assert "not found in database" in result["message"]
 
 
-def test_add_server_ban_api_no_db(app_context):
-    """Test add_server_ban_api cleanly fails if DB is somehow uninitialized."""
-    app_context.settings.db = None
-    result = add_server_ban_api(app_context, "test_server", "banned", "xuid")
+async def test_add_server_ban_no_db(app_context):
+    """Test add_server_ban cleanly fails if DB is somehow uninitialized."""
+    app_context._storage = None
+    app_context._server_service = None
+    result = await add_server_ban(app_context, "test_server", "banned", "xuid")
     assert result["status"] == "error"
     assert "Database is not initialized" in result["message"]
 
 
-def test_remove_server_ban_api_success(app_context, db_session):
-    """Test remove_server_ban_api drops the ban record successfully."""
+async def test_remove_server_ban_success(app_context, db_session):
+    """Test remove_server_ban drops the ban record successfully."""
     server = Server(server_name="test_server", installed_version="1.0")
     db_session.add(server)
-    db_session.commit()
+    await db_session.commit()
 
-    add_server_ban_api(app_context, "test_server", "bad_player", "xuid123")
+    await add_server_ban(app_context, "test_server", "bad_player", "xuid123")
 
-    result = remove_server_ban_api(app_context, "test_server", "xuid123")
-    assert result["status"] == "success"
+    result = await remove_server_ban(app_context, "test_server", "xuid123")
+    assert (
+        result["status"] == "success"
+    ), f"API returned an error: {result.get('message')}"
 
-    ban = db_session.query(ServerBan).filter_by(xuid="xuid123").first()
+    db_session.expire_all()
+    res = await db_session.execute(select(ServerBan).filter_by(xuid="xuid123"))
+    ban = res.scalars().first()
     assert ban is None
 
 
-def test_remove_server_ban_api_not_found(app_context, db_session):
-    """Test remove_server_ban_api gracefully handles missing records."""
+async def test_remove_server_ban_not_found(app_context, db_session):
+    """Test remove_server_ban gracefully handles missing records."""
     server = Server(server_name="test_server", installed_version="1.0")
     db_session.add(server)
-    db_session.commit()
+    await db_session.commit()
 
-    result = remove_server_ban_api(app_context, "test_server", "xuid_missing")
+    result = await remove_server_ban(app_context, "test_server", "xuid_missing")
     assert result["status"] == "error"
     assert "not found" in result["message"]
 
 
-def test_remove_server_ban_api_missing_args(app_context):
-    """Test remove_server_ban_api traps missing core arguments."""
+async def test_remove_server_ban_missing_args(app_context):
+    """Test remove_server_ban traps missing core arguments."""
     with pytest.raises(UserInputError):
-        remove_server_ban_api(app_context, "", "")
+        await remove_server_ban(app_context, "", "")
 
 
-def test_get_server_bans_api_success(app_context, db_session):
-    """Test get_server_bans_api returns all bans for the server."""
+async def test_get_server_bans_success(app_context, db_session):
+    """Test get_server_bans returns all bans for the server."""
     server = Server(server_name="test_server", installed_version="1.0")
     db_session.add(server)
-    db_session.commit()
+    await db_session.commit()
 
-    add_server_ban_api(app_context, "test_server", "p1", "x1")
-    add_server_ban_api(app_context, "test_server", "p2", "x2")
+    await add_server_ban(app_context, "test_server", "p1", "x1")
+    await add_server_ban(app_context, "test_server", "p2", "x2")
 
-    result = get_server_bans_api(app_context, "test_server")
-    assert result["status"] == "success"
+    result = await get_server_bans(app_context, "test_server")
+    assert (
+        result["status"] == "success"
+    ), f"API returned an error: {result.get('message')}"
     assert len(result["bans"]) == 2
 
 
-def test_get_server_bans_api_missing_args(app_context):
-    """Test get_server_bans_api traps missing core arguments."""
+async def test_get_server_bans_missing_args(app_context):
+    """Test get_server_bans traps missing core arguments."""
     with pytest.raises(UserInputError):
-        get_server_bans_api(app_context, "")
+        await get_server_bans(app_context, "")

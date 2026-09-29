@@ -113,3 +113,4 @@ Bedrock Server Manager is a powerful tool for managing Minecraft Bedrock Dedicat
 -   [Troubleshooting](./troubleshooting.md): Find solutions to common issues.
 -   [Contributing](https://github.com/DMedina559/bedrock-server-manager/blob/main/CONTRIBUTING.md): Find out how you can contribute to the project and help improve it.
 -   [License](https://github.com/DMedina559/bedrock-server-manager/blob/main/LICENSE): Understand the licensing terms under which Bedrock Server Manager is distributed.
+-   [Join the Community](https://www.reddit.com/r/BedrockServerManager/): Connect with other users in the Bedrock Server Manager community on Reddit.

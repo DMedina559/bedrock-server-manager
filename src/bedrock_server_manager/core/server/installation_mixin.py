@@ -21,83 +21,38 @@ lead to irreversible data loss if not used carefully.
 """
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import aiofiles
+import aiofiles.os
+import aiofiles.ospath
 
 from ...error import (
     AppFileNotFoundError,
     FileOperationError,
     MissingArgumentError,
     PermissionsError,
-    ServerStopError,
 )
 from ..system import base as system_base
 from .base_server_mixin import BedrockServerBaseMixin
 
 
 class ServerInstallationMixin(BedrockServerBaseMixin):
-    """Provides methods for validating, managing filesystem permissions, and deleting server installations.
-
-    This mixin extends :class:`.BedrockServerBaseMixin` and focuses on the
-    physical presence and state of the server's files on the disk, as well as
-    the complete removal of all server-related data.
-
-    Key methods include:
-
-        - :meth:`.validate_installation`: Checks if the server directory and executable exist.
-        - :meth:`.is_installed`: A non-raising check for installation validity.
-        - :meth:`.set_filesystem_permissions`: Applies appropriate permissions to server files.
-        - :meth:`.delete_server_files`: Deletes the main server installation directory.
-        - :meth:`.delete_all_data`: **DESTRUCTIVE** - Removes all data for the server,
-          including installation, configuration, backups, and systemd services (Linux).
-
-    It relies on attributes from :class:`.BedrockServerBaseMixin` (like `server_dir`,
-    `bedrock_executable_path`, `logger`) and may depend on methods from other mixins
-    (e.g., :meth:`~.ServerProcessMixin.is_running`, :meth:`~.ServerProcessMixin.stop`)
-    for operations like stopping a server before deletion.
-    """
+    """Provides methods for validating, managing filesystem permissions, and deleting server installations."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the ServerInstallationMixin.
-
-        Calls ``super().__init__(*args, **kwargs)`` to participate in cooperative
-        multiple inheritance. It depends on attributes initialized by
-        :class:`.BedrockServerBaseMixin` and assumes methods from other mixins
-        (like :meth:`~.ServerProcessMixin.is_running` and :meth:`~.ServerProcessMixin.stop`)
-        will be available on the final composed :class:`~.core.bedrock_server.BedrockServer` object.
-
-        Args:
-            *args (Any): Variable length argument list passed to `super()`.
-            **kwargs (Any): Arbitrary keyword arguments passed to `super()`.
-        """
         super().__init__(*args, **kwargs)
-        # Attributes from BedrockServerBaseMixin are available.
-        # Methods from other mixins (e.g., ProcessMixin for stop/is_running)
-        # are expected on the final composed BedrockServer object.
 
-    def validate_installation(self) -> bool:
-        """Validates that the server installation directory and executable exist.
-
-        This method checks for the presence of:
-
-            1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
-            2. The Bedrock server executable within that directory
-               (path from :attr:`.BedrockServerBaseMixin.bedrock_executable_path`).
-
-        Returns:
-            bool: ``True`` if both the server directory and executable file exist.
-
-        Raises:
-            AppFileNotFoundError: If the server directory or the executable
-                file does not exist at their expected locations.
-        """
+    async def validate_installation(self) -> bool:
+        """Validates that the server installation directory and executable exist asynchronously."""
         self.logger.debug(
-            f"Validating installation for server '{self.server_name}' in directory: {self.server_dir}"
+            f"Validating installation for server '{self.server_name}' in directory: {self.server_dir} asynchronously"
         )
 
-        if not os.path.isdir(self.server_dir):
+        if not await aiofiles.ospath.isdir(self.server_dir):
             raise AppFileNotFoundError(self.server_dir, "Server directory")
 
-        if not os.path.isfile(self.bedrock_executable_path):
+        if not await aiofiles.ospath.isfile(self.bedrock_executable_path):
             raise AppFileNotFoundError(
                 self.bedrock_executable_path, "Server executable"
             )
@@ -107,54 +62,29 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         )
         return True
 
-    def is_installed(self) -> bool:
-        """Checks if the server installation is valid, without raising exceptions.
-
-        This is a convenience method that calls :meth:`.validate_installation`
-        and catches :class:`~.error.AppFileNotFoundError` if validation fails,
-        returning ``False`` in such cases.
-
-        Returns:
-            bool: ``True`` if the installation is valid (directory and executable exist),
-            ``False`` otherwise.
-        """
+    async def is_installed(self) -> bool:
+        """Checks if the server installation is valid asynchronously, without raising exceptions."""
         try:
-            return self.validate_installation()
+            return await self.validate_installation()
         except AppFileNotFoundError:
             self.logger.debug(
                 f"is_installed check: Server '{self.server_name}' not found or installation invalid (directory or executable missing)."
             )
             return False
 
-    def set_filesystem_permissions(self) -> None:
-        """Sets appropriate filesystem permissions for the server's installation directory.
-
-        This method first validates the server installation using :meth:`.is_installed`.
-        If valid, it delegates to the platform-agnostic
-        :func:`~.core.system.base.set_server_folder_permissions` utility to
-        apply the necessary permissions recursively to :attr:`.BedrockServerBaseMixin.server_dir`.
-        This is crucial for proper server operation, especially on Linux.
-
-        Raises:
-            AppFileNotFoundError: If the server is not installed (i.e.,
-                :meth:`.is_installed` returns ``False``).
-            PermissionsError: If setting permissions fails (propagated from
-                :func:`~.core.system.base.set_server_folder_permissions`).
-            MissingArgumentError: If `server_dir` is somehow invalid (propagated).
-        """
-        if (
-            not self.is_installed()
-        ):  # Ensures server_dir and executable exist before trying to set perms
+    async def set_filesystem_permissions(self) -> None:
+        """Sets appropriate filesystem permissions for the server's installation directory asynchronously."""
+        if not await self.is_installed():
             raise AppFileNotFoundError(
                 self.server_dir,
                 "Cannot set permissions: Server installation directory or executable not found",
             )
 
         self.logger.info(
-            f"Setting filesystem permissions for server directory: {self.server_dir}"
+            f"Setting filesystem permissions for server directory: {self.server_dir} asynchronously"
         )
         try:
-            system_base.set_server_folder_permissions(self.server_dir)
+            await system_base.set_server_folder_permissions(self.server_dir)
             self.logger.info(
                 f"Successfully set permissions for server '{self.server_name}' at '{self.server_dir}'."
             )
@@ -162,12 +92,12 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
             MissingArgumentError,
             AppFileNotFoundError,
             PermissionsError,
-        ) as e_perm:  # Catch specific errors
+        ) as e_perm:
             self.logger.error(
                 f"Failed to set permissions for '{self.server_dir}': {e_perm}"
             )
-            raise  # Re-raise the caught specific error
-        except Exception as e_unexp:  # Catch any other unexpected error
+            raise
+        except Exception as e_unexp:
             self.logger.error(
                 f"Unexpected error setting permissions for '{self.server_name}': {e_unexp}",
                 exc_info=True,
@@ -176,70 +106,28 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
                 f"Unexpected error setting permissions for server '{self.server_name}': {e_unexp}"
             ) from e_unexp
 
-    def delete_server_files(
+    async def delete_server_files(
         self, item_description_prefix: str = "server installation files for"
     ) -> bool:
-        """Deletes the server's entire installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
-
-        .. warning::
-            This is a **DESTRUCTIVE** operation. It will permanently remove the
-            server's main directory and all its contents.
-
-        It uses the :func:`~.core.system.base.delete_path_robustly` utility,
-        which attempts to handle read-only files that might otherwise prevent deletion.
-
-        Args:
-            item_description_prefix (str, optional): A prefix for logging messages
-                to provide context. Defaults to "server installation files for".
-
-        Returns:
-            bool: ``True`` if the deletion was successful or if the directory
-            did not exist initially. ``False`` if the deletion failed.
-        """
-        self.logger.warning(
-            f"DESTRUCTIVE ACTION: Attempting to delete all installation files for server '{self.server_name}' at: {self.server_dir}."
-        )
-        description = f"{item_description_prefix} server '{self.server_name}'"
-
-        success = system_base.delete_path_robustly(self.server_dir, description)
-        if success:
+        """Deletes the server's entire installation directory asynchronously."""
+        if not await aiofiles.ospath.exists(self.server_dir):
             self.logger.info(
-                f"Successfully deleted server installation directory for '{self.server_name}'."
+                f"Server directory '{self.server_dir}' for '{self.server_name}' does not exist. Nothing to delete."
             )
-        else:
-            self.logger.error(
-                f"Failed to fully delete server installation directory for '{self.server_name}'. Review logs for details."
-            )
-        return success
+            return True
 
-    def delete_all_data(self) -> None:  # noqa: C901
-        """Deletes **ALL** data associated with this Bedrock server instance.
+        self.logger.warning(
+            f"Attempting to delete {item_description_prefix} server '{self.server_name}' at '{self.server_dir}' asynchronously. THIS IS DESTRUCTIVE."
+        )
 
-        .. danger::
-            This is a **HIGHLY DESTRUCTIVE** operation and is irreversible.
+        return await system_base.delete_path_robustly(
+            self.server_dir,
+            f"{item_description_prefix} '{self.server_name}'",
+        )
 
-            It removes:
-
-                1. The server's main installation directory (:attr:`.BedrockServerBaseMixin.server_dir`).
-                2. The server's JSON configuration subdirectory (:attr:`.BedrockServerBaseMixin.server_config_dir`).
-                3. The server's entire backup directory (derived from ``paths.backups`` setting).
-                4. The server's PID file.
-                5. Database entries related to the server (e.g. Server and ServerBan records).
-
-        The method will attempt to stop a running server (using ``self.stop()``,
-        expected from :class:`~.ServerProcessMixin`) before proceeding with deletions.
-        If any part of the deletion process fails, it raises a
-        :class:`~.error.FileOperationError` with details of the failed items.
-
-        Raises:
-            FileOperationError: If deleting one or more essential directories or
-                files fails. The error message will summarize which items failed.
-            ServerStopError: If the server is running and fails to stop prior to deletion.
-            AttributeError: If essential methods from other mixins (like `is_running` or `stop`)
-                            are not available on the instance.
-        """
+    async def delete_all_data(self) -> None:
+        """Deletes **ALL** data associated with this Bedrock server instance asynchronously."""
         server_install_dir = self.server_dir
-        # server_config_dir from BaseServerMixin is the server-specific one.
         server_json_config_subdir = self.server_config_dir
 
         backup_base_dir = self.settings.get("paths.backups")
@@ -248,7 +136,7 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         )
 
         self.logger.warning(
-            f"!!! DESTRUCTIVE ACTION: Preparing to delete ALL data for server '{self.server_name}' !!!"
+            f"!!! DESTRUCTIVE ACTION: Preparing to delete ALL data for server '{self.server_name}' asynchronously !!!"
         )
         self.logger.info(f"  - Target installation directory: {server_install_dir}")
         if server_backup_dir_path:
@@ -256,119 +144,101 @@ class ServerInstallationMixin(BedrockServerBaseMixin):
         else:
             self.logger.info("  - No backup directory path configured or found.")
 
-        # Check if any data exists to avoid unnecessary stop attempts if nothing to delete.
         paths_to_check_existence = [server_install_dir]
         if server_backup_dir_path:
             paths_to_check_existence.append(server_backup_dir_path)
 
-        any_primary_data_exists = any(
-            os.path.exists(p) for p in paths_to_check_existence if p
-        )
+        any_primary_data_exists = False
+        for p in paths_to_check_existence:
+            if p and await aiofiles.ospath.exists(p):
+                any_primary_data_exists = True
+                break
 
         if not any_primary_data_exists:
             self.logger.info(
-                f"No significant data or service files found for server '{self.server_name}'. Deletion considered complete."
+                f"Server '{self.server_name}': Neither installation nor backup directories exist. Skipping deletion."
             )
             return
 
-        # Ensure the server is stopped before deleting its files.
-        if not hasattr(self, "is_running") or not hasattr(self, "stop"):
+        is_running: bool = False
+        try:
+            is_running = await getattr(self, "is_running")()
+        except AttributeError:
             self.logger.warning(
-                "'is_running' or 'stop' method not found on self. Cannot ensure server is stopped before deletion. This might indicate missing mixins."
+                f"[{self.server_name}] 'is_running' not found. Assuming stopped."
             )
-            # Depending on strictness, one might raise an error here.
-        elif self.is_running():  # type: ignore
+        if is_running:
             self.logger.info(
-                f"Server '{self.server_name}' is running. Attempting to stop it before deletion..."
+                f"Server '{self.server_name}' is currently running. Stopping before deletion..."
             )
             try:
-                self.stop()  # type: ignore
-            except (
-                ServerStopError
-            ):  # Let ServerStopError propagate if stop fails critically
-                raise
-            except Exception as e_stop:  # Wrap other unexpected errors from stop()
-                # Log as warning and proceed with deletion, as per original logic.
+                await getattr(self, "stop")()
+            except AttributeError:
                 self.logger.warning(
-                    f"Failed to stop server '{self.server_name}' cleanly before deletion: {e_stop}. Proceeding with deletion, but the process might linger."
-                )
-        else:
-            self.logger.info(
-                f"Server '{self.server_name}' is not running. No stop needed."
-            )
-
-        deletion_errors: List[str] = []
-
-        # --- Remove PID file (using the method from BaseServerMixin) ---
-        # get_pid_file_path should be available from BaseServerMixin
-        if hasattr(self, "get_pid_file_path"):
-            pid_file_to_delete = self.get_pid_file_path()  # type: ignore
-            if os.path.exists(pid_file_to_delete):
-                if not system_base.delete_path_robustly(
-                    pid_file_to_delete, f"PID file for '{self.server_name}'"
-                ):
-                    deletion_errors.append(f"PID file '{pid_file_to_delete}'")
-        else:
-            self.logger.warning(
-                "get_pid_file_path method not found. Cannot delete PID file by specific path."
-            )
-
-        # --- Remove all directories ---
-        paths_to_delete_map: Dict[str, Optional[str]] = {
-            "backup": server_backup_dir_path,
-            "installation": server_install_dir,
-            "config": server_json_config_subdir,
-        }
-        for dir_type, dir_path_val in paths_to_delete_map.items():
-            if dir_path_val and os.path.exists(
-                dir_path_val
-            ):  # Check if path is not None before os.path.exists
-                if not system_base.delete_path_robustly(
-                    dir_path_val, f"server {dir_type} data for '{self.server_name}'"
-                ):
-                    deletion_errors.append(f"{dir_type} directory '{dir_path_val}'")
-            elif dir_path_val:  # Path was valid but didn't exist
-                self.logger.debug(
-                    f"Server {dir_type} data for '{self.server_name}' at '{dir_path_val}' not found, skipping deletion."
-                )
-            else:  # Path was None (e.g. backup_base_dir not configured)
-                self.logger.debug(
-                    f"Path for {dir_type} data for '{self.server_name}' was not configured. Skipping deletion."
+                    f"[{self.server_name}] 'stop' not found. Cannot stop before deletion."
                 )
 
-        # --- Final Check ---
-        if deletion_errors:
-            error_summary = "; ".join(deletion_errors)
-            # Ensure status is set to ERROR if deletion wasn't clean
-            if hasattr(self, "set_status_in_config"):
-                self.set_status_in_config("ERROR")  # type: ignore
-            raise FileOperationError(
-                f"Failed to completely delete all data for server '{self.server_name}'. Failed items: {error_summary}"
-            )
-        else:
-            self.logger.info(
-                f"Successfully deleted all data for server: '{self.server_name}'."
-            )
+        failed_deletions = []
 
-            # Remove server and associated bans/settings from the database
-            if self.settings.db is not None:
-                from ...db.models import Server, ServerBan
+        if await aiofiles.ospath.exists(server_install_dir):
+            if not await self.delete_server_files("installation files for"):
+                failed_deletions.append(server_install_dir)
 
-                with self.settings.db.session_manager() as db_session:
-                    db_server = (
-                        db_session.query(Server)
-                        .filter(Server.server_name == self.server_name)
-                        .first()
+        if await aiofiles.ospath.exists(server_json_config_subdir):
+            success = await system_base.delete_path_robustly(
+                server_json_config_subdir,
+                f"JSON config directory for server '{self.server_name}'",
+            )
+            if not success:
+                failed_deletions.append(server_json_config_subdir)
+
+        if server_backup_dir_path and await aiofiles.ospath.exists(
+            server_backup_dir_path
+        ):
+            success = await system_base.delete_path_robustly(
+                server_backup_dir_path,
+                f"backup directory for server '{self.server_name}'",
+            )
+            if not success:
+                failed_deletions.append(server_backup_dir_path)
+
+        pid_file_path = getattr(self, "bedrock_pid_file_path", None)
+        if pid_file_path and await aiofiles.ospath.exists(pid_file_path):
+            try:
+                await aiofiles.os.remove(pid_file_path)
+                self.logger.info(
+                    f"Successfully deleted PID file for server '{self.server_name}': {pid_file_path}"
+                )
+            except OSError as e:
+                self.logger.error(
+                    f"Failed to delete PID file '{pid_file_path}' for server '{self.server_name}': {e}"
+                )
+                failed_deletions.append(pid_file_path)
+
+        try:
+            if self.storage:
+                async with self.storage.transaction() as session:
+                    await self.storage.server_repo.delete_server(
+                        session, self.server_name
                     )
-                    if db_server:
-                        # Clear associated bans first to prevent foreign key errors
-                        db_session.query(ServerBan).filter(
-                            ServerBan.server_id == db_server.id
-                        ).delete()
 
-                        # Delete the server record (which also drops 'custom' settings JSON column)
-                        db_session.delete(db_server)
-                        db_session.commit()
-                        self.logger.info(
-                            f"Successfully deleted server '{self.server_name}' and its associated data from the database."
-                        )
+            if self.state and self.server_name in self.state.servers.servers:
+                del self.state.servers.servers[self.server_name]
+
+            self.logger.info(
+                f"Successfully deleted server '{self.server_name}' and its associated data from the database."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to remove database entries for server '{self.server_name}': {e}"
+            )
+            failed_deletions.append("Database Entries")
+
+        if failed_deletions:
+            error_msg = f"Failed to delete ALL data for '{self.server_name}'. The following paths/items could not be removed: {', '.join(failed_deletions)}"
+            self.logger.error(error_msg)
+            raise FileOperationError(error_msg)
+
+        self.logger.info(
+            f"Successfully deleted ALL data for server '{self.server_name}' asynchronously."
+        )

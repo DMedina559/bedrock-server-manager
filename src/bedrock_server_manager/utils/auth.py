@@ -1,8 +1,9 @@
+import asyncio
 import datetime
 import logging
 import secrets
 from datetime import timezone
-from typing import Optional
+from typing import Any, Optional
 
 import bcrypt
 from fastapi import WebSocketException, status
@@ -10,7 +11,7 @@ from jose import JWTError, jwt
 
 from ..config import Settings
 from ..context import AppContext
-from ..db.models import User as UserModel
+from ..state.models import UserInfoState
 from ..web.schemas import UserResponse
 
 logger = logging.getLogger(__name__)
@@ -19,20 +20,29 @@ ALGORITHM = "HS256"
 
 
 # --- JWT Configuration ---
-def get_jwt_secret_key(settings: Settings) -> str:
+_jwt_key_lock = asyncio.Lock()
+
+
+async def get_jwt_secret_key(settings: Settings) -> str:
     """Gets the JWT secret key from the database, or creates one if it doesn't exist."""
     jwt_secret_key = settings.get("web.jwt_secret_key")
 
     if not jwt_secret_key:
-        jwt_secret_key = secrets.token_urlsafe(32)
-        settings.set("web.jwt_secret_key", jwt_secret_key)
-        logger.info("JWT secret key not found in settings, generating a new one")
+        async with _jwt_key_lock:
+            # Re-check inside lock
+            jwt_secret_key = settings.get("web.jwt_secret_key")
+            if not jwt_secret_key:
+                jwt_secret_key = secrets.token_urlsafe(32)
+                await settings.set("web.jwt_secret_key", jwt_secret_key)
+                logger.info(
+                    "JWT secret key not found in settings, generating a new one"
+                )
 
     return str(jwt_secret_key)
 
 
 # --- Token Creation ---
-def create_access_token(
+async def create_access_token(
     app_context: AppContext,
     data: dict,
     expires_delta: Optional[datetime.timedelta] = None,
@@ -55,7 +65,7 @@ def create_access_token(
 
     settings = app_context.settings
 
-    JWT_SECRET_KEY = get_jwt_secret_key(settings)
+    JWT_SECRET_KEY = await get_jwt_secret_key(settings)
 
     if expires_delta:
         expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
@@ -76,66 +86,104 @@ def create_access_token(
 # --- Token Verification and User Retrieval ---
 
 
-def _get_and_update_user_from_db(db_session, username: str) -> Optional[UserResponse]:
-    """Helper function to fetch user, update last_seen, and return UserResponse."""
-    user = db_session.query(UserModel).filter(UserModel.username == username).first()
+async def _get_and_update_user_from_db(
+    app_context: AppContext, session, username: str
+) -> Optional[UserResponse]:
+    """Helper function to fetch user via UserRepository, update last_seen, and return UserResponse."""
+    user: Any = await app_context.storage.user_repo.get_user_by_username(
+        session, username
+    )
     if not user or not user.is_active:
         return None
 
-    user.last_seen = datetime.datetime.now(timezone.utc)
-    db_session.commit()
+    now = datetime.datetime.now(timezone.utc)
+
+    # SQLite often returns naive datetime objects.
+    # Make sure we compare aware-to-aware datetimes.
+    last_seen_dt = user.last_seen
+    if last_seen_dt is not None and last_seen_dt.tzinfo is None:
+        last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+
+    # Only update the database if last_seen is missing or older than 5 minutes
+    if last_seen_dt is None or (now - last_seen_dt) > datetime.timedelta(minutes=5):
+        user.last_seen = now
 
     return UserResponse(
-        id=user.id,
-        username=user.username,
+        id=int(user.id),
+        username=str(user.username),
         identity_type="jwt",
-        role=user.role,
-        is_active=user.is_active,
-        theme=user.theme,
+        role=str(user.role),
+        is_active=bool(user.is_active),
+        theme=str(user.theme),
     )
 
 
-def _get_user_from_token(app_context: AppContext, token: str) -> Optional[UserResponse]:
+async def _get_user_from_token(
+    app_context: AppContext, token: str
+) -> Optional[UserResponse]:
     """Helper function to decode a JWT and retrieve the associated user."""
     try:
         settings = app_context.settings
-        JWT_SECRET_KEY = get_jwt_secret_key(settings)
+        JWT_SECRET_KEY = await get_jwt_secret_key(settings)
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
         if username is None:
             return None
 
-        with app_context.db.session_manager() as db:  # type: ignore
-            return _get_and_update_user_from_db(db, username)
+        # 1. Check in-memory AppState first (fast, non-blocking, avoids DB lock contention)
+        u_info = app_context.state.users.get(username)
+        if u_info is not None:
+            if not u_info.is_active:
+                return None
+            return UserResponse(
+                id=u_info.id or 0,
+                username=u_info.username,
+                identity_type="jwt",
+                role=u_info.role,
+                is_active=u_info.is_active,
+                theme=u_info.theme,
+            )
+
+        # 2. Fall back to database query if user not found in AppState
+        try:
+            async with app_context.storage.transaction() as session:
+                user_resp = await _get_and_update_user_from_db(
+                    app_context, session, username
+                )
+                if user_resp is not None:
+                    # Sync into AppState so subsequent checks hit memory
+                    u_state = UserInfoState(
+                        id=user_resp.id,
+                        username=user_resp.username,
+                        role=user_resp.role,
+                        theme=user_resp.theme,
+                        is_active=user_resp.is_active,
+                    )
+                    async with app_context.state.users.get_lock(user_resp.username):
+                        app_context.state.users.set(u_state)
+                        app_context.state.users.remove_dirty_user(user_resp.username)
+                return user_resp
+        except Exception as db_err:
+            logger.warning(f"Failed DB fallback lookup for user '{username}': {db_err}")
+            return None
 
     except JWTError:
         return None
+    except Exception as e:
+        logger.warning(f"Error during user token authentication: {e}")
+        return None
 
 
-def authenticate_websocket_token(app_context: AppContext, token: str) -> UserResponse:
-    """
-    Authenticates a WebSocket connection using a provided token.
-
-    This function extracts the user using `_get_user_from_token`.
-    If the token is missing, invalid, or the user doesn't exist, it raises
-    a WebSocketException to allow the router to close the connection gracefully.
-
-    Args:
-        app_context (AppContext): The application context.
-        token (str): The JWT access token.
-
-    Returns:
-        UserResponse: The authenticated user object.
-
-    Raises:
-        WebSocketException: With code 1008 if authentication fails.
-    """
+async def authenticate_websocket_token(
+    app_context: AppContext, token: str
+) -> UserResponse:
+    """Authenticates a WebSocket connection using a provided token."""
     if not token:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing token"
         )
 
-    user = _get_user_from_token(app_context, token)
+    user = await _get_user_from_token(app_context, token)
 
     if user is None:
         raise WebSocketException(
@@ -148,55 +196,29 @@ def authenticate_websocket_token(app_context: AppContext, token: str) -> UserRes
 
 # --- Utility for Login Route ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain password against a stored hash using bcrypt.
-
-    Args:
-        plain_password (str): The plain text password to verify.
-        hashed_password (str): The stored hashed password.
-
-    Returns:
-        bool: ``True`` if the password matches the hash, ``False`` otherwise.
-    """
+    """Verifies a plain password against a stored hash using bcrypt."""
     return bool(
         bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     )
 
 
 def get_password_hash(password: str) -> str:
-    """Hashes a password using bcrypt.
-
-    Args:
-        password (str): The plain text password to hash.
-
-    Returns:
-        str: The hashed password.
-    """
+    """Hashes a password using bcrypt."""
     return str(
         bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     )
 
 
-def authenticate_user(
+async def authenticate_user(
     app_context: AppContext, username_form: str, password_form: str
 ) -> Optional[str]:
-    """
-    Authenticates a user against the database.
-
-    This function checks the provided `username_form` and `password_form`
-    against credentials stored in the database.
-
-    Args:
-        username_form (str): The username submitted by the user.
-        password_form (str): The plain text password submitted by the user.
-
-    Returns:
-        Optional[str]: The username if authentication is successful,
-        otherwise ``None``.
-    """
-    with app_context.db.session_manager() as db:  # type: ignore
-        user = db.query(UserModel).filter(UserModel.username == username_form).first()
+    """Authenticates a user against the database using UserRepository."""
+    async with app_context.storage.transaction() as session:
+        user = await app_context.storage.user_repo.get_user_by_username(
+            session, username_form
+        )
         if not user:
             return None
-        if not verify_password(password_form, user.hashed_password):
+        if not verify_password(password_form, str(user.hashed_password)):
             return None
         return str(user.username)

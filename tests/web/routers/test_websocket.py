@@ -36,12 +36,12 @@ def test_websocket_auth_timeout(unauth_client: TestClient):
                 assert e.code == 1008
 
 
-def test_websocket_auth_success_and_messaging(
+async def test_websocket_auth_success_and_messaging(
     unauth_client: TestClient, app_context, test_user
 ):
     from bedrock_server_manager.utils import create_access_token
 
-    token = create_access_token(
+    token = await create_access_token(
         data={"sub": test_user.username}, app_context=app_context
     )
 
@@ -78,10 +78,12 @@ def test_websocket_auth_success_and_messaging(
         assert "Action and topic are required" in data["message"]
 
 
-def test_websocket_auth_via_cookie(unauth_client: TestClient, app_context, test_user):
+async def test_websocket_auth_via_cookie(
+    unauth_client: TestClient, app_context, test_user
+):
     from bedrock_server_manager.utils import create_access_token
 
-    token = create_access_token(
+    token = await create_access_token(
         data={"sub": test_user.username}, app_context=app_context
     )
     unauth_client.cookies.set("access_token_cookie", token)

@@ -176,22 +176,24 @@ def test_save_config_error(isolated_bcm_config, monkeypatch, caplog):
     assert "Failed to save configuration file" in caplog.text
 
 
-def test_needs_setup(app_context):
+async def test_needs_setup(app_context):
     """Test needs_setup correctly identifies if admin users exist."""
+    from sqlalchemy import delete
+
     from bedrock_server_manager.db.models import User
 
     app_context._needs_setup = None  # Reset cache
 
-    with app_context.db.session_manager() as db:
-        db.query(User).delete()
-        db.commit()
+    async with app_context.db.session_manager() as db:
+        await db.execute(delete(User))
+        await db.commit()
 
     assert app_context.needs_setup is True
 
     app_context._needs_setup = None  # Reset cache
 
-    with app_context.db.session_manager() as db:
+    async with app_context.db.session_manager() as db:
         db.add(User(username="test", hashed_password="pw", role="admin"))
-        db.commit()
+        await db.commit()
 
     assert app_context.needs_setup is False

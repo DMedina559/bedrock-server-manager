@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
-from ...db.models import User
 from ...utils import (
     create_access_token,
     get_password_hash,
@@ -58,16 +57,16 @@ async def create_first_user(
             detail="Application has already been set up.",
         )
 
-    with app_context.db.session_manager() as db:  # type: ignore
+    async with app_context.storage.transaction() as session:
         hashed_password = get_password_hash(data.password)
-        user = User(
-            username=data.username, hashed_password=hashed_password, role="admin"
-        )
 
         try:
-            db.add(user)
-            db.commit()
-            db.refresh(user)  # Refresh the user object to get its ID if needed
+            user = await app_context.storage.user_repo.create_user(
+                session,
+                username=data.username,
+                hashed_password=hashed_password,
+                role="admin",
+            )
 
             logger.info(f"First user '{data.username}' created with admin role.")
 
@@ -75,7 +74,7 @@ async def create_first_user(
             app_context._needs_setup = False
 
             # Log the user in by creating an access token and returning it
-            access_token = create_access_token(
+            access_token = await create_access_token(
                 data={"sub": user.username}, app_context=app_context
             )
 
@@ -99,7 +98,7 @@ async def create_first_user(
             return response
 
         except IntegrityError:
-            db.rollback()  # Rollback the transaction on database error
+            await session.rollback()
             logger.warning(
                 f"Setup failed: Username '{data.username}' already exists (should not happen for first user)."
             )
@@ -111,7 +110,7 @@ async def create_first_user(
                 },
             )
         except Exception as e:
-            db.rollback()  # Rollback for any other unexpected errors
+            await session.rollback()
             logger.error(
                 f"An unexpected error occurred during first user creation: {e}",
                 exc_info=True,

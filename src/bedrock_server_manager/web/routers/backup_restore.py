@@ -20,6 +20,7 @@ import logging
 import os
 from typing import Any, Callable, Optional
 
+import aiofiles.ospath
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 from ...api import backup_restore as backup_restore_api
@@ -61,7 +62,7 @@ async def put_prune_backups(
     logger.info(
         f"API: Request to prune backups for server '{server_name}' by user '{identity}'."
     )
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         backup_restore_api.prune_old_backups,
         username=current_user.username,
         server_name=server_name,
@@ -94,7 +95,7 @@ async def get_list_server_backups(
         f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
     )
     try:
-        api_result = backup_restore_api.list_backup_files(
+        api_result = await backup_restore_api.list_backup_files(
             server_name=server_name, backup_type=backup_type, app_context=app_context
         )
         if api_result.get("status") == "success":
@@ -220,7 +221,7 @@ async def post_backup_action(
             detail="Invalid backup configuration.",
         )
 
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         target_func,
         username=current_user.username,
         **kwargs,
@@ -310,7 +311,7 @@ async def post_restore_action(  # noqa: C901
                 detail=f"Security violation - Invalid backup path '{backup_file_name}'.",
             )
 
-        if not os.path.isfile(full_backup_path):
+        if not await aiofiles.ospath.isfile(full_backup_path):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Backup file not found: {full_backup_path}",
@@ -330,7 +331,7 @@ async def post_restore_action(  # noqa: C901
             detail="Invalid restore configuration.",
         )
 
-    task_id = app_context.task_manager.run_task(
+    task_id = await app_context.task_manager.run_task(
         target_func,
         username=current_user.username,
         **kwargs,

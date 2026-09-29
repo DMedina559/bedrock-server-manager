@@ -6,17 +6,11 @@ Running these tasks directly within an event hook or a FastAPI endpoint blocks t
 
 To solve this, Bedrock Server Manager provides a `TaskManager` to offload long-running operations to background threads.
 
-## Accessing the Task Manager
+## Submitting Background Tasks via `self.api.run_task`
 
-You can access the `TaskManager` instance via your plugin's `api` object. The task manager is attached to the main application context:
+In Version 4.0, plugins interact with background task scheduling exclusively through the safe `self.api.run_task` method. Plugins **must not** attempt to access `app_context` or `TaskManager` objects directly.
 
-```python
-task_manager = self.api.app_context.task_manager()
-```
-
-## Running Background Tasks
-
-The primary method you will use is `run_task`. This method submits a function to be executed in the background and immediately returns a unique `task_id`.
+The `await self.api.run_task(...)` method accepts the target function to execute along with any required positional or keyword arguments, submitting the function to be executed in the background and returning a unique `task_id`.
 
 ### Example: A Long-Running Task
 
@@ -50,67 +44,31 @@ def my_long_running_function(seconds: int, name: str):
     logger.info(f"Finished long task for {name}!")
     return f"Processed {name} successfully in {seconds} seconds."
 
-@plugin_web_router.post("/start_task")
-async def start_task(
-    seconds: int = 5,
-    name: str = "example",
-    app_context: AppContext = Depends(get_app_context),
-    current_user: User = Depends(get_current_user)
-):
-    """Starts a task using the injected AppContext and User."""
-    task_manager = app_context.task_manager()
-
-    task_id = task_manager.run_task(
-        my_long_running_function,
-        username=current_user.username, # Provide the username for targeted WebSocket UI updates
-        seconds=seconds,
-        name=name
-    )
-
-    return {"status": "success", "task_id": task_id, "message": "Task started in the background."}
-
 class MyTaskPlugin(PluginBase):
-    version = "1.0.0"
+    version = "4.0.0"
 
-    def on_load(self):
+    @app_event("on_load")
+    async def plugin_loaded(self, **kwargs):
         self.logger.info("MyTaskPlugin loaded.")
 
-        # We can attach the task manager or API to the router's state if needed
-        # Or, we can define the endpoint within the class methods if we want direct `self` access
-
     def get_fastapi_routers(self):
-        # A simpler way to get access to `self.api` is to define the route dynamically here
-
         router = APIRouter(prefix="/my_task_plugin", tags=["My Task Plugin"])
 
         @router.post("/start_task")
         async def trigger_task(
             seconds: int = 5,
             name: str = "example",
-            current_user: User = Depends(get_current_user)
+            current_user: Dict[str, Any] = Depends(get_admin_user)
         ):
-            task_manager = self.api.app_context.task_manager()
-
-            # Submit the function to the background.
-            # *args and **kwargs passed to run_task will be forwarded to your function.
-            task_id = task_manager.run_task(
+            # Submit the function to run in the background via self.api.run_task.
+            task_id = await self.api.run_task(
                 my_long_running_function,
-                username=current_user.username, # Provide the username for targeted WebSocket UI updates
-                seconds=seconds,  # kwarg for my_long_running_function
-                name=name         # kwarg for my_long_running_function
+                username=current_user.get("username"),
+                seconds=seconds,
+                name=name
             )
 
             return {"status": "success", "task_id": task_id, "message": "Task started in the background."}
-
-        @router.get("/task_status/{task_id}")
-        async def get_task_status(task_id: str):
-            task_manager = self.api.app_context.task_manager()
-            task_details = task_manager.get_task(task_id)
-
-            if not task_details:
-                return {"status": "error", "message": "Task not found."}
-
-            return {"status": "success", "task": task_details}
 
         return [router]
 ```

@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -18,8 +18,10 @@ def test_get_server_settings_success(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.core.bedrock_server.BedrockServer._load_server_config"
+        "bedrock_server_manager.core.bedrock_server.BedrockServer._load_server_config",
+        new_callable=AsyncMock,
     ) as mock_load:
+        mock_load.side_effect = None
         mock_load.return_value = {"settings": {"autoupdate": True}}
 
         response = admin_auth_client.get(

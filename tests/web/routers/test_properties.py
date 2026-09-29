@@ -2,7 +2,7 @@
 Integration tests for the properties router endpoints.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -31,7 +31,8 @@ def test_post_properties_set_success(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.return_value = {"status": "success", "message": "Properties updated"}
 
@@ -47,7 +48,8 @@ def test_post_properties_set_not_found(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.return_value = {
             "status": "error",
@@ -64,7 +66,8 @@ def test_post_properties_set_not_found(
 
 def test_post_properties_set_error(admin_auth_client: TestClient, real_bedrock_server):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.return_value = {"status": "error", "message": "Validation failed"}
 
@@ -80,7 +83,8 @@ def test_post_properties_set_user_input_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.side_effect = UserInputError("Invalid value for max-players")
 
@@ -96,7 +100,8 @@ def test_post_properties_set_bsm_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.side_effect = BSMError("Disk write failed")
 
@@ -112,7 +117,8 @@ def test_post_properties_set_exception(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.set_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.set_properties",
+        new_callable=AsyncMock,
     ) as mock_set:
         mock_set.side_effect = Exception("Boom")
 
@@ -133,7 +139,8 @@ def test_get_properties_unauthorized(unauth_client: TestClient, real_bedrock_ser
 
 def test_get_properties_success(admin_auth_client: TestClient, real_bedrock_server):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.get_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.get_properties",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = {
             "status": "success",
@@ -151,7 +158,8 @@ def test_get_properties_success(admin_auth_client: TestClient, real_bedrock_serv
 
 def test_get_properties_not_found(admin_auth_client: TestClient, real_bedrock_server):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.get_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.get_properties",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = {
             "status": "error",
@@ -169,7 +177,8 @@ def test_get_properties_internal_error(
     admin_auth_client: TestClient, real_bedrock_server
 ):
     with patch(
-        "bedrock_server_manager.web.routers.properties.properties_api.get_properties"
+        "bedrock_server_manager.web.routers.properties.properties_api.get_properties",
+        new_callable=AsyncMock,
     ) as mock_get:
         mock_get.return_value = {
             "status": "error",

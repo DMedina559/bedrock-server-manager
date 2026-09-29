@@ -89,7 +89,7 @@ def test_get_server_process_info_success(auth_client: TestClient, real_bedrock_s
 
 def test_put_scan_players_success(admin_auth_client: TestClient):
     with patch(
-        "bedrock_server_manager.api.player.scan_and_update_player_db_api"
+        "bedrock_server_manager.api.player.scan_and_update_player_db"
     ) as mock_scan:
         mock_scan.return_value = {
             "status": "success",
@@ -106,9 +106,7 @@ def test_put_scan_players_success(admin_auth_client: TestClient):
 
 
 def test_get_all_players_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.api.player.get_all_known_players_api"
-    ) as mock_get:
+    with patch("bedrock_server_manager.api.player.get_all_known_players") as mock_get:
         mock_get.return_value = {
             "status": "success",
             "players": [{"xuid": "123", "name": "Steve"}],
@@ -123,14 +121,14 @@ def test_get_all_players_success(admin_auth_client: TestClient):
         assert len(data["players"]) == 1
 
 
-def test_put_prune_downloads_success(
+async def test_put_prune_downloads_success(
     admin_auth_client: TestClient, tmp_path, app_context
 ):
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
     target_dir = downloads_dir / "test_target"
     target_dir.mkdir()
-    app_context.settings.set("paths.downloads", str(downloads_dir))
+    await app_context.settings.set("paths.downloads", str(downloads_dir))
 
     with patch("bedrock_server_manager.api.misc.prune_download_cache") as mock_prune:
         mock_prune.return_value = {
@@ -149,12 +147,12 @@ def test_put_prune_downloads_success(
         assert data["files_deleted"] == 2
 
 
-def test_put_prune_downloads_invalid_path(
+async def test_put_prune_downloads_invalid_path(
     admin_auth_client: TestClient, tmp_path, app_context
 ):
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    app_context.settings.set("paths.downloads", str(downloads_dir))
+    await app_context.settings.set("paths.downloads", str(downloads_dir))
 
     response = admin_auth_client.put(
         "/api/downloads/prune", json={"directory": "../../etc/passwd", "keep": 1}
@@ -164,8 +162,11 @@ def test_put_prune_downloads_invalid_path(
 
 
 def test_get_servers_list_success(auth_client: TestClient):
+    from unittest.mock import AsyncMock
+
     with patch(
-        "bedrock_server_manager.api.application.get_all_servers_data"
+        "bedrock_server_manager.api.application.get_all_servers_data",
+        new_callable=AsyncMock,
     ) as mock_list:
         mock_list.return_value = {
             "status": "success",
@@ -205,11 +206,11 @@ def test_get_system_info_success(unauth_client: TestClient):
         assert data["info"]["os"] == "Linux"
 
 
-def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
+async def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
     themes_dir = tmp_path / "themes"
     themes_dir.mkdir()
     (themes_dir / "custom1.css").touch()
-    app_context.settings.set("paths.themes", str(themes_dir))
+    await app_context.settings.set("paths.themes", str(themes_dir))
 
     response = unauth_client.get("/api/info/themes")
 
@@ -221,9 +222,7 @@ def test_get_themes_success(unauth_client: TestClient, tmp_path, app_context):
 
 
 def test_post_add_players_success(admin_auth_client: TestClient):
-    with patch(
-        "bedrock_server_manager.api.player.add_players_manually_api"
-    ) as mock_add:
+    with patch("bedrock_server_manager.api.player.add_players_manually") as mock_add:
         mock_add.return_value = {
             "status": "success",
             "message": "Added 1 player",
