@@ -243,7 +243,17 @@ class SettingsState(BaseModel):
         defaults = cls.create_defaults(data_dir) if data_dir else cls()
         merged = defaults.to_dict()
 
-        # Unflatten dot-notation keys if loading flat DB records
+        def _deep_merge_dicts(
+            source: Dict[Any, Any], destination: Dict[Any, Any]
+        ) -> Dict[Any, Any]:
+            for key, value in source.items():
+                if isinstance(value, dict) and isinstance(destination.get(key), dict):
+                    _deep_merge_dicts(value, destination[key])
+                elif value is not None or key not in destination:
+                    destination[key] = value
+            return destination
+
+        # Unflatten dot-notation keys and merge all DB records into a unified structure
         unflattened: Dict[str, Any] = {}
         for k, v in data.items():
             if "." in k:
@@ -253,14 +263,20 @@ class SettingsState(BaseModel):
                     if isinstance(curr, dict):
                         curr = curr.setdefault(p, {})
                 if isinstance(curr, dict):
-                    curr[parts[-1]] = v
+                    if isinstance(v, dict) and isinstance(curr.get(parts[-1]), dict):
+                        _deep_merge_dicts(v, curr[parts[-1]])
+                    elif v is not None or parts[-1] not in curr:
+                        curr[parts[-1]] = v
             else:
-                unflattened[k] = v
+                if isinstance(v, dict) and isinstance(unflattened.get(k), dict):
+                    _deep_merge_dicts(v, unflattened[k])
+                elif v is not None or k not in unflattened:
+                    unflattened[k] = v
 
         for k, v in unflattened.items():
             if isinstance(v, dict) and k in merged and isinstance(merged[k], dict):
-                merged[k].update(v)
-            else:
+                _deep_merge_dicts(v, merged[k])
+            elif v is not None or k not in merged:
                 merged[k] = v
 
         inst = cls(

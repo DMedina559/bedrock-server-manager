@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 pytest_plugins = ["bsm_test_utils.fixtures"]
 
+from bedrock_server_manager.config import bcm_config  # noqa: E402
 from bedrock_server_manager.context import AppContext  # noqa: E402
 from bedrock_server_manager.db.database import Database  # noqa: E402
 from bedrock_server_manager.db.models import User as UserModel  # noqa: E402
@@ -38,8 +39,6 @@ def isolated_bcm_config(monkeypatch, tmp_path):
 
     test_config_dir = tmp_path / "test_config"
     test_config_dir.mkdir()
-
-    from bedrock_server_manager.config import bcm_config
 
     bcm_config.set_custom_config_dir(str(test_config_dir))
     bcm_config.set_custom_data_dir(str(test_data_dir))
@@ -86,8 +85,8 @@ async def db(isolated_bcm_config, tmp_path, monkeypatch):
 
 @pytest_asyncio.fixture
 async def storage(db, isolated_bcm_config):
-    """Provides a fresh Storage instance."""
-    test_data_dir = isolated_bcm_config / "test_data"
+    """Provides a fresh Storage instance bound to the isolated data directory."""
+    test_data_dir = bcm_config.load_config().get("data_dir")
     return Storage(db=db, data_dir=str(test_data_dir))
 
 

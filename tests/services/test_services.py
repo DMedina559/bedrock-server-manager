@@ -52,9 +52,9 @@ async def test_user_service_mutations(app_context):
     assert app_context.state.users.get("john_doe").full_name == "John Doe"
 
 
-async def test_explicit_di_services(db):
+async def test_explicit_di_services(db, tmp_path):
     state = AppState()
-    storage = Storage(db)
+    storage = Storage(db, data_dir=str(tmp_path))
 
     server_svc = ServerService(state=state, storage=storage)
     plugin_svc = PluginService(state=state, storage=storage)

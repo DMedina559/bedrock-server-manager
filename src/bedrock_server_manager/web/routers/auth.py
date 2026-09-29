@@ -19,7 +19,7 @@ facilitate that access control.
 
 import datetime
 import logging
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -114,13 +114,36 @@ async def api_login_for_access_token(
 async def reauth(
     request: Request,
     response: Response,
-    remember_me: Annotated[bool, Form()] = False,
+    remember_me: Optional[bool] = None,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
 ):
     """
     Refreshes the JWT access token for an already authenticated user.
+    Supports form data, JSON body, or query parameters.
     """
+    if remember_me is None:
+        # Check if remember_me was provided in form data or json body
+        try:
+            content_type = request.headers.get("content-type", "").lower()
+            if "application/json" in content_type:
+                json_data = await request.json()
+                if isinstance(json_data, dict):
+                    remember_me = bool(json_data.get("remember_me", False))
+            elif (
+                "application/x-www-form-urlencoded" in content_type
+                or "multipart/form-data" in content_type
+            ):
+                form_data = await request.form()
+                val = form_data.get("remember_me")
+                if val is not None:
+                    remember_me = str(val).lower() in ("true", "1", "yes", "on")
+        except Exception:
+            pass
+
+    if remember_me is None:
+        remember_me = False
+
     settings = app_context.settings
     if remember_me:
         try:
