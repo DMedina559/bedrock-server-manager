@@ -23,7 +23,7 @@ async def test_websocket_api_bridge(mock_app_context):
     res = await api.websocket.broadcast("my_topic", {"key": "val"})
     assert res["status"] == "success"
     mock_app_context.connection_manager.broadcast_to_topic.assert_called_once_with(
-        "my_topic", {"key": "val"}
+        "my_topic", {"type": "broadcast", "topic": "my_topic", "data": {"key": "val"}}
     )
 
     # Send to user

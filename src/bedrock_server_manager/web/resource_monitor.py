@@ -63,7 +63,7 @@ class ResourceMonitor:
             except Exception as e:
                 logger.error(f"Error in resource monitor loop: {e}", exc_info=True)
 
-            await asyncio.sleep(2)  # Broadcast every 2 seconds
+            await asyncio.sleep(3)  # Broadcast every 3 seconds
 
     def start(self):
         """Starts the background monitoring task."""

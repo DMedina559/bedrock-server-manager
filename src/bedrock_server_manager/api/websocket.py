@@ -34,7 +34,19 @@ async def broadcast(
         raise UserInputError("Topic name cannot be empty.")
 
     try:
-        await app_context.connection_manager.broadcast_to_topic(topic, data)
+        if (
+            isinstance(data, dict)
+            and "topic" in data
+            and ("data" in data or "type" in data)
+        ):
+            message = data
+        else:
+            message = {
+                "type": "broadcast",
+                "topic": topic,
+                "data": data,
+            }
+        await app_context.connection_manager.broadcast_to_topic(topic, message)
         return {"status": "success", "message": f"Broadcasted to topic '{topic}'"}
     except Exception as e:
         logger.error(f"Failed to broadcast to topic '{topic}': {e}", exc_info=True)

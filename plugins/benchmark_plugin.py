@@ -12,6 +12,9 @@ import os
 import time
 from typing import Any, Dict, Optional
 
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
 try:
     import psutil  # type: ignore
 
@@ -51,7 +54,22 @@ class BenchmarkPlugin(PluginBase):
         self._last_disk_io: Optional[Any] = None
         self._last_io_time: float = time.monotonic()
         self._tracked_servers: Dict[str, Dict[str, Any]] = {}
-        self._latest_metrics: Dict[str, Any] = {}
+        self._latest_metrics: Dict[str, Any] = {
+            "timestamp_str": time.strftime("%H:%M:%S"),
+            "app_cpu_percent": 0.0,
+            "sys_cpu_percent": 0.0,
+            "app_ram_mb": 0.0,
+            "sys_ram_mb": 0.0,
+            "loop_lag_ms": 0.0,
+            "asyncio_task_count": 0,
+            "thread_count": 0,
+            "sys_ram_percent": 0.0,
+            "net_tx_kbps": 0.0,
+            "net_rx_kbps": 0.0,
+            "disk_read_kbps": 0.0,
+            "disk_write_kbps": 0.0,
+            "server_metrics": [],
+        }
 
         if PSUTIL_AVAILABLE:
             try:
@@ -59,6 +77,192 @@ class BenchmarkPlugin(PluginBase):
                 self._last_disk_io = psutil.disk_io_counters()
             except Exception:
                 pass
+
+        self.router = APIRouter(prefix="/plugins/benchmark", tags=["Benchmark Plugin"])
+
+        @self.router.get(
+            "/ui",
+            response_class=JSONResponse,
+            name="Benchmark Metrics UI",
+            tags=["plugin-json-ui"],
+        )
+        async def get_benchmark_ui(request: Request):
+            m = self._latest_metrics
+            return JSONResponse(
+                content={
+                    "websocketSubscriptions": ["benchmark:metrics"],
+                    "type": "Container",
+                    "children": [
+                        {
+                            "type": "Text",
+                            "props": {
+                                "content": "BSM System & Process Performance Benchmark",
+                                "variant": "h2",
+                            },
+                        },
+                        {
+                            "type": "Row",
+                            "children": [
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "App CPU Usage",
+                                                "value": f"{m.get('app_cpu_percent', 0.0):.1f}%",
+                                                "icon": "Cpu",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "app_cpu_percent",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "App RAM (MB)",
+                                                "value": f"{m.get('app_ram_mb', 0.0):.1f} MB",
+                                                "icon": "MemoryStick",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "app_ram_mb",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "Event Loop Lag",
+                                                "value": f"{m.get('loop_lag_ms', 0.0):.2f} ms",
+                                                "icon": "Activity",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "loop_lag_ms",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "Asyncio Tasks",
+                                                "value": str(
+                                                    m.get("asyncio_task_count", 0)
+                                                ),
+                                                "icon": "List",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "asyncio_task_count",
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "Row",
+                            "children": [
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {"title": "CPU Usage History (%)"},
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "area",
+                                                        "chartType": "area",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "app_cpu_percent",
+                                                                "color": "#10b981",
+                                                                "name": "App CPU %",
+                                                            },
+                                                            {
+                                                                "dataKey": "sys_cpu_percent",
+                                                                "color": "#6366f1",
+                                                                "name": "System CPU %",
+                                                            },
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {
+                                                "title": "Memory Usage History (MB)"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "line",
+                                                        "chartType": "line",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "app_ram_mb",
+                                                                "color": "#3b82f6",
+                                                                "name": "App RAM (MB)",
+                                                            },
+                                                            {
+                                                                "dataKey": "sys_ram_mb",
+                                                                "color": "#f59e0b",
+                                                                "name": "System RAM (MB)",
+                                                            },
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "Card",
+                            "props": {"title": "Event Loop Latency History (ms)"},
+                            "children": [
+                                {
+                                    "type": "Chart",
+                                    "props": {
+                                        "type": "line",
+                                        "chartType": "line",
+                                        "socketTopic": "benchmark:metrics",
+                                        "xAxis": "timestamp_str",
+                                        "series": [
+                                            {
+                                                "dataKey": "loop_lag_ms",
+                                                "color": "#ef4444",
+                                                "name": "Loop Lag (ms)",
+                                            }
+                                        ],
+                                    },
+                                }
+                            ],
+                        },
+                    ],
+                }
+            )
 
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs: Any) -> None:
@@ -130,6 +334,7 @@ class BenchmarkPlugin(PluginBase):
             self._tracked_servers[server_name] = {"pid": pid, "status": "running"}
 
     @app_event("after_server_stop")
+    @app_event("on_server_stop")
     async def on_server_stopped(self, **kwargs: Any) -> None:
         """
         Hook triggered when a server stops. Removes or updates tracking for the server.
@@ -218,6 +423,8 @@ class BenchmarkPlugin(PluginBase):
         try:
             if hasattr(self.api, "get_all_servers_data"):
                 res = await self.api.get_all_servers_data()
+            elif hasattr(self.api, "list_servers"):
+                res = await self.api.list_servers()
             else:
                 res = None
 
@@ -296,6 +503,7 @@ class BenchmarkPlugin(PluginBase):
 
         # Store latest metrics dictionary and broadcast over WebSocket
         self._latest_metrics = {
+            "timestamp_str": time.strftime("%H:%M:%S"),
             "app_cpu_percent": app_cpu,
             "app_ram_mb": app_ram_mb,
             "thread_count": thread_count,
@@ -320,6 +528,10 @@ class BenchmarkPlugin(PluginBase):
                 self.logger.debug(
                     f"Failed to broadcast benchmark metrics over WebSocket: {err}"
                 )
+
+    def get_fastapi_routers(self, **kwargs: Any) -> list[Any]:
+        """Returns FastAPI routers registered by this plugin."""
+        return [self.router]
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs: Any) -> None:
