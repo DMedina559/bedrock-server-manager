@@ -15,6 +15,7 @@ from . import (
     settings,
     system,
     web,
+    websocket,
     world,
 )
 
@@ -34,5 +35,6 @@ __all__ = [
     "settings",
     "system",
     "web",
+    "websocket",
     "world",
 ]

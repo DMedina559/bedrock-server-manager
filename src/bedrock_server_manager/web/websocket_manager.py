@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -22,14 +22,24 @@ class Client:
     websocket: WebSocket
 
 
+@dataclass
+class DataProvider:
+    """Represents a registered topic data provider."""
+
+    handler: Callable[..., Any]
+    plugin_name: Optional[str] = None
+
+
 class ConnectionManager:
-    """Manages WebSocket connections and topic-based subscriptions."""
+    """Manages WebSocket connections, topic-based subscriptions, and data providers."""
 
     def __init__(self) -> None:
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
         # Maps a topic to a list of client IDs subscribed to it
         self.subscriptions: Dict[str, List[str]] = {}
+        # Maps a topic to a registered DataProvider
+        self.data_providers: Dict[str, DataProvider] = {}
 
     async def connect(self, websocket: WebSocket, user: UserResponse) -> str:
         """Accepts a new WebSocket connection, tracks it, and returns the client ID."""
@@ -87,6 +97,54 @@ class ConnectionManager:
                 logger.error(f"Error closing websocket for client {client.id}: {e}")
         self.active_connections.clear()
         self.subscriptions.clear()
+        self.data_providers.clear()
+
+    def register_data_provider(
+        self, topic: str, handler: Callable[..., Any], plugin_name: Optional[str] = None
+    ):
+        """Registers a data provider handler for a given topic."""
+        self.data_providers[topic] = DataProvider(
+            handler=handler, plugin_name=plugin_name
+        )
+        logger.info(
+            f"Registered data provider for topic '{topic}' (plugin: {plugin_name or 'core'})"
+        )
+
+    def unregister_data_provider(self, topic: str):
+        """Unregisters a data provider for a given topic."""
+        if topic in self.data_providers:
+            del self.data_providers[topic]
+            logger.info(f"Unregistered data provider for topic '{topic}'")
+
+    def unregister_plugin_providers(self, plugin_name: str):
+        """Unregisters all data providers associated with a specific plugin."""
+        topics_to_remove = [
+            topic
+            for topic, provider in self.data_providers.items()
+            if provider.plugin_name == plugin_name
+        ]
+        for topic in topics_to_remove:
+            del self.data_providers[topic]
+        if topics_to_remove:
+            logger.info(
+                f"Unregistered {len(topics_to_remove)} data providers for plugin '{plugin_name}'"
+            )
+
+    def get_data_provider(self, topic: str) -> Optional[Callable[..., Any]]:
+        """Returns the handler function for a topic data provider, if registered."""
+        provider = self.data_providers.get(topic)
+        return provider.handler if provider else None
+
+    async def publish_ws_event(self, event_name: str, data: Any):
+        """Publishes a custom WebSocket event to subscribers of 'ws_event:{event_name}'."""
+        topic = f"ws_event:{event_name}"
+        message = {
+            "type": "ws_event",
+            "event": event_name,
+            "topic": topic,
+            "data": data,
+        }
+        await self.broadcast_to_topic(topic, message)
 
     async def send_to_client(self, data: Any, client_id: str):
         """Sends a JSON message to a single client."""
