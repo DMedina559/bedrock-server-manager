@@ -10,16 +10,66 @@ The WebSocket router is defined in `src/bedrock_server_manager/web/routers/webso
 
 -   **Endpoint**: Creates a WebSocket endpoint at `/ws`.
 -   **Authentication**: Authenticates the user on the first message payload. The client must send an authentication message within 5 seconds of connecting, containing their JWT access token (e.g., `{"action": "authenticate", "token": "eyJhb..."}`).
--   **Message Handling**: Listens for incoming JSON messages from the client. After authentication, these messages are expected to have an `action` (`subscribe` or `unsubscribe`) and a `topic`.
+-   **Message Handling**: Listens for incoming JSON messages from the client. After authentication, supported actions include `subscribe`, `unsubscribe`, `request`, and `request_data`.
 -   **Connection Management**: Hands off the connection and subscription management to the `ConnectionManager`.
 
-## Connection Manager
+## Connection Manager & Plugin Messaging API
 
 The `ConnectionManager` is a class defined in `src/bedrock_server_manager/web/websocket_manager.py`. It is the core of the backend WebSocket implementation and is responsible for the following:
 
--   **Connection Tracking**: Keeps track of all active WebSocket connections.
+-   **Connection Tracking**: Keeps track of all active WebSocket connections and their authenticated `UserResponse` identity (`user.username`, `user.role`, `user.id`).
 -   **Topic-Based Subscriptions**: Manages which clients are subscribed to which topics.
 -   **Message Broadcasting**: Provides methods for sending messages to a single client, all clients subscribed to a specific topic, or all clients for a specific user.
+-   **Data Provider Registration**: Allows plugins to register real-time topic data providers to handle client request-response messages.
+
+Plugins can access WebSocket capabilities via `self.api.websocket`:
+- `await self.api.websocket.broadcast(topic, data)`
+- `await self.api.websocket.send_to_user(username, data)`
+- `await self.api.websocket.send_to_client(client_id, data)`
+- `await self.api.websocket.register_data_provider(topic, handler)`
+- `await self.api.websocket.unregister_data_provider(topic)`
+- `await self.api.websocket.publish_ws_event(event_name, data)`
+
+## Request / Response Messaging
+
+Clients can request data from real-time topics or plugin-registered data providers by sending a request payload over `/ws`:
+
+```json
+{
+    "action": "request",
+    "topic": "server-status",
+    "data": { "server_name": "my_server" },
+    "request_id": "req-101"
+}
+```
+
+The server routes the request to the registered data provider for `topic`. Handlers can accept `topic`, `data`, `client_id`, and `user` (containing `user.role` like `"admin"` or `"user"`).
+
+The server responds directly to the requesting client:
+
+```json
+{
+    "status": "success",
+    "type": "response",
+    "topic": "server-status",
+    "request_id": "req-101",
+    "data": {
+        "server_name": "my_server",
+        "running": true,
+        "players_online": 3
+    }
+}
+```
+
+### Role-Based Access in Data Providers
+Because `user` is passed to the data provider callback, handlers can verify permissions based on `user.role`:
+
+```python
+async def admin_status_provider(topic, data, user):
+    if user.role != "admin":
+        raise PermissionError("Admin access required")
+    return {"admin_metrics": ...}
+```
 
 ## Wildcard Subscription
 

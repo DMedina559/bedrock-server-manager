@@ -184,6 +184,48 @@ The plugin system offers many advanced features for deep integration:
 *   **[Custom FastAPI Endpoints](./fastapi_endpoints.md):** Extend the web server itself by registering your own web routes, APIs, and Native JSON UI pages.
 *   **[Background Task Loops](./task_manager.md):** Use the `@task_loop` decorator to easily schedule asynchronous or synchronous repeating background jobs without blocking the main event loop.
 
+### 4.1. Real-Time WebSockets (`api.websocket`)
+
+Plugins can send custom WebSocket messages, broadcast real-time updates, and register custom topic data providers to handle client requests (`action: "request"`) over WebSockets:
+
+```python
+from bedrock_server_manager import PluginBase, app_event
+
+class RealTimeStatsPlugin(PluginBase):
+    version = "1.0.0"
+    name = "Real Time Stats"
+
+    @app_event("on_load")
+    async def plugin_loaded(self, **kwargs):
+        # Register a data provider for the "live-stats" WebSocket topic
+        await self.api.websocket.register_data_provider("live-stats", self.get_live_stats)
+        self.logger.info("Registered 'live-stats' WebSocket data provider!")
+
+    async def get_live_stats(self, topic, data, user):
+        """
+        Invoked when a WebSocket client sends:
+        {"action": "request", "topic": "live-stats", "data": {...}, "request_id": "req-1"}
+        """
+        # Inspect user identity & role
+        if user.role not in ("admin", "user"):
+            raise PermissionError("Unauthorized to view live stats")
+
+        servers = await self.api.application.get_all_servers_data()
+        return {
+            "requested_by": user.username,
+            "servers": servers.get("servers", {})
+        }
+
+    @app_event("after_server_start")
+    async def broadcast_status(self, **kwargs):
+        server_name = kwargs.get("server_name")
+        # Broadcast real-time updates to all clients subscribed to "server-updates"
+        await self.api.websocket.broadcast(
+            "server-updates",
+            {"event": "server_started", "server_name": server_name}
+        )
+```
+
 ## 5. Best Practices
 
 ```{tip}
