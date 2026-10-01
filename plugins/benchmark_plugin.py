@@ -51,6 +51,7 @@ class BenchmarkPlugin(PluginBase):
         self._last_disk_io: Optional[Any] = None
         self._last_io_time: float = time.monotonic()
         self._tracked_servers: Dict[str, Dict[str, Any]] = {}
+        self._latest_metrics: Dict[str, Any] = {}
 
         if PSUTIL_AVAILABLE:
             try:
@@ -63,10 +64,39 @@ class BenchmarkPlugin(PluginBase):
     async def plugin_loaded(self, **kwargs: Any) -> None:
         """
         Hook called when plugin is loaded.
+        Registers the WebSocket data provider for 'benchmark:metrics'.
         """
+        if hasattr(self.api, "websocket"):
+            try:
+                await self.api.websocket.register_data_provider(
+                    "benchmark:metrics", self.get_latest_metrics
+                )
+                self.logger.info(
+                    "Registered 'benchmark:metrics' WebSocket data provider."
+                )
+            except Exception as err:
+                self.logger.warning(
+                    f"Could not register WebSocket data provider: {err}"
+                )
+
         self.logger.info(
             f"'{self.name}' v{self.version} loaded. PSUTIL available: {PSUTIL_AVAILABLE}."
         )
+
+    async def get_latest_metrics(
+        self, topic: str, data: Any = None, user: Any = None
+    ) -> Dict[str, Any]:
+        """
+        Data provider callback for WebSocket requests on topic 'benchmark:metrics'.
+        """
+        return {
+            "status": "success",
+            "metrics": self._latest_metrics,
+            "timestamp": time.time(),
+            "requested_by": (
+                getattr(user, "username", "unknown") if user else "anonymous"
+            ),
+        }
 
     @app_event("after_server_start")
     async def on_server_started(self, **kwargs: Any) -> None:
@@ -100,7 +130,6 @@ class BenchmarkPlugin(PluginBase):
             self._tracked_servers[server_name] = {"pid": pid, "status": "running"}
 
     @app_event("after_server_stop")
-    @app_event("on_server_stop")
     async def on_server_stopped(self, **kwargs: Any) -> None:
         """
         Hook triggered when a server stops. Removes or updates tracking for the server.
@@ -189,8 +218,6 @@ class BenchmarkPlugin(PluginBase):
         try:
             if hasattr(self.api, "get_all_servers_data"):
                 res = await self.api.get_all_servers_data()
-            elif hasattr(self.api, "list_servers"):
-                res = await self.api.list_servers()
             else:
                 res = None
 
@@ -266,6 +293,33 @@ class BenchmarkPlugin(PluginBase):
             f"Servers: [{servers_str}]"
         )
         self.logger.info(log_msg)
+
+        # Store latest metrics dictionary and broadcast over WebSocket
+        self._latest_metrics = {
+            "app_cpu_percent": app_cpu,
+            "app_ram_mb": app_ram_mb,
+            "thread_count": thread_count,
+            "asyncio_task_count": task_count,
+            "loop_lag_ms": loop_lag_ms,
+            "sys_cpu_percent": sys_cpu,
+            "sys_ram_mb": sys_ram_mb,
+            "sys_ram_percent": sys_ram_pct,
+            "net_tx_kbps": net_tx_kbps,
+            "net_rx_kbps": net_rx_kbps,
+            "disk_read_kbps": disk_read_kbps,
+            "disk_write_kbps": disk_write_kbps,
+            "server_metrics": server_metrics,
+        }
+
+        if hasattr(self.api, "websocket"):
+            try:
+                await self.api.websocket.broadcast(
+                    "benchmark:metrics", self._latest_metrics
+                )
+            except Exception as err:
+                self.logger.debug(
+                    f"Failed to broadcast benchmark metrics over WebSocket: {err}"
+                )
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs: Any) -> None:
