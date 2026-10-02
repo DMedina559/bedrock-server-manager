@@ -37,6 +37,7 @@ ALLOWED_API_MODULES = {
     "server",
     "settings",
     "system",
+    "websocket",
     "world",
 }
 
@@ -50,8 +51,8 @@ MODULE_ALIASES = {
     "worlds": "world",
 }
 
-# (func, expose_to_plugins, requires_context, origin_module)
-_api_registry: Dict[str, tuple[Callable[..., Any], bool, bool, str]] = {}
+# (func, expose_to_plugins, requires_context, requires_plugin_name, origin_module)
+_api_registry: Dict[str, tuple[Callable[..., Any], bool, bool, bool, str]] = {}
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -82,16 +83,24 @@ def api_method(name: str, expose_to_plugins: bool = True) -> Callable[[F], F]:
             )
 
         requires_context = False
+        requires_plugin_name = False
         try:
             sig = inspect.signature(func)
             requires_context = "app_context" in sig.parameters
+            requires_plugin_name = "plugin_name" in sig.parameters
         except (ValueError, TypeError):
             pass
 
-        _api_registry[name] = (func, expose_to_plugins, requires_context, api_domain)
+        _api_registry[name] = (
+            func,
+            expose_to_plugins,
+            requires_context,
+            requires_plugin_name,
+            api_domain,
+        )
         logger.debug(
             f"API registered: '{name}' from '{module_name}' "
-            f"(expose_to_plugins={expose_to_plugins}, requires_context={requires_context})."
+            f"(expose_to_plugins={expose_to_plugins}, requires_context={requires_context}, requires_plugin_name={requires_plugin_name})."
         )
         return func
 
@@ -112,7 +121,13 @@ def create_app_api(
                 f"The API function '{name}' has not been registered or does not exist."
             )
 
-        api_function, expose_to_plugins, requires_context, _ = _api_registry[name]
+        (
+            api_function,
+            expose_to_plugins,
+            requires_context,
+            requires_plugin_name,
+            _,
+        ) = _api_registry[name]
 
         if not expose_to_plugins and not is_core:
             logger.error(
@@ -122,14 +137,49 @@ def create_app_api(
                 f"The API function '{name}' is not exposed to plugins."
             )
 
-        if requires_context:
-            if app_context is None:
-                raise RuntimeError(
-                    f"API '{name}' requires app_context, but none was provided."
-                )
-            return functools.partial(api_function, app_context=app_context)
+        if requires_context and app_context is None:
+            raise RuntimeError(
+                f"API '{name}' requires app_context, but none was provided."
+            )
 
-        return api_function
+        if inspect.iscoroutinefunction(api_function):
+
+            @functools.wraps(api_function)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                if requires_context and "app_context" not in kwargs:
+                    kwargs["app_context"] = app_context
+                if requires_plugin_name:
+                    try:
+                        bound = inspect.signature(api_function).bind_partial(
+                            *args, **kwargs
+                        )
+                        if "plugin_name" not in bound.arguments:
+                            kwargs["plugin_name"] = plugin_name
+                    except Exception:
+                        if "plugin_name" not in kwargs:
+                            kwargs["plugin_name"] = plugin_name
+                return await api_function(*args, **kwargs)
+
+            return async_wrapper
+        else:
+
+            @functools.wraps(api_function)
+            def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                if requires_context and "app_context" not in kwargs:
+                    kwargs["app_context"] = app_context
+                if requires_plugin_name:
+                    try:
+                        bound = inspect.signature(api_function).bind_partial(
+                            *args, **kwargs
+                        )
+                        if "plugin_name" not in bound.arguments:
+                            kwargs["plugin_name"] = plugin_name
+                    except Exception:
+                        if "plugin_name" not in kwargs:
+                            kwargs["plugin_name"] = plugin_name
+                return api_function(*args, **kwargs)
+
+            return sync_wrapper
 
     def event_listener(event_name: str, callback: Callable[..., None]):
         if app_context is None or app_context.plugin_manager is None:
@@ -226,9 +276,9 @@ class AppAPI:
         api_details = []
         sorted_registry = sorted(
             _api_registry.items(),
-            key=lambda item: (item[1][3] or "", item[0]),
+            key=lambda item: (item[1][4] or "", item[0]),
         )
-        for name, (func, expose_to_plugins, _, domain) in sorted_registry:
+        for name, (func, expose_to_plugins, _, _, domain) in sorted_registry:
             if not expose_to_plugins and not include_internal:
                 continue
             try:

@@ -63,9 +63,10 @@ These APIs provide a safe, consistent, and stable way to manage servers and the 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Web Server
+   :caption: Web & Real-Time Messaging
 
    web
+   websocket
 
 .. toctree::
    :maxdepth: 2

@@ -813,6 +813,12 @@ class PluginManager:
             plugin_map.pop(plugin_key, None)
             plugin_map.pop(target_instance.name, None)
 
+        if self.app_context and hasattr(self.app_context, "connection_manager"):
+            cm = self.app_context.connection_manager
+            cm.unregister_plugin_providers(plugin_key)
+            cm.unregister_plugin_providers(target_instance.name)
+            cm.unregister_plugin_providers(plugin_name)
+
         full_module_name = f"bsm_plugins.{plugin_name}"
         sys.modules.pop(full_module_name, None)
 

@@ -94,3 +94,59 @@ async def test_websocket_auth_via_cookie(
 
         data = websocket.receive_json()
         assert data["status"] == "success"
+
+
+async def test_websocket_request_data_success_and_errors(
+    unauth_client: TestClient, app_context, test_user
+):
+    from bedrock_server_manager.utils import create_access_token
+
+    token = await create_access_token(
+        data={"sub": test_user.username}, app_context=app_context
+    )
+
+    # Register data providers
+    async def sample_provider(data, topic):
+        return {"response": f"hello {data.get('name')}", "topic": topic}
+
+    async def error_provider():
+        raise ValueError("Provider failure")
+
+    app_context.connection_manager.register_data_provider("sample", sample_provider)
+    app_context.connection_manager.register_data_provider("failing", error_provider)
+
+    with unauth_client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"action": "authenticate", "token": token})
+        websocket.receive_json()  # Auth response
+
+        # Test request to unregistered provider
+        websocket.send_json(
+            {"action": "request", "topic": "unknown_topic", "request_id": "req-1"}
+        )
+        res = websocket.receive_json()
+        assert res["status"] == "error"
+        assert res["request_id"] == "req-1"
+        assert "No data provider" in res["message"]
+
+        # Test successful request
+        websocket.send_json(
+            {
+                "action": "request",
+                "topic": "sample",
+                "data": {"name": "World"},
+                "request_id": "req-2",
+            }
+        )
+        res = websocket.receive_json()
+        assert res["status"] == "success"
+        assert res["request_id"] == "req-2"
+        assert res["data"] == {"response": "hello World", "topic": "sample"}
+
+        # Test failing provider
+        websocket.send_json(
+            {"action": "request", "topic": "failing", "request_id": "req-3"}
+        )
+        res = websocket.receive_json()
+        assert res["status"] == "error"
+        assert res["request_id"] == "req-3"
+        assert "Provider failure" in res["message"]

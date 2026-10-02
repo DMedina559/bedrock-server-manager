@@ -153,3 +153,60 @@ async def test_websocket_disconnect_on_send_error(
 
     # Client should be removed from active connections
     assert client_id not in connection_manager.active_connections
+
+
+async def test_data_provider_registration_and_unregistration(connection_manager):
+    """Test registering and unregistering topic data providers."""
+
+    def dummy_handler(topic, data):
+        return {"status": "ok"}
+
+    connection_manager.register_data_provider(
+        "server-status", dummy_handler, "plugin_a"
+    )
+    assert connection_manager.get_data_provider("server-status") == dummy_handler
+
+    connection_manager.unregister_data_provider("server-status")
+    assert connection_manager.get_data_provider("server-status") is None
+
+
+async def test_unregister_plugin_providers(connection_manager):
+    """Test unregistering all data providers belonging to a specific plugin."""
+
+    def handler1():
+        pass
+
+    def handler2():
+        pass
+
+    def handler3():
+        pass
+
+    connection_manager.register_data_provider("topic1", handler1, "plugin_a")
+    connection_manager.register_data_provider("topic2", handler2, "plugin_a")
+    connection_manager.register_data_provider("topic3", handler3, "plugin_b")
+
+    connection_manager.unregister_plugin_providers("plugin_a")
+
+    assert connection_manager.get_data_provider("topic1") is None
+    assert connection_manager.get_data_provider("topic2") is None
+    assert connection_manager.get_data_provider("topic3") == handler3
+
+
+async def test_publish_ws_event(connection_manager, mock_websocket, test_user):
+    """Test publishing custom websocket events."""
+    client_id = await connection_manager.connect(mock_websocket, test_user)
+    await connection_manager.subscribe(client_id, "ws_event:custom_event")
+
+    event_data = {"key": "val"}
+    await connection_manager.publish_ws_event("custom_event", event_data)
+
+    import json
+
+    expected = {
+        "type": "ws_event",
+        "event": "custom_event",
+        "topic": "ws_event:custom_event",
+        "data": event_data,
+    }
+    mock_websocket.send_text.assert_called_once_with(json.dumps(expected))

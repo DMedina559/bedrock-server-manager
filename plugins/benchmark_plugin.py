@@ -12,6 +12,9 @@ import os
 import time
 from typing import Any, Dict, Optional
 
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
 try:
     import psutil  # type: ignore
 
@@ -51,6 +54,30 @@ class BenchmarkPlugin(PluginBase):
         self._last_disk_io: Optional[Any] = None
         self._last_io_time: float = time.monotonic()
         self._tracked_servers: Dict[str, Dict[str, Any]] = {}
+        self._latest_metrics: Dict[str, Any] = {
+            "timestamp_str": time.strftime("%H:%M:%S"),
+            "app_cpu_percent": 0.0,
+            "sys_cpu_percent": 0.0,
+            "app_ram_mb": 0.0,
+            "sys_ram_mb": 0.0,
+            "loop_lag_ms": 0.0,
+            "asyncio_task_count": 0,
+            "thread_count": 0,
+            "sys_ram_percent": 0.0,
+            "net_tx_kbps": 0.0,
+            "net_rx_kbps": 0.0,
+            "disk_read_kbps": 0.0,
+            "disk_write_kbps": 0.0,
+            "app_cpu_str": "0.0%",
+            "app_ram_str": "0.0 MB",
+            "loop_lag_str": "0.00 ms",
+            "task_count_str": "0",
+            "thread_count_str": "0",
+            "sys_cpu_str": "0.0%",
+            "sys_ram_str": "0.0 MB",
+            "server_metrics": [],
+            "bedrock_server_stats": [],
+        }
 
         if PSUTIL_AVAILABLE:
             try:
@@ -59,14 +86,372 @@ class BenchmarkPlugin(PluginBase):
             except Exception:
                 pass
 
+        self.router = APIRouter(prefix="/plugins/benchmark", tags=["Benchmark Plugin"])
+
+        @self.router.get(
+            "/ui",
+            response_class=JSONResponse,
+            name="Benchmark Metrics UI",
+            tags=["plugin-json-ui"],
+        )
+        async def get_benchmark_ui(request: Request):
+            m = self._latest_metrics
+
+            return JSONResponse(
+                content={
+                    "websocketSubscriptions": [
+                        "benchmark:metrics",
+                        "benchmark:server_stats",
+                    ],
+                    "type": "Container",
+                    "children": [
+                        {
+                            "type": "Text",
+                            "props": {
+                                "content": "BSM System & Process Performance Benchmark",
+                                "variant": "h2",
+                            },
+                        },
+                        {
+                            "type": "Row",
+                            "children": [
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "App CPU Usage",
+                                                "value": m.get("app_cpu_str", "0.0%"),
+                                                "icon": "Cpu",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "app_cpu_str",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "App RAM (MB)",
+                                                "value": m.get("app_ram_str", "0.0 MB"),
+                                                "icon": "MemoryStick",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "app_ram_str",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "Threads",
+                                                "value": m.get("thread_count_str", "0"),
+                                                "icon": "GitFork",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "thread_count_str",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "Event Loop Lag",
+                                                "value": m.get(
+                                                    "loop_lag_str", "0.00 ms"
+                                                ),
+                                                "icon": "Activity",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "loop_lag_ms",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "StatCard",
+                                            "props": {
+                                                "label": "Asyncio Tasks",
+                                                "value": m.get("task_count_str", "0"),
+                                                "icon": "List",
+                                                "socketTopic": "benchmark:metrics",
+                                                "dataKey": "task_count_str",
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "Row",
+                            "children": [
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {"title": "CPU Usage History (%)"},
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "area",
+                                                        "chartType": "area",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "app_cpu_percent",
+                                                                "color": "#10b981",
+                                                                "name": "App CPU %",
+                                                            },
+                                                            {
+                                                                "dataKey": "sys_cpu_percent",
+                                                                "color": "#6366f1",
+                                                                "name": "System CPU %",
+                                                            },
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {
+                                                "title": "Memory Usage History (MB)"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "line",
+                                                        "chartType": "line",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "app_ram_mb",
+                                                                "color": "#3b82f6",
+                                                                "name": "App RAM (MB)",
+                                                            },
+                                                            {
+                                                                "dataKey": "sys_ram_mb",
+                                                                "color": "#f59e0b",
+                                                                "name": "System RAM (MB)",
+                                                            },
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "Row",
+                            "children": [
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {
+                                                "title": "Network I/O History (KB/s)"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "line",
+                                                        "chartType": "line",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "net_tx_kbps",
+                                                                "color": "#06b6d4",
+                                                                "name": "Tx (Sent) KB/s",
+                                                            },
+                                                            {
+                                                                "dataKey": "net_rx_kbps",
+                                                                "color": "#8b5cf6",
+                                                                "name": "Rx (Recv) KB/s",
+                                                            },
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {
+                                                "title": "Disk I/O History (KB/s)"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "line",
+                                                        "chartType": "line",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "disk_read_kbps",
+                                                                "color": "#14b8a6",
+                                                                "name": "Read KB/s",
+                                                            },
+                                                            {
+                                                                "dataKey": "disk_write_kbps",
+                                                                "color": "#ec4899",
+                                                                "name": "Write KB/s",
+                                                            },
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "Row",
+                            "children": [
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {
+                                                "title": "Event Loop Latency History (ms)"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "line",
+                                                        "chartType": "line",
+                                                        "socketTopic": "benchmark:metrics",
+                                                        "xAxis": "timestamp_str",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "loop_lag_ms",
+                                                                "color": "#ef4444",
+                                                                "name": "Loop Lag (ms)",
+                                                            }
+                                                        ],
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                                {
+                                    "type": "Column",
+                                    "children": [
+                                        {
+                                            "type": "Card",
+                                            "props": {
+                                                "title": "Bedrock Server Processes (CPU % & RAM MB)"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "Chart",
+                                                    "props": {
+                                                        "type": "bar",
+                                                        "chartType": "bar",
+                                                        "socketTopic": "benchmark:server_stats",
+                                                        "dataKey": "bedrock_server_stats",
+                                                        "xAxis": "server_name",
+                                                        "series": [
+                                                            {
+                                                                "dataKey": "cpu_percent",
+                                                                "color": "#10b981",
+                                                                "name": "CPU %",
+                                                            },
+                                                            {
+                                                                "dataKey": "memory_mb",
+                                                                "color": "#3b82f6",
+                                                                "name": "RAM (MB)",
+                                                            },
+                                                        ],
+                                                        "data": m.get(
+                                                            "bedrock_server_stats",
+                                                            [],
+                                                        ),
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                }
+            )
+
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs: Any) -> None:
         """
         Hook called when plugin is loaded.
+        Registers the WebSocket data provider for 'benchmark:metrics'.
         """
+        if hasattr(self.api, "websocket"):
+            try:
+                await self.api.websocket.register_data_provider(
+                    "benchmark:metrics", self.get_latest_metrics
+                )
+                self.logger.info(
+                    "Registered 'benchmark:metrics' WebSocket data provider."
+                )
+            except Exception as err:
+                self.logger.warning(
+                    f"Could not register WebSocket data provider: {err}"
+                )
+
         self.logger.info(
             f"'{self.name}' v{self.version} loaded. PSUTIL available: {PSUTIL_AVAILABLE}."
         )
+
+    async def get_latest_metrics(
+        self, topic: str, data: Any = None, user: Any = None
+    ) -> Dict[str, Any]:
+        """
+        Data provider callback for WebSocket requests on topic 'benchmark:metrics'.
+        """
+        return {
+            "status": "success",
+            "metrics": self._latest_metrics,
+            "timestamp": time.time(),
+            "requested_by": (
+                getattr(user, "username", "unknown") if user else "anonymous"
+            ),
+        }
 
     @app_event("after_server_start")
     async def on_server_started(self, **kwargs: Any) -> None:
@@ -185,6 +570,7 @@ class BenchmarkPlugin(PluginBase):
 
         # 3. Dynamic Bedrock Server PIDs Metrics
         server_metrics = []
+        bedrock_server_stats = []
         active_servers_list = []
         try:
             if hasattr(self.api, "get_all_servers_data"):
@@ -230,30 +616,78 @@ class BenchmarkPlugin(PluginBase):
 
             if p_info and isinstance(p_info, dict):
                 pid = p_info.get("pid")
-                s_cpu = p_info.get("cpu_percent", 0.0)
-                s_ram = p_info.get("memory_mb", 0.0)
+                s_cpu = float(p_info.get("cpu_percent", 0.0))
+                s_ram = float(p_info.get("memory_mb", 0.0))
                 server_metrics.append(
                     f"{s_name}[PID {pid}]: CPU {s_cpu:.1f}%, RAM {s_ram:.1f}MB"
+                )
+                bedrock_server_stats.append(
+                    {
+                        "server_name": s_name,
+                        "pid": pid,
+                        "cpu_percent": round(s_cpu, 1),
+                        "memory_mb": round(s_ram, 1),
+                    }
                 )
             else:
                 pid = fallback_pid
                 if not pid:
                     server_metrics.append(f"{s_name}(no-pid)")
+                    bedrock_server_stats.append(
+                        {
+                            "server_name": s_name,
+                            "pid": None,
+                            "cpu_percent": 0.0,
+                            "memory_mb": 0.0,
+                        }
+                    )
                     continue
                 try:
                     proc = psutil.Process(pid)
                     if proc.is_running():
-                        s_cpu = proc.cpu_percent(interval=None)
-                        s_ram = proc.memory_info().rss / (1024 * 1024)
+                        s_cpu = float(proc.cpu_percent(interval=None))
+                        s_ram = float(proc.memory_info().rss / (1024 * 1024))
                         server_metrics.append(
                             f"{s_name}[PID {pid}]: CPU {s_cpu:.1f}%, RAM {s_ram:.1f}MB"
                         )
+                        bedrock_server_stats.append(
+                            {
+                                "server_name": s_name,
+                                "pid": pid,
+                                "cpu_percent": round(s_cpu, 1),
+                                "memory_mb": round(s_ram, 1),
+                            }
+                        )
                     else:
                         server_metrics.append(f"{s_name}[PID {pid}]: stopped")
+                        bedrock_server_stats.append(
+                            {
+                                "server_name": s_name,
+                                "pid": pid,
+                                "cpu_percent": 0.0,
+                                "memory_mb": 0.0,
+                            }
+                        )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     server_metrics.append(f"{s_name}[PID {pid}]: inactive")
+                    bedrock_server_stats.append(
+                        {
+                            "server_name": s_name,
+                            "pid": pid,
+                            "cpu_percent": 0.0,
+                            "memory_mb": 0.0,
+                        }
+                    )
                 except Exception as err:
                     server_metrics.append(f"{s_name}[PID {pid}]: err({err})")
+                    bedrock_server_stats.append(
+                        {
+                            "server_name": s_name,
+                            "pid": pid,
+                            "cpu_percent": 0.0,
+                            "memory_mb": 0.0,
+                        }
+                    )
 
         servers_str = ", ".join(server_metrics) if server_metrics else "none"
 
@@ -266,6 +700,57 @@ class BenchmarkPlugin(PluginBase):
             f"Servers: [{servers_str}]"
         )
         self.logger.info(log_msg)
+
+        app_cpu_str = f"{app_cpu:.1f}%"
+        app_ram_str = f"{app_ram_mb:.1f} MB"
+        loop_lag_str = f"{loop_lag_ms:.2f} ms"
+        task_count_str = str(task_count)
+        thread_count_str = str(thread_count)
+        sys_cpu_str = f"{sys_cpu:.1f}%"
+        sys_ram_str = f"{sys_ram_mb:.1f} MB"
+
+        # Store latest metrics dictionary and broadcast over WebSocket
+        self._latest_metrics = {
+            "timestamp_str": time.strftime("%H:%M:%S"),
+            "app_cpu_percent": app_cpu,
+            "app_ram_mb": app_ram_mb,
+            "thread_count": thread_count,
+            "asyncio_task_count": task_count,
+            "loop_lag_ms": loop_lag_ms,
+            "sys_cpu_percent": sys_cpu,
+            "sys_ram_mb": sys_ram_mb,
+            "sys_ram_percent": sys_ram_pct,
+            "net_tx_kbps": net_tx_kbps,
+            "net_rx_kbps": net_rx_kbps,
+            "disk_read_kbps": disk_read_kbps,
+            "disk_write_kbps": disk_write_kbps,
+            "app_cpu_str": app_cpu_str,
+            "app_ram_str": app_ram_str,
+            "loop_lag_str": loop_lag_str,
+            "task_count_str": task_count_str,
+            "thread_count_str": thread_count_str,
+            "sys_cpu_str": sys_cpu_str,
+            "sys_ram_str": sys_ram_str,
+            "server_metrics": server_metrics,
+            "bedrock_server_stats": bedrock_server_stats,
+        }
+
+        if hasattr(self.api, "websocket"):
+            try:
+                await self.api.websocket.broadcast(
+                    "benchmark:metrics", self._latest_metrics
+                )
+                await self.api.websocket.broadcast(
+                    "benchmark:server_stats", bedrock_server_stats
+                )
+            except Exception as err:
+                self.logger.debug(
+                    f"Failed to broadcast benchmark metrics over WebSocket: {err}"
+                )
+
+    def get_fastapi_routers(self, **kwargs: Any) -> list[Any]:
+        """Returns FastAPI routers registered by this plugin."""
+        return [self.router]
 
     @app_event("on_unload")
     async def plugin_unloaded(self, **kwargs: Any) -> None:
