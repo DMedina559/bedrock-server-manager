@@ -54,16 +54,31 @@ async def post_update_theme(
     """
     Updates the current user's preferred theme.
     """
-    async with app_context.storage.transaction() as session:
-        db_user: Any = await app_context.storage.user_repo.get_user_by_username(
-            session, user.username
-        )
-        if db_user:
-            db_user.theme = theme_update.theme
-            return BaseApiResponse(
-                status="success", message="Theme updated successfully"
-            )
-    return JSONResponse(status_code=404, content={"message": "UserResponse not found"})
+    # Match apply_changeset's lock order so a pending flush cannot restore
+    # the old cached theme after this database write.
+    async with app_context.storage._flush_lock:
+        async with app_context.state.users.get_lock(user.username):
+            async with app_context.storage.transaction() as session:
+                db_user: Any = await app_context.storage.user_repo.get_user_by_username(
+                    session, user.username
+                )
+                if not db_user:
+                    return JSONResponse(
+                        status_code=404, content={"message": "UserResponse not found"}
+                    )
+                db_user.theme = theme_update.theme
+
+            # Publish only after commit succeeds. Preserve pending edits to other
+            # account fields and their dirty flag.
+            cached_user = app_context.state.users.get(user.username)
+            if cached_user is not None:
+                was_dirty = user.username in app_context.state.users.dirty_users
+                cached_user.theme = theme_update.theme
+                app_context.state.users.set(cached_user)
+                if not was_dirty:
+                    app_context.state.users.remove_dirty_user(user.username)
+
+    return BaseApiResponse(status="success", message="Theme updated successfully")
 
 
 @router.post("/api/account/profile", response_model=BaseApiResponse)
