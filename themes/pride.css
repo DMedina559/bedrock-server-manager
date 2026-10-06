@@ -1,187 +1,102 @@
-/*
- * Theme: Animated Pride
- * Description: An animated rainbow theme with semi-transparent white containers
- * for a brighter look, using !important to ensure styles are applied.
+/* Animated Pride — install as themes/pride.css.
+ * Semantic tokens support both display modes and both density settings.
+ * Rainbow motion stops when reduced motion is requested. Panorama remains
+ * controlled by Appearance; its background takes priority when enabled.
  */
-
-/* ==========================================================================
-   Rainbow Animations
-   ========================================================================== */
-
-@keyframes rainbow-background {
-    0% {
-        background-color: rgba(228, 3, 3, 0.75);
-    }
-
-    16% {
-        background-color: rgba(255, 140, 0, 0.75);
-    }
-
-    33% {
-        background-color: rgba(255, 237, 0, 0.7);
-    }
-
-    50% {
-        background-color: rgba(0, 128, 38, 0.75);
-    }
-
-    66% {
-        background-color: rgba(0, 77, 255, 0.75);
-    }
-
-    83% {
-        background-color: rgba(117, 7, 135, 0.75);
-    }
-
-    100% {
-        background-color: rgba(228, 3, 3, 0.75);
-    }
+:root[data-theme="pride"][data-mode][data-density] {
+  --bsm-accent: #2468d8;
+  --bsm-accent-strong: #174aaf;
+  --bsm-accent-hover: #103b91;
+  --bsm-on-accent: #ffffff;
+  --bsm-focus: #174aaf;
+  --bsm-radius-lg: 16px;
+  --bsm-chart-1: #c53c71;
+  --bsm-chart-2: #13824a;
+  --bsm-chart-3: #6555c8;
+  --sidebar-bg-custom: var(--bsm-surface);
+  --splash-text-color: var(--bsm-warning);
 }
-
-@keyframes rainbow-border {
-    0% {
-        border-color: #E40303;
-    }
-
-    16% {
-        border-color: #FF8C00;
-    }
-
-    33% {
-        border-color: #FFED00;
-    }
-
-    50% {
-        border-color: #008026;
-    }
-
-    66% {
-        border-color: #004DFF;
-    }
-
-    83% {
-        border-color: #750787;
-    }
-
-    100% {
-        border-color: #E40303;
-    }
+:root[data-theme="pride"][data-mode="dark"][data-density] {
+  --bsm-page: #10141c;
+  --bsm-surface: #18202bf5;
+  --bsm-surface-raised: #243040;
+  --bsm-input: #101720;
+  --bsm-text: #f5f8ff;
+  --bsm-muted: #bac9dc;
+  --bsm-border: #526782;
+  --bsm-accent: #9ac7ff;
+  --bsm-focus: #9ac7ff;
+  --bsm-success: #8ce8af;
+  --bsm-danger: #ffacba;
+  --bsm-danger-solid: #ad2346;
+  --bsm-warning: #ffe27c;
+  --bsm-info: #a8ccff;
+  --bsm-console: #0b111b;
+  --bsm-console-text: #d0e2f6;
+  --bsm-overlay: #050b17b8;
+  --bsm-shadow: 0 12px 40px #03081340;
 }
-
-/* ==========================================================================
-   Theme Variables (:root)
-   ========================================================================== */
-
-:root {
-    /* --- Core Settings --- */
-    --background-overlay-color: transparent;
-    /* --- White Containers & Dark Text --- */
-    --container-background-color: rgba(255, 255, 255, 0.45);
-    --server-card-background-color: rgba(255, 255, 255, 0.4);
-    --server-card-hover-background-color: rgba(255, 255, 255, 0.55);
-    --form-input-background-color: rgba(240, 240, 240, 0.5);
-    --sidebar-background-color: rgba(255, 255, 255, 0.45);
-    --text-color: #111; /* Dark text for readability on white */
-    --header-text-color: #000;
-    --form-label-text-color: #111;
-    --form-input-text-color: #000;
-    --server-card-info-text-color: #333;
-    --server-card-info-label-color: #000;
-    --sidebar-link-text-color: #111;
-    /* --- Animated Border & Splash --- */
-    --border-color: #E40303; /* Fallback */
-    --splash-text-color: var(--pride-blue);
-    /* --- Pride Colors --- */
-    --pride-red: #E40303;
-    --pride-orange: #FF8C00;
-    --pride-yellow: #FFED00;
-    --pride-green: #008026;
-    --pride-blue: #004DFF;
-    --pride-purple: #750787;
-    /* --- Buttons --- */
-    --button-background-color: #f0f0f0;
-    --button-border-color: #ccc;
-    --button-text-color: #111;
-    --button-hover-background-color: #e0e0e0;
-    --button-hover-border-color: #bbb;
-    --primary-button-background-color: var(--pride-blue);
-    --primary-button-border-color: #336fff;
-    --primary-button-text-color: #fff; /* Keep text white on colored buttons */
-
-    --danger-button-background-color: var(--pride-red);
-    --danger-button-border-color: #e83535;
-    --danger-button-text-color: #fff; /* Keep text white on colored buttons */
-    /* --- Messages & Forms --- */
-    --message-success-border-color: var(--pride-green);
-    --message-error-border-color: var(--pride-red);
-    --message-warning-border-color: var(--pride-orange);
-    --form-input-focus-border-color: var(--pride-blue);
-    --form-input-invalid-border-color: var(--pride-red);
+:root[data-theme="pride"][data-mode="light"][data-density] {
+  --bsm-page: #f4f7fc;
+  --bsm-surface: #fffffff5;
+  --bsm-surface-raised: #e6edf7;
+  --bsm-input: #f9fbff;
+  --bsm-text: #142131;
+  --bsm-muted: #526273;
+  --bsm-border: #a3b6ce;
+  --bsm-success: #176738;
+  --bsm-danger: #ad2346;
+  --bsm-danger-solid: #ad2346;
+  --bsm-warning: #805300;
+  --bsm-info: #254cab;
+  --bsm-console: #edf3f9;
+  --bsm-console-text: #25496d;
+  --bsm-overlay: #14213180;
+  --bsm-shadow: 0 12px 40px #174aaf1a;
 }
-
-/* ==========================================================================
-   Animation & Forced Overrides
-   ========================================================================== */
-
-/* 1. Animate the page background overlay */
-body::before {
-    animation: rainbow-background 18s infinite linear;
+/* All six stripes stay visible rather than enlarging a single purple region. */
+:root[data-theme="pride"][data-mode][data-density] {
+  --pride-spectrum: linear-gradient(90deg,
+    #e40303 0% 16.66%, #ff8c00 16.66% 33.33%,
+    #ffed00 33.33% 50%, #008026 50% 66.66%,
+    #004dff 66.66% 83.33%, #750787 83.33% 100%);
+  --pride-page-spectrum: linear-gradient(120deg,
+    #5e151c, #5c3211, #4f470d, #124a29, #152d64, #48205b);
 }
-
-/* 2. Animate the borders of all major components */
-.container,
-.server-card,
-.sidebar-nav,
-.monitor-output,
-.content-section,
-.header,
-.footer {
-    animation: rainbow-border 10s infinite linear;
+:root[data-theme="pride"][data-mode="light"][data-density] {
+  --pride-page-spectrum: linear-gradient(120deg,
+    #ffd9dd, #ffe2bf, #fff4b5, #c9ebd3, #cedfff, #ecd0f2);
 }
-
-/* 3. Force layout components to have a white background and dark text */
-.container {
-    background-color: var(--container-background-color) !important;
+:root[data-theme="pride"]:not([data-panorama="true"]) body {
+  background-image: var(--pride-page-spectrum);
+  background-size: 100% 100%;
+  background-attachment: fixed;
 }
-
-.sidebar-nav, .sidebar-nav .nav-link {
-    background-color: var(--sidebar-background-color) !important;
-    color: var(--sidebar-link-text-color) !important;
+/* Rainbow trim remains visible with a panorama, and does not fade content.
+ * Borders, geometry, density, and sidebar transparency keep their shared rules.
+ */
+:root[data-theme="pride"] :is(
+  .sidebar-nav, .server-card, .settings-panel, .workspace-hero,
+  .summary-card, .content-section, .monitor-output
+) {
+  background-image: var(--pride-spectrum);
+  background-size: 100% 5px;
+  background-position: top left;
+  background-repeat: no-repeat;
 }
-
-.server-card {
-    background-color: var(--server-card-background-color) !important;
-    transition: background-color 0.2s ease-in-out;
+:root[data-theme="pride"] :is(.server-card, .settings-panel, .workspace-hero) {
+  animation: bsm-pride-border 18s linear infinite;
 }
-
-    .server-card:hover {
-        background-color: var(--server-card-hover-background-color) !important;
-    }
-
-.form-input {
-    background-color: var(--form-input-background-color) !important;
+@keyframes bsm-pride-border {
+  0%, 100% { border-color: #e40303; }
+  16.66% { border-color: #ff8c00; }
+  33.33% { border-color: #ffed00; }
+  50% { border-color: #008026; }
+  66.66% { border-color: #004dff; }
+  83.33% { border-color: #750787; }
 }
-
-/* Force dark text color on various elements */
-body, h1, h2, h3, h4, h5, p, a, label, .server-card-info, .server-card-info .info-label {
-    color: var(--text-color) !important;
-}
-
-/* Override link colors that might be set by default browser styles */
-a {
-    color: var(--pride-blue) !important;
-}
-
-    a:hover {
-        color: var(--pride-purple) !important;
-    }
-
-.sidebar-nav .nav-link:hover {
-    color: var(--pride-blue) !important;
-    background-color: rgba(0, 0, 0, 0.05) !important;
-}
-
-/* Ensure header text is dark */
-.header h1 {
-    color: var(--header-text-color) !important;
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="pride"] :is(.server-card, .settings-panel, .workspace-hero) {
+    animation: none;
+  }
 }
