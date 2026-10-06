@@ -1,33 +1,33 @@
 /* ==========================================================================
-   Bedrock Server Manager - Modern Minecraft Green Theme
+   Bedrock Server Manager - Emerald Server Stack Theme
    ReadTheDocs / Sphinx Theme Overrides
    ========================================================================== */
 
-/* --- CSS Variables & Color System (Minecraft Emerald / Dark Forest) --- */
+/* --- CSS Variables & Color System (Deep Teal, Emerald & Python Gold) --- */
 :root {
-  --bsm-bg-dark: #0a120b;          /* Deep Minecraft Dark Charcoal-Green */
-  --bsm-content-bg: #122014;       /* Dark Forest Glass Container */
-  --bsm-sidebar-bg: #070e08;       /* Deep Obsidian-Green Sidebar */
-  --bsm-sidebar-hover: rgba(34, 197, 94, 0.12);
-  --bsm-sidebar-active: #15291a;
-  --bsm-card-bg: #18291c;          /* Glass Card Background */
-  --bsm-accent: #22c55e;           /* Minecraft Emerald Green */
-  --bsm-accent-bright: #4ade80;    /* Bright Emerald / Mint Green */
-  --bsm-accent-glow: rgba(34, 197, 94, 0.28);
-  --bsm-link: #38bdf8;             /* Sky Blue Links */
-  --bsm-link-hover: #7dd3fc;
-  --bsm-text-primary: #f0fdf4;     /* Crisp Light Mint Text */
-  --bsm-text-secondary: #dc2626;   /* Fallback */
-  --bsm-text-main: #d1fae5;        /* Light Emerald Text */
-  --bsm-text-muted: #86efac;       /* Soft Mint Muted */
-  --bsm-text-sub: #9ca3af;         /* Subtle Muted Gray-Green */
-  --bsm-border: rgba(34, 197, 94, 0.15);
-  --bsm-border-strong: rgba(34, 197, 94, 0.3);
-  --bsm-code-bg: #050b06;          /* Deep Code Block Dark */
+  --bsm-bg-dark: #030b0d;          /* Deep Teal Background */
+  --bsm-content-bg: rgba(8, 27, 30, 0.96); /* Dark Translucent Glass Container */
+  --bsm-sidebar-bg: #041014;       /* Deep Obsidian Sidebar */
+  --bsm-sidebar-hover: rgba(0, 237, 149, 0.12);
+  --bsm-sidebar-active: rgba(0, 237, 149, 0.2);
+  --bsm-card-bg: rgba(12, 38, 40, 0.9); /* Translucent Glass Card Background */
+  --bsm-accent: #00ed95;           /* Emerald Green */
+  --bsm-accent-bright: #64ffb1;    /* Bright Mint Highlight */
+  --bsm-accent-glow: rgba(0, 237, 149, 0.35);
+  --bsm-gold: #ffe45c;           /* Python emblem accent */
+  --bsm-link: #70e9dd;             /* Aqua Links */
+  --bsm-link-hover: #b1fff2;
+  --bsm-text-primary: #ffffff;     /* Crisp Pure White Text */
+  --bsm-text-main: #ecfdf5;        /* Light Ice Emerald Text */
+  --bsm-text-muted: #6ee7b7;       /* Soft Mint Muted Text */
+  --bsm-text-sub: #a7bfbc;         /* Muted Slate Gray Text */
+  --bsm-border: rgba(0, 237, 149, 0.2);
+  --bsm-border-strong: rgba(0, 237, 149, 0.45);
+  --bsm-code-bg: #041014;          /* Obsidian Code Block Background */
   --bsm-radius-sm: 6px;
   --bsm-radius-md: 10px;
-  --bsm-radius-lg: 14px;
-  --bsm-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+  --bsm-radius-lg: 16px;
+  --bsm-shadow: 0 12px 40px -5px rgba(0, 0, 0, 0.85), 0 0 25px rgba(0, 237, 149, 0.15);
 }
 
 /* --- Global Page Reset & Eliminate White Background Leaks --- */
@@ -43,6 +43,10 @@ body {
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.65;
   letter-spacing: -0.011em;
+  background-image:
+    radial-gradient(circle at 15% 15%, rgba(0, 237, 149, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(0, 237, 149, 0.03) 0%, transparent 40%);
+  background-attachment: fixed;
 }
 
 /* Scrollbars */
@@ -54,11 +58,12 @@ body {
   background: var(--bsm-sidebar-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e3a20;
+  background: rgba(0, 237, 149, 0.25);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #22c55e;
+  background: var(--bsm-accent);
+  box-shadow: 0 0 10px var(--bsm-accent-glow);
 }
 
 /* --- Main Content Area & Glass Container --- */
@@ -69,6 +74,8 @@ body {
 
 .wy-nav-content {
   background-color: var(--bsm-content-bg) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   max-width: 1050px !important;
   margin: 24px auto !important;
   padding: 2.5rem 3rem !important;
@@ -90,6 +97,7 @@ h1 {
   font-size: 2.2rem;
   border-bottom: 2px solid var(--bsm-accent);
   padding-bottom: 0.5rem;
+  text-shadow: 0 0 12px rgba(0, 237, 149, 0.25);
 }
 
 h2 {
@@ -100,27 +108,29 @@ h2 {
 /* API & Event Method Header Code Styling */
 h2 code.literal, .rst-content h2 code {
   color: var(--bsm-accent-bright) !important;
-  background: rgba(34, 197, 94, 0.12) !important;
+  background: rgba(0, 237, 149, 0.12) !important;
   border: 1px solid var(--bsm-border-strong) !important;
   padding: 0.2em 0.6em !important;
   border-radius: var(--bsm-radius-sm) !important;
   font-size: 0.88em !important;
+  box-shadow: 0 0 10px rgba(0, 237, 149, 0.15);
 }
 
 /* Links */
 a {
   color: var(--bsm-link);
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
   text-decoration: none;
 }
 
 a:hover {
   color: var(--bsm-link-hover);
   text-decoration: underline;
+  text-shadow: 0 0 8px rgba(112, 233, 221, 0.4);
 }
 
 a:visited {
-  color: #c084fc;
+  color: #b1e6cd;
 }
 
 /* --- Sidebar Styling & Fix All White Nested Items --- */
@@ -138,30 +148,33 @@ a:visited {
   color: var(--bsm-text-primary) !important;
   font-weight: 700;
   font-size: 1.15rem;
+  text-shadow: 0 0 8px rgba(0, 237, 149, 0.3);
 }
 
 .wy-side-nav-search img {
   border-radius: 8px;
-  box-shadow: 0 0 15px var(--bsm-accent-glow);
+  box-shadow: 0 0 20px var(--bsm-accent-glow);
   padding: 4px;
-  background: rgba(34, 197, 94, 0.08);
+  background: rgba(0, 237, 149, 0.08);
+  border: 1px solid var(--bsm-border);
 }
 
 /* Sidebar Search Box */
 #rtd-search-form input[type="text"] {
-  background-color: rgba(255, 255, 255, 0.06) !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
   border: 1px solid var(--bsm-border) !important;
   border-radius: 20px !important;
   color: var(--bsm-text-primary) !important;
   padding: 8px 16px !important;
   box-shadow: none !important;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #rtd-search-form input[type="text"]:focus {
   border-color: var(--bsm-accent) !important;
-  background-color: rgba(255, 255, 255, 0.09) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
   outline: none !important;
+  box-shadow: 0 0 12px var(--bsm-accent-glow) !important;
 }
 
 /* AGGRESSIVE OVERRIDE: Eliminate light gray / white backgrounds on nested sidebar TOC lists */
@@ -217,14 +230,16 @@ a:visited {
   color: var(--bsm-accent-bright) !important;
   font-weight: 600 !important;
   border-left: 3px solid var(--bsm-accent) !important;
+  text-shadow: 0 0 10px rgba(0, 237, 149, 0.3);
 }
 
 .wy-menu-vertical p.caption span.caption-text {
-  color: #4ad470 !important;
+  color: var(--bsm-accent) !important;
   font-size: 0.75rem !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.08em !important;
+  text-shadow: 0 0 8px rgba(0, 237, 149, 0.25);
 }
 
 /* --- Code Blocks & Syntax Highlighting --- */
@@ -232,7 +247,8 @@ div.highlight, pre {
   background: var(--bsm-code-bg) !important;
   border-radius: var(--bsm-radius-md) !important;
   border: 1px solid var(--bsm-border) !important;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 237, 149, 0.05) !important;
+  position: relative;
 }
 
 div.highlight pre {
@@ -240,13 +256,42 @@ div.highlight pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
   font-size: 0.9rem !important;
   line-height: 1.55 !important;
-  color: #f0fdf4 !important;
+  color: #ecfdf5 !important;
+}
+
+/* Pygments Token Overrides for Vivid Neon Matrix Aesthetics */
+.highlight .c, .highlight .c1, .highlight .ch, .highlight .cm, .highlight .cp, .highlight .cs {
+  color: #93aca9 !important; /* Readable Muted Teal Comments */
+  font-style: italic;
+}
+.highlight .k, .highlight .kn, .highlight .kd, .highlight .kr, .highlight .ow {
+  color: #00ed95 !important; /* Emerald Green Keywords */
+  font-weight: 600;
+}
+.highlight .s, .highlight .s1, .highlight .s2, .highlight .sd, .highlight .se, .highlight .sh {
+  color: #70e9dd !important; /* Aqua Strings */
+}
+.highlight .nf, .highlight .fm {
+  color: #64ffb1 !important; /* Mint Function Names */
+  font-weight: 600;
+}
+.highlight .nc, .highlight .ne {
+  color: #70e9dd !important; /* Bright Cyan Class Names */
+}
+.highlight .nb, .highlight .bp {
+  color: #a5f7dc !important; /* Cyan Builtins */
+}
+.highlight .mi, .highlight .mf, .highlight .mh, .highlight .mo {
+  color: #ffe45c !important; /* Python Gold Numbers */
+}
+.highlight .o {
+  color: #00ed95 !important; /* Neon Green Operators */
 }
 
 /* Inline Code Tags */
 code.literal, tt.literal, code {
   color: var(--bsm-accent-bright) !important;
-  background-color: rgba(34, 197, 94, 0.08) !important;
+  background-color: rgba(0, 237, 149, 0.1) !important;
   border: 1px solid var(--bsm-border) !important;
   padding: 0.15em 0.45em !important;
   border-radius: var(--bsm-radius-sm) !important;
@@ -276,25 +321,28 @@ code.literal, tt.literal, code {
 }
 
 .bsm-copy-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--bsm-text-primary);
+  background: rgba(0, 237, 149, 0.15);
+  color: var(--bsm-accent-bright);
   border-color: var(--bsm-border-strong);
+  box-shadow: 0 0 10px rgba(0, 237, 149, 0.2);
 }
 
 .bsm-copy-btn.copied {
   border-color: var(--bsm-accent);
-  background: rgba(34, 197, 94, 0.18);
+  background: rgba(0, 237, 149, 0.25);
+  color: var(--bsm-text-primary);
 }
 
 /* --- Admonitions / Callout Cards --- */
 .admonition {
   background: var(--bsm-card-bg) !important;
+  backdrop-filter: blur(8px) !important;
   border: 1px solid var(--bsm-border) !important;
   border-left-width: 4px !important;
   border-radius: var(--bsm-radius-md) !important;
   padding: 1rem 1.25rem !important;
   margin: 1.5rem 0 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(0, 237, 149, 0.08) !important;
 }
 
 .admonition p.admonition-title {
@@ -307,10 +355,10 @@ code.literal, tt.literal, code {
 }
 
 .admonition.note, .admonition.seealso {
-  border-left-color: #38bdf8 !important;
+  border-left-color: #70e9dd !important;
 }
 .admonition.note p.admonition-title, .admonition.seealso p.admonition-title {
-  color: #38bdf8 !important;
+  color: #70e9dd !important;
 }
 
 .admonition.tip, .admonition.hint {
@@ -318,13 +366,14 @@ code.literal, tt.literal, code {
 }
 .admonition.tip p.admonition-title, .admonition.hint p.admonition-title {
   color: var(--bsm-accent-bright) !important;
+  text-shadow: 0 0 8px rgba(0, 237, 149, 0.3);
 }
 
 .admonition.warning, .admonition.caution {
-  border-left-color: #f59e0b !important;
+  border-left-color: #ffe45c !important;
 }
 .admonition.warning p.admonition-title, .admonition.caution p.admonition-title {
-  color: #f59e0b !important;
+  color: #ffe45c !important;
 }
 
 .admonition.error, .admonition.danger {
@@ -343,11 +392,11 @@ table.docutils {
   overflow: hidden;
   border: 1px solid var(--bsm-border) !important;
   margin: 1.5rem 0 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 10px rgba(0, 237, 149, 0.05);
 }
 
 table.docutils th {
-  background-color: #070e08 !important;
+  background-color: #041014 !important;
   color: var(--bsm-text-primary) !important;
   font-weight: 600 !important;
   padding: 10px 14px !important;
@@ -364,7 +413,7 @@ table.docutils td {
 }
 
 table.docutils tbody tr:nth-child(odd) td {
-  background-color: var(--bsm-content-bg) !important;
+  background-color: rgba(8, 27, 30, 0.9) !important;
 }
 
 table.docutils tbody tr:nth-child(even) td {
@@ -372,7 +421,7 @@ table.docutils tbody tr:nth-child(even) td {
 }
 
 table.docutils tbody tr:hover td {
-  background-color: rgba(34, 197, 94, 0.06) !important;
+  background-color: rgba(0, 237, 149, 0.08) !important;
 }
 
 /* --- Footer & Breadcrumbs --- */
@@ -408,13 +457,14 @@ footer {
   border-radius: var(--bsm-radius-md) !important;
   padding: 0.75rem 1.25rem !important;
   transition: all 0.2s ease !important;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
 }
 
 .rst-footer-buttons a:hover {
-  background-color: rgba(34, 197, 94, 0.1) !important;
+  background-color: rgba(0, 237, 149, 0.15) !important;
   border-color: var(--bsm-accent) !important;
   color: var(--bsm-accent-bright) !important;
+  box-shadow: 0 0 15px rgba(0, 237, 149, 0.25) !important;
 }
 
 /* --- Mobile Responsive Navigation --- */
@@ -431,4 +481,63 @@ footer {
     padding: 1.25rem !important;
     border-radius: 0;
   }
+}
+
+/* Icon-inspired finishing details: teal glass, emerald edges, gold highlights. */
+:root { color-scheme: dark; }
+.wy-nav-content {
+  background-image: linear-gradient(145deg, rgba(0, 237, 149, 0.045), transparent 45%, rgba(112, 233, 221, 0.035));
+  border-top-color: rgba(100, 255, 177, 0.55);
+}
+h1 {
+  border-bottom: 0;
+  padding-bottom: 0.8rem;
+  background-image: linear-gradient(90deg, var(--bsm-accent), #70e9dd 72%, var(--bsm-gold));
+  background-size: 100% 2px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
+}
+.wy-side-nav-search {
+  background-image: radial-gradient(ellipse at top, rgba(0, 237, 149, 0.12), transparent 75%);
+}
+.wy-side-nav-search img {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 0 10px rgba(0, 237, 149, 0.2));
+}
+.wy-side-nav-search input::placeholder { color: var(--bsm-text-sub); opacity: 1; }
+.wy-menu-vertical li.current > a { border-left-color: var(--bsm-gold) !important; }
+.highlight .s, .highlight .s1, .highlight .s2, .highlight .sd,
+.highlight .se, .highlight .sh { color: var(--bsm-gold) !important; }
+.highlight .nc, .highlight .ne { color: #a5f7dc !important; }
+/* RTD API signatures and form controls also need dark surfaces. */
+.rst-content dl:not(.docutils) dt {
+  background: var(--bsm-card-bg);
+  color: var(--bsm-text-main);
+  border-top-color: var(--bsm-accent);
+  border-radius: var(--bsm-radius-sm);
+}
+.rst-content dl:not(.docutils) dt .headerlink { color: var(--bsm-gold); }
+.rst-content .viewcode-link, .rst-content .sig-name { color: var(--bsm-accent-bright); }
+.rst-content input[type="text"], .rst-content input[type="search"], .rst-content select {
+  background: var(--bsm-code-bg);
+  color: var(--bsm-text-main);
+  border: 1px solid var(--bsm-border-strong);
+}
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--bsm-gold) !important;
+  outline-offset: 3px;
+}
+/* Avoid nested borders and inline-code backgrounds inside fenced examples. */
+div.highlight pre { border: 0 !important; box-shadow: none !important; background: transparent !important; }
+.rst-content pre code { background: transparent !important; border: 0 !important; padding: 0 !important; color: inherit !important; font-size: inherit !important; }
+@media (prefers-reduced-motion: reduce) {
+  html, body, section, .wy-grid-for-nav, .wy-nav-content-wrap { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; }
+}
+@media screen and (max-width: 768px) {
+  .wy-nav-top { color: var(--bsm-text-primary); }
+  .wy-nav-top a { color: var(--bsm-text-primary); }
+  .wy-nav-content { overflow-wrap: anywhere; }
 }
