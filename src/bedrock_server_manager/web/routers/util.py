@@ -76,28 +76,3 @@ async def serve_custom_panorama_api(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error serving panorama image.",
         )
-
-
-@router.get("/favicon.ico", include_in_schema=False)
-async def get_root_favicon():
-    """Serves the `favicon.ico` file from the static directory."""
-    favicon_path = os.path.join(STATIC_DIR, "image", "icon", "favicon.ico")
-    if not await aiofiles.ospath.exists(favicon_path):
-        # If the file genuinely doesn't exist, return a 404
-        logger.warning(f"Favicon not found at expected path: {favicon_path}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Favicon not found"
-        )
-    # Return the file directly with the correct media type
-    return FileResponse(favicon_path, media_type="image/x-icon")
-
-
-@router.get("/site.webmanifest", include_in_schema=False)
-async def serve_webmanifest():
-    """Serves the site.webmanifest from the static directory."""
-    manifest_path = os.path.join(STATIC_DIR, "site.webmanifest")
-
-    if await aiofiles.ospath.exists(manifest_path):
-        return FileResponse(manifest_path)
-
-    raise HTTPException(status_code=404, detail="Manifest not found.")
