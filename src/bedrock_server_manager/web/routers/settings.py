@@ -34,6 +34,7 @@ router = APIRouter(tags=["Application Settings"])
 # --- API Route: Get All Global Settings ---
 @router.get(
     "/api/settings/get",
+    operation_id="get_settings",
     response_model=SettingsResponse,
 )
 async def get_all_settings(
@@ -74,6 +75,7 @@ async def get_all_settings(
 # --- API Route: Set a Global Setting ---
 @router.post(
     "/api/settings/set",
+    operation_id="set_setting",
     response_model=SettingsResponse,
 )
 async def post_set_setting(
@@ -138,7 +140,11 @@ async def post_set_setting(
 
 
 # --- API Route: Reload Global Settings ---
-@router.put("/api/settings/reload", response_model=SettingsResponse)
+@router.put(
+    "/api/settings/reload",
+    operation_id="reload_settings",
+    response_model=SettingsResponse,
+)
 async def put_reload_settings(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),

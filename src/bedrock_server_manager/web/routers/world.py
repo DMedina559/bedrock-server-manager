@@ -34,6 +34,7 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 
 @router.get(
     "/api/content/worlds",
+    operation_id="list_available_worlds",
     response_model=ContentListResponse,
     tags=["Content Management"],
 )
@@ -74,6 +75,7 @@ async def get_worlds_list(
 
 @router.post(
     "/api/server/{server_name}/world/install",
+    operation_id="install_world",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content Management"],
@@ -166,6 +168,7 @@ async def post_world_install(
 
 @router.post(
     "/api/server/{server_name}/world/export",
+    operation_id="export_world",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content Management"],
@@ -221,6 +224,7 @@ async def post_world_export(
 
 @router.delete(
     "/api/server/{server_name}/world/reset",
+    operation_id="reset_world",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Server Management"],
@@ -274,6 +278,7 @@ async def delete_world_reset(
 
 @router.get(
     "/api/server/{server_name}/world/icon",
+    operation_id="get_world_icon",
     response_class=FileResponse,
 )
 async def get_world_icon(

@@ -41,6 +41,7 @@ router = APIRouter(tags=["Plugin Management", "Application"])
 # --- API Route ---
 @router.get(
     "/api/plugins/pages",
+    operation_id="get_plugin_pages",
     response_model=PluginPagesResponse,
 )
 async def get_plugin_pages(
@@ -64,6 +65,7 @@ async def get_plugin_pages(
 
 @router.get(
     "/api/plugins",
+    operation_id="list_plugins",
     response_model=PluginStatusesResponse,
 )
 async def get_plugins_status(
@@ -98,6 +100,7 @@ async def get_plugins_status(
 
 @router.post(
     "/api/plugins/trigger_event",
+    operation_id="trigger_plugin_event",
     response_model=TriggerEventResponse,
 )
 async def post_trigger_event(
@@ -154,6 +157,7 @@ async def post_trigger_event(
 
 @router.post(
     "/api/plugins/{plugin_name}",
+    operation_id="set_plugin_status",
     response_model=ActionResponse,
 )
 async def post_set_plugin_status(
@@ -209,6 +213,7 @@ async def post_set_plugin_status(
 
 @router.post(
     "/api/plugins/{plugin_name}/reload",
+    operation_id="reload_plugin",
     response_model=ActionResponse,
 )
 async def post_reload_single_plugin(
@@ -255,7 +260,9 @@ async def post_reload_single_plugin(
         )
 
 
-@router.put("/api/plugins/reload", response_model=ActionResponse)
+@router.put(
+    "/api/plugins/reload", operation_id="reload_plugins", response_model=ActionResponse
+)
 async def put_reload_plugins(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),

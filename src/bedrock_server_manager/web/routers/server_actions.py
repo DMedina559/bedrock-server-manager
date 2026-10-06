@@ -43,6 +43,7 @@ router = APIRouter(
 
 @router.get(
     "/api/server/{server_name}/summary",
+    operation_id="get_server_summary",
     response_model=ServerSchemaResponse,
     tags=["Server Information"],
 )
@@ -82,6 +83,7 @@ async def get_server_summary(
 # --- API Route: Start Server ---
 @router.post(
     "/api/server/{server_name}/start",
+    operation_id="start_server",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Process Management"],
@@ -115,6 +117,7 @@ async def post_start_server(
 
 @router.post(
     "/api/server/{server_name}/stop",
+    operation_id="stop_server",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Process Management"],
@@ -148,6 +151,7 @@ async def post_stop_server(
 
 @router.post(
     "/api/server/{server_name}/restart",
+    operation_id="restart_server",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Process Management"],
@@ -183,6 +187,7 @@ async def post_restart_server(
 
 @router.post(
     "/api/server/{server_name}/send_command",
+    operation_id="send_command",
     response_model=ActionResponse,
     tags=["Send Command"],
 )
@@ -269,6 +274,7 @@ async def post_send_command(
 
 @router.post(
     "/api/server/{server_name}/update",
+    operation_id="update_server",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Server Installation"],
@@ -302,6 +308,7 @@ async def post_update_server(
 
 @router.delete(
     "/api/server/{server_name}/delete",
+    operation_id="delete_server",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Server Installation"],

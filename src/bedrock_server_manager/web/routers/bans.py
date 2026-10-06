@@ -16,7 +16,7 @@ router = APIRouter(
 )
 
 
-@router.get("/get")
+@router.get("/get", operation_id="get_server_bans")
 async def get_server_bans(
     server_name: str = Depends(validate_server_exists),
     app_context: AppContext = Depends(get_app_context),
@@ -28,7 +28,7 @@ async def get_server_bans(
     return dict(result)
 
 
-@router.post("/add")
+@router.post("/add", operation_id="add_server_ban")
 async def post_add_server_ban(
     payload: BanAddRequest,
     server_name: str = Depends(validate_server_exists),
@@ -47,7 +47,7 @@ async def post_add_server_ban(
     return dict(result)
 
 
-@router.delete("/remove")
+@router.delete("/remove", operation_id="remove_server_ban")
 async def delete_remove_server_ban(
     payload: BanRemoveRequest,
     server_name: str = Depends(validate_server_exists),

@@ -22,6 +22,7 @@ router = APIRouter(
 
 @router.post(
     "/api/server/{server_name}/allowlist/add",
+    operation_id="add_allowlist_players",
     response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
 )
@@ -70,6 +71,7 @@ async def post_allowlist(
 
 @router.get(
     "/api/server/{server_name}/allowlist/get",
+    operation_id="get_allowlist",
     response_model=AllowlistGetResponse,
 )
 async def get_allowlist(
@@ -96,6 +98,7 @@ async def get_allowlist(
 
 @router.delete(
     "/api/server/{server_name}/allowlist/remove",
+    operation_id="remove_allowlist_players",
     response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
 )

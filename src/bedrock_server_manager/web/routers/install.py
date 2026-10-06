@@ -24,6 +24,7 @@ router = APIRouter()
 
 @router.get(
     "/api/downloads/list",
+    operation_id="list_downloads",
     response_model=CustomZipsResponse,
     tags=["Application", "Downloads"],
 )
@@ -51,6 +52,7 @@ async def get_custom_zips(
 
 @router.post(
     "/api/server/install",
+    operation_id="install_server",
     response_model=InstallServerResponse,
     tags=["Server Installation"],
 )

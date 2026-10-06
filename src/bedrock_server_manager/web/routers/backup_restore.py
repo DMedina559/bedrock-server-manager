@@ -44,6 +44,7 @@ router = APIRouter(
 # --- API Routes ---
 @router.put(
     "/api/server/{server_name}/backups/prune",
+    operation_id="prune_backups",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup", "Cleanup"],
@@ -78,6 +79,7 @@ async def put_prune_backups(
 
 @router.get(
     "/api/server/{server_name}/backup/list/{backup_type}",
+    operation_id="list_server_backups",
     response_model=ActionResponse,
     tags=["Backup"],
 )
@@ -167,6 +169,7 @@ async def get_list_server_backups(
 
 @router.post(
     "/api/server/{server_name}/backup/action",
+    operation_id="create_backup",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup"],
@@ -236,6 +239,7 @@ async def post_backup_action(
 
 @router.post(
     "/api/server/{server_name}/restore/action",
+    operation_id="restore_backup",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Restore"],

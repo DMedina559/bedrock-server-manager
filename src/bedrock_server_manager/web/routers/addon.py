@@ -38,6 +38,7 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 
 @router.get(
     "/api/content/addons",
+    operation_id="list_available_addons",
     response_model=dict,
 )
 async def get_addons(
@@ -76,6 +77,7 @@ async def get_addons(
 
 @router.get(
     "/api/server/{server_name}/addons",
+    operation_id="list_server_addons",
     response_model=AddonListResponse,
 )
 async def get_server_addons(
@@ -105,6 +107,7 @@ async def get_server_addons(
 
 @router.post(
     "/api/server/{server_name}/addon/enable",
+    operation_id="enable_addon",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -147,6 +150,7 @@ async def post_enable_addon(
 
 @router.post(
     "/api/server/{server_name}/addon/disable",
+    operation_id="disable_addon",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -189,6 +193,7 @@ async def post_disable_addon(
 
 @router.post(
     "/api/server/{server_name}/addon/subpack",
+    operation_id="update_addon_subpack",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -241,6 +246,7 @@ async def post_update_subpack(
 
 @router.delete(
     "/api/server/{server_name}/addon/uninstall",
+    operation_id="uninstall_addon",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -283,6 +289,7 @@ async def delete_uninstall_addon(
 
 @router.post(
     "/api/server/{server_name}/addon/reorder",
+    operation_id="reorder_addons",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -325,6 +332,7 @@ async def post_reorder_addons(
 
 @router.post(
     "/api/server/{server_name}/addon/install",
+    operation_id="install_addon",
     response_model=ActionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -414,6 +422,7 @@ async def post_install_addon(
 
 @router.get(
     "/api/server/{server_name}/addon/icon",
+    operation_id="get_server_addon_icon",
 )
 async def get_server_addon_icon(
     server_name: str = Depends(validate_server_exists),

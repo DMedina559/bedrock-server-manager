@@ -42,7 +42,9 @@ router = APIRouter(
 
 
 # --- API Login Route ---
-@router.post("/token", response_model=TokenResponse, tags=["Login"])
+@router.post(
+    "/token", operation_id="login", response_model=TokenResponse, tags=["Login"]
+)
 async def api_login_for_access_token(
     request: Request,
     response: Response,
@@ -110,7 +112,12 @@ async def api_login_for_access_token(
     )
 
 
-@router.post("/reauth", response_model=TokenResponse, tags=["Login"])
+@router.post(
+    "/reauth",
+    operation_id="reauthenticate",
+    response_model=TokenResponse,
+    tags=["Login"],
+)
 async def reauth(
     request: Request,
     response: Response,
@@ -184,7 +191,7 @@ async def reauth(
 
 
 # --- Logout Route ---
-@router.get("/logout")
+@router.get("/logout", operation_id="logout")
 async def logout(
     request: Request,
     current_user: UserResponse = Depends(get_current_user),

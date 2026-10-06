@@ -23,6 +23,7 @@ router = APIRouter(
 
 @router.post(
     "/api/server/{server_name}/permissions/set",
+    operation_id="set_permissions",
     response_model=PermissionsUpdateResponse,
     status_code=status.HTTP_200_OK,
 )
@@ -87,6 +88,7 @@ async def post_permissions_set(
 
 @router.get(
     "/api/server/{server_name}/permissions/get",
+    operation_id="get_permissions",
     response_model=PermissionsGetResponse,
 )
 async def get_permissions(

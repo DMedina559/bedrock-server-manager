@@ -10,6 +10,7 @@ router = APIRouter(tags=["Background Tasks"])
 
 @router.get(
     "/api/tasks/status/{task_id}",
+    operation_id="get_task_status",
 )
 async def get_task_status(
     task_id: str,
@@ -27,6 +28,7 @@ async def get_task_status(
 
 @router.get(
     "/api/tasks/list",
+    operation_id="list_tasks",
 )
 async def list_tasks(
     current_user: UserResponse = Depends(get_current_user),

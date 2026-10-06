@@ -33,7 +33,7 @@ router = APIRouter(
 )
 
 
-@router.get("/api/account", response_model=UserResponse)
+@router.get("/api/account", operation_id="get_account", response_model=UserResponse)
 async def get_account_api(user: UserResponse = Depends(get_current_user)):
     """
     Retrieves the current user's account details.
@@ -43,6 +43,7 @@ async def get_account_api(user: UserResponse = Depends(get_current_user)):
 
 @router.post(
     "/api/account/theme",
+    operation_id="update_account_theme",
     response_model=BaseApiResponse,
     tags=["Themes"],
 )
@@ -81,7 +82,11 @@ async def post_update_theme(
     return BaseApiResponse(status="success", message="Theme updated successfully")
 
 
-@router.post("/api/account/profile", response_model=BaseApiResponse)
+@router.post(
+    "/api/account/profile",
+    operation_id="update_account_profile",
+    response_model=BaseApiResponse,
+)
 async def post_update_profile(
     profile_update: ProfileUpdatePayload,
     user: UserResponse = Depends(get_current_user),
@@ -105,6 +110,7 @@ async def post_update_profile(
 
 @router.post(
     "/api/account/change-password",
+    operation_id="change_password",
     response_model=BaseApiResponse,
     tags=["Password", "Authentication"],
 )

@@ -17,6 +17,7 @@ router = APIRouter(include_in_schema=False)
 
 @router.get(
     "/",
+    operation_id="root_redirect",
 )
 async def root_redirect(request: Request):
     """Redirects the root URL to dashboard."""
@@ -26,8 +27,8 @@ async def root_redirect(request: Request):
     return RedirectResponse(url=str(redirect_url))
 
 
-@router.get("/app")
-@router.get("/app/{full_path:path}")
+@router.get("/app", operation_id="serve_spa")
+@router.get("/app/{full_path:path}", operation_id="serve_spa_path")
 async def serve_spa(request: Request, full_path: str = ""):
     """Serves the SPA index.html for all /app routes, excluding assets."""
 

@@ -30,7 +30,12 @@ router = APIRouter()
 
 
 # --- Route: Serve Custom Panorama ---
-@router.get("/api/panorama", response_class=FileResponse, tags=["Application"])
+@router.get(
+    "/api/panorama",
+    operation_id="get_panorama",
+    response_class=FileResponse,
+    tags=["Application"],
+)
 async def serve_custom_panorama_api(
     app_context: AppContext = Depends(get_app_context),
 ):

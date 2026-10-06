@@ -29,7 +29,7 @@ router = APIRouter(
 )
 
 
-@router.get("/list", response_model=List[UserSchema])
+@router.get("/list", operation_id="list_users", response_model=List[UserSchema])
 async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
@@ -42,7 +42,9 @@ async def list_users_api(
         return users
 
 
-@router.post("/{user_id}/delete", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/delete", operation_id="delete_user", response_model=BaseApiResponse
+)
 async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -82,7 +84,9 @@ async def delete_user(
     )
 
 
-@router.post("/{user_id}/disable", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/disable", operation_id="disable_user", response_model=BaseApiResponse
+)
 async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -122,7 +126,9 @@ async def disable_user(
     )
 
 
-@router.post("/{user_id}/enable", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/enable", operation_id="enable_user", response_model=BaseApiResponse
+)
 async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
@@ -152,7 +158,9 @@ async def enable_user(
     )
 
 
-@router.post("/{user_id}/role", response_model=BaseApiResponse)
+@router.post(
+    "/{user_id}/role", operation_id="update_user_role", response_model=BaseApiResponse
+)
 async def update_user_role(
     user_id: int,
     data: UpdateUserRolePayload,

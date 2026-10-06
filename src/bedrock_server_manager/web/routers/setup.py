@@ -29,6 +29,7 @@ router = APIRouter(
 
 @router.get(
     "/status",
+    operation_id="get_setup_status",
     response_model=SetupStatusResponse,
 )
 async def get_setup_status(
@@ -42,6 +43,7 @@ async def get_setup_status(
 
 @router.post(
     "/create-first-user",
+    operation_id="create_first_user",
 )
 async def create_first_user(
     data: UserLoginPayload,

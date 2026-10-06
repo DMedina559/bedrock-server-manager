@@ -35,7 +35,9 @@ async def create_audit_log(
         )
 
 
-@router.get("/list", response_model=List[AuditLogResponse])
+@router.get(
+    "/list", operation_id="list_audit_logs", response_model=List[AuditLogResponse]
+)
 async def list_audit_logs_api(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),

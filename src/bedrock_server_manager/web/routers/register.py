@@ -32,6 +32,7 @@ router = APIRouter(
 
 @router.post(
     "/generate-token",
+    operation_id="generate_registration_token",
     response_model=ActionResponse,
 )
 async def generate_token(
@@ -68,6 +69,7 @@ async def generate_token(
 
 @router.get(
     "/validate/{token}",
+    operation_id="validate_registration_token",
 )
 async def validate_token(
     token: str,
@@ -93,6 +95,7 @@ async def validate_token(
 
 @router.post(
     "/{token}",
+    operation_id="register_user",
 )
 async def register_user(
     token: str,

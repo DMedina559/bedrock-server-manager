@@ -19,6 +19,7 @@ router = APIRouter(tags=["Properties Management", "Server Management"])
 
 @router.post(
     "/api/server/{server_name}/properties/set",
+    operation_id="set_properties",
     response_model=BaseApiResponse,
     status_code=status.HTTP_200_OK,
 )
@@ -72,6 +73,7 @@ async def post_properties_set(
 
 @router.get(
     "/api/server/{server_name}/properties/get",
+    operation_id="get_properties",
     response_model=PropertiesGetResponse,
 )
 async def get_properties(
