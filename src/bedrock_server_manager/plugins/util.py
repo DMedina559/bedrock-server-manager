@@ -1,11 +1,15 @@
 from typing import Any
 
+from pydantic import BaseModel
+
 
 def _sanitize_for_json(data: Any) -> Any:
     """
     Recursively sanitizes data to make it JSON serializable.
     Converts complex objects to their string representation.
     """
+    if isinstance(data, BaseModel):
+        return data.model_dump(mode="json")
     if isinstance(data, (str, int, float, bool, type(None))):
         return data
     if isinstance(data, dict):

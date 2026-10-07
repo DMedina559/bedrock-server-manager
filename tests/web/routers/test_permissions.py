@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-from bedrock_server_manager.error import BSMError, UserInputError
+from bedrock_server_manager.api.models import (
+    GetPermissionsResponse,
+    SetPermissionsResponse,
+)
+from bedrock_server_manager.error import AppFileNotFoundError, BSMError, UserInputError
 
 
 def test_post_permissions_set_unauthorized(
@@ -42,7 +46,9 @@ def test_post_permissions_set_success(
         "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
         new_callable=AsyncMock,
     ) as mock_set:
-        mock_set.return_value = {"status": "success"}
+        mock_set.return_value = SetPermissionsResponse.model_validate(
+            {"status": "success", "message": "Completed successfully."}
+        )
 
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/permissions/set",
@@ -68,10 +74,10 @@ def test_post_permissions_set_partial_failure(
         new_callable=AsyncMock,
     ) as mock_set:
         # Mock side effect to succeed for first, fail for second
-        async def side_effect(server_name, xuid, **kwargs):
-            if xuid == "123":
-                return {"status": "success"}
-            return {"status": "error", "message": "Failed to set"}
+        async def side_effect(request, **kwargs):
+            if request.xuid == "123":
+                return SetPermissionsResponse(message="Permission set.")
+            raise BSMError("Failed to set")
 
         mock_set.side_effect = side_effect
 
@@ -100,7 +106,7 @@ def test_post_permissions_set_not_found_error(
         "bedrock_server_manager.web.routers.permissions.permissions_api.set_permissions",
         new_callable=AsyncMock,
     ) as mock_set:
-        mock_set.return_value = {"status": "error", "message": "Player not found"}
+        mock_set.side_effect = AppFileNotFoundError("Player not found")
 
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/permissions/set",
@@ -113,7 +119,7 @@ def test_post_permissions_set_not_found_error(
 
         assert response.status_code == 404
         data = response.json()
-        assert "Player not found" == data["errors"]["123"]
+        assert "Player not found" in data["errors"]["123"]
 
 
 def test_post_permissions_set_exception(
@@ -182,7 +188,7 @@ def test_post_permissions_set_user_input_error(
 
         assert response.status_code == 400
         data = response.json()
-        assert "Invalid permission level" in data["errors"]["123"]
+        assert data["errors"]["123"] == "Invalid permission request."
 
 
 def test_get_permissions_unauthorized(unauth_client: TestClient, real_bedrock_server):
@@ -197,12 +203,14 @@ def test_get_permissions_success(admin_auth_client: TestClient, real_bedrock_ser
         "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions",
         new_callable=AsyncMock,
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "success",
-            "permissions": [
-                {"xuid": "123", "name": "Player1", "permission": "operator"}
-            ],
-        }
+        mock_get.return_value = GetPermissionsResponse.model_validate(
+            {
+                "status": "success",
+                "permissions": [
+                    {"xuid": "123", "name": "Player1", "permission_level": "operator"}
+                ],
+            }
+        )
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/permissions/get"
@@ -219,16 +227,13 @@ def test_get_permissions_not_found(admin_auth_client: TestClient, real_bedrock_s
         "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions",
         new_callable=AsyncMock,
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "error",
-            "message": "permissions.json not found",
-        }
+        mock_get.side_effect = AppFileNotFoundError("permissions.json not found")
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/permissions/get"
         )
         assert response.status_code == 404
-        assert "permissions.json not found" in response.json()["detail"]
+        assert response.json()["error"]["code"] == "application_error"
 
 
 def test_get_permissions_internal_error(
@@ -238,13 +243,10 @@ def test_get_permissions_internal_error(
         "bedrock_server_manager.web.routers.permissions.permissions_api.get_permissions",
         new_callable=AsyncMock,
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "error",
-            "message": "Failed to parse permissions.json",
-        }
+        mock_get.side_effect = BSMError("Failed to parse permissions.json")
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/permissions/get"
         )
         assert response.status_code == 500
-        assert "Failed to parse permissions.json" in response.json()["detail"]
+        assert response.json()["error"]["code"] == "application_error"

@@ -20,21 +20,33 @@ async def test_websocket_api_bridge(mock_app_context):
     api = create_app_api("test_plugin", mock_app_context)
 
     # Broadcast
-    res = await api.websocket.broadcast("my_topic", {"key": "val"})
+    res = (
+        await api.websocket.broadcast(
+            request={"topic": "my_topic", "data": {"key": "val"}}
+        )
+    ).model_dump(mode="python")
     assert res["status"] == "success"
     mock_app_context.connection_manager.broadcast_to_topic.assert_called_once_with(
         "my_topic", {"type": "broadcast", "topic": "my_topic", "data": {"key": "val"}}
     )
 
     # Send to user
-    res = await api.websocket.send_to_user("admin", {"msg": "hi"})
+    res = (
+        await api.websocket.send_to_user(
+            request={"username": "admin", "data": {"msg": "hi"}}
+        )
+    ).model_dump(mode="python")
     assert res["status"] == "success"
     mock_app_context.connection_manager.send_to_user.assert_called_once_with(
         "admin", {"msg": "hi"}
     )
 
     # Send to client
-    res = await api.websocket.send_to_client("client123", {"msg": "direct"})
+    res = (
+        await api.websocket.send_to_client(
+            request={"client_id": "client123", "data": {"msg": "direct"}}
+        )
+    ).model_dump(mode="python")
     assert res["status"] == "success"
     mock_app_context.connection_manager.send_to_client.assert_called_once_with(
         {"msg": "direct"}, "client123"
@@ -51,14 +63,20 @@ async def test_websocket_api_bridge(mock_app_context):
     )
 
     # Unregister data provider
-    res = await api.websocket.unregister_data_provider("my_data")
+    res = (
+        await api.websocket.unregister_data_provider(request={"topic": "my_data"})
+    ).model_dump(mode="python")
     assert res["status"] == "success"
     mock_app_context.connection_manager.unregister_data_provider.assert_called_once_with(
         "my_data"
     )
 
     # Publish ws event
-    res = await api.websocket.publish_ws_event("custom_evt", {"foo": "bar"})
+    res = (
+        await api.websocket.publish_ws_event(
+            request={"event_name": "custom_evt", "data": {"foo": "bar"}}
+        )
+    ).model_dump(mode="python")
     assert res["status"] == "success"
     mock_app_context.connection_manager.publish_ws_event.assert_called_once_with(
         "custom_evt", {"foo": "bar"}

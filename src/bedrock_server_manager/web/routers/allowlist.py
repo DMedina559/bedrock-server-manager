@@ -2,9 +2,15 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from bedrock_server_manager.api.models import (
+    AddToAllowlistRequest,
+    GetAllowlistRequest,
+    RemoveFromAllowlistRequest,
+)
+
 from ...api import allowlist as allowlist_api
 from ...context import AppContext
-from ...error import BSMError, UserInputError
+from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     AllowlistAddPayload,
@@ -41,11 +47,14 @@ async def post_allowlist(
         for p in payload.players
     ]
     try:
-        result = await allowlist_api.add_to_allowlist(
-            server_name=server_name,
-            new_players_data=new_players_data,
-            app_context=app_context,
-        )
+        result = (
+            await allowlist_api.add_to_allowlist(
+                request=AddToAllowlistRequest.model_validate(
+                    {"server_name": server_name, "new_players_data": new_players_data}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return BaseApiResponse(
                 status=result["status"], message=result.get("message")
@@ -57,6 +66,8 @@ async def post_allowlist(
     except UserInputError as e:
         _ = e
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         _ = e
         raise HTTPException(
@@ -79,9 +90,12 @@ async def get_allowlist(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = await allowlist_api.get_allowlist(
-        server_name=server_name, app_context=app_context
-    )
+    result = (
+        await allowlist_api.get_allowlist(
+            request=GetAllowlistRequest.model_validate({"server_name": server_name}),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     if result.get("status") == "success":
         return AllowlistGetResponse(
             status=result["status"], players=result.get("players", [])
@@ -109,11 +123,14 @@ async def delete_allowlist(
     app_context: AppContext = Depends(get_app_context),
 ):
     try:
-        result = await allowlist_api.remove_from_allowlist(
-            server_name=server_name,
-            player_names=payload.players,
-            app_context=app_context,
-        )
+        result = (
+            await allowlist_api.remove_from_allowlist(
+                request=RemoveFromAllowlistRequest.model_validate(
+                    {"server_name": server_name, "player_names": payload.players}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return BaseApiResponse(
                 status=result["status"], message=result.get("message")
@@ -125,6 +142,8 @@ async def delete_allowlist(
     except UserInputError as e:
         _ = e
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         _ = e
         raise HTTPException(

@@ -3,6 +3,11 @@ from unittest.mock import MagicMock
 import pytest
 from click.testing import CliRunner
 
+from bedrock_server_manager.api.models import (
+    StartWebServerRequest,
+    StartWebServerResponse,
+    StopWebServerResponse,
+)
 from bedrock_server_manager.cli.web import web
 from bedrock_server_manager.error import BSMError
 
@@ -14,7 +19,11 @@ def runner():
 
 def test_start_web_server_direct_success(runner, app_context, monkeypatch):
     """Test start web server CLI command successfully running in direct mode."""
-    mock_api = MagicMock(return_value={"status": "success"})
+    mock_api = MagicMock(
+        return_value=StartWebServerResponse.model_validate(
+            {"status": "success", "message": "Started successfully."}
+        )
+    )
     monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_api)
 
     result = runner.invoke(
@@ -24,13 +33,22 @@ def test_start_web_server_direct_success(runner, app_context, monkeypatch):
     assert result.exit_code == 0
     assert "Attempting to start web server in 'direct' mode..." in result.output
     mock_api.assert_called_once_with(
-        host=None, port=None, debug=False, mode="direct", app_context=app_context
+        request=StartWebServerRequest(host=None, port=None, debug=False, mode="direct"),
+        app_context=app_context,
     )
 
 
 def test_start_web_server_detached_success(runner, app_context, monkeypatch):
     """Test start web server CLI command successfully running in detached mode."""
-    mock_api = MagicMock(return_value={"status": "success", "pid": 1234})
+    mock_api = MagicMock(
+        return_value=StartWebServerResponse.model_validate(
+            {
+                "status": "success",
+                "pid": 1234,
+                "message": "Started successfully. PID: 1234",
+            }
+        )
+    )
     monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_api)
 
     result = runner.invoke(
@@ -42,13 +60,16 @@ def test_start_web_server_detached_success(runner, app_context, monkeypatch):
     assert result.exit_code == 0
     assert "PID: 1234" in result.output
     mock_api.assert_called_once_with(
-        host="0.0.0.0", port=8080, debug=False, mode="detached", app_context=app_context
+        request=StartWebServerRequest(
+            host="0.0.0.0", port=8080, debug=False, mode="detached"
+        ),
+        app_context=app_context,
     )
 
 
 def test_start_web_server_detached_error(runner, app_context, monkeypatch):
     """Test start web server CLI command failing in detached mode returns abort."""
-    mock_api = MagicMock(return_value={"status": "error", "message": "Port in use"})
+    mock_api = MagicMock(side_effect=BSMError("Port in use"))
     monkeypatch.setattr("bedrock_server_manager.api.web.start_web_server", mock_api)
 
     result = runner.invoke(
@@ -56,7 +77,7 @@ def test_start_web_server_detached_error(runner, app_context, monkeypatch):
     )
 
     assert result.exit_code == 1  # Abort
-    assert "Error: Port in use" in result.output
+    assert "Port in use" in result.output
 
 
 def test_start_web_server_exception(runner, app_context, monkeypatch):
@@ -77,7 +98,11 @@ def test_start_web_server_exception(runner, app_context, monkeypatch):
 
 def test_stop_web_server_success(runner, app_context, monkeypatch):
     """Test stop web server CLI command successfully running."""
-    mock_api = MagicMock(return_value={"status": "success", "message": "Stopped"})
+    mock_api = MagicMock(
+        return_value=StopWebServerResponse.model_validate(
+            {"status": "success", "message": "Stopped"}
+        )
+    )
     monkeypatch.setattr("bedrock_server_manager.api.web.stop_web_server", mock_api)
 
     result = runner.invoke(web, ["stop"], obj={"app_context": app_context})

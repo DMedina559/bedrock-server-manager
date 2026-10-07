@@ -3,12 +3,18 @@ import os
 
 import aiofiles.ospath
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    DeleteServerDataRequest,
+    InstallNewServerRequest,
+)
 
 from ...api import install as install_api
 from ...api import server as server_api
 from ...context import AppContext
 from ...core.system import find_files
-from ...error import BSMError, UserInputError
+from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ..deps import get_admin_user, get_app_context, get_moderator_user
 from ..schemas import (
     CustomZipsResponse,
@@ -42,6 +48,8 @@ async def get_custom_zips(
         custom_zips_paths = await find_files(custom_dir, "*.zip")
         custom_zips = [os.path.basename(str(p)) for p in custom_zips_paths]
         return CustomZipsResponse(status="success", custom_zips=custom_zips)
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to get custom zips: {e}", exc_info=True)
         raise HTTPException(
@@ -95,9 +103,12 @@ async def post_install_server(  # noqa: C901
             logger.info(
                 f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
             )
-            delete_result = await server_api.delete_server_data(
-                server_name=payload.server_name, app_context=app_context
-            )
+            delete_result = (
+                await server_api.delete_server_data(
+                    request=DeleteServerDataRequest(server_name=payload.server_name),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
             if delete_result.get("status") == "error":
                 logger.error(
                     f"Failed to delete existing server '{payload.server_name}': {delete_result['message']}"
@@ -126,10 +137,12 @@ async def post_install_server(  # noqa: C901
         task_id = await app_context.task_manager.run_task(
             install_api.install_new_server,
             username=current_user.username,
-            server_name=payload.server_name,
-            target_version=payload.server_version,
-            server_zip_path=server_zip_path,
             app_context=app_context,
+            request=InstallNewServerRequest(
+                server_name=payload.server_name,
+                target_version=payload.server_version,
+                server_zip_path=server_zip_path,
+            ),
         )
 
         return InstallServerResponse(
@@ -146,6 +159,8 @@ async def post_install_server(  # noqa: C901
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API Install Server '{payload.server_name}': BSMError. {e}", exc_info=True
@@ -153,6 +168,8 @@ async def post_install_server(  # noqa: C901
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Install Server '{payload.server_name}': Unexpected error. {e}",

@@ -5,6 +5,8 @@ import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
+from pydantic import BaseModel
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,11 @@ class TaskManager:
             self.tasks[task_id]["status"] = status
             self.tasks[task_id]["message"] = message
             if result is not None:
-                self.tasks[task_id]["result"] = result
+                self.tasks[task_id]["result"] = (
+                    result.model_dump(mode="json")
+                    if isinstance(result, BaseModel)
+                    else result
+                )
             await self._notify_client_of_update(task_id)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
@@ -75,7 +81,10 @@ class TaskManager:
                 )
             except Exception as e:
                 logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-                await self._update_task(task_id, "error", str(e))
+                from ..api.errors import error_response
+
+                error = error_response(e)
+                await self._update_task(task_id, "error", error.message, error)
             finally:
                 # Clean up the future from the tracking dictionary
                 if task_id in self.futures:
@@ -170,7 +179,11 @@ class TaskManager:
                     task_id, "success", "Task completed successfully.", result
                 )
             except Exception as e:
-                await self._update_task(task_id, "error", str(e))
+                logger.error(f"Task {task_id} failed: {e}", exc_info=True)
+                from ..api.errors import error_response
+
+                error = error_response(e)
+                await self._update_task(task_id, "error", error.message, error)
             return task_id
 
         async def _runner():

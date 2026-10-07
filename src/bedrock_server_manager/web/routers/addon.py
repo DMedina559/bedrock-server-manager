@@ -9,6 +9,18 @@ import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    DisableAddonRequest,
+    EnableAddonRequest,
+    ImportAddonRequest,
+    ListAvailableAddonsRequest,
+    ListInstalledAddonsRequest,
+    ReorderAddonsRequest,
+    UninstallAddonRequest,
+    UpdateSubpackRequest,
+)
 
 from ...api import addon as addon_api
 from ...context import AppContext
@@ -51,7 +63,11 @@ async def get_addons(
     identity = current_user.username
     logger.info(f"API: List available addons request by user '{identity}'.")
     try:
-        api_result = await addon_api.list_available_addons(app_context=app_context)
+        api_result = (
+            await addon_api.list_available_addons(
+                request=ListAvailableAddonsRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
         if api_result.get("status") == "success":
             # Extract just the filenames
@@ -64,6 +80,10 @@ async def get_addons(
                 detail=api_result.get("message", "Failed to list addons."),
             )
     except HTTPException:
+        raise
+    except ValidationError:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -93,8 +113,19 @@ async def get_server_addons(
         f"API: List world addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        result = await addon_api.list_installed_addons(server_name, app_context)
+        result = (
+            await addon_api.list_installed_addons(
+                request=ListInstalledAddonsRequest.model_validate(
+                    {"server_name": server_name}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         return AddonListResponse(status="success", addons=result.get("addons"))
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API List Server Addons '{server_name}': Error: {e}", exc_info=True
@@ -128,16 +159,24 @@ async def post_enable_addon(
         task_id = await app_context.task_manager.run_task(
             addon_api.enable_addon,
             username=current_user.username,
-            server_name=server_name,
-            pack_uuid=payload.pack_uuid,
-            pack_type=payload.pack_type,
             app_context=app_context,
+            request=EnableAddonRequest.model_validate(
+                {
+                    "server_name": server_name,
+                    "pack_uuid": payload.pack_uuid,
+                    "pack_type": payload.pack_type,
+                }
+            ),
         )
         return ActionResponse(
             status="pending",
             message=f"Addon enable for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Enable Server Addon '{server_name}': Error: {e}", exc_info=True
@@ -171,16 +210,24 @@ async def post_disable_addon(
         task_id = await app_context.task_manager.run_task(
             addon_api.disable_addon,
             username=current_user.username,
-            server_name=server_name,
-            pack_uuid=payload.pack_uuid,
-            pack_type=payload.pack_type,
             app_context=app_context,
+            request=DisableAddonRequest.model_validate(
+                {
+                    "server_name": server_name,
+                    "pack_uuid": payload.pack_uuid,
+                    "pack_type": payload.pack_type,
+                }
+            ),
         )
         return ActionResponse(
             status="pending",
             message=f"Addon disable for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Disable Server Addon '{server_name}': Error: {e}", exc_info=True
@@ -222,17 +269,25 @@ async def post_update_subpack(
         task_id = await app_context.task_manager.run_task(
             addon_api.update_subpack,
             username=current_user.username,
-            server_name=server_name,
-            pack_uuid=payload.pack_uuid,
-            pack_type=payload.pack_type,
-            subpack_name=subpack_name,
             app_context=app_context,
+            request=UpdateSubpackRequest.model_validate(
+                {
+                    "server_name": server_name,
+                    "pack_uuid": payload.pack_uuid,
+                    "pack_type": payload.pack_type,
+                    "subpack_name": subpack_name,
+                }
+            ),
         )
         return ActionResponse(
             status="pending",
             message=f"Addon subpack update for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Update Server Addon Subpack '{server_name}': Error: {e}",
@@ -267,16 +322,24 @@ async def delete_uninstall_addon(
         task_id = await app_context.task_manager.run_task(
             addon_api.uninstall_addon,
             username=current_user.username,
-            server_name=server_name,
-            pack_uuid=payload.pack_uuid,
-            pack_type=payload.pack_type,
             app_context=app_context,
+            request=UninstallAddonRequest.model_validate(
+                {
+                    "server_name": server_name,
+                    "pack_uuid": payload.pack_uuid,
+                    "pack_type": payload.pack_type,
+                }
+            ),
         )
         return ActionResponse(
             status="pending",
             message=f"Addon uninstall for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Uninstall Server Addon '{server_name}': Error: {e}", exc_info=True
@@ -310,16 +373,24 @@ async def post_reorder_addons(
         task_id = await app_context.task_manager.run_task(
             addon_api.reorder_addons,
             username=current_user.username,
-            server_name=server_name,
-            uuids=payload.uuids,
-            pack_type=payload.pack_type,
             app_context=app_context,
+            request=ReorderAddonsRequest.model_validate(
+                {
+                    "server_name": server_name,
+                    "uuids": payload.uuids,
+                    "pack_type": payload.pack_type,
+                }
+            ),
         )
         return ActionResponse(
             status="pending",
             message=f"Addon reorder for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Reorder Server Addons '{server_name}': Error: {e}", exc_info=True
@@ -389,9 +460,10 @@ async def post_install_addon(
         task_id = await app_context.task_manager.run_task(
             addon_api.import_addon,
             username=current_user.username,
-            server_name=server_name,
-            addon_file_path=full_addon_file_path,
             app_context=app_context,
+            request=ImportAddonRequest.model_validate(
+                {"server_name": server_name, "addon_file_path": full_addon_file_path}
+            ),
         )
 
         return ActionResponse(
@@ -403,6 +475,8 @@ async def post_install_addon(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API Install Addon '{server_name}': Pre-check BSMError: {e}", exc_info=True
@@ -410,6 +484,10 @@ async def post_install_addon(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Install Addon '{server_name}': Pre-check error: {e}", exc_info=True
@@ -436,7 +514,14 @@ async def get_server_addon_icon(
     logger.debug(f"API: Get addon icon for '{server_name}' requested.")
 
     try:
-        result = await addon_api.list_installed_addons(server_name, app_context)
+        result = (
+            await addon_api.list_installed_addons(
+                request=ListInstalledAddonsRequest.model_validate(
+                    {"server_name": server_name}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
         # Determine the key to search in based on pack_type
         pack_key = f"{pack_type}_packs"
@@ -469,6 +554,10 @@ async def get_server_addon_icon(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Default icon not found.",
             )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Get Server Addon Icon '{server_name}': Error: {e}", exc_info=True

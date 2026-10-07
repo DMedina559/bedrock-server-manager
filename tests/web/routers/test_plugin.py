@@ -6,7 +6,13 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from bedrock_server_manager.error import BSMError, UserInputError
+from bedrock_server_manager.api.models import (
+    GetPluginStatusesResponse,
+    ReloadPluginsResponse,
+    SetPluginStatusResponse,
+    TriggerExternalAppEventResponse,
+)
+from bedrock_server_manager.error import AppFileNotFoundError, BSMError, UserInputError
 
 
 def test_get_plugin_pages_success(admin_auth_client: TestClient):
@@ -51,44 +57,39 @@ def test_get_plugins_status_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.get_plugin_statuses"
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "success",
-            "plugins": {
-                "TestPlugin": {"name": "TestPlugin", "version": "1.0", "enabled": True}
-            },
-        }
+        mock_get.return_value = GetPluginStatusesResponse.model_validate(
+            {
+                "status": "success",
+                "plugins": {"TestPlugin": {"version": "1.0", "enabled": True}},
+            }
+        )
 
         response = admin_auth_client.get("/api/plugins")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert len(data["plugins"]) == 1
-        assert data["plugins"]["TestPlugin"]["name"] == "TestPlugin"
+        assert data["plugins"]["TestPlugin"]["version"] == "1.0"
 
 
 def test_get_plugins_status_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.get_plugin_statuses"
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "error",
-            "message": "Failed to read plugin config",
-        }
+        mock_get.side_effect = BSMError("Failed to read plugin config")
 
         response = admin_auth_client.get("/api/plugins")
         assert response.status_code == 500
-        assert "Failed to read plugin config" in response.json()["detail"]
+        assert "unexpected error" in response.json()["detail"].lower()
 
 
 def test_post_trigger_event_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_app_event"
     ) as mock_trigger:
-        mock_trigger.return_value = {
-            "status": "success",
-            "message": "Event triggered",
-            "details": {},
-        }
+        mock_trigger.return_value = TriggerExternalAppEventResponse.model_validate(
+            {"status": "success", "message": "Event triggered"}
+        )
 
         response = admin_auth_client.post(
             "/api/plugins/trigger_event",
@@ -104,7 +105,7 @@ def test_post_trigger_event_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.trigger_external_app_event"
     ) as mock_trigger:
-        mock_trigger.return_value = {"status": "error", "message": "Event not found"}
+        mock_trigger.side_effect = BSMError("Event not found")
 
         response = admin_auth_client.post(
             "/api/plugins/trigger_event",
@@ -132,7 +133,9 @@ def test_post_set_plugin_status_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.set_plugin_status"
     ) as mock_set:
-        mock_set.return_value = {"status": "success", "message": "Plugin enabled"}
+        mock_set.return_value = SetPluginStatusResponse.model_validate(
+            {"status": "success", "message": "Plugin enabled"}
+        )
 
         response = admin_auth_client.post(
             "/api/plugins/MyPlugin", json={"enabled": True}
@@ -145,13 +148,13 @@ def test_post_set_plugin_status_not_found(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.set_plugin_status"
     ) as mock_set:
-        mock_set.return_value = {"status": "error", "message": "Plugin not found"}
+        mock_set.side_effect = AppFileNotFoundError("Plugin not found")
 
         response = admin_auth_client.post(
             "/api/plugins/MissingPlugin", json={"enabled": True}
         )
         assert response.status_code == 404
-        assert "Plugin not found" in response.json()["detail"]
+        assert response.json()["error"]["code"] == "application_error"
 
 
 def test_post_set_plugin_status_bsm_error(admin_auth_client: TestClient):
@@ -171,7 +174,9 @@ def test_put_reload_plugins_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.reload_plugins"
     ) as mock_reload:
-        mock_reload.return_value = {"status": "success", "message": "Plugins reloaded"}
+        mock_reload.return_value = ReloadPluginsResponse.model_validate(
+            {"status": "success", "message": "Plugins reloaded"}
+        )
 
         response = admin_auth_client.put("/api/plugins/reload")
         assert response.status_code == 200
@@ -182,10 +187,7 @@ def test_put_reload_plugins_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.plugin.plugins_api.reload_plugins"
     ) as mock_reload:
-        mock_reload.return_value = {
-            "status": "error",
-            "message": "Failed to initialize plugins",
-        }
+        mock_reload.side_effect = BSMError("Failed to initialize plugins")
 
         response = admin_auth_client.put("/api/plugins/reload")
         assert response.status_code == 500

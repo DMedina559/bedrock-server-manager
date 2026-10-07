@@ -6,6 +6,10 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models import (
+    ListAvailableAddonsResponse,
+    ListInstalledAddonsResponse,
+)
 from bedrock_server_manager.context import AppContext
 
 
@@ -18,10 +22,12 @@ def test_get_addons_unauthorized(unauth_client: TestClient):
 def test_get_addons_success(admin_auth_client: TestClient):
     """Test getting available addons with admin permissions."""
     with patch("bedrock_server_manager.api.addon.list_available_addons") as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "files": ["/path/to/addon1.mcaddon", "/path/to/addon2.mcpack"],
-        }
+        mock_api.return_value = ListAvailableAddonsResponse.model_validate(
+            {
+                "status": "success",
+                "files": ["/path/to/addon1.mcaddon", "/path/to/addon2.mcpack"],
+            }
+        )
         response = admin_auth_client.get("/api/content/addons")
         assert response.status_code == 200
         assert response.json()["files"] == ["addon1.mcaddon", "addon2.mcpack"]
@@ -32,20 +38,22 @@ def test_get_server_addons_success(
 ):
     """Test getting installed addons for a specific server."""
     with patch("bedrock_server_manager.api.addon.list_installed_addons") as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "addons": {
-                "behavior_packs": [
-                    {
-                        "uuid": "123",
-                        "name": "Test BP",
-                        "version": [1, 0, 0],
-                        "status": "active",
-                    }
-                ],
-                "resource_packs": [],
-            },
-        }
+        mock_api.return_value = ListInstalledAddonsResponse.model_validate(
+            {
+                "status": "success",
+                "addons": {
+                    "behavior_packs": [
+                        {
+                            "uuid": "123",
+                            "name": "Test BP",
+                            "version": [1, 0, 0],
+                            "status": "ACTIVE",
+                        }
+                    ],
+                    "resource_packs": [],
+                },
+            }
+        )
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/addons"
         )
@@ -236,20 +244,22 @@ def test_get_server_addon_icon_success(
     icon_path.touch()
 
     with patch("bedrock_server_manager.api.addon.list_installed_addons") as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "addons": {
-                "behavior_packs": [
-                    {
-                        "uuid": "123",
-                        "icon": str(icon_path),
-                        "name": "Test BP",
-                        "version": [1, 0, 0],
-                        "status": "active",
-                    }
-                ]
-            },
-        }
+        mock_api.return_value = ListInstalledAddonsResponse.model_validate(
+            {
+                "status": "success",
+                "addons": {
+                    "behavior_packs": [
+                        {
+                            "uuid": "123",
+                            "icon": str(icon_path),
+                            "name": "Test BP",
+                            "version": [1, 0, 0],
+                            "status": "ACTIVE",
+                        }
+                    ]
+                },
+            }
+        )
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/addon/icon?pack_type=behavior&uuid=123"
@@ -263,19 +273,21 @@ def test_get_server_addon_icon_not_found_fallback(
 ):
     """Test getting addon icon that doesn't exist, checking fallback behavior."""
     with patch("bedrock_server_manager.api.addon.list_installed_addons") as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "addons": {
-                "behavior_packs": [
-                    {
-                        "uuid": "123",
-                        "name": "Test BP",
-                        "version": [1, 0, 0],
-                        "status": "active",
-                    }
-                ]  # no icon path
-            },
-        }
+        mock_api.return_value = ListInstalledAddonsResponse.model_validate(
+            {
+                "status": "success",
+                "addons": {
+                    "behavior_packs": [
+                        {
+                            "uuid": "123",
+                            "name": "Test BP",
+                            "version": [1, 0, 0],
+                            "status": "ACTIVE",
+                        }
+                    ]
+                },
+            }
+        )
 
         with patch("os.path.isfile") as mock_isfile:
             # We must pretend the favicon exists to hit the fallback FileResponse code

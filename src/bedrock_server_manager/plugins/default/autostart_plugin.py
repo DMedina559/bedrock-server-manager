@@ -29,7 +29,9 @@ class AutostartServers(PluginBase):
     async def autostart_servers(self, **kwargs: Any):
 
         # Run API calls in thread to not block startup loop
-        result = await self.api.get_all_servers_data()
+        result = (await self.api.get_all_servers_data(request={})).model_dump(
+            mode="python"
+        )
         servers = result.get("servers", [])
 
         for server in servers:
@@ -37,9 +39,11 @@ class AutostartServers(PluginBase):
             if not server_name:
                 continue
 
-            setting_result = await self.api.get_server_setting(
-                server_name, "settings.autostart"
-            )
+            setting_result = (
+                await self.api.get_server_setting(
+                    request={"server_name": server_name, "key": "settings.autostart"}
+                )
+            ).model_dump(mode="python")
             server_settings = setting_result.get("value")
 
             if server_settings:
@@ -50,6 +54,6 @@ class AutostartServers(PluginBase):
                 # especially if an update is required.
                 await self.api.run_task(
                     self.api.start_server,
-                    server_name=server_name,
+                    request={"server_name": server_name},
                     username="System (Autostart)",
                 )

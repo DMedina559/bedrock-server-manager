@@ -6,6 +6,9 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models import ListAvailableWorldsResponse
+from bedrock_server_manager.error import BSMError
+
 
 def test_get_worlds_list_unauthorized(unauth_client: TestClient):
     response = unauth_client.get("/api/content/worlds")
@@ -16,10 +19,12 @@ def test_get_worlds_list_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.world.app_api.list_available_worlds"
     ) as mock_list:
-        mock_list.return_value = {
-            "status": "success",
-            "files": ["/path/world1.mcworld", "/path/world2.mcworld"],
-        }
+        mock_list.return_value = ListAvailableWorldsResponse.model_validate(
+            {
+                "status": "success",
+                "files": ["/path/world1.mcworld", "/path/world2.mcworld"],
+            }
+        )
 
         response = admin_auth_client.get("/api/content/worlds")
         assert response.status_code == 200
@@ -33,11 +38,11 @@ def test_get_worlds_list_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.world.app_api.list_available_worlds"
     ) as mock_list:
-        mock_list.return_value = {"status": "error", "message": "Disk unavailable"}
+        mock_list.side_effect = BSMError("Disk unavailable")
 
         response = admin_auth_client.get("/api/content/worlds")
         assert response.status_code == 500
-        assert "Disk unavailable" in response.json()["detail"]
+        assert "critical server error" in response.json()["detail"].lower()
 
 
 async def test_post_world_install_success(

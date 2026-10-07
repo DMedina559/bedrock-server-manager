@@ -18,10 +18,19 @@ These routes interface with the underlying plugin management logic in
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    GetPluginStatusesRequest,
+    ReloadPluginsRequest,
+    ReloadSinglePluginRequest,
+    SetPluginStatusRequest,
+    TriggerExternalAppEventRequest,
+)
 
 from ...api import plugins as plugins_api
 from ...context import AppContext
-from ...error import BSMError, UserInputError
+from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ..deps import get_admin_user, get_app_context, get_current_user
 from ..schemas import (
     ActionResponse,
@@ -54,6 +63,8 @@ async def get_plugin_pages(
     try:
         pages = app_context.plugin_manager.get_native_ui_routes()
         return PluginPagesResponse(status="success", pages=pages)
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
         return PluginPagesResponse(
@@ -78,7 +89,11 @@ async def get_plugins_status(
     identity = current_user.username
     logger.info(f"API: Get plugin statuses request by '{identity}'.")
     try:
-        result = await plugins_api.get_plugin_statuses(app_context=app_context)
+        result = (
+            await plugins_api.get_plugin_statuses(
+                request=GetPluginStatusesRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return PluginStatusesResponse(
                 status="success", plugins=result.get("plugins")
@@ -89,6 +104,8 @@ async def get_plugins_status(
                 detail=result.get("message", "Failed to get plugin statuses."),
             )
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(f"API Get Plugin Statuses: Unexpected error: {e}", exc_info=True)
@@ -117,11 +134,14 @@ async def post_trigger_event(
     )
 
     try:
-        result = await plugins_api.trigger_external_app_event(
-            app_context=app_context,
-            event_name=payload.event_name,
-            payload=payload.payload,
-        )
+        result = (
+            await plugins_api.trigger_external_app_event(
+                request=TriggerExternalAppEventRequest(
+                    event_name=payload.event_name, payload=payload.payload
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return TriggerEventResponse(
                 status="success",
@@ -137,6 +157,8 @@ async def post_trigger_event(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API Trigger Event '{payload.event_name}': BSMError: {e}", exc_info=True
@@ -144,6 +166,8 @@ async def post_trigger_event(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Trigger Event '{payload.event_name}': Unexpected error: {e}",
@@ -176,9 +200,14 @@ async def post_set_plugin_status(
     )
 
     try:
-        result = await plugins_api.set_plugin_status(
-            app_context=app_context, plugin_name=plugin_name, enabled=payload.enabled
-        )
+        result = (
+            await plugins_api.set_plugin_status(
+                request=SetPluginStatusRequest(
+                    target_plugin_name=plugin_name, enabled=payload.enabled
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return ActionResponse(status="success", message=str(result.get("message")))
         else:
@@ -196,11 +225,15 @@ async def post_set_plugin_status(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(f"API Set Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Set Plugin '{plugin_name}': Unexpected error: {e}", exc_info=True
@@ -228,9 +261,12 @@ async def post_reload_single_plugin(
     logger.info(f"API: Request to reload plugin '{plugin_name}' by user '{identity}'.")
 
     try:
-        result = await plugins_api.reload_single_plugin(
-            app_context=app_context, plugin_name=plugin_name
-        )
+        result = (
+            await plugins_api.reload_single_plugin(
+                request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return ActionResponse(status="success", message=str(result.get("message")))
         else:
@@ -245,11 +281,15 @@ async def post_reload_single_plugin(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(f"API Reload Plugin '{plugin_name}': BSMError: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Reload Plugin '{plugin_name}': Unexpected error: {e}", exc_info=True
@@ -274,7 +314,11 @@ async def put_reload_plugins(
     logger.info(f"API: Reload plugins request by '{identity}'.")
 
     try:
-        result = await plugins_api.reload_plugins(app_context=app_context)
+        result = (
+            await plugins_api.reload_plugins(
+                request=ReloadPluginsRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
         if result.get("status") == "success":
             return ActionResponse(status="success", message=str(result.get("message")))
         else:
@@ -284,11 +328,15 @@ async def put_reload_plugins(
             )
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(f"API Reload Plugins: BSMError: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"API Reload Plugins: Unexpected error: {e}", exc_info=True)
         raise HTTPException(

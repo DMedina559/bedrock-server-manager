@@ -121,7 +121,7 @@ class NestedDifferentServerStartPlugin(PluginBase):
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
-                await self.api.start_server(server_name=SERVER_B_NAME_NESTED)
+                await self.api.start_server({"server_name": SERVER_B_NAME_NESTED})
                 self.logger.info(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
                 )

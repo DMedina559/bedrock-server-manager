@@ -1,17 +1,32 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
+from bedrock_server_manager.api.models import (
+    DeleteServerDataRequest,
+    GetAllServerSettingsRequest,
+    GetServerSettingRequest,
+    SendCommandRequest,
+    SetServerCustomValueRequest,
+    SetServerSettingRequest,
+    SetServerStatusRequest,
+    StartServerRequest,
+    StartServerResponse,
+    StopServerRequest,
+    StopServerResponse,
+    UpdateServerPlayerStatsRequest,
+)
 from bedrock_server_manager.api.server import (
     delete_server_data,
     send_command,
-    server_lifecycle_manager,
     set_server_status,
     start_server,
     stop_server,
     update_server_player_stats,
 )
-from bedrock_server_manager.error import BlockedCommandError, InvalidServerNameError
+from bedrock_server_manager.error import BlockedCommandError
+from bedrock_server_manager.plugins.runtime_capabilities import server_lifecycle_manager
 
 
 async def test_start_server_success(app_context, monkeypatch):
@@ -31,17 +46,19 @@ async def test_start_server_success(app_context, monkeypatch):
     mock_bpm.remove_server = AsyncMock()
     monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
-    result = await start_server("test_server", app_context)
+    result = await start_server(
+        StartServerRequest(server_name="test_server"), app_context=app_context
+    )
 
-    assert result["status"] == "success"
+    assert result.status == "success"
 
     mock_bpm.add_server.assert_awaited_once_with(mock_server)
 
 
 async def test_start_server_missing_name(app_context):
     """Test start_server triggers early failure with invalid names."""
-    with pytest.raises(InvalidServerNameError):
-        await start_server("", app_context)
+    with pytest.raises(ValidationError):
+        await start_server({"server_name": ""}, app_context=app_context)
 
 
 async def test_stop_server_success(app_context, monkeypatch):
@@ -52,7 +69,7 @@ async def test_stop_server_success(app_context, monkeypatch):
     mock_server.is_running = AsyncMock()
     mock_server.send_command = AsyncMock()
     mock_server.delete_all_data = AsyncMock()
-    mock_server.get_status_from_config = AsyncMock()
+    mock_server.get_status_from_config = AsyncMock(return_value="RUNNING")
     mock_server._manage_json_config = AsyncMock()
     mock_server.get_pid_file_path = MagicMock(return_value="/tmp/test_pid")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
@@ -61,15 +78,17 @@ async def test_stop_server_success(app_context, monkeypatch):
     mock_bpm.remove_server = AsyncMock()
     monkeypatch.setattr(app_context, "_bedrock_process_manager", mock_bpm)
 
-    result = await stop_server("test_server", app_context)
+    result = await stop_server(
+        StopServerRequest(server_name="test_server"), app_context=app_context
+    )
 
-    assert result["status"] == "success"
+    assert result.status == "success"
 
 
 async def test_stop_server_missing_name(app_context):
     """Test stop_server triggers early failure with invalid names."""
-    with pytest.raises(InvalidServerNameError):
-        await stop_server("", app_context)
+    with pytest.raises(ValidationError):
+        await stop_server({"server_name": ""}, app_context=app_context)
 
 
 async def test_send_command_success(app_context, monkeypatch):
@@ -82,7 +101,12 @@ async def test_send_command_success(app_context, monkeypatch):
     mock_server.delete_all_data = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await send_command("test_server", "say hello", app_context)
+    result = (
+        await send_command(
+            request=SendCommandRequest(server_name="test_server", command="say hello"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     mock_server.send_command.assert_called_once_with("say hello")
@@ -90,14 +114,24 @@ async def test_send_command_success(app_context, monkeypatch):
 
 async def test_send_command_missing_name(app_context):
     """Test send_command correctly throws on missing server string."""
-    with pytest.raises(InvalidServerNameError):
-        await send_command("", "say hello", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await send_command(
+                request=SendCommandRequest(server_name="", command="say hello"),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_send_command_blocked(app_context):
     """Test send_command throws an exception against restricted operations like stop."""
     with pytest.raises(BlockedCommandError):
-        await send_command("test_server", "stop", app_context)
+        (
+            await send_command(
+                request=SendCommandRequest(server_name="test_server", command="stop"),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_delete_server_data_success(app_context, monkeypatch):
@@ -112,15 +146,24 @@ async def test_delete_server_data_success(app_context, monkeypatch):
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
     monkeypatch.setattr(app_context, "remove_server", AsyncMock())
 
-    result = await delete_server_data("test_server", app_context)
+    result = (
+        await delete_server_data(
+            request=DeleteServerDataRequest(server_name="test_server"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
 
 
 async def test_delete_server_data_missing_name(app_context):
     """Test delete_server_data catches empty missing server string."""
-    with pytest.raises(InvalidServerNameError):
-        await delete_server_data("", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await delete_server_data(
+                request=DeleteServerDataRequest(server_name=""), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
 
 async def test_server_lifecycle_manager(app_context, monkeypatch):
@@ -134,8 +177,16 @@ async def test_server_lifecycle_manager(app_context, monkeypatch):
     mock_server.is_running.return_value = True
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    mock_stop = AsyncMock(return_value={"status": "success"})
-    mock_start = AsyncMock(return_value={"status": "success"})
+    mock_stop = AsyncMock(
+        return_value=StopServerResponse(
+            server_name="test_server", outcome="stopped", message="Stopped"
+        )
+    )
+    mock_start = AsyncMock(
+        return_value=StartServerResponse(
+            server_name="test_server", outcome="started", message="Started"
+        )
+    )
 
     monkeypatch.setattr("bedrock_server_manager.api.server.stop_server", mock_stop)
     monkeypatch.setattr("bedrock_server_manager.api.server.start_server", mock_start)
@@ -162,7 +213,12 @@ async def test_set_server_status(app_context, monkeypatch):
     mock_server._manage_json_config = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await set_server_status("test_server", "RUNNING", app_context)
+    result = (
+        await set_server_status(
+            request=SetServerStatusRequest(server_name="test_server", status="RUNNING"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["previous_status"] == "STOPPED"
@@ -173,14 +229,18 @@ async def test_set_server_status(app_context, monkeypatch):
 
 async def test_update_server_player_stats(app_context):
     """Test update_server_player_stats effectively builds dictionary outputs for socket notifications."""
-    result = await update_server_player_stats(
-        "test_server", 5, [{"name": "p1"}], app_context
-    )
+    result = (
+        await update_server_player_stats(
+            request=UpdateServerPlayerStatsRequest(
+                server_name="test_server",
+                player_count=5,
+                players=[{"name": "p1", "xuid": "1"}],
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
-    assert result["server_name"] == "test_server"
-    assert result["player_count"] == 5
-    assert len(result["players"]) == 1
 
 
 async def test_set_server_setting_success(app_context, monkeypatch):
@@ -196,9 +256,14 @@ async def test_set_server_setting_success(app_context, monkeypatch):
     mock_server._manage_json_config = AsyncMock(return_value=None)
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await set_server_setting(
-        "test_server", "test.key", "test_val", app_context
-    )
+    result = (
+        await set_server_setting(
+            request=SetServerSettingRequest(
+                server_name="test_server", key="test.key", value="test_val"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     mock_server._manage_json_config.assert_called_once_with(
@@ -219,9 +284,14 @@ async def test_set_server_custom_value_success(app_context, monkeypatch):
     mock_server.set_custom_config_value = AsyncMock(return_value=None)
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await set_server_custom_value(
-        "test_server", "my_custom", "custom_val", app_context
-    )
+    result = (
+        await set_server_custom_value(
+            request=SetServerCustomValueRequest(
+                server_name="test_server", key="my_custom", value="custom_val"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     mock_server.set_custom_config_value.assert_called_once_with(
@@ -242,10 +312,15 @@ async def test_get_all_server_settings_success(app_context, monkeypatch):
     mock_server._load_server_config.return_value = {"key1": "val1"}
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await get_all_server_settings("test_server", app_context)
+    result = (
+        await get_all_server_settings(
+            request=GetAllServerSettingsRequest(server_name="test_server"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
-    assert result["key1"] == "val1"
+    assert result["settings"]["key1"] == "val1"
 
 
 async def test_get_server_setting_success(app_context, monkeypatch):
@@ -261,7 +336,14 @@ async def test_get_server_setting_success(app_context, monkeypatch):
     mock_server._manage_json_config = AsyncMock(return_value="secret")
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await get_server_setting("test_server", "secret.key", app_context)
+    result = (
+        await get_server_setting(
+            request=GetServerSettingRequest(
+                server_name="test_server", key="secret.key"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["value"] == "secret"

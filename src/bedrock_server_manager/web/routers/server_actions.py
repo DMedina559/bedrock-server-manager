@@ -16,11 +16,21 @@ FastAPI dependencies.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    DeleteServerDataRequest,
+    GetServerSummaryRequest,
+    SendCommandRequest,
+    UpdateServerRequest,
+)
 
 from ...api import install
 from ...api import server as server_api
+from ...api.models import RestartServerRequest, StartServerRequest, StopServerRequest
 from ...context import AppContext
 from ...error import (
+    AppFileNotFoundError,
     BlockedCommandError,
     BSMError,
     ServerNotRunningError,
@@ -60,9 +70,12 @@ async def get_server_summary(
         f"API: Get server summary request for '{server_name}' by user '{identity}'."
     )
 
-    result = await server_api.get_server_summary(
-        server_name=server_name, app_context=app_context
-    )
+    result = (
+        await server_api.get_server_summary(
+            request=GetServerSummaryRequest(server_name=server_name),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     if result.get("status") == "success":
         summary = result.get("summary", {})
@@ -104,7 +117,7 @@ async def post_start_server(
     task_id = await app_context.task_manager.run_task(
         server_api.start_server,
         username=current_user.username,
-        server_name=server_name,
+        request=StartServerRequest(server_name=server_name),
         app_context=app_context,
     )
 
@@ -138,7 +151,7 @@ async def post_stop_server(
     task_id = await app_context.task_manager.run_task(
         server_api.stop_server,
         username=current_user.username,
-        server_name=server_name,
+        request=StopServerRequest(server_name=server_name),
         app_context=app_context,
     )
 
@@ -174,7 +187,7 @@ async def post_restart_server(
     task_id = await app_context.task_manager.run_task(
         server_api.restart_server,
         username=current_user.username,
-        server_name=server_name,
+        request=RestartServerRequest(server_name=server_name),
         app_context=app_context,
     )
 
@@ -212,11 +225,14 @@ async def post_send_command(
         )
 
     try:
-        command_result = await server_api.send_command(
-            server_name=server_name,
-            command=payload.command.strip(),
-            app_context=app_context,
-        )
+        command_result = (
+            await server_api.send_command(
+                request=SendCommandRequest(
+                    server_name=server_name, command=payload.command.strip()
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
         if command_result.get("status") == "success":
             logger.info(
@@ -255,6 +271,8 @@ async def post_send_command(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:  # Catch other BSM specific errors
         logger.error(
             f"API Send Command '{server_name}': Application error. {e}", exc_info=True
@@ -262,6 +280,10 @@ async def post_send_command(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+    except ValidationError:
+        raise
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(
             f"API Send Command '{server_name}': Unexpected error. {e}", exc_info=True
@@ -295,8 +317,8 @@ async def post_update_server(
     task_id = await app_context.task_manager.run_task(
         install.update_server,
         username=current_user.username,
-        server_name=server_name,
         app_context=app_context,
+        request=UpdateServerRequest(server_name=server_name),
     )
 
     return ActionResponse(
@@ -331,8 +353,8 @@ async def delete_server(
     task_id = await app_context.task_manager.run_task(
         server_api.delete_server_data,
         username=current_user.username,
-        server_name=server_name,
         app_context=app_context,
+        request=DeleteServerDataRequest(server_name=server_name),
     )
 
     return ActionResponse(

@@ -6,6 +6,9 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models import ListBackupFilesResponse
+from bedrock_server_manager.error import AppFileNotFoundError
+
 
 def test_put_prune_backups_success(admin_auth_client: TestClient, real_bedrock_server):
     with patch(
@@ -27,10 +30,12 @@ def test_get_list_server_backups_world_success(
     with patch(
         "bedrock_server_manager.api.backup_restore.list_backup_files"
     ) as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "backups": ["/path/to/backup1.zip", "/path/to/backup2.zip"],
-        }
+        mock_api.return_value = ListBackupFilesResponse.model_validate(
+            {
+                "status": "success",
+                "backups": ["/path/to/backup1.zip", "/path/to/backup2.zip"],
+            }
+        )
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/backup/list/world"
         )
@@ -46,13 +51,15 @@ def test_get_list_server_backups_all_success(
     with patch(
         "bedrock_server_manager.api.backup_restore.list_backup_files"
     ) as mock_api:
-        mock_api.return_value = {
-            "status": "success",
-            "backups": {
-                "world": ["/path/to/backup1.zip"],
-                "properties": ["/path/to/props.bak"],
-            },
-        }
+        mock_api.return_value = ListBackupFilesResponse.model_validate(
+            {
+                "status": "success",
+                "backups": {
+                    "world": ["/path/to/backup1.zip"],
+                    "properties": ["/path/to/props.bak"],
+                },
+            }
+        )
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/backup/list/all"
         )
@@ -69,15 +76,12 @@ def test_get_list_server_backups_not_found(
     with patch(
         "bedrock_server_manager.api.backup_restore.list_backup_files"
     ) as mock_api:
-        mock_api.return_value = {
-            "status": "error",
-            "message": "Server backups not found.",
-        }
+        mock_api.side_effect = AppFileNotFoundError("Server backups not found.")
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/backup/list/world"
         )
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert response.json()["error"]["code"] == "application_error"
 
 
 def test_post_backup_action_world_success(
@@ -188,4 +192,4 @@ async def test_post_restore_action_file_not_found(
         json={"restore_type": "world", "backup_file": "missing.zip"},
     )
     assert response.status_code == 404
-    assert "not found" in response.json()["detail"]
+    assert "not found" in response.json()["detail"].lower()

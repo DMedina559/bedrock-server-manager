@@ -6,6 +6,11 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models import (
+    GetAllGlobalSettingsResponse,
+    ReloadGlobalSettingsResponse,
+    SetGlobalSettingResponse,
+)
 from bedrock_server_manager.error import BSMError, UserInputError
 
 
@@ -23,12 +28,13 @@ def test_get_all_settings_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.settings.settings_api.get_all_global_settings"
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "success",
-            "message": "Settings retrieved",
-            "app.theme": "dark",
-            "web.port": 8080,
-        }
+        mock_get.return_value = GetAllGlobalSettingsResponse.model_validate(
+            {
+                "status": "success",
+                "message": "Settings retrieved",
+                "settings": {"app.theme": "dark", "web.port": 8080},
+            }
+        )
 
         response = admin_auth_client.get("/api/settings/get")
         assert response.status_code == 200
@@ -41,14 +47,11 @@ def test_get_all_settings_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.settings.settings_api.get_all_global_settings"
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "error",
-            "message": "Failed to read config file",
-        }
+        mock_get.side_effect = BSMError("Failed to read config file")
 
         response = admin_auth_client.get("/api/settings/get")
         assert response.status_code == 500
-        assert "Failed to read config file" in response.json()["detail"]
+        assert "unexpected error" in response.json()["detail"].lower()
 
 
 def test_get_all_settings_exception(admin_auth_client: TestClient):
@@ -66,7 +69,9 @@ def test_post_set_setting_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.settings.settings_api.set_global_setting"
     ) as mock_set:
-        mock_set.return_value = {"status": "success", "message": "Setting updated"}
+        mock_set.return_value = SetGlobalSettingResponse.model_validate(
+            {"status": "success", "message": "Setting updated"}
+        )
 
         response = admin_auth_client.post(
             "/api/settings/set", json={"key": "app.theme", "value": "light"}
@@ -81,7 +86,7 @@ def test_post_set_setting_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.settings.settings_api.set_global_setting"
     ) as mock_set:
-        mock_set.return_value = {"status": "error", "message": "Invalid key"}
+        mock_set.side_effect = UserInputError("Invalid key")
 
         response = admin_auth_client.post(
             "/api/settings/set", json={"key": "invalid.key", "value": "light"}
@@ -120,7 +125,9 @@ def test_put_reload_settings_success(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.settings.settings_api.reload_global_settings"
     ) as mock_reload:
-        mock_reload.return_value = {"status": "success", "message": "Reloaded"}
+        mock_reload.return_value = ReloadGlobalSettingsResponse.model_validate(
+            {"status": "success", "message": "Reloaded"}
+        )
 
         response = admin_auth_client.put("/api/settings/reload")
         assert response.status_code == 200
@@ -131,7 +138,7 @@ def test_put_reload_settings_error(admin_auth_client: TestClient):
     with patch(
         "bedrock_server_manager.web.routers.settings.settings_api.reload_global_settings"
     ) as mock_reload:
-        mock_reload.return_value = {"status": "error", "message": "Failed to reload"}
+        mock_reload.side_effect = BSMError("Failed to reload")
 
         response = admin_auth_client.put("/api/settings/reload")
         assert response.status_code == 500

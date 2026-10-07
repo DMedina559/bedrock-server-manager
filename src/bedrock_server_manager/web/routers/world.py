@@ -5,6 +5,14 @@ import aiofiles.ospath
 import bsm_frontend
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    ExportWorldRequest,
+    ImportWorldRequest,
+    ListAvailableWorldsRequest,
+    ResetWorldRequest,
+)
 
 from ...api import application as app_api
 from ...api import world as world_api
@@ -48,7 +56,11 @@ async def get_worlds_list(
     identity = current_user.username
     logger.info(f"API: List available worlds request by user '{identity}'.")
     try:
-        api_result = await app_api.list_available_worlds(app_context=app_context)
+        api_result = (
+            await app_api.list_available_worlds(
+                request=ListAvailableWorldsRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
         if api_result.get("status") == "success":
             full_paths = api_result.get("files", [])
             basenames = [os.path.basename(p) for p in full_paths]
@@ -62,6 +74,8 @@ async def get_worlds_list(
                 detail=api_result.get("message", "Failed to list worlds."),
             )
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -133,9 +147,10 @@ async def post_world_install(
         task_id = await app_context.task_manager.run_task(
             world_api.import_world,
             username=current_user.username,
-            server_name=server_name,
-            selected_file_path=full_world_file_path,
             app_context=app_context,
+            request=ImportWorldRequest(
+                server_name=server_name, selected_file_path=full_world_file_path
+            ),
         )
 
         return ActionResponse(
@@ -147,6 +162,8 @@ async def post_world_install(
         raise
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API Install World '{server_name}': Pre-check BSMError: {e}", exc_info=True
@@ -155,6 +172,8 @@ async def post_world_install(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -197,8 +216,8 @@ async def post_world_export(
         task_id = await app_context.task_manager.run_task(
             world_api.export_world,
             username=current_user.username,
-            server_name=server_name,
             app_context=app_context,
+            request=ExportWorldRequest(server_name=server_name),
         )
 
         return ActionResponse(
@@ -211,6 +230,8 @@ async def post_world_export(
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -251,8 +272,8 @@ async def delete_world_reset(
         task_id = await app_context.task_manager.run_task(
             world_api.reset_world,
             username=current_user.username,
-            server_name=server_name,
             app_context=app_context,
+            request=ResetWorldRequest(server_name=server_name),
         )
 
         return ActionResponse(
@@ -265,6 +286,8 @@ async def delete_world_reset(
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(
@@ -336,6 +359,8 @@ async def get_world_icon(
             )
 
     except HTTPException:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(

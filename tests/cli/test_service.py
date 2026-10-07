@@ -3,6 +3,12 @@ from unittest.mock import MagicMock
 import pytest
 from click.testing import CliRunner
 
+from bedrock_server_manager.api.models import (
+    DisableWebUiServiceResponse,
+    EnableWebUiServiceResponse,
+    GetWebUiServiceStatusResponse,
+    RemoveWebUiServiceResponse,
+)
 from bedrock_server_manager.cli.service import (
     configure_web_service,
     disable_web_service_cli,
@@ -57,7 +63,11 @@ def test_configure_web_service_flags(runner, app_context, monkeypatch):
 
 def test_enable_web_service_cli(runner, app_context, monkeypatch):
     """Test enable service command successfully queries the web api."""
-    mock_api = MagicMock(return_value={"status": "success"})
+    mock_api = MagicMock(
+        return_value=EnableWebUiServiceResponse.model_validate(
+            {"status": "success", "message": "Web UI service enabled successfully"}
+        )
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.api.web.enable_web_ui_service", mock_api
     )
@@ -69,7 +79,11 @@ def test_enable_web_service_cli(runner, app_context, monkeypatch):
 
 def test_disable_web_service_cli(runner, app_context, monkeypatch):
     """Test disable service command successfully queries the web api."""
-    mock_api = MagicMock(return_value={"status": "success"})
+    mock_api = MagicMock(
+        return_value=DisableWebUiServiceResponse.model_validate(
+            {"status": "success", "message": "Web UI service enabled successfully"}
+        )
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.api.web.disable_web_ui_service", mock_api
     )
@@ -86,7 +100,11 @@ def test_remove_web_service_cli_confirm_yes(runner, app_context, monkeypatch):
         "bedrock_server_manager.cli.service.questionary", mock_questionary
     )
 
-    mock_api = MagicMock(return_value={"status": "success"})
+    mock_api = MagicMock(
+        return_value=RemoveWebUiServiceResponse.model_validate(
+            {"status": "success", "message": "Web UI service enabled successfully"}
+        )
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.api.web.remove_web_ui_service", mock_api
     )
@@ -118,13 +136,15 @@ def test_remove_web_service_cli_confirm_no(runner, app_context, monkeypatch):
 def test_status_web_service_cli(runner, app_context, monkeypatch):
     """Test status service command prints out correctly formatted info."""
     mock_api = MagicMock(
-        return_value={
-            "status": "success",
-            "service_exists": True,
-            "is_active": True,
-            "is_enabled": False,
-            "message": "All good",
-        }
+        return_value=GetWebUiServiceStatusResponse.model_validate(
+            {
+                "status": "success",
+                "service_exists": True,
+                "is_active": True,
+                "is_enabled": False,
+                "message": "All good",
+            }
+        )
     )
     monkeypatch.setattr(
         "bedrock_server_manager.api.web.get_web_ui_service_status", mock_api

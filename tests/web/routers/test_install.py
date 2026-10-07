@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models import DeleteServerDataResponse
+from bedrock_server_manager.error import BSMError
+
 
 def test_get_custom_zips_unauthorized(unauth_client: TestClient):
     response = unauth_client.get("/api/downloads/list")
@@ -110,7 +113,9 @@ def test_post_install_server_exists_with_overwrite(admin_auth_client: TestClient
                 "bedrock_server_manager.web.tasks.TaskManager.run_task",
                 return_value="task-456",
             ):
-                mock_delete.return_value = {"status": "success"}
+                mock_delete.return_value = DeleteServerDataResponse.model_validate(
+                    {"status": "success", "message": "Completed successfully."}
+                )
                 response = admin_auth_client.post(
                     "/api/server/install",
                     json={
@@ -134,10 +139,7 @@ def test_post_install_server_exists_with_overwrite_delete_fails(
         with patch(
             "bedrock_server_manager.web.routers.install.server_api.delete_server_data"
         ) as mock_delete:
-            mock_delete.return_value = {
-                "status": "error",
-                "message": "Failed to delete files",
-            }
+            mock_delete.side_effect = BSMError("Failed to delete files")
             response = admin_auth_client.post(
                 "/api/server/install",
                 json={

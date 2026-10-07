@@ -2,6 +2,12 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from bedrock_server_manager.api.models import (
+    AddServerBanRequest,
+    GetServerBansRequest,
+    RemoveServerBanRequest,
+)
+
 from ...api.ban import add_server_ban
 from ...api.ban import get_server_bans as get_server_bans_api
 from ...api.ban import remove_server_ban
@@ -22,7 +28,12 @@ async def get_server_bans(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Get all bans for a specific server."""
-    result = await get_server_bans_api(app_context=app_context, server_name=server_name)
+    result = (
+        await get_server_bans_api(
+            request=GetServerBansRequest(server_name=server_name),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
     return dict(result)
@@ -35,13 +46,17 @@ async def post_add_server_ban(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Add a player to the server ban list."""
-    result = await add_server_ban(
-        app_context=app_context,
-        server_name=server_name,
-        player_name=payload.player_name,
-        xuid=payload.xuid,
-        reason=payload.reason,
-    )
+    result = (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name=server_name,
+                player_name=payload.player_name,
+                xuid=payload.xuid,
+                reason=payload.reason,
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
     return dict(result)
@@ -54,9 +69,12 @@ async def delete_remove_server_ban(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Remove a player from the server ban list."""
-    result = await remove_server_ban(
-        app_context=app_context, server_name=server_name, xuid=payload.xuid
-    )
+    result = (
+        await remove_server_ban(
+            request=RemoveServerBanRequest(server_name=server_name, xuid=payload.xuid),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
     return dict(result)

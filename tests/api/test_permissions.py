@@ -1,9 +1,15 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
+from bedrock_server_manager.api.models import (
+    GetAllKnownPlayersResponse,
+    GetPermissionsRequest,
+    SetPermissionsRequest,
+)
 from bedrock_server_manager.api.permissions import get_permissions, set_permissions
-from bedrock_server_manager.error import BSMError, InvalidServerNameError
+from bedrock_server_manager.error import BSMError
 
 
 async def test_set_permissions_success(app_context, monkeypatch):
@@ -12,9 +18,17 @@ async def test_set_permissions_success(app_context, monkeypatch):
     mock_server.set_player_permission = AsyncMock()
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await set_permissions(
-        "test_server", "xuid1", "p1", "operator", app_context
-    )
+    result = (
+        await set_permissions(
+            request=SetPermissionsRequest(
+                server_name="test_server",
+                xuid="xuid1",
+                player_name="p1",
+                permission="operator",
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert "set to 'operator'" in result["message"]
@@ -22,8 +36,18 @@ async def test_set_permissions_success(app_context, monkeypatch):
 
 async def test_set_permissions_invalid_server(app_context):
     """Test set_permissions raises on bad server names."""
-    with pytest.raises(InvalidServerNameError):
-        await set_permissions("", "xuid1", "p1", "operator", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await set_permissions(
+                request=SetPermissionsRequest(
+                    server_name="",
+                    xuid="xuid1",
+                    player_name="p1",
+                    permission="operator",
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_set_permissions_error(app_context, monkeypatch):
@@ -32,12 +56,18 @@ async def test_set_permissions_error(app_context, monkeypatch):
     mock_server.set_player_permission = AsyncMock(side_effect=BSMError("Access denied"))
     monkeypatch.setattr(app_context, "get_server", lambda x: mock_server)
 
-    result = await set_permissions(
-        "test_server", "xuid1", "p1", "operator", app_context
-    )
-
-    assert result["status"] == "error"
-    assert "Failed to configure permission" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await set_permissions(
+                request=SetPermissionsRequest(
+                    server_name="test_server",
+                    xuid="xuid1",
+                    player_name="p1",
+                    permission="operator",
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_get_permissions_success(app_context, monkeypatch):
@@ -52,14 +82,18 @@ async def test_get_permissions_success(app_context, monkeypatch):
     monkeypatch.setattr(
         "bedrock_server_manager.api.permissions.player_api.get_all_known_players",
         AsyncMock(
-            return_value={
-                "status": "success",
-                "players": [{"xuid": "xuid2", "name": "p2"}],
-            }
+            return_value=GetAllKnownPlayersResponse(
+                players=[{"xuid": "xuid2", "name": "p2"}]
+            )
         ),
     )
 
-    result = await get_permissions("test_server", app_context)
+    result = (
+        await get_permissions(
+            request=GetPermissionsRequest(server_name="test_server"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert (
@@ -71,9 +105,12 @@ async def test_get_permissions_success(app_context, monkeypatch):
 
 async def test_get_permissions_missing_name(app_context):
     """Test get_permissions explicitly handles empty paths safely."""
-    result = await get_permissions("", app_context)
-    assert result["status"] == "error"
-    assert "cannot be empty" in result["message"]
+    with pytest.raises(ValidationError):
+        (
+            await get_permissions(
+                request=GetPermissionsRequest(server_name=""), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
 
 async def test_get_permissions_error(app_context, monkeypatch):
@@ -86,10 +123,13 @@ async def test_get_permissions_error(app_context, monkeypatch):
 
     monkeypatch.setattr(
         "bedrock_server_manager.api.permissions.player_api.get_all_known_players",
-        AsyncMock(return_value={"status": "success"}),
+        AsyncMock(return_value=GetAllKnownPlayersResponse(players=[])),
     )
 
-    result = await get_permissions("test_server", app_context)
-
-    assert result["status"] == "error"
-    assert "Config busted" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await get_permissions(
+                request=GetPermissionsRequest(server_name="test_server"),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")

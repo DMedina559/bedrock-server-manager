@@ -34,7 +34,9 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context.loop = asyncio.get_running_loop()
         await app_context.bedrock_process_manager.start()
         app_context.resource_monitor.start()
-        await app_context.api.update_server_statuses()
+        (await app_context.api.update_server_statuses(request={})).model_dump(
+            mode="python"
+        )
 
         await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
         await app_context.plugin_manager.start_plugin_tasks()
@@ -65,6 +67,39 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         },
         lifespan=lifespan,
     )
+    from fastapi.responses import JSONResponse
+    from pydantic import ValidationError
+
+    from ..api.errors import error_response
+    from ..error import (
+        APICancelledError,
+        AppFileNotFoundError,
+        BSMError,
+        UserInputError,
+    )
+    from ..plugins.api_contract import APIResponseValidationError
+
+    async def api_error_handler(request, error):
+        if isinstance(error, ValidationError):
+            status_code = 422
+        elif isinstance(error, AppFileNotFoundError):
+            status_code = 404
+        elif isinstance(error, APICancelledError):
+            status_code = 409
+        elif isinstance(error, UserInputError):
+            status_code = 400
+        else:
+            status_code = 500
+            logger.error("API operation failed", exc_info=error)
+        payload = error_response(error).model_dump(mode="json")
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": payload["message"], "error": payload},
+        )
+
+    for exception_type in (ValidationError, BSMError, APIResponseValidationError):
+        app.add_exception_handler(exception_type, api_error_handler)
+
     app.state.app_context = app_context
 
     # --- CORS Middleware ---

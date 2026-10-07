@@ -1,8 +1,11 @@
 import asyncio
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
+from bedrock_server_manager.api.models import StartServerResponse
+from bedrock_server_manager.error import ServerStartError
 from bedrock_server_manager.web.tasks import TaskManager
 
 
@@ -29,6 +32,36 @@ async def test_run_task_success(task_manager):
 
     assert task_manager.tasks[task_id]["status"] == "success"
     assert task_manager.tasks[task_id]["result"] == 15
+
+
+async def test_model_task_result_is_json_serializable(task_manager):
+    async def target():
+        return StartServerResponse(
+            server_name="example", outcome="started", message="Started"
+        )
+
+    task_id = await task_manager.run_task(target)
+    await task_manager.futures[task_id]
+    await asyncio.sleep(0)
+    await asyncio.gather(*task_manager._background_tasks)
+    result = task_manager.tasks[task_id]["result"]
+    assert result["outcome"] == "started"
+    assert json.loads(json.dumps(result))["server_name"] == "example"
+
+
+async def test_task_failure_has_structured_safe_error(task_manager):
+    async def target():
+        raise ServerStartError("Private path /srv/private")
+
+    task_id = await task_manager.run_task(target)
+    with pytest.raises(ServerStartError):
+        await task_manager.futures[task_id]
+    await asyncio.sleep(0)
+    await asyncio.gather(*task_manager._background_tasks)
+    details = task_manager.tasks[task_id]
+    assert details["status"] == "error"
+    assert details["result"]["code"] == "server_start_failed"
+    assert "/srv/private" not in json.dumps(details)
 
 
 async def test_run_coroutine_task_success(task_manager, app_context):

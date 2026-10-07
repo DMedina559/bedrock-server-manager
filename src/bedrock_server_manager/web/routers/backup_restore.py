@@ -22,10 +22,16 @@ from typing import Any, Callable, Optional
 
 import aiofiles.ospath
 from fastapi import APIRouter, Body, Depends, HTTPException, status
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    ListBackupFilesRequest,
+    PruneOldBackupsRequest,
+)
 
 from ...api import backup_restore as backup_restore_api
 from ...context import AppContext
-from ...error import BSMError, UserInputError
+from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
     ActionResponse,
@@ -66,8 +72,8 @@ async def put_prune_backups(
     task_id = await app_context.task_manager.run_task(
         backup_restore_api.prune_old_backups,
         username=current_user.username,
-        server_name=server_name,
         app_context=app_context,
+        request=PruneOldBackupsRequest.model_validate({"server_name": server_name}),
     )
 
     return ActionResponse(
@@ -97,9 +103,14 @@ async def get_list_server_backups(
         f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
     )
     try:
-        api_result = await backup_restore_api.list_backup_files(
-            server_name=server_name, backup_type=backup_type, app_context=app_context
-        )
+        api_result = (
+            await backup_restore_api.list_backup_files(
+                request=ListBackupFilesRequest.model_validate(
+                    {"server_name": server_name, "backup_type": backup_type}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
         if api_result.get("status") == "success":
             backup_data = api_result.get("backups", [])
 
@@ -146,6 +157,8 @@ async def get_list_server_backups(
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except AppFileNotFoundError:
+        raise
     except BSMError as e:
         logger.error(
             f"API List Backups '{server_name}/{backup_type}': BSMError. {e}",
@@ -155,6 +168,10 @@ async def get_list_server_backups(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except HTTPException:
+        raise
+    except ValidationError:
+        raise
+    except ValidationError:
         raise
     except Exception as e:
         logger.error(

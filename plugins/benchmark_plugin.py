@@ -464,7 +464,11 @@ class BenchmarkPlugin(PluginBase):
 
         if not pid and server_name and hasattr(self.api, "get_bedrock_process_info"):
             try:
-                info_res = await self.api.get_bedrock_process_info(server_name)
+                info_res = (
+                    await self.api.get_bedrock_process_info(
+                        request={"server_name": server_name}
+                    )
+                ).model_dump(mode="python")
                 if isinstance(info_res, dict) and info_res.get("status") == "success":
                     p_info = info_res.get("process_info")
                     if isinstance(p_info, dict):
@@ -574,7 +578,9 @@ class BenchmarkPlugin(PluginBase):
         active_servers_list = []
         try:
             if hasattr(self.api, "get_all_servers_data"):
-                res = await self.api.get_all_servers_data()
+                res = (await self.api.get_all_servers_data(request={})).model_dump(
+                    mode="python"
+                )
             elif hasattr(self.api, "list_servers"):
                 res = await self.api.list_servers()
             else:
@@ -606,7 +612,11 @@ class BenchmarkPlugin(PluginBase):
             p_info = None
             try:
                 if hasattr(self.api, "get_bedrock_process_info"):
-                    res = await self.api.get_bedrock_process_info(s_name)
+                    res = (
+                        await self.api.get_bedrock_process_info(
+                            request={"server_name": s_name}
+                        )
+                    ).model_dump(mode="python")
                     if isinstance(res, dict) and res.get("status") == "success":
                         p_info = res.get("process_info")
             except Exception as err:
@@ -737,12 +747,22 @@ class BenchmarkPlugin(PluginBase):
 
         if hasattr(self.api, "websocket"):
             try:
-                await self.api.websocket.broadcast(
-                    "benchmark:metrics", self._latest_metrics
-                )
-                await self.api.websocket.broadcast(
-                    "benchmark:server_stats", bedrock_server_stats
-                )
+                (
+                    await self.api.websocket.broadcast(
+                        request={
+                            "topic": "benchmark:metrics",
+                            "data": self._latest_metrics,
+                        }
+                    )
+                ).model_dump(mode="python")
+                (
+                    await self.api.websocket.broadcast(
+                        request={
+                            "topic": "benchmark:server_stats",
+                            "data": bedrock_server_stats,
+                        }
+                    )
+                ).model_dump(mode="python")
             except Exception as err:
                 self.logger.debug(
                     f"Failed to broadcast benchmark metrics over WebSocket: {err}"

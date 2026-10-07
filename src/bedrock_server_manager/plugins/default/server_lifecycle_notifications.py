@@ -36,7 +36,11 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
-            response = await self.api.get_server_running_status(server_name=server_name)
+            response = (
+                await self.api.get_server_running_status(
+                    request={"server_name": server_name}
+                )
+            ).model_dump(mode="python")
             if response and response.get("status") == "success":
                 return bool(response.get("is_running", False))
             self.logger.warning(
@@ -64,7 +68,11 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 else:
                     command = message
 
-                await self.api.send_command(server_name=server_name, command=command)
+                (
+                    await self.api.send_command(
+                        request={"server_name": server_name, "command": command}
+                    )
+                ).model_dump(mode="python")
                 self.logger.info(
                     f"Sent {context} message to '{server_name}': {message}"
                 )
@@ -84,7 +92,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
 
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = (
+            await self.api.get_server_summary(request={"server_name": server_name})
+        ).model_dump(mode="python")
         player_count = (
             summary.get("summary", {}).get("player_count", 0)
             if summary.get("status") == "success"
@@ -127,7 +137,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
 
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = (
+            await self.api.get_server_summary(request={"server_name": server_name})
+        ).model_dump(mode="python")
         player_count = (
             summary.get("summary", {}).get("player_count", 0)
             if summary.get("status") == "success"
@@ -150,7 +162,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             f"Handling before_server_update for '{server_name}' to v{target_version}."
         )
 
-        summary = await self.api.get_server_summary(server_name=server_name)
+        summary = (
+            await self.api.get_server_summary(request={"server_name": server_name})
+        ).model_dump(mode="python")
         player_count = (
             summary.get("summary", {}).get("player_count", 0)
             if summary.get("status") == "success"

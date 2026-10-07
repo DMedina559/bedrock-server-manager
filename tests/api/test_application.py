@@ -1,10 +1,18 @@
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from bedrock_server_manager.api.application import (
     get_all_servers_data,
     get_system_and_app_info,
     list_available_worlds,
     update_server_statuses,
+)
+from bedrock_server_manager.api.models import (
+    GetAllServersDataRequest,
+    GetSystemAndAppInfoRequest,
+    ListAvailableWorldsRequest,
+    UpdateServerStatusesRequest,
 )
 from bedrock_server_manager.error import BSMError, FileError
 
@@ -16,7 +24,11 @@ async def test_list_available_worlds_success(app_context, monkeypatch):
         AsyncMock(return_value=["/world1.mcworld"]),
     )
 
-    result = await list_available_worlds(app_context)
+    result = (
+        await list_available_worlds(
+            request=ListAvailableWorldsRequest(), app_context=app_context
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["files"] == ["/world1.mcworld"]
@@ -29,20 +41,28 @@ async def test_list_available_worlds_error(app_context, monkeypatch):
         MagicMock(side_effect=FileError("No dir")),
     )
 
-    result = await list_available_worlds(app_context)
-
-    assert result["status"] == "error"
-    assert "No dir" in result["message"]
+    with pytest.raises(FileError):
+        (
+            await list_available_worlds(
+                request=ListAvailableWorldsRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
 
 async def test_get_all_servers_data_success(app_context, monkeypatch):
     """Test get_all_servers_data formats success dictionary correctly."""
-    mock_get = AsyncMock(return_value=([{"name": "srv1"}], []))
+    mock_get = AsyncMock(
+        return_value=([{"name": "srv1", "status": "STOPPED", "version": "1.21"}], [])
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.get_servers_data", mock_get
     )
 
-    result = await get_all_servers_data(app_context)
+    result = (
+        await get_all_servers_data(
+            request=GetAllServersDataRequest(), app_context=app_context
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["servers"][0]["name"] == "srv1"
@@ -50,12 +70,21 @@ async def test_get_all_servers_data_success(app_context, monkeypatch):
 
 async def test_get_all_servers_data_partial_errors(app_context, monkeypatch):
     """Test get_all_servers_data includes partial error arrays in message string."""
-    mock_get = AsyncMock(return_value=([{"name": "srv1"}], ["Error reading srv2"]))
+    mock_get = AsyncMock(
+        return_value=(
+            [{"name": "srv1", "status": "STOPPED", "version": "1.21"}],
+            ["Error reading srv2"],
+        )
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.get_servers_data", mock_get
     )
 
-    result = await get_all_servers_data(app_context)
+    result = (
+        await get_all_servers_data(
+            request=GetAllServersDataRequest(), app_context=app_context
+        )
+    ).model_dump(mode="python")
     assert result["status"] == "success"
     assert "Error reading srv2" in result["message"]
     assert len(result["servers"]) == 1
@@ -68,16 +97,21 @@ async def test_get_all_servers_data_bsm_error(app_context, monkeypatch):
         "bedrock_server_manager.utils.server.get_servers_data", mock_get
     )
 
-    result = await get_all_servers_data(app_context)
-    assert result["status"] == "error"
-    assert "Base directory gone" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await get_all_servers_data(
+                request=GetAllServersDataRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
 
 async def test_get_system_and_app_info_success(app_context, monkeypatch):
     """Test get_system_and_app_info correctly builds response payload."""
     monkeypatch.setattr("platform.system", lambda: "Linux")
 
-    result = get_system_and_app_info(app_context)
+    result = get_system_and_app_info(
+        request=GetSystemAndAppInfoRequest(), app_context=app_context
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["os_type"] == "Linux"
@@ -93,18 +127,26 @@ async def test_get_system_and_app_info_error(app_context, monkeypatch):
 
     monkeypatch.setattr("platform.system", mock_fail)
 
-    result = get_system_and_app_info(app_context)
-    assert result["status"] == "error"
+    with pytest.raises(Exception):
+        get_system_and_app_info(
+            request=GetSystemAndAppInfoRequest(), app_context=app_context
+        ).model_dump(mode="python")
 
 
 async def test_update_server_statuses_success(app_context, monkeypatch):
     """Test update_server_statuses handles core responses and formats messages properly."""
-    mock_get = AsyncMock(return_value=([{"name": "srv1"}], []))
+    mock_get = AsyncMock(
+        return_value=([{"name": "srv1", "status": "STOPPED", "version": "1.21"}], [])
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.get_servers_data", mock_get
     )
 
-    result = await update_server_statuses(app_context)
+    result = (
+        await update_server_statuses(
+            request=UpdateServerStatusesRequest(), app_context=app_context
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["message"] == "Status check completed for 1 servers."
@@ -112,15 +154,24 @@ async def test_update_server_statuses_success(app_context, monkeypatch):
 
 async def test_update_server_statuses_with_errors(app_context, monkeypatch):
     """Test update_server_statuses handles core responses returning partial failure cleanly."""
-    mock_get = AsyncMock(return_value=([{"name": "srv1"}], ["Error on srv2"]))
+    mock_get = AsyncMock(
+        return_value=(
+            [{"name": "srv1", "status": "STOPPED", "version": "1.21"}],
+            ["Error on srv2"],
+        )
+    )
     monkeypatch.setattr(
         "bedrock_server_manager.utils.server.get_servers_data", mock_get
     )
 
-    result = await update_server_statuses(app_context)
+    result = (
+        await update_server_statuses(
+            request=UpdateServerStatusesRequest(), app_context=app_context
+        )
+    ).model_dump(mode="python")
 
-    assert result["status"] == "error"
-    assert "Completed with errors" in result["message"]
+    assert result["status"] == "success"
+    assert result["errors"] == ["Error on srv2"]
     assert result["updated_servers_count"] == 1
 
 
@@ -131,6 +182,9 @@ async def test_update_server_statuses_bsm_error(app_context, monkeypatch):
         "bedrock_server_manager.utils.server.get_servers_data", mock_get
     )
 
-    result = await update_server_statuses(app_context)
-    assert result["status"] == "error"
-    assert "Error accessing directories" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await update_server_statuses(
+                request=UpdateServerStatusesRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")

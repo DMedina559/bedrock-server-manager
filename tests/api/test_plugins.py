@@ -1,11 +1,14 @@
-"""
-Integration tests for the API functions in bedrock_server_manager/api/plugins.py.
-"""
-
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
+from bedrock_server_manager.api.models import (
+    GetPluginStatusesRequest,
+    ReloadPluginsRequest,
+    SetPluginStatusRequest,
+    TriggerExternalAppEventRequest,
+)
 from bedrock_server_manager.api.plugins import (
     get_plugin_statuses,
     reload_plugins,
@@ -14,6 +17,10 @@ from bedrock_server_manager.api.plugins import (
 )
 from bedrock_server_manager.context import AppContext
 from bedrock_server_manager.error import UserInputError
+
+"""
+Integration tests for the API functions in bedrock_server_manager/api/plugins.py.
+"""
 
 
 async def test_get_plugin_statuses_success(app_context: AppContext):
@@ -26,7 +33,11 @@ async def test_get_plugin_statuses_success(app_context: AppContext):
             "test_plugin": {"enabled": True, "version": "1.0.0"}
         }
 
-        result = await get_plugin_statuses(app_context)
+        result = (
+            await get_plugin_statuses(
+                request=GetPluginStatusesRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
         assert result["status"] == "success"
         assert "test_plugin" in result["plugins"]
@@ -41,7 +52,14 @@ async def test_set_plugin_status_success(app_context: AppContext):
                 "test_plugin": {"enabled": False}
             }
 
-            result = await set_plugin_status("test_plugin", True, app_context)
+            result = (
+                await set_plugin_status(
+                    request=SetPluginStatusRequest(
+                        target_plugin_name="test_plugin", enabled=True
+                    ),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
 
             assert result["status"] == "success"
             assert "test_plugin" in result["message"]
@@ -58,19 +76,35 @@ async def test_set_plugin_status_not_found(app_context: AppContext):
         app_context.plugin_manager.plugin_config = {}
 
         with pytest.raises(UserInputError, match="not found"):
-            await set_plugin_status("unknown_plugin", True, app_context)
+            (
+                await set_plugin_status(
+                    request=SetPluginStatusRequest(
+                        target_plugin_name="unknown_plugin", enabled=True
+                    ),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
 
 
 async def test_set_plugin_status_empty_name(app_context: AppContext):
     """Test setting plugin status with empty name raises UserInputError."""
-    with pytest.raises(UserInputError):
-        await set_plugin_status("", True, app_context)
+    with pytest.raises(ValidationError):
+        (
+            await set_plugin_status(
+                request=SetPluginStatusRequest(target_plugin_name="", enabled=True),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_reload_plugins_success(app_context: AppContext):
     """Test reloading plugins successfully."""
     with patch.object(app_context.plugin_manager, "reload") as mock_reload:
-        result = await reload_plugins(app_context)
+        result = (
+            await reload_plugins(
+                request=ReloadPluginsRequest(), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
         assert result["status"] == "success"
         assert "reloaded successfully" in result["message"]
@@ -80,9 +114,14 @@ async def test_reload_plugins_success(app_context: AppContext):
 async def test_trigger_external_app_event_success(app_context: AppContext):
     """Test triggering external plugin event successfully."""
     with patch.object(app_context.plugin_manager, "trigger_event") as mock_trigger:
-        result = await trigger_external_app_event(
-            "test:event", app_context, {"data": 123}
-        )
+        result = (
+            await trigger_external_app_event(
+                request=TriggerExternalAppEventRequest(
+                    event_name="test:event", payload={"data": 123}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
         assert result["status"] == "success"
         assert "test:event" in result["message"]
@@ -93,5 +132,10 @@ async def test_trigger_external_app_event_success(app_context: AppContext):
 
 async def test_trigger_external_app_event_empty_name(app_context: AppContext):
     """Test triggering event with empty name raises UserInputError."""
-    with pytest.raises(UserInputError):
-        await trigger_external_app_event("", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await trigger_external_app_event(
+                request=TriggerExternalAppEventRequest(event_name=""),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")

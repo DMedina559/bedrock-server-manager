@@ -1,13 +1,19 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
+from bedrock_server_manager.api.models import (
+    GetPropertiesRequest,
+    SetPropertiesRequest,
+    ValidatePropertyValueRequest,
+)
 from bedrock_server_manager.api.properties import (
     get_properties,
     set_properties,
     validate_property_value,
 )
-from bedrock_server_manager.error import InvalidServerNameError
+from bedrock_server_manager.error import UserInputError
 
 
 async def test_get_properties_success(app_context, monkeypatch):
@@ -28,7 +34,12 @@ async def test_get_properties_success(app_context, monkeypatch):
     mock_file.__aenter__.return_value = mock_file
 
     with unittest.mock.patch("aiofiles.open", return_value=mock_file):
-        result = await get_properties("test_server", app_context)
+        result = (
+            await get_properties(
+                request=GetPropertiesRequest(server_name="test_server"),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["properties"]["server-name"] == "mc server"
@@ -37,33 +48,129 @@ async def test_get_properties_success(app_context, monkeypatch):
 
 async def test_get_properties_missing_name(app_context):
     """Test get_properties catches empty server names smoothly without raising."""
-    result = await get_properties("", app_context)
-
-    assert result["status"] == "error"
-    assert "cannot be empty" in result["message"]
+    with pytest.raises(ValidationError):
+        (
+            await get_properties(
+                request=GetPropertiesRequest(server_name=""), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
 
 def test_validate_property_value():
     """Test validate_property_value limits string validation properly across specific config keys."""
     # Test valid
-    assert validate_property_value("server-port", "19132")["status"] == "success"
-    assert validate_property_value("server-name", "Hello")["status"] == "success"
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-port", value="19132"
+            )
+        ).model_dump(mode="python")["status"]
+        == "success"
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-name", value="Hello"
+            )
+        ).model_dump(mode="python")["status"]
+        == "success"
+    )
 
     # Test invalid string constraints
-    assert validate_property_value("server-name", "Bad;Name")["status"] == "error"
-    assert validate_property_value("level-name", "Bad@Name")["status"] == "error"
-    assert validate_property_value("server-name", "A" * 101)["status"] == "error"
-    assert validate_property_value("level-name", "B" * 81)["status"] == "error"
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-name", value="Bad;Name"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="level-name", value="Bad@Name"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-name", value="A" * 101
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="level-name", value="B" * 81
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
 
     # Test numerical constraints
-    assert validate_property_value("server-port", "0")["status"] == "error"
-    assert validate_property_value("server-port", "65536")["status"] == "error"
-    assert validate_property_value("server-portv6", "0")["status"] == "error"
-    assert validate_property_value("server-portv6", "90000")["status"] == "error"
-    assert validate_property_value("max-players", "0")["status"] == "error"
-    assert validate_property_value("view-distance", "4")["status"] == "error"
-    assert validate_property_value("tick-distance", "15")["status"] == "error"
-    assert validate_property_value("tick-distance", "3")["status"] == "error"
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(property_name="server-port", value="0")
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-port", value="65536"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-portv6", value="0"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="server-portv6", value="90000"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(property_name="max-players", value="0")
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="view-distance", value="4"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="tick-distance", value="15"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
+    assert (
+        validate_property_value(
+            request=ValidatePropertyValueRequest(
+                property_name="tick-distance", value="3"
+            )
+        ).model_dump(mode="python")["valid"]
+        is False
+    )
 
 
 async def test_set_properties_success(app_context, monkeypatch):
@@ -77,9 +184,15 @@ async def test_set_properties_success(app_context, monkeypatch):
         "bedrock_server_manager.api.properties.server_lifecycle_manager", MagicMock()
     )
 
-    result = await set_properties(
-        "test_server", {"server-port": "19132", "server-name": "mc"}, app_context
-    )
+    result = (
+        await set_properties(
+            request=SetPropertiesRequest(
+                server_name="test_server",
+                properties_to_update={"server-port": "19132", "server-name": "mc"},
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert mock_server.set_server_property.call_count == 2
@@ -88,19 +201,38 @@ async def test_set_properties_success(app_context, monkeypatch):
 
 async def test_set_properties_validation_failure(app_context):
     """Test set_properties returns a validation error gracefully preventing writes."""
-    result = await set_properties("test_server", {"server-port": "0"}, app_context)
-
-    assert result["status"] == "error"
-    assert "Validation failed" in result["message"]
+    with pytest.raises(UserInputError):
+        (
+            await set_properties(
+                request=SetPropertiesRequest(
+                    server_name="test_server", properties_to_update={"server-port": "0"}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_set_properties_empty_name(app_context):
     """Test set_properties validates server names rigidly before proceeding."""
-    with pytest.raises(InvalidServerNameError):
-        await set_properties("", {"server-name": "mc"}, app_context)
+    with pytest.raises(ValidationError):
+        (
+            await set_properties(
+                request=SetPropertiesRequest(
+                    server_name="", properties_to_update={"server-name": "mc"}
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_set_properties_type_error(app_context):
     """Test set_properties validates payload typing directly."""
-    with pytest.raises(TypeError):
-        await set_properties("test_server", "not_a_dict", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await set_properties(
+                request=SetPropertiesRequest(
+                    server_name="test_server", properties_to_update="not_a_dict"
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")

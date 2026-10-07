@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from bedrock_server_manager.api.ban import (
@@ -6,8 +7,13 @@ from bedrock_server_manager.api.ban import (
     get_server_bans,
     remove_server_ban,
 )
+from bedrock_server_manager.api.models import (
+    AddServerBanRequest,
+    GetServerBansRequest,
+    RemoveServerBanRequest,
+)
 from bedrock_server_manager.db.models import Server, ServerBan
-from bedrock_server_manager.error import UserInputError
+from bedrock_server_manager.error import BSMError
 
 
 async def test_add_server_ban_success(app_context, db_session):
@@ -17,9 +23,17 @@ async def test_add_server_ban_success(app_context, db_session):
     db_session.add(server)
     await db_session.commit()
 
-    result = await add_server_ban(
-        app_context, "test_server", "bad_player", "xuid123", "griefing"
-    )
+    result = (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name="test_server",
+                player_name="bad_player",
+                xuid="xuid123",
+                reason="griefing",
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert (
         result["status"] == "success"
@@ -42,13 +56,29 @@ async def test_add_server_ban_update(app_context, db_session):
     await db_session.commit()
 
     # First ban
-    await add_server_ban(
-        app_context, "test_server", "bad_player", "xuid123", "old reason"
-    )
+    (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name="test_server",
+                player_name="bad_player",
+                xuid="xuid123",
+                reason="old reason",
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     # Update ban
-    result = await add_server_ban(
-        app_context, "test_server", "bad_player", "xuid123", "new reason"
-    )
+    result = (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name="test_server",
+                player_name="bad_player",
+                xuid="xuid123",
+                reason="new reason",
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert (
         result["status"] == "success"
@@ -63,24 +93,41 @@ async def test_add_server_ban_update(app_context, db_session):
 
 async def test_add_server_ban_missing_args(app_context):
     """Test add_server_ban rejects missing core arguments."""
-    with pytest.raises(UserInputError):
-        await add_server_ban(app_context, "", "", "")
+    with pytest.raises(ValidationError):
+        (
+            await add_server_ban(
+                request=AddServerBanRequest(server_name="", player_name="", xuid=""),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_add_server_ban_server_missing(app_context):
     """Test add_server_ban handles valid args against a non-existent database server smoothly."""
-    result = await add_server_ban(app_context, "ghost_server", "banned", "xuid")
-    assert result["status"] == "error"
-    assert "not found in database" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await add_server_ban(
+                request=AddServerBanRequest(
+                    server_name="ghost_server", player_name="banned", xuid="xuid"
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_add_server_ban_no_db(app_context):
     """Test add_server_ban cleanly fails if DB is somehow uninitialized."""
     app_context._storage = None
     app_context._server_service = None
-    result = await add_server_ban(app_context, "test_server", "banned", "xuid")
-    assert result["status"] == "error"
-    assert "Database is not initialized" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await add_server_ban(
+                request=AddServerBanRequest(
+                    server_name="test_server", player_name="banned", xuid="xuid"
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_remove_server_ban_success(app_context, db_session):
@@ -89,9 +136,21 @@ async def test_remove_server_ban_success(app_context, db_session):
     db_session.add(server)
     await db_session.commit()
 
-    await add_server_ban(app_context, "test_server", "bad_player", "xuid123")
+    (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name="test_server", player_name="bad_player", xuid="xuid123"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
-    result = await remove_server_ban(app_context, "test_server", "xuid123")
+    result = (
+        await remove_server_ban(
+            request=RemoveServerBanRequest(server_name="test_server", xuid="xuid123"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     assert (
         result["status"] == "success"
     ), f"API returned an error: {result.get('message')}"
@@ -108,15 +167,26 @@ async def test_remove_server_ban_not_found(app_context, db_session):
     db_session.add(server)
     await db_session.commit()
 
-    result = await remove_server_ban(app_context, "test_server", "xuid_missing")
-    assert result["status"] == "error"
-    assert "not found" in result["message"]
+    with pytest.raises(BSMError):
+        (
+            await remove_server_ban(
+                request=RemoveServerBanRequest(
+                    server_name="test_server", xuid="xuid_missing"
+                ),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_remove_server_ban_missing_args(app_context):
     """Test remove_server_ban traps missing core arguments."""
-    with pytest.raises(UserInputError):
-        await remove_server_ban(app_context, "", "")
+    with pytest.raises(ValidationError):
+        (
+            await remove_server_ban(
+                request=RemoveServerBanRequest(server_name="", xuid=""),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_get_server_bans_success(app_context, db_session):
@@ -125,10 +195,29 @@ async def test_get_server_bans_success(app_context, db_session):
     db_session.add(server)
     await db_session.commit()
 
-    await add_server_ban(app_context, "test_server", "p1", "x1")
-    await add_server_ban(app_context, "test_server", "p2", "x2")
+    (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name="test_server", player_name="p1", xuid="x1"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
+    (
+        await add_server_ban(
+            request=AddServerBanRequest(
+                server_name="test_server", player_name="p2", xuid="x2"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
-    result = await get_server_bans(app_context, "test_server")
+    result = (
+        await get_server_bans(
+            request=GetServerBansRequest(server_name="test_server"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     assert (
         result["status"] == "success"
     ), f"API returned an error: {result.get('message')}"
@@ -137,5 +226,9 @@ async def test_get_server_bans_success(app_context, db_session):
 
 async def test_get_server_bans_missing_args(app_context):
     """Test get_server_bans traps missing core arguments."""
-    with pytest.raises(UserInputError):
-        await get_server_bans(app_context, "")
+    with pytest.raises(ValidationError):
+        (
+            await get_server_bans(
+                request=GetServerBansRequest(server_name=""), app_context=app_context
+            )
+        ).model_dump(mode="python")

@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-from bedrock_server_manager.error import BSMError, UserInputError
+from bedrock_server_manager.api.models import (
+    AddToAllowlistResponse,
+    GetAllowlistResponse,
+    RemoveFromAllowlistResponse,
+)
+from bedrock_server_manager.error import AppFileNotFoundError, BSMError, UserInputError
 
 
 def test_post_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
@@ -14,7 +19,9 @@ def test_post_allowlist_success(admin_auth_client: TestClient, real_bedrock_serv
     with patch(
         "bedrock_server_manager.api.allowlist.add_to_allowlist", new_callable=AsyncMock
     ) as mock_add:
-        mock_add.return_value = {"status": "success", "message": "Players added"}
+        mock_add.return_value = AddToAllowlistResponse.model_validate(
+            {"status": "success", "message": "Players added", "added_count": 1}
+        )
 
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/allowlist/add",
@@ -27,8 +34,11 @@ def test_post_allowlist_success(admin_auth_client: TestClient, real_bedrock_serv
 
         mock_add.assert_called_once()
         call_args = mock_add.call_args[1]
-        assert call_args["server_name"] == real_bedrock_server.server_name
-        assert call_args["new_players_data"] == [
+        assert call_args["request"].server_name == real_bedrock_server.server_name
+        assert [
+            player.model_dump(exclude_none=True)
+            for player in call_args["request"].new_players_data
+        ] == [
             {"name": "Steve", "ignoresPlayerLimit": False},
             {"name": "Alex", "ignoresPlayerLimit": False},
         ]
@@ -66,13 +76,15 @@ def test_get_allowlist_success(admin_auth_client: TestClient, real_bedrock_serve
     with patch(
         "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "success",
-            "players": [
-                {"name": "Steve", "ignoresPlayerLimit": False},
-                {"name": "Alex", "ignoresPlayerLimit": True},
-            ],
-        }
+        mock_get.return_value = GetAllowlistResponse.model_validate(
+            {
+                "status": "success",
+                "players": [
+                    {"name": "Steve", "ignoresPlayerLimit": False},
+                    {"name": "Alex", "ignoresPlayerLimit": True},
+                ],
+            }
+        )
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
@@ -90,17 +102,14 @@ def test_get_allowlist_not_found(admin_auth_client: TestClient, real_bedrock_ser
     with patch(
         "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
     ) as mock_get:
-        mock_get.return_value = {
-            "status": "error",
-            "message": "allowlist.json not found",
-        }
+        mock_get.side_effect = AppFileNotFoundError("allowlist.json not found")
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
         )
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+        assert response.json()["error"]["code"] == "application_error"
 
 
 def test_get_allowlist_error(admin_auth_client: TestClient, real_bedrock_server):
@@ -108,14 +117,14 @@ def test_get_allowlist_error(admin_auth_client: TestClient, real_bedrock_server)
     with patch(
         "bedrock_server_manager.api.allowlist.get_allowlist", new_callable=AsyncMock
     ) as mock_get:
-        mock_get.return_value = {"status": "error", "message": "Failed to parse JSON"}
+        mock_get.side_effect = BSMError("Failed to parse JSON")
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/allowlist/get"
         )
 
         assert response.status_code == 500
-        assert "Failed to parse JSON" in response.json()["detail"]
+        assert response.json()["error"]["code"] == "application_error"
 
 
 def test_delete_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
@@ -124,7 +133,13 @@ def test_delete_allowlist_success(admin_auth_client: TestClient, real_bedrock_se
         "bedrock_server_manager.api.allowlist.remove_from_allowlist",
         new_callable=AsyncMock,
     ) as mock_remove:
-        mock_remove.return_value = {"status": "success", "message": "Players removed"}
+        mock_remove.return_value = RemoveFromAllowlistResponse.model_validate(
+            {
+                "status": "success",
+                "message": "Players removed",
+                "details": {"removed": ["Player1"], "not_found": []},
+            }
+        )
 
         response = admin_auth_client.request(
             "DELETE",
@@ -137,8 +152,8 @@ def test_delete_allowlist_success(admin_auth_client: TestClient, real_bedrock_se
 
         mock_remove.assert_called_once()
         call_args = mock_remove.call_args[1]
-        assert call_args["server_name"] == real_bedrock_server.server_name
-        assert call_args["player_names"] == ["Steve"]
+        assert call_args["request"].server_name == real_bedrock_server.server_name
+        assert call_args["request"].player_names == ["Steve"]
 
 
 def test_delete_allowlist_bsm_error(admin_auth_client: TestClient, real_bedrock_server):

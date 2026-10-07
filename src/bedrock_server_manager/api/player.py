@@ -17,7 +17,6 @@ to manage player data globally across all server instances.
 """
 
 import logging
-from typing import Any, Dict, List
 
 from ..context import AppContext
 from ..core.player import (
@@ -29,6 +28,14 @@ from ..core.player import (
 from ..error import BSMError, UserInputError
 from ..plugins.api_bridge import api_method
 from ..plugins.event_trigger import trigger_event
+from .models.player import (
+    AddPlayersManuallyRequest,
+    AddPlayersManuallyResponse,
+    GetAllKnownPlayersRequest,
+    GetAllKnownPlayersResponse,
+    ScanAndUpdatePlayerDbRequest,
+    ScanAndUpdatePlayerDbResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,171 +43,95 @@ logger = logging.getLogger(__name__)
 @api_method("add_players_manually")
 @trigger_event(before="before_players_add", after="after_players_add", identity_keys=())
 async def add_players_manually(
-    player_strings: List[str],
-    app_context: AppContext,
-) -> Dict[str, Any]:
+    request: AddPlayersManuallyRequest, *, app_context: AppContext
+) -> AddPlayersManuallyResponse:
     """Adds or updates player data in the database.
 
-    This function takes a list of strings, each containing a player's
-    gamertag and XUID, parses them, and saves the data to the
-    player database.
-    Triggers ``before_players_add`` and ``after_players_add`` plugin events.
-
-    Args:
-        player_strings (List[str]): A list of strings. Each string should
-            represent a single player in the format "gamertag:xuid"
-            (e.g., ``"PlayerOne:1234567890123456"``).
-            Example list: ``["PlayerOne:123...", "PlayerTwo:654..."]``.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "message": "<n> player entries processed...", "count": <n>}``
-        On error (parsing or saving): ``{"status": "error", "message": "<error_message>"}``
-
-    Raises:
-        UserInputError: If any player string in `player_strings` is malformed
-            (propagated from ``parse_player_cli_argument``).
-        BSMError: If saving to the database fails.
+    Accepts AddPlayersManuallyRequest and returns AddPlayersManuallyResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
+    player_strings = request.player_strings
     logger.info(f"API: Adding players manually: {player_strings}")
-
     storage = app_context.storage
     if storage is None:
-        return {"status": "error", "message": "Storage is not initialized."}
-
-    # --- Input Validation ---
+        raise BSMError("Storage is not initialized.")
     if (
         not player_strings
         or not isinstance(player_strings, list)
-        or not all(isinstance(s, str) for s in player_strings)
+        or (not all((isinstance(s, str) for s in player_strings)))
     ):
-        return {
-            "status": "error",
-            "message": "Input must be a non-empty list of player strings.",
-        }
-
+        raise BSMError("Input must be a non-empty list of player strings.")
     try:
         combined_input = ",".join(player_strings)
         players_data = parse_player_string(combined_input)
         if players_data:
             await save_player_data(storage, players_data)
-
-        return {
-            "status": "success",
-            "message": f"{len(player_strings)} player entries processed and saved/updated.",
-            "count": len(player_strings),
-        }
-
-    except UserInputError as e:
-        # Handle errors related to invalid player string formats.
-        return {"status": "error", "message": f"Invalid player data: {str(e)}"}
-
-    except BSMError as e:
-        # Handle errors during the file-saving process.
-        return {"status": "error", "message": f"Error saving player data: {str(e)}"}
-
+        return AddPlayersManuallyResponse.model_validate(
+            {
+                "status": "success",
+                "message": f"{len(player_strings)} player entries processed and saved/updated.",
+                "count": len(player_strings),
+            }
+        )
+    except UserInputError:
+        raise
+    except BSMError:
+        raise
     except Exception as e:
-        # Handle any other unexpected errors.
         logger.error(f"API: Unexpected error adding players: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"An unexpected error occurred: {str(e)}",
-        }
+        raise
 
 
 @api_method("get_all_known_players")
-async def get_all_known_players(app_context: AppContext) -> Dict[str, Any]:
+async def get_all_known_players(
+    request: GetAllKnownPlayersRequest, *, app_context: AppContext
+) -> GetAllKnownPlayersResponse:
     """Retrieves all player data from the database.
 
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "players": List[PlayerDict]}``
-        where each ``PlayerDict`` typically contains "name" and "xuid".
-        Returns an empty list for `players` if the database is empty.
-        On unexpected error: ``{"status": "error", "message": "<error_message>"}``.
+    Accepts GetAllKnownPlayersRequest and returns GetAllKnownPlayersResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     logger.info("API: Request to get all known players.")
-
     storage = app_context.storage
     if storage is None:
-        return {"status": "error", "message": "Storage is not initialized."}
-
+        raise BSMError("Storage is not initialized.")
     try:
         players = await get_known_players(storage)
-        return {"status": "success", "players": players}
+        return GetAllKnownPlayersResponse.model_validate(
+            {"status": "success", "players": players}
+        )
     except Exception as e:
         logger.error(f"API: Unexpected error getting players: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"An unexpected error occurred retrieving players: {str(e)}",
-        }
+        raise
 
 
 @api_method("scan_and_update_player_db")
 @trigger_event(
     before="before_player_db_scan", after="after_player_db_scan", identity_keys=()
 )
-async def scan_and_update_player_db(app_context: AppContext) -> Dict[str, Any]:
+async def scan_and_update_player_db(
+    request: ScanAndUpdatePlayerDbRequest, *, app_context: AppContext
+) -> ScanAndUpdatePlayerDbResponse:
     """Scans all server logs to discover and save player data.
 
-    This function iterates through the log files of all managed servers,
-    extracts player connection information (gamertag and XUID), and updates
-    the central player database with any new findings.
-    Triggers ``before_player_db_scan`` and ``after_player_db_scan`` plugin events.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the operation result.
-        On success: ``{"status": "success", "message": "<summary_message>", "details": ScanResultDict}``
-        where ``ScanResultDict`` contains keys like:
-        ``"total_entries_in_logs"`` (int),
-        ``"unique_players_submitted_for_saving"`` (int),
-        ``"actually_saved_or_updated_in_db"`` (int),
-        ``"scan_errors"`` (List[Dict[str, str]]).
-        On error: ``{"status": "error", "message": "<error_message>"}``.
-
-    Raises:
-        BSMError: Can be raised by the underlying manager method, e.g.,
-            :class:`~.error.AppFileNotFoundError` if the main server base directory
-            is misconfigured, or :class:`~.error.FileOperationError` if the
-            final save to the database fails. Individual server scan errors
-            are reported within the "details" part of a successful response.
+    Accepts ScanAndUpdatePlayerDbRequest and returns ScanAndUpdatePlayerDbResponse.
+    Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     logger.info("API: Request to scan all server logs and update player DB.")
-
     storage = app_context.storage
     if storage is None:
-        return {"status": "error", "message": "Storage is not initialized."}
-
+        raise BSMError("Storage is not initialized.")
     try:
         base_dir = app_context.settings.get("paths.servers", "")
-        scan_result = await discover_and_store_players(
-            base_dir,
-            app_context,
-        )
-
-        # Format a comprehensive success message from the scan results.
-        message = (
-            f"Player DB update complete. "
-            f"Entries found in logs: {scan_result['total_entries_in_logs']}. "
-            f"Unique players submitted: {scan_result['unique_players_submitted_for_saving']}. "
-            f"Actually saved/updated: {scan_result['actually_saved_or_updated_in_db']}."
-        )
+        scan_result = await discover_and_store_players(base_dir, app_context)
+        message = f"Player DB update complete. Entries found in logs: {scan_result['total_entries_in_logs']}. Unique players submitted: {scan_result['unique_players_submitted_for_saving']}. Actually saved/updated: {scan_result['actually_saved_or_updated_in_db']}."
         if scan_result["scan_errors"]:
             message += f" Scan errors encountered for: {scan_result['scan_errors']}"
-
-        return {"status": "success", "message": message, "details": scan_result}
-
-    except BSMError as e:
-        # Handle application-specific errors during the scan.
-        return {
-            "status": "error",
-            "message": f"An error occurred during player scan: {str(e)}",
-        }
-
+        return ScanAndUpdatePlayerDbResponse.model_validate(
+            {"status": "success", "message": message, "details": scan_result}
+        )
+    except BSMError:
+        raise
     except Exception as e:
-        # Handle any other unexpected errors.
         logger.error(f"API: Unexpected error scanning for players: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"An unexpected error occurred during player scan: {str(e)}",
-        }
+        raise

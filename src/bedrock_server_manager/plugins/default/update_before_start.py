@@ -42,9 +42,11 @@ class AutoupdatePlugin(PluginBase):
 
         try:
             # Check if the server has autoupdate enabled in its settings
-            result = await self.api.get_server_setting(
-                server_name, "settings.autoupdate"
-            )
+            result = (
+                await self.api.get_server_setting(
+                    request={"server_name": server_name, "key": "settings.autoupdate"}
+                )
+            ).model_dump(mode="python")
             autoupdate_enabled = (
                 result.get("value", False)
                 if result.get("status") == "success"
@@ -62,9 +64,11 @@ class AutoupdatePlugin(PluginBase):
             )
 
             # Call the main API to perform the update. We run it in a thread so it doesn't block the async loop.
-            update_result = await self.api.update_server(
-                server_name=server_name, send_message=False
-            )
+            update_result = (
+                await self.api.update_server(
+                    request={"server_name": server_name, "send_message": False}
+                )
+            ).model_dump(mode="python")
 
             if update_result.get("status") == "success":
                 if update_result.get("updated", False):

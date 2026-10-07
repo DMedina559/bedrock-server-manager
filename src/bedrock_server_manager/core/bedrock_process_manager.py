@@ -114,7 +114,7 @@ class BedrockProcessManager:
                     return
 
                 try:
-                    await self.api.stop_server(server_name)
+                    await self.api.stop_server({"server_name": server_name})
                 except Exception as e:
                     self.logger.error(
                         f"ProcessManager: Error stopping '{server_name}' via API: {e}. Attempting direct stop."
@@ -263,11 +263,15 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
-                                await self.api.update_server_player_stats(
-                                    server.server_name,
-                                    server.player_count,
-                                    server.players,
-                                )
+                                (
+                                    await self.api.update_server_player_stats(
+                                        request={
+                                            "server_name": server.server_name,
+                                            "player_count": server.player_count,
+                                            "players": server.players,
+                                        }
+                                    )
+                                ).model_dump(mode="python")
                             except Exception as e:
                                 self.logger.warning(
                                     f"Could not trigger player stats update API: {e}"
@@ -276,9 +280,11 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                ban_res = await self.api.get_server_bans(
-                                    server_name=server.server_name,
-                                )
+                                ban_res = (
+                                    await self.api.get_server_bans(
+                                        request={"server_name": server.server_name}
+                                    )
+                                ).model_dump(mode="python")
 
                                 if ban_res.get("status") == "success":
                                     bans = ban_res.get("bans", [])

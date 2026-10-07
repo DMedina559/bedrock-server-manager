@@ -31,6 +31,14 @@ from typing import Callable, Optional
 import click
 import questionary
 
+from bedrock_server_manager.api.models import (
+    CreateWebUiServiceRequest,
+    DisableWebUiServiceRequest,
+    EnableWebUiServiceRequest,
+    GetWebUiServiceStatusRequest,
+    RemoveWebUiServiceRequest,
+)
+
 from ..api import web as web_api
 from ..config.const import WEB_SERVICE_WINDOWS_NAME_INTERNAL
 from ..context import AppContext
@@ -125,22 +133,30 @@ def _perform_web_service_configuration(
             f"\n--- Configuring Web UI System Service ({os_type}) ---", bold=True
         )
         response = web_api.create_web_ui_service(
+            request=CreateWebUiServiceRequest.model_validate(
+                {
+                    "autostart": enable_flag,
+                    "system": system,
+                    "username": username,
+                    "password": password,
+                }
+            ),
             app_context=app_context,
-            autostart=enable_flag,
-            system=system,
-            username=username,
-            password=password,
-        )
+        ).model_dump(mode="python")
         _handle_api_response(response, "Web UI system service configured successfully.")
     elif (
         enable_autostart is not None
     ):  # Only change autostart if setup_service is False but autostart is specified
         click.echo("Applying autostart setting to existing Web UI service...")
         if enable_autostart:
-            response = web_api.enable_web_ui_service(app_context=app_context)
+            response = web_api.enable_web_ui_service(
+                request=EnableWebUiServiceRequest(), app_context=app_context
+            ).model_dump(mode="python")
             _handle_api_response(response, "Web UI service enabled successfully.")
         else:
-            response = web_api.disable_web_ui_service(app_context=app_context)
+            response = web_api.disable_web_ui_service(
+                request=DisableWebUiServiceRequest(), app_context=app_context
+            ).model_dump(mode="python")
             _handle_api_response(response, "Web UI service disabled successfully.")
 
 
@@ -370,8 +386,9 @@ def enable_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Attempting to enable Web UI system service...")
     try:
         response = web_api.enable_web_ui_service(
-            app_context=app_context, system=system_flag
-        )
+            request=EnableWebUiServiceRequest.model_validate({"system": system_flag}),
+            app_context=app_context,
+        ).model_dump(mode="python")
         _handle_api_response(response, "Web UI service enabled successfully.")
     except BSMError as e:
         click.secho(f"Failed to enable Web UI service: {e}", fg="red")
@@ -404,8 +421,9 @@ def disable_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Attempting to disable Web UI system service...")
     try:
         response = web_api.disable_web_ui_service(
-            app_context=app_context, system=system_flag
-        )
+            request=DisableWebUiServiceRequest.model_validate({"system": system_flag}),
+            app_context=app_context,
+        ).model_dump(mode="python")
         _handle_api_response(response, "Web UI service disabled successfully.")
     except BSMError as e:
         click.secho(f"Failed to disable Web UI service: {e}", fg="red")
@@ -446,8 +464,9 @@ def remove_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Attempting to remove Web UI system service...")
     try:
         response = web_api.remove_web_ui_service(
-            app_context=app_context, system=system_flag
-        )
+            request=RemoveWebUiServiceRequest.model_validate({"system": system_flag}),
+            app_context=app_context,
+        ).model_dump(mode="python")
         _handle_api_response(response, "Web UI service removed successfully.")
     except BSMError as e:
         click.secho(f"Failed to remove Web UI service: {e}", fg="red")
@@ -481,8 +500,11 @@ def status_web_service_cli(ctx: click.Context, system_flag: bool):
     click.echo("Checking Web UI system service status...")
     try:
         response = web_api.get_web_ui_service_status(
-            app_context=app_context, system=system_flag
-        )
+            request=GetWebUiServiceStatusRequest.model_validate(
+                {"system": system_flag}
+            ),
+            app_context=app_context,
+        ).model_dump(mode="python")
         if response.get("status") == "success":
             click.secho("Web UI Service Status:", bold=True)
             click.echo(

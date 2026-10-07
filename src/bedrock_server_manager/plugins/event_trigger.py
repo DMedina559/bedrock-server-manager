@@ -18,6 +18,10 @@ from typing import (
     overload,
 )
 
+from pydantic import BaseModel, ValidationError
+
+from ..error import APICancelledError
+from .api_contract import APIResponseValidationError, get_contract
 from .cancellable_event import CancellableEvent
 from .util import broadcast_event
 
@@ -70,11 +74,19 @@ def trigger_event(
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         sig = inspect.signature(func)
+        contract = get_contract(func)
 
         def get_event_kwargs(*args: Any, **kwargs: Any) -> dict:
             bound_args = sig.bind(*args, **kwargs)
             bound_args.apply_defaults()
-            return dict(bound_args.arguments)
+            event_kwargs = dict(bound_args.arguments)
+            request = event_kwargs.pop("request", None)
+            if isinstance(request, BaseModel):
+                # Preserve field-based event payloads and recursion identities.
+                event_kwargs.update(request.model_dump(mode="json"))
+                if "target_plugin_name" in event_kwargs:
+                    event_kwargs["plugin_name"] = event_kwargs.pop("target_plugin_name")
+            return event_kwargs
 
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -89,6 +101,10 @@ def trigger_event(
                 await app_context.plugin_manager.trigger_event(before, **plugin_kwargs)
                 await broadcast_event(app_context, before, event_kwargs)
                 if cancellable_event.is_cancelled:
+                    if "request" in sig.parameters:
+                        raise APICancelledError(
+                            cancellable_event.cancel_reason or "Canceled by plugin"
+                        )
                     return cast(
                         R,
                         {
@@ -99,9 +115,20 @@ def trigger_event(
                     )
 
             result = await cast(Awaitable[R], func(*args, **kwargs))
+            if contract:
+                try:
+                    result = cast(R, contract[1].model_validate(result))
+                except ValidationError as error:
+                    raise APIResponseValidationError(
+                        f"API {func.__name__} produced invalid output"
+                    ) from error
 
             if after and app_context:
-                event_kwargs["result"] = result
+                event_kwargs["result"] = (
+                    result.model_dump(mode="json")
+                    if isinstance(result, BaseModel)
+                    else result
+                )
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
                 await app_context.plugin_manager.trigger_event(after, **plugin_kwargs)

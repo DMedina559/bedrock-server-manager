@@ -1,10 +1,7 @@
-"""
-Integration tests for the API functions in bedrock_server_manager/api/backup_restore.py.
-"""
-
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from bedrock_server_manager.api.backup_restore import (
     backup_all,
@@ -16,15 +13,35 @@ from bedrock_server_manager.api.backup_restore import (
     restore_config_file,
     restore_world,
 )
+from bedrock_server_manager.api.models import (
+    BackupAllRequest,
+    BackupConfigFileRequest,
+    BackupWorldRequest,
+    ListBackupFilesRequest,
+    PruneOldBackupsRequest,
+    RestoreAllRequest,
+    RestoreConfigFileRequest,
+    RestoreWorldRequest,
+)
 from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.error import InvalidServerNameError, MissingArgumentError
+
+"""
+Integration tests for the API functions in bedrock_server_manager/api/backup_restore.py.
+"""
 
 
 async def test_list_backup_files_success(real_bedrock_server, app_context: AppContext):
     """Test successfully listing backup files."""
     real_bedrock_server.list_backups = AsyncMock(return_value=["world_backup.mcworld"])
 
-    result = await list_backup_files("test_server", "world", app_context)
+    result = (
+        await list_backup_files(
+            request=ListBackupFilesRequest(
+                server_name="test_server", backup_type="world"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["backups"] == ["world_backup.mcworld"]
@@ -32,8 +49,13 @@ async def test_list_backup_files_success(real_bedrock_server, app_context: AppCo
 
 async def test_list_backup_files_empty_server(app_context: AppContext):
     """Test listing backup files with empty server name raises error."""
-    with pytest.raises(InvalidServerNameError):
-        await list_backup_files("", "world", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await list_backup_files(
+                request=ListBackupFilesRequest(server_name="", backup_type="world"),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
 
 async def test_backup_world_success(real_bedrock_server, app_context: AppContext):
@@ -42,7 +64,12 @@ async def test_backup_world_success(real_bedrock_server, app_context: AppContext
         return_value="/path/to/backup.mcworld"
     )
 
-    result = await backup_world("test_server", app_context)
+    result = (
+        await backup_world(
+            request=BackupWorldRequest(server_name="test_server"),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert "created successfully" in result["message"]
@@ -52,8 +79,12 @@ async def test_backup_world_success(real_bedrock_server, app_context: AppContext
 async def test_backup_world_missing_server(app_context: AppContext):
     """Test missing server argument returns a skipped or error via MissingArgumentError internal catching."""
     # Since backup_world acquires a lock and then checks server_name, we just call it with empty string
-    with pytest.raises(MissingArgumentError):
-        await backup_world("", app_context)
+    with pytest.raises(ValidationError):
+        (
+            await backup_world(
+                request=BackupWorldRequest(server_name=""), app_context=app_context
+            )
+        ).model_dump(mode="python")
 
 
 async def test_backup_config_file_success(real_bedrock_server, app_context: AppContext):
@@ -62,7 +93,14 @@ async def test_backup_config_file_success(real_bedrock_server, app_context: AppC
         return_value="/path/to/backup.properties"
     )
 
-    result = await backup_config_file("test_server", "server.properties", app_context)
+    result = (
+        await backup_config_file(
+            request=BackupConfigFileRequest(
+                server_name="test_server", file_to_backup="server.properties"
+            ),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert "server.properties" in result["message"]
@@ -77,7 +115,11 @@ async def test_backup_all_success(real_bedrock_server, app_context: AppContext):
         return_value={"world": "backup.mcworld"}
     )
 
-    result = await backup_all("test_server", app_context)
+    result = (
+        await backup_all(
+            request=BackupAllRequest(server_name="test_server"), app_context=app_context
+        )
+    ).model_dump(mode="python")
 
     assert result["status"] == "success"
     assert result["details"] == {"world": "backup.mcworld"}
@@ -94,7 +136,12 @@ async def test_restore_all_success(real_bedrock_server, app_context: AppContext)
         "bedrock_server_manager.api.backup_restore.server_lifecycle_manager"
     ) as mock_lifecycle:
         mock_lifecycle.return_value.__enter__.return_value = None
-        result = await restore_all("test_server", app_context)
+        result = (
+            await restore_all(
+                request=RestoreAllRequest(server_name="test_server"),
+                app_context=app_context,
+            )
+        ).model_dump(mode="python")
 
         assert result["status"] == "success"
         assert result["details"] == {"world": "restored"}
@@ -110,9 +157,15 @@ async def test_restore_world_success(real_bedrock_server, app_context: AppContex
             "bedrock_server_manager.api.backup_restore.server_lifecycle_manager"
         ) as mock_lifecycle:
             mock_lifecycle.return_value.__enter__.return_value = None
-            result = await restore_world(
-                "test_server", "/fake/backup.mcworld", app_context
-            )
+            result = (
+                await restore_world(
+                    request=RestoreWorldRequest(
+                        server_name="test_server",
+                        backup_file_path="/fake/backup.mcworld",
+                    ),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
 
             assert result["status"] == "success"
             real_bedrock_server.import_world.assert_called_once_with(
@@ -133,9 +186,15 @@ async def test_restore_config_file_success(
             "bedrock_server_manager.api.backup_restore.server_lifecycle_manager"
         ) as mock_lifecycle:
             mock_lifecycle.return_value.__enter__.return_value = None
-            result = await restore_config_file(
-                "test_server", "/fake/backup.properties", app_context
-            )
+            result = (
+                await restore_config_file(
+                    request=RestoreConfigFileRequest(
+                        server_name="test_server",
+                        backup_file_path="/fake/backup.properties",
+                    ),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
 
             assert result["status"] == "success"
             real_bedrock_server._restore_config_file_internal.assert_called_once_with(
@@ -156,7 +215,12 @@ async def test_prune_old_backups_success(real_bedrock_server, app_context: AppCo
             new_callable=PropertyMock,
         ) as mock_backup_dir:
             mock_backup_dir.return_value = "/fake/backup/dir"
-            result = await prune_old_backups("test_server", app_context)
+            result = (
+                await prune_old_backups(
+                    request=PruneOldBackupsRequest(server_name="test_server"),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
 
             assert result["status"] == "success"
             # It should be called multiple times for world and configs

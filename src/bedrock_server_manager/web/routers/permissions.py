@@ -3,6 +3,12 @@ from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from bedrock_server_manager.api.models import (
+    GetPermissionsRequest,
+    SetPermissionsRequest,
+)
 
 from ...api import permissions as permissions_api
 from ...context import AppContext
@@ -39,19 +45,27 @@ async def post_permissions_set(
 
     for item in permission_entries:
         try:
-            result = await permissions_api.set_permissions(
-                server_name=server_name,
-                xuid=item.xuid,
-                player_name=item.name,
-                permission=item.permission_level,
-                app_context=app_context,
-            )
+            result = (
+                await permissions_api.set_permissions(
+                    request=SetPermissionsRequest.model_validate(
+                        {
+                            "server_name": server_name,
+                            "xuid": item.xuid,
+                            "player_name": item.name,
+                            "permission": item.permission_level,
+                        }
+                    ),
+                    app_context=app_context,
+                )
+            ).model_dump(mode="python")
             if result.get("status") == "success":
                 success_count += 1
             else:
                 errors[item.xuid] = result.get(
                     "message", "Unknown error setting permission."
                 )
+        except ValidationError:
+            errors[item.xuid] = "Invalid permission request."
         except UserInputError as e:
             errors[item.xuid] = str(e)
         except BSMError as e:
@@ -96,9 +110,12 @@ async def get_permissions(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = await permissions_api.get_permissions(
-        server_name=server_name, app_context=app_context
-    )
+    result = (
+        await permissions_api.get_permissions(
+            request=GetPermissionsRequest.model_validate({"server_name": server_name}),
+            app_context=app_context,
+        )
+    ).model_dump(mode="python")
     if result.get("status") == "success":
         return PermissionsGetResponse(
             status=result["status"], permissions=result.get("permissions", [])

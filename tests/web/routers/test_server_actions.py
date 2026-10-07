@@ -6,6 +6,10 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models import (
+    GetServerSummaryResponse,
+    SendCommandResponse,
+)
 from bedrock_server_manager.error import (
     BlockedCommandError,
     BSMError,
@@ -27,16 +31,21 @@ def test_get_server_summary_success(admin_auth_client: TestClient, real_bedrock_
     with patch(
         "bedrock_server_manager.web.routers.server_actions.server_api.get_server_summary"
     ) as mock_summary:
-        mock_summary.return_value = {
-            "status": "success",
-            "summary": {
-                "name": real_bedrock_server.server_name,
-                "status": "Running",
-                "version": "1.20.10",
-                "player_count": 2,
-                "players": [{"name": "P1"}, {"name": "P2"}],
-            },
-        }
+        mock_summary.return_value = GetServerSummaryResponse.model_validate(
+            {
+                "status": "success",
+                "summary": {
+                    "name": real_bedrock_server.server_name,
+                    "status": "Running",
+                    "version": "1.20.10",
+                    "player_count": 2,
+                    "players": [
+                        {"name": "P1", "xuid": "1"},
+                        {"name": "P2", "xuid": "2"},
+                    ],
+                },
+            }
+        )
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/summary"
@@ -52,16 +61,13 @@ def test_get_server_summary_error(admin_auth_client: TestClient, real_bedrock_se
     with patch(
         "bedrock_server_manager.web.routers.server_actions.server_api.get_server_summary"
     ) as mock_summary:
-        mock_summary.return_value = {
-            "status": "error",
-            "message": "Could not read status",
-        }
+        mock_summary.side_effect = UserInputError("Could not read status")
 
         response = admin_auth_client.get(
             f"/api/server/{real_bedrock_server.server_name}/summary"
         )
         assert response.status_code == 400
-        assert "Could not read status" in response.json()["detail"]
+        assert response.json()["error"]["code"] == "application_error"
 
 
 def test_post_start_server(admin_auth_client: TestClient, real_bedrock_server):
@@ -129,11 +135,9 @@ def test_post_send_command_success(admin_auth_client: TestClient, real_bedrock_s
     with patch(
         "bedrock_server_manager.web.routers.server_actions.server_api.send_command"
     ) as mock_cmd:
-        mock_cmd.return_value = {
-            "status": "success",
-            "message": "Command sent",
-            "details": "Success",
-        }
+        mock_cmd.return_value = SendCommandResponse.model_validate(
+            {"status": "success", "message": "Command sent"}
+        )
 
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/send_command",
@@ -156,7 +160,7 @@ def test_post_send_command_failed(admin_auth_client: TestClient, real_bedrock_se
     with patch(
         "bedrock_server_manager.web.routers.server_actions.server_api.send_command"
     ) as mock_cmd:
-        mock_cmd.return_value = {"status": "error", "message": "Error running command"}
+        mock_cmd.side_effect = UserInputError("Error running command")
 
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/send_command",

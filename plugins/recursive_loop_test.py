@@ -76,7 +76,9 @@ class RecursiveLoopPlugin(PluginBase):
             "--- LOOP TEST (A->B): From 'before_server_start', calling self.api.backup_all() to trigger 'before_backup'."
         )
         try:
-            await self.api.backup_all(server_name=server_name)
+            (
+                await self.api.backup_all(request={"server_name": server_name})
+            ).model_dump(mode="python")
         except Exception as e:
             self.logger.error(
                 f"--- LOOP TEST (EVENT A): API call self.api.backup_all() failed unexpectedly: {e}",
@@ -104,7 +106,7 @@ class RecursiveLoopPlugin(PluginBase):
             # The PluginManager's event stack guard should prevent the *handlers* for this
             # recursive 'before_server_start' from executing.
             # The api.start_server() function itself will still run its internal logic.
-            await self.api.start_server(server_name=server_name)
+            await self.api.start_server({"server_name": server_name})
 
             self.logger.info(
                 "--- LOOP TEST (EVENT B): Recursive self.api.start_server() call completed. "

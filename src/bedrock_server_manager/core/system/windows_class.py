@@ -38,7 +38,6 @@ except ImportError:
     win32service = None
     win32serviceutil = None
     pywintypes = None
-from ...api.web import start_web_server
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +87,8 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
         self.ReportServiceStatus(win32service.SERVICE_START_PENDING)
 
         try:
+            from ...web.main import run_web_server
+
             if getattr(sys, "frozen", False):
                 # If running as a frozen exe (e.g., PyInstaller)
                 script_dir = os.path.dirname(sys.executable)
@@ -104,10 +105,9 @@ class WebServerWindowsService(win32serviceutil.ServiceFramework):
             self.logger.info("Starting web server logic in a background thread.")
 
             web_thread = threading.Thread(
-                target=start_web_server,
+                target=run_web_server,
                 kwargs={
                     "app_context": self.app_context,
-                    "mode": "direct",
                 },  # Run in production mode
                 daemon=True,
             )

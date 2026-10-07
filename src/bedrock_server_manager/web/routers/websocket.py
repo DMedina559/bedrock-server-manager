@@ -5,6 +5,7 @@ import logging
 from typing import Any, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
+from pydantic import ValidationError
 
 from ...context import AppContext
 from ...utils import authenticate_websocket_token
@@ -106,6 +107,8 @@ async def websocket_endpoint(  # noqa: C901
         logger.warning(f"WebSocket auth failed: {e.reason}")
         await websocket.close(code=e.code, reason=e.reason)
         return
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"WebSocket unexpected auth error: {e}", exc_info=True)
         await websocket.close(code=1008, reason="Internal Authentication Error")
@@ -183,6 +186,8 @@ async def websocket_endpoint(  # noqa: C901
                         if request_id is not None:
                             res["request_id"] = request_id
                         await connection_manager.send_to_client(res, client_id)
+                    except ValidationError:
+                        raise
                     except Exception as e:
                         logger.error(
                             f"Error executing data provider for topic '{topic}': {e}",
@@ -214,6 +219,8 @@ async def websocket_endpoint(  # noqa: C901
             logger.error(
                 f"Error in WebSocket for client {client_id}: {e}", exc_info=True
             )
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"Error in WebSocket for client {client_id}: {e}", exc_info=True)
     finally:
