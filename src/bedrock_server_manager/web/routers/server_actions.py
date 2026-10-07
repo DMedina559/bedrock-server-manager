@@ -70,27 +70,12 @@ async def get_server_summary(
         f"API: Get server summary request for '{server_name}' by user '{identity}'."
     )
 
-    result = (
-        await server_api.get_server_summary(
-            request=GetServerSummaryRequest(server_name=server_name),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
+    result = await server_api.get_server_summary(
+        request=GetServerSummaryRequest(server_name=server_name),
+        app_context=app_context,
+    )
 
-    if result.get("status") == "success":
-        summary = result.get("summary", {})
-        return ServerSchemaResponse(
-            name=summary.get("name", server_name),
-            status=summary.get("status", "Unknown"),
-            version=summary.get("version", "Unknown"),
-            player_count=summary.get("player_count", 0),
-            players=summary.get("players", []),
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("message", "Failed to get server summary."),
-        )
+    return ServerSchemaResponse.model_validate(result.summary)
 
 
 # --- API Route: Start Server ---
@@ -225,32 +210,27 @@ async def post_send_command(
         )
 
     try:
-        command_result = (
-            await server_api.send_command(
-                request=SendCommandRequest(
-                    server_name=server_name, command=payload.command.strip()
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+        command_result = await server_api.send_command(
+            request=SendCommandRequest(
+                server_name=server_name, command=payload.command.strip()
+            ),
+            app_context=app_context,
+        )
 
-        if command_result.get("status") == "success":
-            logger.info(
-                f"API Send Command '{server_name}': Succeeded. Output: {command_result.get('details')}"
-            )
+        if command_result.status == "success":
+            logger.info(f"API Send Command '{server_name}': Succeeded.")
             return ActionResponse(
                 status="success",
-                message=command_result.get("message", "Command processed."),
-                details=command_result.get("details"),
+                message=command_result.message,
             )
         else:
             logger.warning(
-                f"API Send Command '{server_name}': Failed. {command_result.get('message')}"
+                f"API Send Command '{server_name}': Failed. {command_result.message}"
             )
 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=command_result.get("message", "Failed to execute command."),
+                detail=command_result.message,
             )
 
     except BlockedCommandError as e:

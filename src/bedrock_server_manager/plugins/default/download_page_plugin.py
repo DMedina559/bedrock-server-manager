@@ -80,30 +80,28 @@ class DownloadPagePlugin(PluginBase):
 
                 try:
 
-                    file_list = (
-                        await self.api.list_backup_files(
-                            request={"server_name": server, "backup_type": "all"}
-                        )
-                    ).model_dump(mode="python")
+                    file_list = await self.api.list_backup_files(
+                        request={"server_name": server, "backup_type": "all"}
+                    )
 
                     # World Backups
-                    wb_res = file_list["backups"]["world_backups"]
-                    if file_list["status"] == "success":
+                    wb_res = file_list.backups["world_backups"]
+                    if file_list.status == "success":
                         world_backups = [os.path.basename(p) for p in wb_res]
 
                     # Properties Backups
-                    pb_res = file_list["backups"]["properties_backups"]
-                    if file_list["status"] == "success":
+                    pb_res = file_list.backups["properties_backups"]
+                    if file_list.status == "success":
                         properties_backups = [os.path.basename(p) for p in pb_res]
 
                     # Allowlist Backups
-                    ab_res = file_list["backups"]["allowlist_backups"]
-                    if file_list["status"] == "success":
+                    ab_res = file_list.backups["allowlist_backups"]
+                    if file_list.status == "success":
                         allowlist_backups = [os.path.basename(p) for p in ab_res]
 
                     # Permissions Backups
-                    prm_res = file_list["backups"]["permissions_backups"]
-                    if file_list["status"] == "success":
+                    prm_res = file_list.backups["permissions_backups"]
+                    if file_list.status == "success":
                         permissions_backups = [os.path.basename(p) for p in prm_res]
 
                 except Exception as e:
@@ -154,22 +152,14 @@ class DownloadPagePlugin(PluginBase):
                 addons = []
                 try:
 
-                    worlds_list = (
-                        await self.api.list_available_worlds(request={})
-                    ).model_dump(mode="python")
-                    addons_list = (
-                        await self.api.list_available_addons(request={})
-                    ).model_dump(mode="python")
+                    worlds_list = await self.api.list_available_worlds(request={})
+                    addons_list = await self.api.list_available_addons(request={})
 
-                    if worlds_list["status"] == "success":
-                        worlds = [
-                            os.path.basename(p) for p in worlds_list.get("files", [])
-                        ]
+                    if worlds_list.status == "success":
+                        worlds = [os.path.basename(p) for p in worlds_list.files]
 
-                    if addons_list["status"] == "success":
-                        addons = [
-                            os.path.basename(p) for p in addons_list.get("files", [])
-                        ]
+                    if addons_list.status == "success":
+                        addons = [os.path.basename(p) for p in addons_list.files]
 
                 except Exception as e:
                     self.logger.error(f"Error listing content: {e}")
@@ -266,12 +256,10 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
-                result = (
-                    await self.api.get_global_setting(request={"key": "paths.backups"})
-                ).model_dump(mode="python")
-                backup_dir_str = (
-                    result.get("value") if result.get("status") == "success" else None
+                result = await self.api.get_global_setting(
+                    request={"key": "paths.backups"}
                 )
+                backup_dir_str = result.value if result.status == "success" else None
                 if not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
 
@@ -288,12 +276,10 @@ class DownloadPagePlugin(PluginBase):
                     raise HTTPException(403, "Access denied: Invalid server path")
 
             elif file_type in ("content_world", "content_addon"):
-                result = (
-                    await self.api.get_global_setting(request={"key": "paths.content"})
-                ).model_dump(mode="python")
-                content_dir_str = (
-                    result.get("value") if result.get("status") == "success" else None
+                result = await self.api.get_global_setting(
+                    request={"key": "paths.content"}
                 )
+                content_dir_str = result.value if result.status == "success" else None
                 if not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
 

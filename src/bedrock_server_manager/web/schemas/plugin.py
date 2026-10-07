@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ...api.models.plugins import PluginInfo
 from .base import BaseApiResponse
 
 
@@ -35,7 +36,7 @@ class PluginPagesResponse(BaseApiResponse):
 class PluginStatusesResponse(BaseApiResponse):
     """Response model for plugin statuses."""
 
-    plugins: Optional[Dict[str, Dict[str, Any]]] = None
+    plugins: Optional[Dict[str, PluginInfo]] = None
 
 
 class TriggerEventResponse(BaseApiResponse):

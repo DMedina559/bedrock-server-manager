@@ -14,8 +14,9 @@ of the server manager.
 from abc import ABC
 from logging import Logger
 from pathlib import Path
-from typing import Any, Dict, List, cast
+from typing import Any, List, cast
 
+from ..api.models.settings import SetGlobalSettingResponse
 from .api_bridge import AppAPI
 
 
@@ -121,16 +122,16 @@ class PluginBase(ABC):
             Any: The setting value or the default.
         """
         full_key = f"plugins.{self.name}.{key}"
-        result = (
-            await self.api.get_global_setting(request={"key": full_key})
-        ).model_dump(mode="python")
-        if result and result.get("status") == "success":
-            value = result.get("value")
+        result = await self.api.get_global_setting(request={"key": full_key})
+        if result and result.status == "success":
+            value = result.value
             if value is not None:
                 return value
         return default
 
-    async def set_plugin_setting(self, key: str, value: Any) -> Dict[str, Any]:
+    async def set_plugin_setting(
+        self, key: str, value: Any
+    ) -> SetGlobalSettingResponse:
         """Saves a setting specific to this plugin.
 
         Args:
@@ -138,16 +139,14 @@ class PluginBase(ABC):
             value (Any): The value to save.
 
         Returns:
-            Dict[str, Any]: The result of the save operation.
+            SetGlobalSettingResponse: The validated result of the save operation.
         """
         full_key = f"plugins.{self.name}.{key}"
         return cast(
-            Dict[str, Any],
-            (
-                await self.api.set_global_setting(
-                    request={"key": full_key, "value": value}
-                )
-            ).model_dump(mode="python"),
+            SetGlobalSettingResponse,
+            await self.api.set_global_setting(
+                request={"key": full_key, "value": value}
+            ),
         )
 
     # --- Plugin Extension Hooks ---

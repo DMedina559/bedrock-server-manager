@@ -89,19 +89,15 @@ async def get_plugins_status(
     identity = current_user.username
     logger.info(f"API: Get plugin statuses request by '{identity}'.")
     try:
-        result = (
-            await plugins_api.get_plugin_statuses(
-                request=GetPluginStatusesRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return PluginStatusesResponse(
-                status="success", plugins=result.get("plugins")
-            )
+        result = await plugins_api.get_plugin_statuses(
+            request=GetPluginStatusesRequest(), app_context=app_context
+        )
+        if result.status == "success":
+            return PluginStatusesResponse(status="success", plugins=result.plugins)
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get plugin statuses."),
+                detail=result.message,
             )
     except HTTPException:
         raise
@@ -134,24 +130,21 @@ async def post_trigger_event(
     )
 
     try:
-        result = (
-            await plugins_api.trigger_external_app_event(
-                request=TriggerExternalAppEventRequest(
-                    event_name=payload.event_name, payload=payload.payload
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
+        result = await plugins_api.trigger_external_app_event(
+            request=TriggerExternalAppEventRequest(
+                event_name=payload.event_name, payload=payload.payload
+            ),
+            app_context=app_context,
+        )
+        if result.status == "success":
             return TriggerEventResponse(
                 status="success",
-                message=result.get("message"),
-                details=result.get("details"),
+                message=result.message,
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to trigger event."),
+                detail=result.message,
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -200,18 +193,16 @@ async def post_set_plugin_status(
     )
 
     try:
-        result = (
-            await plugins_api.set_plugin_status(
-                request=SetPluginStatusRequest(
-                    target_plugin_name=plugin_name, enabled=payload.enabled
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return ActionResponse(status="success", message=str(result.get("message")))
+        result = await plugins_api.set_plugin_status(
+            request=SetPluginStatusRequest(
+                target_plugin_name=plugin_name, enabled=payload.enabled
+            ),
+            app_context=app_context,
+        )
+        if result.status == "success":
+            return ActionResponse(status="success", message=str(result.message))
         else:
-            detail = result.get("message", f"Failed to {action} plugin.")
+            detail = result.message
             if "not found" in detail.lower() or "invalid plugin" in detail.lower():
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail=detail
@@ -261,20 +252,16 @@ async def post_reload_single_plugin(
     logger.info(f"API: Request to reload plugin '{plugin_name}' by user '{identity}'.")
 
     try:
-        result = (
-            await plugins_api.reload_single_plugin(
-                request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return ActionResponse(status="success", message=str(result.get("message")))
+        result = await plugins_api.reload_single_plugin(
+            request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
+            app_context=app_context,
+        )
+        if result.status == "success":
+            return ActionResponse(status="success", message=str(result.message))
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get(
-                    "message", f"Failed to reload plugin '{plugin_name}'."
-                ),
+                detail=result.message,
             )
 
     except UserInputError as e:
@@ -314,17 +301,15 @@ async def put_reload_plugins(
     logger.info(f"API: Reload plugins request by '{identity}'.")
 
     try:
-        result = (
-            await plugins_api.reload_plugins(
-                request=ReloadPluginsRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return ActionResponse(status="success", message=str(result.get("message")))
+        result = await plugins_api.reload_plugins(
+            request=ReloadPluginsRequest(), app_context=app_context
+        )
+        if result.status == "success":
+            return ActionResponse(status="success", message=str(result.message))
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to reload plugins."),
+                detail=result.message,
             )
     except HTTPException:
         raise

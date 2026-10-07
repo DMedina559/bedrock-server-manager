@@ -29,22 +29,18 @@ class AutostartServers(PluginBase):
     async def autostart_servers(self, **kwargs: Any):
 
         # Run API calls in thread to not block startup loop
-        result = (await self.api.get_all_servers_data(request={})).model_dump(
-            mode="python"
-        )
-        servers = result.get("servers", [])
+        result = await self.api.get_all_servers_data(request={})
+        servers = result.servers
 
         for server in servers:
-            server_name = server.get("name")
+            server_name = server.name
             if not server_name:
                 continue
 
-            setting_result = (
-                await self.api.get_server_setting(
-                    request={"server_name": server_name, "key": "settings.autostart"}
-                )
-            ).model_dump(mode="python")
-            server_settings = setting_result.get("value")
+            setting_result = await self.api.get_server_setting(
+                request={"server_name": server_name, "key": "settings.autostart"}
+            )
+            server_settings = setting_result.value
 
             if server_settings:
                 self.logger.info(

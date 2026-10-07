@@ -42,11 +42,11 @@ class ContentUploaderPlugin(PluginBase):
         )
 
         try:
-            setting_result = (
-                await self.api.get_global_setting(request={"key": "paths.content"})
-            ).model_dump(mode="python")
-            if setting_result and setting_result.get("status") == "success":
-                path_str = setting_result.get("value")
+            setting_result = await self.api.get_global_setting(
+                request={"key": "paths.content"}
+            )
+            if setting_result and setting_result.status == "success":
+                path_str = setting_result.value
                 if path_str and isinstance(path_str, str):
                     MODULE_CONTENT_DIR_PATH = Path(path_str)
                     self.logger.info(

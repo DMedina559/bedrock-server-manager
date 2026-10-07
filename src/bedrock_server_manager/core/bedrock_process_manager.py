@@ -263,15 +263,13 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
-                                (
-                                    await self.api.update_server_player_stats(
-                                        request={
-                                            "server_name": server.server_name,
-                                            "player_count": server.player_count,
-                                            "players": server.players,
-                                        }
-                                    )
-                                ).model_dump(mode="python")
+                                await self.api.update_server_player_stats(
+                                    request={
+                                        "server_name": server.server_name,
+                                        "player_count": server.player_count,
+                                        "players": server.players,
+                                    }
+                                )
                             except Exception as e:
                                 self.logger.warning(
                                     f"Could not trigger player stats update API: {e}"
@@ -280,20 +278,18 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
-                                ban_res = (
-                                    await self.api.get_server_bans(
-                                        request={"server_name": server.server_name}
-                                    )
-                                ).model_dump(mode="python")
+                                ban_res = await self.api.get_server_bans(
+                                    request={"server_name": server.server_name}
+                                )
 
-                                if ban_res.get("status") == "success":
-                                    bans = ban_res.get("bans", [])
-                                    banned_xuids = {b["xuid"]: b for b in bans}
+                                if ban_res.status == "success":
+                                    bans = ban_res.bans
+                                    banned_xuids = {b.xuid: b for b in bans}
                                     for p in server.players:
                                         xuid = p.get("xuid")
                                         if xuid in banned_xuids:
                                             reason = (
-                                                banned_xuids[xuid].get("reason")
+                                                banned_xuids[xuid].reason
                                                 or "You have been banned from this server."
                                             )
                                             p_name = p.get("name", "Unknown")

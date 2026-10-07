@@ -346,7 +346,7 @@ async def set_properties(
     Invalid requests fail validation before side effects; operation failures raise application exceptions.
     """
     server_name = request.server_name
-    properties_to_update = request.model_dump(mode="python")["properties_to_update"]
+    properties_to_update = request.properties_to_update
     restart_after_modify = request.restart_after_modify
     if not server_name:
         raise InvalidServerNameError("Server name required.")

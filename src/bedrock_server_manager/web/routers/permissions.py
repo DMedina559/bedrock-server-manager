@@ -45,25 +45,21 @@ async def post_permissions_set(
 
     for item in permission_entries:
         try:
-            result = (
-                await permissions_api.set_permissions(
-                    request=SetPermissionsRequest.model_validate(
-                        {
-                            "server_name": server_name,
-                            "xuid": item.xuid,
-                            "player_name": item.name,
-                            "permission": item.permission_level,
-                        }
-                    ),
-                    app_context=app_context,
-                )
-            ).model_dump(mode="python")
-            if result.get("status") == "success":
+            result = await permissions_api.set_permissions(
+                request=SetPermissionsRequest.model_validate(
+                    {
+                        "server_name": server_name,
+                        "xuid": item.xuid,
+                        "player_name": item.name,
+                        "permission": item.permission_level,
+                    }
+                ),
+                app_context=app_context,
+            )
+            if result.status == "success":
                 success_count += 1
             else:
-                errors[item.xuid] = result.get(
-                    "message", "Unknown error setting permission."
-                )
+                errors[item.xuid] = result.message
         except ValidationError:
             errors[item.xuid] = "Invalid permission request."
         except UserInputError as e:
@@ -110,21 +106,19 @@ async def get_permissions(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = (
-        await permissions_api.get_permissions(
-            request=GetPermissionsRequest.model_validate({"server_name": server_name}),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-    if result.get("status") == "success":
+    result = await permissions_api.get_permissions(
+        request=GetPermissionsRequest.model_validate({"server_name": server_name}),
+        app_context=app_context,
+    )
+    if result.status == "success":
         return PermissionsGetResponse(
-            status=result["status"], permissions=result.get("permissions", [])
+            status=result.status, permissions=result.permissions
         )
-    if "not found" in result.get("message", "").lower():
+    if "not found" in result.message.lower():
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
+            status_code=status.HTTP_404_NOT_FOUND, detail=result.message
         )
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=result.get("message", "Failed to get server permissions."),
+        detail=result.message,
     )

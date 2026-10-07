@@ -103,16 +103,14 @@ async def get_list_server_backups(
         f"API: Request to list '{backup_type}' backups for server '{server_name}' by user '{identity}'."
     )
     try:
-        api_result = (
-            await backup_restore_api.list_backup_files(
-                request=ListBackupFilesRequest.model_validate(
-                    {"server_name": server_name, "backup_type": backup_type}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if api_result.get("status") == "success":
-            backup_data = api_result.get("backups", [])
+        api_result = await backup_restore_api.list_backup_files(
+            request=ListBackupFilesRequest.model_validate(
+                {"server_name": server_name, "backup_type": backup_type}
+            ),
+            app_context=app_context,
+        )
+        if api_result.status == "success":
+            backup_data = api_result.backups
 
             if backup_type.lower() == "all" and isinstance(backup_data, dict):
                 # For 'all', backup_data is Dict[str, List[str (full paths)]]
@@ -144,16 +142,16 @@ async def get_list_server_backups(
 
         else:
             if (
-                "not found" in api_result.get("message", "").lower()
-                and "server" in api_result.get("message", "").lower()
+                "not found" in api_result.message.lower()
+                and "server" in api_result.message.lower()
             ):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=api_result.get("message"),
+                    detail=api_result.message,
                 )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=api_result.get("message", "Failed to list backups."),
+                detail=api_result.message,
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

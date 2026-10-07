@@ -74,14 +74,10 @@ async def get_permissions(
         raise BSMError("Server name cannot be empty.")
     try:
         server = app_context.get_server(server_name)
-        all_known_players: List[Dict[str, Any]] = []
-        players_response = (
-            await player_api.get_all_known_players(
-                request=GetAllKnownPlayersRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if players_response.get("status") == "success":
-            all_known_players = players_response.get("players", []) or []
+        players_response = await player_api.get_all_known_players(
+            request=GetAllKnownPlayersRequest(), app_context=app_context
+        )
+        all_known_players = players_response.players
         permissions: List[Dict[str, Any]] = []
         try:
             storage = app_context.storage
@@ -90,12 +86,12 @@ async def get_permissions(
             permissions = []
         existing_xuids = {p.get("xuid") for p in permissions if p.get("xuid")}
         for player in all_known_players:
-            xuid = str(player.get("xuid"))
+            xuid = player.xuid
             if xuid and xuid not in existing_xuids:
                 permissions.append(
                     {
                         "xuid": xuid,
-                        "name": player.get("name", "Unknown"),
+                        "name": player.name,
                         "permission_level": "member",
                     }
                 )

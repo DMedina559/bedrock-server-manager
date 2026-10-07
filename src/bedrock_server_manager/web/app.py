@@ -34,9 +34,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context.loop = asyncio.get_running_loop()
         await app_context.bedrock_process_manager.start()
         app_context.resource_monitor.start()
-        (await app_context.api.update_server_statuses(request={})).model_dump(
-            mode="python"
-        )
+        await app_context.api.update_server_statuses(request={})
 
         await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
         await app_context.plugin_manager.start_plugin_tasks()

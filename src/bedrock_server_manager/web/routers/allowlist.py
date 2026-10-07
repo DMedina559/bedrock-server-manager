@@ -47,21 +47,17 @@ async def post_allowlist(
         for p in payload.players
     ]
     try:
-        result = (
-            await allowlist_api.add_to_allowlist(
-                request=AddToAllowlistRequest.model_validate(
-                    {"server_name": server_name, "new_players_data": new_players_data}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return BaseApiResponse(
-                status=result["status"], message=result.get("message")
-            )
+        result = await allowlist_api.add_to_allowlist(
+            request=AddToAllowlistRequest.model_validate(
+                {"server_name": server_name, "new_players_data": new_players_data}
+            ),
+            app_context=app_context,
+        )
+        if result.status == "success":
+            return BaseApiResponse(status=result.status, message=result.message)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("message", "Failed to add players."),
+            detail=result.message,
         )
     except UserInputError as e:
         _ = e
@@ -90,23 +86,19 @@ async def get_allowlist(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
 ):
-    result = (
-        await allowlist_api.get_allowlist(
-            request=GetAllowlistRequest.model_validate({"server_name": server_name}),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-    if result.get("status") == "success":
-        return AllowlistGetResponse(
-            status=result["status"], players=result.get("players", [])
-        )
-    if "not found" in result.get("message", "").lower():
+    result = await allowlist_api.get_allowlist(
+        request=GetAllowlistRequest.model_validate({"server_name": server_name}),
+        app_context=app_context,
+    )
+    if result.status == "success":
+        return AllowlistGetResponse(status=result.status, players=result.players)
+    if "not found" in result.message.lower():
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=result.get("message")
+            status_code=status.HTTP_404_NOT_FOUND, detail=result.message
         )
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=result.get("message", "Failed to get allowlist."),
+        detail=result.message,
     )
 
 
@@ -123,21 +115,17 @@ async def delete_allowlist(
     app_context: AppContext = Depends(get_app_context),
 ):
     try:
-        result = (
-            await allowlist_api.remove_from_allowlist(
-                request=RemoveFromAllowlistRequest.model_validate(
-                    {"server_name": server_name, "player_names": payload.players}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return BaseApiResponse(
-                status=result["status"], message=result.get("message")
-            )
+        result = await allowlist_api.remove_from_allowlist(
+            request=RemoveFromAllowlistRequest.model_validate(
+                {"server_name": server_name, "player_names": payload.players}
+            ),
+            app_context=app_context,
+        )
+        if result.status == "success":
+            return BaseApiResponse(status=result.status, message=result.message)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("message", "Failed to remove players."),
+            detail=result.message,
         )
     except UserInputError as e:
         _ = e

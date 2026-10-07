@@ -442,14 +442,12 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
         if self.app_context and self.app_context.api:
             try:
-                (
-                    await self.app_context.api.set_server_status(
-                        request={
-                            "server_name": self.server_name,
-                            "status": status_string,
-                        }
-                    )
-                ).model_dump(mode="python")
+                await self.app_context.api.set_server_status(
+                    request={
+                        "server_name": self.server_name,
+                        "status": status_string,
+                    }
+                )
                 return
             except AttributeError:
                 pass

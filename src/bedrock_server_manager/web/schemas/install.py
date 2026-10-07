@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ...api.models.allowlist import AllowlistPlayer
+from ...api.models.permissions import PlayerPermission
 from .base import BaseApiResponse
 
 
@@ -41,13 +43,13 @@ class PropertiesGetResponse(BaseApiResponse):
 class AllowlistGetResponse(BaseApiResponse):
     """Response model for server allowlist."""
 
-    players: List[Dict[str, Any]]
+    players: List[AllowlistPlayer]
 
 
 class PermissionsGetResponse(BaseApiResponse):
     """Response model for server permissions."""
 
-    permissions: List[Dict[str, Any]]
+    permissions: List[PlayerPermission]
 
 
 class PermissionsUpdateResponse(BaseApiResponse):

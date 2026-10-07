@@ -293,11 +293,9 @@ async def stop_server(
                 message=f"Server '{server_name}' was already stopped.",
             )
 
-        (
-            await app_context.api.set_server_status(
-                request={"server_name": server_name, "status": "STOPPING"}
-            )
-        ).model_dump(mode="python")
+        await app_context.api.set_server_status(
+            request={"server_name": server_name, "status": "STOPPING"}
+        )
         await server.stop()
         stopped = True
         await app_context.bedrock_process_manager.remove_server(server.server_name)

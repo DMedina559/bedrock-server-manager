@@ -56,22 +56,20 @@ async def get_worlds_list(
     identity = current_user.username
     logger.info(f"API: List available worlds request by user '{identity}'.")
     try:
-        api_result = (
-            await app_api.list_available_worlds(
-                request=ListAvailableWorldsRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if api_result.get("status") == "success":
-            full_paths = api_result.get("files", [])
+        api_result = await app_api.list_available_worlds(
+            request=ListAvailableWorldsRequest(), app_context=app_context
+        )
+        if api_result.status == "success":
+            full_paths = api_result.files
             basenames = [os.path.basename(p) for p in full_paths]
             return ContentListResponse(
-                status="success", files=basenames, message=api_result.get("message")
+                status="success", files=basenames, message=api_result.message
             )
         else:
-            logger.warning(f"API: Error listing worlds: {api_result.get('message')}")
+            logger.warning(f"API: Error listing worlds: {api_result.message}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_result.get("message", "Failed to list worlds."),
+                detail=api_result.message,
             )
     except HTTPException:
         raise

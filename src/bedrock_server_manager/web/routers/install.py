@@ -103,19 +103,17 @@ async def post_install_server(  # noqa: C901
             logger.info(
                 f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
             )
-            delete_result = (
-                await server_api.delete_server_data(
-                    request=DeleteServerDataRequest(server_name=payload.server_name),
-                    app_context=app_context,
-                )
-            ).model_dump(mode="python")
-            if delete_result.get("status") == "error":
+            delete_result = await server_api.delete_server_data(
+                request=DeleteServerDataRequest(server_name=payload.server_name),
+                app_context=app_context,
+            )
+            if delete_result.status == "error":
                 logger.error(
-                    f"Failed to delete existing server '{payload.server_name}': {delete_result['message']}"
+                    f"Failed to delete existing server '{payload.server_name}': {delete_result.message}"
                 )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to delete existing server: {delete_result['message']}",
+                    detail=f"Failed to delete existing server: {delete_result.message}",
                 )
             logger.info(
                 f"Successfully deleted existing server '{payload.server_name}' for overwrite."

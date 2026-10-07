@@ -2,6 +2,9 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ...api.models.common import PlayerInfo, ServerSummary
+from ...api.models.player import PlayerScanDetails
+from ...api.models.system import ProcessInfo
 from .base import BaseApiResponse
 
 
@@ -44,23 +47,7 @@ class AddPlayersPayload(BaseModel):
     )
 
 
-class ServerSchemaResponse(BaseModel):
-    """
-    Schema representing server information in lists.
-
-    Attributes:
-        name (str): The server's name.
-        status (str): The server's status (e.g., "Running", "Stopped").
-        version (str): The installed version of the server.
-        player_count (int): The number of players currently online.
-        players (list): The list of players currently online.
-    """
-
-    name: str
-    status: str
-    version: str
-    player_count: int
-    players: List[Dict[str, str]] = Field(default_factory=list)
+ServerSchemaResponse = ServerSummary
 
 
 # --- Specific Response Models replacing GeneralApiResponse ---
@@ -69,7 +56,7 @@ class ServerSchemaResponse(BaseModel):
 class ServersListResponse(BaseApiResponse):
     """Response model for lists of server data."""
 
-    servers: Optional[List[ServerSchemaResponse]] = None
+    servers: Optional[List[ServerSummary]] = None
 
 
 class AppInfoResponse(BaseApiResponse):
@@ -81,13 +68,13 @@ class AppInfoResponse(BaseApiResponse):
 class PlayerListResponse(BaseApiResponse):
     """Response model for player lists."""
 
-    players: Optional[List[Dict[str, Any]]] = None
+    players: Optional[List[PlayerInfo]] = None
 
 
 class AddPlayersResponse(BaseApiResponse):
     """Response model for adding players, typically returns just inherited fields or single item data."""
 
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[PlayerScanDetails] = None
     count: Optional[int] = None
 
 
@@ -100,4 +87,4 @@ class ServerRunningStatusResponse(BaseApiResponse):
 class ServerProcessInfoResponse(BaseApiResponse):
     """Response model for server process info."""
 
-    process_info: Optional[Dict[str, Any]] = None
+    process_info: Optional[ProcessInfo] = None

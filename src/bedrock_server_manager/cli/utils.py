@@ -28,9 +28,10 @@ experience across different parts of the CLI.
 """
 
 import logging
-from typing import Any, Dict
 
 import click
+
+from ..api.models.common import ActionResponse, SuccessResponse
 
 logger = logging.getLogger(__name__)
 
@@ -38,35 +39,12 @@ logger = logging.getLogger(__name__)
 # --- Shared Helpers ---
 
 
-def handle_api_response(response: Dict[str, Any], success_msg: str) -> Dict[str, Any]:
-    """Handles responses from API calls, displaying success or error messages.
-
-    If the response indicates an error, it prints an error message and aborts
-    the CLI command. Otherwise, it prints a success message. It prioritizes
-    the message from the API response over the default `success_msg`.
-
-    Args:
-        response (Dict[str, Any]): The dictionary response received from an API
-            function call. Expected to have a "status" key and optionally
-            "message" and "data" keys.
-        success_msg (str): The default success message to display if the API
-            response does not provide its own "message" field on success.
-
-    Returns:
-        Dict[str, Any]: The `data` part of the API response dictionary if the
-        call was successful. Returns an empty dictionary if no "data" key
-        was present in the successful response.
-
-    Raises:
-        click.Abort: If the API response's "status" key is "error". The error
-            message printed to the console will be taken from the response's
-            "message" key, or a generic error if that's also missing.
-    """
-    if response.get("status") == "error":
-        message = response.get("message", "An unknown error occurred.")
-        click.secho(f"Error: {message}", fg="red")
-        raise click.Abort()
-
-    message = response.get("message", success_msg)
-    click.secho(f"Success: {message}", fg="green")
-    return response.get("data", {})  # type: ignore
+def handle_api_response(
+    response: ActionResponse | SuccessResponse, success_msg: str
+) -> None:
+    """Display a validated API result; operation failures raise at the API boundary."""
+    message = response.message or success_msg
+    if response.status == "skipped":
+        click.secho(f"Skipped: {message}", fg="yellow")
+    else:
+        click.secho(f"Success: {message}", fg="green")

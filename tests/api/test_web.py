@@ -47,7 +47,8 @@ def test_start_web_server_invalid_mode(app_context: AppContext):
     # The API catches the error and returns a status dictionary
     with pytest.raises(ValidationError):
         start_web_server(
-            request=StartWebServerRequest(mode="invalid"), app_context=app_context
+            request=StartWebServerRequest.model_validate({"mode": "invalid"}),
+            app_context=app_context,
         ).model_dump(mode="python")
 
 

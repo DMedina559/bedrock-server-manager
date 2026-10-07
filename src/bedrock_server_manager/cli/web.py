@@ -97,30 +97,15 @@ def start_web_server(ctx: click.Context, host: str, port: int, debug: bool, mode
                 {"host": host, "port": port, "debug": debug, "mode": mode}
             ),
             app_context=app_context,
-        ).model_dump(mode="python")
+        )
 
         # In 'direct' mode, start_web_server (which calls bsm.start_web_ui_direct)
         # is blocking. So, we'll only reach here after it stops or if mode is 'detached'.
         if mode == "detached":
-            if response.get("status") == "error":
-                message = response.get("message", "An unknown error occurred.")
-                click.secho(f"Error: {message}", fg="red")
-                raise click.Abort()
-            else:
-                pid = response.get("pid", "N/A")
-                message = response.get(
-                    "message",
-                    f"Web server start initiated in detached mode (PID: {pid}).",
-                )
-                click.secho(f"Success: {message}", fg="green")
-        elif (
-            response and response.get("status") == "error"
-        ):  # Should only happen if direct mode itself fails to launch
-            message = response.get(
-                "message", "Failed to start web server in direct mode."
+            _handle_api_response(
+                response,
+                f"Web server start initiated in detached mode (PID: {response.pid}).",
             )
-            click.secho(f"Error: {message}", fg="red")
-            raise click.Abort()
 
     except BSMError as e:  # Catch errors from API if they propagate
         click.secho(f"Failed to start web server: {e}", fg="red")
@@ -147,7 +132,7 @@ def stop_web_server(ctx: click.Context):
     try:
         response = web_api.stop_web_server(
             request=StopWebServerRequest(), app_context=app_context
-        ).model_dump(mode="python")
+        )
         _handle_api_response(response, "Web server stopped successfully.")
     except BSMError as e:
         click.secho(f"An error occurred: {e}", fg="red")

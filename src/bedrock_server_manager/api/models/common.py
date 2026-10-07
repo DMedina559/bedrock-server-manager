@@ -1,6 +1,6 @@
 """Serializable contracts shared by API domains; no runtime dependencies."""
 
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -95,7 +95,7 @@ class ActionResponse(APIResponse):
     required_on_success: ClassVar[tuple[str, ...]] = ()
 
     @model_validator(mode="after")
-    def check_success_data(self):
+    def check_success_data(self) -> Self:
         if self.status == "success":
             for field in self.required_on_success:
                 if getattr(self, field) is None:

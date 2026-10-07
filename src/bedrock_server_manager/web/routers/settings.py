@@ -59,22 +59,20 @@ async def get_all_settings(
     identity = current_user.username
     logger.info(f"API: Get global settings request by '{identity}'.")
     try:
-        result = (
-            await settings_api.get_all_global_settings(
-                request=GetAllGlobalSettingsRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
+        result = await settings_api.get_all_global_settings(
+            request=GetAllGlobalSettingsRequest(), app_context=app_context
+        )
+        if result.status == "success":
             return SettingsResponse(
                 status="success",
-                settings=result["settings"],
-                message=result.get("message"),
+                settings=result.settings,
+                message=result.message,
             )
         else:
             # This case might indicate an internal issue with settings loading
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to retrieve settings."),
+                detail=result.message,
             )
     except HTTPException:
         raise
@@ -116,17 +114,15 @@ async def post_set_setting(
 
     try:
 
-        result = (
-            await settings_api.set_global_setting(
-                request=SetGlobalSettingRequest(key=payload.key, value=payload.value),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
+        result = await settings_api.set_global_setting(
+            request=SetGlobalSettingRequest(key=payload.key, value=payload.value),
+            app_context=app_context,
+        )
+        if result.status == "success":
 
             return SettingsResponse(
                 status="success",
-                message=result.get("message", "Setting updated successfully."),
+                message=result.message,
                 setting=SettingItemResponse(
                     key=payload.key, value=payload.value
                 ),  # Return the set item - No change needed here as it already matches BaseApiResponse for status/message
@@ -135,7 +131,7 @@ async def post_set_setting(
             # Errors from settings_api.set_global_setting should ideally raise specific BSMError types
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,  # Or 500 if it's a save error
-                detail=result.get("message", "Failed to set setting."),
+                detail=result.message,
             )
     except (
         UserInputError,
@@ -182,22 +178,20 @@ async def put_reload_settings(
     identity = current_user.username
     logger.info(f"API: Reload global settings request by '{identity}'.")
     try:
-        result = (
-            await settings_api.reload_global_settings(
-                request=ReloadGlobalSettingsRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
+        result = await settings_api.reload_global_settings(
+            request=ReloadGlobalSettingsRequest(), app_context=app_context
+        )
+        if result.status == "success":
             return SettingsResponse(
                 status="success",
-                message=result.get("message", "Settings reloaded successfully."),
+                message=result.message,
                 # No other specific fields like 'settings' or 'setting' for this response
             )
         else:
             # Errors from settings_api.reload_global_settings
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to reload settings."),
+                detail=result.message,
             )
     except HTTPException:
         raise

@@ -40,6 +40,7 @@ from bedrock_server_manager.api.models import (
 )
 
 from ..api import web as web_api
+from ..api.models.common import ActionResponse
 from ..config.const import WEB_SERVICE_WINDOWS_NAME_INTERNAL
 from ..context import AppContext
 from ..core.system.base import can_manage_services
@@ -132,7 +133,7 @@ def _perform_web_service_configuration(
         click.secho(
             f"\n--- Configuring Web UI System Service ({os_type}) ---", bold=True
         )
-        response = web_api.create_web_ui_service(
+        response: ActionResponse = web_api.create_web_ui_service(
             request=CreateWebUiServiceRequest.model_validate(
                 {
                     "autostart": enable_flag,
@@ -142,7 +143,7 @@ def _perform_web_service_configuration(
                 }
             ),
             app_context=app_context,
-        ).model_dump(mode="python")
+        )
         _handle_api_response(response, "Web UI system service configured successfully.")
     elif (
         enable_autostart is not None
@@ -151,12 +152,12 @@ def _perform_web_service_configuration(
         if enable_autostart:
             response = web_api.enable_web_ui_service(
                 request=EnableWebUiServiceRequest(), app_context=app_context
-            ).model_dump(mode="python")
+            )
             _handle_api_response(response, "Web UI service enabled successfully.")
         else:
             response = web_api.disable_web_ui_service(
                 request=DisableWebUiServiceRequest(), app_context=app_context
-            ).model_dump(mode="python")
+            )
             _handle_api_response(response, "Web UI service disabled successfully.")
 
 
@@ -388,7 +389,7 @@ def enable_web_service_cli(ctx: click.Context, system_flag: bool):
         response = web_api.enable_web_ui_service(
             request=EnableWebUiServiceRequest.model_validate({"system": system_flag}),
             app_context=app_context,
-        ).model_dump(mode="python")
+        )
         _handle_api_response(response, "Web UI service enabled successfully.")
     except BSMError as e:
         click.secho(f"Failed to enable Web UI service: {e}", fg="red")
@@ -423,7 +424,7 @@ def disable_web_service_cli(ctx: click.Context, system_flag: bool):
         response = web_api.disable_web_ui_service(
             request=DisableWebUiServiceRequest.model_validate({"system": system_flag}),
             app_context=app_context,
-        ).model_dump(mode="python")
+        )
         _handle_api_response(response, "Web UI service disabled successfully.")
     except BSMError as e:
         click.secho(f"Failed to disable Web UI service: {e}", fg="red")
@@ -466,7 +467,7 @@ def remove_web_service_cli(ctx: click.Context, system_flag: bool):
         response = web_api.remove_web_ui_service(
             request=RemoveWebUiServiceRequest.model_validate({"system": system_flag}),
             app_context=app_context,
-        ).model_dump(mode="python")
+        )
         _handle_api_response(response, "Web UI service removed successfully.")
     except BSMError as e:
         click.secho(f"Failed to remove Web UI service: {e}", fg="red")
@@ -504,21 +505,21 @@ def status_web_service_cli(ctx: click.Context, system_flag: bool):
                 {"system": system_flag}
             ),
             app_context=app_context,
-        ).model_dump(mode="python")
-        if response.get("status") == "success":
+        )
+        if response.status == "success":
             click.secho("Web UI Service Status:", bold=True)
             click.echo(
-                f"  Service Defined: {click.style(str(response.get('service_exists', False)), fg='cyan')}"
+                f"  Service Defined: {click.style(str(response.service_exists), fg='cyan')}"
             )
-            if response.get("service_exists"):
+            if response.service_exists:
                 click.echo(
-                    f"  Currently Active (Running): {click.style(str(response.get('is_active', False)), fg='green' if response.get('is_active') else 'red')}"
+                    f"  Currently Active (Running): {click.style(str(response.is_active), fg='green' if response.is_active else 'red')}"
                 )
                 click.echo(
-                    f"  Enabled for Autostart: {click.style(str(response.get('is_enabled', False)), fg='green' if response.get('is_enabled') else 'red')}"
+                    f"  Enabled for Autostart: {click.style(str(response.is_enabled), fg='green' if response.is_enabled else 'red')}"
                 )
-            if response.get("message"):
-                click.secho(f"  Info: {response.get('message')}", fg="yellow")
+            if response.message:
+                click.secho(f"  Info: {response.message}", fg="yellow")
         else:
             _handle_api_response(response, "Service status retrieved.")
     except BSMError as e:

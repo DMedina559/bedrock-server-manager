@@ -63,21 +63,19 @@ async def get_addons(
     identity = current_user.username
     logger.info(f"API: List available addons request by user '{identity}'.")
     try:
-        api_result = (
-            await addon_api.list_available_addons(
-                request=ListAvailableAddonsRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
+        api_result = await addon_api.list_available_addons(
+            request=ListAvailableAddonsRequest(), app_context=app_context
+        )
 
-        if api_result.get("status") == "success":
+        if api_result.status == "success":
             # Extract just the filenames
-            basenames = [os.path.basename(f) for f in api_result.get("files", [])]
+            basenames = [os.path.basename(f) for f in api_result.files]
             return {"status": "success", "files": basenames}
         else:
-            logger.warning(f"API: Error listing addons: {api_result.get('message')}")
+            logger.warning(f"API: Error listing addons: {api_result.message}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_result.get("message", "Failed to list addons."),
+                detail=api_result.message,
             )
     except HTTPException:
         raise
@@ -113,15 +111,13 @@ async def get_server_addons(
         f"API: List world addons for '{server_name}' requested by user '{identity}'."
     )
     try:
-        result = (
-            await addon_api.list_installed_addons(
-                request=ListInstalledAddonsRequest.model_validate(
-                    {"server_name": server_name}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        return AddonListResponse(status="success", addons=result.get("addons"))
+        result = await addon_api.list_installed_addons(
+            request=ListInstalledAddonsRequest.model_validate(
+                {"server_name": server_name}
+            ),
+            app_context=app_context,
+        )
+        return AddonListResponse(status="success", addons=result.addons)
     except ValidationError:
         raise
     except ValidationError:
@@ -514,24 +510,25 @@ async def get_server_addon_icon(
     logger.debug(f"API: Get addon icon for '{server_name}' requested.")
 
     try:
-        result = (
-            await addon_api.list_installed_addons(
-                request=ListInstalledAddonsRequest.model_validate(
-                    {"server_name": server_name}
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+        result = await addon_api.list_installed_addons(
+            request=ListInstalledAddonsRequest.model_validate(
+                {"server_name": server_name}
+            ),
+            app_context=app_context,
+        )
 
         # Determine the key to search in based on pack_type
-        pack_key = f"{pack_type}_packs"
-        addons_data = result.get("addons", {})
-        packs = addons_data.get(pack_key, [])
+        addons_data = result.addons
+        packs = (
+            addons_data.behavior_packs
+            if pack_type == "behavior"
+            else addons_data.resource_packs
+        )
 
         icon_path = None
         for pack in packs:
-            if pack.get("uuid") == uuid and pack.get("icon"):
-                icon_path = pack.get("icon")
+            if pack.uuid == uuid and pack.icon:
+                icon_path = pack.icon
                 break
 
         if icon_path and await aiofiles.ospath.exists(icon_path):

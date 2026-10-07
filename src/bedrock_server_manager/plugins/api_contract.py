@@ -2,9 +2,11 @@
 
 import functools
 import inspect
-from typing import Any, Callable, get_type_hints
+from typing import Any, Callable, TypeVar, cast, get_type_hints
 
 from pydantic import BaseModel, ValidationError
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class APIResponseValidationError(RuntimeError):
@@ -48,7 +50,7 @@ def get_contract(
     return request_type, response_type
 
 
-def validate_contract(func: Callable[..., Any]) -> Callable[..., Any]:
+def validate_contract(func: F) -> F:
     """Validate input before events/side effects and output before returning."""
     contract = get_contract(func)
     if contract is None:
@@ -84,7 +86,7 @@ def validate_contract(func: Callable[..., Any]) -> Callable[..., Any]:
                 ) from error
             return validate_response(result)
 
-        return async_wrapper
+        return cast(F, async_wrapper)
 
     @functools.wraps(func)
     def sync_wrapper(*args: Any, **kwargs: Any) -> BaseModel:
@@ -97,4 +99,4 @@ def validate_contract(func: Callable[..., Any]) -> Callable[..., Any]:
             ) from error
         return validate_response(result)
 
-    return sync_wrapper
+    return cast(F, sync_wrapper)

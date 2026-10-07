@@ -85,22 +85,20 @@ async def get_server_running_status(
         f"API: Request for running status for server '{server_name}' by user '{identity}'."
     )
     try:
-        result = (
-            await system_api.get_server_running_status(
-                request=GetServerRunningStatusRequest(server_name=server_name),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
+        result = await system_api.get_server_running_status(
+            request=GetServerRunningStatusRequest(server_name=server_name),
+            app_context=app_context,
+        )
+        if result.status == "success":
             return ServerRunningStatusResponse(
                 status="success",
-                running=bool(result.get("is_running")),
-                message=result.get("message"),
+                running=bool(result.is_running),
+                message=result.message,
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get server running status."),
+                detail=result.message,
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -195,23 +193,21 @@ async def get_server_process_info(
     identity = current_user.username
     logger.debug(f"API: Process info request for '{server_name}' by user '{identity}'.")
     try:
-        result = (
-            await system_api.get_bedrock_process_info(
-                request=GetBedrockProcessInfoRequest(server_name=server_name),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+        result = await system_api.get_bedrock_process_info(
+            request=GetBedrockProcessInfoRequest(server_name=server_name),
+            app_context=app_context,
+        )
 
-        if result.get("status") == "success":
+        if result.status == "success":
             return ServerProcessInfoResponse(
                 status="success",
-                process_info=result.get("process_info"),
-                message=result.get("message"),
+                process_info=result.process_info,
+                message=result.message,
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to get process info."),
+                detail=result.message,
             )
 
     except UserInputError as e:
@@ -254,21 +250,19 @@ async def put_scan_players(
     identity = current_user.username
     logger.info(f"API: Request to scan logs for players by user '{identity}'.")
     try:
-        result = (
-            await player_api.scan_and_update_player_db(
-                request=ScanAndUpdatePlayerDbRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
+        result = await player_api.scan_and_update_player_db(
+            request=ScanAndUpdatePlayerDbRequest(), app_context=app_context
+        )
+        if result.status == "success":
             return AddPlayersResponse(
                 status="success",
-                message=result.get("message"),
-                details=result.get("details"),
+                message=result.message,
+                details=result.details,
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to scan player logs."),
+                detail=result.message,
             )
     except AppFileNotFoundError:
         raise
@@ -305,31 +299,27 @@ async def get_all_players(
     identity = current_user.username
     logger.info(f"API: Request to retrieve all players by user '{identity}'.")
     try:
-        result_dict = (
-            await player_api.get_all_known_players(
-                request=GetAllKnownPlayersRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
+        result_dict = await player_api.get_all_known_players(
+            request=GetAllKnownPlayersRequest(), app_context=app_context
+        )
 
-        if result_dict.get("status") == "success":
+        if result_dict.status == "success":
             logger.debug(
-                f"API Get All Players: Successfully retrieved {len(result_dict.get('players', []))} players. "
-                f"Message: {result_dict.get('message', 'N/A')}"
+                f"API Get All Players: Successfully retrieved {len(result_dict.players)} players. "
+                f"Message: {result_dict.message}"
             )
             return PlayerListResponse(
                 status="success",
-                players=result_dict.get("players"),
-                message=result_dict.get("message"),
+                players=result_dict.players,
+                message=result_dict.message,
             )
         else:  # status == "error"
             logger.warning(
-                f"API Get All Players: Handler returned error: {result_dict.get('message')}"
+                f"API Get All Players: Handler returned error: {result_dict.message}"
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result_dict.get(
-                    "message", "Error retrieving player list from API."
-                ),
+                detail=result_dict.message,
             )
 
     except AppFileNotFoundError:
@@ -405,30 +395,22 @@ async def put_prune_downloads(
                 detail="Target cache directory not found.",
             )
 
-        result = (
-            await misc_api.prune_download_cache(
-                request=PruneDownloadCacheRequest(
-                    download_dir=full_download_dir_path, keep_count=payload.keep
-                ),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+        result = await misc_api.prune_download_cache(
+            request=PruneDownloadCacheRequest(
+                download_dir=full_download_dir_path, keep_count=payload.keep
+            ),
+            app_context=app_context,
+        )
 
-        if result.get("status") == "success":
-            files_deleted = result.get("files_deleted")
-            files_kept = result.get("files_kept")
+        if result.status == "success":
             return PruneDownloadsResponse(
                 status="success",
-                message=result.get(
-                    "message", "Pruning operation completed successfully."
-                ),
-                files_deleted=int(files_deleted) if files_deleted is not None else None,
-                files_kept=int(files_kept) if files_kept is not None else None,
+                message=result.message,
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Unknown error during prune operation."),
+                detail=result.message,
             )
 
     except UserInputError as e:
@@ -474,17 +456,15 @@ async def get_servers_list(
     identity = current_user.username
     logger.debug(f"API: Request for all servers list by user '{identity}'.")
     try:
-        result = (
-            await app_api.get_all_servers_data(
-                request=GetAllServersDataRequest(), app_context=app_context
-            )
-        ).model_dump(mode="python")
-        if result.get("status") == "success":
-            return ServersListResponse(status="success", servers=result.get("servers"))
+        result = await app_api.get_all_servers_data(
+            request=GetAllServersDataRequest(), app_context=app_context
+        )
+        if result.status == "success":
+            return ServersListResponse(status="success", servers=result.servers)
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.get("message", "Failed to retrieve server list."),
+                detail=result.message,
             )
     except ValidationError:
         raise
@@ -619,22 +599,20 @@ async def post_add_players(
     )
     try:
 
-        result = (
-            await player_api.add_players_manually(
-                request=AddPlayersManuallyRequest(player_strings=payload.players),
-                app_context=app_context,
-            )
-        ).model_dump(mode="python")
+        result = await player_api.add_players_manually(
+            request=AddPlayersManuallyRequest(player_strings=payload.players),
+            app_context=app_context,
+        )
 
-        if result.get("status") == "success":
+        if result.status == "success":
             return AddPlayersResponse(
                 status="success",
-                message=result.get("message"),
-                count=result.get("count"),
+                message=result.message,
+                count=result.count,
             )
         else:
 
-            msg_lower = result.get("message", "").lower()
+            msg_lower = result.message.lower()
             status_code = (
                 status.HTTP_400_BAD_REQUEST
                 if "invalid" in msg_lower or "format" in msg_lower
@@ -642,7 +620,7 @@ async def post_add_players(
             )
             raise HTTPException(
                 status_code=status_code,
-                detail=result.get("message", "Failed to add players."),
+                detail=result.message,
             )
 
     except (

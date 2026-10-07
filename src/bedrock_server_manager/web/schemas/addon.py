@@ -1,28 +1,13 @@
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from ...api.models.addon import InstalledAddon, InstalledAddons
 from .base import BaseApiResponse
 
-
-class AddonSchemaResponse(BaseModel):
-    """Schema representing an individual addon."""
-
-    name: str
-    uuid: str
-    version: List[int]
-    status: str
-    active_subpack: Optional[str] = None
-    path: Optional[str] = None
-    icon: Optional[str] = None
-    subpacks: Optional[List[Dict[str, Any]]] = None
-
-
-class AddonTypeGroupSchemaResponse(BaseModel):
-    """Schema grouping behavior and resource packs."""
-
-    behavior_packs: List[AddonSchemaResponse] = Field(default_factory=list)
-    resource_packs: List[AddonSchemaResponse] = Field(default_factory=list)
+# Keep public schema names while sharing the API data contracts.
+AddonSchemaResponse = InstalledAddon
+AddonTypeGroupSchemaResponse = InstalledAddons
 
 
 class AddonListResponse(BaseApiResponse):

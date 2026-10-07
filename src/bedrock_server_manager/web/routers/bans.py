@@ -28,15 +28,13 @@ async def get_server_bans(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Get all bans for a specific server."""
-    result = (
-        await get_server_bans_api(
-            request=GetServerBansRequest(server_name=server_name),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-    if result.get("status") == "error":
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    return dict(result)
+    result = await get_server_bans_api(
+        request=GetServerBansRequest(server_name=server_name),
+        app_context=app_context,
+    )
+    if result.status == "error":
+        raise HTTPException(status_code=400, detail=result.message)
+    return result.model_dump(mode="json")
 
 
 @router.post("/add", operation_id="add_server_ban")
@@ -46,20 +44,18 @@ async def post_add_server_ban(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Add a player to the server ban list."""
-    result = (
-        await add_server_ban(
-            request=AddServerBanRequest(
-                server_name=server_name,
-                player_name=payload.player_name,
-                xuid=payload.xuid,
-                reason=payload.reason,
-            ),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-    if result.get("status") == "error":
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    return dict(result)
+    result = await add_server_ban(
+        request=AddServerBanRequest(
+            server_name=server_name,
+            player_name=payload.player_name,
+            xuid=payload.xuid,
+            reason=payload.reason,
+        ),
+        app_context=app_context,
+    )
+    if result.status == "error":
+        raise HTTPException(status_code=400, detail=result.message)
+    return result.model_dump(mode="json")
 
 
 @router.delete("/remove", operation_id="remove_server_ban")
@@ -69,12 +65,10 @@ async def delete_remove_server_ban(
     app_context: AppContext = Depends(get_app_context),
 ) -> Dict[str, Any]:
     """Remove a player from the server ban list."""
-    result = (
-        await remove_server_ban(
-            request=RemoveServerBanRequest(server_name=server_name, xuid=payload.xuid),
-            app_context=app_context,
-        )
-    ).model_dump(mode="python")
-    if result.get("status") == "error":
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    return dict(result)
+    result = await remove_server_ban(
+        request=RemoveServerBanRequest(server_name=server_name, xuid=payload.xuid),
+        app_context=app_context,
+    )
+    if result.status == "error":
+        raise HTTPException(status_code=400, detail=result.message)
+    return result.model_dump(mode="json")
