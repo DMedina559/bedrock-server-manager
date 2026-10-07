@@ -50,7 +50,7 @@ def test_get_server_running_status_error(auth_client: TestClient, real_bedrock_s
         )
 
         assert response.status_code == 500
-        assert "Unable to fetch status" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_get_validate_server_success(auth_client: TestClient, real_bedrock_server):

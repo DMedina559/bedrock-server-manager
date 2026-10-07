@@ -51,7 +51,7 @@ def test_get_all_settings_error(admin_auth_client: TestClient):
 
         response = admin_auth_client.get("/api/settings/get")
         assert response.status_code == 500
-        assert "unexpected error" in response.json()["detail"].lower()
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_get_all_settings_exception(admin_auth_client: TestClient):
@@ -62,7 +62,7 @@ def test_get_all_settings_exception(admin_auth_client: TestClient):
 
         response = admin_auth_client.get("/api/settings/get")
         assert response.status_code == 500
-        assert "unexpected error" in response.json()["detail"].lower()
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_post_set_setting_success(admin_auth_client: TestClient):
@@ -92,7 +92,7 @@ def test_post_set_setting_error(admin_auth_client: TestClient):
             "/api/settings/set", json={"key": "invalid.key", "value": "light"}
         )
         assert response.status_code == 400
-        assert "Invalid key" in response.json()["detail"]
+        assert "Invalid key" in response.json()["error"]["message"]
 
 
 def test_post_set_setting_user_input_error(admin_auth_client: TestClient):
@@ -105,7 +105,7 @@ def test_post_set_setting_user_input_error(admin_auth_client: TestClient):
             "/api/settings/set", json={"key": "app.theme", "value": 123}
         )
         assert response.status_code == 400
-        assert "Value must be string" in response.json()["detail"]
+        assert "Value must be string" in response.json()["error"]["message"]
 
 
 def test_post_set_setting_bsm_error(admin_auth_client: TestClient):
@@ -118,7 +118,7 @@ def test_post_set_setting_bsm_error(admin_auth_client: TestClient):
             "/api/settings/set", json={"key": "app.theme", "value": "light"}
         )
         assert response.status_code == 500
-        assert "Disk write failed" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_put_reload_settings_success(admin_auth_client: TestClient):
@@ -142,4 +142,4 @@ def test_put_reload_settings_error(admin_auth_client: TestClient):
 
         response = admin_auth_client.put("/api/settings/reload")
         assert response.status_code == 500
-        assert "Failed to reload" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."

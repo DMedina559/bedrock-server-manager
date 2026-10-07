@@ -4,11 +4,13 @@ from pydantic import ValidationError
 
 from ..error import (
     APICancelledError,
+    AppFileNotFoundError,
     BSMError,
     InvalidServerNameError,
     ServerError,
     ServerStartError,
     ServerStopError,
+    UserInputError,
 )
 from .models import APIErrorResponse
 
@@ -26,6 +28,12 @@ def error_response(error: Exception) -> APIErrorResponse:
                 ]
             },
         )
+    if isinstance(error, AppFileNotFoundError):
+        return APIErrorResponse(code="not_found", message="Resource not found.")
+    if isinstance(error, UserInputError) and not isinstance(
+        error, InvalidServerNameError
+    ):
+        return APIErrorResponse(code="validation_error", message=str(error))
     if isinstance(error, APICancelledError):
         return APIErrorResponse(
             code="operation_canceled", message="Operation canceled by a plugin."

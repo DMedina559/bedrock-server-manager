@@ -35,9 +35,9 @@ class UserService:
     async def register_or_update_user(
         self,
         username: str,
-        role: str = "user",
-        theme: str = "default",
-        is_active: bool = True,
+        role: Optional[str] = None,
+        theme: Optional[str] = None,
+        is_active: Optional[bool] = None,
         full_name: Optional[str] = None,
         email: Optional[str] = None,
         user_id: Optional[int] = None,
@@ -47,9 +47,12 @@ class UserService:
             existing = self.state.users.get(username)
             if existing:
                 data = existing.model_dump()
-                data["role"] = role
-                data["theme"] = theme
-                data["is_active"] = is_active
+                if role is not None:
+                    data["role"] = role
+                if theme is not None:
+                    data["theme"] = theme
+                if is_active is not None:
+                    data["is_active"] = is_active
                 if full_name is not None:
                     data["full_name"] = full_name
                 if email is not None:
@@ -61,9 +64,9 @@ class UserService:
                 user = UserInfoState(
                     id=user_id,
                     username=username,
-                    role=role,
-                    theme=theme,
-                    is_active=is_active,
+                    role=role or "user",
+                    theme=theme or "default",
+                    is_active=is_active if is_active is not None else True,
                     full_name=full_name,
                     email=email,
                 )

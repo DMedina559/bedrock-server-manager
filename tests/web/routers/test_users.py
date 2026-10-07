@@ -54,13 +54,13 @@ async def test_delete_user_last_admin(admin_auth_client: TestClient, app_context
 
     response = admin_auth_client.post(f"/api/users/{admin_id}/delete")
     assert response.status_code == 400
-    assert "Cannot delete the last active admin" in response.json()["detail"]
+    assert "Cannot delete the last active admin" in response.json()["error"]["message"]
 
 
 async def test_delete_user_not_found(admin_auth_client: TestClient):
     response = admin_auth_client.post("/api/users/9999/delete")
     assert response.status_code == 404
-    assert "not found" in response.json()["detail"].lower()
+    assert "not found" in response.json()["error"]["message"].lower()
 
 
 async def test_disable_user_success(admin_auth_client: TestClient, app_context):
@@ -92,7 +92,7 @@ async def test_disable_user_last_admin(admin_auth_client: TestClient, app_contex
 
     response = admin_auth_client.post(f"/api/users/{admin_id}/disable")
     assert response.status_code == 400
-    assert "Cannot disable the last active admin" in response.json()["detail"]
+    assert "Cannot disable the last active admin" in response.json()["error"]["message"]
 
 
 async def test_enable_user_success(admin_auth_client: TestClient, app_context):
@@ -146,5 +146,6 @@ async def test_update_user_role_last_admin(admin_auth_client: TestClient, app_co
     )
     assert response.status_code == 400
     assert (
-        "Cannot change the role of the last active admin" in response.json()["detail"]
+        "Cannot change the role of the last active admin"
+        in response.json()["error"]["message"]
     )

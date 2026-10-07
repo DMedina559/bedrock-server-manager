@@ -22,6 +22,7 @@ from ..schemas import (
     InstallServerResponse,
     UserResponse,
 )
+from ..schemas.install import InstallationAcceptedResponse, InstallConfirmationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ router = APIRouter()
 async def get_custom_zips(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> CustomZipsResponse:
     try:
         download_dir = app_context.settings.get("paths.downloads")
 
@@ -68,7 +69,7 @@ async def post_install_server(  # noqa: C901
     payload: InstallServerPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> InstallServerResponse:
     identity = current_user.username
     logger.info(
         f"API: New server install request from user '{identity}' for server '{payload.server_name}'."
@@ -93,7 +94,7 @@ async def post_install_server(  # noqa: C901
                 f"Server '{payload.server_name}' already exists. Confirmation needed."
             )
 
-            return InstallServerResponse(
+            return InstallConfirmationResponse(
                 status="confirm_needed",
                 message=f"Server '{payload.server_name}' already exists. Overwrite?",
                 server_name=payload.server_name,
@@ -103,18 +104,10 @@ async def post_install_server(  # noqa: C901
             logger.info(
                 f"Overwrite flag set for existing server '{payload.server_name}'. Deleting first."
             )
-            delete_result = await server_api.delete_server_data(
+            await server_api.delete_server_data(
                 request=DeleteServerDataRequest(server_name=payload.server_name),
                 app_context=app_context,
             )
-            if delete_result.status == "error":
-                logger.error(
-                    f"Failed to delete existing server '{payload.server_name}': {delete_result.message}"
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to delete existing server: {delete_result.message}",
-                )
             logger.info(
                 f"Successfully deleted existing server '{payload.server_name}' for overwrite."
             )
@@ -143,8 +136,8 @@ async def post_install_server(  # noqa: C901
             ),
         )
 
-        return InstallServerResponse(
-            status="pending",
+        return InstallationAcceptedResponse(
+            status="accepted",
             message="Server installation has started.",
             task_id=task_id,
             server_name=payload.server_name,

@@ -293,7 +293,7 @@ async def stop_server(
                 message=f"Server '{server_name}' was already stopped.",
             )
 
-        await app_context.api.set_server_status(
+        await app_context.api.server.set_status(
             request={"server_name": server_name, "status": "STOPPING"}
         )
         await server.stop()

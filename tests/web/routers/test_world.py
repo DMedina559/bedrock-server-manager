@@ -42,7 +42,7 @@ def test_get_worlds_list_error(admin_auth_client: TestClient):
 
         response = admin_auth_client.get("/api/content/worlds")
         assert response.status_code == 500
-        assert "critical server error" in response.json()["detail"].lower()
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 async def test_post_world_install_success(

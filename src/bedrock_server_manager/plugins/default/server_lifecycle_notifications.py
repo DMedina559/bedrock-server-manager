@@ -36,7 +36,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
     async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
-            response = await self.api.get_server_running_status(
+            response = await self.api.system.get_server_running_status(
                 request={"server_name": server_name}
             )
             if response and response.status == "success":
@@ -66,7 +66,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
                 else:
                     command = message
 
-                await self.api.send_command(
+                await self.api.server.send_command(
                     request={"server_name": server_name, "command": command}
                 )
                 self.logger.info(
@@ -88,7 +88,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_server_stop for '{server_name}'.")
 
-        summary = await self.api.get_server_summary(
+        summary = await self.api.server.get_summary(
             request={"server_name": server_name}
         )
         player_count = (
@@ -116,9 +116,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         """Waits for a short period after a server stops, e.g., for port release."""
 
         server_name = kwargs.get("server_name")
-        result = kwargs.get("result", {})
+        result = kwargs.get("result")
         self.logger.debug(f"Handling after_server_stop for '{server_name}'.")
-        if result.get("status") == "success":
+        if getattr(result, "status", None) == "success":
             self.logger.info(
                 f"Waiting {self.post_stop_settle_delay}s after '{server_name}' stopped."
             )
@@ -131,7 +131,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         server_name = str(kwargs.get("server_name"))
         self.logger.debug(f"Handling before_delete_server_data for '{server_name}'.")
 
-        summary = await self.api.get_server_summary(
+        summary = await self.api.server.get_summary(
             request={"server_name": server_name}
         )
         player_count = (
@@ -154,7 +154,7 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
             f"Handling before_server_update for '{server_name}' to v{target_version}."
         )
 
-        summary = await self.api.get_server_summary(
+        summary = await self.api.server.get_summary(
             request={"server_name": server_name}
         )
         player_count = (
@@ -172,9 +172,9 @@ class ServerLifecycleNotificationsPlugin(PluginBase):
         """Waits for a short period after a server starts to allow initialization."""
 
         server_name = kwargs.get("server_name")
-        result = kwargs.get("result", {})
+        result = kwargs.get("result")
         self.logger.debug(f"Handling after_server_start for '{server_name}'.")
-        if result.get("status") == "success":
+        if getattr(result, "status", None) == "success":
             self.logger.info(
                 f"Waiting {self.post_start_settle_delay}s after '{server_name}' started."
             )

@@ -27,12 +27,16 @@ from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
 from .models.plugins import (
+    GetPluginSettingRequest,
+    GetPluginSettingResponse,
     GetPluginStatusesRequest,
     GetPluginStatusesResponse,
     ReloadPluginsRequest,
     ReloadPluginsResponse,
     ReloadSinglePluginRequest,
     ReloadSinglePluginResponse,
+    SetPluginSettingRequest,
+    SetPluginSettingResponse,
     SetPluginStatusRequest,
     SetPluginStatusResponse,
     TriggerExternalAppEventRequest,
@@ -205,3 +209,24 @@ async def trigger_external_app_event(
             exc_info=True,
         )
         raise
+
+
+@api_method("get_plugin_setting")
+async def get_plugin_setting(
+    request: GetPluginSettingRequest, *, app_context: AppContext, plugin_name: str
+) -> GetPluginSettingResponse:
+    """Read settings scoped to the bridge-injected plugin identity."""
+    return GetPluginSettingResponse(
+        value=app_context.plugin_service.get_setting(plugin_name, request.key)
+    )
+
+
+@api_method("set_plugin_setting")
+async def set_plugin_setting(
+    request: SetPluginSettingRequest, *, app_context: AppContext, plugin_name: str
+) -> SetPluginSettingResponse:
+    """Persist settings scoped to the bridge-injected plugin identity."""
+    await app_context.plugin_service.set_setting(
+        plugin_name, request.key, request.value
+    )
+    return SetPluginSettingResponse(message="Plugin setting saved.")

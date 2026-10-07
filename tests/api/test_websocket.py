@@ -21,7 +21,7 @@ async def test_websocket_api_bridge(mock_app_context):
 
     # Broadcast
     res = (
-        await api.websocket.broadcast(
+        await api.websocket.websocket_broadcast(
             request={"topic": "my_topic", "data": {"key": "val"}}
         )
     ).model_dump(mode="python")
@@ -32,7 +32,7 @@ async def test_websocket_api_bridge(mock_app_context):
 
     # Send to user
     res = (
-        await api.websocket.send_to_user(
+        await api.websocket.websocket_send_to_user(
             request={"username": "admin", "data": {"msg": "hi"}}
         )
     ).model_dump(mode="python")
@@ -43,7 +43,7 @@ async def test_websocket_api_bridge(mock_app_context):
 
     # Send to client
     res = (
-        await api.websocket.send_to_client(
+        await api.websocket.websocket_send_to_client(
             request={"client_id": "client123", "data": {"msg": "direct"}}
         )
     ).model_dump(mode="python")
@@ -56,15 +56,17 @@ async def test_websocket_api_bridge(mock_app_context):
     def my_handler(data):
         return "ok"
 
-    res = await api.websocket.register_data_provider("my_data", my_handler)
-    assert res["status"] == "success"
+    res = await api.runtime.register_data_provider("my_data", my_handler)
+    assert res is None
     mock_app_context.connection_manager.register_data_provider.assert_called_once_with(
         topic="my_data", handler=my_handler, plugin_name="test_plugin"
     )
 
     # Unregister data provider
     res = (
-        await api.websocket.unregister_data_provider(request={"topic": "my_data"})
+        await api.websocket.websocket_unregister_data_provider(
+            request={"topic": "my_data"}
+        )
     ).model_dump(mode="python")
     assert res["status"] == "success"
     mock_app_context.connection_manager.unregister_data_provider.assert_called_once_with(
@@ -73,7 +75,7 @@ async def test_websocket_api_bridge(mock_app_context):
 
     # Publish ws event
     res = (
-        await api.websocket.publish_ws_event(
+        await api.websocket.websocket_publish_ws_event(
             request={"event_name": "custom_evt", "data": {"foo": "bar"}}
         )
     ).model_dump(mode="python")

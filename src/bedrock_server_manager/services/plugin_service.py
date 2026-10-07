@@ -54,8 +54,6 @@ class PluginService:
                     data["author"] = author
                 if description is not None:
                     data["description"] = description
-                if settings is not None:
-                    data["settings"] = settings
                 plugin = PluginInfoState(**data)
             else:
                 plugin = PluginInfoState(
@@ -64,13 +62,18 @@ class PluginService:
                     version=version,
                     author=author,
                     description=description,
-                    settings=settings or {},
                 )
 
             self.state.plugins.set(plugin)
 
         changeset = ChangeSet()
         changeset.add_plugin(plugin_name)
+        if settings is not None:
+            async with self.state.settings.get_lock("global"):
+                values = self.state.settings.get("plugin_settings", {})
+                values[plugin_name] = settings
+                self.state.settings.set("plugin_settings", values)
+            changeset.add_setting("plugin_settings")
 
         await self.storage.apply_changeset(self.state, changeset)
 
@@ -79,3 +82,32 @@ class PluginService:
     async def set_enabled(self, plugin_name: str, enabled: bool) -> None:
         """Enables or disables a plugin state."""
         await self.register_or_update_plugin(plugin_name, enabled=enabled)
+
+    def get_setting(self, plugin_name: str, key: str):
+        """Read only the calling plugin's persisted JSON settings."""
+        value = self.state.settings.get("plugin_settings", {}).get(plugin_name, {})
+        for part in key.split("."):
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part)
+        return value
+
+    async def set_setting(self, plugin_name: str, key: str, value: Any) -> None:
+        from ..error import UserInputError
+
+        parts = key.split(".")
+        if any(not part or part.startswith("_") or "__" in part for part in parts):
+            raise UserInputError("Invalid plugin setting key.")
+        async with self.state.settings.get_lock("global"):
+            values = self.state.settings.get("plugin_settings", {})
+            current = values.setdefault(plugin_name, {})
+            for part in parts[:-1]:
+                child = current.setdefault(part, {})
+                if not isinstance(child, dict):
+                    raise UserInputError("Plugin setting path conflicts with a value.")
+                current = child
+            current[parts[-1]] = value
+            self.state.settings.set("plugin_settings", values)
+        changeset = ChangeSet()
+        changeset.add_setting("plugin_settings")
+        await self.storage.apply_changeset(self.state, changeset)

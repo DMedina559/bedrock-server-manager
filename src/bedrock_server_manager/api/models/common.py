@@ -17,7 +17,7 @@ class APIRequest(BaseModel):
     """Reject misspelled fields and revalidate even constructed model instances."""
 
     model_config = ConfigDict(
-        extra="forbid", strict=True, revalidate_instances="always"
+        extra="forbid", strict=True, frozen=True, revalidate_instances="always"
     )
 
 
@@ -34,6 +34,11 @@ class APIErrorResponse(APIResponse):
 
     code: Literal[
         "validation_error",
+        "not_found",
+        "conflict",
+        "forbidden",
+        "unauthorized",
+        "http_error",
         "operation_canceled",
         "invalid_server_name",
         "server_start_failed",
@@ -114,3 +119,7 @@ class ServerSummary(APIResponse):
     version: str
     player_count: int = Field(default=0, ge=0)
     players: list[PlayerInfo] = Field(default_factory=list)
+
+
+class ErrorEnvelope(APIResponse):
+    error: APIErrorResponse

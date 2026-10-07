@@ -442,7 +442,7 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
         if self.app_context and self.app_context.api:
             try:
-                await self.app_context.api.set_server_status(
+                await self.app_context.api.server.set_status(
                     request={
                         "server_name": self.server_name,
                         "status": status_string,

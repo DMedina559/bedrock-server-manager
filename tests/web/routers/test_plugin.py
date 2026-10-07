@@ -35,12 +35,11 @@ def test_get_plugin_pages_exception(admin_auth_client: TestClient):
     ) as mock_get:
         mock_get.side_effect = Exception("System crash")
 
-        # Note: The router catches Exception and returns a JSON response instead of raising HTTPException
         response = admin_auth_client.get("/api/plugins/pages")
-        assert response.status_code == 200
+        assert response.status_code == 500
         data = response.json()
-        assert data["status"] == "error"
-        assert "System crash" in data["message"]
+        assert data["error"]["code"] == "internal_error"
+        assert data["error"]["message"] == "An unexpected error occurred."
 
 
 def test_get_plugins_status_unauthorized(unauth_client: TestClient):
@@ -80,7 +79,7 @@ def test_get_plugins_status_error(admin_auth_client: TestClient):
 
         response = admin_auth_client.get("/api/plugins")
         assert response.status_code == 500
-        assert "unexpected error" in response.json()["detail"].lower()
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_post_trigger_event_success(admin_auth_client: TestClient):
@@ -112,7 +111,7 @@ def test_post_trigger_event_error(admin_auth_client: TestClient):
             json={"event_name": "on_test_event", "payload": {}},
         )
         assert response.status_code == 500
-        assert "Event not found" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_post_trigger_event_user_input_error(admin_auth_client: TestClient):
@@ -126,7 +125,7 @@ def test_post_trigger_event_user_input_error(admin_auth_client: TestClient):
             json={"event_name": "on_test_event", "payload": {}},
         )
         assert response.status_code == 400
-        assert "Invalid payload" in response.json()["detail"]
+        assert "Invalid payload" in response.json()["error"]["message"]
 
 
 def test_post_set_plugin_status_success(admin_auth_client: TestClient):
@@ -154,7 +153,7 @@ def test_post_set_plugin_status_not_found(admin_auth_client: TestClient):
             "/api/plugins/MissingPlugin", json={"enabled": True}
         )
         assert response.status_code == 404
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "not_found"
 
 
 def test_post_set_plugin_status_bsm_error(admin_auth_client: TestClient):
@@ -167,7 +166,7 @@ def test_post_set_plugin_status_bsm_error(admin_auth_client: TestClient):
             "/api/plugins/MyPlugin", json={"enabled": False}
         )
         assert response.status_code == 500
-        assert "Config write failed" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_put_reload_plugins_success(admin_auth_client: TestClient):
@@ -191,4 +190,4 @@ def test_put_reload_plugins_error(admin_auth_client: TestClient):
 
         response = admin_auth_client.put("/api/plugins/reload")
         assert response.status_code == 500
-        assert "Failed to initialize plugins" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."

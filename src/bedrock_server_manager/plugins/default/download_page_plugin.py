@@ -80,10 +80,12 @@ class DownloadPagePlugin(PluginBase):
 
                 try:
 
-                    file_list = await self.api.list_backup_files(
+                    file_list = await self.api.backup_restore.list_backup_files(
                         request={"server_name": server, "backup_type": "all"}
                     )
 
+                    if not isinstance(file_list.backups, dict):
+                        raise ValueError("Expected grouped backup files")
                     # World Backups
                     wb_res = file_list.backups["world_backups"]
                     if file_list.status == "success":
@@ -152,8 +154,10 @@ class DownloadPagePlugin(PluginBase):
                 addons = []
                 try:
 
-                    worlds_list = await self.api.list_available_worlds(request={})
-                    addons_list = await self.api.list_available_addons(request={})
+                    worlds_list = await self.api.application.list_available_worlds(
+                        request={}
+                    )
+                    addons_list = await self.api.addon.list_available_addons(request={})
 
                     if worlds_list.status == "success":
                         worlds = [os.path.basename(p) for p in worlds_list.files]
@@ -256,11 +260,11 @@ class DownloadPagePlugin(PluginBase):
             if file_type in ("backup_world", "backup_config"):
                 if not server:
                     raise HTTPException(400, "Server name required for backups")
-                result = await self.api.get_global_setting(
+                result = await self.api.settings.get_global_setting(
                     request={"key": "paths.backups"}
                 )
                 backup_dir_str = result.value if result.status == "success" else None
-                if not backup_dir_str:
+                if not isinstance(backup_dir_str, str) or not backup_dir_str:
                     raise HTTPException(500, "Backup directory not configured")
 
                 # Trust anchor for backups
@@ -276,11 +280,11 @@ class DownloadPagePlugin(PluginBase):
                     raise HTTPException(403, "Access denied: Invalid server path")
 
             elif file_type in ("content_world", "content_addon"):
-                result = await self.api.get_global_setting(
+                result = await self.api.settings.get_global_setting(
                     request={"key": "paths.content"}
                 )
                 content_dir_str = result.value if result.status == "success" else None
-                if not content_dir_str:
+                if not isinstance(content_dir_str, str) or not content_dir_str:
                     raise HTTPException(500, "Content directory not configured")
 
                 # Trust anchor for content

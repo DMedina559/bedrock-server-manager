@@ -34,7 +34,9 @@ router = APIRouter(
 
 
 @router.get("/api/account", operation_id="get_account", response_model=UserResponse)
-async def get_account_api(user: UserResponse = Depends(get_current_user)):
+async def get_account_api(
+    user: UserResponse = Depends(get_current_user),
+) -> UserResponse:
     """
     Retrieves the current user's account details.
     """
@@ -51,7 +53,7 @@ async def post_update_theme(
     theme_update: ThemeUpdatePayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse | JSONResponse:
     """
     Updates the current user's preferred theme.
     """
@@ -91,7 +93,7 @@ async def post_update_profile(
     profile_update: ProfileUpdatePayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse | JSONResponse:
     """
     Updates the current user's profile information (name, email).
     """
@@ -118,7 +120,7 @@ async def post_change_password(
     data: ChangePasswordPayload,
     user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Changes the current user's password.
     """

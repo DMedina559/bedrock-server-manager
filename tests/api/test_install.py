@@ -81,7 +81,7 @@ async def test_install_new_server_already_exists(app_context, tmp_path, monkeypa
 
 async def test_install_new_server_no_base_dir(app_context):
     """Test install_new_server triggers error if path properties missing."""
-    await app_context.settings.set("paths.servers", None)
+    await app_context.settings.set("paths.servers", "")
 
     with pytest.raises(ConfigurationError):
         (

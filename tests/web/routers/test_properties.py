@@ -64,7 +64,7 @@ def test_post_properties_set_not_found(
             json={"properties": {"server-name": "My Server"}},
         )
         assert response.status_code == 404
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "not_found"
 
 
 def test_post_properties_set_error(admin_auth_client: TestClient, real_bedrock_server):
@@ -79,7 +79,7 @@ def test_post_properties_set_error(admin_auth_client: TestClient, real_bedrock_s
             json={"properties": {"server-name": "My Server"}},
         )
         assert response.status_code == 400
-        assert "Validation failed" in response.json()["detail"]
+        assert "Validation failed" in response.json()["error"]["message"]
 
 
 def test_post_properties_set_user_input_error(
@@ -96,7 +96,7 @@ def test_post_properties_set_user_input_error(
             json={"properties": {"max-players": "-1"}},
         )
         assert response.status_code == 400
-        assert "Invalid value for max-players" in response.json()["detail"]
+        assert "Invalid value for max-players" in response.json()["error"]["message"]
 
 
 def test_post_properties_set_bsm_error(
@@ -113,7 +113,7 @@ def test_post_properties_set_bsm_error(
             json={"properties": {"server-name": "My Server"}},
         )
         assert response.status_code == 500
-        assert "Disk write failed" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_post_properties_set_exception(
@@ -130,7 +130,7 @@ def test_post_properties_set_exception(
             json={"properties": {"server-name": "My Server"}},
         )
         assert response.status_code == 500
-        assert "unexpected error" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
 
 
 def test_get_properties_unauthorized(unauth_client: TestClient, real_bedrock_server):
@@ -176,7 +176,7 @@ def test_get_properties_not_found(admin_auth_client: TestClient, real_bedrock_se
             f"/api/server/{real_bedrock_server.server_name}/properties/get"
         )
         assert response.status_code == 404
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "not_found"
 
 
 def test_get_properties_internal_error(

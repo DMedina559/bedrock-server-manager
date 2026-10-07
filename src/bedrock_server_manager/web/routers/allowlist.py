@@ -37,7 +37,7 @@ async def post_allowlist(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     identity = current_user.username
     logger.info(
         f"API: Add to allowlist request for '{server_name}' by user '{identity}'. Players: {payload.players}"
@@ -53,8 +53,7 @@ async def post_allowlist(
             ),
             app_context=app_context,
         )
-        if result.status == "success":
-            return BaseApiResponse(status=result.status, message=result.message)
+        return BaseApiResponse(status=result.status, message=result.message)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.message,
@@ -85,21 +84,12 @@ async def get_allowlist(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> AllowlistGetResponse:
     result = await allowlist_api.get_allowlist(
         request=GetAllowlistRequest.model_validate({"server_name": server_name}),
         app_context=app_context,
     )
-    if result.status == "success":
-        return AllowlistGetResponse(status=result.status, players=result.players)
-    if "not found" in result.message.lower():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=result.message
-        )
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=result.message,
-    )
+    return result
 
 
 @router.delete(
@@ -113,7 +103,7 @@ async def delete_allowlist(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     try:
         result = await allowlist_api.remove_from_allowlist(
             request=RemoveFromAllowlistRequest.model_validate(
@@ -121,8 +111,7 @@ async def delete_allowlist(
             ),
             app_context=app_context,
         )
-        if result.status == "success":
-            return BaseApiResponse(status=result.status, message=result.message)
+        return BaseApiResponse(status=result.status, message=result.message)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.message,

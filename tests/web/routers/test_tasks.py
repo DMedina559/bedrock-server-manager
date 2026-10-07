@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from bedrock_server_manager.api.models.tasks import TaskSnapshot
+
 
 def test_get_task_status_unauthorized(unauth_client: TestClient):
     response = unauth_client.get("/api/tasks/status/123")
@@ -14,12 +16,14 @@ def test_get_task_status_unauthorized(unauth_client: TestClient):
 
 def test_get_task_status_success(auth_client: TestClient):
     with patch("bedrock_server_manager.web.tasks.TaskManager.get_task") as mock_get:
-        mock_get.return_value = {"status": "running", "progress": 50}
+        mock_get.return_value = TaskSnapshot(
+            id="123", status="running", message="Running"
+        )
 
         response = auth_client.get("/api/tasks/status/123")
         assert response.status_code == 200
         assert response.json()["status"] == "running"
-        assert response.json()["progress"] == 50
+        assert response.json()["id"] == "123"
 
 
 def test_get_task_status_not_found(auth_client: TestClient):
@@ -28,7 +32,7 @@ def test_get_task_status_not_found(auth_client: TestClient):
 
         response = auth_client.get("/api/tasks/status/123")
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+        assert "not found" in response.json()["error"]["message"].lower()
 
 
 def test_list_tasks_unauthorized(unauth_client: TestClient):
@@ -41,8 +45,8 @@ def test_list_tasks_success(auth_client: TestClient):
         "bedrock_server_manager.web.tasks.TaskManager.get_all_tasks"
     ) as mock_get:
         mock_get.return_value = {
-            "task-1": {"status": "completed"},
-            "task-2": {"status": "pending"},
+            "task-1": TaskSnapshot(id="task-1", status="completed", message="Done"),
+            "task-2": TaskSnapshot(id="task-2", status="queued", message="Queued"),
         }
 
         response = auth_client.get("/api/tasks/list")

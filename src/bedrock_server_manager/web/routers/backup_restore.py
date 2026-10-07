@@ -34,11 +34,11 @@ from ...context import AppContext
 from ...error import AppFileNotFoundError, BSMError, UserInputError
 from ..deps import get_app_context, get_moderator_user, validate_server_exists
 from ..schemas import (
-    ActionResponse,
     BackupActionPayload,
     RestoreActionPayload,
     UserResponse,
 )
+from ..schemas.base import BackupFilesResponse, TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ router = APIRouter(
 @router.put(
     "/api/server/{server_name}/backups/prune",
     operation_id="prune_backups",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup", "Cleanup"],
 )
@@ -59,7 +59,7 @@ async def put_prune_backups(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to prune old backups for a specific server.
 
@@ -76,8 +76,8 @@ async def put_prune_backups(
         request=PruneOldBackupsRequest.model_validate({"server_name": server_name}),
     )
 
-    return ActionResponse(
-        status="pending",
+    return TaskAcceptedResponse(
+        status="accepted",
         message=f"Backup pruning for server '{server_name}' initiated in background.",
         task_id=task_id,
     )
@@ -86,7 +86,7 @@ async def put_prune_backups(
 @router.get(
     "/api/server/{server_name}/backup/list/{backup_type}",
     operation_id="list_server_backups",
-    response_model=ActionResponse,
+    response_model=BackupFilesResponse,
     tags=["Backup"],
 )
 async def get_list_server_backups(
@@ -94,7 +94,7 @@ async def get_list_server_backups(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BackupFilesResponse:
     """
     Lists available backup files for a specific server and backup type.
     """
@@ -109,49 +109,34 @@ async def get_list_server_backups(
             ),
             app_context=app_context,
         )
-        if api_result.status == "success":
-            backup_data = api_result.backups
+        backup_data = api_result.backups
 
-            if backup_type.lower() == "all" and isinstance(backup_data, dict):
-                # For 'all', backup_data is Dict[str, List[str (full paths)]]
-                # We need to convert full paths to basenames for each list in the dict
-                processed_all_backups = {
-                    key: [os.path.basename(p) for p in path_list]
-                    for key, path_list in backup_data.items()
-                }
-                return ActionResponse(
-                    status="success",
-                    message="All backup types listed successfully.",
-                    details={"all_backups": processed_all_backups},
-                )
-            elif isinstance(backup_data, list):
-                basenames = [os.path.basename(p) for p in backup_data]
-                return ActionResponse(
-                    status="success",
-                    message="Backups listed successfully.",
-                    backups=basenames,
-                )
-            else:
-                logger.error(
-                    f"API List Backups: Unexpected backup data format for type '{backup_type}': {backup_data}"
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Unexpected backup data format.",
-                )
-
+        if backup_type.lower() == "all" and isinstance(backup_data, dict):
+            # For 'all', backup_data is Dict[str, List[str (full paths)]]
+            # We need to convert full paths to basenames for each list in the dict
+            processed_all_backups = {
+                key: [os.path.basename(p) for p in path_list]
+                for key, path_list in backup_data.items()
+            }
+            return BackupFilesResponse(
+                status="success",
+                message="All backup types listed successfully.",
+                backups=processed_all_backups,
+            )
+        elif isinstance(backup_data, list):
+            basenames = [os.path.basename(p) for p in backup_data]
+            return BackupFilesResponse(
+                status="success",
+                message="Backups listed successfully.",
+                backups=basenames,
+            )
         else:
-            if (
-                "not found" in api_result.message.lower()
-                and "server" in api_result.message.lower()
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=api_result.message,
-                )
+            logger.error(
+                f"API List Backups: Unexpected backup data format for type '{backup_type}': {backup_data}"
+            )
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=api_result.message,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unexpected backup data format.",
             )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -169,8 +154,6 @@ async def get_list_server_backups(
         raise
     except ValidationError:
         raise
-    except ValidationError:
-        raise
     except Exception as e:
         logger.error(
             f"API List Backups '{server_name}/{backup_type}': Unexpected error. {e}",
@@ -185,7 +168,7 @@ async def get_list_server_backups(
 @router.post(
     "/api/server/{server_name}/backup/action",
     operation_id="create_backup",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Backup"],
 )
@@ -194,7 +177,7 @@ async def post_backup_action(
     payload: BackupActionPayload = Body(...),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to perform a backup action for a specific server.
 
@@ -245,8 +228,8 @@ async def post_backup_action(
         **kwargs,
     )
 
-    return ActionResponse(
-        status="pending",
+    return TaskAcceptedResponse(
+        status="accepted",
         message=f"Backup action '{payload.backup_type}' for server '{server_name}' initiated in background.",
         task_id=task_id,
     )
@@ -255,7 +238,7 @@ async def post_backup_action(
 @router.post(
     "/api/server/{server_name}/restore/action",
     operation_id="restore_backup",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Restore"],
 )
@@ -264,7 +247,7 @@ async def post_restore_action(  # noqa: C901
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to perform a restore action for a specific server.
 
@@ -356,8 +339,8 @@ async def post_restore_action(  # noqa: C901
         **kwargs,
     )
 
-    return ActionResponse(
-        status="pending",
+    return TaskAcceptedResponse(
+        status="accepted",
         message=f"Restore action '{payload.restore_type}' for server '{server_name}' initiated in background.",
         task_id=task_id,
     )

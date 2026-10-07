@@ -48,7 +48,7 @@ def test_get_server_settings_not_found(
                 f"/api/server/{real_bedrock_server.server_name}/settings/get"
             )
             assert response.status_code == 404
-            assert "not found" in response.json()["detail"].lower()
+            assert "not found" in response.json()["error"]["message"].lower()
 
 
 def test_get_server_settings_exception(
@@ -64,7 +64,9 @@ def test_get_server_settings_exception(
                 f"/api/server/{real_bedrock_server.server_name}/settings/get"
             )
             assert response.status_code == 500
-            assert "unexpected error" in response.json()["detail"].lower()
+            assert (
+                response.json()["error"]["message"] == "An unexpected error occurred."
+            )
 
 
 def test_post_set_server_setting_unauthorized(
@@ -122,7 +124,7 @@ def test_post_set_server_setting_not_found(
                 json={"key": "settings.autoupdate", "value": False},
             )
             assert response.status_code == 404
-            assert "not found" in response.json()["detail"].lower()
+            assert "not found" in response.json()["error"]["message"].lower()
 
 
 def test_post_set_server_setting_bsm_error(
@@ -139,4 +141,6 @@ def test_post_set_server_setting_bsm_error(
                 json={"key": "settings.autoupdate", "value": False},
             )
             assert response.status_code == 500
-            assert "Corrupted config" in response.json()["detail"]
+            assert (
+                response.json()["error"]["message"] == "An unexpected error occurred."
+            )

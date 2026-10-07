@@ -19,8 +19,9 @@ from sqlalchemy.exc import IntegrityError
 from ...context import AppContext
 from ...utils import get_password_hash
 from ..deps import get_admin_user, get_app_context
-from ..schemas import ActionResponse, GenerateTokenPayload, UserLoginPayload
+from ..schemas import GenerateTokenPayload, UserLoginPayload
 from ..schemas import UserResponse as UserSchema
+from ..schemas.base import RegistrationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +34,14 @@ router = APIRouter(
 @router.post(
     "/generate-token",
     operation_id="generate_registration_token",
-    response_model=ActionResponse,
+    response_model=RegistrationResponse,
 )
 async def generate_token(
     request: Request,
     data: GenerateTokenPayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> RegistrationResponse:
     """
     Generates a new registration token.
     """
@@ -60,7 +61,7 @@ async def generate_token(
         f"Link: {registration_link}"
     )
 
-    return ActionResponse(
+    return RegistrationResponse(
         status="success",
         message="Token generated successfully.",
         registration_url=registration_link,
@@ -83,10 +84,7 @@ async def validate_token(
             session, token
         )
         if not registration_token or registration_token.expires < int(time.time()):
-            return JSONResponse(
-                content={"status": "error", "message": "Invalid or expired token."},
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
+            raise HTTPException(status_code=404, detail="Invalid or expired token.")
 
         return JSONResponse(
             content={"status": "success", "message": "TokenResponse is valid."}
@@ -112,10 +110,7 @@ async def register_user(
         if not registration_token or registration_token.expires < int(time.time()):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={
-                    "status": "error",
-                    "message": "Invalid or expired registration token.",
-                },
+                detail="Invalid or expired registration token.",
             )
 
         hashed_password = get_password_hash(data.password)
@@ -151,10 +146,7 @@ async def register_user(
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "status": "error",
-                    "message": "Username already exists. Please choose a different one.",
-                },
+                detail="Username already exists. Please choose a different one.",
             )
         except Exception as e:
             await session.rollback()
@@ -163,8 +155,5 @@ async def register_user(
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={
-                    "status": "error",
-                    "message": "An unexpected server error occurred during registration.",
-                },
+                detail="An unexpected server error occurred during registration.",
             )

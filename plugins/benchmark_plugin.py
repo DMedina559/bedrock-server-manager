@@ -423,7 +423,7 @@ class BenchmarkPlugin(PluginBase):
         """
         if hasattr(self.api, "websocket"):
             try:
-                await self.api.websocket.register_data_provider(
+                await self.api.runtime.register_data_provider(
                     "benchmark:metrics", self.get_latest_metrics
                 )
                 self.logger.info(
@@ -465,7 +465,7 @@ class BenchmarkPlugin(PluginBase):
         if not pid and server_name and hasattr(self.api, "get_bedrock_process_info"):
             try:
                 info_res = (
-                    await self.api.get_bedrock_process_info(
+                    await self.api.system.get_bedrock_process_info(
                         request={"server_name": server_name}
                     )
                 ).model_dump(mode="python")
@@ -578,9 +578,9 @@ class BenchmarkPlugin(PluginBase):
         active_servers_list = []
         try:
             if hasattr(self.api, "get_all_servers_data"):
-                res = (await self.api.get_all_servers_data(request={})).model_dump(
-                    mode="python"
-                )
+                res = (
+                    await self.api.application.get_all_servers_data(request={})
+                ).model_dump(mode="python")
             elif hasattr(self.api, "list_servers"):
                 res = await self.api.list_servers()
             else:
@@ -613,7 +613,7 @@ class BenchmarkPlugin(PluginBase):
             try:
                 if hasattr(self.api, "get_bedrock_process_info"):
                     res = (
-                        await self.api.get_bedrock_process_info(
+                        await self.api.system.get_bedrock_process_info(
                             request={"server_name": s_name}
                         )
                     ).model_dump(mode="python")
@@ -748,7 +748,7 @@ class BenchmarkPlugin(PluginBase):
         if hasattr(self.api, "websocket"):
             try:
                 (
-                    await self.api.websocket.broadcast(
+                    await self.api.websocket.websocket_broadcast(
                         request={
                             "topic": "benchmark:metrics",
                             "data": self._latest_metrics,
@@ -756,7 +756,7 @@ class BenchmarkPlugin(PluginBase):
                     )
                 ).model_dump(mode="python")
                 (
-                    await self.api.websocket.broadcast(
+                    await self.api.websocket.websocket_broadcast(
                         request={
                             "topic": "benchmark:server_stats",
                             "data": bedrock_server_stats,

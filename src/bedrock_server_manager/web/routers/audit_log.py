@@ -41,10 +41,12 @@ async def create_audit_log(
 async def list_audit_logs_api(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> List[AuditLogResponse]:
     """
     Retrieves audit logs as JSON.
     """
     async with app_context.storage.transaction() as session:
         logs = await app_context.storage.audit_log_repo.get_all_logs(session)
-        return logs
+        return [
+            AuditLogResponse.model_validate(log, from_attributes=True) for log in logs
+        ]

@@ -33,13 +33,13 @@ router = APIRouter(
 async def list_users_api(
     current_user: UserSchema = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> List[UserSchema]:
     """
     Retrieves the list of users as JSON.
     """
     async with app_context.storage.transaction() as session:
         users = await app_context.storage.user_repo.get_all_users(session)
-        return users
+        return [UserSchema.model_validate(user, from_attributes=True) for user in users]
 
 
 @router.post(
@@ -49,7 +49,7 @@ async def delete_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Deletes a user.
     """
@@ -91,7 +91,7 @@ async def disable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Disables a user.
     """
@@ -133,7 +133,7 @@ async def enable_user(
     user_id: int,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Enables a user.
     """
@@ -166,7 +166,7 @@ async def update_user_role(
     data: UpdateUserRolePayload,
     current_user: UserSchema = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Updates a user's role.
     """

@@ -41,9 +41,10 @@ class APIDocsGenerator(PluginBase):
             api_list = self.api.list_available_apis()
             api_markdown_content = self._format_api_markdown(api_list)
             backup_dir = (
-                await self.api.get_global_setting(request={"key": "paths.backups"})
-            ).model_dump(mode="python")
-            backup_dir = backup_dir.get("value")
+                await self.api.settings.get_global_setting({"key": "paths.backups"})
+            ).value
+            if not isinstance(backup_dir, str):
+                raise ValueError("Backup path must be a string")
 
             api_output_path = os.path.join(backup_dir, "PLUGIN_API_REFERENCE.md")
 

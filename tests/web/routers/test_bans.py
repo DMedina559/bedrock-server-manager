@@ -66,7 +66,7 @@ def test_get_server_bans_error(admin_auth_client: TestClient, real_bedrock_serve
             f"/api/server/{real_bedrock_server.server_name}/bans/get"
         )
         assert response.status_code == 400
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_post_add_server_ban_success(
@@ -94,7 +94,7 @@ def test_post_add_server_ban_error(admin_auth_client: TestClient, real_bedrock_s
             json={"player_name": "BadPlayer", "xuid": "12345", "reason": "Hacking"},
         )
         assert response.status_code == 400
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_delete_remove_server_ban_success(
@@ -130,4 +130,4 @@ def test_delete_remove_server_ban_error(
             json={"xuid": "12345"},
         )
         assert response.status_code == 400
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "validation_error"

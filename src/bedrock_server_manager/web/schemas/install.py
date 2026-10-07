@@ -1,10 +1,12 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from ...api.models.allowlist import AllowlistPlayer
-from ...api.models.permissions import PlayerPermission
-from .base import BaseApiResponse
+from ...api.models.allowlist import GetAllowlistResponse
+from ...api.models.common import APIResponse
+from ...api.models.permissions import GetPermissionsResponse
+from ...api.models.properties import GetPropertiesResponse
+from .base import BaseApiResponse, TaskAcceptedResponse
 
 
 class InstallServerPayload(BaseModel):
@@ -33,23 +35,9 @@ class CustomZipsResponse(BaseApiResponse):
     custom_zips: List[str]
 
 
-class PropertiesGetResponse(BaseApiResponse):
-    """Response model for server properties."""
-
-    properties: Dict[str, Any]
-    raw_content: Optional[str] = None
-
-
-class AllowlistGetResponse(BaseApiResponse):
-    """Response model for server allowlist."""
-
-    players: List[AllowlistPlayer]
-
-
-class PermissionsGetResponse(BaseApiResponse):
-    """Response model for server permissions."""
-
-    permissions: List[PlayerPermission]
+PropertiesGetResponse = GetPropertiesResponse
+AllowlistGetResponse = GetAllowlistResponse
+PermissionsGetResponse = GetPermissionsResponse
 
 
 class PermissionsUpdateResponse(BaseApiResponse):
@@ -58,21 +46,17 @@ class PermissionsUpdateResponse(BaseApiResponse):
     errors: Optional[Dict[str, str]] = None
 
 
-class InstallServerResponse(BaseModel):
-    """Response model for server installation requests."""
+class InstallConfirmationResponse(APIResponse):
+    status: Literal["confirm_needed"] = "confirm_needed"
+    message: str
+    server_name: str
 
-    status: str = Field(
-        ...,
-        description="Status of the installation ('success', 'confirm_needed', 'pending').",
-    )
-    message: str = Field(..., description="Descriptive message about the operation.")
-    server_name: Optional[str] = Field(
-        default=None,
-        description="Name of the server, especially if confirmation is needed.",
-    )
-    task_id: Optional[str] = Field(
-        default=None, description="Task ID for background installation."
-    )
+
+class InstallationAcceptedResponse(TaskAcceptedResponse):
+    server_name: str
+
+
+InstallServerResponse = InstallConfirmationResponse | InstallationAcceptedResponse
 
 
 class PropertiesPayload(BaseModel):

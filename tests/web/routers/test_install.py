@@ -80,7 +80,7 @@ def test_post_install_server_success(admin_auth_client: TestClient):
             )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "pending"
+            assert data["status"] == "accepted"
             assert data["task_id"] == "task-123"
 
 
@@ -126,7 +126,7 @@ def test_post_install_server_exists_with_overwrite(admin_auth_client: TestClient
                 )
                 assert response.status_code == 200
                 data = response.json()
-                assert data["status"] == "pending"
+                assert data["status"] == "accepted"
                 assert data["task_id"] == "task-456"
 
 
@@ -179,7 +179,7 @@ def test_post_install_server_custom_version_success(admin_auth_client: TestClien
                 },
             )
             assert response.status_code == 200
-            assert response.json()["status"] == "pending"
+            assert response.json()["status"] == "accepted"
 
 
 def test_post_install_server_invalid_name(admin_auth_client: TestClient):

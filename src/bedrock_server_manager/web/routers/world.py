@@ -29,7 +29,8 @@ from ..deps import (
     get_moderator_user,
     validate_server_exists,
 )
-from ..schemas import ActionResponse, ContentListResponse, FileNamePayload, UserResponse
+from ..schemas import ContentListResponse, FileNamePayload, UserResponse
+from ..schemas.base import TaskAcceptedResponse
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 async def get_worlds_list(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ContentListResponse:
     """
     Retrieves a list of available .mcworld template files.
     """
@@ -59,18 +60,11 @@ async def get_worlds_list(
         api_result = await app_api.list_available_worlds(
             request=ListAvailableWorldsRequest(), app_context=app_context
         )
-        if api_result.status == "success":
-            full_paths = api_result.files
-            basenames = [os.path.basename(p) for p in full_paths]
-            return ContentListResponse(
-                status="success", files=basenames, message=api_result.message
-            )
-        else:
-            logger.warning(f"API: Error listing worlds: {api_result.message}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_result.message,
-            )
+        full_paths = api_result.files
+        basenames = [os.path.basename(p) for p in full_paths]
+        return ContentListResponse(
+            status="success", files=basenames, message=api_result.message
+        )
     except HTTPException:
         raise
     except ValidationError:
@@ -88,7 +82,7 @@ async def get_worlds_list(
 @router.post(
     "/api/server/{server_name}/world/install",
     operation_id="install_world",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content Management"],
 )
@@ -97,7 +91,7 @@ async def post_world_install(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to install a world from a .mcworld file to a server.
     """
@@ -151,8 +145,8 @@ async def post_world_install(
             ),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"World install from '{selected_filename}' for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
@@ -186,7 +180,7 @@ async def post_world_install(
 @router.post(
     "/api/server/{server_name}/world/export",
     operation_id="export_world",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Content Management"],
 )
@@ -194,7 +188,7 @@ async def post_world_export(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to export the active world of a server to a .mcworld file.
     """
@@ -218,8 +212,8 @@ async def post_world_export(
             request=ExportWorldRequest(server_name=server_name),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"World export for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
@@ -244,7 +238,7 @@ async def post_world_export(
 @router.delete(
     "/api/server/{server_name}/world/reset",
     operation_id="reset_world",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Server Management"],
 )
@@ -252,7 +246,7 @@ async def delete_world_reset(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to reset a server's world.
     """
@@ -274,8 +268,8 @@ async def delete_world_reset(
             request=ResetWorldRequest(server_name=server_name),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"World reset for server '{server_name}' initiated in background.",
             task_id=task_id,
         )

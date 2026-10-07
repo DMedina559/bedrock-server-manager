@@ -46,7 +46,9 @@ class AutoBackupOnStart(PluginBase):
             # The server is guaranteed to be offline at this point, so it is safe
             # to run a backup without stopping it first.
 
-            result = await self.api.backup_all(request={"server_name": server_name})
+            result = await self.api.backup_restore.backup_all(
+                request={"server_name": server_name}
+            )
 
             if result.status == "success":
                 self.logger.info(

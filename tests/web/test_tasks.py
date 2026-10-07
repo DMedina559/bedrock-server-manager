@@ -1,6 +1,6 @@
 import asyncio
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -30,7 +30,7 @@ async def test_run_task_success(task_manager):
     # Allow add_done_callback to finish
     await asyncio.sleep(0.01)
 
-    assert task_manager.tasks[task_id]["status"] == "success"
+    assert task_manager.tasks[task_id]["status"] == "completed"
     assert task_manager.tasks[task_id]["result"] == 15
 
 
@@ -44,7 +44,8 @@ async def test_model_task_result_is_json_serializable(task_manager):
     await task_manager.futures[task_id]
     await asyncio.sleep(0)
     await asyncio.gather(*task_manager._background_tasks)
-    result = task_manager.tasks[task_id]["result"]
+    snapshot = await task_manager.get_task(task_id)
+    result = snapshot.model_dump(mode="json")["result"]
     assert result["outcome"] == "started"
     assert json.loads(json.dumps(result))["server_name"] == "example"
 
@@ -59,9 +60,10 @@ async def test_task_failure_has_structured_safe_error(task_manager):
     await asyncio.sleep(0)
     await asyncio.gather(*task_manager._background_tasks)
     details = task_manager.tasks[task_id]
-    assert details["status"] == "error"
-    assert details["result"]["code"] == "server_start_failed"
-    assert "/srv/private" not in json.dumps(details)
+    assert details["status"] == "failed"
+    assert details["error"].code == "server_start_failed"
+    snapshot = await task_manager.get_task(task_id)
+    assert "/srv/private" not in snapshot.model_dump_json()
 
 
 async def test_run_coroutine_task_success(task_manager, app_context):
@@ -82,7 +84,7 @@ async def test_run_coroutine_task_success(task_manager, app_context):
     # Allow add_done_callback to finish
     await asyncio.sleep(0.01)
 
-    assert task_manager.tasks[task_id]["status"] == "success"
+    assert task_manager.tasks[task_id]["status"] == "completed"
     assert task_manager.tasks[task_id]["result"] == 50
 
 
@@ -107,7 +109,7 @@ async def test_cancel_task(task_manager, app_context):
     await asyncio.sleep(0.01)
 
     # Check that status was updated to error (cancelled)
-    assert task_manager.tasks[task_id]["status"] == "error"
+    assert task_manager.tasks[task_id]["status"] == "cancelled"
     assert "cancelled" in task_manager.tasks[task_id]["message"].lower()
 
 
@@ -127,7 +129,7 @@ async def test_run_task_failure(task_manager):
     # Allow add_done_callback to finish
     await asyncio.sleep(0.01)
 
-    assert task_manager.tasks[task_id]["status"] == "error"
+    assert task_manager.tasks[task_id]["status"] == "failed"
 
 
 async def test_run_task_websocket_notification_user_specific(
@@ -141,7 +143,7 @@ async def test_run_task_websocket_notification_user_specific(
     monkeypatch.setattr(
         app_context.connection_manager,
         "send_to_user",
-        MagicMock(return_value=dummy_coro()),
+        AsyncMock(side_effect=dummy_coro),
     )
 
     # Ensure there is an active loop set for the app context
@@ -186,6 +188,6 @@ async def test_run_task_with_unused_username(task_manager):
 
     await asyncio.sleep(0.01)
 
-    assert task_manager.tasks[task_id]["status"] == "success"
+    assert task_manager.tasks[task_id]["status"] == "completed"
     assert task_manager.tasks[task_id]["result"] == 12
     assert task_manager.tasks[task_id]["username"] == "myuser"

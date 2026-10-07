@@ -132,6 +132,7 @@ async def test_send_event(app_context, monkeypatch):
 
     mock_util = types.ModuleType("bedrock_server_manager.plugins.util")
     mock_util.broadcast_event = AsyncMock()
+    mock_util._sanitize_for_json = MagicMock(side_effect=lambda value: value)
     sys.modules["bedrock_server_manager.plugins.util"] = mock_util
 
     from bedrock_server_manager.plugins import api_bridge

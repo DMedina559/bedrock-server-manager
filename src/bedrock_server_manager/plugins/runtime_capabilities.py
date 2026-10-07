@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from ..error import BSMError, UserInputError
 
@@ -47,9 +47,10 @@ async def run_task(
 async def server_lifecycle_manager(
     server_name: str,
     stop_before: bool,
-    app_context: AppContext,
     start_after: bool = True,
     restart_on_success_only: bool = False,
+    *,
+    app_context: AppContext,
 ):
     """A context manager to safely stop and restart a server for an operation."""
     from ..api.models import StartServerRequest, StopServerRequest
@@ -132,7 +133,7 @@ async def register_data_provider(
     handler: Callable[..., Any],
     app_context: AppContext,
     plugin_name: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> None:
     """
     Registers a data provider handler for a WebSocket topic.
 
@@ -162,10 +163,6 @@ async def register_data_provider(
         app_context.connection_manager.register_data_provider(
             topic=topic, handler=handler, plugin_name=plugin_name
         )
-        return {
-            "status": "success",
-            "message": f"Data provider registered for topic '{topic}'",
-        }
     except Exception as e:
         logger.error(
             f"Failed to register data provider for topic '{topic}': {e}", exc_info=True

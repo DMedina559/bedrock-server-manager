@@ -76,7 +76,7 @@ async def get_server_running_status(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ServerRunningStatusResponse:
     """
     Checks if a specific server's process is currently running.
     """
@@ -89,17 +89,11 @@ async def get_server_running_status(
             request=GetServerRunningStatusRequest(server_name=server_name),
             app_context=app_context,
         )
-        if result.status == "success":
-            return ServerRunningStatusResponse(
-                status="success",
-                running=bool(result.is_running),
-                message=result.message,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return ServerRunningStatusResponse(
+            status="success",
+            running=bool(result.is_running),
+            message=result.message,
+        )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except AppFileNotFoundError:
@@ -111,8 +105,6 @@ async def get_server_running_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -135,7 +127,7 @@ async def get_validate_server(
     server_name: str,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> BaseApiResponse:
     """
     Validates if a server installation exists and is minimally correct.
     """
@@ -163,8 +155,6 @@ async def get_validate_server(
         raise
     except ValidationError:
         raise
-    except ValidationError:
-        raise
     except Exception as e:
         logger.error(
             f"API Validate Server '{server_name}': Unexpected error in route: {e}",
@@ -186,7 +176,7 @@ async def get_server_process_info(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ServerProcessInfoResponse:
     """
     Retrieves resource usage information for a running server process.
     """
@@ -198,17 +188,11 @@ async def get_server_process_info(
             app_context=app_context,
         )
 
-        if result.status == "success":
-            return ServerProcessInfoResponse(
-                status="success",
-                process_info=result.process_info,
-                message=result.message,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return ServerProcessInfoResponse(
+            status="success",
+            process_info=result.process_info,
+            message=result.message,
+        )
 
     except UserInputError as e:
         logger.warning(f"API Process Info '{server_name}': Input error. {e}")
@@ -220,8 +204,6 @@ async def get_server_process_info(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -243,7 +225,7 @@ async def get_server_process_info(
 async def put_scan_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> AddPlayersResponse:
     """
     Scans all server logs to discover and update the central player database.
     """
@@ -253,17 +235,11 @@ async def put_scan_players(
         result = await player_api.scan_and_update_player_db(
             request=ScanAndUpdatePlayerDbRequest(), app_context=app_context
         )
-        if result.status == "success":
-            return AddPlayersResponse(
-                status="success",
-                message=result.message,
-                details=result.details,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return AddPlayersResponse(
+            status="success",
+            message=result.message,
+            details=result.details,
+        )
     except AppFileNotFoundError:
         raise
     except BSMError as e:
@@ -271,8 +247,6 @@ async def put_scan_players(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -292,7 +266,7 @@ async def put_scan_players(
 async def get_all_players(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> PlayerListResponse:
     """
     Retrieves the list of all known players from the central player database.
     """
@@ -303,24 +277,15 @@ async def get_all_players(
             request=GetAllKnownPlayersRequest(), app_context=app_context
         )
 
-        if result_dict.status == "success":
-            logger.debug(
-                f"API Get All Players: Successfully retrieved {len(result_dict.players)} players. "
-                f"Message: {result_dict.message}"
-            )
-            return PlayerListResponse(
-                status="success",
-                players=result_dict.players,
-                message=result_dict.message,
-            )
-        else:  # status == "error"
-            logger.warning(
-                f"API Get All Players: Handler returned error: {result_dict.message}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result_dict.message,
-            )
+        logger.debug(
+            f"API Get All Players: Successfully retrieved {len(result_dict.players)} players. "
+            f"Message: {result_dict.message}"
+        )
+        return PlayerListResponse(
+            status="success",
+            players=result_dict.players,
+            message=result_dict.message,
+        )
 
     except AppFileNotFoundError:
         raise
@@ -333,8 +298,6 @@ async def get_all_players(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"A server error occurred while fetching players: {str(e)}",
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -358,7 +321,7 @@ async def put_prune_downloads(
     payload: PruneDownloadsPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> PruneDownloadsResponse:
     """
     Prunes old downloaded server archives from a specified cache subdirectory.
     """
@@ -402,16 +365,10 @@ async def put_prune_downloads(
             app_context=app_context,
         )
 
-        if result.status == "success":
-            return PruneDownloadsResponse(
-                status="success",
-                message=result.message,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return PruneDownloadsResponse(
+            status=result.status,
+            message=result.message,
+        )
 
     except UserInputError as e:
         logger.warning(f"API Prune Downloads: UserInputError: {e}")
@@ -424,8 +381,6 @@ async def put_prune_downloads(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     except HTTPException:
-        raise
-    except ValidationError:
         raise
     except ValidationError:
         raise
@@ -449,7 +404,7 @@ async def put_prune_downloads(
 async def get_servers_list(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ServersListResponse:
     """
     Retrieves a list of all detected server instances with their status and version.
     """
@@ -459,15 +414,7 @@ async def get_servers_list(
         result = await app_api.get_all_servers_data(
             request=GetAllServersDataRequest(), app_context=app_context
         )
-        if result.status == "success":
-            return ServersListResponse(status="success", servers=result.servers)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
-    except ValidationError:
-        raise
+        return ServersListResponse(status="success", servers=result.servers)
     except ValidationError:
         raise
     except Exception as e:
@@ -486,7 +433,7 @@ async def get_servers_list(
 )
 async def get_system_info(
     app_context: AppContext = Depends(get_app_context),
-):
+) -> AppInfoResponse:
     """
     Retrieves general system and application information.
     """
@@ -511,8 +458,6 @@ async def get_system_info(
             )
     except ValidationError:
         raise
-    except ValidationError:
-        raise
     except Exception as e:
         logger.error(f"API Get System Info: Unexpected error: {e}", exc_info=True)
         raise HTTPException(
@@ -529,7 +474,7 @@ async def get_system_info(
 )
 async def get_themes(
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ThemeListResponse:
     """
     Retrieves a list of available themes (standard and custom).
     """
@@ -569,8 +514,6 @@ async def get_themes(
         return ThemeListResponse(status="success", themes=sorted_themes)
     except ValidationError:
         raise
-    except ValidationError:
-        raise
     except Exception as e:
         logger.error(f"API Get Themes: Unexpected error: {e}", exc_info=True)
         raise HTTPException(
@@ -589,7 +532,7 @@ async def post_add_players(
     payload: AddPlayersPayload,
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> AddPlayersResponse:
     """
     Manually adds or updates player entries in the central player database.
     """
@@ -604,24 +547,11 @@ async def post_add_players(
             app_context=app_context,
         )
 
-        if result.status == "success":
-            return AddPlayersResponse(
-                status="success",
-                message=result.message,
-                count=result.count,
-            )
-        else:
-
-            msg_lower = result.message.lower()
-            status_code = (
-                status.HTTP_400_BAD_REQUEST
-                if "invalid" in msg_lower or "format" in msg_lower
-                else status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-            raise HTTPException(
-                status_code=status_code,
-                detail=result.message,
-            )
+        return AddPlayersResponse(
+            status="success",
+            message=result.message,
+            count=result.count,
+        )
 
     except (
         TypeError,
@@ -635,8 +565,6 @@ async def post_add_players(
             else status.HTTP_500_INTERNAL_SERVER_ERROR
         )
         raise HTTPException(status_code=status_code, detail=str(e))
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:

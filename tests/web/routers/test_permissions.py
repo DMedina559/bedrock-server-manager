@@ -91,12 +91,15 @@ def test_post_permissions_set_partial_failure(
             },
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 500
         data = response.json()
-        assert data["status"] == "error"
-        assert "Errors occurred" in data["message"]
-        assert "456" in data["errors"]
-        assert data["errors"]["456"] == "Failed to set"
+        assert data["error"]["code"] == "internal_error"
+        assert "Errors occurred" in data["error"]["message"]
+        assert "456" in data["error"]["details"]["errors"]
+        assert (
+            data["error"]["details"]["errors"]["456"]
+            == "The application operation failed."
+        )
 
 
 def test_post_permissions_set_not_found_error(
@@ -119,7 +122,7 @@ def test_post_permissions_set_not_found_error(
 
         assert response.status_code == 404
         data = response.json()
-        assert "Player not found" in data["errors"]["123"]
+        assert data["error"]["details"]["errors"]["123"] == "Resource not found."
 
 
 def test_post_permissions_set_exception(
@@ -142,7 +145,9 @@ def test_post_permissions_set_exception(
 
         assert response.status_code == 500
         data = response.json()
-        assert data["errors"]["123"] == "An unexpected server error occurred."
+        assert (
+            data["error"]["details"]["errors"]["123"] == "An unexpected error occurred."
+        )
 
 
 def test_post_permissions_set_bsm_error(
@@ -165,7 +170,10 @@ def test_post_permissions_set_bsm_error(
 
         assert response.status_code == 500
         data = response.json()
-        assert "Config corrupted" in data["errors"]["123"]
+        assert (
+            data["error"]["details"]["errors"]["123"]
+            == "The application operation failed."
+        )
 
 
 def test_post_permissions_set_user_input_error(
@@ -188,7 +196,9 @@ def test_post_permissions_set_user_input_error(
 
         assert response.status_code == 400
         data = response.json()
-        assert data["errors"]["123"] == "Invalid permission request."
+        assert (
+            data["error"]["details"]["errors"]["123"] == "API data failed validation."
+        )
 
 
 def test_get_permissions_unauthorized(unauth_client: TestClient, real_bedrock_server):
@@ -233,7 +243,7 @@ def test_get_permissions_not_found(admin_auth_client: TestClient, real_bedrock_s
             f"/api/server/{real_bedrock_server.server_name}/permissions/get"
         )
         assert response.status_code == 404
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "not_found"
 
 
 def test_get_permissions_internal_error(

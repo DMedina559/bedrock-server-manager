@@ -39,7 +39,7 @@ async def get_server_settings(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ServerSettingsResponse:
     """
     Retrieves all settings for a specific server.
     """
@@ -81,7 +81,7 @@ async def post_set_server_setting(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ServerSettingsResponse:
     """
     Sets a specific setting for a server.
     """

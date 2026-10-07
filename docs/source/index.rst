@@ -76,6 +76,7 @@ Browse through the sections below to find various information about Bedrock Serv
    :maxdepth: 2
    :caption: Developer Documentation
 
+   developer/v4_contracts.md
    developer/api/api
    developer/classes/classes
    developer/core/core

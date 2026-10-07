@@ -15,11 +15,11 @@ Test Flow:
 
 2. Event A (`before_server_start` for "server1"):
    - This plugin's `before_server_start` handler is invoked for "server1".
-   - It logs this and then calls `self.api.start_server(server_name="server2", ...)`.
+   - It logs this and then calls `self.api.server.start(server_name="server2", ...)`.
      (Ensure "server2" is a different, validly configured server name).
 
 3. Event B (Expected `before_server_start` for "server2"):
-   - The `self.api.start_server(server_name="server2")` call should trigger
+   - The `self.api.server.start(server_name="server2")` call should trigger
      `before_server_start` for "server2".
    - **Expected Behavior (Granular Guard):** The PluginManager should generate a
      key like `('before_server_start', 'server2')`. This key should NOT match
@@ -121,13 +121,13 @@ class NestedDifferentServerStartPlugin(PluginBase):
             try:
                 # This API call should trigger 'before_server_start' for SERVER_B_NAME_NESTED.
                 # The granular re-entrancy guard should allow its handlers to run.
-                await self.api.start_server({"server_name": SERVER_B_NAME_NESTED})
+                await self.api.server.start({"server_name": SERVER_B_NAME_NESTED})
                 self.logger.info(
                     f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): Call to start Server B ('{SERVER_B_NAME_NESTED}') initiated."
                 )
             except Exception as e:
                 self.logger.error(
-                    f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): API call self.api.start_server "
+                    f"--- NESTED TEST (Server A: '{SERVER_A_NAME_TRIGGER}'): API call self.api.server.start "
                     f"for '{SERVER_B_NAME_NESTED}' failed unexpectedly: {e}",
                     exc_info=True,
                 )

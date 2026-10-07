@@ -20,7 +20,7 @@ def test_put_prune_backups_success(admin_auth_client: TestClient, real_bedrock_s
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -66,8 +66,8 @@ def test_get_list_server_backups_all_success(
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert data["details"]["all_backups"]["world"] == ["backup1.zip"]
-        assert data["details"]["all_backups"]["properties"] == ["props.bak"]
+        assert data["backups"]["world"] == ["backup1.zip"]
+        assert data["backups"]["properties"] == ["props.bak"]
 
 
 def test_get_list_server_backups_not_found(
@@ -81,7 +81,7 @@ def test_get_list_server_backups_not_found(
             f"/api/server/{real_bedrock_server.server_name}/backup/list/world"
         )
         assert response.status_code == 404
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "not_found"
 
 
 def test_post_backup_action_world_success(
@@ -97,7 +97,7 @@ def test_post_backup_action_world_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -109,7 +109,7 @@ def test_post_backup_action_config_missing_file(
         json={"backup_type": "config"},
     )
     assert response.status_code == 400
-    assert "Missing or invalid 'file_to_backup'" in response.json()["detail"]
+    assert "Missing or invalid 'file_to_backup'" in response.json()["error"]["message"]
 
 
 def test_post_restore_action_all_success(
@@ -125,7 +125,7 @@ def test_post_restore_action_all_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -150,7 +150,7 @@ async def test_post_restore_action_world_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -162,7 +162,7 @@ def test_post_restore_action_invalid_type(
         json={"restore_type": "invalid_type", "backup_file": "world_backup.zip"},
     )
     assert response.status_code == 400
-    assert "Invalid 'restore_type'" in response.json()["detail"]
+    assert "Invalid 'restore_type'" in response.json()["error"]["message"]
 
 
 async def test_post_restore_action_path_traversal(
@@ -176,7 +176,7 @@ async def test_post_restore_action_path_traversal(
         json={"restore_type": "world", "backup_file": "../../etc/passwd"},
     )
     assert response.status_code == 400
-    assert "Invalid 'backup_file' path" in response.json()["detail"]
+    assert "Invalid 'backup_file' path" in response.json()["error"]["message"]
 
 
 async def test_post_restore_action_file_not_found(
@@ -192,4 +192,4 @@ async def test_post_restore_action_file_not_found(
         json={"restore_type": "world", "backup_file": "missing.zip"},
     )
     assert response.status_code == 404
-    assert "not found" in response.json()["detail"].lower()
+    assert "not found" in response.json()["error"]["message"].lower()

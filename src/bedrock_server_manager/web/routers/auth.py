@@ -51,7 +51,7 @@ async def api_login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     remember_me: Annotated[bool, Form()] = False,
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TokenResponse:
     """
     Handles API user login and returns a JWT access token.
     """
@@ -124,7 +124,7 @@ async def reauth(
     remember_me: Optional[bool] = None,
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TokenResponse:
     """
     Refreshes the JWT access token for an already authenticated user.
     Supports form data, JSON body, or query parameters.

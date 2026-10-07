@@ -4,28 +4,39 @@ Typed domain state models for ServerState, PluginState, UserState, and RuntimeSt
 """
 
 import asyncio
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, cast
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from ..plugins.runtime import PluginRuntime
 
 
-class ServerConfigState(BaseModel):
+class PersistentRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", validate_assignment=True, revalidate_instances="always"
+    )
+
+
+class ServerConfigState(PersistentRecord):
     server_name: str
     installed_version: str = "UNKNOWN"
     status: str = "UNKNOWN"
     autoupdate: bool = False
     autostart: bool = False
     target_version: str = "UNKNOWN"
-    custom: Dict[str, Any] = Field(default_factory=dict)
+    custom: Dict[str, JsonValue] = Field(default_factory=dict)
 
 
-class ServerState(BaseModel):
-    servers: Dict[str, ServerConfigState] = Field(default_factory=dict)
-    _dirty: bool = PrivateAttr(default=False)
-    _dirty_servers: set[str] = PrivateAttr(default_factory=set)
-    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+@dataclass
+class ServerState:
+    servers: Dict[str, ServerConfigState] = field(default_factory=dict)
+    _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_servers: set[str] = field(init=False, repr=False, default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = field(
+        init=False, repr=False, default_factory=dict
+    )
 
     def get_lock(self, server_name: str) -> asyncio.Lock:
         if server_name not in self._locks:
@@ -59,24 +70,28 @@ class ServerState(BaseModel):
         return cfg.model_copy(deep=True) if cfg is not None else None
 
     def set(self, config: ServerConfigState) -> None:
-        self.servers[config.server_name] = config.model_copy(deep=True)
+        self.servers[config.server_name] = ServerConfigState.model_validate(
+            config
+        ).model_copy(deep=True)
         self.mark_dirty(config.server_name)
 
 
-class PluginInfoState(BaseModel):
+class PluginInfoState(PersistentRecord):
     plugin_name: str
     enabled: bool = False
     version: Optional[str] = None
     author: Optional[str] = None
     description: Optional[str] = None
-    settings: Dict[str, Any] = Field(default_factory=dict)
 
 
-class PluginState(BaseModel):
-    plugins: Dict[str, PluginInfoState] = Field(default_factory=dict)
-    _dirty: bool = PrivateAttr(default=False)
-    _dirty_plugins: set[str] = PrivateAttr(default_factory=set)
-    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+@dataclass
+class PluginState:
+    plugins: Dict[str, PluginInfoState] = field(default_factory=dict)
+    _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_plugins: set[str] = field(init=False, repr=False, default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = field(
+        init=False, repr=False, default_factory=dict
+    )
 
     def get_lock(self, plugin_name: str) -> asyncio.Lock:
         if plugin_name not in self._locks:
@@ -110,11 +125,13 @@ class PluginState(BaseModel):
         return p_info.model_copy(deep=True) if p_info is not None else None
 
     def set(self, plugin: PluginInfoState) -> None:
-        self.plugins[plugin.plugin_name] = plugin.model_copy(deep=True)
+        self.plugins[plugin.plugin_name] = PluginInfoState.model_validate(
+            plugin
+        ).model_copy(deep=True)
         self.mark_dirty(plugin.plugin_name)
 
 
-class UserInfoState(BaseModel):
+class UserInfoState(PersistentRecord):
     id: Optional[int] = None
     username: str
     role: str = "user"
@@ -124,11 +141,14 @@ class UserInfoState(BaseModel):
     email: Optional[str] = None
 
 
-class UserState(BaseModel):
-    users: Dict[str, UserInfoState] = Field(default_factory=dict)
-    _dirty: bool = PrivateAttr(default=False)
-    _dirty_users: set[str] = PrivateAttr(default_factory=set)
-    _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
+@dataclass
+class UserState:
+    users: Dict[str, UserInfoState] = field(default_factory=dict)
+    _dirty: bool = field(default=False, init=False, repr=False)
+    _dirty_users: set[str] = field(init=False, repr=False, default_factory=set)
+    _locks: Dict[str, asyncio.Lock] = field(
+        init=False, repr=False, default_factory=dict
+    )
 
     def get_lock(self, username: str) -> asyncio.Lock:
         if username not in self._locks:
@@ -162,7 +182,9 @@ class UserState(BaseModel):
         return u_info.model_copy(deep=True) if u_info is not None else None
 
     def set(self, user: UserInfoState) -> None:
-        self.users[user.username] = user.model_copy(deep=True)
+        self.users[user.username] = UserInfoState.model_validate(user).model_copy(
+            deep=True
+        )
         self.mark_dirty(user.username)
 
 
@@ -188,10 +210,11 @@ class ServerRuntimeInfo(BaseModel):
     memory_mb: float = 0.0
 
 
-class RuntimeState(BaseModel):
-    servers: Dict[str, ServerRuntimeInfo] = Field(default_factory=dict)
-    plugins: Dict[str, PluginRuntime] = Field(default_factory=dict)
-    active_tasks: Dict[str, Any] = Field(default_factory=dict)
+@dataclass
+class RuntimeState:
+    servers: Dict[str, ServerRuntimeInfo] = field(default_factory=dict)
+    plugins: Dict[str, PluginRuntime] = field(default_factory=dict)
+    active_tasks: Dict[str, Any] = field(default_factory=dict)
     websocket_connections: int = 0
 
     def get_server_runtime(self, server_name: str) -> ServerRuntimeInfo:
@@ -205,7 +228,7 @@ class RuntimeState(BaseModel):
     def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
         if plugin_name not in self.plugins:
             self.plugins[plugin_name] = PluginRuntime(plugin_name=plugin_name)
-        return cast(PluginRuntime, self.plugins[plugin_name].model_copy(deep=True))
+        return cast(PluginRuntime, deepcopy(self.plugins[plugin_name]))
 
     def set_plugin_runtime(self, plugin_name: str, runtime: PluginRuntime) -> None:
-        self.plugins[plugin_name] = runtime.model_copy(deep=True)
+        self.plugins[plugin_name] = deepcopy(runtime)

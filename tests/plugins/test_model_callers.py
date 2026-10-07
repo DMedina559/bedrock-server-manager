@@ -4,13 +4,13 @@ import pytest
 
 from bedrock_server_manager.api.models.application import GetAllServersDataResponse
 from bedrock_server_manager.api.models.common import ServerSummary
+from bedrock_server_manager.api.models.plugins import (
+    GetPluginSettingResponse,
+    SetPluginSettingResponse,
+)
 from bedrock_server_manager.api.models.server import (
     GetServerSettingResponse,
     GetServerSummaryResponse,
-)
-from bedrock_server_manager.api.models.settings import (
-    GetGlobalSettingResponse,
-    SetGlobalSettingResponse,
 )
 from bedrock_server_manager.plugins.default.autostart_plugin import AutostartServers
 from bedrock_server_manager.plugins.default.server_lifecycle_notifications import (
@@ -21,27 +21,27 @@ from bedrock_server_manager.plugins.plugin_base import PluginBase
 
 async def test_autostart_consumes_nested_server_models():
     api = MagicMock()
-    api.get_all_servers_data = AsyncMock(
+    api.application.get_all_servers_data = AsyncMock(
         return_value=GetAllServersDataResponse(
             servers=[ServerSummary(name="test", status="STOPPED", version="1.0")]
         )
     )
-    api.get_server_setting = AsyncMock(
+    api.server.get_setting = AsyncMock(
         return_value=GetServerSettingResponse(value=True)
     )
-    api.run_task = AsyncMock()
+    api.runtime.run_task = AsyncMock()
     plugin = AutostartServers("autostart", api, MagicMock())
 
     await plugin.autostart_servers()
 
-    api.run_task.assert_awaited_once_with(
-        api.start_server, request={"server_name": "test"}, username="System (Autostart)"
+    api.runtime.run_task.assert_awaited_once_with(
+        api.server.start, request={"server_name": "test"}, username="System (Autostart)"
     )
 
 
 async def test_shutdown_notification_consumes_nested_summary(monkeypatch):
     api = MagicMock()
-    api.get_server_summary = AsyncMock(
+    api.server.get_summary = AsyncMock(
         return_value=GetServerSummaryResponse(
             summary=ServerSummary(
                 name="test", status="RUNNING", version="1.0", player_count=1
@@ -70,11 +70,11 @@ async def test_shutdown_notification_consumes_nested_summary(monkeypatch):
 @pytest.mark.parametrize("value", [None, False, 0, ""])
 async def test_plugin_settings_preserve_falsy_values(value):
     api = MagicMock()
-    api.get_global_setting = AsyncMock(
-        return_value=GetGlobalSettingResponse(value=value)
+    api.plugins.get_plugin_setting = AsyncMock(
+        return_value=GetPluginSettingResponse(value=value)
     )
-    saved = SetGlobalSettingResponse(message="saved")
-    api.set_global_setting = AsyncMock(return_value=saved)
+    saved = SetPluginSettingResponse(message="saved")
+    api.plugins.set_plugin_setting = AsyncMock(return_value=saved)
     plugin = PluginBase("settings", api, MagicMock())
 
     assert await plugin.get_plugin_setting("key", default="fallback") == (

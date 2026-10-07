@@ -42,7 +42,7 @@ def test_sync_forward_annotations_validate_and_reflect():
 
     target = register(target)
     api = create_app_api("example", MagicMock())
-    result = api.contract_test({"value": 4})
+    result = api.server.contract_test({"value": 4})
     assert isinstance(result, ExampleResponse) and result.doubled == 8
     assert target.__name__ == "target"
     metadata = next(
@@ -90,11 +90,11 @@ async def test_injected_identity_cannot_be_replaced():
 
     register(target)
     api = create_app_api("trusted_plugin", context)
-    assert (await api.contract_test({"value": 2})).doubled == 4
+    assert (await api.server.contract_test({"value": 2})).doubled == 4
     with pytest.raises(TypeError, match="injected"):
-        await api.contract_test({"value": 2}, plugin_name="other_plugin")
+        await api.server.contract_test({"value": 2}, plugin_name="other_plugin")
     with pytest.raises(TypeError, match="injected"):
-        await api.contract_test({"value": 2}, context, "other_plugin")
+        await api.server.contract_test({"value": 2}, context, "other_plugin")
 
 
 def test_internal_contract_not_discoverable_or_callable_by_plugin():
@@ -109,7 +109,7 @@ def test_internal_contract_not_discoverable_or_callable_by_plugin():
     with pytest.raises(AttributeError):
         plugin.contract_test({"value": 2})
     core = create_app_api("core", None, is_core=True)
-    assert core.contract_test({"value": 2}).doubled == 4
+    assert core.server.contract_test({"value": 2}).doubled == 4
 
 
 def test_partial_contract_registration_fails():

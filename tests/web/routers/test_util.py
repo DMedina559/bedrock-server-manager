@@ -74,7 +74,7 @@ def test_serve_custom_panorama_api_not_found(unauth_client: TestClient, tmp_path
             mock_isfile.return_value = False
             response = unauth_client.get("/api/panorama")
             assert response.status_code == 404
-            assert "not found" in response.json()["detail"].lower()
+            assert "not found" in response.json()["error"]["message"].lower()
 
 
 def test_serve_custom_panorama_api_exception(unauth_client: TestClient):
@@ -82,4 +82,4 @@ def test_serve_custom_panorama_api_exception(unauth_client: TestClient):
         mock_isfile.side_effect = Exception("File system error")
         response = unauth_client.get("/api/panorama")
         assert response.status_code == 500
-        assert "error serving" in response.json()["detail"].lower()
+        assert response.json()["error"]["message"] == "An unexpected error occurred."

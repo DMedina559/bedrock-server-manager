@@ -61,4 +61,4 @@ async def test_create_first_user_already_exists(
         json={"username": "admin2", "password": "securepassword"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"] == "Application has already been set up."
+    assert response.json()["error"]["message"] == "Application has already been set up."

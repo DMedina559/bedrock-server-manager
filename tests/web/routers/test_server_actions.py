@@ -67,7 +67,7 @@ def test_get_server_summary_error(admin_auth_client: TestClient, real_bedrock_se
             f"/api/server/{real_bedrock_server.server_name}/summary"
         )
         assert response.status_code == 400
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_post_start_server(admin_auth_client: TestClient, real_bedrock_server):
@@ -153,7 +153,7 @@ def test_post_send_command_empty(admin_auth_client: TestClient, real_bedrock_ser
         json={"command": "   "},
     )
     assert response.status_code == 400
-    assert "non-empty" in response.json()["detail"]
+    assert "non-empty" in response.json()["error"]["message"]
 
 
 def test_post_send_command_failed(admin_auth_client: TestClient, real_bedrock_server):
@@ -167,7 +167,7 @@ def test_post_send_command_failed(admin_auth_client: TestClient, real_bedrock_se
             json={"command": "say Hello"},
         )
         assert response.status_code == 400
-        assert "Error running command" in response.json()["detail"]
+        assert "Error running command" in response.json()["error"]["message"]
 
 
 def test_post_send_command_blocked(admin_auth_client: TestClient, real_bedrock_server):
@@ -181,7 +181,7 @@ def test_post_send_command_blocked(admin_auth_client: TestClient, real_bedrock_s
             json={"command": "stop"},
         )
         assert response.status_code == 403
-        assert "Blocked" in response.json()["detail"]
+        assert "Blocked" in response.json()["error"]["message"]
 
 
 def test_post_send_command_not_running(
@@ -197,7 +197,7 @@ def test_post_send_command_not_running(
             json={"command": "say Hello"},
         )
         assert response.status_code == 409
-        assert "Offline" in response.json()["detail"]
+        assert "Offline" in response.json()["error"]["message"]
 
 
 def test_post_send_command_not_found(
@@ -213,7 +213,7 @@ def test_post_send_command_not_found(
             json={"command": "say Hello"},
         )
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert "not found" in response.json()["error"]["message"]
 
 
 def test_post_send_command_bsm_error(
@@ -229,4 +229,4 @@ def test_post_send_command_bsm_error(
             json={"command": "say Hello"},
         )
         assert response.status_code == 500
-        assert "Unknown BSM issue" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."

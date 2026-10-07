@@ -37,7 +37,7 @@ from ..schemas.addon import (
     AddonReorderPayload,
     AddonSubpackPayload,
 )
-from ..schemas.base import ActionResponse
+from ..schemas.base import TaskAcceptedResponse
 from ..schemas.system import FileNamePayload
 from ..schemas.users import UserResponse
 
@@ -56,7 +56,7 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 async def get_addons(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> dict:
     """
     Retrieves a list of available .mcaddon or .mcpack template files.
     """
@@ -67,19 +67,9 @@ async def get_addons(
             request=ListAvailableAddonsRequest(), app_context=app_context
         )
 
-        if api_result.status == "success":
-            # Extract just the filenames
-            basenames = [os.path.basename(f) for f in api_result.files]
-            return {"status": "success", "files": basenames}
-        else:
-            logger.warning(f"API: Error listing addons: {api_result.message}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_result.message,
-            )
+        basenames = [os.path.basename(f) for f in api_result.files]
+        return {"status": "success", "files": basenames}
     except HTTPException:
-        raise
-    except ValidationError:
         raise
     except ValidationError:
         raise
@@ -102,7 +92,7 @@ async def get_server_addons(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> AddonListResponse:
     """
     Retrieves a list of addons installed on a server's active world.
     """
@@ -120,8 +110,6 @@ async def get_server_addons(
         return AddonListResponse(status="success", addons=result.addons)
     except ValidationError:
         raise
-    except ValidationError:
-        raise
     except Exception as e:
         logger.error(
             f"API List Server Addons '{server_name}': Error: {e}", exc_info=True
@@ -135,7 +123,7 @@ async def get_server_addons(
 @router.post(
     "/api/server/{server_name}/addon/enable",
     operation_id="enable_addon",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_enable_addon(
@@ -143,7 +131,7 @@ async def post_enable_addon(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to enable an addon on a server.
     """
@@ -164,13 +152,11 @@ async def post_enable_addon(
                 }
             ),
         )
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"Addon enable for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -186,7 +172,7 @@ async def post_enable_addon(
 @router.post(
     "/api/server/{server_name}/addon/disable",
     operation_id="disable_addon",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_disable_addon(
@@ -194,7 +180,7 @@ async def post_disable_addon(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to disable an addon on a server.
     """
@@ -215,13 +201,11 @@ async def post_disable_addon(
                 }
             ),
         )
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"Addon disable for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -237,7 +221,7 @@ async def post_disable_addon(
 @router.post(
     "/api/server/{server_name}/addon/subpack",
     operation_id="update_addon_subpack",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_update_subpack(
@@ -245,7 +229,7 @@ async def post_update_subpack(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to update an addon's active subpack.
     """
@@ -275,13 +259,11 @@ async def post_update_subpack(
                 }
             ),
         )
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"Addon subpack update for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -298,7 +280,7 @@ async def post_update_subpack(
 @router.delete(
     "/api/server/{server_name}/addon/uninstall",
     operation_id="uninstall_addon",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_uninstall_addon(
@@ -306,7 +288,7 @@ async def delete_uninstall_addon(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to uninstall an addon on a server.
     """
@@ -327,13 +309,11 @@ async def delete_uninstall_addon(
                 }
             ),
         )
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"Addon uninstall for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -349,7 +329,7 @@ async def delete_uninstall_addon(
 @router.post(
     "/api/server/{server_name}/addon/reorder",
     operation_id="reorder_addons",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_reorder_addons(
@@ -357,7 +337,7 @@ async def post_reorder_addons(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to reorder active addons on a server.
     """
@@ -378,13 +358,11 @@ async def post_reorder_addons(
                 }
             ),
         )
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"Addon reorder for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -400,7 +378,7 @@ async def post_reorder_addons(
 @router.post(
     "/api/server/{server_name}/addon/install",
     operation_id="install_addon",
-    response_model=ActionResponse,
+    response_model=TaskAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def post_install_addon(
@@ -408,7 +386,7 @@ async def post_install_addon(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TaskAcceptedResponse:
     """
     Initiates a background task to install an addon from a .mcaddon or .mcpack file to a server.
     """
@@ -462,8 +440,8 @@ async def post_install_addon(
             ),
         )
 
-        return ActionResponse(
-            status="pending",
+        return TaskAcceptedResponse(
+            status="accepted",
             message=f"Addon install from '{selected_filename}' for server '{server_name}' initiated in background.",
             task_id=task_id,
         )
@@ -480,8 +458,6 @@ async def post_install_addon(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:
@@ -551,8 +527,6 @@ async def get_server_addon_icon(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Default icon not found.",
             )
-    except ValidationError:
-        raise
     except ValidationError:
         raise
     except Exception as e:

@@ -1,5 +1,7 @@
 # Developing Plugins
 
+For the breaking 4.0 API changes, start with [Migrating to 4.0 contracts](../v4_contracts.md).
+
 ```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
 :alt: Bedrock Server Manager Logo
 :width: 150px

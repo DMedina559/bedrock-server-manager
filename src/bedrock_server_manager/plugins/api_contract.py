@@ -59,6 +59,8 @@ def validate_contract(func: F) -> F:
     signature = inspect.signature(func)
 
     def validate_response(result: Any) -> BaseModel:
+        if getattr(func, "__validates_api_response__", False):
+            return cast(BaseModel, result)
         try:
             return response_type.model_validate(result)
         except ValidationError as error:

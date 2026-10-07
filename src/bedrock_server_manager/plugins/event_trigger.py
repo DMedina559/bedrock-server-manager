@@ -5,6 +5,7 @@ Provides a decorator for triggering plugin events and broadcasting them.
 import functools
 import inspect
 import logging
+from copy import deepcopy
 from typing import (
     Any,
     Awaitable,
@@ -80,10 +81,18 @@ def trigger_event(
             bound_args = sig.bind(*args, **kwargs)
             bound_args.apply_defaults()
             event_kwargs = dict(bound_args.arguments)
-            request = event_kwargs.pop("request", None)
+            request = event_kwargs.get("request")
             if isinstance(request, BaseModel):
                 # Preserve field-based event payloads and recursion identities.
-                event_kwargs.update(request.model_dump(mode="json"))
+                request = deepcopy(request)
+                event_kwargs["request"] = request
+                event_kwargs.update(
+                    {
+                        name: getattr(request, name)
+                        for name in type(request).model_fields
+                        if not type(request).model_fields[name].exclude
+                    }
+                )
                 if "target_plugin_name" in event_kwargs:
                     event_kwargs["plugin_name"] = event_kwargs.pop("target_plugin_name")
             return event_kwargs
@@ -124,11 +133,7 @@ def trigger_event(
                     ) from error
 
             if after and app_context:
-                event_kwargs["result"] = (
-                    result.model_dump(mode="json")
-                    if isinstance(result, BaseModel)
-                    else result
-                )
+                event_kwargs["result"] = deepcopy(result)
                 plugin_kwargs = dict(event_kwargs)
                 plugin_kwargs.pop("app_context", None)
                 await app_context.plugin_manager.trigger_event(after, **plugin_kwargs)
@@ -136,6 +141,7 @@ def trigger_event(
 
             return result
 
+        setattr(wrapper, "__validates_api_response__", contract is not None)
         return wrapper
 
     if _func is None:

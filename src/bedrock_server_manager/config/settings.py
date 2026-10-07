@@ -158,7 +158,7 @@ class Settings:
                     "token_expires_weeks": 4,
                 },
                 "monitoring": {
-                    "max_retiries": 3,
+                    "max_retries": 3,
                     "process_interval_sec": 10,
                     "player_interval_sec": 10,
                 },
@@ -183,7 +183,7 @@ class Settings:
                 "downloads": 3,
             },
             "monitoring": {
-                "max_retiries": 3,
+                "max_retries": 3,
                 "process_interval_sec": 10,
                 "player_interval_sec": 10,
             },

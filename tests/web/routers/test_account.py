@@ -81,7 +81,7 @@ async def test_post_change_password_incorrect_current(
         json={"current_password": "wrongpassword", "new_password": "newpassword123"},
     )
     assert response.status_code == 400
-    assert "Incorrect current password" in response.json()["detail"]
+    assert "Incorrect current password" in response.json()["error"]["message"]
 
 
 async def test_post_change_password_validation_error(auth_client: TestClient):

@@ -2,7 +2,7 @@
 Repository for managing Plugin database entity persistence.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
 from sqlalchemy.future import select
 
@@ -19,11 +19,8 @@ class PluginRepository:
     async def get_all_plugins(
         self,
         session: Any,
-        plugin_settings_map: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> List[PluginInfoState]:
         """Retrieves all plugins from the database as PluginInfoState models."""
-        if plugin_settings_map is None:
-            plugin_settings_map = {}
         result = await session.execute(select(Plugin))
         plugins = []
         for p in result.scalars().all():
@@ -34,7 +31,6 @@ class PluginRepository:
                 version=str(p.version) if p.version else None,
                 author=str(p.author) if p.author else None,
                 description=str(p.description) if p.description else None,
-                settings=plugin_settings_map.get(p_name, {}),
             )
             plugins.append(p_info)
         return plugins

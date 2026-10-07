@@ -30,7 +30,7 @@ def operations():
 
 def test_every_data_operation_has_complete_serializable_contract():
     found = list(operations())
-    assert len(found) == 78
+    assert len(found) == 80
     for name, operation in found:
         request, response = get_contract(operation)
         assert issubclass(request, APIRequest), name
@@ -53,7 +53,7 @@ def test_every_data_operation_has_complete_serializable_contract():
 def test_all_registered_data_apis_expose_version_two_contracts():
     api_instance = create_app_api("core", None, is_core=True)
     metadata = api_instance.list_available_apis(include_internal=True)
-    assert len(metadata) == 59
+    assert len(metadata) == 61
     assert all(item["contract_version"] == 2 for item in metadata)
     assert all(item["request_schema"] and item["response_schema"] for item in metadata)
     assert not {
@@ -78,6 +78,8 @@ async def test_unknown_fields_fail_before_runtime_access(operation_name, operati
             if "app_context" in inspect.signature(operation).parameters
             else {}
         )
+        if "plugin_name" in inspect.signature(operation).parameters:
+            runtime["plugin_name"] = "test_plugin"
         result = operation({"unexpected_field": True}, **runtime)
         if inspect.isawaitable(result):
             await result
@@ -106,10 +108,10 @@ async def test_runtime_task_preserves_positional_arguments_and_trusted_context()
     def task(value):
         return value
 
-    assert await api_instance.run_task(task, 42, username="admin") == "task-1"
+    assert await api_instance.runtime.run_task(task, 42, username="admin") == "task-1"
     context.task_manager.run_task.assert_awaited_once_with(task, "admin", 42)
     with pytest.raises(TypeError, match="injected"):
-        await api_instance.run_task(task, app_context=MagicMock())
+        await api_instance.runtime.run_task(task, app_context=MagicMock())
 
 
 async def test_runtime_provider_registration_failure_propagates():
@@ -119,9 +121,7 @@ async def test_runtime_provider_registration_failure_propagates():
     )
     api_instance = create_app_api("trusted", context)
     with pytest.raises(RuntimeError, match="provider failed"):
-        await api_instance.websocket.register_data_provider(
-            "topic", lambda value: value
-        )
+        await api_instance.runtime.register_data_provider("topic", lambda value: value)
 
 
 @pytest.mark.parametrize("bad_count", [True, "3", -1])

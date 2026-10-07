@@ -4,21 +4,21 @@ Central AppState class holding in-memory domain states.
 """
 
 import asyncio
+from dataclasses import dataclass, field
 from typing import Optional
-
-from pydantic import BaseModel, Field, PrivateAttr
 
 from .models import PluginState, RuntimeState, ServerState, UserState
 from .settings import SettingsState
 
 
-class AppState(BaseModel):
-    settings: SettingsState = Field(default_factory=SettingsState)
-    servers: ServerState = Field(default_factory=ServerState)
-    plugins: PluginState = Field(default_factory=PluginState)
-    users: UserState = Field(default_factory=UserState)
-    runtime: RuntimeState = Field(default_factory=RuntimeState)
-    _lock: Optional[asyncio.Lock] = PrivateAttr(default=None)
+@dataclass
+class AppState:
+    settings: SettingsState = field(default_factory=SettingsState)
+    servers: ServerState = field(default_factory=ServerState)
+    plugins: PluginState = field(default_factory=PluginState)
+    users: UserState = field(default_factory=UserState)
+    runtime: RuntimeState = field(default_factory=RuntimeState)
+    _lock: Optional[asyncio.Lock] = field(default=None, init=False, repr=False)
 
     @property
     def lock(self) -> asyncio.Lock:

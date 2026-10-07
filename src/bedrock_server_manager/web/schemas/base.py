@@ -1,35 +1,28 @@
-from typing import Any, Optional
+"""HTTP-specific responses; operation data contracts live in api.models."""
 
-from pydantic import BaseModel
+from typing import Literal
 
-
-class ActionResponse(BaseModel):
-    """
-    Standard response model for API actions.
-
-    Attributes:
-        status (str): The status of the operation (e.g., "success", "error"). Defaults to "success".
-        message (str): A human-readable message describing the result.
-        details (Optional[Any]): Additional data or details related to the response.
-        task_id (Optional[str]): The ID of a background task, if one was initiated.
-    """
-
-    status: str = "success"
-    message: str
-    details: Optional[Any] = None
-    task_id: Optional[str] = None
-    registration_url: Optional[str] = None
-    backups: Optional[Any] = None
+from ...api.models.common import ActionResponse, APIResponse, SuccessResponse
+from ...api.models.tasks import TaskAcceptedResponse
 
 
-class BaseApiResponse(BaseModel):
-    """
-    Base model for simple API responses.
+class RegistrationResponse(SuccessResponse):
+    registration_url: str
 
-    Attributes:
-        status (str): The status of the operation.
-        message (Optional[str]): An optional message.
-    """
 
-    status: str
-    message: Optional[str] = None
+class BackupFilesResponse(SuccessResponse):
+    backups: list[str] | dict[str, list[str]]
+
+
+class BaseApiResponse(APIResponse):
+    status: Literal["success", "skipped"]
+    message: str | None = None
+
+
+__all__ = [
+    "ActionResponse",
+    "TaskAcceptedResponse",
+    "RegistrationResponse",
+    "BackupFilesResponse",
+    "BaseApiResponse",
+]

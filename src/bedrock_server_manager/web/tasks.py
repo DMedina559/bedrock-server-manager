@@ -5,7 +5,13 @@ import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue, TypeAdapter
+
+from ..api.models.tasks import TaskSnapshot
+from ..error import APICancelledError
+from ..plugins.api_contract import APIResponseValidationError
+
+_json_value: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,7 @@ class TaskManager:
             message = {
                 "type": "task_update",
                 "topic": f"task:{task_id}",
-                "data": task_details,
+                "data": self._snapshot(task_id).model_dump(mode="json"),
             }
 
             try:
@@ -50,21 +56,40 @@ class TaskManager:
                 return
 
             if loop is not None and loop.is_running():
-                await connection_manager.send_to_user(username, message)
+                try:
+                    await connection_manager.send_to_user(username, message)
+                except Exception:
+                    logger.warning(
+                        "Could not deliver task update %s", task_id, exc_info=True
+                    )
 
     async def _update_task(
-        self, task_id: str, status: str, message: str, result: Optional[Any] = None
+        self,
+        task_id: str,
+        status: str,
+        message: str,
+        result: Optional[Any] = None,
+        error: Optional[Any] = None,
     ):
         """Helper function to update the status of a task and notify client."""
         if task_id in self.tasks:
             self.tasks[task_id]["status"] = status
             self.tasks[task_id]["message"] = message
             if result is not None:
-                self.tasks[task_id]["result"] = (
-                    result.model_dump(mode="json")
-                    if isinstance(result, BaseModel)
-                    else result
-                )
+                try:
+                    _json_value.validate_python(
+                        result.model_dump(mode="json")
+                        if isinstance(result, BaseModel)
+                        else result
+                    )
+                except Exception as error:
+                    raise APIResponseValidationError(
+                        "Background task returned invalid JSON data."
+                    ) from error
+                self.tasks[task_id]["result"] = result
+            if error is not None:
+                self.tasks[task_id]["result"] = None
+                self.tasks[task_id]["error"] = error
             await self._notify_client_of_update(task_id)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
@@ -73,18 +98,21 @@ class TaskManager:
         async def handle_done():
             try:
                 if future.cancelled():
-                    await self._update_task(task_id, "error", "Task was cancelled.")
+                    await self._update_task(task_id, "cancelled", "Task was cancelled.")
                     return
                 result = future.result()
-                await self._update_task(
-                    task_id, "success", "Task completed successfully.", result
-                )
+                await self._update_task(task_id, "completed", "Task completed.", result)
             except Exception as e:
                 logger.error(f"Task {task_id} failed: {e}", exc_info=True)
                 from ..api.errors import error_response
 
                 error = error_response(e)
-                await self._update_task(task_id, "error", error.message, error)
+                await self._update_task(
+                    task_id,
+                    "cancelled" if isinstance(e, APICancelledError) else "failed",
+                    error.message,
+                    error=error,
+                )
             finally:
                 # Clean up the future from the tracking dictionary
                 if task_id in self.futures:
@@ -134,15 +162,27 @@ class TaskManager:
         # Enforce max tasks limit to prevent memory leaks
         if len(self.tasks) >= self._max_tasks:
             # Remove the oldest task (first item inserted)
-            oldest_task_id = next(iter(self.tasks))
+            oldest_task_id = next(
+                (
+                    key
+                    for key in self.tasks
+                    if key not in self.futures
+                    and self.tasks[key]["status"]
+                    in {"completed", "failed", "cancelled"}
+                ),
+                None,
+            )
+            if oldest_task_id is None:
+                raise RuntimeError("Background task capacity reached.")
             del self.tasks[oldest_task_id]
             if oldest_task_id in self.futures:
                 del self.futures[oldest_task_id]
 
         self.tasks[task_id] = {
-            "status": "in_progress",
-            "message": "Task is running.",
+            "status": "queued",
+            "message": "Task is queued.",
             "result": None,
+            "error": None,
             "username": username,
         }
         await self._notify_client_of_update(task_id)
@@ -175,18 +215,22 @@ class TaskManager:
                     result = asyncio.run(target_function(*args, **call_kwargs))
                 else:
                     result = target_function(*args, **call_kwargs)
-                await self._update_task(
-                    task_id, "success", "Task completed successfully.", result
-                )
+                await self._update_task(task_id, "completed", "Task completed.", result)
             except Exception as e:
                 logger.error(f"Task {task_id} failed: {e}", exc_info=True)
                 from ..api.errors import error_response
 
                 error = error_response(e)
-                await self._update_task(task_id, "error", error.message, error)
+                await self._update_task(
+                    task_id,
+                    "cancelled" if isinstance(e, APICancelledError) else "failed",
+                    error.message,
+                    error=error,
+                )
             return task_id
 
         async def _runner():
+            await self._update_task(task_id, "running", "Task is running.")
             if inspect.iscoroutinefunction(target_function):
                 return await target_function(*args, **call_kwargs)
             else:
@@ -218,16 +262,40 @@ class TaskManager:
         task = self.futures[task_id]
         task.cancel()
 
-        await self._update_task(task_id, "error", "Task was cancelled.")
+        await self._update_task(task_id, "cancelled", "Task was cancelled.")
         return True
 
-    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves the status of a task."""
-        return self.tasks.get(task_id)
+    def _snapshot(self, task_id: str) -> TaskSnapshot:
+        record = self.tasks[task_id]
+        result = record["result"]
+        if isinstance(result, BaseModel):
+            result = result.model_dump(mode="json")
+        return TaskSnapshot.model_validate(
+            {
+                "id": task_id,
+                "status": record["status"],
+                "message": record["message"],
+                "result": _json_value.validate_python(result),
+                "error": record["error"],
+            }
+        )
 
-    async def get_all_tasks(self) -> Dict[str, Dict[str, Any]]:
-        """Retrieves all tasks."""
-        return self.tasks
+    async def get_task(
+        self, task_id: str, *, username: str | None = None
+    ) -> TaskSnapshot | None:
+        record = self.tasks.get(task_id)
+        if record is None or (username is not None and record["username"] != username):
+            return None
+        return self._snapshot(task_id)
+
+    async def get_all_tasks(
+        self, *, username: str | None = None
+    ) -> dict[str, TaskSnapshot]:
+        return {
+            key: self._snapshot(key)
+            for key, record in self.tasks.items()
+            if username is None or record["username"] == username
+        }
 
     async def shutdown(self):
         """Waits for all background tasks to complete asynchronously."""
@@ -239,5 +307,11 @@ class TaskManager:
         tasks = list(self.futures.values())
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+        await asyncio.sleep(0)
+        while self._background_tasks:
+            updates = list(self._background_tasks)
+            await asyncio.gather(*updates, return_exceptions=True)
+            self._background_tasks.difference_update(updates)
 
         logger.info("All tasks have completed. Task manager shutdown finished.")

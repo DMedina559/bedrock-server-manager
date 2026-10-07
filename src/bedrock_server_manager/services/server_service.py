@@ -35,8 +35,8 @@ class ServerService:
     async def register_or_update_server(
         self,
         server_name: str,
-        installed_version: str = "UNKNOWN",
-        status: str = "UNKNOWN",
+        installed_version: Optional[str] = None,
+        status: Optional[str] = None,
         autoupdate: Optional[bool] = None,
         autostart: Optional[bool] = None,
         target_version: Optional[str] = None,
@@ -47,8 +47,10 @@ class ServerService:
             existing = self.state.servers.get(server_name)
             if existing:
                 updated_dict = existing.model_dump()
-                updated_dict["installed_version"] = installed_version
-                updated_dict["status"] = status
+                if installed_version is not None:
+                    updated_dict["installed_version"] = installed_version
+                if status is not None:
+                    updated_dict["status"] = status
                 if autoupdate is not None:
                     updated_dict["autoupdate"] = autoupdate
                 if autostart is not None:
@@ -61,8 +63,8 @@ class ServerService:
             else:
                 config = ServerConfigState(
                     server_name=server_name,
-                    installed_version=installed_version,
-                    status=status,
+                    installed_version=installed_version or "UNKNOWN",
+                    status=status or "UNKNOWN",
                     autoupdate=autoupdate if autoupdate is not None else False,
                     autostart=autostart if autostart is not None else False,
                     target_version=target_version or "UNKNOWN",

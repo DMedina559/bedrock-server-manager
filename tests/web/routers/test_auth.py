@@ -51,7 +51,7 @@ def test_api_login_failure_wrong_password(
     )
 
     assert response.status_code == 401
-    assert "Incorrect username or password" in response.json()["detail"]
+    assert "Incorrect username or password" in response.json()["error"]["message"]
 
 
 def test_api_login_failure_no_username(
@@ -134,7 +134,7 @@ def test_reauth_unauthorized(unauth_client: TestClient):
     ):
         response = unauth_client.post("/auth/reauth")
         assert response.status_code == 401
-        assert "Not authenticated" in response.json()["detail"]
+        assert "Not authenticated" in response.json()["error"]["message"]
 
 
 def test_api_login_secure_cookie(

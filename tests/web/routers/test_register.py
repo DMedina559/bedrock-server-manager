@@ -56,7 +56,7 @@ async def test_validate_token_success(unauth_client: TestClient, app_context):
 async def test_validate_token_not_found(unauth_client: TestClient):
     response = unauth_client.get("/api/register/validate/invalid_token")
     assert response.status_code == 404
-    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "not_found"
 
 
 async def test_validate_token_expired(unauth_client: TestClient, app_context):
@@ -72,7 +72,7 @@ async def test_validate_token_expired(unauth_client: TestClient, app_context):
 
     response = unauth_client.get(f"/api/register/validate/{token_str}")
     assert response.status_code == 404
-    assert response.json()["status"] == "error"
+    assert response.json()["error"]["code"] == "not_found"
 
 
 async def test_register_user_success(unauth_client: TestClient, app_context):
@@ -113,7 +113,7 @@ async def test_register_user_invalid_token(unauth_client: TestClient):
         json={"username": "new_user", "password": "new_password"},
     )
     assert response.status_code == 404
-    assert response.json()["detail"]["status"] == "error"
+    assert response.json()["error"]["code"] == "not_found"
 
 
 async def test_register_user_duplicate_username(
@@ -134,5 +134,5 @@ async def test_register_user_duplicate_username(
         json={"username": test_user.username, "password": "new_password"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["status"] == "error"
-    assert "already exists" in response.json()["detail"]["message"]
+    assert response.json()["error"]["code"] == "validation_error"
+    assert "already exists" in response.json()["error"]["message"]

@@ -56,7 +56,7 @@ router = APIRouter(tags=["Plugin Management", "Application"])
 async def get_plugin_pages(
     current_user: UserResponse = Depends(get_current_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> PluginPagesResponse:
     """
     Retrieves a list of custom native UI pages registered by plugins.
     """
@@ -67,11 +67,9 @@ async def get_plugin_pages(
         raise
     except Exception as e:
         logger.error(f"API Get Plugin Pages: Unexpected error: {e}", exc_info=True)
-        return PluginPagesResponse(
-            status="error",
-            message=f"Failed to retrieve plugin pages: {str(e)}",
-            pages=[],
-        )
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve plugin pages."
+        ) from e
 
 
 @router.get(
@@ -82,7 +80,7 @@ async def get_plugin_pages(
 async def get_plugins_status(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> PluginStatusesResponse:
     """
     Retrieves the statuses and metadata of all discovered plugins.
     """
@@ -92,13 +90,7 @@ async def get_plugins_status(
         result = await plugins_api.get_plugin_statuses(
             request=GetPluginStatusesRequest(), app_context=app_context
         )
-        if result.status == "success":
-            return PluginStatusesResponse(status="success", plugins=result.plugins)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return PluginStatusesResponse(status="success", plugins=result.plugins)
     except HTTPException:
         raise
     except ValidationError:
@@ -120,7 +112,7 @@ async def post_trigger_event(
     payload: TriggerEventPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> TriggerEventResponse:
     """
     Allows an external source to trigger a custom plugin event within the system.
     """
@@ -136,16 +128,10 @@ async def post_trigger_event(
             ),
             app_context=app_context,
         )
-        if result.status == "success":
-            return TriggerEventResponse(
-                status="success",
-                message=result.message,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return TriggerEventResponse(
+            status=result.status,
+            message=result.message,
+        )
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
@@ -182,7 +168,7 @@ async def post_set_plugin_status(
     payload: PluginStatusSetPayload,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ActionResponse:
     """
     Sets the enabled or disabled status for a specific plugin.
     """
@@ -199,18 +185,7 @@ async def post_set_plugin_status(
             ),
             app_context=app_context,
         )
-        if result.status == "success":
-            return ActionResponse(status="success", message=str(result.message))
-        else:
-            detail = result.message
-            if "not found" in detail.lower() or "invalid plugin" in detail.lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=detail
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=detail,
-            )
+        return ActionResponse(status=result.status, message=str(result.message))
 
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -244,7 +219,7 @@ async def post_reload_single_plugin(
     plugin_name: str,
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ActionResponse:
     """
     Reloads a single plugin by name.
     """
@@ -256,13 +231,7 @@ async def post_reload_single_plugin(
             request=ReloadSinglePluginRequest(target_plugin_name=plugin_name),
             app_context=app_context,
         )
-        if result.status == "success":
-            return ActionResponse(status="success", message=str(result.message))
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return ActionResponse(status=result.status, message=str(result.message))
 
     except UserInputError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -293,7 +262,7 @@ async def post_reload_single_plugin(
 async def put_reload_plugins(
     current_user: UserResponse = Depends(get_admin_user),
     app_context: AppContext = Depends(get_app_context),
-):
+) -> ActionResponse:
     """
     Triggers a full reload of the plugin system.
     """
@@ -304,13 +273,7 @@ async def put_reload_plugins(
         result = await plugins_api.reload_plugins(
             request=ReloadPluginsRequest(), app_context=app_context
         )
-        if result.status == "success":
-            return ActionResponse(status="success", message=str(result.message))
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.message,
-            )
+        return ActionResponse(status=result.status, message=str(result.message))
     except HTTPException:
         raise
     except AppFileNotFoundError:

@@ -375,3 +375,76 @@ async def test_storage_listeners_ordering_and_exception_isolation(file_db, tmp_p
     # Unsubscribe test
     storage.unsubscribe(faulty_listener)
     storage.unsubscribe(querying_listener)
+
+
+async def test_listener_can_persist_and_changesets_are_isolated(file_db, tmp_path):
+    from bedrock_server_manager.state.changeset import ChangeSet
+
+    storage = Storage(file_db, str(tmp_path))
+    state = await storage.load_state()
+    observed = []
+
+    async def listener(current, changes):
+        if "first" in changes.settings_changed:
+            changes.settings_changed.clear()
+            current.settings.set("second", 2)
+            nested = ChangeSet()
+            nested.add_setting("second")
+            await storage.apply_changeset(current, nested)
+
+    storage.subscribe(listener)
+    storage.subscribe(
+        lambda current, changes: observed.append(set(changes.settings_changed))
+    )
+    state.settings.set("first", 1)
+    changes = ChangeSet()
+    changes.add_setting("first")
+    await asyncio.wait_for(storage.apply_changeset(state, changes), timeout=2)
+    assert changes.settings_changed == {"first"}
+    assert {"first"} in observed
+    loaded = await storage.load_state()
+    assert loaded.settings.get("first") == 1
+    assert loaded.settings.get("second") == 2
+
+
+async def test_failed_commit_preserves_all_dirty_records(file_db, tmp_path):
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    storage = Storage(file_db, str(tmp_path))
+    state = await storage.load_state()
+    state.settings.set("custom_value", 1)
+    state.servers.set(ServerConfigState(server_name="server"))
+    state.plugins.set(PluginInfoState(plugin_name="plugin"))
+    state.users.set(UserInfoState(username="user"))
+    with patch.object(
+        AsyncSession, "commit", AsyncMock(side_effect=RuntimeError("Failure"))
+    ):
+        with pytest.raises(StorageError):
+            await storage.flush(state)
+    assert state.settings.is_dirty
+    assert state.servers.is_dirty
+    assert state.plugins.is_dirty
+    assert state.users.is_dirty
+    await storage.flush(state)
+    assert not state.is_dirty()
+    loaded = await storage.load_state()
+    assert loaded.servers.get("server") is not None
+    assert loaded.plugins.get("plugin") is not None
+    assert loaded.users.get("user") is not None
+
+
+async def test_reload_preserves_pending_updates(file_db, tmp_path):
+    storage = Storage(file_db, str(tmp_path))
+    state = await storage.load_state()
+    state.settings.set("pending", 1)
+    state.servers.set(ServerConfigState(server_name="pending", status="RUNNING"))
+    await storage.load_state(state)
+    assert state.settings.get("pending") == 1
+    assert state.servers.get("pending").status == "RUNNING"
+    assert state.is_dirty()
+    await storage.flush(state)
+    loaded = await storage.load_state()
+    assert loaded.settings.get("pending") == 1
+    assert loaded.servers.get("pending").status == "RUNNING"

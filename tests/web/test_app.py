@@ -136,7 +136,7 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
     app_context.resource_monitor.start = MagicMock()
     app_context.resource_monitor.stop = MagicMock()
 
-    app_context.api.update_server_statuses = AsyncMock()
+    app_context.api.application.update_server_statuses = AsyncMock()
     app_context.plugin_manager.load_plugins = AsyncMock()
     app_context.plugin_manager.trigger_guarded_event = AsyncMock()
     app_context.plugin_manager.start_plugin_tasks = AsyncMock()
@@ -159,7 +159,7 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
             app_context.resource_monitor.start.assert_called_once()
 
             # Check that the async function was directly awaited
-            app_context.api.update_server_statuses.assert_awaited_once()
+            app_context.api.application.update_server_statuses.assert_awaited_once()
 
             # Check log streamer was initialized
             MockLogStreamer.assert_called_once_with(
@@ -172,3 +172,26 @@ async def test_lifespan_startup_shutdown(app_context, monkeypatch):
         # Verification of shutdown logic
         mock_ls_instance.stop.assert_called_once()
         app_context.resource_monitor.stop.assert_called_once()
+
+
+def test_http_validation_and_internal_errors_have_safe_envelopes(test_app, auth_client):
+    from pydantic import BaseModel
+
+    class Output(BaseModel):
+        value: int
+
+    @test_app.get("/api/test-input")
+    def input_route(value: int):
+        return {"value": value}
+
+    @test_app.get("/api/test-output", response_model=Output)
+    def output_route():
+        return {"value": "private-invalid-value"}
+
+    response = auth_client.get("/api/test-input?value=invalid")
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    response = auth_client.get("/api/test-output")
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "private-invalid-value" not in response.text

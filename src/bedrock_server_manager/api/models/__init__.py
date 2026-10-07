@@ -353,3 +353,17 @@ __all__ = [
     "ValidatePropertyValueRequest",
     "ValidatePropertyValueResponse",
 ]
+
+from .plugins import (
+    GetPluginSettingRequest,
+    GetPluginSettingResponse,
+    SetPluginSettingRequest,
+    SetPluginSettingResponse,
+)
+
+__all__ += [
+    "GetPluginSettingRequest",
+    "GetPluginSettingResponse",
+    "SetPluginSettingRequest",
+    "SetPluginSettingResponse",
+]

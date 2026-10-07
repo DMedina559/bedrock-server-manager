@@ -6,6 +6,10 @@ Plugin that automatically reloads server configurations after changes.
 from typing import Any
 
 from bedrock_server_manager import PluginBase, app_event
+from bedrock_server_manager.api.models.allowlist import (
+    AddToAllowlistResponse,
+    RemoveFromAllowlistResponse,
+)
 
 
 class AutoReloadPlugin(PluginBase):
@@ -30,7 +34,7 @@ class AutoReloadPlugin(PluginBase):
     async def _is_server_running(self, server_name: str) -> bool:
         """Checks if a server is currently running via the API."""
         try:
-            response = await self.api.get_server_running_status(
+            response = await self.api.system.get_server_running_status(
                 request={"server_name": server_name}
             )
             if response and response.status == "success":
@@ -59,7 +63,7 @@ class AutoReloadPlugin(PluginBase):
                 self.logger.info(
                     f"{context.capitalize()} changed for '{server_name}', triggering reload."
                 )
-                await self.api.send_command(
+                await self.api.server.send_command(
                     request={"server_name": server_name, "command": command}
                 )
                 self.logger.info(f"Successfully sent '{command}' to '{server_name}'.")
@@ -77,13 +81,19 @@ class AutoReloadPlugin(PluginBase):
         """Triggers an `allowlist reload` if the allowlist was successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
-        result = kwargs.get("result", {})
+        result = kwargs.get("result")
         self.logger.debug(f"Handling after_allowlist_change for '{server_name}'.")
 
-        if result.get("status") == "success":
+        if getattr(result, "status", None) == "success":
             # Check if any players were actually added or removed to avoid unnecessary reloads.
-            added_count = result.get("added_count", 0)
-            removed_players = result.get("details", {}).get("removed", [])
+            added_count = (
+                result.added_count if isinstance(result, AddToAllowlistResponse) else 0
+            )
+            removed_players = (
+                result.details.removed
+                if isinstance(result, RemoveFromAllowlistResponse)
+                else []
+            )
 
             if added_count > 0 or len(removed_players) > 0:
                 await self._send_reload_command(
@@ -105,10 +115,10 @@ class AutoReloadPlugin(PluginBase):
         """Triggers a `permission reload` if permissions were successfully modified."""
 
         server_name = str(kwargs.get("server_name"))
-        result = kwargs.get("result", {})
+        result = kwargs.get("result")
         self.logger.debug(f"Handling after_permission_change for '{server_name}'.")
 
-        if result.get("status") == "success":
+        if getattr(result, "status", None) == "success":
             await self._send_reload_command(
                 server_name,
                 "permission reload",

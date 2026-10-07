@@ -78,7 +78,7 @@ def test_post_enable_addon_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -96,7 +96,7 @@ def test_post_disable_addon_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -118,7 +118,7 @@ def test_post_update_subpack_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -137,7 +137,7 @@ def test_delete_uninstall_addon_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -155,7 +155,7 @@ def test_post_reorder_addons_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -190,7 +190,7 @@ async def test_post_install_addon_success(
         )
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "pending"
+        assert data["status"] == "accepted"
         assert data["task_id"] == "test_task_id"
 
 
@@ -210,7 +210,7 @@ async def test_post_install_addon_file_not_found(
         json={"filename": "nonexistent.mcaddon"},
     )
     assert response.status_code == 404
-    assert "not found" in response.json()["detail"]
+    assert "not found" in response.json()["error"]["message"]
 
 
 async def test_post_install_addon_path_traversal(
@@ -229,7 +229,7 @@ async def test_post_install_addon_path_traversal(
         json={"filename": "../../../etc/passwd"},
     )
     assert response.status_code == 400
-    assert "Invalid file path" in response.json()["detail"]
+    assert "Invalid file path" in response.json()["error"]["message"]
 
 
 def test_get_server_addon_icon_success(

@@ -34,7 +34,7 @@ router = APIRouter(
 )
 async def get_setup_status(
     app_context: AppContext = Depends(get_app_context),
-):
+) -> SetupStatusResponse:
     """
     Returns whether the application needs initial setup.
     """

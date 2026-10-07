@@ -39,7 +39,7 @@ def lifecycle_context():
     context.connection_manager.broadcast_to_topic = AsyncMock()
     context.bedrock_process_manager.add_server = AsyncMock()
     context.bedrock_process_manager.remove_server = AsyncMock()
-    context.api.set_server_status = AsyncMock()
+    context.api.server.set_status = AsyncMock()
     return context
 
 
@@ -82,8 +82,9 @@ async def test_start_has_typed_result_and_field_based_events(lifecycle_context):
     before, after = lifecycle_context.plugin_manager.trigger_event.await_args_list
     assert before.args == ("before_server_start",)
     assert before.kwargs["server_name"] == "example"
-    assert "request" not in before.kwargs and "app_context" not in before.kwargs
-    assert after.kwargs["result"] == result.model_dump(mode="json")
+    assert isinstance(before.kwargs["request"], StartServerRequest)
+    assert "app_context" not in before.kwargs
+    assert after.kwargs["result"] == result
     json.dumps(
         lifecycle_context.connection_manager.broadcast_to_topic.await_args.args[1]
     )
@@ -169,8 +170,8 @@ async def test_restart_sequences_stop_start_and_monitoring(lifecycle_context):
 
 async def test_bridge_accepts_one_mapping_and_exposes_contract(lifecycle_context):
     api = create_app_api("example_plugin", lifecycle_context)
-    assert list(inspect.signature(api.start_server).parameters) == ["request"]
-    result = await api.servers.start_server({"server_name": "example"})
+    assert list(inspect.signature(api.server.start).parameters) == ["request"]
+    result = await api.server.start({"server_name": "example"})
     assert result.outcome == "started"
     metadata = next(
         item for item in api.list_available_apis() if item["name"] == "start_server"
@@ -188,7 +189,7 @@ async def test_bridge_accepts_one_mapping_and_exposes_contract(lifecycle_context
 async def test_bridge_cannot_override_runtime_context(lifecycle_context):
     api = create_app_api("example_plugin", lifecycle_context)
     with pytest.raises(TypeError, match="injected"):
-        await api.start_server({"server_name": "example"}, app_context=MagicMock())
+        await api.server.start({"server_name": "example"}, app_context=MagicMock())
     lifecycle_context.get_server.assert_not_called()
 
 

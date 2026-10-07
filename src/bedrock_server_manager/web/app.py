@@ -8,9 +8,12 @@ from typing import Any
 
 import bsm_frontend
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ..api.models.common import APIErrorResponse, ErrorEnvelope
 from ..config import get_installed_version
 from ..context import AppContext
 from . import routers
@@ -34,7 +37,7 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
         app_context.loop = asyncio.get_running_loop()
         await app_context.bedrock_process_manager.start()
         app_context.resource_monitor.start()
-        await app_context.api.update_server_statuses(request={})
+        await app_context.api.application.update_server_statuses(request={})
 
         await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
         await app_context.plugin_manager.start_plugin_tasks()
@@ -64,6 +67,10 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
             "deepLinking": True,
         },
         lifespan=lifespan,
+        responses={
+            code: {"model": ErrorEnvelope}
+            for code in (400, 401, 403, 404, 409, 422, 500)
+        },
     )
     from fastapi.responses import JSONResponse
     from pydantic import ValidationError
@@ -78,24 +85,67 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     from ..plugins.api_contract import APIResponseValidationError
 
     async def api_error_handler(request, error):
-        if isinstance(error, ValidationError):
+        headers = None
+        if isinstance(error, RequestValidationError):
             status_code = 422
-        elif isinstance(error, AppFileNotFoundError):
-            status_code = 404
-        elif isinstance(error, APICancelledError):
-            status_code = 409
-        elif isinstance(error, UserInputError):
-            status_code = 400
+            payload = APIErrorResponse(
+                code="validation_error",
+                message="Invalid request.",
+                details={
+                    "errors": [
+                        {"location": list(item["loc"]), "code": item["type"]}
+                        for item in error.errors()
+                    ]
+                },
+            )
+        elif isinstance(error, StarletteHTTPException):
+            status_code = error.status_code
+            headers = error.headers
+            code = {
+                400: "validation_error",
+                401: "unauthorized",
+                403: "forbidden",
+                404: "not_found",
+                409: "conflict",
+                422: "validation_error",
+            }.get(status_code, "http_error")
+            if status_code >= 500:
+                code = "internal_error"
+            message = (
+                error.detail
+                if isinstance(error.detail, str) and status_code < 500
+                else "An unexpected error occurred."
+            )
+            payload = APIErrorResponse.model_validate(
+                {"code": code, "message": message}
+            )
         else:
-            status_code = 500
-            logger.error("API operation failed", exc_info=error)
-        payload = error_response(error).model_dump(mode="json")
+            if isinstance(error, ValidationError):
+                status_code = 422
+            elif isinstance(error, AppFileNotFoundError):
+                status_code = 404
+            elif isinstance(error, APICancelledError):
+                status_code = 409
+            elif isinstance(error, UserInputError):
+                status_code = 400
+            else:
+                status_code = 500
+                logger.error("API operation failed", exc_info=error)
+            payload = error_response(error)
         return JSONResponse(
             status_code=status_code,
-            content={"detail": payload["message"], "error": payload},
+            headers=headers,
+            content=ErrorEnvelope(error=payload).model_dump(mode="json"),
         )
 
-    for exception_type in (ValidationError, BSMError, APIResponseValidationError):
+    for exception_type in (
+        ValidationError,
+        BSMError,
+        APIResponseValidationError,
+        RequestValidationError,
+        ResponseValidationError,
+        StarletteHTTPException,
+    ):
         app.add_exception_handler(exception_type, api_error_handler)
 
     app.state.app_context = app_context

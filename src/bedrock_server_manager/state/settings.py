@@ -9,14 +9,20 @@ import logging
 import os
 from typing import Any, Dict, Optional, Set
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr
 
 from ..error import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
 
-class PathsSettings(BaseModel):
+class SettingsRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid", validate_assignment=True, revalidate_instances="always"
+    )
+
+
+class PathsSettings(SettingsRecord):
     servers: str = ""
     content: str = ""
     downloads: str = ""
@@ -25,18 +31,18 @@ class PathsSettings(BaseModel):
     themes: str = ""
 
 
-class RetentionSettings(BaseModel):
+class RetentionSettings(SettingsRecord):
     backups: int = 3
     downloads: int = 3
 
 
-class MonitoringSettings(BaseModel):
+class MonitoringSettings(SettingsRecord):
     max_retries: int = 3
     process_interval_sec: int = 10
     player_interval_sec: int = 10
 
 
-class WebSettings(BaseModel):
+class WebSettings(SettingsRecord):
     host: str = "127.0.0.1"
     port: int = 11325
     token_expires_weeks: int = 4
@@ -44,12 +50,13 @@ class WebSettings(BaseModel):
 
 
 class SettingsState(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     web: WebSettings = Field(default_factory=WebSettings)
-    custom: Dict[str, Any] = Field(default_factory=dict)
-    plugin_settings: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    custom: Dict[str, JsonValue] = Field(default_factory=dict)
+    plugin_settings: Dict[str, Dict[str, JsonValue]] = Field(default_factory=dict)
 
     _dirty: bool = PrivateAttr(default=False)
     _dirty_keys: Set[str] = PrivateAttr(default_factory=set)
@@ -114,13 +121,17 @@ class SettingsState(BaseModel):
         root_key = parts[0]
 
         if (
-            not hasattr(self, root_key)
+            root_key not in type(self).model_fields
             and root_key not in self.custom
             and root_key not in self.plugin_settings
         ):
             return default
 
-        obj: Any = getattr(self, root_key, None)
+        obj: Any = (
+            getattr(self, root_key, None)
+            if root_key in type(self).model_fields
+            else None
+        )
         if obj is None and root_key in self.custom:
             obj = self.custom[root_key]
             parts = parts[1:]
@@ -132,7 +143,7 @@ class SettingsState(BaseModel):
 
         for part in parts:
             if isinstance(obj, BaseModel):
-                if hasattr(obj, part):
+                if part in type(obj).model_fields:
                     obj = getattr(obj, part)
                 else:
                     return default
@@ -152,77 +163,28 @@ class SettingsState(BaseModel):
         return obj
 
     def set(self, key: str, value: Any) -> None:
-        """Sets a setting value using dot-notation, updating models and dirty state."""
+        """Validate a complete updated snapshot before mutating live settings."""
         parts = key.split(".")
-        for part in parts:
-            if part.startswith("_") or "__" in part:
-                raise ConfigurationError(
-                    f"Access to private/dunder key '{key}' is forbidden."
-                )
-
-        current_value = self.get(key)
-        if current_value == value:
+        if any(not part or part.startswith("_") or "__" in part for part in parts):
+            raise ConfigurationError(f"Invalid setting key '{key}'.")
+        missing = object()
+        if self.get(key, missing) == value:
             return
-
-        root_key = parts[0]
-
-        if hasattr(self, root_key):
-            root_attr = getattr(self, root_key)
-            if isinstance(root_attr, BaseModel):
-                if len(parts) == 2 and hasattr(root_attr, parts[1]):
-                    setattr(root_attr, parts[1], value)
-                else:
-                    # Deep nested dict or custom updates on sub-model
-                    sub_dict = root_attr.model_dump()
-                    curr = sub_dict
-                    for p in parts[1:-1]:
-                        if not isinstance(curr, dict) or (
-                            p in curr and not isinstance(curr[p], dict)
-                        ):
-                            raise ConfigurationError(
-                                f"Cannot set key '{key}' because path conflict."
-                            )
-                        curr = curr.setdefault(p, {})
-                    if not isinstance(curr, dict):
-                        raise ConfigurationError(
-                            f"Cannot set key '{key}' because path conflict."
-                        )
-                    curr[parts[-1]] = value
-                    new_sub_model = type(root_attr)(**sub_dict)
-                    setattr(self, root_key, new_sub_model)
-            elif isinstance(root_attr, dict):
-                curr = root_attr
-                for p in parts[1:-1]:
-                    if not isinstance(curr, dict) or (
-                        p in curr and not isinstance(curr[p], dict)
-                    ):
-                        raise ConfigurationError(
-                            f"Cannot set key '{key}' because path conflict."
-                        )
-                    curr = curr.setdefault(p, {})
-                if not isinstance(curr, dict):
-                    raise ConfigurationError(
-                        f"Cannot set key '{key}' because path conflict."
-                    )
-                curr[parts[-1]] = value
-        else:
-            # Belongs in custom settings
-            curr = self.custom
-            for p in parts[:-1]:
-                if not isinstance(curr, dict) or (
-                    p in curr and not isinstance(curr[p], dict)
-                ):
-                    raise ConfigurationError(
-                        f"Cannot set key '{key}' because path conflict."
-                    )
-                curr = curr.setdefault(p, {})
-            if not isinstance(curr, dict):
+        data = self.model_dump(mode="python")
+        target = data if parts[0] in type(self).model_fields else data["custom"]
+        current = target
+        for part in parts[:-1]:
+            child = current.setdefault(part, {})
+            if not isinstance(child, dict):
                 raise ConfigurationError(
                     f"Cannot set key '{key}' because path conflict."
                 )
-            curr[parts[-1]] = value
-
-        self.mark_dirty(root_key)
+            current = child
+        current[parts[-1]] = value
+        updated = type(self).model_validate(data)
+        for name in type(self).model_fields:
+            setattr(self, name, getattr(updated, name))
+        self.mark_dirty(parts[0] if parts[0] in type(self).model_fields else "custom")
 
     def to_dict(self) -> Dict[str, Any]:
         """Exports settings state into a dictionary matching database key/value structure."""
@@ -278,6 +240,13 @@ class SettingsState(BaseModel):
                 _deep_merge_dicts(v, merged[k])
             elif v is not None or k not in merged:
                 merged[k] = v
+
+        monitoring = merged.get("monitoring", {})
+        if "max_retiries" in monitoring:
+            legacy_retries = monitoring.pop("max_retiries")
+            supplied = unflattened.get("monitoring", {})
+            if "max_retries" not in supplied:
+                monitoring["max_retries"] = legacy_retries
 
         inst = cls(
             paths=PathsSettings(**merged.get("paths", {})),

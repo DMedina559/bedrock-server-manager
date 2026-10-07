@@ -59,3 +59,20 @@ class TriggerExternalAppEventRequest(APIRequest):
 
 class TriggerExternalAppEventResponse(ActionResponse):
     pass
+
+
+class GetPluginSettingRequest(APIRequest):
+    key: NonEmptyStr
+
+
+class GetPluginSettingResponse(SuccessResponse):
+    value: JsonValue
+
+
+class SetPluginSettingRequest(APIRequest):
+    key: NonEmptyStr
+    value: JsonValue
+
+
+class SetPluginSettingResponse(ActionResponse):
+    pass

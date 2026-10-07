@@ -68,7 +68,7 @@ def test_post_allowlist_user_input_error(
         )
 
         assert response.status_code == 400
-        assert "Invalid player name" in response.json()["detail"]
+        assert "Invalid player name" in response.json()["error"]["message"]
 
 
 def test_get_allowlist_success(admin_auth_client: TestClient, real_bedrock_server):
@@ -109,7 +109,7 @@ def test_get_allowlist_not_found(admin_auth_client: TestClient, real_bedrock_ser
         )
 
         assert response.status_code == 404
-        assert response.json()["error"]["code"] == "application_error"
+        assert response.json()["error"]["code"] == "not_found"
 
 
 def test_get_allowlist_error(admin_auth_client: TestClient, real_bedrock_server):
@@ -171,4 +171,4 @@ def test_delete_allowlist_bsm_error(admin_auth_client: TestClient, real_bedrock_
         )
 
         assert response.status_code == 500
-        assert "Internal system failure" in response.json()["detail"]
+        assert response.json()["error"]["message"] == "An unexpected error occurred."
