@@ -25,6 +25,8 @@ transport boundaries.
 The generated protocols in `plugins/api_types.py` provide static typing and
 autocomplete. After changing a registered API, run
 `python scripts/generate_plugin_api.py`; use `--check` to detect drift.
+Run `python scripts/check_api_callers.py` to check direct API calls and
+deferred targets passed to `run_task` or `functools.partial` for legacy arguments.
 
 Before-event callbacks receive a typed `request`; after-event callbacks also
 receive a typed `result`. These are independent snapshots. Cancellation uses

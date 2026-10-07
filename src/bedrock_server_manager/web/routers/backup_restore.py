@@ -18,15 +18,22 @@ functionality provided by :mod:`~bedrock_server_manager.api.backup_restore`.
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import aiofiles.ospath
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import ValidationError
 
 from bedrock_server_manager.api.models import (
+    APIRequest,
+    BackupAllRequest,
+    BackupConfigFileRequest,
+    BackupWorldRequest,
     ListBackupFilesRequest,
     PruneOldBackupsRequest,
+    RestoreAllRequest,
+    RestoreConfigFileRequest,
+    RestoreWorldRequest,
 )
 
 from ...api import backup_restore as backup_restore_api
@@ -203,29 +210,26 @@ async def post_backup_action(
             detail="Missing or invalid 'file_to_backup' for config backup type.",
         )
 
-    target_func: Optional[Callable[..., Any]] = None
-    kwargs = {"server_name": server_name, "app_context": app_context}
+    target_func: Callable[..., Any]
+    request: APIRequest
     if payload.backup_type.lower() == "world":
         target_func = backup_restore_api.backup_world
+        request = BackupWorldRequest(server_name=server_name)
     elif payload.backup_type.lower() == "config":
         target_func = backup_restore_api.backup_config_file
-        # payload.file_to_backup is already checked above, but mypy needs reassurance
-        if payload.file_to_backup:
-            kwargs["file_to_backup"] = payload.file_to_backup.strip()
-    elif payload.backup_type.lower() == "all":
-        target_func = backup_restore_api.backup_all
-
-    if not target_func:
-        # Should not be reached due to prior validation, but satisfies mypy
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid backup configuration.",
+        assert payload.file_to_backup is not None
+        request = BackupConfigFileRequest(
+            server_name=server_name, file_to_backup=payload.file_to_backup.strip()
         )
+    else:
+        target_func = backup_restore_api.backup_all
+        request = BackupAllRequest(server_name=server_name)
 
     task_id = await app_context.task_manager.run_task(
         target_func,
         username=current_user.username,
-        **kwargs,
+        request=request,
+        app_context=app_context,
     )
 
     return TaskAcceptedResponse(
@@ -287,11 +291,12 @@ async def post_restore_action(  # noqa: C901
     # Re-assert for mypy that payload.backup_file is str if we continue
     backup_file_name: str = payload.backup_file if payload.backup_file else ""
 
-    target_func: Optional[Callable[..., Any]] = None
-    kwargs = {"server_name": server_name, "app_context": app_context}
+    target_func: Callable[..., Any]
+    request: APIRequest
 
     if restore_type_lower == "all":
         target_func = backup_restore_api.restore_all
+        request = RestoreAllRequest(server_name=server_name)
     else:
         backup_base_dir = app_context.settings.get("paths.backups")
         if not backup_base_dir:
@@ -321,22 +326,20 @@ async def post_restore_action(  # noqa: C901
 
         if restore_type_lower == "world":
             target_func = backup_restore_api.restore_world
-            kwargs["backup_file_path"] = full_backup_path
-        elif restore_type_lower in ["properties", "allowlist", "permissions"]:
+            request = RestoreWorldRequest(
+                server_name=server_name, backup_file_path=full_backup_path
+            )
+        else:
             target_func = backup_restore_api.restore_config_file
-            kwargs["backup_file_path"] = full_backup_path
-
-    if not target_func:
-        # Should not be reached due to prior validation, but satisfies mypy
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid restore configuration.",
-        )
+            request = RestoreConfigFileRequest(
+                server_name=server_name, backup_file_path=full_backup_path
+            )
 
     task_id = await app_context.task_manager.run_task(
         target_func,
         username=current_user.username,
-        **kwargs,
+        request=request,
+        app_context=app_context,
     )
 
     return TaskAcceptedResponse(

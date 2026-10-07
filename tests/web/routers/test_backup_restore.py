@@ -4,6 +4,7 @@ Integration tests for the backup_restore router endpoints.
 
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.api.models import ListBackupFilesResponse
@@ -193,3 +194,141 @@ async def test_post_restore_action_file_not_found(
     )
     assert response.status_code == 404
     assert "not found" in response.json()["error"]["message"].lower()
+
+
+@pytest.mark.parametrize(
+    "backup_type, model_name, target",
+    [
+        ("world", "BackupWorldRequest", "backup_world"),
+        ("config", "BackupConfigFileRequest", "backup_config_file"),
+        ("all", "BackupAllRequest", "backup_all"),
+    ],
+)
+def test_backup_submits_typed_request(
+    admin_auth_client, app_context, real_bedrock_server, backup_type, model_name, target
+):
+    from bedrock_server_manager.api import backup_restore, models
+
+    with patch(
+        "bedrock_server_manager.web.tasks.TaskManager.run_task",
+        return_value="typed-backup",
+    ) as submit:
+        response = admin_auth_client.post(
+            f"/api/server/{real_bedrock_server.server_name}/backup/action",
+            json={"backup_type": backup_type, "file_to_backup": " server.properties "},
+        )
+    assert response.status_code == 202
+    assert submit.await_args.args == (getattr(backup_restore, target),)
+    assert set(submit.await_args.kwargs) == {"request", "app_context", "username"}
+    request = submit.await_args.kwargs["request"]
+    assert isinstance(request, getattr(models, model_name))
+    assert request.server_name == real_bedrock_server.server_name
+    assert submit.await_args.kwargs["app_context"] is app_context
+    if backup_type == "config":
+        assert request.file_to_backup == "server.properties"
+
+
+@pytest.mark.parametrize(
+    "restore_type, model_name, target",
+    [
+        ("all", "RestoreAllRequest", "restore_all"),
+        ("world", "RestoreWorldRequest", "restore_world"),
+        ("properties", "RestoreConfigFileRequest", "restore_config_file"),
+        ("allowlist", "RestoreConfigFileRequest", "restore_config_file"),
+        ("permissions", "RestoreConfigFileRequest", "restore_config_file"),
+    ],
+)
+async def test_restore_submits_typed_request(
+    admin_auth_client,
+    app_context,
+    real_bedrock_server,
+    tmp_path,
+    restore_type,
+    model_name,
+    target,
+):
+    from bedrock_server_manager.api import backup_restore, models
+
+    backup_dir = tmp_path / "backups" / real_bedrock_server.server_name
+    backup_dir.mkdir(parents=True)
+    backup = backup_dir / "backup.zip"
+    backup.touch()
+    await app_context.settings.set("paths.backups", str(backup_dir.parent))
+    with patch(
+        "bedrock_server_manager.web.tasks.TaskManager.run_task",
+        return_value="typed-restore",
+    ) as submit:
+        response = admin_auth_client.post(
+            f"/api/server/{real_bedrock_server.server_name}/restore/action",
+            json={"restore_type": restore_type, "backup_file": backup.name},
+        )
+    assert response.status_code == 202
+    assert submit.await_args.args == (getattr(backup_restore, target),)
+    assert set(submit.await_args.kwargs) == {"request", "app_context", "username"}
+    request = submit.await_args.kwargs["request"]
+    assert isinstance(request, getattr(models, model_name))
+    assert request.server_name == real_bedrock_server.server_name
+    assert request.stop_start_server is True
+    if restore_type != "all":
+        assert request.backup_file_path == str(backup)
+
+
+@pytest.mark.parametrize(
+    "action, kind",
+    [
+        ("backup", "world"),
+        ("backup", "config"),
+        ("backup", "all"),
+        ("restore", "world"),
+        ("restore", "properties"),
+        ("restore", "allowlist"),
+        ("restore", "permissions"),
+        ("restore", "all"),
+    ],
+)
+async def test_backup_restore_tasks_execute_valid_contracts(
+    app_context, real_bedrock_server, test_user, tmp_path, action, kind
+):
+    import asyncio
+
+    from bedrock_server_manager.web.routers.backup_restore import (
+        post_backup_action,
+        post_restore_action,
+    )
+    from bedrock_server_manager.web.schemas import (
+        BackupActionPayload,
+        RestoreActionPayload,
+    )
+
+    backup_dir = tmp_path / "backups" / real_bedrock_server.server_name
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "backup.zip").touch()
+    await app_context.settings.set("paths.backups", str(backup_dir.parent))
+    # Execute the real decorated API in the real task manager. A busy server
+    # skips disk/process work while still exercising request binding and results.
+    with patch.object(
+        real_bedrock_server.operation_lock, "acquire", side_effect=asyncio.TimeoutError
+    ):
+        if action == "backup":
+            response = await post_backup_action(
+                server_name=real_bedrock_server.server_name,
+                payload=BackupActionPayload(
+                    backup_type=kind, file_to_backup="server.properties"
+                ),
+                current_user=test_user,
+                app_context=app_context,
+            )
+        else:
+            response = await post_restore_action(
+                server_name=real_bedrock_server.server_name,
+                payload=RestoreActionPayload(
+                    restore_type=kind, backup_file="backup.zip"
+                ),
+                current_user=test_user,
+                app_context=app_context,
+            )
+        await app_context.task_manager.shutdown()
+    snapshot = await app_context.task_manager.get_task(response.task_id)
+    assert snapshot.status == "completed"
+    assert snapshot.result["status"] == "skipped"
+    assert snapshot.error is None
