@@ -39,7 +39,14 @@ persistent settings source; plugin metadata no longer duplicates it.
 
 ## HTTP and background tasks
 
-Task submission returns `TaskAcceptedResponse` with `status: "accepted"` and
+Server start, stop, and restart endpoints await completion and return HTTP 200
+with `StartServerResponse`, `StopServerResponse`, or `RestartServerResponse`.
+These responses contain `server_name`, `status`, `outcome`, and `message`; they
+have no `task_id`. Clients should await the response and display its outcome.
+Failures return the standard HTTP error envelope. Start completion means the
+process was launched, rather than a guarantee that game clients can connect.
+
+Long-running task submission returns `TaskAcceptedResponse` with `status: "accepted"` and
 `task_id`. Polling and WebSocket updates share `TaskSnapshot`:
 
 | Field | Meaning |

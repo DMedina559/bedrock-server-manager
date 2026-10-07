@@ -7,8 +7,8 @@ Bedrock server instances, including starting, stopping, restarting, updating,
 and deleting servers. It also provides an endpoint for sending commands to
 a running server.
 
-Most long-running operations (start, stop, restart, update, delete) are
-executed as background tasks to provide immediate API responses.
+Process lifecycle operations are awaited directly and return their operation
+results. Updates and deletions use tracked background tasks.
 User authentication and server existence are typically verified using
 FastAPI dependencies.
 """
@@ -27,7 +27,14 @@ from bedrock_server_manager.api.models import (
 
 from ...api import install
 from ...api import server as server_api
-from ...api.models import RestartServerRequest, StartServerRequest, StopServerRequest
+from ...api.models import (
+    RestartServerRequest,
+    RestartServerResponse,
+    StartServerRequest,
+    StartServerResponse,
+    StopServerRequest,
+    StopServerResponse,
+)
 from ...context import AppContext
 from ...error import (
     AppFileNotFoundError,
@@ -83,104 +90,72 @@ async def get_server_summary(
 @router.post(
     "/api/server/{server_name}/start",
     operation_id="start_server",
-    response_model=TaskAcceptedResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    response_model=StartServerResponse,
+    status_code=status.HTTP_200_OK,
     tags=["Process Management"],
 )
 async def post_start_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-) -> TaskAcceptedResponse:
-    """
-    Initiates starting a specific Bedrock server instance in the background.
-
-    The server start operation is performed as a background task.
-    This endpoint immediately returns a 202 Accepted response.
-    """
-    identity = current_user.username
-    logger.info(f"API: Start server request for '{server_name}' by user '{identity}'.")
-    task_id = await app_context.task_manager.run_task(
-        server_api.start_server,
-        username=current_user.username,
+) -> StartServerResponse:
+    """Await server start and return its completed operation result."""
+    logger.info(
+        "API: Start server request for '%s' by user '%s'.",
+        server_name,
+        current_user.username,
+    )
+    return await server_api.start_server(
         request=StartServerRequest(server_name=server_name),
         app_context=app_context,
-    )
-
-    return TaskAcceptedResponse(
-        status="accepted",
-        message=f"Start operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
     )
 
 
 @router.post(
     "/api/server/{server_name}/stop",
     operation_id="stop_server",
-    response_model=TaskAcceptedResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    response_model=StopServerResponse,
+    status_code=status.HTTP_200_OK,
     tags=["Process Management"],
 )
 async def post_stop_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-) -> TaskAcceptedResponse:
-    """
-    Initiates stopping a specific Bedrock server instance in the background.
-
-    The server stop operation is performed as a background task.
-    This endpoint immediately returns a 202 Accepted response.
-    """
-    identity = current_user.username
-    logger.info(f"API: Stop server request for '{server_name}' by user '{identity}'.")
-    task_id = await app_context.task_manager.run_task(
-        server_api.stop_server,
-        username=current_user.username,
+) -> StopServerResponse:
+    """Await server stop and return its completed operation result."""
+    logger.info(
+        "API: Stop server request for '%s' by user '%s'.",
+        server_name,
+        current_user.username,
+    )
+    return await server_api.stop_server(
         request=StopServerRequest(server_name=server_name),
         app_context=app_context,
-    )
-
-    return TaskAcceptedResponse(
-        status="accepted",
-        message=f"Stop operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
     )
 
 
 @router.post(
     "/api/server/{server_name}/restart",
     operation_id="restart_server",
-    response_model=TaskAcceptedResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    response_model=RestartServerResponse,
+    status_code=status.HTTP_200_OK,
     tags=["Process Management"],
 )
 async def post_restart_server(
     server_name: str = Depends(validate_server_exists),
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-) -> TaskAcceptedResponse:
-    """
-    Initiates restarting a specific Bedrock server instance in the background.
-
-    The server restart operation (stop followed by start) is performed as a
-    background task. This endpoint immediately returns a 202 Accepted response.
-    """
-    identity = current_user.username
+) -> RestartServerResponse:
+    """Await server restart and return its completed operation result."""
     logger.info(
-        f"API: Restart server request for '{server_name}' by user '{identity}'."
+        "API: Restart server request for '%s' by user '%s'.",
+        server_name,
+        current_user.username,
     )
-    task_id = await app_context.task_manager.run_task(
-        server_api.restart_server,
-        username=current_user.username,
+    return await server_api.restart_server(
         request=RestartServerRequest(server_name=server_name),
         app_context=app_context,
-    )
-
-    return TaskAcceptedResponse(
-        status="accepted",
-        message=f"Restart operation for server '{server_name}' initiated in background.",
-        task_id=task_id,
     )
 
 

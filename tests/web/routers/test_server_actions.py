@@ -4,16 +4,21 @@ Integration tests for the server_actions router endpoints.
 
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from bedrock_server_manager.api.models import (
     GetServerSummaryResponse,
+    RestartServerResponse,
     SendCommandResponse,
+    StartServerResponse,
+    StopServerResponse,
 )
 from bedrock_server_manager.error import (
     BlockedCommandError,
     BSMError,
     ServerNotRunningError,
+    ServerStartError,
     UserInputError,
 )
 
@@ -70,40 +75,66 @@ def test_get_server_summary_error(admin_auth_client: TestClient, real_bedrock_se
         assert response.json()["error"]["code"] == "validation_error"
 
 
-def test_post_start_server(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task",
-        return_value="task-start",
+@pytest.mark.parametrize(
+    "action, model, outcome",
+    [
+        ("start", StartServerResponse, "started"),
+        ("start", StartServerResponse, "already_running"),
+        ("stop", StopServerResponse, "stopped"),
+        ("stop", StopServerResponse, "already_stopped"),
+        ("restart", RestartServerResponse, "restarted"),
+        ("restart", RestartServerResponse, "started"),
+    ],
+)
+def test_process_lifecycle_returns_completed_result(
+    admin_auth_client: TestClient,
+    real_bedrock_server,
+    app_context,
+    action,
+    model,
+    outcome,
+):
+    result = model(
+        server_name=real_bedrock_server.server_name,
+        outcome=outcome,
+        message="Completed",
+    )
+    with (
+        patch(
+            f"bedrock_server_manager.web.routers.server_actions.server_api.{action}_server",
+            return_value=result,
+        ) as operation,
+        patch("bedrock_server_manager.web.tasks.TaskManager.run_task") as submit,
     ):
+        response = admin_auth_client.post(
+            f"/api/server/{real_bedrock_server.server_name}/{action}"
+        )
+        assert response.status_code == 200
+        assert response.json() == result.model_dump(mode="json")
+        operation.assert_awaited_once()
+        assert operation.await_args is not None
+        assert (
+            operation.await_args.kwargs["request"].server_name
+            == real_bedrock_server.server_name
+        )
+        assert operation.await_args.kwargs["app_context"] is app_context
+        submit.assert_not_called()
+
+
+def test_process_lifecycle_failure_returns_http_error(
+    admin_auth_client: TestClient, real_bedrock_server
+):
+    with patch(
+        "bedrock_server_manager.web.routers.server_actions.server_api.start_server",
+        side_effect=ServerStartError("Private failure"),
+    ) as operation:
         response = admin_auth_client.post(
             f"/api/server/{real_bedrock_server.server_name}/start"
         )
-        assert response.status_code == 202
-        assert response.json()["task_id"] == "task-start"
-
-
-def test_post_stop_server(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task",
-        return_value="task-stop",
-    ):
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/stop"
-        )
-        assert response.status_code == 202
-        assert response.json()["task_id"] == "task-stop"
-
-
-def test_post_restart_server(admin_auth_client: TestClient, real_bedrock_server):
-    with patch(
-        "bedrock_server_manager.web.tasks.TaskManager.run_task",
-        return_value="task-restart",
-    ):
-        response = admin_auth_client.post(
-            f"/api/server/{real_bedrock_server.server_name}/restart"
-        )
-        assert response.status_code == 202
-        assert response.json()["task_id"] == "task-restart"
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "server_start_failed"
+        assert "Private failure" not in response.text
+        operation.assert_awaited_once()
 
 
 def test_post_update_server(admin_auth_client: TestClient, real_bedrock_server):
@@ -230,3 +261,16 @@ def test_post_send_command_bsm_error(
         )
         assert response.status_code == 500
         assert response.json()["error"]["message"] == "An unexpected error occurred."
+
+
+def test_process_lifecycle_openapi_returns_operation_models(test_app):
+    schema = test_app.openapi()
+    for action in ("start", "stop", "restart"):
+        operation = schema["paths"][f"/api/server/{{server_name}}/{action}"]["post"]
+        assert "202" not in operation["responses"]
+        response = operation["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]
+        assert (
+            response["$ref"] == f"#/components/schemas/{action.title()}ServerResponse"
+        )
