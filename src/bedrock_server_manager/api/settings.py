@@ -14,8 +14,10 @@ programmatically access and modify these global settings.
 
 import logging
 
+from pydantic import ValidationError
+
 from ..context import AppContext
-from ..error import BSMError, MissingArgumentError
+from ..error import BSMError, MissingArgumentError, UserInputError
 from ..plugins.api_bridge import api_method
 from ..plugins.api_contract import validate_contract
 from ..plugins.event_trigger import trigger_event
@@ -110,6 +112,8 @@ async def set_global_setting(
         return SetGlobalSettingResponse(
             message=f"Global setting '{key}' updated successfully."
         )
+    except ValidationError as error:
+        raise UserInputError("Invalid setting value.") from error
     except BSMError as e:
         logger.error(
             f"API: Configuration error setting global key '{key}': {e}", exc_info=True
@@ -144,6 +148,8 @@ async def set_custom_global_setting(
         return SetCustomGlobalSettingResponse(
             message=f"Global setting '{key}' updated successfully."
         )
+    except ValidationError as error:
+        raise UserInputError("Invalid setting value.") from error
     except BSMError as e:
         logger.error(
             f"API: Configuration error setting global key '{key}': {e}", exc_info=True

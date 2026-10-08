@@ -6,6 +6,7 @@ FastAPI router for managing server-specific settings.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 
 from ...context import AppContext
 from ...error import (
@@ -106,6 +107,10 @@ async def post_set_server_setting(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Server '{server_name}' not found.",
         )
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=422, detail="Invalid server setting value."
+        ) from error
     except (UserInputError, MissingArgumentError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except BSMError as e:
