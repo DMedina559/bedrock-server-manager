@@ -203,6 +203,21 @@ async def websocket_endpoint(  # noqa: C901
             await connection_manager.send_to_client(
                 reply.model_dump(mode="json", exclude_unset=True), client_id
             )
+            # Replay the owner's current snapshot after acknowledging subscription.
+            # Fast tasks may finish before the client receives their task ID.
+            if frame.action == "subscribe" and topic.startswith("task:"):
+                task = await app_context.task_manager.get_task(
+                    topic.removeprefix("task:"), username=user.username
+                )
+                if task is not None:
+                    await connection_manager.send_to_client(
+                        {
+                            "type": "task_update",
+                            "topic": topic,
+                            "data": task.model_dump(mode="json"),
+                        },
+                        client_id,
+                    )
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected: {client_id}")

@@ -190,3 +190,47 @@ async def test_sync_websocket_provider_runs_off_event_loop():
 
     result = await _call_data_provider(provider, "topic", None, "id", None)
     assert result != threading.get_ident()
+
+
+async def test_task_subscription_replays_completed_owner_snapshot(
+    unauth_client, app_context, test_user
+):
+    from bedrock_server_manager.utils import create_access_token
+
+    manager = app_context.task_manager
+
+    async def install_result():
+        return {"status": "success", "version": "1.26.60.30"}
+
+    task_id = await manager.run_task(install_result, username=test_user.username)
+    await manager.shutdown()
+    token = await create_access_token(app_context, {"sub": test_user.username})
+    with unauth_client.websocket_connect("/ws") as socket:
+        socket.send_json({"action": "authenticate", "token": token})
+        socket.receive_json()
+        socket.send_json({"action": "subscribe", "topic": f"task:{task_id}"})
+        assert socket.receive_json()["status"] == "success"
+        update = socket.receive_json()
+        assert update["type"] == "task_update"
+        assert update["topic"] == f"task:{task_id}"
+        assert update["data"]["status"] == "completed"
+        assert update["data"]["result"]["version"] == "1.26.60.30"
+        assert "username" not in update["data"]
+
+
+async def test_task_subscription_does_not_replay_another_users_snapshot(
+    unauth_client, app_context, test_user
+):
+    from bedrock_server_manager.utils import create_access_token
+
+    task_id = await app_context.task_manager.run_task(lambda: "private", "other")
+    await app_context.task_manager.shutdown()
+    token = await create_access_token(app_context, {"sub": test_user.username})
+    with unauth_client.websocket_connect("/ws") as socket:
+        socket.send_json({"action": "authenticate", "token": token})
+        socket.receive_json()
+        socket.send_json({"action": "subscribe", "topic": f"task:{task_id}"})
+        assert socket.receive_json()["status"] == "success"
+        socket.send_json({"action": "subscribe", "topic": "next"})
+        # The next frame is the acknowledgement, with no intervening private data.
+        assert "next" in socket.receive_json()["message"]
