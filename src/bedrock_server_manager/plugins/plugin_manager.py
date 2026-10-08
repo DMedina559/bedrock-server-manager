@@ -24,6 +24,7 @@ from ..config.const import _MISSING_PARAM_PLACEHOLDER, DEFAULT_ENABLED_PLUGINS
 from .api_bridge import create_app_api
 from .event_trigger import _event_registry
 from .plugin_base import PluginBase
+from .runtime import PluginRuntime, PluginStatus
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class PluginManager:
         logger.debug(f"Plugin directories configured: {self.plugin_dirs}")
 
         self.plugin_config: Dict[str, Dict[str, Any]] = {}
+        self._runtime_records: dict[str, PluginRuntime] = {}
         self.plugins: List[PluginBase] = []
 
         # Event listener map structured as: {event_name: {plugin_identifier: [callbacks]}}
@@ -498,14 +500,13 @@ class PluginManager:
                             "description": description,
                             "version": str(version),
                             "author": author,
-                            "status": status_val,
                         }
                     else:
                         existing["description"] = description
                         existing["version"] = str(version)
                         existing["author"] = author
                         existing["enabled"] = enabled_val
-                        existing["status"] = status_val
+                    self._set_runtime_status(p_name, status_val)
 
         plugins_to_remove = [
             p for p in self.plugin_config if p not in valid_plugin_names
@@ -638,13 +639,13 @@ class PluginManager:
                         self.plugin_static_mounts.extend(valid_mounts)
 
                 if plugin_name in self.plugin_config:
-                    self.plugin_config[plugin_name]["status"] = "LOADED"
+                    self._set_runtime_status(plugin_name, "LOADED")
 
             except BaseException as e:
                 if instance is not None:
                     await self.unload_plugin_by_name(plugin_name)
                 if plugin_name in self.plugin_config:
-                    self.plugin_config[plugin_name]["status"] = "ERROR"
+                    self._set_runtime_status(plugin_name, "ERROR")
                 if not isinstance(e, Exception):
                     raise
                 logger.error(
@@ -707,7 +708,17 @@ class PluginManager:
         await self.load_plugins()
         logger.info("PluginManager reload complete.")
 
-    def get_plugin_status(self, plugin_name: str) -> str:
+    def _set_runtime_status(self, plugin_name: str, status: PluginStatus) -> None:
+        self._runtime_records[plugin_name] = PluginRuntime(plugin_name=plugin_name, status=status, module_name=f"bsm_plugins.{plugin_name}" if status == "LOADED" else None)
+
+    def get_plugin_runtime(self, plugin_name: str) -> PluginRuntime:
+        record = self._runtime_records.get(plugin_name) or PluginRuntime(plugin_name=plugin_name, status=self.get_plugin_status(plugin_name))
+        data = record.model_dump()
+        data["registered_events"] = [event for event, listeners in self._event_listeners.items() if plugin_name in listeners]
+        data["active_tasks"] = [task.get_name() for task in self.plugin_tasks.get(plugin_name, []) if not task.done()]
+        return PluginRuntime.model_validate(data)
+
+    def get_plugin_status(self, plugin_name: str) -> PluginStatus:
         """Returns the runtime status of a given plugin ('LOADED', 'DISABLED', 'ERROR', or 'UNLOADED')."""
         cfg = self.plugin_config.get(plugin_name)
         is_loaded = any(
@@ -717,9 +728,11 @@ class PluginManager:
         )
         if is_loaded:
             return "LOADED"
+        if plugin_name in self._runtime_records:
+            return self._runtime_records[plugin_name].status
         if isinstance(cfg, dict):
             if cfg.get("status") in ("ERROR", "DISABLED", "UNLOADED"):
-                return str(cfg["status"])
+                return PluginRuntime(plugin_name=plugin_name, status=cfg["status"]).status
             if not cfg.get("enabled", False):
                 return "DISABLED"
         return "UNKNOWN" if cfg is None else "UNLOADED"
@@ -737,7 +750,7 @@ class PluginManager:
         if not target_instance:
             logger.warning(f"Plugin '{plugin_name}' is not currently loaded.")
             if plugin_name in self.plugin_config:
-                self.plugin_config[plugin_name]["status"] = "UNLOADED"
+                self._set_runtime_status(plugin_name, "UNLOADED")
             return False
 
         plugin_key = (
@@ -810,7 +823,7 @@ class PluginManager:
         sys.modules.pop(full_module_name, None)
 
         if plugin_name in self.plugin_config:
-            self.plugin_config[plugin_name]["status"] = "UNLOADED"
+            self._set_runtime_status(plugin_name, "UNLOADED")
 
         logger.info(f"Plugin '{plugin_name}' unloaded successfully.")
         return True
@@ -830,7 +843,7 @@ class PluginManager:
                 f"Cannot load plugin '{plugin_name}': File or directory not found."
             )
             if plugin_name in self.plugin_config:
-                self.plugin_config[plugin_name]["status"] = "ERROR"
+                self._set_runtime_status(plugin_name, "ERROR")
             return False
 
         p_class = self._get_plugin_class_from_path(path, plugin_name)
@@ -839,7 +852,7 @@ class PluginManager:
                 f"Cannot load plugin '{plugin_name}': No PluginBase subclass found."
             )
             if plugin_name in self.plugin_config:
-                self.plugin_config[plugin_name]["status"] = "ERROR"
+                self._set_runtime_status(plugin_name, "ERROR")
             return False
 
         instance = None
@@ -936,7 +949,7 @@ class PluginManager:
                     self.plugin_tasks.setdefault(plugin_name, []).append(task)
 
             if plugin_name in self.plugin_config:
-                self.plugin_config[plugin_name]["status"] = "LOADED"
+                self._set_runtime_status(plugin_name, "LOADED")
             logger.info(f"Plugin '{plugin_name}' loaded successfully.")
             return True
         except BaseException as e:
@@ -946,7 +959,7 @@ class PluginManager:
                 raise
             logger.error(f"Failed to load plugin '{plugin_name}': {e}", exc_info=True)
             if plugin_name in self.plugin_config:
-                self.plugin_config[plugin_name]["status"] = "ERROR"
+                self._set_runtime_status(plugin_name, "ERROR")
             return False
 
     async def reload_plugin(self, plugin_name: str) -> bool:
@@ -969,7 +982,7 @@ class PluginManager:
 
         if load_immediately:
             return await self.load_plugin_by_name(plugin_name)
-        self.plugin_config[plugin_name]["status"] = "DISABLED"
+        self._set_runtime_status(plugin_name, "DISABLED")
         return True
 
     async def disable_plugin(
@@ -986,5 +999,5 @@ class PluginManager:
 
         if unload_immediately:
             await self.unload_plugin_by_name(plugin_name)
-        self.plugin_config[plugin_name]["status"] = "DISABLED"
+        self._set_runtime_status(plugin_name, "DISABLED")
         return True

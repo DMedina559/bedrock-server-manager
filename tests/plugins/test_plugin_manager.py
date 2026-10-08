@@ -303,3 +303,19 @@ async def test_full_unload_removes_plugin_providers(app_context):
     app_context.connection_manager.register_data_provider("sample", lambda: 1, "sample")
     await manager.unload_plugins()
     assert app_context.connection_manager.get_data_provider("sample") is None
+
+
+def test_runtime_snapshot_is_typed_and_independent(app_context):
+    from pydantic import ValidationError
+    import pytest
+    manager = app_context.plugin_manager
+    manager._set_runtime_status("sample", "LOADED")
+    manager._event_listeners = {"example": {"sample": []}}
+    snapshot = manager.get_plugin_runtime("sample")
+    assert snapshot.loaded
+    assert snapshot.registered_events == ["example"]
+    snapshot.registered_events.clear()
+    assert manager.get_plugin_runtime("sample").registered_events == ["example"]
+    with pytest.raises(ValidationError):
+        manager._set_runtime_status("sample", "INVALID")
+    assert manager.get_plugin_status("sample") == "LOADED"

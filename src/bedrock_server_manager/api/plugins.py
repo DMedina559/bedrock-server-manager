@@ -59,7 +59,7 @@ async def get_plugin_statuses(
     try:
         pm = app_context.plugin_manager
         await pm._synchronize_config_with_disk()
-        statuses = pm.plugin_config
+        statuses = {name: {**config, "status": pm.get_plugin_status(name)} for name, config in pm.plugin_config.items()}
         logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
         return GetPluginStatusesResponse.model_validate(
             {"status": "success", "plugins": statuses.copy()}
