@@ -102,28 +102,16 @@ class ServerStateMixin(BedrockServerBaseMixin):
 
     async def _load_server_config(self) -> Dict[str, Any]:
         """Loads the server-specific configuration asynchronously via AppState and Storage."""
-        from ...state.models import ServerConfigState
-
         if not self.state or not self.storage:
             return self._get_default_server_config()
 
         cfg = self.state.servers.get(self.server_name)
         if not cfg:
-            self.logger.info(
-                f"Server config for '{self.server_name}' not found in AppState. Initializing defaults."
-            )
-            default_config = self._get_default_server_config()
-            cfg = ServerConfigState(
-                server_name=self.server_name,
-                installed_version=default_config["server_info"]["installed_version"],
-                status=default_config["server_info"]["status"],
-                autoupdate=default_config["settings"]["autoupdate"],
-                autostart=default_config["settings"]["autostart"],
-                target_version=default_config["settings"]["target_version"],
-                custom=default_config["custom"],
-            )
-            self.state.servers.set(cfg)
-            await self.storage.flush(self.state)
+            from ...services.server_service import ServerService
+
+            cfg = await ServerService(
+                self.state, self.storage
+            ).register_or_update_server(self.server_name)
 
         return {
             "server_info": {
@@ -137,38 +125,6 @@ class ServerStateMixin(BedrockServerBaseMixin):
             },
             "custom": dict(cfg.custom) if cfg.custom is not None else {},
         }
-
-    async def _save_server_config(self, config_data: Dict[str, Any]) -> None:
-        """Saves the server configuration data asynchronously via AppState and Storage."""
-        from ...state.models import ServerConfigState
-
-        if not self.state or not self.storage:
-            return
-
-        cfg = self.state.servers.get(self.server_name)
-        if not cfg:
-            cfg = ServerConfigState(server_name=self.server_name)
-
-        server_info = config_data.get("server_info", {})
-        settings = config_data.get("settings", {})
-
-        if "installed_version" in server_info:
-            cfg.installed_version = server_info["installed_version"]
-        if "status" in server_info:
-            cfg.status = server_info["status"]
-
-        if "autoupdate" in settings:
-            cfg.autoupdate = settings["autoupdate"]
-        if "autostart" in settings:
-            cfg.autostart = settings["autostart"]
-        if "target_version" in settings:
-            cfg.target_version = settings["target_version"]
-
-        if "custom" in config_data:
-            cfg.custom = config_data["custom"]
-
-        self.state.servers.set(cfg)
-        await self.storage.flush(self.state)
 
     async def _manage_json_config(
         self,
@@ -185,10 +141,8 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 f"Invalid operation: '{operation}'. Must be 'read' or 'write'."
             )
 
-        current_config = await self._load_server_config()
-
         if operation_lower == "read":
-            d = current_config
+            d = await self._load_server_config()
             try:
                 for k_part in key.split("."):
                     if not isinstance(d, dict):
@@ -212,31 +166,12 @@ class ServerStateMixin(BedrockServerBaseMixin):
                 )
                 return None
 
-        # Operation is "write"
-        self.logger.debug(
-            f"Server Config Write: Key='{key}', New Value='{value}' for '{self.server_name}'"
-        )
+        if self.state and self.storage:
+            from ...services.server_service import ServerService
 
-        d = current_config
-        keys_list = key.split(".")
-        for k_part in keys_list[:-1]:
-            if not isinstance(d, dict):
-                raise ConfigParseError(
-                    f"Cannot create nested key '{key}': part '{k_part}' conflicts with existing non-dictionary value in config for '{self.server_name}'."
-                )
-            d = d.setdefault(k_part, {})
-            if not isinstance(d, dict):
-                raise ConfigParseError(
-                    f"Cannot create nested key '{key}': part '{k_part}' resulted in a non-dictionary in config for '{self.server_name}'."
-                )
-
-        if not isinstance(d, dict):
-            raise ConfigParseError(
-                f"Cannot set key '{keys_list[-1]}' in path '{'.'.join(keys_list[:-1])}': parent is not a dictionary in config for '{self.server_name}'."
+            await ServerService(self.state, self.storage).update_setting(
+                self.server_name, key, value
             )
-        d[keys_list[-1]] = value
-
-        await self._save_server_config(current_config)
         return None
 
     async def get_version(self) -> str:

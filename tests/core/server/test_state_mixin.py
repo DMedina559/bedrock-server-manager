@@ -79,3 +79,48 @@ async def test_get_set_target_version(real_bedrock_server):
     server = real_bedrock_server
     await server.set_target_version("latest")
     assert await server.get_target_version() == "latest"
+
+
+async def test_concurrent_initial_writes_preserve_both_values(
+    real_bedrock_server, monkeypatch
+):
+    import asyncio
+
+    server = real_bedrock_server
+    server.state.servers.remove(server.server_name)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = server.storage.apply_changeset
+    first = True
+
+    async def delayed(state, changeset):
+        nonlocal first
+        if first:
+            first = False
+            entered.set()
+            await release.wait()
+        await original(state, changeset)
+
+    monkeypatch.setattr(server.storage, "apply_changeset", delayed)
+    initial = asyncio.create_task(
+        server._manage_json_config("server_info.installed_version", "write", "new")
+    )
+    await entered.wait()
+    await server._manage_json_config("settings.autostart", "write", True)
+    release.set()
+    await initial
+    record = server.state.servers.get(server.server_name)
+    assert record.installed_version == "new"
+    assert record.autostart
+
+
+async def test_invalid_nested_write_is_atomic(real_bedrock_server):
+    import pytest
+    from pydantic import ValidationError
+
+    server = real_bedrock_server
+    await server._manage_json_config("custom.valid", "write", 1)
+    before = server.state.servers.get(server.server_name)
+    with pytest.raises(ValidationError):
+        await server._manage_json_config("custom.invalid", "write", float("nan"))
+    assert server.state.servers.get(server.server_name) == before

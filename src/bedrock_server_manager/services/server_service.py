@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from pydantic import JsonValue
 
+from ..error import ConfigParseError
 from ..state.changeset import ChangeSet
 from ..state.models import BanResult, ServerConfigState
 from ..state.updates import ServerUpdate
@@ -72,6 +73,40 @@ class ServerService:
         await self.storage.apply_changeset(self.state, changeset)
 
         return config
+
+    async def update_setting(
+        self, server_name: str, key: str, value: JsonValue
+    ) -> None:
+        """Apply a single configuration path to the latest validated snapshot."""
+        parts = key.split(".")
+        roots = {
+            "server_info": {"installed_version", "status"},
+            "settings": {"autoupdate", "autostart", "target_version"},
+        }
+        async with self.state.servers.get_lock(server_name):
+            record = self.state.servers.get(server_name) or ServerConfigState(
+                server_name=server_name
+            )
+            data = record.model_dump()
+            if parts[0] == "custom":
+                current = data
+                for part in parts[:-1]:
+                    current = current.setdefault(part, {})
+                    if not isinstance(current, dict):
+                        raise ConfigParseError(
+                            "Configuration path conflicts with an existing value."
+                        )
+                current[parts[-1]] = value
+            elif len(parts) == 2 and parts[1] in roots.get(parts[0], set()):
+                data[parts[1]] = value
+            else:
+                raise ConfigParseError(
+                    "Unknown server configuration path. Use custom for extension settings."
+                )
+            self.state.servers.set(ServerConfigState.model_validate(data))
+        changeset = ChangeSet()
+        changeset.add_server(server_name)
+        await self.storage.apply_changeset(self.state, changeset)
 
     async def set_autostart(self, server_name: str, enabled: bool) -> None:
         """Sets server autostart flag."""
