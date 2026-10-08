@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Callable, Optional
@@ -59,6 +60,7 @@ async def server_lifecycle_manager(
     server = app_context.get_server(server_name)
     was_running = False
     operation_succeeded = True
+    operation_cancelled = False
 
     # If the operation doesn't require a server stop, just yield and exit.
     if not stop_before:
@@ -86,6 +88,10 @@ async def server_lifecycle_manager(
         # Yield control to the wrapped code block.
         yield
 
+    except asyncio.CancelledError:
+        operation_cancelled = True
+        operation_succeeded = False
+        raise
     except Exception:
         # If an error occurs in the `with` block, record it and re-raise.
         operation_succeeded = False
@@ -97,7 +103,7 @@ async def server_lifecycle_manager(
     finally:
         # --- POST-OPERATION: RESTART SERVER ---
         # Only restart if the server was running initially and `start_after` is true.
-        if was_running and start_after:
+        if was_running and start_after and not operation_cancelled:
             should_restart = True
             # If `restart_on_success_only` is set, check if the operation failed.
             if restart_on_success_only and not operation_succeeded:

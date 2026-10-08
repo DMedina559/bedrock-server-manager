@@ -348,3 +348,29 @@ async def test_get_server_setting_success(app_context, monkeypatch):
     assert result["status"] == "success"
     assert result["value"] == "secret"
     mock_server._manage_json_config.assert_called_once_with("secret.key", "read")
+
+
+@pytest.mark.parametrize("success_only", [True, False])
+async def test_cancelled_lifecycle_operation_does_not_restart(
+    app_context, monkeypatch, success_only
+):
+    import asyncio
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        app_context,
+        "get_server",
+        lambda _: SimpleNamespace(is_running=AsyncMock(return_value=True)),
+    )
+    start = AsyncMock()
+    monkeypatch.setattr("bedrock_server_manager.api.server.start_server", start)
+    monkeypatch.setattr("bedrock_server_manager.api.server.stop_server", AsyncMock())
+    with pytest.raises(asyncio.CancelledError):
+        async with server_lifecycle_manager(
+            "example",
+            True,
+            restart_on_success_only=success_only,
+            app_context=app_context,
+        ):
+            raise asyncio.CancelledError()
+    start.assert_not_awaited()
