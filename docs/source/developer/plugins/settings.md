@@ -36,12 +36,16 @@ class MyConfigurablePlugin(PluginBase):
 
 If you need to store global settings outside of your plugin's isolated namespace, you can use the custom global setting API. These are stored in the database under the `custom.` namespace.
 
-*   **Saving Data:** `await self.api.set_custom_global_setting(key="my_global_key", value="my_value")`
-*   **Loading Data:** `await self.api.get_global_setting(key="custom.my_global_key")`
+*   **Saving Data:** `await self.api.settings.set_custom_global_setting({"key": "my_global_key", "value": "my_value"})`
+*   **Loading Data:** `await self.api.settings.get_global_setting({"key": "custom.my_global_key"})`
 
 ### 3. Server-Specific Custom Settings
 
 You can also store custom settings that apply only to a specific Minecraft server.
 
-*   **Saving Server Data:** `await self.api.set_server_custom_value(server_name="survival_world", key="some_key", value="some_value")`
-*   **Loading Server Data:** `await self.api.get_server_setting(server_name="survival_world", key="custom.some_key")`
+*   **Saving Server Data:** `await self.api.server.set_custom_value({"server_name": "survival_world", "key": "some_key", "value": "some_value"})`
+*   **Loading Server Data:** `await self.api.server.get_setting({"server_name": "survival_world", "key": "custom.some_key"})`
+
+API reads return a response model; read its `.value` attribute. Settings contain
+JSON values. Changing a returned dictionary does not save it; call the setter
+explicitly after editing your copy.

@@ -17,8 +17,8 @@ Your FastAPI route should accept this `server` query parameter to dynamically fe
 @self.router.get("/my_plugin/ui", response_class=JSONResponse, tags=["plugin-json-ui"])
 async def get_ui(server: str = "default_server"): # Accept the server query param
     # Fetch data specific to the selected server using the Core API
-    status = await self.api.get_server_running_status(server)
-    is_running = status.get("is_running", False)
+    status = await self.api.system.get_server_running_status({"server_name": server})
+    is_running = status.is_running
 
     return JSONResponse(content={
         "type": "Card",
@@ -42,10 +42,13 @@ Here is a minimal example of a plugin that adds a native UI page:
 ```python
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from bedrock_server_manager import PluginBase
+from bedrock_server_manager import PluginBase, app_event
 
 class MyPlugin(PluginBase):
-    def on_load(self, **kwargs):
+    version = "4.0.0"
+
+    @app_event("on_load")
+    async def plugin_loaded(self, **kwargs):
         self.router = APIRouter(tags=["My Plugin"])
 
         @self.router.get(

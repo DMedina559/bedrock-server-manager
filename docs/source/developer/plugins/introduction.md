@@ -1,6 +1,6 @@
 # Developing Plugins
 
-For the breaking 4.0 API changes, start with [Migrating to 4.0 contracts](../v4_contracts.md).
+For the breaking 4.0 API changes, start with [Calling the plugin API in 4.0](contracts.md).
 
 ```{image} https://raw.githubusercontent.com/DMedina559/bsm-frontend/main/frontend/public/image/icon/favicon.svg
 :alt: Bedrock Server Manager Logo
@@ -47,8 +47,8 @@ class MyFirstPlugin(PluginBase):
     async def after_server_start(self, **kwargs):
         """This event is called after a server has started."""
         server_name = kwargs.get("server_name")
-        result = kwargs.get("result", {})
-        if result.get("status") == "success":
+        result = kwargs.get("result")
+        if result is not None and result.status == "success":
             self.logger.info(f"Server '{server_name}' has started successfully!")
 ```
 
@@ -142,7 +142,7 @@ Every plugin **must** inherit from `bedrock_server_manager.PluginBase` (typicall
 Event hooks are methods from `PluginBase` that you can override. The Plugin Manager calls these methods when the corresponding event occurs.
 
 *   **`before_*` events:** Called *before* an action is attempted.
-*   **`after_*` events:** Called *after* an action has been attempted. They are always passed a `result` dictionary that you can inspect to see if the action succeeded or failed.
+*   **`after_*` events:** Called *after* an action has been attempted. Successful API operations pass a typed `result` model. Failed or cancelled operations raise and do not send an after-event.
 
 ### Asynchronous Architecture & Event Hooks (Version 4.0)
 
@@ -151,7 +151,7 @@ In Version 4.0, Bedrock Server Manager operates on a fully asynchronous architec
 ```{important}
 **Plugin Boundaries & Architecture Standard:**
 
-Plugins **must not** attempt to import or access BSM internal objects (such as `app_context`, `BedrockServer`, or direct database sessions) directly. All interactions with the core application, background tasks, settings, and server operations must go exclusively through `PluginBase` methods and `self.api` methods (e.g., `await self.api.start_server(...)`, `await self.api.run_task(...)`, `await self.get_plugin_setting(...)`).
+Plugins **must not** attempt to import or access BSM internal objects (such as `app_context`, `BedrockServer`, or direct database sessions) directly. All interactions with the core application, background tasks, settings, and server operations must go exclusively through `PluginBase` methods and `self.api` methods (e.g., `await self.api.server.start(...)`, `await self.api.runtime.run_task(...)`, `await self.get_plugin_setting(...)`).
 ```
 
 Define event handlers using the `@app_event` decorator with `async def`:
@@ -172,8 +172,6 @@ class MyAsyncPlugin(PluginBase):
         # Non-blocking async operations
         await asyncio.sleep(3)
 
-        # Call core APIs using await
-        await self.api.send_command(server_name, "say Server starting in 3 seconds!")
         self.logger.info("Done waiting. Proceeding with server start.")
 ```
 
@@ -200,7 +198,7 @@ class RealTimeStatsPlugin(PluginBase):
     @app_event("on_load")
     async def plugin_loaded(self, **kwargs):
         # Register a data provider for the "live-stats" WebSocket topic
-        await self.api.websocket.register_data_provider("live-stats", self.get_live_stats)
+        await self.api.runtime.register_data_provider("live-stats", self.get_live_stats)
         self.logger.info("Registered 'live-stats' WebSocket data provider!")
 
     async def get_live_stats(self, topic, data, user):
@@ -212,10 +210,10 @@ class RealTimeStatsPlugin(PluginBase):
         if user.role not in ("admin", "user"):
             raise PermissionError("Unauthorized to view live stats")
 
-        servers = await self.api.application.get_all_servers_data()
+        servers = await self.api.application.get_all_servers_data({})
         return {
             "requested_by": user.username,
-            "servers": servers.get("servers", {})
+            "servers": [item.model_dump(mode="json") for item in servers.servers]
         }
 
     @app_event("after_server_start")
@@ -223,8 +221,8 @@ class RealTimeStatsPlugin(PluginBase):
         server_name = kwargs.get("server_name")
         # Broadcast real-time updates to all clients subscribed to "server-updates"
         await self.api.websocket.broadcast(
-            "server-updates",
-            {"event": "server_started", "server_name": server_name}
+            {"topic": "server-updates",
+             "data": {"event": "server_started", "server_name": server_name}}
         )
 ```
 
@@ -233,7 +231,7 @@ class RealTimeStatsPlugin(PluginBase):
 ```{tip}
 *   **Always use `self.logger`:** Do not use `print()`. The provided logger is integrated with the application's logging system.
 *   **Handle exceptions:** Wrap API calls in `try...except` blocks to handle potential failures gracefully.
-*   **Check the `result` dictionary:** After an `after_*` event, inspect the `result['status']` to confirm the outcome.
-*   **Avoid blocking operations:** Long-running tasks in your event handlers or FastAPI endpoints can freeze the application. Use the [Task Manager](./task_manager.md) to offload them to background threads.
+*   **Read typed results:** After an API `after_*` event, inspect `result.status` and its operation-specific fields.
+*   **Avoid blocking operations:** Use asynchronous I/O in event handlers and endpoints. Use [background tasks](./task_manager.md) for work that should continue after the request returns; synchronous task functions run in threads.
 *   **Use the API for operations:** Do not directly manipulate server files or directories. Use the provided `self.api` functions to ensure thread-safety and consistency.
 ```

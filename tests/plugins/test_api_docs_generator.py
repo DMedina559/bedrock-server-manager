@@ -21,7 +21,7 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
         "from bedrock_server_manager.api.models import StartServerRequest" in markdown
     )
     assert "payload = {'server_name': 'example'}" in markdown
-    assert "await self.api.server.start_server(request)" in markdown
+    assert "await self.api.server.start(request)" in markdown
     assert "StartServerResponse" in markdown
     assert '"additionalProperties": false' in markdown
     assert '"already_running"' in markdown
@@ -29,9 +29,10 @@ def test_generated_docs_include_lifecycle_contract_and_usable_example():
     assert "APICancelledError" in markdown
     events = {item["name"]: item for item in generator._scan_codebase_for_events()}
     assert [field["name"] for field in events["before_server_start"]["parameters"]] == [
-        "server_name"
+        "request",
+        "server_name",
     ]
     assert events["after_server_start"]["parameters"][-1] == {
         "name": "result",
-        "type_obj": "Dict[str, Any]",
+        "type_obj": "StartServerResponse",
     }

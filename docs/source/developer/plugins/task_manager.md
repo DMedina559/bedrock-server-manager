@@ -1,104 +1,67 @@
-# Using the Task Manager
+# Background tasks
 
-When developing plugins for Bedrock Server Manager, you may encounter situations where a task takes a long time to complete (e.g., downloading large files, processing backups, making complex external API calls).
+Await server start, stop, and restart directly. Use a background task when a
+long operation, such as a backup or download, should continue after an HTTP
+request returns. Async functions run on the event loop; synchronous functions
+run in a worker thread. Use asynchronous I/O or move blocking work to a thread.
 
-Running these tasks directly within an event hook or a FastAPI endpoint blocks the main application thread or event loop. This can cause the web interface to become unresponsive and potentially lead to WebSocket disconnections.
+## Submitting a task
 
-To solve this, Bedrock Server Manager provides a `TaskManager` to offload long-running operations to background threads.
-
-## Submitting Background Tasks via `self.api.run_task`
-
-In Version 4.0, plugins interact with background task scheduling exclusively through the safe `self.api.run_task` method. Plugins **must not** attempt to access `app_context` or `TaskManager` objects directly.
-
-The `await self.api.run_task(...)` method accepts the target function to execute along with any required positional or keyword arguments, submitting the function to be executed in the background and returning a unique `task_id`.
-
-### Example: A Long-Running Task
-
-Here is an example of a plugin that provides a web endpoint to trigger a long-running background task.
+Use `self.api.runtime.run_task`. It returns a task ID. Supply the authenticated
+user's username so polling and WebSocket updates belong to that user.
 
 ```python
-import time
-import logging
+import asyncio
 from fastapi import APIRouter, Depends
 from bedrock_server_manager import PluginBase
-
-# It is recommended to import the application context dependency
-# to cleanly access the task manager from decoupled FastAPI routers.
-from bedrock_server_manager.web.dependencies import get_app_context
-from bedrock_server_manager.web.auth_utils import get_current_user
-from bedrock_server_manager.context import AppContext
-from bedrock_server_manager.web.schemas import User
-
-logger = logging.getLogger(__name__)
-
-plugin_web_router = APIRouter(
-    prefix="/my_task_plugin",
-    tags=["My Task Plugin"]
-)
-
-def my_long_running_function(seconds: int, name: str):
-    """This function runs in the background."""
-    logger.info(f"Starting long task for {name}...")
-    # Simulate a long-running process
-    time.sleep(seconds)
-    logger.info(f"Finished long task for {name}!")
-    return f"Processed {name} successfully in {seconds} seconds."
+from bedrock_server_manager.api.models.tasks import TaskAcceptedResponse
+from bedrock_server_manager.web import get_admin_user
+from bedrock_server_manager.web.schemas import UserResponse
 
 class MyTaskPlugin(PluginBase):
     version = "4.0.0"
 
-    @app_event("on_load")
-    async def plugin_loaded(self, **kwargs):
-        self.logger.info("MyTaskPlugin loaded.")
+    async def collect(self):
+        await asyncio.sleep(5)
+        return {"message": "Collection finished."}
 
     def get_fastapi_routers(self):
         router = APIRouter(prefix="/my_task_plugin", tags=["My Task Plugin"])
 
-        @router.post("/start_task")
-        async def trigger_task(
-            seconds: int = 5,
-            name: str = "example",
-            current_user: Dict[str, Any] = Depends(get_admin_user)
-        ):
-            # Submit the function to run in the background via self.api.run_task.
-            task_id = await self.api.run_task(
-                my_long_running_function,
-                username=current_user.get("username"),
-                seconds=seconds,
-                name=name
+        @router.post("/collect", operation_id="my_task_plugin_collect",
+                     response_model=TaskAcceptedResponse)
+        async def collect(current_user: UserResponse = Depends(get_admin_user)):
+            task_id = await self.api.runtime.run_task(
+                self.collect, username=current_user.username
             )
-
-            return {"status": "success", "task_id": task_id, "message": "Task started in the background."}
+            return TaskAcceptedResponse(task_id=task_id, message="Collection queued.")
 
         return [router]
 ```
 
-## Tracking Task Status and UI Updates
+Return JSON data or a serializable Pydantic model from your function. Errors are
+logged and exposed as a safe structured error, without raw exception details.
 
-When you submit a task using `run_task`, the `TaskManager` automatically tracks its status (`in_progress`, `success`, `error`).
+## Tracking a task
 
-The task manager returns a dictionary containing the task details:
+Task status is `queued`, `running`, `completed`, `failed`, or `cancelled`.
+Polling and WebSocket updates use the same task snapshot:
 
 ```json
 {
-    "status": "in_progress", // Or "success", "error"
-    "message": "Task is running.", // Or the error/success message
-    "result": null, // Will contain the return value of your function upon success
-    "username": "admin"
+    "id": "task-id",
+    "status": "completed",
+    "message": "Task completed.",
+    "result": {"message": "Collection finished."},
+    "error": null
 }
 ```
 
-### WebSocket Notifications
-
-If you provide the `username` argument when calling `run_task`, the `TaskManager` will automatically send WebSocket notifications to that specific user whenever the task status updates (e.g., when it completes or fails).
-
-The frontend can listen for these notifications on the `task:{task_id}` topic to update the UI without needing to poll the `task_status` endpoint repeatedly.
-
-### Handling Exceptions
-
-If your background function raises an exception, the task manager will catch it, log the error using the main application logger, and update the task's status to `error`. The exception message will be stored in the task's `message` field.
-
-
+Updates are sent to the owner on `task:{task_id}`. A completed API operation can
+still have `status="skipped"` in its result; inspect the operation result as well
+as the task status. Cancelling a synchronous function's asyncio task does not
+stop a thread that is already executing; design long-running synchronous work
+with its own cancellation mechanism when needed.
 
 ## Using `@task_loop` for Periodic Tasks
 

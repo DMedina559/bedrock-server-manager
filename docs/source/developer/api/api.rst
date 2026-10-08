@@ -17,8 +17,6 @@ These APIs provide a safe, consistent, and stable way to manage servers and the 
    :caption: Server Actions
 
    server
-   typed_contracts
-   contract_inventory
 
 .. toctree::
    :maxdepth: 2
