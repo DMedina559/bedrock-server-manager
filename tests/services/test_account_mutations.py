@@ -94,3 +94,49 @@ async def test_audit_details_validate_before_session_mutation(app_context, detai
                 session, 1, "update", details
             )
         assert not session.new
+
+
+async def test_registration_consumes_token_and_publishes_clean_account(app_context):
+    import time
+
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.user_repo.create_registration_token(
+            session, "token", "user", int(time.time()) + 3600
+        )
+    record = await app_context.user_service.create_account(
+        "registered", "hash", token="token"
+    )
+    assert record.id is not None
+    assert app_context.state.users.get("registered") == record
+    assert "registered" not in app_context.state.users.dirty_users
+    async with app_context.storage.transaction() as session:
+        assert (
+            await app_context.storage.user_repo.get_registration_token(session, "token")
+            is None
+        )
+
+
+async def test_failed_creation_does_not_publish_state_or_consume_token(
+    app_context, monkeypatch
+):
+    import time
+
+    async with app_context.storage.transaction() as session:
+        await app_context.storage.user_repo.create_registration_token(
+            session, "token", "user", int(time.time()) + 3600
+        )
+    monkeypatch.setattr(
+        app_context.storage.user_repo,
+        "create_user",
+        AsyncMock(side_effect=RuntimeError("failed")),
+    )
+    with pytest.raises(StorageError):
+        await app_context.user_service.create_account(
+            "registered", "hash", token="token"
+        )
+    assert app_context.state.users.get("registered") is None
+    async with app_context.storage.transaction() as session:
+        assert (
+            await app_context.storage.user_repo.get_registration_token(session, "token")
+            is not None
+        )

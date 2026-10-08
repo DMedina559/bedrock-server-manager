@@ -3,11 +3,13 @@
 Service managing user domain state mutations and user account operations.
 """
 
+import time
 from typing import TYPE_CHECKING, Literal, Optional
 
 from pydantic import JsonValue
+from sqlalchemy.exc import IntegrityError
 
-from ..error import UserInputError
+from ..error import StorageError, UserInputError
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
 from ..state.updates import UNSET, Unset, UserUpdate
@@ -172,3 +174,61 @@ class UserService:
                     if not dirty:
                         self.state.users.remove_dirty_user(name)
                 return record
+
+    async def create_account(
+        self,
+        username: str,
+        hashed_password: str,
+        *,
+        token: str | None = None,
+        first_admin: bool = False,
+    ) -> UserInfoState | None:
+        """Consume registration and publish the new account only after commit."""
+        try:
+            async with self.storage.write_lock:
+                async with self.state.users.get_lock(username):
+                    async with self.storage.transaction() as session:
+                        registration = None
+                        role: str | None
+                        if first_admin:
+                            if await self.storage.user_repo.count_admins(session):
+                                raise UserInputError(
+                                    "Application has already been set up."
+                                )
+                            role = "admin"
+                        else:
+                            registration = (
+                                await self.storage.user_repo.get_registration_token(
+                                    session, token or ""
+                                )
+                            )
+                            if (
+                                registration is None
+                                or registration.expires is None
+                                or registration.expires <= int(time.time())
+                            ):
+                                return None
+                            role = registration.role
+                        candidate = UserInfoState.model_validate(
+                            {"username": username, "role": role}
+                        )
+                        user = await self.storage.user_repo.create_user(
+                            session, username, hashed_password, candidate.role
+                        )
+                        await session.flush()
+                        record = UserInfoState.model_validate(
+                            user, from_attributes=True
+                        )
+                        if registration is not None:
+                            await self.storage.user_repo.delete_registration_token(
+                                session, registration
+                            )
+                    self.state.users.set(record)
+                    self.state.users.remove_dirty_user(username)
+                    return record
+        except StorageError as error:
+            if isinstance(error.__cause__, IntegrityError):
+                raise UserInputError(
+                    "Username already exists. Please choose a different one."
+                ) from error
+            raise

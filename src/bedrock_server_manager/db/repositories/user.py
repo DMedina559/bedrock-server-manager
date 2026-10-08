@@ -126,3 +126,9 @@ class UserRepository:
             .filter(User.role == "admin", User.is_active.is_(True))
         )
         return int(result.scalar() or 0)
+
+    async def count_admins(self, session: AsyncSession) -> int:
+        result = await session.execute(
+            select(func.count()).select_from(User).where(User.role == "admin")
+        )
+        return int(result.scalar() or 0)

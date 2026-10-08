@@ -12,9 +12,8 @@ import logging
 import secrets
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
 
 from ...context import AppContext
 from ...utils import get_password_hash
@@ -107,61 +106,16 @@ async def register_user(
     """
     Creates a new user from a registration token.
     """
-    async with app_context.storage.transaction() as session:
-        registration_token = await app_context.storage.user_repo.get_registration_token(
-            session, token
+    record = await app_context.user_service.create_account(
+        data.username, get_password_hash(data.password), token=token
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=404, detail="Invalid or expired registration token."
         )
-        if (
-            not registration_token
-            or registration_token.expires is None
-            or registration_token.expires < int(time.time())
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invalid or expired registration token.",
-            )
-
-        hashed_password = get_password_hash(data.password)
-
-        try:
-            await app_context.storage.user_repo.create_user(
-                session,
-                username=data.username,
-                hashed_password=hashed_password,
-                role=str(registration_token.role),
-            )
-            await app_context.storage.user_repo.delete_registration_token(
-                session, registration_token
-            )
-            await session.commit()
-
-            logger.info(
-                f"UserResponse '{data.username}' registered with role '{registration_token.role}'."
-            )
-
-            return JSONResponse(
-                content={
-                    "status": "success",
-                    "message": "Registration successful. Please log in.",
-                },
-                status_code=status.HTTP_200_OK,
-            )
-
-        except IntegrityError:
-            await session.rollback()
-            logger.warning(
-                f"Registration failed: Username '{data.username}' already exists."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists. Please choose a different one.",
-            )
-        except Exception as e:
-            await session.rollback()
-            logger.error(
-                f"An unexpected error occurred during registration: {e}", exc_info=True
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An unexpected server error occurred during registration.",
-            )
+    return JSONResponse(
+        content={
+            "status": "success",
+            "message": "Registration successful. Please log in.",
+        }
+    )
