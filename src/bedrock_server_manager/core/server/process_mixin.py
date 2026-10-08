@@ -26,7 +26,7 @@ import platform
 import subprocess
 import time
 from io import BufferedWriter
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
 
 import aiofiles
 import aiofiles.ospath
@@ -223,18 +223,30 @@ class ServerProcessMixin(BedrockServerBaseMixin):
             # Native async subprocess creation
             self._log_file_handle = open(output_file, "ab")
 
-            self._process = await asyncio.create_subprocess_exec(
-                self.bedrock_executable_path,
-                cwd=self.server_dir,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=self._log_file_handle,
-                stderr=asyncio.subprocess.STDOUT,
-                creationflags=(
-                    getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                    if platform.system() == "Windows"
-                    else 0
-                ),
+            spawn = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    self.bedrock_executable_path,
+                    cwd=self.server_dir,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=self._log_file_handle,
+                    stderr=asyncio.subprocess.STDOUT,
+                    creationflags=(
+                        getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                        if platform.system() == "Windows"
+                        else 0
+                    ),
+                )
             )
+            try:
+                self._process = await asyncio.shield(spawn)
+            except asyncio.CancelledError:
+                while not spawn.done():
+                    try:
+                        await asyncio.shield(spawn)
+                    except asyncio.CancelledError:
+                        continue
+                self._process = spawn.result()
+                raise
 
             await system_process.write_pid_to_file(pid_file_path, self._process.pid)
             self._publish_running(True)
@@ -273,23 +285,35 @@ class ServerProcessMixin(BedrockServerBaseMixin):
     async def _rollback_start(self) -> None:
         """Release resources acquired by a startup that did not complete."""
         process = self._process
-        if process is not None:
-            try:
-                process.terminate()
-                if inspect.iscoroutinefunction(process.wait):
-                    await asyncio.wait_for(process.wait(), timeout=5)
-                else:
-                    await asyncio.to_thread(process.wait, timeout=5)
-            except Exception:
-                process.kill()
-                if inspect.iscoroutinefunction(process.wait):
-                    await process.wait()
-                else:
-                    await asyncio.to_thread(process.wait)
-        self._process = None
-        if self._log_file_handle is not None:
-            self._log_file_handle.close()
-            self._log_file_handle = None
+        try:
+            if process is not None:
+                try:
+                    try:
+                        process.terminate()
+                    except ProcessLookupError:
+                        pass
+                    if inspect.iscoroutinefunction(process.wait):
+                        await asyncio.wait_for(process.wait(), timeout=5)
+                    else:
+                        await asyncio.to_thread(
+                            cast(Callable[[float], int], process.wait), 5
+                        )
+                except Exception:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                    if inspect.iscoroutinefunction(process.wait):
+                        await asyncio.wait_for(process.wait(), timeout=5)
+                    else:
+                        await asyncio.to_thread(
+                            cast(Callable[[float], int], process.wait), 5
+                        )
+            self._process = None
+        finally:
+            if self._log_file_handle is not None:
+                self._log_file_handle.close()
+                self._log_file_handle = None
         self.intentionally_stopped = True
         self._publish_running(False)
         await system_process.remove_pid_file_if_exists(self.get_pid_file_path())
