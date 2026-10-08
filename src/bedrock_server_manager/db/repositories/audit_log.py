@@ -4,20 +4,22 @@ Repository for managing AuditLog database entity operations.
 
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from ..database import Database
 from ..models import AuditLog
 
 
 class AuditLogRepository:
     """Handles database persistence for audit log records."""
 
-    def __init__(self, db: Any = None):
+    def __init__(self, db: Database | None = None):
         self.db = db
 
     async def create_audit_log(
         self,
-        session: Any,
+        session: AsyncSession,
         user_id: int,
         action: str,
         details: Optional[Dict[Any, Any]] = None,
@@ -27,7 +29,7 @@ class AuditLogRepository:
         session.add(log)
         return log
 
-    async def get_all_logs(self, session: Any) -> List[AuditLog]:
+    async def get_all_logs(self, session: AsyncSession) -> List[AuditLog]:
         """Retrieves all audit logs ordered by timestamp descending."""
         result = await session.execute(
             select(AuditLog).order_by(AuditLog.timestamp.desc())

@@ -74,7 +74,7 @@ async def get_all_global_settings(
     logger.debug("API: Reading all global settings.")
     try:
         settings = app_context.settings
-        all_settings = settings._settings.copy()
+        all_settings = settings.state.settings.to_dict()
         logger.debug("API: Successfully retrieved all global settings.")
         return GetAllGlobalSettingsResponse.model_validate(
             {"status": "success", "settings": all_settings}

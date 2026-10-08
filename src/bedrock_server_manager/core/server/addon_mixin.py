@@ -44,6 +44,7 @@ from ...error import (
     UserInputError,
 )
 from ...utils.io import load_json, save_json
+from ..data import ManifestRecord
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -1192,7 +1193,26 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             self.logger.debug(
                 f"Extracted manifest: Type='{pack_type_cleaned}', UUID='{uuid_val}', Version='{version_val}', Name='{name_val}', Subpacks='{len(subpacks_val)}'"
             )
-            return pack_type_cleaned, uuid_val, version_val, name_val, subpacks_val
+            # Existing legacy normalization is complete; validate the external boundary.
+            normalized = dict(manifest_data)
+            normalized["header"] = {
+                **header,
+                "uuid": uuid_val,
+                "version": version_val,
+                "name": name_val,
+            }
+            normalized["subpacks"] = subpacks_val
+            manifest = ManifestRecord.model_validate(normalized)
+            return (
+                pack_type_cleaned,
+                manifest.header.uuid,
+                manifest.header.version,
+                manifest.header.name,
+                [
+                    item.model_dump(mode="json", exclude_unset=True)
+                    for item in manifest.subpacks
+                ],
+            )
 
         except ValueError as e:
             raise ConfigParseError(

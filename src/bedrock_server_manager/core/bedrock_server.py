@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 import typing
 
 from . import server
+from .data import SummaryRecord
 
 
 class BedrockServer(
@@ -191,4 +192,4 @@ class BedrockServer(
             "players": getattr(self, "players", []),
         }
 
-        return summary
+        return SummaryRecord.model_validate(summary).model_dump(mode="json")

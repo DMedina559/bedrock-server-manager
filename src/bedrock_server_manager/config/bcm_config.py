@@ -22,8 +22,11 @@ import os
 from typing import Any, Dict
 
 from platformdirs import user_config_dir
+from pydantic import ValidationError
 
+from ..error import ConfigurationError
 from .const import CONFIG_FILE_NAME, env_name, package_name
+from .models import BootstrapConfig
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +85,12 @@ def _read_raw_config() -> Dict[str, Any]:
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                return cast(Dict[str, Any], json.load(f))
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    raise ConfigurationError(
+                        "Startup configuration must be a JSON object."
+                    )
+                return cast(Dict[str, Any], data)
         except (json.JSONDecodeError, OSError) as e:
             logger.error(f"Failed to load configuration file at {config_path}: {e}")
     return {}
@@ -167,7 +175,10 @@ def load_config() -> Dict[str, Any]:
         final_log_level = final_log_level.upper()
     final_config["logging_level"] = final_log_level
 
-    return final_config
+    try:
+        return BootstrapConfig.model_validate(final_config).model_dump(mode="json")
+    except ValidationError as error:
+        raise ConfigurationError("Invalid startup configuration.") from error
 
 
 def save_config(data: Dict[str, Any]):

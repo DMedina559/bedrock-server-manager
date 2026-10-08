@@ -3,10 +3,13 @@
 Service managing plugin state mutations and configuration persistence.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
+
+from pydantic import JsonValue
 
 from ..state.changeset import ChangeSet
 from ..state.models import PluginInfoState
+from ..state.updates import UNSET, PluginUpdate, Unset
 
 if TYPE_CHECKING:
     from ..db.storage import Storage
@@ -36,33 +39,30 @@ class PluginService:
         self,
         plugin_name: str,
         enabled: Optional[bool] = None,
-        version: Optional[str] = None,
-        author: Optional[str] = None,
-        description: Optional[str] = None,
-        settings: Optional[Dict[str, Any]] = None,
+        version: str | None | Unset = UNSET,
+        author: str | None | Unset = UNSET,
+        description: str | None | Unset = UNSET,
+        settings: Optional[Dict[str, JsonValue]] = None,
     ) -> PluginInfoState:
         """Registers or updates a plugin state record and marks dirty state."""
         async with self.state.plugins.get_lock(plugin_name):
             existing = self.state.plugins.get(plugin_name)
-            if existing:
-                data = existing.model_dump()
-                if enabled is not None:
-                    data["enabled"] = enabled
-                if version is not None:
-                    data["version"] = version
-                if author is not None:
-                    data["author"] = author
-                if description is not None:
-                    data["description"] = description
-                plugin = PluginInfoState(**data)
-            else:
-                plugin = PluginInfoState(
-                    plugin_name=plugin_name,
-                    enabled=enabled if enabled is not None else True,
-                    version=version,
-                    author=author,
-                    description=description,
-                )
+            values: dict[str, object] = {"plugin_name": plugin_name}
+            if enabled is not None:
+                values["enabled"] = enabled
+            elif existing is None:
+                values["enabled"] = True
+            for name, value in (
+                ("version", version),
+                ("author", author),
+                ("description", description),
+            ):
+                if value is not UNSET:
+                    values[name] = value
+            update = PluginUpdate.model_validate(values)
+            data = existing.model_dump() if existing else {}
+            data.update(update.model_dump(exclude_unset=True))
+            plugin = PluginInfoState.model_validate(data)
 
             self.state.plugins.set(plugin)
 
@@ -92,7 +92,7 @@ class PluginService:
             value = value.get(part)
         return value
 
-    async def set_setting(self, plugin_name: str, key: str, value: Any) -> None:
+    async def set_setting(self, plugin_name: str, key: str, value: JsonValue) -> None:
         from ..error import UserInputError
 
         parts = key.split(".")

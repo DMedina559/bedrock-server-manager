@@ -11,6 +11,7 @@ from ...error import (
     UserInputError,
 )
 from ...utils.io import load_json, save_json
+from ..data import PERMISSIONS
 from .base_server_mixin import BedrockServerBaseMixin
 
 
@@ -44,7 +45,10 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
             try:
                 loaded_data = await load_json(self.permissions_json_path)
                 if isinstance(loaded_data, list):
-                    permissions_list = loaded_data
+                    permissions_list = [
+                        entry.model_dump(mode="json", exclude_unset=True)
+                        for entry in PERMISSIONS.validate_python(loaded_data)
+                    ]
                 elif loaded_data:
                     self.logger.warning(
                         f"Permissions file '{self.permissions_json_path}' is not a list. Overwriting."
@@ -112,7 +116,10 @@ class ServerPermissionsMixin(BedrockServerBaseMixin):
         try:
             loaded_data = await load_json(self.permissions_json_path)
             if isinstance(loaded_data, list):
-                raw_permissions = loaded_data
+                raw_permissions = [
+                    entry.model_dump(mode="json", exclude_unset=True)
+                    for entry in PERMISSIONS.validate_python(loaded_data)
+                ]
             elif loaded_data:
                 raise ConfigParseError("Permissions file content is not a list.")
         except ValueError as e:

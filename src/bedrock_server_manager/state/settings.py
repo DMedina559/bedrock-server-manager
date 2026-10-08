@@ -9,16 +9,22 @@ import logging
 import os
 from typing import Any, Dict, Optional, Set
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, TypeAdapter
 
 from ..error import ConfigurationError
+from .validation import json_equal
 
 logger = logging.getLogger(__name__)
 
 
 class SettingsRecord(BaseModel):
     model_config = ConfigDict(
-        extra="forbid", validate_assignment=True, revalidate_instances="always"
+        extra="forbid",
+        strict=True,
+        frozen=True,
+        validate_default=True,
+        allow_inf_nan=False,
+        revalidate_instances="always",
     )
 
 
@@ -32,25 +38,32 @@ class PathsSettings(SettingsRecord):
 
 
 class RetentionSettings(SettingsRecord):
-    backups: int = 3
-    downloads: int = 3
+    backups: int = Field(default=3, ge=0)
+    downloads: int = Field(default=3, ge=0)
 
 
 class MonitoringSettings(SettingsRecord):
-    max_retries: int = 3
-    process_interval_sec: int = 10
-    player_interval_sec: int = 10
+    max_retries: int = Field(default=3, ge=0)
+    process_interval_sec: int = Field(default=10, gt=0)
+    player_interval_sec: int = Field(default=10, gt=0)
 
 
 class WebSettings(SettingsRecord):
     host: str = "127.0.0.1"
-    port: int = 11325
-    token_expires_weeks: int = 4
+    port: int = Field(default=11325, ge=1, le=65535)
+    token_expires_weeks: int = Field(default=4, gt=0)
     jwt_secret_key: Optional[str] = None
 
 
 class SettingsState(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        validate_assignment=True,
+        validate_default=True,
+        allow_inf_nan=False,
+        revalidate_instances="always",
+    )
     paths: PathsSettings = Field(default_factory=PathsSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
@@ -62,8 +75,21 @@ class SettingsState(BaseModel):
     _dirty_keys: Set[str] = PrivateAttr(default_factory=set)
     _locks: Dict[str, asyncio.Lock] = PrivateAttr(default_factory=dict)
 
+    def __getattribute__(self, name: str) -> Any:
+        value = super().__getattribute__(name)
+        # Public container reads are snapshots. Persist mutations through set().
+        if name in {"custom", "plugin_settings"}:
+            return copy.deepcopy(value)
+        return value
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
+        if name in type(self).model_fields and self.__pydantic_private__ is not None:
+            self.mark_dirty(name)
+
     def get_lock(self, key: str = "global") -> asyncio.Lock:
-        root_key = key.split(".")[0]
+        # Every setter validates/replaces a whole snapshot; use one shared lock.
+        root_key = "global"
         if root_key not in self._locks:
             self._locks[root_key] = asyncio.Lock()
         return self._locks[root_key]
@@ -162,16 +188,24 @@ class SettingsState(BaseModel):
 
         return obj
 
-    def set(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: Any) -> bool:
         """Validate a complete updated snapshot before mutating live settings."""
         parts = key.split(".")
         if any(not part or part.startswith("_") or "__" in part for part in parts):
             raise ConfigurationError(f"Invalid setting key '{key}'.")
-        missing = object()
-        if self.get(key, missing) == value:
-            return
         data = self.model_dump(mode="python")
-        target = data if parts[0] in type(self).model_fields else data["custom"]
+        if parts[0] in type(self).model_fields:
+            target = data
+            dirty_key = parts[0]
+        elif parts[0] in data["custom"]:
+            target = data["custom"]
+            dirty_key = "custom"
+        elif parts[0] in data["plugin_settings"]:
+            target = data["plugin_settings"]
+            dirty_key = "plugin_settings"
+        else:
+            target = data["custom"]
+            dirty_key = "custom"
         current = target
         for part in parts[:-1]:
             child = current.setdefault(part, {})
@@ -182,9 +216,12 @@ class SettingsState(BaseModel):
             current = child
         current[parts[-1]] = value
         updated = type(self).model_validate(data)
+        if json_equal(self.to_dict(), updated.to_dict()):
+            return False
         for name in type(self).model_fields:
-            setattr(self, name, getattr(updated, name))
-        self.mark_dirty(parts[0] if parts[0] in type(self).model_fields else "custom")
+            if name == dirty_key:
+                setattr(self, name, getattr(updated, name))
+        return True
 
     def to_dict(self) -> Dict[str, Any]:
         """Exports settings state into a dictionary matching database key/value structure."""
@@ -248,12 +285,29 @@ class SettingsState(BaseModel):
             if "max_retries" not in supplied:
                 monitoring["max_retries"] = legacy_retries
 
-        inst = cls(
-            paths=PathsSettings(**merged.get("paths", {})),
-            retention=RetentionSettings(**merged.get("retention", {})),
-            monitoring=MonitoringSettings(**merged.get("monitoring", {})),
-            web=WebSettings(**merged.get("web", {})),
-            custom=merged.get("custom", {}),
-            plugin_settings=merged.get("plugin_settings", {}),
-        )
+        # Normalize only known legacy numeric settings at the DB load boundary.
+        numeric_fields = {
+            "retention": ("backups", "downloads"),
+            "monitoring": (
+                "max_retries",
+                "process_interval_sec",
+                "player_interval_sec",
+            ),
+            "web": ("port", "token_expires_weeks"),
+        }
+        integer = TypeAdapter(int)
+        for section, fields in numeric_fields.items():
+            if isinstance(merged.get(section), dict):
+                for name in fields:
+                    value = merged[section].get(name)
+                    if isinstance(value, str):
+                        merged[section][name] = integer.validate_python(value)
+
+        # Old extension roots have an explicit migration into the custom namespace.
+        for name in tuple(merged):
+            if name not in cls.model_fields:
+                logger.warning("Migrating legacy settings root %s into custom", name)
+                merged["custom"].setdefault(name, merged.pop(name))
+        inst = cls.model_validate(merged)
+        inst.clear_dirty()
         return inst

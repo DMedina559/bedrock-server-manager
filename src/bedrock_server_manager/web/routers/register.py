@@ -83,7 +83,11 @@ async def validate_token(
         registration_token = await app_context.storage.user_repo.get_registration_token(
             session, token
         )
-        if not registration_token or registration_token.expires < int(time.time()):
+        if (
+            not registration_token
+            or registration_token.expires is None
+            or registration_token.expires < int(time.time())
+        ):
             raise HTTPException(status_code=404, detail="Invalid or expired token.")
 
         return JSONResponse(
@@ -107,7 +111,11 @@ async def register_user(
         registration_token = await app_context.storage.user_repo.get_registration_token(
             session, token
         )
-        if not registration_token or registration_token.expires < int(time.time()):
+        if (
+            not registration_token
+            or registration_token.expires is None
+            or registration_token.expires < int(time.time())
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Invalid or expired registration token.",

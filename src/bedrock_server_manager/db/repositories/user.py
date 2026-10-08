@@ -2,22 +2,24 @@
 Repository for managing User and RegistrationToken database entity persistence.
 """
 
-from typing import Any, List, Optional, cast
+from typing import List, Optional, cast
 
 from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ...state.models import UserInfoState
+from ..database import Database
 from ..models import RegistrationToken, User
 
 
 class UserRepository:
     """Handles database persistence for user accounts and registration tokens."""
 
-    def __init__(self, db: Any = None):
+    def __init__(self, db: Database | None = None):
         self.db = db
 
-    async def get_all_users(self, session: Any) -> List[UserInfoState]:
+    async def get_all_users(self, session: AsyncSession) -> List[UserInfoState]:
         """Retrieves all users from the database as UserInfoState models."""
         result = await session.execute(select(User))
         users = []
@@ -35,19 +37,23 @@ class UserRepository:
             users.append(u_info)
         return users
 
-    async def get_user_by_username(self, session: Any, username: str) -> Optional[User]:
+    async def get_user_by_username(
+        self, session: AsyncSession, username: str
+    ) -> Optional[User]:
         """Retrieves a User SQLAlchemy model by username."""
         result = await session.execute(select(User).filter(User.username == username))
         return cast(Optional[User], result.scalar_one_or_none())
 
-    async def get_user_by_id(self, session: Any, user_id: int) -> Optional[User]:
+    async def get_user_by_id(
+        self, session: AsyncSession, user_id: int
+    ) -> Optional[User]:
         """Retrieves a User SQLAlchemy model by user_id."""
         result = await session.execute(select(User).filter(User.id == user_id))
         return cast(Optional[User], result.scalar_one_or_none())
 
-    async def save_user(self, session: Any, u_info: UserInfoState) -> None:
+    async def save_user(self, session: AsyncSession, u_info: UserInfoState) -> None:
         """Persists or updates a single UserInfoState record."""
-        user_record: Any = await self.get_user_by_username(session, u_info.username)
+        user_record = await self.get_user_by_username(session, u_info.username)
         if user_record:
             user_record.role = u_info.role
             user_record.theme = u_info.theme
@@ -65,12 +71,12 @@ class UserRepository:
             )
             session.add(user_record)
 
-    async def delete_user(self, session: Any, user: User) -> None:
+    async def delete_user(self, session: AsyncSession, user: User) -> None:
         """Deletes a User record from the database."""
         await session.delete(user)
 
     async def get_registration_token(
-        self, session: Any, token: str
+        self, session: AsyncSession, token: str
     ) -> Optional[RegistrationToken]:
         """Retrieves a RegistrationToken record by token string."""
         result = await session.execute(
@@ -79,7 +85,7 @@ class UserRepository:
         return cast(Optional[RegistrationToken], result.scalar_one_or_none())
 
     async def create_registration_token(
-        self, session: Any, token: str, role: str, expires: int
+        self, session: AsyncSession, token: str, role: str, expires: int
     ) -> RegistrationToken:
         """Creates and adds a new RegistrationToken record."""
         token_record = RegistrationToken(token=token, role=role, expires=expires)
@@ -87,7 +93,7 @@ class UserRepository:
         return token_record
 
     async def create_user(
-        self, session: Any, username: str, hashed_password: str, role: str
+        self, session: AsyncSession, username: str, hashed_password: str, role: str
     ) -> User:
         """Creates and adds a new User record."""
         user = User(username=username, hashed_password=hashed_password, role=role)
@@ -95,13 +101,13 @@ class UserRepository:
         return user
 
     async def delete_registration_token(
-        self, session: Any, token_record: RegistrationToken
+        self, session: AsyncSession, token_record: RegistrationToken
     ) -> None:
         """Deletes a RegistrationToken record from the database."""
         await session.delete(token_record)
 
     async def update_password(
-        self, session: Any, username: str, hashed_password: str
+        self, session: AsyncSession, username: str, hashed_password: str
     ) -> bool:
         """Updates hashed password for a user by username."""
         user = await self.get_user_by_username(session, username)
@@ -110,7 +116,7 @@ class UserRepository:
             return True
         return False
 
-    async def count_active_admins(self, session: Any) -> int:
+    async def count_active_admins(self, session: AsyncSession) -> int:
         """Counts active admin users in the database."""
         result = await session.execute(
             select(func.count())

@@ -43,6 +43,7 @@ from ...error import (
     ServerStartError,
     ServerStopError,
 )
+from ..data import ProcessRecord
 from ..system import base as system_base
 from ..system import process as system_process
 from .base_server_mixin import BedrockServerBaseMixin
@@ -418,8 +419,13 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 )
                 return None
 
-            return await asyncio.to_thread(
+            data = await asyncio.to_thread(
                 self._resource_monitor.get_stats, process_obj
+            )
+            return (
+                ProcessRecord.model_validate(data).model_dump(mode="json")
+                if data is not None
+                else None
             )
 
         except BSMError as e_bsm:

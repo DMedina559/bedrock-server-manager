@@ -38,7 +38,7 @@ def generate():
             names[method] = name
             prefix = "async " if inspect.iscoroutinefunction(func) else ""
             methods.append(
-                f"    {prefix}def {method}(self, request: {request.__name__} | Mapping[str, Any]) -> {response.__name__}: ..."
+                f"    {prefix}def {method}(self, request: {request.__name__} | Mapping[str, object]) -> {response.__name__}: ..."
             )
         mapping[domain] = names
         classes.append(

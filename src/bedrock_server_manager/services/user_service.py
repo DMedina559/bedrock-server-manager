@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
+from ..state.updates import UNSET, Unset, UserUpdate
 
 if TYPE_CHECKING:
     from ..db.storage import Storage
@@ -38,38 +39,32 @@ class UserService:
         role: Optional[str] = None,
         theme: Optional[str] = None,
         is_active: Optional[bool] = None,
-        full_name: Optional[str] = None,
-        email: Optional[str] = None,
+        full_name: str | None | Unset = UNSET,
+        email: str | None | Unset = UNSET,
         user_id: Optional[int] = None,
     ) -> UserInfoState:
         """Registers or updates a user state record and marks dirty state."""
         async with self.state.users.get_lock(username):
             existing = self.state.users.get(username)
-            if existing:
-                data = existing.model_dump()
-                if role is not None:
-                    data["role"] = role
-                if theme is not None:
-                    data["theme"] = theme
-                if is_active is not None:
-                    data["is_active"] = is_active
-                if full_name is not None:
-                    data["full_name"] = full_name
-                if email is not None:
-                    data["email"] = email
-                if user_id is not None:
-                    data["id"] = user_id
-                user = UserInfoState(**data)
-            else:
-                user = UserInfoState(
-                    id=user_id,
-                    username=username,
-                    role=role or "user",
-                    theme=theme or "default",
-                    is_active=is_active if is_active is not None else True,
-                    full_name=full_name,
-                    email=email,
-                )
+            values: dict[str, object] = {"username": username}
+            for name, value in (
+                ("role", role),
+                ("theme", theme),
+                ("is_active", is_active),
+                ("id", user_id),
+            ):
+                if value is not None:
+                    values[name] = value
+            for field_name, nullable_value in (
+                ("full_name", full_name),
+                ("email", email),
+            ):
+                if nullable_value is not UNSET:
+                    values[field_name] = nullable_value
+            update = UserUpdate.model_validate(values)
+            data = existing.model_dump() if existing else {}
+            data.update(update.model_dump(exclude_unset=True))
+            user = UserInfoState.model_validate(data)
 
             self.state.users.set(user)
 

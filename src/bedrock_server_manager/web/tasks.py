@@ -5,13 +5,12 @@ import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
-from pydantic import BaseModel, JsonValue, TypeAdapter
+from pydantic import BaseModel, ValidationError
 
 from ..api.models.tasks import TaskSnapshot
 from ..error import APICancelledError
 from ..plugins.api_contract import APIResponseValidationError
-
-_json_value: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+from .task_record import TaskRecord
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ class TaskManager:
     ):
         """Initializes the TaskManager with explicit dependencies."""
         self.connection_manager = connection_manager
-        self.tasks: Dict[str, Dict[str, Any]] = {}
+        self.tasks: Dict[str, TaskRecord] = {}
         self.futures: Dict[str, asyncio.Task] = {}
         self._shutdown_started = False
         self._max_tasks = 100
@@ -73,23 +72,23 @@ class TaskManager:
     ):
         """Helper function to update the status of a task and notify client."""
         if task_id in self.tasks:
-            self.tasks[task_id]["status"] = status
-            self.tasks[task_id]["message"] = message
+            data = dict(self.tasks[task_id])
+            data.update(status=status, message=message)
             if result is not None:
-                try:
-                    _json_value.validate_python(
-                        result.model_dump(mode="json")
-                        if isinstance(result, BaseModel)
-                        else result
-                    )
-                except Exception as error:
-                    raise APIResponseValidationError(
-                        "Background task returned invalid JSON data."
-                    ) from error
-                self.tasks[task_id]["result"] = result
+                data["result"] = (
+                    result.model_dump(mode="json")
+                    if isinstance(result, BaseModel)
+                    else result
+                )
             if error is not None:
-                self.tasks[task_id]["result"] = None
-                self.tasks[task_id]["error"] = error
+                data.update(result=None, error=error)
+            try:
+                record = TaskRecord.model_validate(data)
+            except ValidationError as validation_error:
+                raise APIResponseValidationError(
+                    "Background task returned invalid JSON data."
+                ) from validation_error
+            self.tasks[task_id] = record
             await self._notify_client_of_update(task_id)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
@@ -178,13 +177,9 @@ class TaskManager:
             if oldest_task_id in self.futures:
                 del self.futures[oldest_task_id]
 
-        self.tasks[task_id] = {
-            "status": "queued",
-            "message": "Task is queued.",
-            "result": None,
-            "error": None,
-            "username": username,
-        }
+        self.tasks[task_id] = TaskRecord(
+            status="queued", message="Task is queued.", username=username
+        )
         await self._notify_client_of_update(task_id)
 
         call_kwargs = dict(kwargs)
@@ -275,7 +270,7 @@ class TaskManager:
                 "id": task_id,
                 "status": record["status"],
                 "message": record["message"],
-                "result": _json_value.validate_python(result),
+                "result": result,
                 "error": record["error"],
             }
         )

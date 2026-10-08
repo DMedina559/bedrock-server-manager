@@ -52,7 +52,8 @@ async def test_get_global_setting_empty_key(app_context: AppContext):
 
 async def test_get_all_global_settings_success(app_context: AppContext):
     """Test retrieving all global settings successfully."""
-    app_context.settings._settings = {"key1": "value1", "key2": "value2"}
+    app_context.state.settings.set("key1", "value1")
+    app_context.state.settings.set("key2", "value2")
 
     result = (
         await get_all_global_settings(
@@ -61,8 +62,8 @@ async def test_get_all_global_settings_success(app_context: AppContext):
     ).model_dump(mode="python")
 
     assert result["status"] == "success"
-    assert result["settings"]["key1"] == "value1"
-    assert result["settings"]["key2"] == "value2"
+    assert result["settings"]["custom"]["key1"] == "value1"
+    assert result["settings"]["custom"]["key2"] == "value2"
 
 
 async def test_set_global_setting_success(app_context: AppContext):

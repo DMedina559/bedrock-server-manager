@@ -16,8 +16,10 @@ from typing import (
     Callable,
     List,
     Optional,
+    TypeVar,
 )
 
+from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,7 @@ from ..error import BSMError, StorageError
 from ..state.app_state import AppState
 from ..state.changeset import ChangeSet
 from ..state.settings import SettingsState
+from ..state.validation import json_equal
 from .repositories import (
     AuditLogRepository,
     PlayerRepository,
@@ -37,6 +40,8 @@ from .repositories import (
 
 if TYPE_CHECKING:
     from .database import Database
+
+Record = TypeVar("Record", bound=BaseModel)
 
 logger = logging.getLogger(__name__)
 
@@ -125,49 +130,91 @@ class Storage:
         if changeset.is_empty():
             return
         async with self._flush_lock:
-            snapshots: list[tuple[Any, str, Any]] = []
             settings_snapshot = None
             async with self.transaction() as session:
                 if changeset.settings_changed:
                     async with state.settings.get_lock("global"):
                         settings_snapshot = state.settings.to_dict()
                     await self.settings_repo.save_settings(session, settings_snapshot)
-                groups: list[tuple[Any, set[str], Callable[..., Awaitable[None]]]] = [
-                    (
-                        state.servers,
-                        changeset.servers_changed,
-                        self.server_repo.save_server,
-                    ),
-                    (
-                        state.plugins,
-                        changeset.plugins_changed,
-                        self.plugin_repo.save_plugin,
-                    ),
-                    (state.users, changeset.users_changed, self.user_repo.save_user),
-                ]
-                for domain, names, save in groups:
-                    for name in names:
-                        async with domain.get_lock(name):
-                            snapshot = domain.get(name)
-                        if snapshot is not None:
-                            await save(session, snapshot)
-                            snapshots.append((domain, name, snapshot))
+                server_snapshots = await self._save_records(
+                    session,
+                    changeset.servers_changed,
+                    state.servers.get_lock,
+                    state.servers.get,
+                    self.server_repo.save_server,
+                )
+                plugin_snapshots = await self._save_records(
+                    session,
+                    changeset.plugins_changed,
+                    state.plugins.get_lock,
+                    state.plugins.get,
+                    self.plugin_repo.save_plugin,
+                )
+                user_snapshots = await self._save_records(
+                    session,
+                    changeset.users_changed,
+                    state.users.get_lock,
+                    state.users.get,
+                    self.user_repo.save_user,
+                )
             # The transaction has committed. Failed commits never acknowledge dirtiness.
             if settings_snapshot is not None:
                 async with state.settings.get_lock("global"):
-                    if state.settings.to_dict() == settings_snapshot:
+                    if json_equal(state.settings.to_dict(), settings_snapshot):
                         state.settings.clear_dirty()
-            for domain, name, snapshot in snapshots:
-                async with domain.get_lock(name):
-                    if domain.get(name) == snapshot:
-                        if domain is state.servers:
-                            domain.remove_dirty_server(name)
-                        elif domain is state.plugins:
-                            domain.remove_dirty_plugin(name)
-                        else:
-                            domain.remove_dirty_user(name)
+            await self._acknowledge_records(
+                server_snapshots,
+                state.servers.get_lock,
+                state.servers.get,
+                state.servers.remove_dirty_server,
+            )
+            await self._acknowledge_records(
+                plugin_snapshots,
+                state.plugins.get_lock,
+                state.plugins.get,
+                state.plugins.remove_dirty_plugin,
+            )
+            await self._acknowledge_records(
+                user_snapshots,
+                state.users.get_lock,
+                state.users.get,
+                state.users.remove_dirty_user,
+            )
         # Listeners may initiate another write; never invoke them under the flush lock.
         await self._notify_listeners(state, changeset)
+
+    @staticmethod
+    async def _save_records(
+        session: AsyncSession,
+        names: set[str],
+        get_lock: Callable[[str], asyncio.Lock],
+        get: Callable[[str], Record | None],
+        save: Callable[[AsyncSession, Record], Awaitable[None]],
+    ) -> list[tuple[str, Record]]:
+        snapshots = []
+        for name in names:
+            async with get_lock(name):
+                snapshot = get(name)
+            if snapshot is not None:
+                snapshot = type(snapshot).model_validate(snapshot)
+                await save(session, snapshot)
+                snapshots.append((name, snapshot))
+        return snapshots
+
+    @staticmethod
+    async def _acknowledge_records(
+        snapshots: list[tuple[str, Record]],
+        get_lock: Callable[[str], asyncio.Lock],
+        get: Callable[[str], Record | None],
+        remove_dirty: Callable[[str], None],
+    ) -> None:
+        for name, snapshot in snapshots:
+            async with get_lock(name):
+                current = get(name)
+                if current is not None and json_equal(
+                    current.model_dump(mode="json"), snapshot.model_dump(mode="json")
+                ):
+                    remove_dirty(name)
 
     async def load_state(self, state: Optional[AppState] = None) -> AppState:
         """
@@ -229,18 +276,18 @@ class Storage:
                     if name in state.users.users
                 }
             )
-            state.servers.servers = loaded_servers
-            state.plugins.plugins = loaded_plugins
-            state.users.users = loaded_users
+            state.servers.replace_loaded(loaded_servers)
+            state.plugins.replace_loaded(loaded_plugins)
+            state.users.replace_loaded(loaded_users)
         return state
 
-    async def save_players(self, players_data: list) -> int:
+    async def save_players(self, players_data: list[dict[str, str]]) -> int:
         """Saves player data to the database via player repository within a transaction."""
         async with self.transaction() as session:
             res = await self.player_repo.save_players(session, players_data)
             return int(res)
 
-    async def get_all_players(self) -> list:
+    async def get_all_players(self) -> list[dict[str, str]]:
         """Retrieves all known players from the database via player repository within a transaction."""
         async with self.transaction() as session:
             res = await self.player_repo.get_all_players(session)
@@ -249,6 +296,14 @@ class Storage:
     async def save_state(self, state: AppState) -> None:
         """Flushes and saves all unpersisted changes from AppState to the database."""
         await self.flush(state)
+
+    async def delete_server(self, state: AppState, server_name: str) -> None:
+        """Serialize deletion with reload/flush and acknowledge only after commit."""
+        async with self._flush_lock:
+            async with state.servers.get_lock(server_name):
+                async with self.transaction() as session:
+                    await self.server_repo.delete_server(session, server_name)
+                state.servers.remove(server_name)
 
     async def flush(self, state: AppState) -> None:
         """Persist pending entity snapshots through the same commit boundary."""

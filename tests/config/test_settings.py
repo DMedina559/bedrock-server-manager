@@ -6,7 +6,7 @@ from bedrock_server_manager.error import ConfigurationError
 
 
 async def test_settings_initialization(app_context, isolated_bcm_config):
-    """Test Settings initializes properties correctly without loading."""
+    """Settings binds to shared state without maintaining a second cache."""
     base_dir = isolated_bcm_config
     test_config_dir = base_dir / "test_config"
     test_data_dir = base_dir / "test_data"
@@ -16,7 +16,7 @@ async def test_settings_initialization(app_context, isolated_bcm_config):
         app_context=app_context,
     )
     assert settings.app_context == app_context
-    assert settings._settings == {}
+    assert settings._settings["web"]["port"] == app_context.settings.get("web.port")
 
 
 async def test_settings_load_populates_defaults(app_context, db, isolated_bcm_config):
