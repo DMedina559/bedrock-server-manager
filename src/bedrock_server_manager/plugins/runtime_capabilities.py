@@ -19,6 +19,7 @@ async def run_task(
     *args: Any,
     app_context: AppContext,
     username: Optional[str] = None,
+    plugin_name: str | None = None,
     **kwargs: Any,
 ) -> str:
     """Submits a function to be run in the background by the TaskManager.
@@ -33,6 +34,8 @@ async def run_task(
     Returns:
         str: The ID of the created task.
     """
+    if "_plugin_owner" in kwargs:
+        raise TypeError("Plugin ownership is injected by the runtime.")
     # Safely get the name, unwrapping functools.partial if necessary
     actual_func = getattr(target_function, "func", target_function)
     task_name = getattr(actual_func, "__name__", str(target_function))
@@ -40,7 +43,7 @@ async def run_task(
     logger.debug(f"API: Running task in background: {task_name}")
 
     return await app_context.task_manager.run_task(
-        target_function, username, *args, **kwargs
+        target_function, username, *args, _plugin_owner=plugin_name, **kwargs
     )
 
 

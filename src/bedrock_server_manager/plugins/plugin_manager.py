@@ -647,6 +647,11 @@ class PluginManager:
 
                     instance = plugin_class(plugin_name, api_instance, plugin_logger)
                     self._pending_plugins[plugin_name] = instance
+                    if (
+                        self.app_context is not None
+                        and self.app_context._task_manager is not None
+                    ):
+                        self.app_context._task_manager.allow_plugin(plugin_name)
 
                     # Support both single (_app_event_name) and stacked/multi (_app_event_names) decorators
                     for _, method in inspect.getmembers(
@@ -963,13 +968,8 @@ class PluginManager:
                 or target_instance.name
             )
 
-            try:
-                await self.dispatch_event(target_instance, "on_unload")
-            except Exception as e:
-                logger.error(
-                    f"Error during on_unload for '{plugin_key}': {e}", exc_info=True
-                )
-
+            if asyncio.current_task() in self.plugin_tasks.get(plugin_key, []):
+                raise RuntimeError("A plugin task cannot unload its own plugin.")
             tasks_to_await = []
             if plugin_key in self.plugin_tasks:
                 for task in self.plugin_tasks.pop(plugin_key, []):
@@ -988,6 +988,19 @@ class PluginManager:
                         await asyncio.gather(*active_tasks, return_exceptions=True)
                 except RuntimeError:
                     pass
+
+            if (
+                self.app_context is not None
+                and self.app_context._task_manager is not None
+            ):
+                await self.app_context._task_manager.drain_plugin(plugin_key)
+
+            try:
+                await self.dispatch_event(target_instance, "on_unload")
+            except Exception as e:
+                logger.error(
+                    f"Error during on_unload for '{plugin_key}': {e}", exc_info=True
+                )
 
             self._pending_plugins.pop(plugin_key, None)
             if target_instance in self.plugins:
@@ -1065,6 +1078,11 @@ class PluginManager:
 
                 instance = p_class(plugin_name, api_instance, plugin_logger)
                 self._pending_plugins[plugin_name] = instance
+                if (
+                    self.app_context is not None
+                    and self.app_context._task_manager is not None
+                ):
+                    self.app_context._task_manager.allow_plugin(plugin_name)
 
                 for _, method in inspect.getmembers(
                     instance, predicate=inspect.ismethod

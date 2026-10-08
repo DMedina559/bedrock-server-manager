@@ -141,9 +141,15 @@ async def test_runtime_task_preserves_positional_arguments_and_trusted_context()
         return value
 
     assert await api_instance.runtime.run_task(task, 42, username="admin") == "task-1"
-    context.task_manager.run_task.assert_awaited_once_with(task, "admin", 42)
+    context.task_manager.run_task.assert_awaited_once_with(
+        task, "admin", 42, _plugin_owner="trusted"
+    )
     with pytest.raises(TypeError, match="injected"):
         await api_instance.runtime.run_task(task, app_context=MagicMock())
+    with pytest.raises(TypeError, match="injected"):
+        await api_instance.runtime.run_task(task, plugin_name="other")
+    with pytest.raises(TypeError, match="injected"):
+        await api_instance.runtime.run_task(task, _plugin_owner="other")
 
 
 async def test_runtime_provider_registration_failure_propagates():

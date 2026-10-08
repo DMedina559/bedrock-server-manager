@@ -32,6 +32,8 @@ class TaskManager:
         self._shutdown_started = False
         self._max_tasks = 100
         self._background_tasks: set[asyncio.Task] = set()
+        self._plugin_owners: dict[str, str] = {}
+        self._blocked_plugins: set[str] = set()
 
     @property
     def tasks(self) -> Dict[str, TaskRecord]:
@@ -148,6 +150,7 @@ class TaskManager:
         target_function: Callable,
         username: Optional[str] = None,
         *args: Any,
+        _plugin_owner: str | None = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -168,6 +171,9 @@ class TaskManager:
             raise RuntimeError(
                 "Cannot start new tasks after shutdown has been initiated."
             )
+
+        if _plugin_owner in self._blocked_plugins:
+            raise RuntimeError("Cannot submit work for an unloading plugin.")
 
         candidate = TaskRecord(
             status="queued", message="Task is queued.", username=username
@@ -190,10 +196,13 @@ class TaskManager:
             if oldest_task_id is None:
                 raise RuntimeError("Background task capacity reached.")
             del self._tasks[oldest_task_id]
+            self._plugin_owners.pop(oldest_task_id, None)
             if oldest_task_id in self.futures:
                 del self.futures[oldest_task_id]
 
         self._tasks[task_id] = candidate
+        if _plugin_owner is not None:
+            self._plugin_owners[task_id] = _plugin_owner
 
         call_kwargs = dict(kwargs)
         if username is not None:
@@ -279,6 +288,25 @@ class TaskManager:
             for key, record in self._tasks.items()
             if username is None or record["username"] == username
         }
+
+    def allow_plugin(self, plugin_name: str) -> None:
+        self._blocked_plugins.discard(plugin_name)
+
+    async def drain_plugin(self, plugin_name: str) -> None:
+        tasks = [
+            future
+            for task_id, future in self.futures.items()
+            if self._plugin_owners.get(task_id) == plugin_name
+        ]
+        if asyncio.current_task() in tasks:
+            raise RuntimeError("An owned task cannot unload its own plugin.")
+        self._blocked_plugins.add(plugin_name)
+        for task in tasks:
+            if not task.done() and not task.cancelling():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.sleep(0)
 
     def begin_shutdown(self) -> None:
         """Close admission before producers and running operations are drained."""

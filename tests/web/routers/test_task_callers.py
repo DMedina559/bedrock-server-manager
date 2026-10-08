@@ -179,9 +179,10 @@ async def test_plugin_task_request_survives_runtime_bridge(
     submit.assert_awaited_once()
     call = submit.await_args
     assert call.args[1:] == ("System (Autostart)",)
-    assert set(call.kwargs) == {"request"}
+    assert set(call.kwargs) == {"request", "_plugin_owner"}
+    assert call.kwargs["_plugin_owner"] == "autostart"
     target = call.args[0]
-    inspect.signature(target).bind(**call.kwargs)
+    inspect.signature(target).bind(request=call.kwargs["request"])
     request = StartServerRequest.model_validate(call.kwargs["request"])
     # The bridge supplies runtime context itself; request data stays unchanged.
     with patch.object(real_bedrock_server, "is_running", return_value=True):

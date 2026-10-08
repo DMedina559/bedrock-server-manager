@@ -1,6 +1,7 @@
 import asyncio
 import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -339,6 +340,43 @@ async def test_lifespan_cross_task_exit(app_context):
     await asyncio.create_task(pm._close_router_lifespan("group"))
     assert "group" not in pm._router_lifespans
     pm._web_started = False
+
+
+@pytest.mark.asyncio
+async def test_plugin_submitted_task_drains_before_unload(app_context, monkeypatch):
+    pm = app_context.plugin_manager
+    tm = app_context.task_manager
+    entered, release = asyncio.Event(), asyncio.Event()
+    resource = {"open": True}
+    ids = []
+
+    async def worker():
+        entered.set()
+        await release.wait()
+        return {"resource_open": resource["open"]}
+
+    class Plugin(PluginBase):
+        async def on_load(self):
+            ids.append(await self.api.runtime.run_task(worker))
+
+        async def on_unload(self):
+            assert (await tm.get_task(ids[0])).status == "cancelled"
+            resource["open"] = False
+
+    pm.plugin_config = {"worker": {"enabled": True}}
+    monkeypatch.setattr(pm, "_find_plugin_path", lambda _: Path("worker.py"))
+    monkeypatch.setattr(pm, "_get_plugin_class_from_path", lambda *args: Plugin)
+    assert await pm.load_plugin_by_name("worker")
+    await entered.wait()
+    try:
+        assert await pm.unload_plugin_by_name("worker")
+        snapshot = await tm.get_task(ids[0])
+        assert snapshot.status == "cancelled" and not resource["open"]
+        with pytest.raises(RuntimeError):
+            await tm.run_task(worker, _plugin_owner="worker")
+    finally:
+        release.set()
+        await tm.shutdown()
 
 
 @pytest.mark.asyncio
