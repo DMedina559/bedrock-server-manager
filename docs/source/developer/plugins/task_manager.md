@@ -10,6 +10,12 @@ run in a worker thread. Use asynchronous I/O or move blocking work to a thread.
 Use `self.api.runtime.run_task`. It returns a task ID. Supply the authenticated
 user's username so polling and WebSocket updates belong to that user.
 
+Tasks submitted through your plugin API belong to that plugin. Unload and
+reload cancel and drain these tasks and periodic loops before `on_unload` and
+router resource cleanup. New submissions are rejected during unload. A task
+cannot unload its own plugin; request lifecycle changes from an endpoint or
+another caller after the task finishes.
+
 ```python
 import asyncio
 from fastapi import APIRouter, Depends

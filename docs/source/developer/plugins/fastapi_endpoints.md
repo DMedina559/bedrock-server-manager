@@ -80,4 +80,7 @@ class MyResourcePlugin(PluginBase):
 ```
 
 Replace `open_client()` with your resource's initialization function. Lifespan
-startup and cleanup run on the web application's event loop.
+startup and cleanup run in the same task on the web application's event loop,
+so task groups and cancellation scopes can remain open across the lifespan.
+Keep lifespan callbacks focused on resource setup and cleanup; recursively
+loading, unloading, or reloading plugins from them raises an error.
