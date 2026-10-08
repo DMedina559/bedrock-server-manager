@@ -47,7 +47,12 @@ async def test_get_plugin_statuses_success(app_context: AppContext):
 async def test_set_plugin_status_success(app_context: AppContext):
     """Test setting plugin status successfully."""
     with patch.object(app_context.plugin_manager, "_synchronize_config_with_disk"):
-        with patch.object(app_context.plugin_manager, "_save_config") as mock_save:
+        with (
+            patch.object(app_context.plugin_manager, "_save_config") as mock_save,
+            patch.object(
+                app_context.plugin_manager, "load_plugin_by_name", return_value=True
+            ),
+        ):
             app_context.plugin_manager.plugin_config = {
                 "test_plugin": {"enabled": False}
             }
@@ -139,3 +144,21 @@ async def test_trigger_external_app_event_empty_name(app_context: AppContext):
                 app_context=app_context,
             )
         ).model_dump(mode="python")
+
+
+async def test_failed_enable_does_not_report_success(app_context):
+    from unittest.mock import AsyncMock
+
+    from bedrock_server_manager.error import BSMError
+
+    manager = app_context.plugin_manager
+    manager.plugin_config = {"sample": {"enabled": False}}
+    with (
+        patch.object(manager, "_synchronize_config_with_disk", AsyncMock()),
+        patch.object(manager, "enable_plugin", AsyncMock(return_value=False)),
+    ):
+        with pytest.raises(BSMError):
+            await set_plugin_status(
+                SetPluginStatusRequest(target_plugin_name="sample", enabled=True),
+                app_context=app_context,
+            )

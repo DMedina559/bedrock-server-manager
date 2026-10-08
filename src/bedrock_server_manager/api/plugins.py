@@ -59,7 +59,10 @@ async def get_plugin_statuses(
     try:
         pm = app_context.plugin_manager
         await pm._synchronize_config_with_disk()
-        statuses = {name: {**config, "status": pm.get_plugin_status(name)} for name, config in pm.plugin_config.items()}
+        statuses = {
+            name: {**config, "status": pm.get_plugin_status(name)}
+            for name, config in pm.plugin_config.items()
+        }
         logger.info(f"API: Retrieved data for {len(statuses)} plugins.")
         return GetPluginStatusesResponse.model_validate(
             {"status": "success", "plugins": statuses.copy()}
@@ -100,9 +103,13 @@ async def set_plugin_status(
                 f"Plugin '{plugin_name}' has an invalid configuration. Please try reloading plugins."
             )
         if enabled:
-            await pm.enable_plugin(plugin_name, load_immediately=True)
+            changed = await pm.enable_plugin(plugin_name, load_immediately=True)
         else:
-            await pm.disable_plugin(plugin_name, unload_immediately=True)
+            changed = await pm.disable_plugin(plugin_name, unload_immediately=True)
+        if not changed:
+            raise BSMError(
+                f"Could not change runtime status for plugin '{plugin_name}'."
+            )
         action = "enabled" if enabled else "disabled"
         logger.info(f"API: Plugin '{plugin_name}' successfully {action}.")
         return SetPluginStatusResponse.model_validate(
