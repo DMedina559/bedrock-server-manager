@@ -13,8 +13,20 @@ import os
 import sys
 import types
 import warnings
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+)
 
 from fastapi import APIRouter, FastAPI
 from starlette.routing import BaseRoute, Route
@@ -79,6 +91,10 @@ class PluginManager:
         self._mounted_routes: dict[str, list[BaseRoute]] = {}
         self._web_app: FastAPI | None = None
         self._web_lifespan_base: Lifespan[FastAPI] | None = None
+        self._web_started = False
+        self._web_startup_handlers: list[Callable[..., Any]] = []
+        self._web_shutdown_handlers: list[Callable[..., Any]] = []
+        self._router_lifespans: dict[str, AsyncExitStack] = {}
         self.ui_render_tags = {"json": "plugin-json-ui", "legacy": "plugin-ui-native"}
         self.plugin_static_mounts: List[Tuple[str, Path, str]] = []
         self.plugin_tasks: Dict[str, List[asyncio.Task[Any]]] = {}
@@ -225,7 +241,6 @@ class PluginManager:
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             self.plugin_tasks.clear()
-
 
     async def shutdown(self) -> None:
         """Gracefully shuts down the PluginManager, unloading all plugins and cleaning up resources."""
@@ -436,7 +451,8 @@ class PluginManager:
                                             intv
                                             if consecutive_failures == 0
                                             else min(
-                                                intv * (2 ** min(consecutive_failures, 6)),
+                                                intv
+                                                * (2 ** min(consecutive_failures, 6)),
                                                 300.0,
                                             )
                                         )
@@ -646,7 +662,7 @@ class PluginManager:
                     if callable(getattr(instance, "get_fastapi_routers", None)):
                         routers = instance.get_fastapi_routers()
                         if isinstance(routers, list):
-                            self._register_routers(plugin_name, routers)
+                            await self._register_routers(plugin_name, routers)
 
                     if callable(getattr(instance, "get_static_mounts", None)):
                         mounts = instance.get_static_mounts()
@@ -660,7 +676,9 @@ class PluginManager:
                                     is_safe = False
                                     for p_dir in self.plugin_dirs:
                                         try:
-                                            if resolved_dir.is_relative_to(p_dir.resolve()):
+                                            if resolved_dir.is_relative_to(
+                                                p_dir.resolve()
+                                            ):
                                                 is_safe = True
                                                 break
                                         except ValueError:
@@ -688,7 +706,8 @@ class PluginManager:
                     if not isinstance(e, Exception):
                         raise
                     logger.error(
-                        f"Failed to instantiate plugin '{plugin_name}': {e}", exc_info=True
+                        f"Failed to instantiate plugin '{plugin_name}': {e}",
+                        exc_info=True,
                     )
 
             logger.info(f"Loaded {len(self.plugins)} plugins.")
@@ -726,7 +745,9 @@ class PluginManager:
                         t
                         for t in tasks_to_await
                         if not t.done()
-                        and (t.get_loop() is current_loop or t.get_loop() == current_loop)
+                        and (
+                            t.get_loop() is current_loop or t.get_loop() == current_loop
+                        )
                     ]
                     if active_tasks:
                         await asyncio.gather(*active_tasks, return_exceptions=True)
@@ -757,11 +778,65 @@ class PluginManager:
     def bind_web_app(self, app: FastAPI) -> None:
         self._web_app = app
         self._web_lifespan_base = app.router.lifespan_context
+        self._web_startup_handlers = list(app.router.on_startup)
+        self._web_shutdown_handlers = list(app.router.on_shutdown)
         self._sync_web_routes("")
 
-    def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
+    @asynccontextmanager
+    async def _web_lifespan(self, app: FastAPI) -> AsyncIterator[dict[str, Any]]:
+        state: dict[str, Any] = {}
+        try:
+            async with self._lifecycle_lock:
+                self._web_started = True
+                for name in self._router_owners:
+                    state.update(await self._start_router_lifespans(name))
+            if self._web_lifespan_base is not None:
+                async with self._web_lifespan_base(app) as base_state:
+                    state.update(base_state or {})
+                    yield state
+            else:
+                yield state
+        finally:
+            async with self._lifecycle_lock:
+                self._web_started = False
+                errors: list[Exception] = []
+                for name in reversed(list(self._router_lifespans)):
+                    try:
+                        await self._close_router_lifespan(name)
+                    except Exception as error:
+                        errors.append(error)
+                if errors:
+                    raise ExceptionGroup(
+                        "Plugin router lifespan cleanup failed", errors
+                    )
+
+    async def _start_router_lifespans(self, name: str) -> dict[str, Any]:
+        if name in self._router_lifespans or self._web_app is None:
+            return {}
+        stack = AsyncExitStack()
+        state: dict[str, Any] = {}
+        try:
+            for router in self._router_owners.get(name, []):
+                value = await stack.enter_async_context(
+                    router.lifespan_context(self._web_app)
+                )
+                state.update(value or {})
+        except BaseException:
+            await stack.aclose()
+            raise
+        self._router_lifespans[name] = stack
+        return state
+
+    async def _close_router_lifespan(self, name: str) -> None:
+        stack = self._router_lifespans.pop(name, None)
+        if stack is not None:
+            await stack.aclose()
+
+    async def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
         self._router_owners.setdefault(name, []).extend(routers)
         self.plugin_fastapi_routers.extend(routers)
+        if self._web_started:
+            await self._start_router_lifespans(name)
         self._sync_web_routes(name)
 
     def _register_mounts(self, name: str, mounts: list[Tuple[str, Path, str]]) -> None:
@@ -782,8 +857,7 @@ class PluginManager:
             return
         for owner in list(self._mounted_routes):
             self._remove_web_routes(owner)
-        if self._web_lifespan_base is not None:
-            self._web_app.router.lifespan_context = self._web_lifespan_base
+        self._web_app.router.lifespan_context = self._web_lifespan
         from fastapi.staticfiles import StaticFiles
 
         for owner in dict.fromkeys([*self._router_owners, *self._mount_owners]):
@@ -802,6 +876,9 @@ class PluginManager:
                     if id(route) not in before
                 ]
                 self._web_app.openapi_schema = None
+                self._web_app.router.lifespan_context = self._web_lifespan
+                self._web_app.router.on_startup[:] = self._web_startup_handlers
+                self._web_app.router.on_shutdown[:] = self._web_shutdown_handlers
 
     def _set_runtime_status(self, plugin_name: str, status: PluginStatus) -> None:
         self._runtime_records[plugin_name] = PluginRuntime(
@@ -900,6 +977,10 @@ class PluginManager:
             if target_instance in self.plugins:
                 self.plugins.remove(target_instance)
 
+            try:
+                await self._close_router_lifespan(plugin_key)
+            except Exception:
+                logger.exception("Router lifespan cleanup failed for %s", plugin_key)
             self._remove_web_routes(plugin_key)
             for router in self._router_owners.pop(plugin_key, []):
                 if router in self.plugin_fastapi_routers:
@@ -968,7 +1049,9 @@ class PluginManager:
                 instance = p_class(plugin_name, api_instance, plugin_logger)
                 self._pending_plugins[plugin_name] = instance
 
-                for _, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+                for _, method in inspect.getmembers(
+                    instance, predicate=inspect.ismethod
+                ):
                     event_names = getattr(method, "_app_event_names", None) or (
                         [getattr(method, "_app_event_name", None)]
                         if getattr(method, "_app_event_name", None)
@@ -982,7 +1065,7 @@ class PluginManager:
                 if callable(getattr(instance, "get_fastapi_routers", None)):
                     routers = instance.get_fastapi_routers()
                     if isinstance(routers, list):
-                        self._register_routers(plugin_name, routers)
+                        await self._register_routers(plugin_name, routers)
 
                 if callable(getattr(instance, "get_static_mounts", None)):
                     mounts = instance.get_static_mounts()
@@ -1063,7 +1146,9 @@ class PluginManager:
                     await self.unload_plugin_by_name(plugin_name)
                 if not isinstance(e, Exception):
                     raise
-                logger.error(f"Failed to load plugin '{plugin_name}': {e}", exc_info=True)
+                logger.error(
+                    f"Failed to load plugin '{plugin_name}': {e}", exc_info=True
+                )
                 if plugin_name in self.plugin_config:
                     self._set_runtime_status(plugin_name, "ERROR")
                 return False

@@ -38,7 +38,7 @@ class MyWebPlugin(PluginBase):
         return [router]
 ```
 
-Enable the plugin and restart the web server to register its routes. The example
+Enable the plugin to register its routes in the running web server. The example
 adds `GET /my_web_plugin/info`. It also appears in the application's OpenAPI
 schema and API documentation.
 
@@ -48,3 +48,36 @@ reach into application context or database sessions.
 For a page rendered by the web UI, tag its route `plugin-json-ui` and return the
 JSON component schema described in [Native JSON UI](native_json_ui.md). Apply
 authentication to UI routes too.
+
+## Router resources
+
+Use an async router lifespan for resources that belong to your endpoints. BSM
+enters the lifespan when the web application starts, or when the plugin is
+loaded into a running application. Unloading or reloading the plugin closes its
+router resources. If startup fails, already opened router resources are closed
+and the plugin is not activated.
+
+Keep resources on the plugin instance or in endpoint closures so they are
+available after a live reload:
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import APIRouter
+
+class MyResourcePlugin(PluginBase):
+    def get_fastapi_routers(self):
+        @asynccontextmanager
+        async def lifespan(app):
+            self.client = await open_client()
+            try:
+                yield
+            finally:
+                await self.client.close()
+
+        router = APIRouter(lifespan=lifespan)
+        # Define authenticated endpoints that use self.client here.
+        return [router]
+```
+
+Replace `open_client()` with your resource's initialization function. Lifespan
+startup and cleanup run on the web application's event loop.
