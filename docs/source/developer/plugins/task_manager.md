@@ -44,7 +44,7 @@ logged and exposed as a safe structured error, without raw exception details.
 
 ## Tracking a task
 
-Task status is `queued`, `running`, `completed`, `failed`, or `cancelled`.
+Task status is `queued`, `running`, `completed`, `failed`, `cancelling`, or `cancelled`.
 Polling and WebSocket updates use the same task snapshot:
 
 ```json
@@ -59,9 +59,23 @@ Polling and WebSocket updates use the same task snapshot:
 
 Updates are sent to the owner on `task:{task_id}`. A completed API operation can
 still have `status="skipped"` in its result; inspect the operation result as well
-as the task status. Cancelling a synchronous function's asyncio task does not
-stop a thread that is already executing; design long-running synchronous work
-with its own cancellation mechanism when needed.
+as the task status. A cancellation request sets `cancelling` until execution
+finishes. Synchronous functions cannot be forcibly stopped; the manager waits
+for their worker before reporting `cancelled` or completing shutdown.
+
+For cooperative cancellation, declare a `cancellation_event` parameter. The
+manager supplies a `threading.Event` and sets it when cancellation is requested:
+
+```python
+from threading import Event
+
+def collect(cancellation_event: Event):
+    while not cancellation_event.wait(1):
+        # Perform one bounded unit of work.
+        pass
+```
+
+Use timeouts for blocking I/O so your function can check the event regularly.
 
 ## Using `@task_loop` for Periodic Tasks
 

@@ -149,10 +149,11 @@ The message structure for task updates is as follows:
     "type": "task_update",
     "topic": "task:{task_id}",
     "data": {
-        "status": "in_progress",
+        "id": "task-id",
+        "status": "running",
         "message": "Task is running.",
         "result": null,
-        "username": "username"
+        "error": null
     }
 }
 ```
@@ -160,7 +161,8 @@ The message structure for task updates is as follows:
 -   `type`: Indicates the type of message. For task updates, this is always `task_update`.
 -   `topic`: The topic of the message. This follows the format `task:{task_id}`, where `{task_id}` is the unique identifier of the task.
 -   `data`: An object containing details about the task:
-    -   `status`: The current status of the task (`in_progress`, `success`, or `error`).
+    -   `status`: The current status of the task (`queued`, `running`, `completed`, `failed`, `cancelling`, or `cancelled`).
     -   `message`: A human-readable message describing the status.
     -   `result`: The result of the task, if any.
-    -   `username`: The username of the user who initiated the task.
+    -   `id`: The task ID used to poll its status.
+    -   `error`: A safe structured error when the task fails, otherwise `null`.
