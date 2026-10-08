@@ -198,3 +198,32 @@ async def test_monitor_servers_crashed_server_detected(
             mock_try_restart.assert_awaited_once_with(server)
 
         await server.stop()
+
+
+async def test_monitor_player_failure_resets_coherent_runtime(app_context, real_bedrock_server, monkeypatch):
+    server = real_bedrock_server
+    server.players = [{"name": "Alex", "xuid": "1"}]
+    server.is_running = AsyncMock(return_value=True)
+    server.update_online_players = AsyncMock(side_effect=RuntimeError("scan failed"))
+    manager = app_context.bedrock_process_manager
+    manager.servers = {server.server_name: server}
+    manager.player_scan_counter = 10
+    manager._shutdown_event = MagicMock()
+    manager._shutdown_event.is_set.side_effect = [False, False, True]
+    monkeypatch.setattr(manager.settings, "get", lambda *args: 0)
+    await manager._monitor_servers()
+    assert server.players == []
+    assert server.player_count == 0
+
+
+async def test_monitor_probe_failure_does_not_stop_other_servers(app_context, monkeypatch):
+    manager = app_context.bedrock_process_manager
+    bad = MagicMock(is_running=AsyncMock(side_effect=RuntimeError("probe failed")))
+    good = MagicMock(is_running=AsyncMock(return_value=False), intentionally_stopped=True)
+    manager.servers = {"bad": bad, "good": good}
+    manager._shutdown_event = MagicMock()
+    manager._shutdown_event.is_set.side_effect = [False, False, True]
+    monkeypatch.setattr(manager.settings, "get", lambda *args: 0)
+    await manager._monitor_servers()
+    good.is_running.assert_awaited_once()
+    assert "good" not in manager.servers

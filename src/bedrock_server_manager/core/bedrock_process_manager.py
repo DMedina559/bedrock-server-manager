@@ -58,7 +58,7 @@ class BedrockProcessManager:
 
     async def start(self):
         """Call this from the main thread to start monitoring."""
-        if self.monitoring_task is None:
+        if self.monitoring_task is None or self.monitoring_task.done():
             self.monitoring_task = asyncio.create_task(self._monitor_servers())
 
     async def add_server(self, server: "BedrockServer"):
@@ -232,7 +232,11 @@ class BedrockProcessManager:
             self.player_scan_counter += monitoring_interval
             for server_name, server in list(self.servers.items()):
                 # Determine run state
-                is_running = await server.is_running()
+                try:
+                    is_running = await server.is_running()
+                except Exception:
+                    self.logger.exception("Could not probe server '%s'", server_name)
+                    continue
 
                 if not is_running:
                     if not server.intentionally_stopped:
@@ -240,7 +244,10 @@ class BedrockProcessManager:
                             f"Monitored server '{server.server_name}' has crashed."
                         )
                         server.failure_count += 1
-                        await self._try_restart_server(server)
+                        try:
+                            await self._try_restart_server(server)
+                        except Exception:
+                            self.logger.exception("Could not recover server '%s'", server_name)
                     else:
                         self.logger.info(
                             f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
@@ -323,8 +330,8 @@ class BedrockProcessManager:
                                     players,
                                 )
                     except Exception as e:
-                        server.player_count = 0
                         server.players = []
+                        server.player_count = len(server.players)
                         self.logger.error(
                             f"Error processing players for server '{server.server_name}': {e}"
                         )
