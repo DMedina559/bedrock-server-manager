@@ -39,6 +39,7 @@ class ConnectionManager:
         self, user_provider: Callable[[str], UserInfoState | None] | None = None
     ) -> None:
         self.user_provider = user_provider
+        self.io_timeout = 5.0
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
         # Maps a topic to a list of client IDs subscribed to it
@@ -81,7 +82,7 @@ class ConnectionManager:
                         client.websocket.close(
                             code=1008, reason="Account authorization changed"
                         ),
-                        timeout=5,
+                        timeout=self.io_timeout,
                     )
                 except Exception:
                     logger.exception("Could not close revoked connection %s", client.id)
@@ -127,12 +128,19 @@ class ConnectionManager:
         logger.info(
             f"Shutting down {len(self.active_connections)} active WebSocket connections."
         )
-        # Create a copy of the values to avoid RuntimeError: dictionary changed size during iteration
-        for client in list(self.active_connections.values()):
+
+        async def close(client: Client) -> None:
             try:
-                await client.websocket.close(code=1001, reason="Server shutting down")
-            except Exception as e:
-                logger.error(f"Error closing websocket for client {client.id}: {e}")
+                await asyncio.wait_for(
+                    client.websocket.close(code=1001, reason="Server shutting down"),
+                    timeout=self.io_timeout,
+                )
+            except Exception as error:
+                logger.error(f"Error closing websocket for client {client.id}: {error}")
+
+        await asyncio.gather(
+            *(close(client) for client in list(self.active_connections.values()))
+        )
         self.active_connections.clear()
         self.subscriptions.clear()
         self.data_providers.clear()
@@ -192,7 +200,9 @@ class ConnectionManager:
         if client_id in self.active_connections:
             client = self.active_connections[client_id]
             try:
-                await client.websocket.send_text(encoded)
+                await asyncio.wait_for(
+                    client.websocket.send_text(encoded), timeout=self.io_timeout
+                )
             except (WebSocketDisconnect, RuntimeError) as e:
                 # Catch both normal disconnection and the "WebSocket is not connected" RuntimeError
                 logger.info(

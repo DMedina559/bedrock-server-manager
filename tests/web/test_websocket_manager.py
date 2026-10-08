@@ -1,3 +1,5 @@
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -232,3 +234,44 @@ async def test_account_change_revokes_socket_before_delivery():
     socket.close.assert_awaited_once()
     assert not manager.active_connections
     assert not manager.subscriptions
+
+
+@pytest.mark.asyncio
+async def test_websocket_close_has_deadline():
+    cm = ConnectionManager()
+    cm.io_timeout = 0.01
+    closing = asyncio.Event()
+    release = asyncio.Event()
+
+    async def close(**kwargs):
+        closing.set()
+        await release.wait()
+
+    socket = SimpleNamespace(close=close)
+    user = UserResponse(
+        id=1, username="test", role="admin", is_active=True, theme="default"
+    )
+    await cm.connect(socket, user)
+    shutdown = asyncio.create_task(cm.shutdown())
+    await closing.wait()
+    await asyncio.wait_for(shutdown, 0.5)
+    assert not cm.active_connections
+
+
+@pytest.mark.asyncio
+async def test_stalled_websocket_send_disconnects():
+    manager = ConnectionManager()
+    manager.io_timeout = 0.01
+
+    async def send_text(data):
+        await asyncio.Event().wait()
+
+    socket = SimpleNamespace(send_text=send_text)
+    user = UserResponse(
+        id=1, username="test", role="admin", is_active=True, theme="default"
+    )
+    client_id = await manager.connect(socket, user)
+    await manager.subscribe(client_id, "updates")
+    await asyncio.wait_for(manager.send_to_client({"value": 1}, client_id), 0.5)
+    assert client_id not in manager.active_connections
+    assert "updates" not in manager.subscriptions
