@@ -35,6 +35,6 @@ await self.api.websocket.websocket_publish_ws_event({
 })
 ```
 
-For topic data and live dashboards, use `self.api.websocket.broadcast` and
+For topic data and live dashboards, use `self.api.websocket.websocket_broadcast` and
 `self.api.runtime.register_data_provider`; see the
 [plugin introduction](introduction.md) and [Native JSON UI](native_json_ui.md).

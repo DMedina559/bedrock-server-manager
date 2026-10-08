@@ -220,7 +220,7 @@ class RealTimeStatsPlugin(PluginBase):
     async def broadcast_status(self, **kwargs):
         server_name = kwargs.get("server_name")
         # Broadcast real-time updates to all clients subscribed to "server-updates"
-        await self.api.websocket.broadcast(
+        await self.api.websocket.websocket_broadcast(
             {"topic": "server-updates",
              "data": {"event": "server_started", "server_name": server_name}}
         )
