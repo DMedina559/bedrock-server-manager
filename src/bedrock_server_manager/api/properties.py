@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 
 from ..context import AppContext
@@ -300,6 +301,8 @@ def validate_property_value(
     ):
         try:
             float_val = float(value)
+            if not math.isfinite(float_val):
+                raise ValueError("Must be a finite number.")
             if property_name == "player-movement-action-direction-threshold":
                 if not 0.0 <= float_val <= 1.0:
                     raise ValueError("Must be in range [0, 1].")

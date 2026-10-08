@@ -236,3 +236,22 @@ async def test_set_properties_type_error(app_context):
                 app_context=app_context,
             )
         ).model_dump(mode="python")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "player-position-acceptance-threshold",
+        "server-authoritative-block-breaking-pick-range-scalar",
+        "player-movement-action-direction-threshold",
+    ],
+)
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "NaN"])
+def test_numeric_properties_reject_non_finite_numbers(name, value):
+    from bedrock_server_manager.api.models import ValidatePropertyValueRequest
+    from bedrock_server_manager.api.properties import validate_property_value
+
+    result = validate_property_value(
+        ValidatePropertyValueRequest(property_name=name, value=value)
+    )
+    assert not result.valid
