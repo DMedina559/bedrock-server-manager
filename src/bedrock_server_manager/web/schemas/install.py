@@ -1,18 +1,18 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ...api.models.allowlist import GetAllowlistResponse
-from ...api.models.common import APIResponse
+from ...api.models.common import APIRequest, APIResponse, PermissionLevel, ServerName
 from ...api.models.permissions import GetPermissionsResponse
 from ...api.models.properties import GetPropertiesResponse
 from .base import BaseApiResponse, TaskAcceptedResponse
 
 
-class InstallServerPayload(BaseModel):
+class InstallServerPayload(APIRequest):
     """Request model for installing a new server."""
 
-    server_name: str = Field(
+    server_name: ServerName = Field(
         ..., min_length=1, max_length=50, description="Name for the new server."
     )
     server_version: str = Field(
@@ -59,15 +59,15 @@ class InstallationAcceptedResponse(TaskAcceptedResponse):
 InstallServerResponse = InstallConfirmationResponse | InstallationAcceptedResponse
 
 
-class PropertiesPayload(BaseModel):
+class PropertiesPayload(APIRequest):
     """Request model for updating server.properties."""
 
-    properties: Dict[str, Any] = Field(
+    properties: Dict[str, str] = Field(
         ..., description="Dictionary of properties to set."
     )
 
 
-class AllowlistAddPayload(BaseModel):
+class AllowlistAddPayload(APIRequest):
     """Request model for adding players to the allowlist."""
 
     players: List[str] = Field(..., description="List of player gamertags to add.")
@@ -76,21 +76,21 @@ class AllowlistAddPayload(BaseModel):
     )
 
 
-class AllowlistRemovePayload(BaseModel):
+class AllowlistRemovePayload(APIRequest):
     """Request model for removing players from the allowlist."""
 
     players: List[str] = Field(..., description="List of player gamertags to remove.")
 
 
-class PlayerPermissionPayload(BaseModel):
+class PlayerPermissionPayload(APIRequest):
     """Represents a single player's permission data sent from the client."""
 
     xuid: str
     name: str
-    permission_level: str
+    permission_level: PermissionLevel
 
 
-class PermissionsSetPayload(BaseModel):
+class PermissionsSetPayload(APIRequest):
     """Request model for setting multiple player permissions."""
 
     permissions: List[PlayerPermissionPayload] = Field(

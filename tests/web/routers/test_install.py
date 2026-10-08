@@ -187,4 +187,4 @@ def test_post_install_server_invalid_name(admin_auth_client: TestClient):
         "/api/server/install",
         json={"server_name": "Invalid Server Name!", "server_version": "LATEST"},
     )
-    assert response.status_code == 400
+    assert response.status_code == 422

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, cast
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from ..plugins.runtime import PluginRuntime
+from .types import UserRole
 
 
 class PersistentRecord(BaseModel):
@@ -173,7 +174,7 @@ class PluginState:
 class UserInfoState(PersistentRecord):
     id: Optional[int] = None
     username: str
-    role: str = "user"
+    role: UserRole = "user"
     theme: str = "default"
     is_active: bool = True
     full_name: Optional[str] = None

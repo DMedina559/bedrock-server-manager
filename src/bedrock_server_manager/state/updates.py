@@ -5,6 +5,7 @@ from enum import Enum
 from pydantic import JsonValue
 
 from .models import PersistentRecord
+from .types import UserRole
 
 
 class Unset(Enum):
@@ -26,7 +27,7 @@ class ServerUpdate(PersistentRecord):
 
 class UserUpdate(PersistentRecord):
     username: str
-    role: str | None = None
+    role: UserRole | None = None
     theme: str | None = None
     is_active: bool | None = None
     full_name: str | None = None

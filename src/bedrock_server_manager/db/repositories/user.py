@@ -25,14 +25,16 @@ class UserRepository:
         users = []
         for u in result.scalars().all():
             u_name = str(u.username)
-            u_info = UserInfoState(
-                id=int(u.id),
-                username=u_name,
-                role=str(u.role),
-                theme=str(u.theme),
-                is_active=bool(u.is_active),
-                full_name=str(u.full_name) if u.full_name else None,
-                email=str(u.email) if u.email else None,
+            u_info = UserInfoState.model_validate(
+                {
+                    "id": int(u.id),
+                    "username": u_name,
+                    "role": u.role,
+                    "theme": str(u.theme or "default"),
+                    "is_active": bool(u.is_active),
+                    "full_name": str(u.full_name) if u.full_name else None,
+                    "email": str(u.email) if u.email else None,
+                }
             )
             users.append(u_info)
         return users

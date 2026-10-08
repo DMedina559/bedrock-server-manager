@@ -1,14 +1,14 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field, JsonValue
 
-from ...api.models.common import PlayerInfo, ServerSummary
+from ...api.models.common import APIRequest, PlayerInfo, ServerSummary
 from ...api.models.player import PlayerScanDetails
 from ...api.models.system import ProcessInfo
 from .base import BaseApiResponse
 
 
-class CommandPayload(BaseModel):
+class CommandPayload(APIRequest):
     """Request model for sending a command to a server."""
 
     command: str = Field(
@@ -16,14 +16,14 @@ class CommandPayload(BaseModel):
     )
 
 
-class ServerSettingItemPayload(BaseModel):
+class ServerSettingItemPayload(APIRequest):
     """Request model for a single server setting key-value pair."""
 
     key: str = Field(
         ...,
         description="The dot-notation key of the setting (e.g., 'settings.autoupdate').",
     )
-    value: Any = Field(..., description="The new value for the setting.")
+    value: JsonValue = Field(..., description="The new value for the setting.")
 
 
 class ServerSettingsResponse(BaseApiResponse):
@@ -35,7 +35,7 @@ class ServerSettingsResponse(BaseApiResponse):
     setting: Optional[ServerSettingItemPayload] = None
 
 
-class AddPlayersPayload(BaseModel):
+class AddPlayersPayload(APIRequest):
     """Request model for manually adding players to the database.
 
     Each string in the 'players' list should be in the format "gamertag:xuid".

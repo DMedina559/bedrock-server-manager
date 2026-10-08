@@ -1,9 +1,11 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from ...api.models.common import APIRequest
 
 
-class BackupActionPayload(BaseModel):
+class BackupActionPayload(APIRequest):
     """Request model for triggering a backup action."""
 
     backup_type: str = Field(
@@ -15,7 +17,7 @@ class BackupActionPayload(BaseModel):
     )
 
 
-class RestoreActionPayload(BaseModel):
+class RestoreActionPayload(APIRequest):
     """Request model for triggering a restore action."""
 
     restore_type: str = Field(

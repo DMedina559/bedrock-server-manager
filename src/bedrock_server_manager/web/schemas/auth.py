@@ -2,8 +2,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from ...api.models.common import APIRequest
+from ...state.types import UserRole
 
-class GenerateTokenPayload(BaseModel):
+
+class GenerateTokenPayload(APIRequest):
     """
     Request payload for generating a registration token.
 
@@ -11,7 +14,7 @@ class GenerateTokenPayload(BaseModel):
         role (str): The role to assign to the user registering with this token.
     """
 
-    role: str
+    role: UserRole
 
 
 class TokenResponse(BaseModel):
@@ -22,7 +25,7 @@ class TokenResponse(BaseModel):
     message: Optional[str] = None
 
 
-class UserLoginPayload(BaseModel):
+class UserLoginPayload(APIRequest):
     """Request model for user login credentials."""
 
     username: str = Field(..., min_length=1, max_length=80)

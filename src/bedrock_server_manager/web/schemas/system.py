@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from ...api.models.common import APIRequest
 from .base import BaseApiResponse
 
 
@@ -12,7 +13,7 @@ class SetupStatusResponse(BaseModel):
     needs_setup: bool
 
 
-class FileNamePayload(BaseModel):
+class FileNamePayload(APIRequest):
     """
     Payload for file-based operations.
 
@@ -23,13 +24,13 @@ class FileNamePayload(BaseModel):
     filename: str
 
 
-class SettingItemResponse(BaseModel):
+class SettingItemResponse(APIRequest):
     """Request model for a single setting key-value pair."""
 
     key: str = Field(
         ..., description="The dot-notation key of the setting (e.g., 'web.port')."
     )
-    value: Any = Field(..., description="The new value for the setting.")
+    value: JsonValue = Field(..., description="The new value for the setting.")
 
 
 class SettingsResponse(BaseApiResponse):
@@ -41,7 +42,7 @@ class SettingsResponse(BaseApiResponse):
     setting: Optional[SettingItemResponse] = None
 
 
-class PruneDownloadsPayload(BaseModel):
+class PruneDownloadsPayload(APIRequest):
     """Request model for pruning the download cache."""
 
     directory: str = Field(

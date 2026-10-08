@@ -189,7 +189,7 @@ def test_post_permissions_set_user_input_error(
             f"/api/server/{real_bedrock_server.server_name}/permissions/set",
             json={
                 "permissions": [
-                    {"xuid": "123", "name": "Player1", "permission_level": "invalid"}
+                    {"xuid": "123", "name": "Player1", "permission_level": "operator"}
                 ]
             },
         )
@@ -197,7 +197,7 @@ def test_post_permissions_set_user_input_error(
         assert response.status_code == 400
         data = response.json()
         assert (
-            data["error"]["details"]["errors"]["123"] == "API data failed validation."
+            data["error"]["details"]["errors"]["123"] == "Invalid permission level"
         )
 
 

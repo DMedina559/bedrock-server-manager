@@ -2,6 +2,9 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from ...api.models.common import APIRequest
+from ...state.types import UserRole
+
 
 class UserResponse(BaseModel):
     """
@@ -19,12 +22,12 @@ class UserResponse(BaseModel):
     id: int
     username: str
     identity_type: Optional[str] = None
-    role: str
+    role: UserRole
     is_active: bool
     theme: str = "default"
 
 
-class UpdateUserRolePayload(BaseModel):
+class UpdateUserRolePayload(APIRequest):
     """
     Request payload for updating a user's role.
 
@@ -32,10 +35,10 @@ class UpdateUserRolePayload(BaseModel):
         role (str): The new role.
     """
 
-    role: str
+    role: UserRole
 
 
-class ThemeUpdatePayload(BaseModel):
+class ThemeUpdatePayload(APIRequest):
     """
     Request payload for updating the user's theme.
 
@@ -46,7 +49,7 @@ class ThemeUpdatePayload(BaseModel):
     theme: str
 
 
-class ProfileUpdatePayload(BaseModel):
+class ProfileUpdatePayload(APIRequest):
     """
     Request payload for updating user profile details.
 
@@ -59,7 +62,7 @@ class ProfileUpdatePayload(BaseModel):
     email: str
 
 
-class ChangePasswordPayload(BaseModel):
+class ChangePasswordPayload(APIRequest):
     """
     Request payload for changing the user's password.
 
