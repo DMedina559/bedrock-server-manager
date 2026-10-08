@@ -144,8 +144,10 @@ async def test_remove_server_non_existent(app_context):
 async def test_shutdown_attempts_all_cleanup_after_failures(app_context, monkeypatch):
     import pytest
 
-    process = MagicMock(shutdown=AsyncMock(side_effect=RuntimeError("process")))
-    plugin = MagicMock(shutdown=AsyncMock())
+    process = MagicMock(
+        quiesce=AsyncMock(), shutdown=AsyncMock(side_effect=RuntimeError("process"))
+    )
+    plugin = MagicMock(quiesce=AsyncMock(), shutdown=AsyncMock())
     database = MagicMock(shutdown=AsyncMock())
     monkeypatch.setattr(app_context, "_bedrock_process_manager", process)
     monkeypatch.setattr(app_context, "_plugin_manager", plugin)

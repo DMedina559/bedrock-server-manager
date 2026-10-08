@@ -88,14 +88,8 @@ class BedrockProcessManager:
             self.logger.info(f"Removing server '{server_name}' from process manager.")
             del self.servers[server_name]
 
-    async def shutdown(self):
-        """Shuts down all managed servers concurrently and stops the monitoring task.
-
-        This method:
-        1. Sets the shutdown event for the monitoring task and cancels it immediately.
-        2. Spawns tasks to stop all currently running servers concurrently with exception handling.
-        """
-
+    async def quiesce(self) -> None:
+        """Stop monitoring and automatic restarts before draining operations."""
         self.logger.info("Shutdown signal received. Stopping server monitoring.")
         self._shutdown_event.set()
 
@@ -105,6 +99,16 @@ class BedrockProcessManager:
                 await asyncio.wait_for(self.monitoring_task, timeout=2)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
+
+    async def shutdown(self):
+        """Shuts down all managed servers concurrently and stops the monitoring task.
+
+        This method:
+        1. Sets the shutdown event for the monitoring task and cancels it immediately.
+        2. Spawns tasks to stop all currently running servers concurrently with exception handling.
+        """
+
+        await self.quiesce()
 
         # Concurrently shut down all servers
         self.logger.info("ProcessManager: Stopping all running servers concurrently...")

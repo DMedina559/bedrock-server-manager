@@ -280,9 +280,13 @@ class TaskManager:
             if username is None or record["username"] == username
         }
 
+    def begin_shutdown(self) -> None:
+        """Close admission before producers and running operations are drained."""
+        self._shutdown_started = True
+
     async def shutdown(self):
         """Waits for all background tasks to complete asynchronously."""
-        self._shutdown_started = True
+        self.begin_shutdown()
         logger.info(
             "Task manager shutting down. Waiting for running tasks to complete."
         )

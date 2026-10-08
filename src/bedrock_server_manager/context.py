@@ -152,10 +152,18 @@ class AppContext:
         Shuts down application context components and flushes pending state to storage.
         """
         errors: list[Exception] = []
+        if self._task_manager is not None:
+            self._task_manager.begin_shutdown()
+        for producer in (self._bedrock_process_manager, self._plugin_manager):
+            if producer is not None:
+                try:
+                    await producer.quiesce()
+                except Exception as error:
+                    errors.append(error)
         components = (
-            self._bedrock_process_manager,
-            self._plugin_manager,
             self._task_manager,
+            self._plugin_manager,
+            self._bedrock_process_manager,
             self._resource_monitor,
             self._log_streamer,
             self._connection_manager,
