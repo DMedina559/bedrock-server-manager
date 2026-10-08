@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import anyio
 import pytest
 from fastapi import APIRouter, FastAPI
 
@@ -316,3 +317,41 @@ async def test_router_event_handlers_do_not_duplicate_on_route_rebuild(app_conte
     async with app.router.lifespan_context(app):
         started.assert_called_once()
     stopped.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_cross_task_exit(app_context):
+    pm = app_context.plugin_manager
+    app = FastAPI()
+    pm.bind_web_app(app)
+    entered = []
+
+    @asynccontextmanager
+    async def lifespan(app):
+        async with anyio.create_task_group():
+            entered.append(asyncio.current_task())
+            yield
+            assert asyncio.current_task() is entered[0]
+
+    await pm._register_routers("group", [APIRouter(lifespan=lifespan)])
+    pm._web_started = True
+    await pm._start_router_lifespans("group")
+    await asyncio.create_task(pm._close_router_lifespan("group"))
+    assert "group" not in pm._router_lifespans
+    pm._web_started = False
+
+
+@pytest.mark.asyncio
+async def test_router_lifespan_recursion_fails_without_deadlock(app_context):
+    manager = app_context.plugin_manager
+    manager.bind_web_app(FastAPI())
+
+    @asynccontextmanager
+    async def lifespan(app):
+        await manager.unload_plugin_by_name("recursive")
+        yield
+
+    await manager._register_routers("recursive", [APIRouter(lifespan=lifespan)])
+    with pytest.raises(RuntimeError, match="recursively"):
+        await asyncio.wait_for(manager._start_router_lifespans("recursive"), 0.5)
+    assert "recursive" not in manager._router_lifespans

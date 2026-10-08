@@ -13,7 +13,7 @@ import os
 import sys
 import types
 import warnings
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -44,6 +44,7 @@ from ..utils.general import ReentrantAsyncLock
 from ..utils.threads import run_in_thread
 from .api_bridge import create_app_api
 from .event_trigger import _event_registry
+from .lifespan import RouterLifespan
 from .plugin_base import PluginBase
 from .runtime import PluginRuntime, PluginStatus
 
@@ -94,7 +95,7 @@ class PluginManager:
         self._web_started = False
         self._web_startup_handlers: list[Callable[..., Any]] = []
         self._web_shutdown_handlers: list[Callable[..., Any]] = []
-        self._router_lifespans: dict[str, AsyncExitStack] = {}
+        self._router_lifespans: dict[str, RouterLifespan] = {}
         self.ui_render_tags = {"json": "plugin-json-ui", "legacy": "plugin-ui-native"}
         self.plugin_static_mounts: List[Tuple[str, Path, str]] = []
         self.plugin_tasks: Dict[str, List[asyncio.Task[Any]]] = {}
@@ -233,6 +234,7 @@ class PluginManager:
         return None
 
     async def quiesce(self) -> None:
+        self._check_lifecycle_task()
         self._shutdown_started = True
         async with self._lifecycle_lock:
             tasks = [task for group in self.plugin_tasks.values() for task in group]
@@ -399,6 +401,7 @@ class PluginManager:
 
         Includes idempotency checks to prevent duplicate task loops if called multiple times.
         """
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
@@ -610,6 +613,7 @@ class PluginManager:
 
     async def load_plugins(self) -> None:
         """Discovers, loads, initializes, and starts tasks for all enabled plugins."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
@@ -717,6 +721,7 @@ class PluginManager:
 
     async def unload_plugins(self) -> None:
         """Unloads all currently loaded plugins, cleans up background tasks, and purges imported modules."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             logger.info("--- Unloading all plugins ---")
             tasks_to_await: List[asyncio.Task[Any]] = []
@@ -765,6 +770,7 @@ class PluginManager:
 
     async def reload(self) -> None:
         """Gracefully reloads all plugins and restarts background tasks."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
@@ -786,6 +792,7 @@ class PluginManager:
     async def _web_lifespan(self, app: FastAPI) -> AsyncIterator[dict[str, Any]]:
         state: dict[str, Any] = {}
         try:
+            self._check_lifecycle_task()
             async with self._lifecycle_lock:
                 self._web_started = True
                 for name in self._router_owners:
@@ -797,6 +804,7 @@ class PluginManager:
             else:
                 yield state
         finally:
+            self._check_lifecycle_task()
             async with self._lifecycle_lock:
                 self._web_started = False
                 errors: list[Exception] = []
@@ -810,27 +818,34 @@ class PluginManager:
                         "Plugin router lifespan cleanup failed", errors
                     )
 
+    def _check_lifecycle_task(self) -> None:
+        if any(
+            owner.task is asyncio.current_task()
+            for owner in self._router_lifespans.values()
+        ):
+            raise RuntimeError(
+                "Router lifespans cannot recursively change plugin lifecycle."
+            )
+
     async def _start_router_lifespans(self, name: str) -> dict[str, Any]:
         if name in self._router_lifespans or self._web_app is None:
             return {}
-        stack = AsyncExitStack()
-        state: dict[str, Any] = {}
+        owner = RouterLifespan(self._web_app, self._router_owners.get(name, []))
+        self._router_lifespans[name] = owner
         try:
-            for router in self._router_owners.get(name, []):
-                value = await stack.enter_async_context(
-                    router.lifespan_context(self._web_app)
-                )
-                state.update(value or {})
+            return await owner.start()
         except BaseException:
-            await stack.aclose()
+            self._router_lifespans.pop(name, None)
             raise
-        self._router_lifespans[name] = stack
-        return state
 
     async def _close_router_lifespan(self, name: str) -> None:
-        stack = self._router_lifespans.pop(name, None)
-        if stack is not None:
-            await stack.aclose()
+        owner = self._router_lifespans.get(name)
+        if owner is not None:
+            try:
+                await owner.close()
+            finally:
+                if owner.task.done():
+                    self._router_lifespans.pop(name, None)
 
     async def _register_routers(self, name: str, routers: list[APIRouter]) -> None:
         self._router_owners.setdefault(name, []).extend(routers)
@@ -927,6 +942,7 @@ class PluginManager:
 
     async def unload_plugin_by_name(self, plugin_name: str) -> bool:
         """Unloads a single plugin by name, stopping its tasks and unregistering its listeners."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             target_instance = self._pending_plugins.get(plugin_name)
             for p in self.plugins:
@@ -1011,6 +1027,7 @@ class PluginManager:
 
     async def load_plugin_by_name(self, plugin_name: str) -> bool:
         """Loads and initializes a single plugin by name if discoverable."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
@@ -1155,6 +1172,7 @@ class PluginManager:
 
     async def reload_plugin(self, plugin_name: str) -> bool:
         """Reloads a single plugin by name."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
@@ -1166,6 +1184,7 @@ class PluginManager:
         self, plugin_name: str, load_immediately: bool = True
     ) -> bool:
         """Enables a plugin in config and optionally loads it immediately."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             if self._shutdown_started:
                 raise RuntimeError("Cannot start plugins during shutdown.")
@@ -1186,6 +1205,7 @@ class PluginManager:
         self, plugin_name: str, unload_immediately: bool = True
     ) -> bool:
         """Disables a plugin in config and optionally unloads it immediately."""
+        self._check_lifecycle_task()
         async with self._lifecycle_lock:
             await self._synchronize_config_with_disk()
             if plugin_name not in self.plugin_config:
