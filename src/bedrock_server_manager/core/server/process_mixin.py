@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
 import aiofiles
 import aiofiles.ospath
 
+
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
     import psutil as psutil_for_types
@@ -181,106 +182,113 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     async def start(self) -> None:
         """Starts the Bedrock server process asynchronously."""
-        is_inst = await self.is_installed()  # type: ignore
+        async with self.operation_lock:
+            is_inst = await self.is_installed()  # type: ignore
 
-        if not is_inst:
-            raise ServerStartError(
-                f"Cannot start server '{self.server_name}': Not installed or "
-                f"invalid installation at {self.server_dir} (is_installed check failed or method missing)."
-            )
-
-        if await self.is_running():
-            self.logger.warning(
-                f"Attempted to start server '{self.server_name}' but it is already running."
-            )
-            raise ServerStartError(f"Server '{self.server_name}' is already running.")
-
-        try:
-            await self.set_status_in_config("STARTING")  # type: ignore
-        except Exception as e_status:
-            self.logger.warning(
-                f"Failed to set status to STARTING for '{self.server_name}': {e_status}"
-            )
-
-        self.logger.info(
-            f"Attempting to start server '{self.server_name}' asynchronously..."
-        )
-
-        output_file = self.server_log_path
-        pid_file_path = self.get_pid_file_path()
-
-        if await aiofiles.ospath.exists(pid_file_path):
-            self.logger.error(
-                f"Attempted to start server '{self.server_name}', but a PID file already exists at '{pid_file_path}'."
-            )
-            raise ServerStartError(f"Server '{self.server_name}' has a stale PID file.")
-
-        try:
-            # Truncate the log file before starting
-            async with aiofiles.open(output_file, "w") as f:
-                await f.truncate(0)
-
-            # Native async subprocess creation
-            self._log_file_handle = open(output_file, "ab")
-
-            spawn = asyncio.create_task(
-                asyncio.create_subprocess_exec(
-                    self.bedrock_executable_path,
-                    cwd=self.server_dir,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=self._log_file_handle,
-                    stderr=asyncio.subprocess.STDOUT,
-                    creationflags=(
-                        getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                        if platform.system() == "Windows"
-                        else 0
-                    ),
+            if not is_inst:
+                raise ServerStartError(
+                    f"Cannot start server '{self.server_name}': Not installed or "
+                    f"invalid installation at {self.server_dir} (is_installed check failed or method missing)."
                 )
-            )
+
+            if await self.is_running():
+                self.logger.warning(
+                    f"Attempted to start server '{self.server_name}' but it is already running."
+                )
+                raise ServerStartError(
+                    f"Server '{self.server_name}' is already running."
+                )
+
             try:
-                self._process = await asyncio.shield(spawn)
-            except asyncio.CancelledError:
-                while not spawn.done():
-                    try:
-                        await asyncio.shield(spawn)
-                    except asyncio.CancelledError:
-                        continue
-                self._process = spawn.result()
-                raise
-
-            await system_process.write_pid_to_file(pid_file_path, self._process.pid)
-            self._publish_running(True)
-            self.intentionally_stopped = False
-            self.start_time = time.time()
-
-            setattr(self, "players", [])
-            setattr(self, "_log_file_cursor", 0)
-            setattr(self, "_scan_log_cursor", 0)
-
-            await self.set_status_in_config("RUNNING")  # type: ignore
+                await self.set_status_in_config("STARTING")  # type: ignore
+            except Exception as e_status:
+                self.logger.warning(
+                    f"Failed to set status to STARTING for '{self.server_name}': {e_status}"
+                )
 
             self.logger.info(
-                f"Server '{self.server_name}' has been started with PID {self._process.pid}."
+                f"Attempting to start server '{self.server_name}' asynchronously..."
             )
-        except asyncio.CancelledError:
-            await self._rollback_start()
-            raise
-        except FileNotFoundError:
-            await self._rollback_start()
-            await self.set_status_in_config("ERROR")  # type: ignore
-            self.logger.error(
-                f"Executable not found for server '{self.server_name}' at path '{self.bedrock_executable_path}'."
-            )
-            raise ServerStartError(
-                f"Executable not found for server '{self.server_name}'."
-            )
-        except Exception as e:
-            await self._rollback_start()
-            await self.set_status_in_config("ERROR")  # type: ignore
-            self.logger.error(
-                f"Failed to start server '{self.server_name}': {e}", exc_info=True
-            )
-            raise ServerStartError(f"Failed to start server '{self.server_name}': {e}")
+
+            output_file = self.server_log_path
+            pid_file_path = self.get_pid_file_path()
+
+            if await aiofiles.ospath.exists(pid_file_path):
+                self.logger.error(
+                    f"Attempted to start server '{self.server_name}', but a PID file already exists at '{pid_file_path}'."
+                )
+                raise ServerStartError(
+                    f"Server '{self.server_name}' has a stale PID file."
+                )
+
+            try:
+                # Truncate the log file before starting
+                async with aiofiles.open(output_file, "w") as f:
+                    await f.truncate(0)
+
+                # Native async subprocess creation
+                self._log_file_handle = open(output_file, "ab")
+
+                spawn = asyncio.create_task(
+                    asyncio.create_subprocess_exec(
+                        self.bedrock_executable_path,
+                        cwd=self.server_dir,
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=self._log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        creationflags=(
+                            getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                            if platform.system() == "Windows"
+                            else 0
+                        ),
+                    )
+                )
+                try:
+                    self._process = await asyncio.shield(spawn)
+                except asyncio.CancelledError:
+                    while not spawn.done():
+                        try:
+                            await asyncio.shield(spawn)
+                        except asyncio.CancelledError:
+                            continue
+                    self._process = spawn.result()
+                    raise
+
+                await system_process.write_pid_to_file(pid_file_path, self._process.pid)
+                self._publish_running(True)
+                self.intentionally_stopped = False
+                self.start_time = time.time()
+
+                setattr(self, "players", [])
+                setattr(self, "_log_file_cursor", 0)
+                setattr(self, "_scan_log_cursor", 0)
+
+                await self.set_status_in_config("RUNNING")  # type: ignore
+
+                self.logger.info(
+                    f"Server '{self.server_name}' has been started with PID {self._process.pid}."
+                )
+            except asyncio.CancelledError:
+                await self._rollback_start()
+                raise
+            except FileNotFoundError:
+                await self._rollback_start()
+                await self.set_status_in_config("ERROR")  # type: ignore
+                self.logger.error(
+                    f"Executable not found for server '{self.server_name}' at path '{self.bedrock_executable_path}'."
+                )
+                raise ServerStartError(
+                    f"Executable not found for server '{self.server_name}'."
+                )
+            except Exception as e:
+                await self._rollback_start()
+                await self.set_status_in_config("ERROR")  # type: ignore
+                self.logger.error(
+                    f"Failed to start server '{self.server_name}': {e}", exc_info=True
+                )
+                raise ServerStartError(
+                    f"Failed to start server '{self.server_name}': {e}"
+                )
 
     async def _rollback_start(self) -> None:
         """Release resources acquired by a startup that did not complete."""
@@ -320,136 +328,144 @@ class ServerProcessMixin(BedrockServerBaseMixin):
 
     async def stop(self) -> None:
         """Stops the Bedrock server process gracefully, with a forceful fallback asynchronously."""
-        self.intentionally_stopped = True
+        async with self.operation_lock:
+            self.intentionally_stopped = True
 
-        if not await self.is_running():
-            self.logger.info(
-                f"Attempted to stop server '{self.server_name}', but it is not currently running."
-            )
-            status = await self.get_status_from_config()  # type: ignore
-            if status != "STOPPED":
-                try:
-                    await self.set_status_in_config("STOPPED")  # type: ignore
-                except Exception as e_stat:
-                    self.logger.warning(
-                        f"Failed to reset status to STOPPED for '{self.server_name}': {e_stat}"
-                    )
-            return
-
-        if self._process is None:
-            verified_process = await system_process.get_verified_bedrock_process(
-                self.server_name,
-                self.server_dir,
-                self.app_config_dir,
-            )
-            if verified_process:
-                self._process = verified_process
-            else:
-                raise ServerStopError(
-                    f"Cannot stop server '{self.server_name}': process handle not found and could not be verified."
-                )
-
-        try:
-            await self.set_status_in_config("STOPPING")  # type: ignore
-        except Exception as e_stat:
-            self.logger.warning(
-                f"Failed to set status to STOPPING for '{self.server_name}': {e_stat}"
-            )
-
-        self.logger.info(
-            f"Attempting to stop server '{self.server_name}' asynchronously..."
-        )
-
-        try:
-            self.logger.info(f"Sending 'stop' command to server '{self.server_name}'.")
-            if hasattr(self._process, "stdin") and self._process.stdin:
-                if hasattr(self._process.stdin, "drain"):
-                    self._process.stdin.write(b"stop\n")
-                    await self._process.stdin.drain()
-                else:
-
-                    def _write_stop():
-                        self._process.stdin.write(b"stop\n")
-                        self._process.stdin.flush()
-
-                    await asyncio.to_thread(_write_stop)
-            elif isinstance(self._process, system_process.psutil.Process):
+            if not await self.is_running():
                 self.logger.info(
-                    f"Cannot write to stdin of recovered psutil process '{self.server_name}'. Sending terminate signal."
+                    f"Attempted to stop server '{self.server_name}', but it is not currently running."
                 )
-                self._process.terminate()
+                status = await self.get_status_from_config()  # type: ignore
+                if status != "STOPPED":
+                    try:
+                        await self.set_status_in_config("STOPPED")  # type: ignore
+                    except Exception as e_stat:
+                        self.logger.warning(
+                            f"Failed to reset status to STOPPED for '{self.server_name}': {e_stat}"
+                        )
+                return
 
-            timeout = int(self.settings.get("monitor.server_stop_timeout", 10))
-
-            if hasattr(self._process, "wait") and inspect.iscoroutinefunction(
-                self._process.wait
-            ):
-                # asyncio.subprocess.Process
-                try:
-                    await asyncio.wait_for(self._process.wait(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    raise subprocess.TimeoutExpired(
-                        getattr(
-                            self._process,
-                            "args",
-                            getattr(self._process, "_args", ["bedrock_server"]),
-                        ),
-                        timeout,
+            if self._process is None:
+                verified_process = await system_process.get_verified_bedrock_process(
+                    self.server_name,
+                    self.server_dir,
+                    self.app_config_dir,
+                )
+                if verified_process:
+                    self._process = verified_process
+                else:
+                    raise ServerStopError(
+                        f"Cannot stop server '{self.server_name}': process handle not found and could not be verified."
                     )
-            elif hasattr(self._process, "wait"):
-                # Popen or psutil.Process
-                def _wait() -> None:
-                    if self._process is not None:
-                        self._process.wait(timeout=timeout)  # type: ignore
 
-                await asyncio.to_thread(_wait)
-
-            self.logger.info(f"Server '{self.server_name}' stopped gracefully.")
-        except (subprocess.TimeoutExpired, OSError, BrokenPipeError) as e:
-            self.logger.warning(
-                f"Server '{self.server_name}' did not stop gracefully or pipe was already closed. Killing process. Error: {e}"
-            )
-            if self._process is not None:
-                self._process.kill()
-        except system_process.psutil.TimeoutExpired as e:
-            self.logger.warning(
-                f"Server '{self.server_name}' psutil process did not stop gracefully. Killing process. Error: {e}"
-            )
-            if self._process is not None:
-                self._process.kill()
-        except Exception as e:
-            self.logger.error(
-                f"An error occurred while stopping server '{self.server_name}': {e}",
-                exc_info=True,
-            )
             try:
+                await self.set_status_in_config("STOPPING")  # type: ignore
+            except Exception as e_stat:
+                self.logger.warning(
+                    f"Failed to set status to STOPPING for '{self.server_name}': {e_stat}"
+                )
+
+            self.logger.info(
+                f"Attempting to stop server '{self.server_name}' asynchronously..."
+            )
+
+            try:
+                self.logger.info(
+                    f"Sending 'stop' command to server '{self.server_name}'."
+                )
+                if hasattr(self._process, "stdin") and self._process.stdin:
+                    if hasattr(self._process.stdin, "drain"):
+                        self._process.stdin.write(b"stop\n")
+                        await self._process.stdin.drain()
+                    else:
+
+                        def _write_stop():
+                            self._process.stdin.write(b"stop\n")
+                            self._process.stdin.flush()
+
+                        await asyncio.to_thread(_write_stop)
+                elif isinstance(self._process, system_process.psutil.Process):
+                    self.logger.info(
+                        f"Cannot write to stdin of recovered psutil process '{self.server_name}'. Sending terminate signal."
+                    )
+                    self._process.terminate()
+
+                timeout = int(self.settings.get("monitor.server_stop_timeout", 10))
+
+                if hasattr(self._process, "wait") and inspect.iscoroutinefunction(
+                    self._process.wait
+                ):
+                    # asyncio.subprocess.Process
+                    try:
+                        await asyncio.wait_for(self._process.wait(), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        raise subprocess.TimeoutExpired(
+                            getattr(
+                                self._process,
+                                "args",
+                                getattr(self._process, "_args", ["bedrock_server"]),
+                            ),
+                            timeout,
+                        )
+                elif hasattr(self._process, "wait"):
+                    # Popen or psutil.Process
+                    def _wait() -> None:
+                        if self._process is not None:
+                            self._process.wait(timeout=timeout)  # type: ignore
+
+                    await asyncio.to_thread(_wait)
+
+                self.logger.info(f"Server '{self.server_name}' stopped gracefully.")
+            except (subprocess.TimeoutExpired, OSError, BrokenPipeError) as e:
+                self.logger.warning(
+                    f"Server '{self.server_name}' did not stop gracefully or pipe was already closed. Killing process. Error: {e}"
+                )
                 if self._process is not None:
                     self._process.kill()
-            except Exception as kill_e:
-                self.logger.error(f"Failed to kill process after error: {kill_e}")
-        finally:
-            if hasattr(self, "_log_file_handle") and self._log_file_handle is not None:
+            except system_process.psutil.TimeoutExpired as e:
+                self.logger.warning(
+                    f"Server '{self.server_name}' psutil process did not stop gracefully. Killing process. Error: {e}"
+                )
+                if self._process is not None:
+                    self._process.kill()
+            except Exception as e:
+                self.logger.error(
+                    f"An error occurred while stopping server '{self.server_name}': {e}",
+                    exc_info=True,
+                )
                 try:
-                    self._log_file_handle.close()
-                except Exception as close_e:
-                    self.logger.warning(f"Failed to close log file handle: {close_e}")
-                self._log_file_handle = None
+                    if self._process is not None:
+                        self._process.kill()
+                except Exception as kill_e:
+                    self.logger.error(f"Failed to kill process after error: {kill_e}")
+            finally:
+                if (
+                    hasattr(self, "_log_file_handle")
+                    and self._log_file_handle is not None
+                ):
+                    try:
+                        self._log_file_handle.close()
+                    except Exception as close_e:
+                        self.logger.warning(
+                            f"Failed to close log file handle: {close_e}"
+                        )
+                    self._log_file_handle = None
 
-        self._process = None
-        self._publish_running(False)
+            self._process = None
+            self._publish_running(False)
 
-        pid_file_path = self.get_pid_file_path()
-        await system_process.remove_pid_file_if_exists(pid_file_path)
+            pid_file_path = self.get_pid_file_path()
+            await system_process.remove_pid_file_if_exists(pid_file_path)
 
-        await self.set_status_in_config("STOPPED")  # type: ignore
+            await self.set_status_in_config("STOPPED")  # type: ignore
 
-        setattr(self, "player_count", 0)
-        setattr(self, "players", [])
+            setattr(self, "player_count", 0)
+            setattr(self, "players", [])
 
-        setattr(self, "_log_file_cursor", 0)
-        setattr(self, "_scan_log_cursor", 0)
+            setattr(self, "_log_file_cursor", 0)
+            setattr(self, "_scan_log_cursor", 0)
 
-        self.logger.info(f"Server '{self.server_name}' stopped successfully.")
+            self.logger.info(f"Server '{self.server_name}' stopped successfully.")
 
     async def get_process_info(self) -> Optional[Dict[str, Any]]:
         """Gets resource usage information (PID, CPU, Memory, Uptime) for the running server process asynchronously.
@@ -481,9 +497,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 await self.is_running()
                 return None
 
-            data = await asyncio.to_thread(
-                self._resource_monitor.get_stats, process_obj
-            )
+            data = await asyncio.to_thread(self._resource_monitor.get_stats, process_obj)
             if data is None:
                 return None
             record = ProcessRecord.model_validate(data)

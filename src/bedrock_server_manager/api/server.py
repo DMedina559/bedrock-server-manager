@@ -249,21 +249,22 @@ async def start_server(
     """Start a server, or report that it is already running; failures raise."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
-    if await server.is_running():
+    async with server.operation_lock:
+        if await server.is_running():
+            return StartServerResponse(
+                server_name=server_name,
+                outcome="already_running",
+                message=f"Server '{server_name}' is already running.",
+            )
+
+        await server.start()
+        await app_context.bedrock_process_manager.add_server(server)
+        logger.info("API: Start for server '%s' completed.", server_name)
         return StartServerResponse(
             server_name=server_name,
-            outcome="already_running",
-            message=f"Server '{server_name}' is already running.",
+            outcome="started",
+            message=f"Server '{server_name}' process started.",
         )
-
-    await server.start()
-    await app_context.bedrock_process_manager.add_server(server)
-    logger.info("API: Start for server '%s' completed.", server_name)
-    return StartServerResponse(
-        server_name=server_name,
-        outcome="started",
-        message=f"Server '{server_name}' process started.",
-    )
 
 
 @api_method("stop_server")
@@ -278,42 +279,43 @@ async def stop_server(
     """Stop a server, or report that it is already stopped; failures raise."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
-    stopped = False
-    try:
-        if not await server.is_running():
-            await server.set_status_in_config("STOPPED")
+    async with server.operation_lock:
+        stopped = False
+        try:
+            if not await server.is_running():
+                await server.set_status_in_config("STOPPED")
+                stopped = True
+                return StopServerResponse(
+                    server_name=server_name,
+                    outcome="already_stopped",
+                    message=f"Server '{server_name}' was already stopped.",
+                )
+
+            await app_context.api.server.set_status(
+                request={"server_name": server_name, "status": "STOPPING"}
+            )
+            await server.stop()
             stopped = True
+            await app_context.bedrock_process_manager.remove_server(server.server_name)
+            logger.info("API: Server '%s' stopped successfully.", server_name)
             return StopServerResponse(
                 server_name=server_name,
-                outcome="already_stopped",
-                message=f"Server '{server_name}' was already stopped.",
+                outcome="stopped",
+                message=f"Server '{server_name}' stopped successfully.",
             )
-
-        await app_context.api.server.set_status(
-            request={"server_name": server_name, "status": "STOPPING"}
-        )
-        await server.stop()
-        stopped = True
-        await app_context.bedrock_process_manager.remove_server(server.server_name)
-        logger.info("API: Server '%s' stopped successfully.", server_name)
-        return StopServerResponse(
-            server_name=server_name,
-            outcome="stopped",
-            message=f"Server '{server_name}' stopped successfully.",
-        )
-    finally:
-        # A failed stop may leave a live process: retain its PID file.
-        if stopped:
-            try:
-                pid_file_path = server.get_pid_file_path()
-                if os.path.isfile(pid_file_path):
-                    await remove_pid_file_if_exists(pid_file_path)
-            except Exception as cleanup_error:
-                logger.warning(
-                    "Error during PID file cleanup for '%s': %s",
-                    server_name,
-                    cleanup_error,
-                )
+        finally:
+            # A failed stop may leave a live process: retain its PID file.
+            if stopped:
+                try:
+                    pid_file_path = server.get_pid_file_path()
+                    if os.path.isfile(pid_file_path):
+                        await remove_pid_file_if_exists(pid_file_path)
+                except Exception as cleanup_error:
+                    logger.warning(
+                        "Error during PID file cleanup for '%s': %s",
+                        server_name,
+                        cleanup_error,
+                    )
 
 
 @api_method("restart_server")
@@ -323,33 +325,34 @@ async def restart_server(
     """Orchestrate stop/start; abort on cancellation or either phase failing."""
     server_name = request.server_name
     server = app_context.get_server(server_name)
-    was_running = await server.is_running()
-    if was_running:
-        if request.send_message:
-            try:
-                await server.send_command("say Restarting server...")
-            except BSMError as error:
-                logger.warning(
-                    "API: Failed to send restart warning to '%s': %s",
-                    server_name,
-                    error,
-                )
-        await stop_server(
-            StopServerRequest(server_name=server_name), app_context=app_context
-        )
+    async with server.operation_lock:
+        was_running = await server.is_running()
+        if was_running:
+            if request.send_message:
+                try:
+                    await server.send_command("say Restarting server...")
+                except BSMError as error:
+                    logger.warning(
+                        "API: Failed to send restart warning to '%s': %s",
+                        server_name,
+                        error,
+                    )
+            await stop_server(
+                StopServerRequest(server_name=server_name), app_context=app_context
+            )
 
-    await start_server(
-        StartServerRequest(server_name=server_name), app_context=app_context
-    )
-    return RestartServerResponse(
-        server_name=server_name,
-        outcome="restarted" if was_running else "started",
-        message=(
-            f"Server '{server_name}' restarted successfully."
-            if was_running
-            else f"Server '{server_name}' was not running and has been started."
-        ),
-    )
+        await start_server(
+            StartServerRequest(server_name=server_name), app_context=app_context
+        )
+        return RestartServerResponse(
+            server_name=server_name,
+            outcome="restarted" if was_running else "started",
+            message=(
+                f"Server '{server_name}' restarted successfully."
+                if was_running
+                else f"Server '{server_name}' was not running and has been started."
+            ),
+        )
 
 
 @api_method("send_command")
