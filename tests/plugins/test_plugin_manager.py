@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from bedrock_server_manager.plugins.plugin_manager import PluginManager
@@ -138,7 +139,7 @@ async def test_reload_plugins(db, app_context, monkeypatch):
     mock_plugin.name = "mock_plugin"
 
     pm.plugins = {mock_plugin}
-    pm._event_listeners = {"test_event": []}
+    pm._event_listeners = {"test_event": {}}
 
     with monkeypatch.context() as m:
         from unittest.mock import AsyncMock
@@ -271,3 +272,34 @@ def test_plugin_status_tracking(app_context):
 
     pm.plugin_config["error_plugin"] = {"enabled": True, "status": "ERROR"}
     assert pm.get_plugin_status("error_plugin") == "ERROR"
+
+
+async def test_failed_load_removes_partial_instance_and_provider(app_context, monkeypatch):
+    from types import SimpleNamespace
+    manager = app_context.plugin_manager
+    manager.plugin_config["sample"] = {"enabled": True}
+    class FailingPlugin:
+        def __init__(self, name, api, logger):
+            self.name = name
+            self.api = api
+        async def on_load(self):
+            app_context.connection_manager.register_data_provider("partial", lambda: 1, "sample")
+            raise RuntimeError("load failed")
+    monkeypatch.setattr(manager, "_find_plugin_path", lambda name: Path("sample.py"))
+    monkeypatch.setattr(manager, "_get_plugin_class_from_path", lambda *args: FailingPlugin)
+    assert not await manager.load_plugin_by_name("sample")
+    assert manager.plugins == []
+    assert manager.get_plugin_status("sample") == "ERROR"
+    assert app_context.connection_manager.get_data_provider("partial") is None
+    assert not await manager.load_plugin_by_name("sample")
+
+
+async def test_full_unload_removes_plugin_providers(app_context):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    manager = app_context.plugin_manager
+    manager.plugins = [SimpleNamespace(name="sample", api=SimpleNamespace(_plugin_name="sample"))]
+    manager.dispatch_event = AsyncMock()
+    app_context.connection_manager.register_data_provider("sample", lambda: 1, "sample")
+    await manager.unload_plugins()
+    assert app_context.connection_manager.get_data_provider("sample") is None

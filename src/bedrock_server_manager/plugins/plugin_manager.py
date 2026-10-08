@@ -279,6 +279,8 @@ class PluginManager:
                         else:
                             await asyncio.to_thread(callback, *args, **dispatch_kwargs)
                     except Exception as e:
+                        if event_name == "on_load":
+                            raise
                         logger.error(
                             f"Error in plugin '{ident}' handling event '{event_name}': {e}",
                             exc_info=True,
@@ -301,6 +303,8 @@ class PluginManager:
                             lifecycle_method, *args, **dispatch_kwargs
                         )
                 except Exception as e:
+                    if event_name == "on_load":
+                        raise
                     logger.error(
                         f"Error in plugin '{target_plugin}' during lifecycle method '{event_name}': {e}",
                         exc_info=True,
@@ -576,6 +580,7 @@ class PluginManager:
 
         for plugin_name in sorted_plugin_names:
             plugin_class = enabled_plugins_data[plugin_name]
+            instance = None
             try:
                 plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
                 api_instance = create_app_api(
@@ -635,9 +640,13 @@ class PluginManager:
                 if plugin_name in self.plugin_config:
                     self.plugin_config[plugin_name]["status"] = "LOADED"
 
-            except Exception as e:
+            except BaseException as e:
+                if instance is not None:
+                    await self.unload_plugin_by_name(plugin_name)
                 if plugin_name in self.plugin_config:
                     self.plugin_config[plugin_name]["status"] = "ERROR"
+                if not isinstance(e, Exception):
+                    raise
                 logger.error(
                     f"Failed to instantiate plugin '{plugin_name}': {e}", exc_info=True
                 )
@@ -651,31 +660,9 @@ class PluginManager:
         """Unloads all currently loaded plugins, cleans up background tasks, and purges imported modules."""
         logger.info("--- Unloading all plugins ---")
         tasks_to_await: List[asyncio.Task[Any]] = []
-
-        if self.plugins:
-            # Unload plugins in reverse topological order (dependents before dependencies)
-            for plugin_instance in reversed(list(self.plugins)):
-                plugin_key = (
-                    getattr(getattr(plugin_instance, "api", None), "_plugin_name", None)
-                    or plugin_instance.name
-                )
-                try:
-                    await self.dispatch_event(plugin_instance, "on_unload")
-                except Exception as e:
-                    logger.error(
-                        f"Error during on_unload for '{plugin_key}': {e}",
-                        exc_info=True,
-                    )
-
-                if plugin_key in self.plugin_tasks:
-                    for task in self.plugin_tasks.pop(plugin_key):
-                        try:
-                            task.cancel()
-                            tasks_to_await.append(task)
-                        except Exception:
-                            pass
-
-            self.plugins.clear()
+        for plugin_instance in reversed(list(self.plugins)):
+            plugin_key = getattr(getattr(plugin_instance, "api", None), "_plugin_name", None) or plugin_instance.name
+            await self.unload_plugin_by_name(plugin_key)
 
         # Cancel any remaining background tasks across all plugin keys
         for plugin_key, tasks in list(self.plugin_tasks.items()):
@@ -855,6 +842,7 @@ class PluginManager:
                 self.plugin_config[plugin_name]["status"] = "ERROR"
             return False
 
+        instance = None
         try:
             plugin_logger = logging.getLogger(f"plugin.{plugin_name}")
             api_instance = create_app_api(
@@ -951,7 +939,11 @@ class PluginManager:
                 self.plugin_config[plugin_name]["status"] = "LOADED"
             logger.info(f"Plugin '{plugin_name}' loaded successfully.")
             return True
-        except Exception as e:
+        except BaseException as e:
+            if instance is not None:
+                await self.unload_plugin_by_name(plugin_name)
+            if not isinstance(e, Exception):
+                raise
             logger.error(f"Failed to load plugin '{plugin_name}': {e}", exc_info=True)
             if plugin_name in self.plugin_config:
                 self.plugin_config[plugin_name]["status"] = "ERROR"
