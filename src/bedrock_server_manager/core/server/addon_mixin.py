@@ -21,7 +21,6 @@ It is designed to work in conjunction with other mixins of the
       when processing ``.mcworld`` files found within ``.mcaddon`` archives.
 """
 
-import asyncio
 import glob
 import json
 import os
@@ -44,6 +43,7 @@ from ...error import (
     UserInputError,
 )
 from ...utils.io import load_json, save_json
+from ...utils.threads import run_in_thread
 from ..data import ManifestRecord
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -515,7 +515,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         export_filename = f"{safe_pack_name}_{pack_version}.mcpack"
         export_file_path = os.path.join(export_dir, export_filename)
 
-        await aiofiles.os.makedirs(export_dir, exist_ok=True)
+        await run_in_thread(os.makedirs, export_dir, exist_ok=True)
 
         try:
             # Create the zip archive, ensuring paths inside are relative.
@@ -532,7 +532,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                             archive_name = os.path.relpath(file_path, pack_source_path)
                             zipf.write(file_path, archive_name)
 
-            await asyncio.to_thread(_do_export)
+            await run_in_thread(_do_export)
 
             self.logger.info(
                 f"Successfully exported addon '{pack_name}' to '{export_file_path}'."
@@ -604,7 +604,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             pack_source_path = target_pack["path"]
             try:
                 self.logger.debug(f"Deleting pack folder: {pack_source_path}")
-                await asyncio.to_thread(shutil.rmtree, pack_source_path)
+                await run_in_thread(shutil.rmtree, pack_source_path)
                 self.logger.info(f"Successfully deleted files for pack '{pack_name}'.")
             except OSError as e:
                 raise FileOperationError(
@@ -659,7 +659,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     with zipfile.ZipFile(mcaddon_file_path, "r") as zip_ref:
                         zip_ref.extractall(temp_dir)
 
-                await asyncio.to_thread(_extract)
+                await run_in_thread(_extract)
                 self.logger.debug(
                     f"Successfully extracted '{os.path.basename(mcaddon_file_path)}'."
                 )
@@ -724,7 +724,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
         )
 
         # Process any .mcworld files found.
-        mcworld_files_found = await asyncio.to_thread(
+        mcworld_files_found = await run_in_thread(
             glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcworld")
         )
         if mcworld_files_found:
@@ -751,7 +751,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     ) from e
 
         # Process any .mcpack files found.
-        mcpack_files_found = await asyncio.to_thread(
+        mcpack_files_found = await run_in_thread(
             glob.glob, os.path.join(temp_dir_with_extracted_files, "*.mcpack")
         )
         if mcpack_files_found:
@@ -773,7 +773,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
 
         # Process any folders that look like packs (contain manifest.json).
         found_pack_folders = []
-        for item in await asyncio.to_thread(os.listdir, temp_dir_with_extracted_files):
+        for item in await run_in_thread(os.listdir, temp_dir_with_extracted_files):
             item_path = os.path.join(temp_dir_with_extracted_files, item)
             if await aiofiles.ospath.isdir(item_path) and await aiofiles.ospath.isfile(
                 os.path.join(item_path, "manifest.json")
@@ -846,7 +846,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                     with zipfile.ZipFile(mcpack_file_path, "r") as zip_ref:
                         zip_ref.extractall(temp_dir)
 
-                await asyncio.to_thread(_extract)
+                await run_in_thread(_extract)
                 self.logger.debug(f"Successfully extracted '{mcpack_filename}'.")
             except zipfile.BadZipFile as e:
                 raise ExtractError(
@@ -964,8 +964,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                 active_world_dir, "world_resource_packs.json"
             )
 
-            await aiofiles.os.makedirs(behavior_packs_target_base, exist_ok=True)
-            await aiofiles.os.makedirs(resource_packs_target_base, exist_ok=True)
+            await run_in_thread(os.makedirs, behavior_packs_target_base, exist_ok=True)
+            await run_in_thread(os.makedirs, resource_packs_target_base, exist_ok=True)
 
             # Create a unique, file-safe folder name for this specific version of the addon.
             version_str = ".".join(map(str, version_list))
@@ -1018,16 +1018,16 @@ class ServerAddonMixin(BedrockServerBaseMixin):
                         self.logger.info(
                             f"Removing existing pack installation for UUID '{uuid}' at: {existing_path}"
                         )
-                        await asyncio.to_thread(shutil.rmtree, existing_path)
+                        await run_in_thread(shutil.rmtree, existing_path)
 
             # Perform a clean install by removing the target directory if it already exists.
             if await aiofiles.ospath.isdir(target_install_path):
                 self.logger.debug(
                     f"Removing existing target directory: {target_install_path}"
                 )
-                await asyncio.to_thread(shutil.rmtree, target_install_path)
+                await run_in_thread(shutil.rmtree, target_install_path)
 
-            await asyncio.to_thread(
+            await run_in_thread(
                 shutil.copytree, extracted_pack_dir, target_install_path
             )
             self.logger.debug(f"Copied pack contents to '{target_install_path}'.")
@@ -1340,8 +1340,8 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             packs_list.append({"pack_id": pack_uuid, "version": pack_version_list})
 
         try:
-            await aiofiles.os.makedirs(
-                os.path.dirname(world_json_file_path), exist_ok=True
+            await run_in_thread(
+                os.makedirs, os.path.dirname(world_json_file_path), exist_ok=True
             )
             lock = self.get_file_lock(world_json_file_path)
             async with lock:
@@ -1392,7 +1392,7 @@ class ServerAddonMixin(BedrockServerBaseMixin):
             return []
 
         installed_packs = []
-        for pack_dir_name in await asyncio.to_thread(os.listdir, pack_base_dir):
+        for pack_dir_name in await run_in_thread(os.listdir, pack_base_dir):
             pack_full_path = os.path.join(pack_base_dir, pack_dir_name)
             if os.path.isdir(pack_full_path):
                 try:

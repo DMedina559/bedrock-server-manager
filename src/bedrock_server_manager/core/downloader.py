@@ -53,6 +53,7 @@ from ..error import (
     SystemError,
     UserInputError,
 )
+from ..utils.threads import run_in_thread
 from .system import base as system_base
 from .system import find_files
 
@@ -128,7 +129,7 @@ async def prune_old_downloads(download_dir: str, download_keep: int):  # noqa: C
             failed_deletions = []
             for file_path_str in files_to_delete:
                 try:
-                    await aiofiles.os.remove(file_path_str)
+                    await run_in_thread(os.remove, file_path_str)
                     logger.info(f"Deleted old download: {file_path_str}")
                     deleted_count += 1
                 except OSError as e_unlink:
@@ -565,7 +566,7 @@ class BedrockDownloader:
             # Clean up partial download on failure.
             if await aiofiles.ospath.exists(self.zip_file_path):
                 try:
-                    await aiofiles.os.remove(self.zip_file_path)
+                    await run_in_thread(os.remove, self.zip_file_path)
                 except OSError as rm_err:
                     self.logger.warning(
                         f"Could not remove incomplete file '{self.zip_file_path}': {rm_err}"
@@ -775,7 +776,7 @@ class BedrockDownloader:
         )
 
         try:
-            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, self.server_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Cannot create target directory '{self.server_dir}' for extraction: {e}"
@@ -816,7 +817,7 @@ class BedrockDownloader:
                     )
 
         try:
-            await asyncio.to_thread(_do_extract)
+            await run_in_thread(_do_extract)
         except zipfile.BadZipFile as e:
             raise ExtractError(f"Invalid ZIP file: '{self.zip_file_path}'. {e}") from e
         except (OSError, IOError) as e:
@@ -845,10 +846,10 @@ class BedrockDownloader:
         )
         if self._version_type == "CUSTOM":
             self.logger.debug("Custom version specified, skipping download URL lookup.")
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
         else:
             await self._lookup_bedrock_download_url()
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
 
         if not self.actual_version:
             raise DownloadError("Could not determine actual version from resolved URL.")
@@ -870,7 +871,7 @@ class BedrockDownloader:
                 )
 
             self.zip_file_path = self.server_zip_path
-            await asyncio.to_thread(self._get_version_from_url)
+            await run_in_thread(self._get_version_from_url)
 
             self.specific_download_dir = str(Path(self.server_zip_path).parent)
             self.logger.debug(
@@ -891,11 +892,9 @@ class BedrockDownloader:
         await system_base.check_internet_connectivity()
 
         try:
-            await asyncio.to_thread(os.makedirs, self.server_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, self.server_dir, exist_ok=True)
             if self.base_download_dir:
-                await asyncio.to_thread(
-                    os.makedirs, self.base_download_dir, exist_ok=True
-                )
+                await run_in_thread(os.makedirs, self.base_download_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create required directories asynchronously: {e}"
@@ -920,9 +919,7 @@ class BedrockDownloader:
             f"Using specific download subdirectory: {self.specific_download_dir}"
         )
         try:
-            await asyncio.to_thread(
-                os.makedirs, self.specific_download_dir, exist_ok=True
-            )
+            await run_in_thread(os.makedirs, self.specific_download_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create download subdirectory '{self.specific_download_dir}': {e}"

@@ -1,8 +1,9 @@
-import asyncio
 import json
 import os
 import uuid
 from typing import Any, List
+
+from .threads import run_in_thread
 
 
 def _sync_atomic_json_dump(data: Any, filepath: str, indent: int = 4) -> None:
@@ -41,12 +42,12 @@ def _sync_json_load(filepath: str) -> Any:
 
 async def save_json(data: Any, filepath: str, indent: int = 4) -> None:
     """Non-blocking asynchronous entry point to save data to a JSON file safely."""
-    await asyncio.to_thread(_sync_atomic_json_dump, data, filepath, indent)
+    await run_in_thread(_sync_atomic_json_dump, data, filepath, indent)
 
 
 async def load_json(filepath: str) -> Any:
     """Non-blocking asynchronous entry point to read and parse a JSON file safely."""
-    return await asyncio.to_thread(_sync_json_load, filepath)
+    return await run_in_thread(_sync_json_load, filepath)
 
 
 def _sync_atomic_lines_dump(lines: List[str], filepath: str) -> None:
@@ -83,9 +84,9 @@ def _sync_lines_load(filepath: str) -> List[str]:
 
 async def save_lines(lines: List[str], filepath: str) -> None:
     """Non-blocking asynchronous entry point to save lines of text to a file safely."""
-    await asyncio.to_thread(_sync_atomic_lines_dump, lines, filepath)
+    await run_in_thread(_sync_atomic_lines_dump, lines, filepath)
 
 
 async def load_lines(filepath: str) -> List[str]:
     """Non-blocking asynchronous entry point to read lines from a file safely."""
-    return await asyncio.to_thread(_sync_lines_load, filepath)
+    return await run_in_thread(_sync_lines_load, filepath)

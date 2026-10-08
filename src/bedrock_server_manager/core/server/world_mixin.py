@@ -42,6 +42,7 @@ from ...error import (
     FileOperationError,
     MissingArgumentError,
 )
+from ...utils.threads import run_in_thread
 from ..system import base as system_base
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -179,14 +180,14 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 f"Target world directory '{full_target_extract_dir}' already exists. Removing its contents."
             )
             try:
-                await asyncio.to_thread(shutil.rmtree, full_target_extract_dir)
+                await run_in_thread(shutil.rmtree, full_target_extract_dir)
             except OSError as e:
                 raise FileOperationError(
                     f"Failed to clear target world directory '{full_target_extract_dir}': {e}"
                 ) from e
 
         try:
-            await asyncio.to_thread(os.makedirs, full_target_extract_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, full_target_extract_dir, exist_ok=True)
         except OSError as e:
             raise FileOperationError(
                 f"Failed to create target world directory '{full_target_extract_dir}': {e}"
@@ -220,14 +221,14 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                     self.logger.debug("Flattened nested world directory structure.")
 
         try:
-            await asyncio.to_thread(_do_extract_and_flatten)
+            await run_in_thread(_do_extract_and_flatten)
             self.logger.info(
                 f"Server '{self.server_name}': Successfully extracted world to '{full_target_extract_dir}'."
             )
             return full_target_extract_dir
         except zipfile.BadZipFile as e:
             if await aiofiles.ospath.exists(full_target_extract_dir):
-                await asyncio.to_thread(
+                await run_in_thread(
                     shutil.rmtree, full_target_extract_dir, ignore_errors=True
                 )
             raise ExtractError(
@@ -369,7 +370,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                         os.remove(target_mcworld_file_path)
                     os.rename(temp_zip_path, target_mcworld_file_path)
 
-            await asyncio.to_thread(_copy_and_truncate_world)
+            await run_in_thread(_copy_and_truncate_world)
             self.logger.info(
                 f"Server '{self.server_name}': Live world export successful. Created: {target_mcworld_file_path}"
             )
@@ -441,7 +442,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         target_parent_dir = os.path.dirname(target_mcworld_file_path)
         if target_parent_dir:
             try:
-                await asyncio.to_thread(os.makedirs, target_parent_dir, exist_ok=True)
+                await run_in_thread(os.makedirs, target_parent_dir, exist_ok=True)
             except OSError as e:
                 raise FileOperationError(
                     f"Cannot create target directory '{target_parent_dir}': {e}"
@@ -472,7 +473,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             self.logger.debug(
                 f"Creating temporary ZIP archive at '{archive_base_name_no_ext}' for world '{world_dir_name}'."
             )
-            await asyncio.to_thread(
+            await run_in_thread(
                 shutil.make_archive,
                 base_name=archive_base_name_no_ext,
                 format="zip",
@@ -490,22 +491,22 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                 self.logger.warning(
                     f"Target file '{target_mcworld_file_path}' exists. Overwriting."
                 )
-                await aiofiles.os.remove(target_mcworld_file_path)
+                await run_in_thread(os.remove, target_mcworld_file_path)
 
-            await asyncio.to_thread(os.rename, temp_zip_path, target_mcworld_file_path)
+            await run_in_thread(os.rename, temp_zip_path, target_mcworld_file_path)
             self.logger.info(
                 f"Server '{self.server_name}': World export successful. Created: {target_mcworld_file_path}"
             )
 
         except OSError as e:
             if await aiofiles.ospath.exists(temp_zip_path):
-                await aiofiles.os.remove(temp_zip_path)
+                await run_in_thread(os.remove, temp_zip_path)
             raise BackupRestoreError(
                 f"Failed to create .mcworld for server '{self.server_name}', world '{world_dir_name}': {e}"
             ) from e
         except Exception as e_unexp:
             if await aiofiles.ospath.exists(temp_zip_path):
-                await aiofiles.os.remove(temp_zip_path)
+                await run_in_thread(os.remove, temp_zip_path)
             raise BackupRestoreError(
                 f"Unexpected error during world export for server '{self.server_name}': {e_unexp}"
             ) from e_unexp

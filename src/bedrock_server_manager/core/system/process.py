@@ -48,6 +48,8 @@ import aiofiles
 import aiofiles.os
 import aiofiles.ospath
 
+from ...utils.threads import run_in_thread
+
 try:
     import psutil
 
@@ -306,7 +308,7 @@ async def get_bedrock_launcher_pid_file_path(server_name: str, config_dir: str) 
     if not await aiofiles.ospath.isdir(config_dir):
         try:
             # aiofiles.os doesn't have makedirs, so we use to_thread
-            await asyncio.to_thread(os.makedirs, config_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, config_dir, exist_ok=True)
             logger.info(
                 f"Created configuration directory for launcher PID: {config_dir}"
             )
@@ -430,7 +432,7 @@ async def is_process_running(pid: int) -> bool:
         )
     if not isinstance(pid, int):
         raise MissingArgumentError("PID must be an integer.")
-    return await asyncio.to_thread(psutil.pid_exists, pid)
+    return await run_in_thread(psutil.pid_exists, pid)
 
 
 async def launch_detached_process(
@@ -591,7 +593,7 @@ async def verify_process_identity(  # noqa: C901
 
             return proc_name
 
-        proc_name = await asyncio.to_thread(_verify)
+        proc_name = await run_in_thread(_verify)
     except psutil.NoSuchProcess:
         raise ServerProcessError(
             f"Process with PID {pid} does not exist for verification."
@@ -764,7 +766,7 @@ async def terminate_process_by_pid(  # noqa: C901
                 process.wait(timeout=kill_timeout)
                 logger.info(f"Process {pid} forcefully killed.")
 
-        await asyncio.to_thread(_terminate)
+        await run_in_thread(_terminate)
     except psutil.NoSuchProcess:
         # This is not an error; the process is already gone.
         logger.warning(
@@ -804,7 +806,7 @@ async def remove_pid_file_if_exists(pid_file_path: str) -> bool:
 
     if await aiofiles.ospath.exists(pid_file_path):
         try:
-            await aiofiles.os.remove(pid_file_path)
+            await run_in_thread(os.remove, pid_file_path)
             logger.info(f"Removed PID file '{pid_file_path}'.")
             return True
         except OSError as e:

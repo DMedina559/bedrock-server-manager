@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
 import aiofiles
 import aiofiles.ospath
 
+from ...utils.threads import run_in_thread
 
 if TYPE_CHECKING:
     # This helps type checkers understand psutil types without making it a hard dependency.
@@ -170,7 +171,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                     self._process.stdin.write(f"{command}\n".encode())
                     self._process.stdin.flush()
 
-                await asyncio.to_thread(_write_stdin)
+                await run_in_thread(_write_stdin)
 
             self.logger.info(
                 f"Command '{command}' sent successfully to server '{self.server_name}'."
@@ -303,7 +304,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                     if inspect.iscoroutinefunction(process.wait):
                         await asyncio.wait_for(process.wait(), timeout=5)
                     else:
-                        await asyncio.to_thread(
+                        await run_in_thread(
                             cast(Callable[[float], int], process.wait), 5
                         )
                 except Exception:
@@ -314,7 +315,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                     if inspect.iscoroutinefunction(process.wait):
                         await asyncio.wait_for(process.wait(), timeout=5)
                     else:
-                        await asyncio.to_thread(
+                        await run_in_thread(
                             cast(Callable[[float], int], process.wait), 5
                         )
             self._process = None
@@ -383,7 +384,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                             self._process.stdin.write(b"stop\n")
                             self._process.stdin.flush()
 
-                        await asyncio.to_thread(_write_stop)
+                        await run_in_thread(_write_stop)
                 elif isinstance(self._process, system_process.psutil.Process):
                     self.logger.info(
                         f"Cannot write to stdin of recovered psutil process '{self.server_name}'. Sending terminate signal."
@@ -413,7 +414,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                         if self._process is not None:
                             self._process.wait(timeout=timeout)  # type: ignore
 
-                    await asyncio.to_thread(_wait)
+                    await run_in_thread(_wait)
 
                 self.logger.info(f"Server '{self.server_name}' stopped gracefully.")
             except (subprocess.TimeoutExpired, OSError, BrokenPipeError) as e:
@@ -497,7 +498,7 @@ class ServerProcessMixin(BedrockServerBaseMixin):
                 await self.is_running()
                 return None
 
-            data = await asyncio.to_thread(self._resource_monitor.get_stats, process_obj)
+            data = await run_in_thread(self._resource_monitor.get_stats, process_obj)
             if data is None:
                 return None
             record = ProcessRecord.model_validate(data)

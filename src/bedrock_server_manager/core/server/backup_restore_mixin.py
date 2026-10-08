@@ -20,7 +20,6 @@ world, and :class:`~.core.server.world_mixin.ServerWorldMixin` methods for world
 export and import operations.
 """
 
-import asyncio
 import os
 import re
 import shutil
@@ -35,6 +34,7 @@ from ...error import (
     UserInputError,
 )
 from ...utils import get_timestamp
+from ...utils.threads import run_in_thread
 from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -204,7 +204,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 f"Invalid backup type: '{backup_type}'. Must be one of {valid_types}."
             )
 
-        if not await asyncio.to_thread(os.path.isdir, server_bck_dir):
+        if not await run_in_thread(os.path.isdir, server_bck_dir):
             self.logger.warning(
                 f"Backup directory not found: '{server_bck_dir}'. Returning empty result."
             )
@@ -280,7 +280,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"extension '{file_extension}', configured to keep {backup_keep_count}."
         )
 
-        if not await asyncio.to_thread(os.path.isdir, server_bck_dir):
+        if not await run_in_thread(os.path.isdir, server_bck_dir):
             self.logger.info(
                 f"Backup directory '{server_bck_dir}' for server '{self.server_name}' not found. Nothing to prune."
             )
@@ -327,7 +327,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
                 for old_backup_path in files_to_delete:
                     try:
                         self.logger.debug(f"Removing old backup: {old_backup_path}")
-                        await asyncio.to_thread(os.remove, old_backup_path)
+                        await run_in_thread(os.remove, old_backup_path)
                         deleted_count += 1
                     except OSError as e_del:
                         self.logger.error(
@@ -418,7 +418,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         if not os.path.isdir(active_world_dir_path):
             raise AppFileNotFoundError(active_world_dir_path, "Active world directory")
 
-        await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
+        await run_in_thread(os.makedirs, server_bck_dir, exist_ok=True)
 
         timestamp = get_timestamp()
         # Sanitize the world name to ensure it's a valid filename component.
@@ -513,7 +513,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             )
             return None
 
-        await asyncio.to_thread(
+        await run_in_thread(
             os.makedirs, server_bck_dir, exist_ok=True
         )  # Ensures backup directory exists
 
@@ -524,7 +524,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         try:
             # copy2 preserves metadata like modification time.
-            await asyncio.to_thread(
+            await run_in_thread(
                 shutil.copy2, file_to_backup_path, backup_destination_path
             )
             self.logger.info(
@@ -591,7 +591,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
 
         # Ensure the main backup directory for this server exists.
         try:
-            await asyncio.to_thread(os.makedirs, server_bck_dir, exist_ok=True)
+            await run_in_thread(os.makedirs, server_bck_dir, exist_ok=True)
         except OSError as e_mkdir:
             raise FileOperationError(
                 f"Failed to create server backup directory '{server_bck_dir}' for server '{self.server_name}': {e_mkdir}"
@@ -707,7 +707,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             f"Restoring '{backup_filename_basename}' as '{target_filename_in_server}' into '{self.server_dir}'..."
         )
         try:
-            await asyncio.to_thread(
+            await run_in_thread(
                 shutil.copy2, backup_config_file_path, target_restore_path
             )
             self.logger.info(f"Successfully restored config to: {target_restore_path}")
