@@ -130,277 +130,277 @@ from bedrock_server_manager.api.models import (
 
 class AddonAPI(Protocol):
     async def disable_addon(
-        self, request: DisableAddonRequest | Mapping[str, Any]
+        self, request: DisableAddonRequest | Mapping[str, object]
     ) -> DisableAddonResponse: ...
 
     async def enable_addon(
-        self, request: EnableAddonRequest | Mapping[str, Any]
+        self, request: EnableAddonRequest | Mapping[str, object]
     ) -> EnableAddonResponse: ...
 
     async def import_addon(
-        self, request: ImportAddonRequest | Mapping[str, Any]
+        self, request: ImportAddonRequest | Mapping[str, object]
     ) -> ImportAddonResponse: ...
 
     async def list_available_addons(
-        self, request: ListAvailableAddonsRequest | Mapping[str, Any]
+        self, request: ListAvailableAddonsRequest | Mapping[str, object]
     ) -> ListAvailableAddonsResponse: ...
 
     async def list_installed_addons(
-        self, request: ListInstalledAddonsRequest | Mapping[str, Any]
+        self, request: ListInstalledAddonsRequest | Mapping[str, object]
     ) -> ListInstalledAddonsResponse: ...
 
     async def reorder_addons(
-        self, request: ReorderAddonsRequest | Mapping[str, Any]
+        self, request: ReorderAddonsRequest | Mapping[str, object]
     ) -> ReorderAddonsResponse: ...
 
 
 class AllowlistAPI(Protocol):
     async def add_to_allowlist(
-        self, request: AddToAllowlistRequest | Mapping[str, Any]
+        self, request: AddToAllowlistRequest | Mapping[str, object]
     ) -> AddToAllowlistResponse: ...
 
     async def get_allowlist(
-        self, request: GetAllowlistRequest | Mapping[str, Any]
+        self, request: GetAllowlistRequest | Mapping[str, object]
     ) -> GetAllowlistResponse: ...
 
     async def remove_from_allowlist(
-        self, request: RemoveFromAllowlistRequest | Mapping[str, Any]
+        self, request: RemoveFromAllowlistRequest | Mapping[str, object]
     ) -> RemoveFromAllowlistResponse: ...
 
 
 class ApplicationAPI(Protocol):
     async def get_all_servers_data(
-        self, request: GetAllServersDataRequest | Mapping[str, Any]
+        self, request: GetAllServersDataRequest | Mapping[str, object]
     ) -> GetAllServersDataResponse: ...
 
     def get_system_and_app_info(
-        self, request: GetSystemAndAppInfoRequest | Mapping[str, Any]
+        self, request: GetSystemAndAppInfoRequest | Mapping[str, object]
     ) -> GetSystemAndAppInfoResponse: ...
 
     async def list_available_worlds(
-        self, request: ListAvailableWorldsRequest | Mapping[str, Any]
+        self, request: ListAvailableWorldsRequest | Mapping[str, object]
     ) -> ListAvailableWorldsResponse: ...
 
     async def update_server_statuses(
-        self, request: UpdateServerStatusesRequest | Mapping[str, Any]
+        self, request: UpdateServerStatusesRequest | Mapping[str, object]
     ) -> UpdateServerStatusesResponse: ...
 
 
 class BackupRestoreAPI(Protocol):
     async def backup_all(
-        self, request: BackupAllRequest | Mapping[str, Any]
+        self, request: BackupAllRequest | Mapping[str, object]
     ) -> BackupAllResponse: ...
 
     async def backup_config_file(
-        self, request: BackupConfigFileRequest | Mapping[str, Any]
+        self, request: BackupConfigFileRequest | Mapping[str, object]
     ) -> BackupConfigFileResponse: ...
 
     async def backup_world(
-        self, request: BackupWorldRequest | Mapping[str, Any]
+        self, request: BackupWorldRequest | Mapping[str, object]
     ) -> BackupWorldResponse: ...
 
     async def list_backup_files(
-        self, request: ListBackupFilesRequest | Mapping[str, Any]
+        self, request: ListBackupFilesRequest | Mapping[str, object]
     ) -> ListBackupFilesResponse: ...
 
     async def prune_old_backups(
-        self, request: PruneOldBackupsRequest | Mapping[str, Any]
+        self, request: PruneOldBackupsRequest | Mapping[str, object]
     ) -> PruneOldBackupsResponse: ...
 
     async def restore_all(
-        self, request: RestoreAllRequest | Mapping[str, Any]
+        self, request: RestoreAllRequest | Mapping[str, object]
     ) -> RestoreAllResponse: ...
 
     async def restore_config_file(
-        self, request: RestoreConfigFileRequest | Mapping[str, Any]
+        self, request: RestoreConfigFileRequest | Mapping[str, object]
     ) -> RestoreConfigFileResponse: ...
 
     async def restore_world(
-        self, request: RestoreWorldRequest | Mapping[str, Any]
+        self, request: RestoreWorldRequest | Mapping[str, object]
     ) -> RestoreWorldResponse: ...
 
 
 class BanAPI(Protocol):
     async def add_server_ban(
-        self, request: AddServerBanRequest | Mapping[str, Any]
+        self, request: AddServerBanRequest | Mapping[str, object]
     ) -> AddServerBanResponse: ...
 
     async def get_server_bans(
-        self, request: GetServerBansRequest | Mapping[str, Any]
+        self, request: GetServerBansRequest | Mapping[str, object]
     ) -> GetServerBansResponse: ...
 
 
 class InstallAPI(Protocol):
     async def install_new_server(
-        self, request: InstallNewServerRequest | Mapping[str, Any]
+        self, request: InstallNewServerRequest | Mapping[str, object]
     ) -> InstallNewServerResponse: ...
 
     async def update_server(
-        self, request: UpdateServerRequest | Mapping[str, Any]
+        self, request: UpdateServerRequest | Mapping[str, object]
     ) -> UpdateServerResponse: ...
 
 
 class MiscAPI(Protocol):
     async def prune_download_cache(
-        self, request: PruneDownloadCacheRequest | Mapping[str, Any]
+        self, request: PruneDownloadCacheRequest | Mapping[str, object]
     ) -> PruneDownloadCacheResponse: ...
 
 
 class PermissionsAPI(Protocol):
     async def get_permissions(
-        self, request: GetPermissionsRequest | Mapping[str, Any]
+        self, request: GetPermissionsRequest | Mapping[str, object]
     ) -> GetPermissionsResponse: ...
 
     async def set_permissions(
-        self, request: SetPermissionsRequest | Mapping[str, Any]
+        self, request: SetPermissionsRequest | Mapping[str, object]
     ) -> SetPermissionsResponse: ...
 
 
 class PlayerAPI(Protocol):
     async def add_players_manually(
-        self, request: AddPlayersManuallyRequest | Mapping[str, Any]
+        self, request: AddPlayersManuallyRequest | Mapping[str, object]
     ) -> AddPlayersManuallyResponse: ...
 
     async def get_all_known_players(
-        self, request: GetAllKnownPlayersRequest | Mapping[str, Any]
+        self, request: GetAllKnownPlayersRequest | Mapping[str, object]
     ) -> GetAllKnownPlayersResponse: ...
 
     async def scan_and_update_player_db(
-        self, request: ScanAndUpdatePlayerDbRequest | Mapping[str, Any]
+        self, request: ScanAndUpdatePlayerDbRequest | Mapping[str, object]
     ) -> ScanAndUpdatePlayerDbResponse: ...
 
 
 class PluginsAPI(Protocol):
     async def get_plugin_setting(
-        self, request: GetPluginSettingRequest | Mapping[str, Any]
+        self, request: GetPluginSettingRequest | Mapping[str, object]
     ) -> GetPluginSettingResponse: ...
 
     async def get_plugin_statuses(
-        self, request: GetPluginStatusesRequest | Mapping[str, Any]
+        self, request: GetPluginStatusesRequest | Mapping[str, object]
     ) -> GetPluginStatusesResponse: ...
 
     async def reload_plugin(
-        self, request: ReloadSinglePluginRequest | Mapping[str, Any]
+        self, request: ReloadSinglePluginRequest | Mapping[str, object]
     ) -> ReloadSinglePluginResponse: ...
 
     async def set_plugin_setting(
-        self, request: SetPluginSettingRequest | Mapping[str, Any]
+        self, request: SetPluginSettingRequest | Mapping[str, object]
     ) -> SetPluginSettingResponse: ...
 
 
 class PropertiesAPI(Protocol):
     async def get_properties(
-        self, request: GetPropertiesRequest | Mapping[str, Any]
+        self, request: GetPropertiesRequest | Mapping[str, object]
     ) -> GetPropertiesResponse: ...
 
     async def set_properties(
-        self, request: SetPropertiesRequest | Mapping[str, Any]
+        self, request: SetPropertiesRequest | Mapping[str, object]
     ) -> SetPropertiesResponse: ...
 
     def validate_property_value(
-        self, request: ValidatePropertyValueRequest | Mapping[str, Any]
+        self, request: ValidatePropertyValueRequest | Mapping[str, object]
     ) -> ValidatePropertyValueResponse: ...
 
 
 class ServerAPI(Protocol):
     async def get_all_settings(
-        self, request: GetAllServerSettingsRequest | Mapping[str, Any]
+        self, request: GetAllServerSettingsRequest | Mapping[str, object]
     ) -> GetAllServerSettingsResponse: ...
 
     async def get_setting(
-        self, request: GetServerSettingRequest | Mapping[str, Any]
+        self, request: GetServerSettingRequest | Mapping[str, object]
     ) -> GetServerSettingResponse: ...
 
     async def get_summary(
-        self, request: GetServerSummaryRequest | Mapping[str, Any]
+        self, request: GetServerSummaryRequest | Mapping[str, object]
     ) -> GetServerSummaryResponse: ...
 
     async def restart(
-        self, request: RestartServerRequest | Mapping[str, Any]
+        self, request: RestartServerRequest | Mapping[str, object]
     ) -> RestartServerResponse: ...
 
     async def send_command(
-        self, request: SendCommandRequest | Mapping[str, Any]
+        self, request: SendCommandRequest | Mapping[str, object]
     ) -> SendCommandResponse: ...
 
     async def set_custom_value(
-        self, request: SetServerCustomValueRequest | Mapping[str, Any]
+        self, request: SetServerCustomValueRequest | Mapping[str, object]
     ) -> SetServerCustomValueResponse: ...
 
     async def set_status(
-        self, request: SetServerStatusRequest | Mapping[str, Any]
+        self, request: SetServerStatusRequest | Mapping[str, object]
     ) -> SetServerStatusResponse: ...
 
     async def start(
-        self, request: StartServerRequest | Mapping[str, Any]
+        self, request: StartServerRequest | Mapping[str, object]
     ) -> StartServerResponse: ...
 
     async def stop(
-        self, request: StopServerRequest | Mapping[str, Any]
+        self, request: StopServerRequest | Mapping[str, object]
     ) -> StopServerResponse: ...
 
     async def update_player_stats(
-        self, request: UpdateServerPlayerStatsRequest | Mapping[str, Any]
+        self, request: UpdateServerPlayerStatsRequest | Mapping[str, object]
     ) -> UpdateServerPlayerStatsResponse: ...
 
 
 class SettingsAPI(Protocol):
     async def get_all_global_settings(
-        self, request: GetAllGlobalSettingsRequest | Mapping[str, Any]
+        self, request: GetAllGlobalSettingsRequest | Mapping[str, object]
     ) -> GetAllGlobalSettingsResponse: ...
 
     async def get_global_setting(
-        self, request: GetGlobalSettingRequest | Mapping[str, Any]
+        self, request: GetGlobalSettingRequest | Mapping[str, object]
     ) -> GetGlobalSettingResponse: ...
 
     async def set_custom_global_setting(
-        self, request: SetCustomGlobalSettingRequest | Mapping[str, Any]
+        self, request: SetCustomGlobalSettingRequest | Mapping[str, object]
     ) -> SetCustomGlobalSettingResponse: ...
 
 
 class SystemAPI(Protocol):
     async def get_bedrock_process_info(
-        self, request: GetBedrockProcessInfoRequest | Mapping[str, Any]
+        self, request: GetBedrockProcessInfoRequest | Mapping[str, object]
     ) -> GetBedrockProcessInfoResponse: ...
 
     async def get_server_running_status(
-        self, request: GetServerRunningStatusRequest | Mapping[str, Any]
+        self, request: GetServerRunningStatusRequest | Mapping[str, object]
     ) -> GetServerRunningStatusResponse: ...
 
 
 class WebsocketAPI(Protocol):
     async def websocket_broadcast(
-        self, request: BroadcastRequest | Mapping[str, Any]
+        self, request: BroadcastRequest | Mapping[str, object]
     ) -> BroadcastResponse: ...
 
     async def websocket_publish_ws_event(
-        self, request: PublishWsEventRequest | Mapping[str, Any]
+        self, request: PublishWsEventRequest | Mapping[str, object]
     ) -> PublishWsEventResponse: ...
 
     async def websocket_send_to_client(
-        self, request: SendToClientRequest | Mapping[str, Any]
+        self, request: SendToClientRequest | Mapping[str, object]
     ) -> SendToClientResponse: ...
 
     async def websocket_send_to_user(
-        self, request: SendToUserRequest | Mapping[str, Any]
+        self, request: SendToUserRequest | Mapping[str, object]
     ) -> SendToUserResponse: ...
 
     async def websocket_unregister_data_provider(
-        self, request: UnregisterDataProviderRequest | Mapping[str, Any]
+        self, request: UnregisterDataProviderRequest | Mapping[str, object]
     ) -> UnregisterDataProviderResponse: ...
 
 
 class WorldAPI(Protocol):
     async def export_world(
-        self, request: ExportWorldRequest | Mapping[str, Any]
+        self, request: ExportWorldRequest | Mapping[str, object]
     ) -> ExportWorldResponse: ...
 
     async def get_world_name(
-        self, request: GetWorldNameRequest | Mapping[str, Any]
+        self, request: GetWorldNameRequest | Mapping[str, object]
     ) -> GetWorldNameResponse: ...
 
     async def import_world(
-        self, request: ImportWorldRequest | Mapping[str, Any]
+        self, request: ImportWorldRequest | Mapping[str, object]
     ) -> ImportWorldResponse: ...
 
 

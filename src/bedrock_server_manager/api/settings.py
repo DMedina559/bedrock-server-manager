@@ -107,11 +107,8 @@ async def set_global_setting(
         settings = app_context.settings
         await settings.set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
-        return SetGlobalSettingResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Global setting '{key}' updated successfully.",
-            }
+        return SetGlobalSettingResponse(
+            message=f"Global setting '{key}' updated successfully."
         )
     except BSMError as e:
         logger.error(
@@ -144,11 +141,8 @@ async def set_custom_global_setting(
         settings = app_context.settings
         await settings.set(key, value)
         logger.info(f"API: Successfully wrote to global setting '{key}'.")
-        return SetCustomGlobalSettingResponse.model_validate(
-            {
-                "status": "success",
-                "message": f"Global setting '{key}' updated successfully.",
-            }
+        return SetCustomGlobalSettingResponse(
+            message=f"Global setting '{key}' updated successfully."
         )
     except BSMError as e:
         logger.error(
@@ -177,8 +171,8 @@ async def reload_global_settings(
         settings = app_context.settings
         await settings.reload()
         logger.info("API: Global settings successfully reloaded.")
-        return ReloadGlobalSettingsResponse.model_validate(
-            {"status": "success", "message": "Global settings have been reloaded."}
+        return ReloadGlobalSettingsResponse(
+            message="Global settings have been reloaded."
         )
     except BSMError as e:
         logger.error(f"API: Error reloading settings: {e}", exc_info=True)

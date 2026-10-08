@@ -2,7 +2,7 @@
 
 Baseline: `dev` commit `c9eea1c14cc4ef2ff0d01ead801ec691edb7552d`.
 
-All 78 data operations across 17 domains are implemented with validated, serializable request and response models. All 59 registered operations expose contract version 2; the ordinary plugin view contains 55 operations. Existing plugin exposure restrictions are preserved. This inventory also includes unregistered application operations.
+All 80 data operations across 17 domains are implemented with validated, serializable request and response models. All 61 registered operations expose contract version 2; the ordinary plugin view contains 57 operations. Existing plugin exposure restrictions are preserved. This inventory also includes unregistered application operations.
 
 | Operation | Request model | Response model | Data fields |
 | --- | --- | --- | --- |

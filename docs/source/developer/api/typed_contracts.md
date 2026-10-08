@@ -1,8 +1,8 @@
 # Typed API contracts
 
-All 78 data API operations across 17 domains use contract version 2. Each accepts
-one operation-specific request and returns a concrete response model. All 59
-registered operations expose model names and JSON Schemas; 55 retain ordinary
+All 80 data API operations across 17 domains use contract version 2. Each accepts
+one operation-specific request and returns a concrete response model. All 61
+registered operations expose model names and JSON Schemas; 57 retain ordinary
 plugin visibility. The complete inventory includes unregistered application APIs.
 
 ## Calling data operations
@@ -75,6 +75,15 @@ server operations. Request model instances are revalidated to prevent constructe
 or subsequently mutated instances from bypassing validation. Response instances
 are also revalidated. Responses prevent attribute reassignment, but nested data
 is not deeply immutable.
+
+Defaults are validated using the same strict rules as supplied values. JSON
+payloads reject NaN and positive/negative infinity, including inside nested lists
+and dictionaries, so serialization cannot silently replace them with null.
+
+The Pydantic mypy plugin checks model constructors and frozen fields. API model
+modules additionally reject untyped definitions and unparameterized containers.
+Use typed constructors when building responses from known fields; reserve
+`model_validate` for data loaded from mappings or other runtime boundaries.
 
 Catch existing application exceptions such as `ServerStartError` and
 `ServerStopError` for operation failures. Plugin cancellation raises

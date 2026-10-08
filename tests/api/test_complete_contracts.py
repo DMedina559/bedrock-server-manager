@@ -93,6 +93,38 @@ def test_config_values_reject_non_json_runtime_objects():
         SetGlobalSettingRequest(key="runtime", value=object())
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("nested", [False, True])
+def test_json_contracts_reject_non_finite_numbers(value, nested):
+    from bedrock_server_manager.api.models.settings import GetGlobalSettingResponse
+
+    payload = {"items": [value]} if nested else value
+    for model, data in (
+        (SetGlobalSettingRequest, {"key": "example", "value": payload}),
+        (GetGlobalSettingResponse, {"value": payload}),
+    ):
+        with pytest.raises(ValidationError):
+            model.model_validate(data)
+
+
+@pytest.mark.parametrize("base", [APIRequest, APIResponse])
+def test_contract_defaults_are_validated(base):
+    class InvalidDefault(base):
+        count: int = "1"  # type: ignore[assignment]
+
+    with pytest.raises(ValidationError):
+        InvalidDefault()
+
+
+def test_json_contract_round_trip_preserves_scalar_types():
+    payload = {"items": [None, True, 1, 1.5, "1", {"nested": False}]}
+    request = SetGlobalSettingRequest(key="example", value=payload)
+    restored = SetGlobalSettingRequest.model_validate_json(request.model_dump_json())
+    assert restored == request
+    assert type(restored.value["items"][1]) is bool
+    assert type(restored.value["items"][2]) is int
+
+
 def test_service_password_never_serializes():
     request = CreateWebUiServiceRequest.model_validate({"password": "private-password"})
     assert request.password.get_secret_value() == "private-password"

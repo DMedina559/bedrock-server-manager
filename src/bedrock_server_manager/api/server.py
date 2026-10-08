@@ -126,11 +126,9 @@ async def set_server_setting(
     try:
         server = app_context.get_server(server_name)
         await server._manage_json_config(key, "write", value)
-        success_response: Dict[str, Any] = {
-            "status": "success",
-            "message": f"Setting '{key}' updated for server '{server_name}'.",
-        }
-        return SetServerSettingResponse.model_validate(success_response)
+        return SetServerSettingResponse(
+            message=f"Setting '{key}' updated for server '{server_name}'."
+        )
     except BSMError as e:
         logger.error(f"API: Error setting '{key}' for server '{server_name}': {e}")
         raise
@@ -162,11 +160,9 @@ async def set_server_custom_value(
     try:
         server = app_context.get_server(server_name)
         await server.set_custom_config_value(key, value)
-        success_response: Dict[str, Any] = {
-            "status": "success",
-            "message": f"Custom value '{key}' updated for server '{server_name}'.",
-        }
-        return SetServerCustomValueResponse.model_validate(success_response)
+        return SetServerCustomValueResponse(
+            message=f"Custom value '{key}' updated for server '{server_name}'."
+        )
     except BSMError as e:
         logger.error(
             f"API (Plugin): Error setting custom value for '{server_name}': {e}"

@@ -17,7 +17,12 @@ class APIRequest(BaseModel):
     """Reject misspelled fields and revalidate even constructed model instances."""
 
     model_config = ConfigDict(
-        extra="forbid", strict=True, frozen=True, revalidate_instances="always"
+        extra="forbid",
+        strict=True,
+        frozen=True,
+        revalidate_instances="always",
+        validate_default=True,
+        allow_inf_nan=False,
     )
 
 
@@ -25,7 +30,12 @@ class APIResponse(BaseModel):
     """Validated output data. Nested containers are not deeply immutable."""
 
     model_config = ConfigDict(
-        extra="forbid", strict=True, frozen=True, revalidate_instances="always"
+        extra="forbid",
+        strict=True,
+        frozen=True,
+        revalidate_instances="always",
+        validate_default=True,
+        allow_inf_nan=False,
     )
 
 
@@ -75,7 +85,7 @@ class SuccessResponse(APIResponse):
     message: str | None = None
 
 
-def action_response_schema(schema: JsonSchemaValue, model: type) -> None:
+def action_response_schema(schema: JsonSchemaValue, model: type[BaseModel]) -> None:
     """Describe successful data requirements that do not apply to skipped work."""
     fields = getattr(model, "required_on_success", ())
     if fields:

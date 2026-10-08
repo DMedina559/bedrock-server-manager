@@ -68,7 +68,7 @@ def validate_contract(func: F) -> F:
                 f"API {func.__name__} produced invalid output"
             ) from error
 
-    def bind(args: tuple[Any, ...], kwargs: dict[str, Any]):
+    def bind(args: tuple[Any, ...], kwargs: dict[str, Any]) -> inspect.BoundArguments:
         bound = signature.bind(*args, **kwargs)
         bound.arguments["request"] = request_type.model_validate(
             bound.arguments["request"]
