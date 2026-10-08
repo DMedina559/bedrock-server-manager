@@ -5,6 +5,8 @@ Service managing user domain state mutations and user account operations.
 
 from typing import TYPE_CHECKING, Literal, Optional
 
+from pydantic import JsonValue
+
 from ..error import UserInputError
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
@@ -133,7 +135,10 @@ class UserService:
                             raise UserInputError(
                                 f"Cannot {verb} the last active admin."
                             )
-                    details = {"user_id": user.id, "username": name}
+                    details: dict[str, JsonValue] = {
+                        "user_id": user.id,
+                        "username": name,
+                    }
                     if action == "role":
                         details.update(original_role=user.role, new_role=patch["role"])
                     for field, value in patch.items():

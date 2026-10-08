@@ -80,3 +80,17 @@ async def test_concurrent_admin_demotion_preserves_one_admin(app_context):
     assert sum(isinstance(result, UserInputError) for result in results) == 1
     async with app_context.storage.transaction() as session:
         assert await app_context.storage.user_repo.count_active_admins(session) == 1
+
+
+@pytest.mark.parametrize(
+    "details", [{1: "bad"}, {"value": float("nan")}, {"value": object()}]
+)
+async def test_audit_details_validate_before_session_mutation(app_context, details):
+    from pydantic import ValidationError
+
+    async with app_context.db.session_manager() as session:
+        with pytest.raises(ValidationError):
+            await app_context.storage.audit_log_repo.create_audit_log(
+                session, 1, "update", details
+            )
+        assert not session.new

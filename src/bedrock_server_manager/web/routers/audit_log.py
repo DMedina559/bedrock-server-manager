@@ -4,9 +4,10 @@ FastAPI router for viewing audit logs.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends
+from pydantic import JsonValue
 
 from ...context import AppContext
 from ..deps import get_admin_user, get_app_context
@@ -24,7 +25,7 @@ async def create_audit_log(
     app_context: AppContext,
     user_id: int,
     action: str,
-    details: Optional[Dict[Any, Any]] = None,
+    details: dict[str, JsonValue] | None = None,
 ):
     """
     Creates an audit log entry.

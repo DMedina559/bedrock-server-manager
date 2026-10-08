@@ -2,13 +2,21 @@
 Repository for managing AuditLog database entity operations.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List
 
+from pydantic import Field, JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from ...state.models import PersistentRecord
 from ..database import Database
 from ..models import AuditLog
+
+
+class AuditEntry(PersistentRecord):
+    user_id: int = Field(gt=0)
+    action: str = Field(min_length=1)
+    details: dict[str, JsonValue] | None = None
 
 
 class AuditLogRepository:
@@ -22,10 +30,11 @@ class AuditLogRepository:
         session: AsyncSession,
         user_id: int,
         action: str,
-        details: Optional[Dict[Any, Any]] = None,
+        details: dict[str, JsonValue] | None = None,
     ) -> AuditLog:
         """Creates and adds an audit log entry to the session."""
-        log = AuditLog(user_id=user_id, action=action, details=details)
+        entry = AuditEntry(user_id=user_id, action=action, details=details)
+        log = AuditLog(**entry.model_dump(mode="json"))
         session.add(log)
         return log
 
