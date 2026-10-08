@@ -221,3 +221,37 @@ async def test_invalid_admission_does_not_evict_completed_task(task_manager):
         await task_manager.run_task(collect, username=42)
     assert task_id in task_manager.tasks
     await task_manager.shutdown()
+
+
+async def test_slow_notification_does_not_orphan_admission():
+    connection = MagicMock(send_to_user=AsyncMock())
+    manager = TaskManager(connection)
+    admission = asyncio.create_task(manager.run_task(lambda: 1, "owner"))
+    task_id = await admission
+    assert task_id in manager.futures
+    await manager.shutdown()
+    assert (await manager.get_task(task_id)).status == "completed"
+
+
+async def test_cancelled_thread_remains_tracked_until_worker_exits():
+    import threading
+    started = threading.Event()
+    released = threading.Event()
+    finished = threading.Event()
+    def worker(cancellation_event):
+        started.set()
+        cancellation_event.wait()
+        released.wait()
+        finished.set()
+    manager = TaskManager(None)
+    task_id = await manager.run_task(worker)
+    await asyncio.to_thread(started.wait)
+    await manager.cancel_task(task_id)
+    shutdown = asyncio.create_task(manager.shutdown())
+    await asyncio.sleep(0)
+    assert not shutdown.done()
+    assert (await manager.get_task(task_id)).status == "cancelling"
+    released.set()
+    await shutdown
+    assert finished.is_set()
+    assert (await manager.get_task(task_id)).status == "cancelled"

@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import logging
+import threading
 import uuid
 from typing import Any, Callable, Dict, Optional
 
@@ -63,7 +64,7 @@ class TaskManager:
 
             if loop is not None and loop.is_running():
                 try:
-                    await connection_manager.send_to_user(username, message)
+                    await asyncio.wait_for(connection_manager.send_to_user(username, message), timeout=5)
                 except Exception:
                     logger.warning(
                         "Could not deliver task update %s", task_id, exc_info=True
@@ -96,7 +97,9 @@ class TaskManager:
                     "Background task returned invalid JSON data."
                 ) from validation_error
             self._tasks[task_id] = record
-            await self._notify_client_of_update(task_id)
+            notification = asyncio.create_task(self._notify_client_of_update(task_id))
+            self._background_tasks.add(notification)
+            notification.add_done_callback(self._background_tasks.discard)
 
     def _task_done_callback(self, task_id: str, future: asyncio.Task):
         """Callback function executed when a task completes."""
@@ -188,7 +191,6 @@ class TaskManager:
                 del self.futures[oldest_task_id]
 
         self._tasks[task_id] = candidate
-        await self._notify_client_of_update(task_id)
 
         call_kwargs = dict(kwargs)
         if username is not None:
@@ -203,35 +205,6 @@ class TaskManager:
             except (ValueError, TypeError):
                 pass
 
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop is None or not loop.is_running():
-            # No running loop, so we have to run it synchronously (e.g. during some tests or early startup)
-            logger.warning(
-                f"Task {task_id}: No running event loop. Running target function synchronously."
-            )
-            try:
-                if inspect.iscoroutinefunction(target_function):
-                    result = asyncio.run(target_function(*args, **call_kwargs))
-                else:
-                    result = target_function(*args, **call_kwargs)
-                await self._update_task(task_id, "completed", "Task completed.", result)
-            except Exception as e:
-                logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-                from ..api.errors import error_response
-
-                error = error_response(e)
-                await self._update_task(
-                    task_id,
-                    "cancelled" if isinstance(e, APICancelledError) else "failed",
-                    error.message,
-                    error=error,
-                )
-            return task_id
-
         async def _runner():
             await self._update_task(task_id, "running", "Task is running.")
             if inspect.iscoroutinefunction(target_function):
@@ -241,7 +214,27 @@ class TaskManager:
                 def sync_wrapper():
                     return target_function(*args, **call_kwargs)
 
-                return await asyncio.to_thread(sync_wrapper)
+                cancellation_event = threading.Event()
+                try:
+                    if "cancellation_event" in inspect.signature(target_function).parameters:
+                        call_kwargs["cancellation_event"] = cancellation_event
+                except (ValueError, TypeError):
+                    pass
+                worker = asyncio.create_task(asyncio.to_thread(sync_wrapper))
+                try:
+                    return await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    cancellation_event.set()
+                    while not worker.done():
+                        try:
+                            await asyncio.shield(worker)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:
+                            break
+                    if not worker.cancelled():
+                        worker.exception()
+                    raise
 
         task = asyncio.create_task(_runner())
         self.futures[task_id] = task
@@ -263,9 +256,10 @@ class TaskManager:
             return False
 
         task = self.futures[task_id]
-        task.cancel()
+        if not task.done() and not task.cancelling():
+            task.cancel()
 
-        await self._update_task(task_id, "cancelled", "Task was cancelled.")
+        await self._update_task(task_id, "cancelling", "Cancellation requested; waiting for execution to finish.")
         return True
 
     def _snapshot(self, task_id: str) -> TaskSnapshot:
