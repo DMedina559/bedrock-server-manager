@@ -85,6 +85,37 @@ async def post_install_server(  # noqa: C901
         )
 
     try:
+        server_zip_path = None
+        if payload.server_version.upper() == "CUSTOM":
+            if not payload.server_zip_path:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="server_zip_path is required for CUSTOM version.",
+                )
+            if (
+                os.path.basename(payload.server_zip_path) != payload.server_zip_path
+                or "\\" in payload.server_zip_path
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Select a ZIP filename from the custom downloads directory.",
+                )
+            download_dir = app_context.settings.get("paths.downloads")
+            custom_dir = os.path.join(download_dir, "custom")
+            custom_dir = os.path.realpath(custom_dir)
+            server_zip_path = os.path.realpath(
+                os.path.join(custom_dir, payload.server_zip_path)
+            )
+            if os.path.commonpath([custom_dir, server_zip_path]) != custom_dir:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Custom ZIP must be inside the downloads directory.",
+                )
+            if not await aiofiles.ospath.isfile(server_zip_path):
+                raise HTTPException(
+                    status_code=404, detail="Custom ZIP file not found."
+                )
+
         server_exists = await validate_server(
             payload.server_name, app_context=app_context
         )
@@ -110,19 +141,6 @@ async def post_install_server(  # noqa: C901
             )
             logger.info(
                 f"Successfully deleted existing server '{payload.server_name}' for overwrite."
-            )
-
-        server_zip_path = None
-        if payload.server_version.upper() == "CUSTOM":
-            if not payload.server_zip_path:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="server_zip_path is required for CUSTOM version.",
-                )
-            download_dir = app_context.settings.get("paths.downloads")
-            custom_dir = os.path.join(download_dir, "custom")
-            server_zip_path = os.path.abspath(
-                os.path.join(custom_dir, payload.server_zip_path)
             )
 
         task_id = await app_context.task_manager.run_task(
