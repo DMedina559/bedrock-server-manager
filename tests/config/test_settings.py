@@ -104,17 +104,26 @@ async def test_settings_set(settings, db):
         assert custom_setting.value["plugin"]["enabled"] is True
 
 
-async def test_settings_set_no_change_skips_write(settings, monkeypatch):
-    """Test setting the same value skips database write."""
-    from unittest.mock import AsyncMock
+async def test_settings_set_no_change_skips_write(settings, db):
+    from sqlalchemy import event
 
-    mock_flush = AsyncMock()
-    monkeypatch.setattr(settings.storage, "flush", mock_flush)
+    statements = []
 
-    current_val = settings.get("web.port")
-    await settings.set("web.port", current_val)
+    def record(connection, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
 
-    mock_flush.assert_not_called()
+    event.listen(db.engine.sync_engine, "before_cursor_execute", record)
+    try:
+        current_val = settings.get("web.port")
+        await settings.set("web.port", current_val)
+        assert not statements
+        await settings.set("web.port", current_val + 1)
+        assert any(
+            statement.lstrip().upper().startswith(("INSERT", "UPDATE"))
+            for statement in statements
+        )
+    finally:
+        event.remove(db.engine.sync_engine, "before_cursor_execute", record)
 
 
 async def test_settings_set_conflict_raises_error(settings):

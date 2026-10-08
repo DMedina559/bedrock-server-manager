@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from bedrock_server_manager.error import (
@@ -34,15 +32,8 @@ async def test_core_validate_server_name_format_invalid(invalid_name):
         core_validate_server_name_format(invalid_name)
 
 
-async def test_validate_server_success(app_context, monkeypatch):
-    """Test validate_server returns True for correctly mocked installed servers."""
-    from unittest.mock import AsyncMock
-
-    server = MagicMock()
-    server.is_installed = AsyncMock(return_value=True)
-    monkeypatch.setattr(app_context, "get_server", lambda x: server)
-
-    assert await validate_server("test_server", app_context) is True
+async def test_validate_server_success(app_context, real_bedrock_server):
+    assert await validate_server(real_bedrock_server.server_name, app_context)
 
 
 async def test_validate_server_empty_name(app_context):
@@ -51,33 +42,16 @@ async def test_validate_server_empty_name(app_context):
         await validate_server("", app_context)
 
 
-async def test_validate_server_not_installed(app_context, monkeypatch):
-    """Test validate_server returns False if the server class returns false."""
-    from unittest.mock import AsyncMock
-
-    server = MagicMock()
-    server.is_installed = AsyncMock(return_value=False)
-    monkeypatch.setattr(app_context, "get_server", lambda x: server)
-
-    assert await validate_server("test_server", app_context) is False
+async def test_validate_server_not_installed(app_context):
+    assert not await validate_server("missing_server", app_context)
 
 
-async def test_validate_server_exception_caught(app_context, monkeypatch):
-    """Test validate_server catches inner application exceptions returning False."""
-
-    def raise_error(name):
-        raise InvalidServerNameError("Bad format")
-
-    monkeypatch.setattr(app_context, "get_server", raise_error)
-    assert await validate_server("bad_name!", app_context) is False
+async def test_validate_server_exception_caught(app_context):
+    assert not await validate_server("bad_name!", app_context)
 
 
 async def test_get_servers_data_success(app_context, real_bedrock_server):
     """Test get_servers_data returns mapped details successfully retrieving from standard configs."""
-    # Setup real_bedrock_server correctly mock its validation
-    # Actually real_bedrock_server fixture creates valid dummy files!
-
-    # We just need to make sure the server base dir exists and holds the dummy server
     servers_data, error_messages = await get_servers_data(app_context)
 
     assert len(error_messages) == 0

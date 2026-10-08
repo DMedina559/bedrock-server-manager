@@ -1,11 +1,10 @@
 import json
 import os
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 
-async def test_get_formatted_permissions(real_bedrock_server):
+async def test_get_formatted_permissions(real_bedrock_server, app_context):
     """Test retrieving formatted permissions including names from a map."""
     server = real_bedrock_server
     permissions_path = server.permissions_json_path
@@ -18,28 +17,8 @@ async def test_get_formatted_permissions(real_bedrock_server):
     with open(permissions_path, "w") as f:
         json.dump(perm_data, f)
 
-    # Note: get_formatted_permissions internally queries known players from the db
-    # We will simulate this by mocking get_known_players or inserting into db.
-    # We can mock it here for test simplicity or just allow it to fall back to Unknown.
-    # The current async version uses db_session_manager directly. Let's patch `get_known_players`
-
-    # In order to not overcomplicate the database insertion here, let's just assert the default fallback behavior for the first,
-    # or patch the get_known_players function.
-
-    mock_known = [{"xuid": "12345", "name": "player1"}]
-    # Fix patching for the import location
-
-    import unittest.mock
-
-    with unittest.mock.patch(
-        "bedrock_server_manager.core.server.permissions_mixin.get_known_players",
-        new_callable=AsyncMock,
-    ) as mock_get_known_players:
-        mock_get_known_players.return_value = mock_known
-        mock_db_session_manager = (
-            MagicMock()
-        )  # We just need something to pass to the mocked function
-        formatted = await server.get_formatted_permissions(mock_db_session_manager)
+    await app_context.storage.save_players([{"xuid": "12345", "name": "player1"}])
+    formatted = await server.get_formatted_permissions(app_context.storage)
 
     assert len(formatted) == 2
     # Sort order: 'p' comes before 'u' (player1 vs Unknown)

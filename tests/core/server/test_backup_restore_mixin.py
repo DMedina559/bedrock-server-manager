@@ -1,6 +1,5 @@
 import os
 import zipfile
-from unittest.mock import AsyncMock, patch
 
 
 async def test_server_backup_directory(real_bedrock_server, app_context):
@@ -30,10 +29,7 @@ async def test_backup_all_data(real_bedrock_server):
     with open(server.permissions_json_path, "w") as f:
         f.write("[]")
 
-    with patch.object(
-        server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
-    ):
-        result = await server.backup_all_data()
+    result = await server.backup_all_data()
 
     assert result is not None
     assert "world" in result
@@ -69,14 +65,11 @@ async def test_list_backups(real_bedrock_server):
     with open(server.permissions_json_path, "w") as f:
         f.write("[]")
 
-    with patch.object(
-        server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
-    ):
-        import asyncio
+    import asyncio
 
-        await server.backup_all_data()
-        await asyncio.sleep(1)
-        await server.backup_all_data()  # Create two sets
+    await server.backup_all_data()
+    await asyncio.sleep(1)
+    await server.backup_all_data()  # Create two sets
 
     # `list_backups("all")` returns a dictionary of lists: {'world': [...], 'config': [...]}
     backups = await server.list_backups(backup_type="all")
@@ -104,16 +97,13 @@ async def test_prune_server_backups(real_bedrock_server, app_context):
     with open(server.permissions_json_path, "w") as f:
         f.write("[]")
 
-    with patch.object(
-        server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
-    ):
-        import asyncio
+    import asyncio
 
-        await server.backup_all_data()
-        await asyncio.sleep(1)
-        await server.backup_all_data()
-        await asyncio.sleep(1)
-        await server.backup_all_data()
+    await server.backup_all_data()
+    await asyncio.sleep(1)
+    await server.backup_all_data()
+    await asyncio.sleep(1)
+    await server.backup_all_data()
 
     await server.prune_server_backups("test_world_backup_", "mcworld")
     await server.prune_server_backups("server_backup_", "properties")
@@ -138,10 +128,7 @@ async def test_restore_all_data_from_latest(real_bedrock_server):
         f.write("level-name=test_world\n")
 
     # Create backup
-    with patch.object(
-        server, "get_world_name", new_callable=AsyncMock, return_value="test_world"
-    ):
-        await server.backup_all_data()
+    await server.backup_all_data()
 
     # Modify state
     with open(os.path.join(world_dir, "level.dat"), "w") as f:

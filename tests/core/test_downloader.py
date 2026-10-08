@@ -5,7 +5,7 @@ Integration tests for bedrock_server_manager/core/downloader.py
 import os
 import platform
 import zipfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -116,39 +116,19 @@ async def test_downloader_lookup_failure(mock_get, app_context: AppContext):
         await downloader._lookup_bedrock_download_url()
 
 
-@patch(
-    "bedrock_server_manager.core.system.base.check_internet_connectivity",
-    return_value=True,
-)
-async def test_downloader_prepare_assets(mock_conn, app_context: AppContext, tmp_path):
-    """Test prepare_download_assets sets up paths properly."""
+async def test_downloader_prepare_assets(app_context, tmp_path, download_api):
     await app_context.settings.set("paths.downloads", str(tmp_path / "downloads"))
     downloader = BedrockDownloader(
-        app_context.settings, str(tmp_path / "server_dir"), "LATEST"
+        app_context.settings, str(tmp_path / "server"), "LATEST"
     )
-
-    with patch.object(
-        downloader, "get_version_for_target_spec", new_callable=AsyncMock
-    ):
-        downloader.actual_version = "1.20.0"
-        downloader.resolved_download_url = (
-            "https://example.com/bedrock-server-1.20.0.zip"
-        )
-
-        with patch.object(
-            downloader, "_download_server_zip_file", new_callable=AsyncMock
-        ):
-            with patch.object(
-                downloader, "_execute_instance_pruning", new_callable=AsyncMock
-            ):
-                actual_version, zip_path, url = (
-                    await downloader.prepare_download_assets()
-                )
-
-                assert url is not None
-                assert actual_version == "1.20.0"
-                assert "bedrock-server-1.20.0.zip" in zip_path
-                assert "stable" in zip_path
+    version, zip_path, download_dir = await downloader.prepare_download_assets()
+    assert version
+    assert downloader.resolved_download_url.startswith(download_api.url)
+    assert os.path.isfile(zip_path)
+    with zipfile.ZipFile(zip_path) as archive:
+        assert "server.properties" in archive.namelist()
+    assert "stable" in zip_path
+    assert os.path.dirname(zip_path) == download_dir
 
 
 async def test_downloader_extract_server_files_fresh(
@@ -228,20 +208,13 @@ async def test_downloader_extract_server_files_update(
     assert "legacy-prop=123" in content
 
 
-@patch(
-    "bedrock_server_manager.core.downloader.BedrockDownloader.prepare_download_assets"
-)
-@patch(
-    "bedrock_server_manager.core.downloader.BedrockDownloader.extract_server_files",
-    new_callable=AsyncMock,
-)
-async def test_full_server_setup(mock_extract, mock_prepare, app_context: AppContext):
-    """Test full setup orchestration."""
-    mock_prepare.return_value = ("1.20.0", "/fake/zip.zip", "https://url")
-
-    downloader = BedrockDownloader(app_context.settings, "/fake", "LATEST")
+async def test_full_server_setup(app_context, tmp_path, download_api):
+    server_dir = tmp_path / "server"
+    downloader = BedrockDownloader(app_context.settings, str(server_dir), "LATEST")
     result_version = await downloader.full_server_setup(is_update=False)
-
-    assert result_version == "1.20.0"
-    mock_prepare.assert_called_once()
-    mock_extract.assert_called_once_with(False)
+    assert result_version == downloader.actual_version
+    assert (server_dir / "server.properties").is_file()
+    binary = (
+        "bedrock_server.exe" if platform.system() == "Windows" else "bedrock_server"
+    )
+    assert (server_dir / binary).is_file()
