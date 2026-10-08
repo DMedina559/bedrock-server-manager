@@ -19,6 +19,9 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from ...context import AppContext
+    from ...config.settings import Settings
+    from ...state.app_state import AppState
+    from ...db.storage import Storage
 
 from ...error import ConfigurationError, MissingArgumentError
 from ...state.models import RuntimeState
@@ -56,10 +59,10 @@ class BedrockServerBaseMixin:
         self,
         server_name: str,
         *args: Any,
-        settings: Optional[Any] = None,
+        settings: Optional["Settings"] = None,
         app_context: Optional["AppContext"] = None,
-        state: Optional[Any] = None,
-        storage: Optional[Any] = None,
+        state: Optional["AppState"] = None,
+        storage: Optional["Storage"] = None,
         **kwargs: Any,
     ) -> None:
         """Initializes the base attributes for a Bedrock server instance.

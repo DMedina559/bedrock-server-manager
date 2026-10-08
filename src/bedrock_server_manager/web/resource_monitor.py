@@ -1,7 +1,12 @@
 # bedrock_server_manager/web/resource_monitor.py
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Callable
+
+from .websocket_manager import ConnectionManager
+
+if TYPE_CHECKING:
+    from ..core.bedrock_server import BedrockServer
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +19,8 @@ class ResourceMonitor:
 
     def __init__(
         self,
-        connection_manager: Any,
-        server_provider: Any = None,
+        connection_manager: ConnectionManager,
+        server_provider: Callable[[str], "BedrockServer"] | None = None,
     ):
         """
         Initializes the ResourceMonitor with explicit dependencies.

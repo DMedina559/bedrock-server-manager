@@ -1,12 +1,16 @@
 import asyncio
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import aiofiles
 import aiofiles.ospath
 
 from ..core.system import find_files
+from .websocket_manager import ConnectionManager
+
+if TYPE_CHECKING:
+    from ..core.bedrock_server import BedrockServer
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +25,9 @@ class LogStreamer:
 
     def __init__(
         self,
-        connection_manager: Any,
+        connection_manager: ConnectionManager,
         log_dir: str,
-        server_provider: Optional[Any] = None,
+        server_provider: Optional[Callable[[str], "BedrockServer"]] = None,
     ):
         self.connection_manager = connection_manager
         self.log_dir = log_dir

@@ -10,12 +10,15 @@ It also handles periodic tasks like player scanning from logs.
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from ..error import BSMError, FileOperationError
 from .player import save_player_data
 
 if TYPE_CHECKING:
+    from ..config.settings import Settings
+    from ..db.storage import Storage
+    from ..plugins.api_bridge import AppAPI
     from .bedrock_server import BedrockServer
 
 
@@ -39,10 +42,10 @@ class BedrockProcessManager:
 
     def __init__(
         self,
-        settings: Any,
-        storage: Any,
-        server_provider: Optional[Any] = None,
-        api: Optional[Any] = None,
+        settings: "Settings",
+        storage: "Storage",
+        server_provider: Optional[Callable[[str], "BedrockServer"]] = None,
+        api: Optional["AppAPI"] = None,
     ):
         """Initializes the BedrockProcessManager with explicit dependencies."""
         self.settings = settings
@@ -114,6 +117,8 @@ class BedrockProcessManager:
                     return
 
                 try:
+                    if self.api is None:
+                        raise BSMError("Process manager API is not available.")
                     await self.api.server.stop({"server_name": server_name})
                 except Exception as e:
                     self.logger.error(
@@ -247,7 +252,9 @@ class BedrockProcessManager:
                         try:
                             await self._try_restart_server(server)
                         except Exception:
-                            self.logger.exception("Could not recover server '%s'", server_name)
+                            self.logger.exception(
+                                "Could not recover server '%s'", server_name
+                            )
                     else:
                         self.logger.info(
                             f"Server '{server.server_name}' was stopped intentionally. Removing from monitoring."
@@ -270,6 +277,10 @@ class BedrockProcessManager:
                             )
                             # Call the API bridge to handle events and websockets properly
                             try:
+                                if self.api is None:
+                                    raise BSMError(
+                                        "Process manager API is not available."
+                                    )
                                 await self.api.server.update_player_stats(
                                     request={
                                         "server_name": server.server_name,
@@ -285,6 +296,10 @@ class BedrockProcessManager:
                         # Enforce bans
                         if server.players:
                             try:
+                                if self.api is None:
+                                    raise BSMError(
+                                        "Process manager API is not available."
+                                    )
                                 ban_res = await self.api.ban.get_server_bans(
                                     request={"server_name": server.server_name}
                                 )

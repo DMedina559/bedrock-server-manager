@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from .db.storage import Storage
     from .plugins.api_bridge import AppAPI
     from .plugins.plugin_manager import PluginManager
+    from .services.plugin_service import PluginService
+    from .services.server_service import ServerService
+    from .services.settings_service import SettingsService
+    from .services.user_service import UserService
     from .state.app_state import AppState
     from .web.log_streamer import LogStreamer
     from .web.resource_monitor import ResourceMonitor
@@ -70,10 +74,10 @@ class AppContext:
         self._needs_setup: Optional[bool] = None
 
         self._pre_app_config_cache: Optional[Dict[str, Any]] = None
-        self._settings_service: Optional[Any] = None
-        self._server_service: Optional[Any] = None
-        self._plugin_service: Optional[Any] = None
-        self._user_service: Optional[Any] = None
+        self._settings_service: Optional["SettingsService"] = None
+        self._server_service: Optional["ServerService"] = None
+        self._plugin_service: Optional["PluginService"] = None
+        self._user_service: Optional["UserService"] = None
 
     async def load(self):
         """
@@ -162,7 +166,9 @@ class AppContext:
                     await component.shutdown()
                 except Exception as error:
                     errors.append(error)
-                    getLogger(__name__).exception("Component shutdown failed: %s", type(component).__name__)
+                    getLogger(__name__).exception(
+                        "Component shutdown failed: %s", type(component).__name__
+                    )
         try:
             await self.flush()
         except Exception as error:
@@ -392,7 +398,9 @@ class AppContext:
         if self._connection_manager is None:
             from .web.websocket_manager import ConnectionManager
 
-            self._connection_manager = ConnectionManager(user_provider=self.state.users.get)
+            self._connection_manager = ConnectionManager(
+                user_provider=self.state.users.get
+            )
         return self._connection_manager
 
     @property
@@ -429,45 +437,45 @@ class AppContext:
         self._log_streamer = value
 
     @property
-    def settings_service(self):
+    def settings_service(self) -> "SettingsService":
         """Returns the SettingsService instance."""
         if self._settings_service is None:
             from .services.settings_service import SettingsService
 
             self._settings_service = SettingsService(
-                state=self._state, storage=self._storage, settings=self.settings
+                state=self.state, storage=self.storage, settings=self.settings
             )
         return self._settings_service
 
     @property
-    def server_service(self):
+    def server_service(self) -> "ServerService":
         """Returns the ServerService instance."""
         if self._server_service is None:
             from .services.server_service import ServerService
 
-            self._server_service = ServerService(
-                state=self._state, storage=self._storage
-            )
+            self._server_service = ServerService(state=self.state, storage=self.storage)
         return self._server_service
 
     @property
-    def plugin_service(self):
+    def plugin_service(self) -> "PluginService":
         """Returns the PluginService instance."""
         if self._plugin_service is None:
             from .services.plugin_service import PluginService
 
-            self._plugin_service = PluginService(
-                state=self._state, storage=self._storage
-            )
+            self._plugin_service = PluginService(state=self.state, storage=self.storage)
         return self._plugin_service
 
     @property
-    def user_service(self):
+    def user_service(self) -> "UserService":
         """Returns the UserService instance."""
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(state=self.state, storage=self.storage, revoke_connections=self._revoke_user_connections)
+            self._user_service = UserService(
+                state=self.state,
+                storage=self.storage,
+                revoke_connections=self._revoke_user_connections,
+            )
         return self._user_service
 
     async def _revoke_user_connections(self, username: str) -> None:
