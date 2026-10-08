@@ -7,8 +7,15 @@ from typing import Any, Callable
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
 from pydantic import ValidationError
 
+from ...api.errors import error_response
 from ...context import AppContext
 from ...utils import authenticate_websocket_token
+from ..schemas.websocket import (
+    AuthenticationFrame,
+    ClientFrame,
+    SocketReply,
+    json_payload,
+)
 
 router = APIRouter(
     prefix="/ws",
@@ -40,16 +47,16 @@ async def _call_data_provider(
     if "user" in param_names:
         kwargs["user"] = user
 
+    args = []
     if not kwargs and len(sig.parameters) > 0:
-        params_list = list(sig.parameters.values())
-        args = [topic, request_payload, client_id, user][: len(params_list)]
-        if asyncio.iscoroutinefunction(handler):
-            return await handler(*args)
-        return handler(*args)
-
-    if asyncio.iscoroutinefunction(handler):
-        return await handler(**kwargs)
-    return handler(**kwargs)
+        args = [topic, request_payload, client_id, user][: len(sig.parameters)]
+    if inspect.iscoroutinefunction(handler):
+        result = await handler(*args, **kwargs)
+    else:
+        result = await asyncio.to_thread(handler, *args, **kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+    return json_payload(result).value
 
 
 @router.websocket("")
@@ -76,14 +83,15 @@ async def websocket_endpoint(  # noqa: C901
     # Wait for the first message to authenticate
     try:
         data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
-        action = data.get("action")
+        auth_frame = AuthenticationFrame.model_validate(data)
+        action = auth_frame.action
 
         if action != "authenticate":
             logger.warning("WebSocket auth failed: Missing authentication message")
             await websocket.close(code=1008, reason="Missing authentication message")
             return
 
-        token = data.get("token")
+        token = auth_frame.token
         if not token:
             token = websocket.cookies.get("access_token_cookie")
 
@@ -108,7 +116,8 @@ async def websocket_endpoint(  # noqa: C901
         await websocket.close(code=e.code, reason=e.reason)
         return
     except ValidationError:
-        raise
+        await websocket.close(code=1008, reason="Invalid authentication message")
+        return
     except Exception as e:
         logger.error(f"WebSocket unexpected auth error: {e}", exc_info=True)
         await websocket.close(code=1008, reason="Internal Authentication Error")
@@ -129,84 +138,67 @@ async def websocket_endpoint(  # noqa: C901
     try:
         while True:
             data = await websocket.receive_json()
-            action = data.get("action")
-            topic = data.get("topic")
-
-            if not action or not topic:
+            try:
+                frame = ClientFrame.model_validate(data)
+            except ValidationError as error:
+                reply = SocketReply(
+                    status="error",
+                    message="Action and topic are required and must be valid.",
+                    error=error_response(error),
+                )
                 await connection_manager.send_to_client(
-                    {"status": "error", "message": "Action and topic are required."},
-                    client_id,
+                    reply.model_dump(mode="json", exclude_unset=True), client_id
                 )
                 continue
-
-            if action == "subscribe":
-                await connection_manager.subscribe(client_id, topic)
-                await connection_manager.send_to_client(
-                    {
-                        "status": "success",
-                        "message": f"Subscribed to topic '{topic}'",
-                    },
-                    client_id,
-                )
-            elif action == "unsubscribe":
-                await connection_manager.unsubscribe(client_id, topic)
-                await connection_manager.send_to_client(
-                    {
-                        "status": "success",
-                        "message": f"Unsubscribed from topic '{topic}'",
-                    },
-                    client_id,
-                )
-            elif action in ("request", "request_data"):
-                request_id = data.get("request_id")
-                request_payload = data.get("data")
+            topic = frame.topic
+            if frame.action in {"subscribe", "unsubscribe"}:
+                if frame.action == "subscribe":
+                    await connection_manager.subscribe(client_id, topic)
+                    message = f"Subscribed to topic '{topic}'"
+                else:
+                    await connection_manager.unsubscribe(client_id, topic)
+                    message = f"Unsubscribed from topic '{topic}'"
+                reply = SocketReply(status="success", message=message)
+            else:
                 handler = connection_manager.get_data_provider(topic)
-
-                if not handler:
-                    res: dict[str, Any] = {
-                        "status": "error",
-                        "type": "response",
-                        "topic": topic,
-                        "message": f"No data provider registered for topic '{topic}'",
-                    }
-                    if request_id is not None:
-                        res["request_id"] = request_id
-                    await connection_manager.send_to_client(res, client_id)
+                if handler is None:
+                    reply = SocketReply(
+                        status="error",
+                        type="response",
+                        topic=topic,
+                        request_id=frame.request_id,
+                        message=f"No data provider registered for topic '{topic}'",
+                    )
                 else:
                     try:
                         result = await _call_data_provider(
-                            handler, topic, request_payload, client_id, user
+                            handler, topic, frame.data, client_id, user
                         )
-                        res = {
-                            "status": "success",
-                            "type": "response",
-                            "topic": topic,
-                            "data": result,
-                        }
-                        if request_id is not None:
-                            res["request_id"] = request_id
-                        await connection_manager.send_to_client(res, client_id)
-                    except ValidationError:
-                        raise
-                    except Exception as e:
+                        reply = SocketReply(
+                            status="success",
+                            type="response",
+                            topic=topic,
+                            request_id=frame.request_id,
+                            data=result,
+                        )
+                    except Exception as error:
                         logger.error(
-                            f"Error executing data provider for topic '{topic}': {e}",
+                            "Error executing WebSocket data provider for topic %s",
+                            topic,
                             exc_info=True,
                         )
-                        res = {
-                            "status": "error",
-                            "type": "response",
-                            "topic": topic,
-                            "message": f"Data provider error: {str(e)}",
-                        }
-                        if request_id is not None:
-                            res["request_id"] = request_id
-                        await connection_manager.send_to_client(res, client_id)
-            else:
-                await connection_manager.send_to_client(
-                    {"status": "error", "message": f"Unknown action: '{action}'"},
-                    client_id,
-                )
+                        safe = error_response(error)
+                        reply = SocketReply(
+                            status="error",
+                            type="response",
+                            topic=topic,
+                            request_id=frame.request_id,
+                            message=safe.message,
+                            error=safe,
+                        )
+            await connection_manager.send_to_client(
+                reply.model_dump(mode="json", exclude_unset=True), client_id
+            )
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected: {client_id}")

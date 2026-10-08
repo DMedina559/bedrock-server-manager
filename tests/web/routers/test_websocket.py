@@ -69,7 +69,7 @@ async def test_websocket_auth_success_and_messaging(
         websocket.send_json({"action": "foo", "topic": "bar"})
         data = websocket.receive_json()
         assert data["status"] == "error"
-        assert "Unknown action" in data["message"]
+        assert data["error"]["code"] == "validation_error"
 
         # Test missing topic
         websocket.send_json({"action": "subscribe"})
@@ -149,4 +149,44 @@ async def test_websocket_request_data_success_and_errors(
         res = websocket.receive_json()
         assert res["status"] == "error"
         assert res["request_id"] == "req-3"
-        assert "Provider failure" in res["message"]
+        assert "Provider failure" not in res["message"]
+        assert res["error"]["code"] == "internal_error"
+
+
+async def test_websocket_bad_provider_data_returns_safe_error_and_keeps_connection(
+    unauth_client, app_context, test_user
+):
+    from bedrock_server_manager.utils import create_access_token
+
+    async def invalid():
+        return {"value": float("nan")}
+
+    app_context.connection_manager.register_data_provider("invalid", invalid)
+    token = await create_access_token(
+        data={"sub": test_user.username}, app_context=app_context
+    )
+    with unauth_client.websocket_connect("/ws") as socket:
+        socket.send_json({"action": "authenticate", "token": token})
+        socket.receive_json()
+        socket.send_json(
+            {"action": "request", "topic": "invalid", "request_id": "same-id"}
+        )
+        response = socket.receive_json()
+        assert response["request_id"] == "same-id"
+        assert response["error"]["code"] == "internal_error"
+        socket.send_json(["not", "a", "frame"])
+        assert socket.receive_json()["error"]["code"] == "validation_error"
+        socket.send_json({"action": "subscribe", "topic": "valid"})
+        assert socket.receive_json()["status"] == "success"
+
+
+async def test_sync_websocket_provider_runs_off_event_loop():
+    import threading
+
+    from bedrock_server_manager.web.routers.websocket import _call_data_provider
+
+    def provider():
+        return threading.get_ident()
+
+    result = await _call_data_provider(provider, "topic", None, "id", None)
+    assert result != threading.get_ident()

@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .schemas import UserResponse
+from .schemas.websocket import json_payload
 
 logger = logging.getLogger(__name__)
 
@@ -148,10 +149,11 @@ class ConnectionManager:
 
     async def send_to_client(self, data: Any, client_id: str):
         """Sends a JSON message to a single client."""
+        encoded = json.dumps(json_payload(data).value, allow_nan=False)
         if client_id in self.active_connections:
             client = self.active_connections[client_id]
             try:
-                await client.websocket.send_text(json.dumps(data))
+                await client.websocket.send_text(encoded)
             except (WebSocketDisconnect, RuntimeError) as e:
                 # Catch both normal disconnection and the "WebSocket is not connected" RuntimeError
                 logger.info(
