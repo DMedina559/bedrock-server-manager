@@ -4,7 +4,7 @@ Service managing user domain state mutations and user account operations.
 """
 
 import time
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 
 from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
@@ -26,9 +26,11 @@ class UserService:
         self,
         state: "AppState",
         storage: "Storage",
+        revoke_connections: Callable[[str], Awaitable[None]] | None = None,
     ):
         self.state = state
         self.storage = storage
+        self.revoke_connections = revoke_connections
 
     def get_user_state(self, username: str) -> Optional[UserInfoState]:
         """Retrieves a user state snapshot."""
@@ -173,6 +175,8 @@ class UserService:
                     self.state.users.set(record)
                     if not dirty:
                         self.state.users.remove_dirty_user(name)
+                if action in {"delete", "disable", "role"} and self.revoke_connections is not None:
+                    await self.revoke_connections(name)
                 return record
 
     async def create_account(

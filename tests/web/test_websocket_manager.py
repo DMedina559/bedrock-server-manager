@@ -210,3 +210,21 @@ async def test_publish_ws_event(connection_manager, mock_websocket, test_user):
         "data": event_data,
     }
     mock_websocket.send_text.assert_called_once_with(json.dumps(expected))
+
+
+async def test_account_change_revokes_socket_before_delivery():
+    from bedrock_server_manager.state.models import UserInfoState
+    from bedrock_server_manager.web.schemas.users import UserResponse
+    from bedrock_server_manager.web.websocket_manager import ConnectionManager
+    from unittest.mock import AsyncMock
+    user = UserInfoState(id=1, username="owner", role="admin")
+    manager = ConnectionManager(user_provider=lambda name: user)
+    socket = AsyncMock()
+    client = await manager.connect(socket, UserResponse.model_validate(user, from_attributes=True))
+    await manager.subscribe(client, "*")
+    user = UserInfoState(id=1, username="owner", role="user", is_active=False)
+    await manager.broadcast_to_topic("private", {"data": "secret"})
+    socket.send_text.assert_not_awaited()
+    socket.close.assert_awaited_once()
+    assert not manager.active_connections
+    assert not manager.subscriptions

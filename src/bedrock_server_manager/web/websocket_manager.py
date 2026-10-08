@@ -10,6 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from .schemas import UserResponse
 from .schemas.websocket import json_payload
+from ..state.models import UserInfoState
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,8 @@ class DataProvider:
 class ConnectionManager:
     """Manages WebSocket connections, topic-based subscriptions, and data providers."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_provider: Callable[[str], UserInfoState | None] | None = None) -> None:
+        self.user_provider = user_provider
         # Maps a unique client ID to its Client object
         self.active_connections: Dict[str, Client] = {}
         # Maps a topic to a list of client IDs subscribed to it
@@ -68,6 +70,29 @@ class ConnectionManager:
                 del self.subscriptions[topic]
 
             logger.info(f"Client disconnected: {client_id}")
+
+    async def revoke_user(self, username: str) -> None:
+        for client in list(self.active_connections.values()):
+            if client.user.username == username:
+                try:
+                    await asyncio.wait_for(client.websocket.close(code=1008, reason="Account authorization changed"), timeout=5)
+                except Exception:
+                    logger.exception("Could not close revoked connection %s", client.id)
+                finally:
+                    await self.disconnect(client.id)
+
+    async def refresh_authorization(self, client_id: str) -> bool:
+        client = self.active_connections.get(client_id)
+        if client is None:
+            return False
+        if self.user_provider is None:
+            return True
+        user = self.user_provider(client.user.username)
+        if user is None or not user.is_active or user.id != client.user.id or user.role != client.user.role:
+            await self.revoke_user(client.user.username)
+            return False
+        client.user = UserResponse.model_validate(user, from_attributes=True)
+        return True
 
     async def subscribe(self, client_id: str, topic: str):
         """Subscribes a client to a given topic."""
@@ -150,6 +175,8 @@ class ConnectionManager:
     async def send_to_client(self, data: Any, client_id: str):
         """Sends a JSON message to a single client."""
         encoded = json.dumps(json_payload(data).value, allow_nan=False)
+        if not await self.refresh_authorization(client_id):
+            return
         if client_id in self.active_connections:
             client = self.active_connections[client_id]
             try:

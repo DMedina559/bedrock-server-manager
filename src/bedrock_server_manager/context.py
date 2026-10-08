@@ -386,7 +386,7 @@ class AppContext:
         if self._connection_manager is None:
             from .web.websocket_manager import ConnectionManager
 
-            self._connection_manager = ConnectionManager()
+            self._connection_manager = ConnectionManager(user_provider=self.state.users.get)
         return self._connection_manager
 
     @property
@@ -461,8 +461,12 @@ class AppContext:
         if self._user_service is None:
             from .services.user_service import UserService
 
-            self._user_service = UserService(state=self._state, storage=self._storage)
+            self._user_service = UserService(state=self.state, storage=self.storage, revoke_connections=self._revoke_user_connections)
         return self._user_service
+
+    async def _revoke_user_connections(self, username: str) -> None:
+        if self._connection_manager is not None:
+            await self._connection_manager.revoke_user(username)
 
     @property
     def bedrock_process_manager(self) -> "BedrockProcessManager":

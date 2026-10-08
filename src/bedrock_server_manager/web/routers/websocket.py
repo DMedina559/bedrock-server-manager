@@ -138,6 +138,9 @@ async def websocket_endpoint(  # noqa: C901
     try:
         while True:
             data = await websocket.receive_json()
+            if not await connection_manager.refresh_authorization(client_id):
+                break
+            user = connection_manager.active_connections[client_id].user
             try:
                 frame = ClientFrame.model_validate(data)
             except ValidationError as error:
