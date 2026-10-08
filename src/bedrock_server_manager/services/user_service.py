@@ -3,8 +3,9 @@
 Service managing user domain state mutations and user account operations.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
+from ..error import UserInputError
 from ..state.changeset import ChangeSet
 from ..state.models import UserInfoState
 from ..state.updates import UNSET, Unset, UserUpdate
@@ -74,3 +75,95 @@ class UserService:
         await self.storage.apply_changeset(self.state, changeset)
 
         return user
+
+    async def update_account(
+        self,
+        *,
+        action: Literal["delete", "disable", "enable", "role", "theme", "profile"],
+        user_id: int | None = None,
+        username: str | None = None,
+        values: dict[str, object] | None = None,
+        actor_id: int | None = None,
+    ) -> UserInfoState | None:
+        """Commit an account mutation and its audit entry before publishing state."""
+        async with self.storage.write_lock:
+            async with self.storage.db.session_manager() as session:
+                user = (
+                    await self.storage.user_repo.get_user_by_id(session, user_id)
+                    if user_id is not None
+                    else await self.storage.user_repo.get_user_by_username(
+                        session, username or ""
+                    )
+                )
+                if user is None:
+                    return None
+                name = user.username
+                if name is None:
+                    raise UserInputError("Account has no username.")
+            async with self.state.users.get_lock(name):
+                async with self.storage.transaction() as session:
+                    user = await self.storage.user_repo.get_user_by_username(
+                        session, name
+                    )
+                    if user is None:
+                        return None
+                    update = UserUpdate.model_validate(
+                        {"username": name, **(values or {})}
+                    )
+                    patch = update.model_dump(
+                        exclude_unset=True, exclude={"username", "id"}
+                    )
+                    if action == "disable":
+                        patch["is_active"] = False
+                    elif action == "enable":
+                        patch["is_active"] = True
+                    removes_admin = action in {"delete", "disable"} or (
+                        action == "role" and patch.get("role") != "admin"
+                    )
+                    if user.role == "admin" and user.is_active and removes_admin:
+                        if (
+                            await self.storage.user_repo.count_active_admins(session)
+                            <= 1
+                        ):
+                            verb = {
+                                "delete": "delete",
+                                "disable": "disable",
+                                "role": "change the role of",
+                            }[action]
+                            raise UserInputError(
+                                f"Cannot {verb} the last active admin."
+                            )
+                    details = {"user_id": user.id, "username": name}
+                    if action == "role":
+                        details.update(original_role=user.role, new_role=patch["role"])
+                    for field, value in patch.items():
+                        setattr(user, field, value)
+                    record = UserInfoState.model_validate(user, from_attributes=True)
+                    if actor_id is not None:
+                        await self.storage.audit_log_repo.create_audit_log(
+                            session,
+                            actor_id,
+                            (
+                                "update_user_role"
+                                if action == "role"
+                                else action + "_user"
+                            ),
+                            details,
+                        )
+                    if action == "delete":
+                        await self.storage.user_repo.delete_user(session, user)
+                # No live state changes until both account and audit commit.
+                if action == "delete":
+                    self.state.users.remove(name)
+                else:
+                    cached = self.state.users.get(name)
+                    dirty = name in self.state.users.dirty_users
+                    if cached is not None and dirty:
+                        data = cached.model_dump()
+                        data.update(patch)
+                        data["id"] = record.id
+                        record = UserInfoState.model_validate(data)
+                    self.state.users.set(record)
+                    if not dirty:
+                        self.state.users.remove_dirty_user(name)
+                return record

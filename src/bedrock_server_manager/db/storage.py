@@ -65,6 +65,11 @@ class Storage:
         self._listeners: List[Callable[[AppState, ChangeSet], Any]] = []
         self._flush_lock = asyncio.Lock()
 
+    @property
+    def write_lock(self) -> asyncio.Lock:
+        """Serialize domain transactions with state flushes and reloads."""
+        return self._flush_lock
+
     def subscribe(self, listener: Callable[[AppState, ChangeSet], Any]) -> None:
         """Registers a callback to receive state change notifications when changesets are persisted."""
         if listener not in self._listeners:
