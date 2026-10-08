@@ -33,8 +33,8 @@ class AddonSubpackPayload(APIRequest):
     pack_type: PackType = Field(
         ..., description="The type of the pack: 'behavior' or 'resource'."
     )
-    subpack_name: Optional[str] = Field(
-        None, description="The folder name of the subpack to activate."
+    subpack_name: NonEmptyStr = Field(
+        ..., description="The folder name of the subpack to activate."
     )
 
 
@@ -44,7 +44,7 @@ class AddonReorderPayload(APIRequest):
     pack_type: PackType = Field(
         ..., description="The type of the pack: 'behavior' or 'resource'."
     )
-    uuids: List[str] = Field(
+    uuids: List[NonEmptyStr] = Field(
         ...,
         description="The exact list of currently active UUIDs in the new desired order.",
     )

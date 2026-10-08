@@ -16,6 +16,7 @@ from bedrock_server_manager.api.models import (
     EnableAddonRequest,
     ImportAddonRequest,
     ListAvailableAddonsRequest,
+    ListAvailableAddonsResponse,
     ListInstalledAddonsRequest,
     ReorderAddonsRequest,
     UninstallAddonRequest,
@@ -51,12 +52,12 @@ STATIC_DIR = bsm_frontend.get_static_dir()
 @router.get(
     "/api/content/addons",
     operation_id="list_available_addons",
-    response_model=dict,
+    response_model=ListAvailableAddonsResponse,
 )
 async def get_addons(
     current_user: UserResponse = Depends(get_moderator_user),
     app_context: AppContext = Depends(get_app_context),
-) -> dict:
+) -> ListAvailableAddonsResponse:
     """
     Retrieves a list of available .mcaddon or .mcpack template files.
     """
@@ -68,7 +69,7 @@ async def get_addons(
         )
 
         basenames = [os.path.basename(f) for f in api_result.files]
-        return {"status": "success", "files": basenames}
+        return ListAvailableAddonsResponse(files=basenames)
     except HTTPException:
         raise
     except ValidationError:
@@ -239,13 +240,6 @@ async def post_update_subpack(
     )
     try:
         subpack_name = payload.subpack_name
-        if not subpack_name:
-            # Fallback for dynamic keys
-            payload_dict = payload.model_dump(exclude_unset=True)
-            dynamic_key = f"subpack_{payload.pack_uuid}"
-            if dynamic_key in payload_dict:
-                subpack_name = payload_dict[dynamic_key]
-
         task_id = await app_context.task_manager.run_task(
             addon_api.update_subpack,
             username=current_user.username,
