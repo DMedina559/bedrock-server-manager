@@ -33,13 +33,15 @@ Integration tests for the API functions in bedrock_server_manager/api/web.py.
 
 def test_start_web_server_direct_success(app_context: AppContext):
     """Test starting web server directly."""
-    with patch("bedrock_server_manager.web.main.run_web_server") as mock_run:
+    with patch("uvicorn.Server.run") as mock_run:
         result = start_web_server(
             request=StartWebServerRequest(mode="direct"), app_context=app_context
         ).model_dump(mode="python")
 
         assert result["status"] == "success"
         mock_run.assert_called_once()
+        assert app_context._web_server is not None
+        assert app_context._web_server.config.app.state.app_context is app_context
 
 
 def test_start_web_server_invalid_mode(app_context: AppContext):

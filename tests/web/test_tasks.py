@@ -1,6 +1,5 @@
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -133,35 +132,23 @@ async def test_run_task_failure(task_manager):
 
 
 async def test_run_task_websocket_notification_user_specific(
-    task_manager, app_context, monkeypatch
+    app_context, subscribed_socket, test_admin_user
 ):
-    mock_send = MagicMock()
-
-    async def dummy_coro(*args, **kwargs):
-        mock_send(*args, **kwargs)
-
-    monkeypatch.setattr(
-        app_context.connection_manager,
-        "send_to_user",
-        AsyncMock(side_effect=dummy_coro),
-    )
-
-    # Ensure there is an active loop set for the app context
-    app_context.loop = asyncio.get_running_loop()
-
-    def dummy_task():
-        return True
-
-    task_id = await task_manager.run_task(dummy_task, username="testuser")
-
-    future = task_manager.futures.get(task_id)
-    if future:
-        await future
-
-    # Wait for the async task created to execute send_to_user
-    await asyncio.sleep(0.1)
-
-    assert mock_send.call_count >= 1
+    async with subscribed_socket() as socket:
+        task_id = await app_context.task_manager.run_task(
+            lambda: True, username=test_admin_user.username
+        )
+        async with asyncio.timeout(5):
+            while True:
+                message = json.loads(await socket.recv())
+                if (
+                    message.get("topic") == f"task:{task_id}"
+                    and message["data"]["status"] == "completed"
+                ):
+                    break
+        assert message["type"] == "task_update"
+        assert message["data"]["result"] is True
+        assert "username" not in message["data"]
 
 
 async def test_task_manager_shutdown(task_manager):
@@ -223,8 +210,8 @@ async def test_invalid_admission_does_not_evict_completed_task(task_manager):
     await task_manager.shutdown()
 
 
-async def test_slow_notification_does_not_orphan_admission():
-    connection = MagicMock(send_to_user=AsyncMock())
+async def test_admitted_task_remains_tracked_until_shutdown(app_context):
+    connection = app_context.connection_manager
     manager = TaskManager(connection)
     admission = asyncio.create_task(manager.run_task(lambda: 1, "owner"))
     task_id = await admission

@@ -1,12 +1,15 @@
 """Real HTTP/WebSocket transport sharing the application's asyncio loop."""
 
 import asyncio
+import json
 import socket
 from contextlib import asynccontextmanager
 
 import pytest_asyncio
 import uvicorn
 from websockets.asyncio.client import connect
+
+from bedrock_server_manager.utils.auth import create_access_token
 
 
 @pytest_asyncio.fixture
@@ -47,3 +50,25 @@ async def websocket_client(running_app, unauth_client):
             await asyncio.wait_for(task, 5)
         finally:
             listener.close()
+
+
+@pytest_asyncio.fixture
+async def subscribed_socket(websocket_client, app_context, test_admin_user):
+    @asynccontextmanager
+    async def subscribe(*topics):
+        async with websocket_client() as connection:
+            token = await create_access_token(
+                app_context, {"sub": test_admin_user.username}
+            )
+            await connection.send(
+                json.dumps({"action": "authenticate", "token": token})
+            )
+            assert json.loads(await connection.recv())["status"] == "success"
+            for topic in topics:
+                await connection.send(
+                    json.dumps({"action": "subscribe", "topic": topic})
+                )
+                assert json.loads(await connection.recv())["status"] == "success"
+            yield connection
+
+    return subscribe
