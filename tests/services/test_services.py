@@ -82,14 +82,18 @@ async def test_explicit_di_services(db, tmp_path):
 
 
 async def test_invalid_plugin_settings_do_not_publish_metadata(app_context):
-    from pydantic import ValidationError
-    from bedrock_server_manager.state.models import PluginInfoState
     import pytest
+    from pydantic import ValidationError
+
+    from bedrock_server_manager.state.models import PluginInfoState
+
     service = app_context.plugin_service
     app_context.state.plugins.set(PluginInfoState(plugin_name="sample", enabled=False))
     app_context.state.plugins.clear_dirty()
     with pytest.raises(ValidationError):
-        await service.register_or_update_plugin("sample", enabled=True, settings={"invalid": object()})
+        await service.register_or_update_plugin(
+            "sample", enabled=True, settings={"invalid": object()}
+        )
     assert app_context.state.plugins.get("sample").enabled is False
     assert not app_context.state.plugins.is_dirty
     assert not app_context.state.settings.is_dirty

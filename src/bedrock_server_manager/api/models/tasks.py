@@ -15,7 +15,9 @@ class TaskAcceptedResponse(APIResponse):
 
 class TaskSnapshot(APIResponse):
     id: str
-    status: Literal["queued", "running", "completed", "failed", "cancelling", "cancelled"]
+    status: Literal[
+        "queued", "running", "completed", "failed", "cancelling", "cancelled"
+    ]
     message: str
     result: JsonValue = None
     error: APIErrorResponse | None = None

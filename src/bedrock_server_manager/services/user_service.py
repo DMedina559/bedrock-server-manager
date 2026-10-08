@@ -175,7 +175,10 @@ class UserService:
                     self.state.users.set(record)
                     if not dirty:
                         self.state.users.remove_dirty_user(name)
-                if action in {"delete", "disable", "role"} and self.revoke_connections is not None:
+                if (
+                    action in {"delete", "disable", "role"}
+                    and self.revoke_connections is not None
+                ):
                     await self.revoke_connections(name)
                 return record
 
