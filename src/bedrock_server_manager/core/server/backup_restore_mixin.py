@@ -791,6 +791,50 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             []
         )  # To collect names of components that failed to restore
 
+        # Restore standard configuration files
+        config_files_to_restore = [
+            "server.properties",
+            "allowlist.json",
+            "permissions.json",
+        ]
+        for original_conf_name in config_files_to_restore:
+            try:
+                name_part, ext_part = os.path.splitext(original_conf_name)
+                backup_prefix = f"{name_part}_backup_"  # e.g., "server_backup_"
+                backup_extension = ext_part.lstrip(".")  # e.g., "properties"
+
+                # Find backups for this specific config file type, sorted newest first
+                candidate_backups = await self._find_and_sort_backups(
+                    os.path.join(server_bck_dir, f"{backup_prefix}*.{backup_extension}")
+                )
+
+                if candidate_backups:
+                    latest_config_backup_path = candidate_backups[0]  # Newest is first
+                    self.logger.info(
+                        f"Found latest backup for '{original_conf_name}': {os.path.basename(latest_config_backup_path)}"
+                    )
+                    restored_config_path = await self._restore_config_file_internal(
+                        latest_config_backup_path
+                    )
+                    restore_results[original_conf_name] = restored_config_path
+                else:
+                    self.logger.info(
+                        f"No backups found for '{original_conf_name}' for server '{self.server_name}'. Skipping restore."
+                    )
+                    restore_results[original_conf_name] = None
+            except (
+                Exception
+            ) as e_conf_restore:  # Catch broad exceptions for each config file
+                self.logger.error(
+                    f"Failed to restore '{original_conf_name}' for server '{self.server_name}': {e_conf_restore}",
+                    exc_info=True,
+                )
+                failures.append(
+                    f"{original_conf_name} ({type(e_conf_restore).__name__})"
+                )
+                restore_results[original_conf_name] = None
+
+        # Resolve the active world using the restored server.properties.
         # Restore World
         try:
             world_backup_files = await self._find_and_sort_backups(
@@ -839,49 +883,6 @@ class ServerBackupMixin(BedrockServerBaseMixin):
             )
             failures.append(f"World ({type(e_world_restore).__name__})")
             restore_results["world"] = None
-
-        # Restore standard configuration files
-        config_files_to_restore = [
-            "server.properties",
-            "allowlist.json",
-            "permissions.json",
-        ]
-        for original_conf_name in config_files_to_restore:
-            try:
-                name_part, ext_part = os.path.splitext(original_conf_name)
-                backup_prefix = f"{name_part}_backup_"  # e.g., "server_backup_"
-                backup_extension = ext_part.lstrip(".")  # e.g., "properties"
-
-                # Find backups for this specific config file type, sorted newest first
-                candidate_backups = await self._find_and_sort_backups(
-                    os.path.join(server_bck_dir, f"{backup_prefix}*.{backup_extension}")
-                )
-
-                if candidate_backups:
-                    latest_config_backup_path = candidate_backups[0]  # Newest is first
-                    self.logger.info(
-                        f"Found latest backup for '{original_conf_name}': {os.path.basename(latest_config_backup_path)}"
-                    )
-                    restored_config_path = await self._restore_config_file_internal(
-                        latest_config_backup_path
-                    )
-                    restore_results[original_conf_name] = restored_config_path
-                else:
-                    self.logger.info(
-                        f"No backups found for '{original_conf_name}' for server '{self.server_name}'. Skipping restore."
-                    )
-                    restore_results[original_conf_name] = None
-            except (
-                Exception
-            ) as e_conf_restore:  # Catch broad exceptions for each config file
-                self.logger.error(
-                    f"Failed to restore '{original_conf_name}' for server '{self.server_name}': {e_conf_restore}",
-                    exc_info=True,
-                )
-                failures.append(
-                    f"{original_conf_name} ({type(e_conf_restore).__name__})"
-                )
-                restore_results[original_conf_name] = None
 
         if failures:
             # If any component failed to restore, raise an error summarizing them.
