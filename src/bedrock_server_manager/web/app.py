@@ -33,24 +33,26 @@ def create_web_app(app_context: AppContext) -> FastAPI:  # noqa: C901
     async def lifespan(app: FastAPI):
         # Startup logic goes here
         app_context = app.state.app_context
-        app_context.loop = asyncio.get_running_loop()
-        await app_context.bedrock_process_manager.start()
-        app_context.resource_monitor.start()
-        await app_context.api.application.update_server_statuses(request={})
+        try:
+            app_context.loop = asyncio.get_running_loop()
+            await app_context.bedrock_process_manager.start()
+            app_context.resource_monitor.start()
+            await app_context.api.application.update_server_statuses(request={})
 
-        await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
-        await app_context.plugin_manager.start_plugin_tasks()
+            await app_context.plugin_manager.trigger_guarded_event("on_manager_startup")
+            await app_context.plugin_manager.start_plugin_tasks()
 
-        # Initialize and start LogStreamer
-        log_streamer = app_context.log_streamer
-        log_streamer.start()
+            # Initialize and start LogStreamer
+            log_streamer = app_context.log_streamer
+            log_streamer.start()
 
-        yield
-        # Shutdown logic goes here
-        logger.info("Running web app shutdown hooks...")
+            yield
+        finally:
+            # Shutdown logic goes here
+            logger.info("Running web app shutdown hooks...")
 
-        await app_context.shutdown()
-        logger.info("Web app shutdown hooks complete.")
+            await app_context.shutdown()
+            logger.info("Web app shutdown hooks complete.")
 
     version = get_installed_version()
 

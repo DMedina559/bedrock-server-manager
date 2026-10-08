@@ -1,5 +1,7 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
@@ -196,3 +198,27 @@ def test_http_validation_and_internal_errors_have_safe_envelopes(test_app, auth_
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "internal_error"
     assert "private-invalid-value" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_failed_web_startup_cleans_up(app_context, monkeypatch):
+    def close_coroutine(coro):
+        coro.close()
+
+    monkeypatch.setattr(asyncio, "run", close_coroutine)
+    app = create_web_app(app_context)
+    process = app_context.bedrock_process_manager
+    resource = app_context.resource_monitor
+    app_context.api.application.update_server_statuses = AsyncMock(
+        side_effect=RuntimeError("startup probe failed")
+    )
+    shutdown = AsyncMock(wraps=app_context.shutdown)
+    monkeypatch.setattr(app_context, "shutdown", shutdown)
+    with pytest.raises(RuntimeError, match="startup probe failed"):
+        async with app.router.lifespan_context(app):
+            pass
+    assert process.monitoring_task is not None and process.monitoring_task.done()
+    assert resource._task is None or resource._task.done()
+    shutdown.assert_awaited_once()
+    await process.quiesce()
+    await resource.shutdown()
