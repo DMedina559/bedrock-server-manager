@@ -117,11 +117,9 @@ async def test_async_backup_cancellation_retains_lock_until_thread_finishes(
         release.wait(3)
         finished.set()
 
+    monkeypatch.setattr("bedrock_server_manager.core.files.shutil.copy2", copy)
     monkeypatch.setattr(
-        "bedrock_server_manager.core.server.backup_restore_mixin.shutil.copy2", copy
-    )
-    monkeypatch.setattr(
-        "bedrock_server_manager.core.server.backup_restore_mixin.shutil.copystat",
+        "bedrock_server_manager.core.files.shutil.copystat",
         lambda *args: None,
     )
     server_dir = __import__("pathlib").Path(server.server_dir)

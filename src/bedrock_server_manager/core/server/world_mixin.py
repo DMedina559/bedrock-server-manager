@@ -28,6 +28,7 @@ import shutil
 import tempfile
 import time
 import zipfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import aiofiles
@@ -43,6 +44,12 @@ from ...error import (
     MissingArgumentError,
 )
 from ...utils.threads import run_in_thread
+from ..files import (
+    atomic_world_archive,
+    extract_archive,
+    file_transaction,
+    temporary_directory,
+)
 from ..system import base as system_base
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -130,9 +137,8 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         The extraction target is a subdirectory named `target_world_dir_name`
         within the server's main "worlds" folder (see :attr:`._worlds_base_dir_in_server`).
 
-        .. warning::
-            If the `target_world_dir_name` directory already exists, **it will be
-            deleted** before extraction to ensure a clean import.
+        Existing content is replaced after the archive has been extracted and
+        validated. Failed extraction preserves the previous world.
 
         Args:
             mcworld_file_path (str): The absolute path to the ``.mcworld`` file
@@ -175,73 +181,43 @@ class ServerWorldMixin(BedrockServerBaseMixin):
         if not await aiofiles.ospath.isfile(mcworld_file_path):
             raise AppFileNotFoundError(mcworld_file_path, ".mcworld file")
 
-        if await aiofiles.ospath.exists(full_target_extract_dir):
-            self.logger.warning(
-                f"Target world directory '{full_target_extract_dir}' already exists. Removing its contents."
-            )
-            try:
-                await run_in_thread(shutil.rmtree, full_target_extract_dir)
-            except OSError as e:
-                raise FileOperationError(
-                    f"Failed to clear target world directory '{full_target_extract_dir}': {e}"
-                ) from e
-
+        target = Path(full_target_extract_dir)
         try:
-            await run_in_thread(os.makedirs, full_target_extract_dir, exist_ok=True)
-        except OSError as e:
-            raise FileOperationError(
-                f"Failed to create target world directory '{full_target_extract_dir}': {e}"
-            ) from e
+            await run_in_thread(target.parent.mkdir, parents=True, exist_ok=True)
+            async with temporary_directory(target.parent) as staging:
 
-        self.logger.info(
-            f"Server '{self.server_name}': Extracting '{mcworld_filename}' asynchronously..."
-        )
+                def prepare() -> None:
+                    with zipfile.ZipFile(mcworld_file_path, "r") as archive:
+                        extract_archive(archive, staging)
+                    entries = list(staging.iterdir())
+                    if not any(
+                        item.name.lower() in ("level.dat", "level.txt")
+                        for item in entries
+                    ):
+                        if len(entries) == 1 and entries[0].is_dir():
+                            nested = entries[0]
+                            for item in nested.iterdir():
+                                shutil.move(str(item), staging)
+                            nested.rmdir()
+                    if not any(
+                        (staging / name).is_file()
+                        for name in ("level.dat", "level.txt")
+                    ):
+                        raise zipfile.BadZipFile("Archive contains no world metadata")
 
-        def _do_extract_and_flatten():
-            with zipfile.ZipFile(mcworld_file_path, "r") as zip_ref:
-                zip_ref.extractall(full_target_extract_dir)
-
-            entries = os.listdir(full_target_extract_dir)
-            has_level_dat = any(
-                f.lower() in ("level.dat", "level.txt") for f in entries
-            )
-
-            if not has_level_dat and len(entries) == 1:
-                nested_dir_name = entries[0]
-                nested_dir_path = os.path.join(full_target_extract_dir, nested_dir_name)
-                if os.path.isdir(nested_dir_path):
-                    self.logger.info(
-                        f"Detected nested world directory '{nested_dir_name}'. flattening structure..."
-                    )
-                    for item in os.listdir(nested_dir_path):
-                        shutil.move(
-                            os.path.join(nested_dir_path, item), full_target_extract_dir
-                        )
-                    os.rmdir(nested_dir_path)
-                    self.logger.debug("Flattened nested world directory structure.")
-
-        try:
-            await run_in_thread(_do_extract_and_flatten)
-            self.logger.info(
-                f"Server '{self.server_name}': Successfully extracted world to '{full_target_extract_dir}'."
-            )
+                await run_in_thread(prepare)
+                # Replace the directory only after extraction and validation succeeded.
+                async with file_transaction(target.parent) as transaction:
+                    await run_in_thread(transaction.replace, staging, target)
+                    # The context owns its temporary path until cleanup.
+                    await run_in_thread(staging.mkdir)
             return full_target_extract_dir
-        except zipfile.BadZipFile as e:
-            if await aiofiles.ospath.exists(full_target_extract_dir):
-                await run_in_thread(
-                    shutil.rmtree, full_target_extract_dir, ignore_errors=True
-                )
-            raise ExtractError(
-                f"Invalid .mcworld file (not a valid zip): {mcworld_filename}"
-            ) from e
-        except OSError as e:
+        except zipfile.BadZipFile as error:
+            raise ExtractError(f"Invalid .mcworld file: {mcworld_filename}") from error
+        except OSError as error:
             raise FileOperationError(
-                f"Error extracting world '{mcworld_filename}' for server '{self.server_name}': {e}"
-            ) from e
-        except Exception as e_unexp:
-            raise FileOperationError(
-                f"Unexpected error extracting world '{mcworld_filename}' for server '{self.server_name}': {e_unexp}"
-            ) from e_unexp
+                f"Error extracting world '{mcworld_filename}': {error}"
+            ) from error
 
     async def _live_export_world(
         self,
@@ -354,21 +330,7 @@ class ServerWorldMixin(BedrockServerBaseMixin):
                             with open(dest_file, "r+b") as f:
                                 f.truncate(rsize)
 
-                    archive_base_name_no_ext = os.path.splitext(
-                        target_mcworld_file_path
-                    )[0]
-                    temp_zip_path = archive_base_name_no_ext + ".zip"
-
-                    shutil.make_archive(
-                        base_name=archive_base_name_no_ext,
-                        format="zip",
-                        root_dir=temp_dir,
-                        base_dir=".",
-                    )
-
-                    if os.path.exists(target_mcworld_file_path):
-                        os.remove(target_mcworld_file_path)
-                    os.rename(temp_zip_path, target_mcworld_file_path)
+                    atomic_world_archive(temp_dir, target_mcworld_file_path)
 
             await run_in_thread(_copy_and_truncate_world)
             self.logger.info(
@@ -466,57 +428,20 @@ class ServerWorldMixin(BedrockServerBaseMixin):
             await self._live_export_world(world_dir_name, target_mcworld_file_path)
             return
 
-        archive_base_name_no_ext = os.path.splitext(target_mcworld_file_path)[0]
-        temp_zip_path = archive_base_name_no_ext + ".zip"
-
         try:
-            self.logger.debug(
-                f"Creating temporary ZIP archive at '{archive_base_name_no_ext}' for world '{world_dir_name}'."
-            )
             await run_in_thread(
-                shutil.make_archive,
-                base_name=archive_base_name_no_ext,
-                format="zip",
-                root_dir=full_source_world_dir,
-                base_dir=".",
+                atomic_world_archive, full_source_world_dir, target_mcworld_file_path
             )
-            self.logger.debug(f"Successfully created temporary ZIP: {temp_zip_path}")
-
-            if not await aiofiles.ospath.exists(temp_zip_path):
-                raise BackupRestoreError(
-                    f"Archive process completed but temp zip '{temp_zip_path}' not found."
-                )
-
-            if await aiofiles.ospath.exists(target_mcworld_file_path):
-                self.logger.warning(
-                    f"Target file '{target_mcworld_file_path}' exists. Overwriting."
-                )
-                await run_in_thread(os.remove, target_mcworld_file_path)
-
-            await run_in_thread(os.rename, temp_zip_path, target_mcworld_file_path)
-            self.logger.info(
-                f"Server '{self.server_name}': World export successful. Created: {target_mcworld_file_path}"
-            )
-
-        except OSError as e:
-            if await aiofiles.ospath.exists(temp_zip_path):
-                await run_in_thread(os.remove, temp_zip_path)
+        except OSError as error:
             raise BackupRestoreError(
-                f"Failed to create .mcworld for server '{self.server_name}', world '{world_dir_name}': {e}"
-            ) from e
-        except Exception as e_unexp:
-            if await aiofiles.ospath.exists(temp_zip_path):
-                await run_in_thread(os.remove, temp_zip_path)
-            raise BackupRestoreError(
-                f"Unexpected error during world export for server '{self.server_name}': {e_unexp}"
-            ) from e_unexp
+                f"Failed to create .mcworld for server '{self.server_name}': {error}"
+            ) from error
 
     async def import_world(self, mcworld_backup_file_path: str) -> str:
         """Imports a ``.mcworld`` file asynchronously, replacing the server's currently active world.
 
-        .. warning::
-            This is a **DESTRUCTIVE** operation. The existing active world directory
-            will be deleted before the new world is imported.
+        The active world is replaced only after the new archive is extracted and
+        validated. Extraction failure preserves the existing world.
 
         This method first determines the name of the server's active world by
         calling ``await self.get_world_name()`` (expected from

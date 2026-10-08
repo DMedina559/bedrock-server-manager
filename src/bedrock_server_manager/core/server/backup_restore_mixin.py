@@ -22,7 +22,6 @@ export and import operations.
 
 import os
 import re
-import shutil
 from typing import Any, Dict, List, Optional, Union
 
 from ...error import (
@@ -35,6 +34,7 @@ from ...error import (
 )
 from ...utils import get_timestamp
 from ...utils.threads import run_in_thread
+from ..files import atomic_copy_file
 from ..system import find_files
 from .base_server_mixin import BedrockServerBaseMixin
 
@@ -525,7 +525,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         try:
             # copy2 preserves metadata like modification time.
             await run_in_thread(
-                shutil.copy2, file_to_backup_path, backup_destination_path
+                atomic_copy_file, file_to_backup_path, backup_destination_path
             )
             self.logger.info(
                 f"Config file '{config_filename_in_server_dir}' backed up to '{backup_destination_path}'."
@@ -708,7 +708,7 @@ class ServerBackupMixin(BedrockServerBaseMixin):
         )
         try:
             await run_in_thread(
-                shutil.copy2, backup_config_file_path, target_restore_path
+                atomic_copy_file, backup_config_file_path, target_restore_path
             )
             self.logger.info(f"Successfully restored config to: {target_restore_path}")
             return target_restore_path
